@@ -36,6 +36,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 // Apple provides an optimized BLAS library that is better than Eigen for their
 // devices, so use that if possible.
 #if defined(__APPLE__) && defined(USE_GEMM_FOR_CONV)

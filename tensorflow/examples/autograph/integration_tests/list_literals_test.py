@@ -34,7 +34,7 @@ class ListLiteralsTest(tf.test.TestCase):
     result = converted()
 
     with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(result), [1, 2, 3])
+      self.assertAllEqual(self.evaluate(result), [1, 2, 3])
 
 
 if __name__ == '__main__':

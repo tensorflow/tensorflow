@@ -113,12 +113,21 @@ class MeanOp : public XlaReductionOp {
     xla::Add(scalar_lhs, scalar_rhs);
   }
 
-  xla::XlaOp BuildFinalizer(xla::XlaBuilder* builder,
-                            const xla::XlaOp& reduce_output,
-                            int64 num_elements_reduced) override {
-    auto divisor = XlaHelpers::IntegerLiteral(builder, input_type(0),
-                                              num_elements_reduced);
-    return reduce_output / divisor;
+  xla::XlaOp BuildFinalizer(
+      xla::XlaBuilder* /*builder*/, const xla::XlaOp& input,
+      const xla::XlaOp& reduce_output,
+      const std::vector<int64>& dimensions_to_reduce) override {
+    if (dimensions_to_reduce.empty()) {
+      return reduce_output;
+    }
+    auto divisor = xla::GetDimensionSize(input, dimensions_to_reduce[0]);
+    for (int i = 1; i < dimensions_to_reduce.size(); i++) {
+      auto size = xla::GetDimensionSize(input, dimensions_to_reduce[i]);
+      divisor = xla::Mul(divisor, size);
+    }
+    divisor = xla::ConvertElementType(divisor, xla_reduction_type_);
+    return XlaHelpers::ConvertElementType(reduce_output / divisor,
+                                          input_type(0));
   }
 };
 

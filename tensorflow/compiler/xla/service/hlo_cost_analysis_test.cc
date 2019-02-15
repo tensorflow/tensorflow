@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/service.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 #include "tensorflow/compiler/xla/statusor.h"
@@ -155,6 +156,87 @@ TEST_F(HloCostAnalysisTest, MatrixMultiply) {
   // Bytes accessed is sum of inputs and output.
   EXPECT_EQ(analysis.bytes_accessed(),
             sizeof(float) * (10 * 5 + 5 * 30 + 10 * 30));
+}
+
+TEST_F(HloCostAnalysisTest, DotGeneral) {
+  XlaBuilder builder("matrix_multiply");
+  auto lhs =
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5, 5}), "lhs");
+  auto rhs =
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 5, 30}), "rhs");
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_lhs_contracting_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(0);
+  dnums.add_rhs_contracting_dimensions(1);
+  DotGeneral(lhs, rhs, dnums);
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  // Check the number of computations returned from the analysis (1500 FMAs).
+  EXPECT_EQ(analysis.flop_count(), 2 * 10 * 30 * 5 * 5);
+
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+
+  // Bytes accessed is sum of inputs and output.
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 5 * 5 + 5 * 5 * 30 + 10 * 30));
+}
+
+TEST_F(HloCostAnalysisTest, DotGeneral2) {
+  XlaBuilder builder("matrix_multiply");
+  auto lhs =
+      Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5, 5}), "lhs");
+  auto rhs =
+      Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 5, 30}), "rhs");
+  DotDimensionNumbers dnums;
+  dnums.add_lhs_contracting_dimensions(1);
+  dnums.add_lhs_batch_dimensions(2);
+  dnums.add_rhs_contracting_dimensions(0);
+  dnums.add_rhs_batch_dimensions(1);
+  DotGeneral(lhs, rhs, dnums);
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  // Check the number of computations returned from the analysis (1500 FMAs).
+  EXPECT_EQ(analysis.flop_count(), 2 * 10 * 30 * 5 * 5);
+
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+
+  // Bytes accessed is sum of inputs and output.
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 5 * 5 + 5 * 5 * 30 + 5 * 10 * 30));
+}
+
+TEST_F(HloCostAnalysisTest, DotGeneral3) {
+  XlaBuilder builder("matrix_multiply");
+  auto lhs = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {10, 5}), "lhs");
+  auto rhs = Parameter(&builder, 1, ShapeUtil::MakeShape(F32, {5, 30}), "rhs");
+  DotDimensionNumbers dnums;
+  DotGeneral(lhs, rhs, dnums);
+
+  // Run HLO cost analysis.
+  auto hlo_module = BuildHloGraph(&builder);
+  HloCostAnalysis analysis(ShapeSize);
+  ASSERT_IS_OK(
+      hlo_module->entry_computation()->root_instruction()->Accept(&analysis));
+
+  // Check the number of computations returned from the analysis (1500 FMAs).
+  EXPECT_EQ(analysis.flop_count(), 2 * 10 * 30 * 5 * 5);
+
+  EXPECT_EQ(analysis.transcendental_count(), 0);
+
+  // Bytes accessed is sum of inputs and output.
+  EXPECT_EQ(analysis.bytes_accessed(),
+            sizeof(float) * (10 * 5 + 5 * 30 + 5 * 5 * 10 * 30));
 }
 
 TEST_F(HloCostAnalysisTest, Map) {
@@ -387,7 +469,7 @@ TEST_F(FusionCostAnalysis, LoopFusion) {
         HloInstruction::CreateBinary(r2f32, HloOpcode::kSubtract, mul, clamp));
     auto tuple = HloInstruction::CreateTuple({sub, sub, mul, c1});
 
-    auto module = CreateNewModule();
+    auto module = CreateNewVerifiedModule();
     auto* computation = module->AddEntryComputation(builder.Build());
     auto* fusion = computation->CreateFusionInstruction(
         {sub, mul, exp, clamp, add}, HloInstruction::FusionKind::kLoop);
@@ -429,7 +511,7 @@ TEST_F(FusionCostAnalysis, NoLayout) {
   auto add = builder.AddInstruction(HloInstruction::CreateBinary(
       shape_with_layout, HloOpcode::kAdd, c1, broadcast));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
   auto* fusion = computation->CreateFusionInstruction(
       {add, broadcast}, HloInstruction::FusionKind::kLoop);
@@ -472,7 +554,7 @@ TEST_F(DomainCostAnalysis, DomainCost) {
   auto domain = builder.AddInstruction(
       HloInstruction::CreateDomain(tuple->shape(), tuple, nullptr, nullptr));
 
-  auto hlo_module = CreateNewModule();
+  auto hlo_module = CreateNewVerifiedModule();
   hlo_module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(hlo_module->entry_computation()->root_instruction(), domain);
@@ -529,7 +611,8 @@ TEST_F(HloCostAnalysisTest, DynamicSlice) {
   // Test the analysis on a slice.
   XlaBuilder builder("dynamic-slice");
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
-  DynamicSlice(x, ConstantR1<int32>(&builder, {1}), {1});
+  DynamicSlice(x, absl::Span<const XlaOp>({ConstantR0<int32>(&builder, 1)}),
+               {1});
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.
@@ -545,7 +628,7 @@ TEST_F(HloCostAnalysisTest, DynamicUpdateSlice) {
   XlaBuilder builder("dynamic-update-slice");
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2}), "x");
   DynamicUpdateSlice(x, ConstantR1<float>(&builder, {1.0}),
-                     ConstantR1<int32>(&builder, {1}));
+                     absl::Span<const XlaOp>({ConstantR0<int32>(&builder, 1)}));
   auto hlo_module = BuildHloGraph(&builder);
 
   // Run HLO cost analysis.

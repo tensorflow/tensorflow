@@ -32,7 +32,7 @@ from tensorflow.contrib.timeseries.python.timeseries.state_space_models.filterin
 from tensorflow.python.estimator import estimator_lib
 from tensorflow.python.estimator.canned import optimizers
 from tensorflow.python.estimator.export import export_lib
-from tensorflow.python.feature_column import feature_column
+from tensorflow.python.feature_column import feature_column_lib as feature_column
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape

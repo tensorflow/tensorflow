@@ -50,7 +50,7 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
           wanted_input_node, 2.0, name="output_node")
       math_ops.add(output_node, 2.0, name="later_node")
       sess = session.Session()
-      output = sess.run(output_node)
+      output = self.evaluate(output_node)
       self.assertNear(-4.0, output, 0.00001)
       graph_io.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 
@@ -113,7 +113,7 @@ class StripUnusedTest(test_util.TensorFlowTestCase):
           input_node1, input_node2, name="output_node")
       math_ops.add(output_node, 2.0, name="later_node")
       sess = session.Session()
-      output = sess.run(output_node)
+      output = self.evaluate(output_node)
       self.assertNear(6.0, output, 0.00001)
       graph_io.write_graph(sess.graph, self.get_temp_dir(), input_graph_name)
 

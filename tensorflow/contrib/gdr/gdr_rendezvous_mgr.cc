@@ -58,11 +58,9 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
     resp_.InitAlloc(dst_device_, recv_args_.alloc_attrs);
     StatusCallback cb = [this, recv_done](const Status& s) {
       bool dma_ok = resp_.metadata().has_transport_options();
-      if (s.ok() && tensor().TotalBytes() > 0 && (!is_dead()) && dma_ok) {
+      if (s.ok() && tensor().TotalBytes() > 1024 && (!is_dead()) && dma_ok) {
         auto transport_options = resp_.metadata().transport_options();
-        const bool on_host =
-            (dst_device_->tensorflow_gpu_device_info() == nullptr) ||
-            recv_args_.alloc_attrs.on_host();
+        const bool on_host = recv_args_.alloc_attrs.on_host();
         remote_memory_manager_->TensorFromTransportOptions(
             const_cast<Tensor*>(&tensor()), transport_options, dst_device_,
             recv_args_.device_context, on_host,
@@ -70,9 +68,6 @@ class GdrRecvTensorCall : public BaseRecvTensorCall {
               if (!s.ok()) {
                 mutex_lock l(mu_);
                 status_.Update(s);
-                LOG(ERROR) << "Cannot find pinned memory region from allocator "
-                           << dst_device_->GetAllocator(recv_args_.alloc_attrs)
-                                  ->Name();
               }
               recv_done();
             });
@@ -169,6 +164,14 @@ class GdrRemoteRendezvous : public BaseRemoteRendezvous {
 
     // Record "call" in active_ so that it can be aborted cleanly.
     RegisterCall(call);
+
+    // RendezvousMgr already aborted, shouldn't send RPC call any more
+    if (!call->status().ok()) {
+      done(call->status(), Args(), Args(), Tensor(), false);
+      session()->worker_cache->ReleaseWorker(src_worker, rwi);
+      delete call;
+      return;
+    }
 
     // Start "call".
     Ref();

@@ -49,7 +49,7 @@ class HloModuleGroupUtil {
   // Returns all unique successors of the instruction. This includes:
   // * successors in the same computation: users and control successors
   // * Send is a successor of Recv
-  // * RecvDone is a predecessor of Send
+  // * RecvDone is a successor of Send
   // * successors of companions (if the instruction is a companion while)
   // * successors' companions (for any successor that is a companion while)
   std::vector<HloInstruction*> GlobalSuccessors(HloInstruction* instruction);

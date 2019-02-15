@@ -129,7 +129,7 @@ class FIFOQueueTest(xla_test.XLATestCase):
         enqueue_op.run()
 
       for i in xrange(len(elems)):
-        vals = dequeued_t.eval()
+        vals = self.evaluate(dequeued_t)
         self.assertEqual([elems[i]], vals)
 
   def testEnqueueAndBlockingDequeue(self):
@@ -192,9 +192,9 @@ class FIFOQueueTest(xla_test.XLATestCase):
       self.assertEqual([], size.get_shape())
 
       enqueue_op.run()
-      self.assertEqual(1, size.eval())
+      self.assertEqual(1, self.evaluate(size))
       dequeued_t.op.run()
-      self.assertEqual(0, size.eval())
+      self.assertEqual(0, self.evaluate(size))
 
 
 if __name__ == "__main__":

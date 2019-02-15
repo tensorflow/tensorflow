@@ -77,7 +77,11 @@ bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
     return false;
   }
 
-  if (window_util::HasWindowReversal(conv->window())) {
+  // CuDNN can perform either cross correlation (no reversal),
+  // or convolution (all dimensions reversed).
+  if (dnums.input_spatial_dimensions_size() == 2
+          ? !window_util::AllOrNoneReversed(conv->window())
+          : window_util::HasWindowReversal(conv->window())) {
     return false;
   }
   return true;
@@ -254,7 +258,7 @@ MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
-  // TODO(b/31709653): Theoretically cuDNN supports grouped convolutions also
+  // TODO(b/119479517): Theoretically cuDNN supports grouped convolutions also
   // for the backward input convolution, but at least for now with version 7.1.4
   // it is slower. This needs to be re-evaluated for future cuDNN versions.
   // Note that we already have the necessary code down below, the only thing to

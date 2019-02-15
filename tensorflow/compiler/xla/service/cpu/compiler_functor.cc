@@ -61,27 +61,19 @@ Disabling these as a starting point.
 // TODO(b/64227304) Creating a custom pass pipeline will replace this.
 
 namespace {
-class FilteredFunctionPassManager : public llvm::legacy::FunctionPassManager {
- public:
-  FilteredFunctionPassManager(llvm::Module* m, bool disable_expensive_passes)
-      : llvm::legacy::FunctionPassManager(m),
-        disable_expensive_passes_(disable_expensive_passes) {}
-  void add(llvm::Pass* p) override {
-    llvm::legacy::FunctionPassManager::add(p);
-  }
-
- private:
-  bool disable_expensive_passes_;
-};
-
 class FilteredPassManager : public llvm::legacy::PassManager {
  public:
   explicit FilteredPassManager(bool disable_expensive_passes)
       : disable_expensive_passes_(disable_expensive_passes) {}
   void add(llvm::Pass* p) override {
+    llvm::StringRef PassName = p->getPassName();
+    if (PassName.contains("Warn about non-applied transformations")) {
+      delete p;
+      return;
+    }
     if (disable_expensive_passes_) {
-      llvm::StringRef PassName = p->getPassName();
       if (PassName.contains("Unroll loops")) {
+        delete p;
         return;
       }
     }
@@ -96,8 +88,7 @@ class FilteredPassManager : public llvm::legacy::PassManager {
 std::unique_ptr<llvm::MemoryBuffer> CompilerFunctor::operator()(
     llvm::Module& module) const {
   FilteredPassManager module_passes(disable_expensive_passes_);
-  FilteredFunctionPassManager function_passes(&module,
-                                              disable_expensive_passes_);
+  llvm::legacy::FunctionPassManager function_passes(&module);
 
   VLOG(2) << "IR before optimizations";
   XLA_VLOG_LINES(2, llvm_ir::DumpModuleToString(module));

@@ -22,7 +22,7 @@ import shutil
 import tempfile
 
 from tensorflow.python.data.experimental.kernel_tests.serialization import dataset_serialization_test_base
-from tensorflow.python.data.ops.dataset_ops import MatchingFilesDataset
+from tensorflow.python.data.experimental.ops import matching_files
 from tensorflow.python.platform import test
 
 
@@ -30,7 +30,7 @@ class MatchingFilesDatasetSerializationTest(
     dataset_serialization_test_base.DatasetSerializationTestBase):
 
   def _build_iterator_graph(self, test_patterns):
-    return MatchingFilesDataset(test_patterns)
+    return matching_files.MatchingFilesDataset(test_patterns)
 
   def testMatchingFilesCore(self):
     tmp_dir = tempfile.mkdtemp()

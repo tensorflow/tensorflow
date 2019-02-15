@@ -134,6 +134,26 @@ void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
   }
 }
 
+template <bool>
+void DoInplaceOp(const Device& d, InplaceOpType op, const Tensor& i,
+                 const Tensor& v, Tensor* y) {
+  const int64 nelem = v.NumElements();
+  CudaLaunchConfig cfg = GetCudaLaunchConfig(nelem, d);
+  auto Ty = y->flat_outer_dims<bool>();
+  const int64 nrows = Ty.dimension(0);
+  const int64 ncols = Ty.dimension(1);
+  const int64 n = i.NumElements();
+  const bool* src = v.flat<bool>().data();
+  // TODO(sjhwang): Check that first dimension fits in int32 range.
+  const int32* rowids = i.flat<int32>().data();
+  bool* dst = y->flat<bool>().data();
+  if (op == I_UPDATE) {
+    DoInplaceOpKernel<bool, I_UPDATE>
+        <<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
+            cfg.virtual_thread_count, nrows, ncols, n, src, rowids, dst);
+  }
+}
+
 template <>
 Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
                  const Tensor& v, Tensor* y) {
@@ -144,6 +164,7 @@ Status DoInplace(const Device& d, InplaceOpType op, const Tensor& i,
     DoInplaceOp<type>(d, op, i, v, y); \
     break;
 
+    CASE(bool)
     CASE(float)
     CASE(double)
     CASE(Eigen::half)
@@ -165,6 +186,7 @@ Status DoCopy(const Device& d, const Tensor& x, Tensor* y) {
     y->flat<type>().device(d) = x.flat<type>(); \
     break;
 
+    CASE(bool)
     CASE(float)
     CASE(double)
     CASE(Eigen::half)

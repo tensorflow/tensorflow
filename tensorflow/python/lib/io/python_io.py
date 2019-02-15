@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Python functions for directly manipulating TFRecord-formatted files.
-
-See the [Python IO](https://tensorflow.org/api_guides/python/python_io) guide.
-"""
+"""Python functions for directly manipulating TFRecord-formatted files."""
 
 from __future__ import absolute_import
 from __future__ import division

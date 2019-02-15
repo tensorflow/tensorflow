@@ -15,11 +15,30 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/vectorization_utils.h"
 
+#include <cstddef>
+#include <string>
+#include <utility>
+#include <vector>
+
+#include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/op.h"
+#include "tensorflow/core/framework/op_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/graph/node_builder.h"
 #include "tensorflow/core/grappler/optimizers/data/function_utils.h"
 #include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/platform/types.h"
 #include "tensorflow/tools/graph_transforms/transform_utils.h"
 
 namespace tensorflow {
@@ -27,69 +46,78 @@ namespace grappler {
 namespace vectorization_utils {
 namespace {
 
-NodeDef* AddCastNode(const string& name, const std::vector<string>& inputs,
-                     DataType src, DataType dst, bool truncate,
-                     FunctionDef* fn) {
-  NodeDef* node = function_utils::AddNode(name, "Cast", inputs, {}, fn);
-  graph_transforms::SetNodeAttr("SrcT", src, node);
-  graph_transforms::SetNodeAttr("DstT", dst, node);
-  graph_transforms::SetNodeAttr("Truncate", truncate, node);
-  return node;
+// Wraps a function in another function with a MapDefun node
+Status WrapFunctionWithMapDefun(const FunctionDef& inner, FunctionDef* result) {
+  Graph graph(OpRegistry::Global());
+  std::vector<NodeBuilder::NodeOut> inputs;
+  inputs.reserve(inner.signature().input_arg_size());
+  for (int i = 0; i < inner.signature().input_arg_size(); ++i) {
+    Node* arg;
+    TF_RETURN_IF_ERROR(
+        NodeBuilder(strings::StrCat("arg", i), /*op_name=*/"_Arg")
+            .Attr("T", inner.signature().input_arg(i).type())
+            .Attr("index", i)
+            .Finalize(&graph, &arg));
+    inputs.push_back(arg);
+  }
+
+  DataTypeVector output_types;
+  output_types.reserve(inner.signature().output_arg_size());
+  for (const auto& output_arg : inner.signature().output_arg()) {
+    output_types.push_back(output_arg.type());
+  }
+
+  Node* map_defun_node;
+  NameAttrList func_attr;
+  func_attr.set_name(inner.signature().name());
+  TF_RETURN_IF_ERROR(
+      NodeBuilder("map_defun", "MapDefun")
+          .Input(inputs)                               // arguments
+          .Input(std::vector<NodeBuilder::NodeOut>())  // captured_inputs
+          .Attr("f", func_attr)
+          .Attr("output_types", output_types)
+          .Attr("output_shapes", std::vector<PartialTensorShape>(
+                                     inner.signature().output_arg_size()))
+          .Finalize(&graph, &map_defun_node));
+
+  for (size_t i = 0; i < map_defun_node->num_outputs(); ++i) {
+    Node* ret;
+    TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("ret", i), "_Retval")
+                           .Input(map_defun_node, i)
+                           .Attr("index", static_cast<int>(i))
+                           .Finalize(&graph, &ret));
+  }
+
+  return GraphToFunctionDef(graph, "outer_function", result);
 }
 
-NodeDef* AddUnstackNode(const string& name, const std::vector<string>& inputs,
-                        DataType t, int axis, int num, FunctionDef* fn) {
-  NodeDef* node = function_utils::AddNode(name, "Unpack", inputs, {}, fn);
-  graph_transforms::SetNodeAttr("T", t, node);
-  graph_transforms::SetNodeAttr("axis", axis, node);
-  graph_transforms::SetNodeAttr("num", num, node);
-  return node;
+// Wraps the function `fn` in another function with a MapDefun node, then
+// vectorizes the wrapper function with VectorizeMapDefun.
+Status WrapAndVectorize(const FunctionDef& fn, FunctionDefLibrary* lib,
+                        FunctionDef** result) {
+  FunctionDef outer;
+  TF_RETURN_IF_ERROR(WrapFunctionWithMapDefun(fn, &outer));
+  const NodeDef& map_defun_node = outer.node_def(0);
+
+  *lib->add_function() = outer;
+  *lib->add_function() = fn;
+
+  TF_RETURN_IF_ERROR(VectorizeMapDefun(outer, map_defun_node, lib, result));
+
+  return Status::OK();
 }
 
-NodeDef* AddMapDefunNode(const string& name, const std::vector<string>& inputs,
-                         const std::vector<DataType>& t_arguments,
-                         const std::vector<DataType>& output_types,
-                         const std::vector<PartialTensorShape>& output_shapes,
-                         const string& function_name, FunctionDef* fn) {
-  NameAttrList func;
-  func.set_name(function_name);
-  NodeDef* node = function_utils::AddNode(name, "MapDefun", inputs, {}, fn);
-  graph_transforms::SetNodeAttr("Targuments", t_arguments, node);
-  graph_transforms::SetNodeAttr("Tcaptured", DataTypeVector(), node);
-  graph_transforms::SetNodeAttr("output_types", output_types, node);
-  graph_transforms::SetNodeAttr("output_shapes", output_shapes, node);
-  graph_transforms::SetNodeAttr("f", func, node);
-  return node;
+FunctionDefHelper::Node Cast(string&& name, std::vector<string>&& inputs,
+                             DataType src, DataType dst) {
+  return {{name},
+          "Cast",
+          inputs,
+          {{"SrcT", src}, {"DstT", dst}, {"Truncate", false}}};
 }
 
 string GetRetval(const FunctionDef& function_def, int index) {
   return function_def.ret().at(
       function_def.signature().output_arg(index).name());
-}
-
-// TODO(rachelim): Use FunctionDefHelper::Create instead
-FunctionDef CreateFunction(
-    StringPiece name, const std::vector<std::pair<string, DataType>>& inputs,
-    const std::vector<std::pair<string, DataType>>& outputs,
-    const std::map<string, string>& rets) {
-  FunctionDef func;
-  auto* signature = func.mutable_signature();
-  signature->set_name(string(name));
-  for (const auto& x : inputs) {
-    auto* arg_def = signature->add_input_arg();
-    arg_def->set_name(x.first);
-    arg_def->set_type(x.second);
-  }
-  for (const auto& x : outputs) {
-    auto* arg_def = signature->add_output_arg();
-    arg_def->set_name(x.first);
-    arg_def->set_type(x.second);
-  }
-  for (const auto& x : rets) {
-    (*func.mutable_ret())[x.first] = x.second;
-  }
-
-  return func;
 }
 
 ///==================================//
@@ -128,31 +156,23 @@ FunctionDef CreateFunction(
 //                 +------+   +------+
 //
 TEST(VectorizeMapDefunTest, VectorizeWithNoOps) {
-  FunctionDef inner =
-      CreateFunction("inner_function", {{"arg0", DT_INT32}, {"arg1", DT_INT32}},
-                     {{"ret0", DT_INT32}, {"ret1", DT_INT32}},
-                     {{"ret0", "arg0"}, {"ret1", "arg1"}});
-  FunctionDef outer = CreateFunction(
-      "outer_function", {{"ret0", DT_INT32}, {"ret1", DT_INT32}},
-      {{"mapdefun", DT_INT32}, {"mapdefun_0", DT_INT32}},
-      {{"mapdefun", "MapDefun:output:0"}, {"mapdefun_0", "MapDefun:output:1"}});
-
-  NodeDef* map_defun = AddMapDefunNode(
-      "MapDefun", {"ret0", "ret1"}, {DT_INT32, DT_INT32}, {DT_INT32, DT_INT32},
-      {{}, {}}, inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
-
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32", "arg1: int32"},
+      /*out_def=*/{"ret0: int32", "ret1: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/{},
+      /*ret_def=*/{{"ret0", "arg0"}, {"ret1", "arg1"}});
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  Status s = VectorizeMapDefun(outer, *map_defun, &lib, &vectorized);
-  LOG(ERROR) << s;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
+
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
-  EXPECT_EQ(GetRetval(*vectorized, 0), "ret0");
-  EXPECT_EQ(GetRetval(*vectorized, 1), "ret1");
+  EXPECT_EQ(GetRetval(*vectorized, 0),
+            vectorized->signature().input_arg(0).name());
+  EXPECT_EQ(GetRetval(*vectorized, 1),
+            vectorized->signature().input_arg(1).name());
 }
 
 // Before:
@@ -211,41 +231,32 @@ TEST(VectorizeMapDefunTest, VectorizeWithNoOps) {
 //                 +------+   +------+
 //
 TEST(VectorizeMapDefunTest, VectorizeWithUnvectorizableOp) {
-  FunctionDef inner =
-      CreateFunction("inner_function", {{"arg0", DT_INT32}, {"arg1", DT_INT32}},
-                     {{"ret0", DT_INT32}, {"ret1", DT_INT32}},
-                     {{"ret0", "MatMul:product:0"}, {"ret1", "Cast:y:0"}});
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32", "arg1: int32"},
+      /*out_def=*/{"ret0: int32", "ret1: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {{{"MatMul"}, "MatMul", {"arg0", "arg0"}, {{"T", DT_INT32}}},
+       Cast("Cast", {"arg1"}, DT_INT32, DT_INT32)},  //
+      /*ret_def=*/{{"ret0", "MatMul:product:0"}, {"ret1", "Cast:y:0"}});
   // TODO(rachelim): If we ever write a converter for MatMul, we have to
   // change this test.
-  NodeDef* x_op1 =
-      function_utils::AddNode("MatMul", "MatMul", {"arg0", "arg0"}, {}, &inner);
-  CHECK_NOTNULL(x_op1);
-  graph_transforms::SetNodeAttr("T", DT_INT32, x_op1);
-
-  NodeDef* cast_node =
-      AddCastNode("Cast", {"arg1"}, DT_INT32, DT_INT32, false, &inner);
-  CHECK_NOTNULL(cast_node);
-
-  FunctionDef outer = CreateFunction(
-      "outer_function", {{"x", DT_INT32}, {"y", DT_INT32}},
-      {{"mapdefun", DT_INT32}, {"mapdefun_0", DT_INT32}},
-      {{"mapdefun", "MapDefun:output:0"}, {"mapdefun_0", "MapDefun:output:1"}});
-
-  NodeDef* map_defun = AddMapDefunNode(
-      "MapDefun", {"x", "y"}, {DT_INT32, DT_INT32}, {DT_INT32, DT_INT32},
-      {{}, {}}, inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
 
+  ASSERT_TRUE(
+      function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   auto map_defun_node = vectorized->node_def(
       function_utils::FindFunctionNodeWithOp("MapDefun", *vectorized));
+
   // The Cast node should be converted just fine.
-  EXPECT_EQ(GetRetval(*vectorized, 1), "Cast:y:0");
+  ASSERT_TRUE(function_utils::ContainsFunctionNodeWithOp("Cast", *vectorized));
+  auto cast = vectorized->node_def(
+      function_utils::FindFunctionNodeWithOp("Cast", *vectorized));
+  EXPECT_EQ(GetRetval(*vectorized, 1), strings::StrCat(cast.name(), ":y:0"));
 
   // The inner function should only have one retval.
   FunctionLibraryDefinition lib_def(OpRegistry::Global(), lib);
@@ -298,34 +309,23 @@ TEST(VectorizeMapDefunTest, VectorizeWithUnvectorizableOp) {
 //
 TEST(VectorizeMapDefunTest, VectorizeWithOutputUsedTwice) {
   // Tests that behavior is correct when an output is used more than once.
-  FunctionDef inner =
-      CreateFunction("inner_function", {{"arg0", DT_INT32}},
-                     {{"ret0", DT_INT64}, {"ret1", DT_INT64}},
-                     {{"ret0", "Cast:y:0"}, {"ret1", "Cast:y:0"}});
-  NodeDef* cast_op =
-      AddCastNode("Cast", {"arg0"}, DT_INT32, DT_INT64, false, &inner);
-  CHECK_NOTNULL(cast_op);
-
-  FunctionDef outer = CreateFunction(
-      "outer_function", {{"x", DT_INT32}},
-      {{"mapdefun", DT_INT64}, {"mapdefun_0", DT_INT64}},
-      {{"mapdefun", "MapDefun:output:0"}, {"mapdefun_0", "MapDefun:output:1"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"x"}, {DT_INT32}, {DT_INT64, DT_INT64},
-                      {{}, {}}, inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int64", "ret1: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/{Cast("Cast", {"arg0"}, DT_INT32, DT_INT64)},
+      /*ret_def=*/{{"ret0", "Cast:y:0"}, {"ret1", "Cast:y:0"}});
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
+
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   const NodeDef& cast_node = vectorized->node_def(
       function_utils::FindFunctionNodeWithOp("Cast", *vectorized));
-  EXPECT_EQ(cast_node.input(0), "x");
+  EXPECT_EQ(cast_node.input(0), vectorized->signature().input_arg(0).name());
   EXPECT_EQ(GetRetval(*vectorized, 0),
             strings::StrCat(cast_node.name(), ":y:0"));
   EXPECT_EQ(GetRetval(*vectorized, 1),
@@ -383,42 +383,30 @@ TEST(VectorizeMapDefunTest, VectorizeWithOutputUsedTwice) {
 //                +------+  +------+  +------+
 //
 TEST(VectorizeMapDefunTest, VectorizeWithChainedConvertibleOps) {
-  FunctionDef inner = CreateFunction(
-      "inner_function", {{"arg0", DT_INT32}},
-      {{"ret0", DT_INT32}, {"ret1", DT_INT32}, {"ret2", DT_INT32}},
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int32", "ret1: int32", "ret2: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {Cast("Cast", {"arg0"}, DT_INT32, DT_INT32),
+       {{"MyUnstack"},
+        "Unpack",
+        {"Cast:y:0"},
+        {{"T", DT_INT32}, {"axis", 0}, {"num", 3}}}},
+      /*ret_def=*/
       {{"ret0", "MyUnstack:output:0"},
        {"ret1", "MyUnstack:output:1"},
        {"ret2", "MyUnstack:output:2"}});
-  NodeDef* cast_op =
-      AddCastNode("Cast", {"arg0"}, DT_INT32, DT_INT32, false, &inner);
-  CHECK_NOTNULL(cast_op);
-  NodeDef* unstack_op =
-      AddUnstackNode("MyUnstack", {"Cast:y:0"}, DT_INT32, 0, 3, &inner);
-  CHECK_NOTNULL(unstack_op);
-
-  FunctionDef outer = CreateFunction("outer_function", {{"x", DT_INT32}},
-                                     {{"mapdefun", DT_INT32},
-                                      {"mapdefun_0", DT_INT32},
-                                      {"mapdefun_1", DT_INT32}},
-                                     {{"mapdefun", "MapDefun:output:0"},
-                                      {"mapdefun_0", "MapDefun:output:1"},
-                                      {"mapdefun_1", "MapDefun:output:2"}});
-
-  NodeDef* map_defun = AddMapDefunNode(
-      "MapDefun", {"x"}, {DT_INT32}, {DT_INT32, DT_INT32, DT_INT32},
-      {{1}, {1}, {1}}, inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   const NodeDef& cast_node = vectorized->node_def(
       function_utils::FindFunctionNodeWithOp("Cast", *vectorized));
-  EXPECT_EQ(cast_node.input(0), "x");
+  EXPECT_EQ(cast_node.input(0), vectorized->signature().input_arg(0).name());
   const NodeDef& unpack_node = vectorized->node_def(
       function_utils::FindFunctionNodeWithOp("Unpack", *vectorized));
   EXPECT_EQ(unpack_node.input(0), strings::StrCat(cast_node.name(), ":y:0"));
@@ -467,33 +455,22 @@ TEST(VectorizeMapDefunTest, VectorizeWithChainedConvertibleOps) {
 //  No change because we don't deal with control inputs for now.
 //
 TEST(VectorizeMapDefunTest, VectorizeWithControlInputs) {
-  FunctionDef inner =
-      CreateFunction("inner_function", {{"arg0", DT_INT32}},
-                     {{"ret0", DT_INT64}}, {{"ret0", "Cast:y:0"}});
-  NodeDef* print_op = function_utils::AddNode(
-      "Print", "Print", {"arg0", "arg0"}, {/*attrs*/}, &inner);
-  graph_transforms::SetNodeAttr("T", DT_INT32, print_op);
-  graph_transforms::SetNodeAttr("U", gtl::ArraySlice<DataType>({DT_INT32}),
-                                print_op);
-  CHECK_NOTNULL(print_op);
-  NodeDef* cast_op = AddCastNode("Cast", {"arg0", "^Print"}, DT_INT32, DT_INT64,
-                                 false, &inner);
-  CHECK_NOTNULL(cast_op);
-
-  FunctionDef outer = CreateFunction("outer_function", {{"x", DT_INT32}},
-                                     {{"mapdefun", DT_INT64}},
-                                     {{"mapdefun", "MapDefun:output:0"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"x"}, {DT_INT32}, {DT_INT64}, {{}},
-                      inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {{{"Print"},
+        "Print",
+        {"arg0", "arg0"},
+        {{"T", DT_INT32}, {"U", gtl::ArraySlice<DataType>({DT_INT32})}}},
+       Cast("Cast", {"arg0", "^Print"}, DT_INT32, DT_INT64)},
+      /*ret_def=*/{{"ret0", "Cast:y:0"}});
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   // They should be unchanged
   // We check this somewhat manually as the names of nodes may have changed
   EXPECT_EQ(vectorized->node_def_size(), 1);
@@ -568,24 +545,18 @@ TEST(VectorizeMapDefunTest, VectorizeWithControlInputs) {
 //
 TEST(VectorizeMapDefunTest, VectorizeWithUnstackedOutput) {
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: int32"}, {"ret0: int64"}, {/* attrs */},
-      {/* nodes */ FunctionDefHelper::Const("Const", 2)},
-      {{"ret0", "Cast:y:0"}});
-  AddCastNode("Cast", {"Const:output:0"}, DT_INT32, DT_INT64, false, &inner);
-
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function", {"outer_arg0: int32"}, {"mapdefun: int64"},
-      {/* attrs */}, {/* nodes */}, {{"mapdefun", "MapDefun:output:0"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"outer_arg0"}, {DT_INT32}, {DT_INT64}, {{}},
-                      inner.signature().name(), &outer);
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {FunctionDefHelper::Const("Const", 2),
+       Cast("Cast", {"Const:output:0"}, DT_INT32, DT_INT64)},
+      /*ret_def=*/{{"ret0", "Cast:y:0"}});
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   auto const_node = vectorized->node_def(
@@ -650,27 +621,19 @@ TEST(VectorizeMapDefunTest, VectorizeWithUnstackedOutput) {
 //
 TEST(VectorizeMapDefunTest, VectorizeWithUnstackedControl) {
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: int32"}, {"ret0: int64"}, {/* attrs */},
-      {/* nodes */ FunctionDefHelper::Const("Const", 2),
-       FunctionDefHelper::Const("ConstDep", 3)},
-      {{"ret0", "Cast:y:0"}});
-  AddCastNode("Cast", {"Const:output:0", "^ConstDep"}, DT_INT32, DT_INT64,
-              false, &inner);
-
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function", {"outer_arg0: int32"}, {"mapdefun: int64"},
-      {/* attrs */}, {/* nodes */}, {{"mapdefun", "MapDefun:output:0"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"outer_arg0"}, {DT_INT32}, {DT_INT64}, {{}},
-                      inner.signature().name(), &outer);
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {FunctionDefHelper::Const("Const", 2),
+       FunctionDefHelper::Const("ConstDep", 3),
+       Cast("Cast", {"Const:output:0", "^ConstDep"}, DT_INT32, DT_INT64)},
+      /*ret_def=*/{{"ret0", "Cast:y:0"}});
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
-
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
 
   auto find_const = [vectorized](int val) -> const NodeDef* {
     for (const auto& n : vectorized->node_def()) {
@@ -742,39 +705,29 @@ TEST(VectorizeMapDefunTest, VectorizeWithUnstackedControl) {
 //                +------+  +------+  +------+
 //
 TEST(VectorizerTest, VectorizeUnstack) {
-  FunctionDef inner = CreateFunction(
-      "inner_function", {{"arg0", DT_INT32}},
-      {{"ret0", DT_INT32}, {"ret1", DT_INT32}, {"ret2", DT_INT32}},
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int32", "ret1: int32", "ret2: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {{{"MyUnstack"},
+        "Unpack",
+        {"arg0"},
+        {{"T", DT_INT32}, {"axis", 0}, {"num", 3}}}},
+      /*ret_def=*/
       {{"ret0", "MyUnstack:output:0"},
        {"ret1", "MyUnstack:output:1"},
        {"ret2", "MyUnstack:output:2"}});
-  NodeDef* unstack_op =
-      AddUnstackNode("MyUnstack", {"arg0"}, DT_INT32, 0, 3, &inner);
-  CHECK_NOTNULL(unstack_op);
-
-  FunctionDef outer = CreateFunction("outer_function", {{"x", DT_INT32}},
-                                     {{"mapdefun", DT_INT32},
-                                      {"mapdefun_0", DT_INT32},
-                                      {"mapdefun_1", DT_INT32}},
-                                     {{"mapdefun", "MapDefun:output:0"},
-                                      {"mapdefun_0", "MapDefun:output:1"},
-                                      {"mapdefun_1", "MapDefun:output:2"}});
-
-  NodeDef* map_defun = AddMapDefunNode(
-      "MapDefun", {"x"}, {DT_INT32}, {DT_INT32, DT_INT32, DT_INT32},
-      {{1}, {1}, {1}}, inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   const NodeDef& unpack_node = vectorized->node_def(
       function_utils::FindFunctionNodeWithOp("Unpack", *vectorized));
-  EXPECT_EQ(unpack_node.input(0), "x");
+  EXPECT_EQ(unpack_node.input(0), vectorized->signature().input_arg(0).name());
   EXPECT_EQ(unpack_node.attr().at("axis").i(), 1);
   EXPECT_EQ(unpack_node.attr().at("T").type(), DT_INT32);
   EXPECT_EQ(unpack_node.attr().at("num").i(), 3);
@@ -827,32 +780,22 @@ TEST(VectorizerTest, VectorizeUnstack) {
 //                 +------+
 //
 TEST(VectorizerTest, VectorizeCast) {
-  FunctionDef inner =
-      CreateFunction("inner_function", {{"arg0", DT_INT32}},
-                     {{"ret0", DT_INT64}}, {{"ret0", "Cast:y:0"}});
-  NodeDef* cast_op =
-      AddCastNode("Cast", {"arg0"}, DT_INT32, DT_INT64, false, &inner);
-  CHECK_NOTNULL(cast_op);
-
-  FunctionDef outer = CreateFunction("outer_function", {{"x", DT_INT32}},
-                                     {{"mapdefun", DT_INT64}},
-                                     {{"mapdefun", "MapDefun:output:0"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"x"}, {DT_INT32}, {DT_INT64}, {{}},
-                      inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int64"},
+      /*attr_def=*/{},
+      /*node_def=*/{Cast("Cast", {"arg0"}, DT_INT32, DT_INT64)},
+      /*ret_def=*/{{"ret0", "Cast:y:0"}});
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   const NodeDef& cast_node = vectorized->node_def(
       function_utils::FindFunctionNodeWithOp("Cast", *vectorized));
-  EXPECT_EQ(cast_node.input(0), "x");
+  EXPECT_EQ(cast_node.input(0), vectorized->signature().input_arg(0).name());
   EXPECT_EQ(GetRetval(*vectorized, 0),
             strings::StrCat(cast_node.name(), ":y:0"));
   EXPECT_EQ(vectorized->node_def_size(), 1);
@@ -918,28 +861,145 @@ TEST(VectorizerTest, VectorizeAdd) {
   // tensorflow/python/data/experimental/kernel_tests/optimization/
   // map_vectorization_test.py
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: int32"}, {"ret0: int32"}, {/* attrs */},
-      {/* nodes */ FunctionDefHelper::Const("Const", 2),
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {FunctionDefHelper::Const("Const", 2),
        {{"Add"}, "Add", {"arg0", "Const:output:0"}, {{"T", DT_INT32}}}},
-      {{"ret0", "Add:z:0"}});
-
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function", {"outer_arg0: int32"}, {"mapdefun: int32"},
-      {/* attrs */}, {/* nodes */}, {{"mapdefun", "MapDefun:output:0"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"outer_arg0"}, {DT_INT32}, {DT_INT32}, {{}},
-                      inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
+      /*ret_def=*/{{"ret0", "Add:z:0"}});
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
 }
+
+// Tests that a function which applies a cwise op can be vectorized completely.
+Status CwiseTestHelper(DataType input_type, const string& op_type,
+                       size_t arity) {
+  // Note that this checks that the cwise op vectorizer is successful, but does
+  // not check that the transformed function is correct (i.e. produces the same
+  // output as the unvectorized map defun). For the latter, the tests are in
+  // tensorflow/python/data/experimental/kernel_tests/optimization/
+  // map_vectorization_test.py
+
+  FunctionDef inner;
+  // Create inner function with a single operation of type op_type. The output
+  // type attr of the function is inferred by NodeBuilder.
+  Node *op, *retval;
+  Graph graph(OpRegistry::Global());
+
+  auto node_builder = NodeBuilder("op", op_type);
+  for (size_t i = 0; i < arity; ++i) {
+    Node* arg;
+    TF_RETURN_IF_ERROR(NodeBuilder(strings::StrCat("arg", i), "_Arg")
+                           .Attr("T", input_type)
+                           .Attr("index", static_cast<int>(i))
+                           .Finalize(&graph, &arg));
+
+    node_builder = node_builder.Input(arg);
+  }
+  TF_RETURN_IF_ERROR(node_builder.Finalize(&graph, &op));
+
+  TF_RETURN_IF_ERROR(NodeBuilder("ret", "_Retval")
+                         .Input(op)
+                         .Attr("index", 0)
+                         .Finalize(&graph, &retval));
+
+  TF_RETURN_IF_ERROR(GraphToFunctionDef(graph, "inner_function", &inner));
+
+  FunctionDefLibrary lib;
+  FunctionDef* vectorized;
+  TF_RETURN_IF_ERROR(WrapAndVectorize(inner, &lib, &vectorized));
+
+  return function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized)
+             ? errors::Internal(
+                   "Test for cwise vectorizer for op \"", op_type,
+                   "\" failed. The function was not fully vectorized.")
+             : Status::OK();
+}
+
+class BitwiseUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(BitwiseUnaryTest, VectorizeCwiseBitwiseUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_INT32, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, BitwiseUnaryTest, ::testing::Values("Invert"));
+
+class LogicalUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(LogicalUnaryTest, VectorizeCwiseLogicalUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_BOOL, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, LogicalUnaryTest,
+                        ::testing::Values("LogicalNot"));
+
+class ComplexUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(ComplexUnaryTest, VectorizeCwiseComplexUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_COMPLEX64, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, ComplexUnaryTest,
+                        ::testing::Values("Angle", "ComplexAbs", "Conj", "Imag",
+                                          "Real"));
+
+class RealUnaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(RealUnaryTest, VectorizeCwiseRealUnary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_FLOAT, GetParam(), 1));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    Test, RealUnaryTest,
+    ::testing::Values("Abs", "Acos", "Acosh", "Asin", "Asinh", "Atan", "Atanh",
+                      "BesselI0e", "BesselI1e", "Ceil", "Cos", "Cosh",
+                      "Digamma", "Elu", "Erf", "Erfc", "Exp", "Expm1", "Floor",
+                      "Inv", "IsFinite", "IsInf", "Lgamma", "Log", "Log1p",
+                      "Neg", "Reciprocal", "Relu", "Relu6", "Rint", "Round",
+                      "Rsqrt", "Selu", "Sigmoid", "Sign", "Sin", "Sinh",
+                      "Softplus", "Softsign", "Sqrt", "Square", "Tanh", "Tan"));
+
+class BitwiseBinaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(BitwiseBinaryTest, VectorizeCwiseBitwiseBinary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_INT32, GetParam(), 2));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, BitwiseBinaryTest,
+                        ::testing::Values("BitwiseAnd", "BitwiseOr",
+                                          "BitwiseXor", "LeftShift",
+                                          "RightShift"));
+
+class LogicalBinaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(LogicalBinaryTest, VectorizeCwiseLogicalBinary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_BOOL, GetParam(), 2));
+}
+
+INSTANTIATE_TEST_CASE_P(Test, LogicalBinaryTest,
+                        ::testing::Values("LogicalAnd", "LogicalOr"));
+
+class RealBinaryTest : public ::testing::TestWithParam<const char*> {};
+
+TEST_P(RealBinaryTest, VectorizeCwiseRealBinary) {
+  TF_EXPECT_OK(CwiseTestHelper(DT_FLOAT, GetParam(), 2));
+}
+
+INSTANTIATE_TEST_CASE_P(
+    Test, RealBinaryTest,
+    ::testing::Values("Add", "AddV2", "Atan2", "Complex", "Div", "DivNoNan",
+                      "Equal", "FloorDiv", "FloorMod", "Greater",
+                      "GreaterEqual", "Igamma", "Igammac", "IgammaGradA",
+                      "Less", "LessEqual", "Maximum", "Minimum", "Mod", "Mul",
+                      "NotEqual", "Polygamma", "Pow", "RealDiv",
+                      "SquaredDifference", "Sub", "TruncateDiv", "TruncateMod",
+                      "Zeta"));
 
 // Before:
 //
@@ -1001,29 +1061,21 @@ TEST(VectorizerTest, VectorizeAdd) {
 //
 TEST(VectorizerTest, VectorizeReshape) {
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: int32"}, {"ret0: int32"}, {/* attrs */},
-      {/* nodes */ FunctionDefHelper::Const("Const",
-                                            gtl::ArraySlice<int>({3, 3, 3})),
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {FunctionDefHelper::Const("Const", gtl::ArraySlice<int>({3, 3, 3})),
        {{"Reshape"},
         "Reshape",
         {"arg0", "Const:output:0"},
         {{"T", DT_INT32}, {"Tshape", DT_INT32}}}},
-      {{"ret0", "Reshape:output:0"}});
-
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function", {"outer_arg0: int32"}, {"mapdefun: int32"},
-      {/* attrs */}, {/* nodes */}, {{"mapdefun", "MapDefun:output:0"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"outer_arg0"}, {DT_INT32}, {DT_INT32}, {{}},
-                      inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
+      /*ret_def=*/{{"ret0", "Reshape:output:0"}});
 
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   EXPECT_TRUE(
@@ -1097,31 +1149,23 @@ TEST(VectorizerTest, VectorizeReshape) {
 //
 TEST(VectorizerTest, VectorizeDecodeCSV) {
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: string"}, {"ret0: int32", "ret1: string"},
-      {/* attrs */},
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: string"},
+      /*out_def=*/{"ret0: int32", "ret1: string"},
+      /*attr_def=*/{},
+      /*node_def=*/
       {FunctionDefHelper::Const("Default0", gtl::ArraySlice<int>({2})),
        FunctionDefHelper::Const("Default1", gtl::ArraySlice<string>({})),
        {{"DecodeCSV"},
         "DecodeCSV",
         {"arg0", "Default0:output:0", "Default1:output:0"},
         {{"OUT_TYPE", DataTypeVector({DT_INT32, DT_STRING})}}}},
+      /*ret_def=*/
       {{"ret0", "DecodeCSV:output:0"}, {"ret1", "DecodeCSV:output:1"}});
 
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function", {"outer_arg0: string"},
-      {"mapdefun: int32", "mapdefun_0: string"}, {/* attrs */}, {/* nodes */},
-      {{"mapdefun", "MapDefun:output:0"}, {"mapdefun_0", "MapDefun:output:1"}});
-
-  NodeDef* map_defun = AddMapDefunNode("MapDefun", {"outer_arg0"}, {DT_STRING},
-                                       {DT_INT32, DT_STRING}, {{}, {}},
-                                       inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
-
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
 }
@@ -1130,31 +1174,21 @@ TEST(VectorizerTest, VectorizeDecodeCSVWithStackedDefaults) {
   // When the `record_defaults` input to DecodeCSV are stacked,
   // the node should not be vectorized.
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: string", "arg1: int32", "arg2: string"},
-      {"ret0: int32", "ret1: string"}, {/* attrs */},
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: string", "arg1: int32", "arg2: string"},
+      /*out_def=*/{"ret0: int32", "ret1: string"},
+      /*attr_def=*/{},
+      /*node_def=*/
       {{{"DecodeCSV"},
         "DecodeCSV",
         {"arg0", "arg1", "arg2"},  // Inputs come from args, which are "stacked"
         {{"OUT_TYPE", DataTypeVector({DT_INT32, DT_STRING})}}}},
+      /*ret_def=*/
       {{"ret0", "DecodeCSV:output:0"}, {"ret1", "DecodeCSV:output:1"}});
 
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function",
-      {"outer_arg0: string", "outer_arg1: int32", "outer_arg2: string"},
-      {"mapdefun: int32", "mapdefun_0: string"}, {/* attrs */}, {/* nodes */},
-      {{"mapdefun", "MapDefun:output:0"}, {"mapdefun_0", "MapDefun:output:1"}});
-
-  NodeDef* map_defun =
-      AddMapDefunNode("MapDefun", {"outer_arg0", "outer_arg1", "outer_arg2"},
-                      {DT_STRING, DT_INT32, DT_STRING}, {DT_INT32, DT_STRING},
-                      {{}, {}}, inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
-
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
 }
@@ -1225,10 +1259,13 @@ TEST(VectorizerTest, VectorizeDecodeCSVWithStackedDefaults) {
 //
 TEST(VectorizerTest, VectorizeParseSingleExample) {
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: string"},
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: string"},
+      /*out_def=*/
       {"si0: int64", "si1: int64", "sv0: int64", "sv1: string", "ss0: int64",
        "ss1: int64", "dv0: int64", "dv1: string"},
-      {/* attrs */},
+      /*attr_def=*/{},
+      /*node_def=*/
       {FunctionDefHelper::Const("DenseIntDefault", static_cast<int64>(0)),
        FunctionDefHelper::Const("DenseStrDefault", string("")),
        {{"Parse"},
@@ -1242,6 +1279,7 @@ TEST(VectorizerTest, VectorizeParseSingleExample) {
             {"sparse_keys", gtl::ArraySlice<string>({"spar_int", "spar_str"})},
             {"sparse_types", DataTypeVector({DT_INT64, DT_STRING})},
         }}},
+      /*ret_def=*/
       {
           {"si0", "Parse:sparse_indices:0"},
           {"si1", "Parse:sparse_indices:1"},
@@ -1253,34 +1291,9 @@ TEST(VectorizerTest, VectorizeParseSingleExample) {
           {"dv1", "Parse:dense_values:1"},
       });
 
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function", {"outer_arg0: string"},
-      {"si0: int64", "si1: int64", "sv0: int64", "sv1: string", "ss0: int64",
-       "ss1: int64", "dv0: int64", "dv1: string"},
-      {/* attrs */}, {/* nodes */},
-      {
-          {"si0", "MapDefun:output:0"},
-          {"si1", "MapDefun:output:1"},
-          {"sv0", "MapDefun:output:2"},
-          {"sv1", "MapDefun:output:3"},
-          {"ss0", "MapDefun:output:4"},
-          {"ss1", "MapDefun:output:5"},
-          {"dv0", "MapDefun:output:6"},
-          {"dv1", "MapDefun:output:7"},
-      });
-
-  NodeDef* map_defun = AddMapDefunNode(
-      "MapDefun", {"outer_arg0"}, {DT_STRING},
-      {DT_INT64, DT_INT64, DT_INT64, DT_STRING, DT_INT64, DT_INT64, DT_INT64,
-       DT_STRING},
-      std::vector<PartialTensorShape>(8), inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
-
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       !function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
   EXPECT_TRUE(
@@ -1289,8 +1302,11 @@ TEST(VectorizerTest, VectorizeParseSingleExample) {
 
 TEST(VectorizerTest, VectorizeParseSingleExampleWithStackedDefaults) {
   FunctionDef inner = FunctionDefHelper::Create(
-      "inner_function", {"arg0: string", "arg1: string"},
-      {"dv0: int64", "dv1: string"}, {/* attrs */},
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: string", "arg1: string"},
+      /*out_def=*/{"dv0: int64", "dv1: string"},
+      /*attr_def=*/{},
+      /*node_def=*/
       {FunctionDefHelper::Const("DenseIntDefault", static_cast<int64>(0)),
        {{"Parse"},
         "ParseSingleExample",
@@ -1303,33 +1319,67 @@ TEST(VectorizerTest, VectorizeParseSingleExampleWithStackedDefaults) {
             {"sparse_keys", gtl::ArraySlice<string>({})},
             {"sparse_types", DataTypeVector({})},
         }}},
+      /*ret_def=*/
       {
           {"dv0", "Parse:dense_values:0"},
           {"dv1", "Parse:dense_values:1"},
       });
 
-  FunctionDef outer = FunctionDefHelper::Create(
-      "outer_function", {"outer_arg0: string", "outer_arg1: string"},
-      {"dv0: int64", "dv1: string"}, {/* attrs */}, {/* nodes */},
-      {
-          {"dv0", "MapDefun:output:0"},
-          {"dv1", "MapDefun:output:1"},
-      });
-
-  NodeDef* map_defun = AddMapDefunNode(
-      "MapDefun", {"outer_arg0", "outer_arg1"}, {DT_STRING, DT_STRING},
-      {DT_INT64, DT_STRING}, std::vector<PartialTensorShape>(8),
-      inner.signature().name(), &outer);
-  CHECK_NOTNULL(map_defun);
-
   FunctionDefLibrary lib;
-  *lib.add_function() = outer;
-  *lib.add_function() = inner;
   FunctionDef* vectorized;
-  TF_EXPECT_OK(VectorizeMapDefun(outer, *map_defun, &lib, &vectorized));
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
   EXPECT_TRUE(
       function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
 }
+
+TEST(VectorizerTest, VectorizeTranspose) {
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"out: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/
+      {FunctionDefHelper::Const("Perm", gtl::ArraySlice<int>({1, 0})),
+       {{"Transpose"},
+        "Transpose",
+        {"arg0", "Perm:output:0"},
+        {{"T", DT_INT32}, {"Tperm", DT_INT32}}}},
+      /*ret_def=*/{{"out", "Transpose:y:0"}});
+
+  FunctionDefLibrary lib;
+  FunctionDef* vectorized;
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
+  EXPECT_FALSE(
+      function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
+}
+
+TEST(VectorizerTest, VectorizeIdentity) {
+  FunctionDef inner = FunctionDefHelper::Create(
+      /*function_name=*/"inner_function",
+      /*in_def=*/{"arg0: int32"},
+      /*out_def=*/{"ret0: int32"},
+      /*attr_def=*/{},
+      /*node_def=*/{{{"Identity"}, "Identity", {"arg0"}, {{"T", DT_INT32}}}},
+      /*ret_def=*/{{"ret0", "Identity:output:0"}});
+
+  FunctionDefLibrary lib;
+  FunctionDef* vectorized;
+  TF_ASSERT_OK(WrapAndVectorize(inner, &lib, &vectorized));
+
+  EXPECT_FALSE(
+      function_utils::ContainsFunctionNodeWithOp("MapDefun", *vectorized));
+  ASSERT_TRUE(
+      function_utils::ContainsFunctionNodeWithOp("Identity", *vectorized));
+  const NodeDef& identity_node = vectorized->node_def(
+      function_utils::FindFunctionNodeWithOp("Identity", *vectorized));
+
+  EXPECT_EQ(identity_node.input(0),
+            vectorized->signature().input_arg(0).name());
+  EXPECT_EQ(GetRetval(*vectorized, 0),
+            strings::StrCat(identity_node.name(), ":output:0"));
+  EXPECT_EQ(vectorized->node_def_size(), 1);
+}
+
 }  // namespace
 }  // namespace vectorization_utils
 }  // namespace grappler

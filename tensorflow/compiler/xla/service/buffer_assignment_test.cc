@@ -21,6 +21,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/buffer_value.h"
@@ -38,7 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/test_helpers.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -81,7 +82,7 @@ const std::vector<const HloInstruction*> GetInstructions(HloInstruction* root) {
   return main_list.GetInstructions();
 }
 
-class BufferAssignmentTest : public HloVerifiedTestBase {
+class BufferAssignmentTest : public HloTestBase {
  protected:
   ~BufferAssignmentTest() override {}
 
@@ -107,6 +108,24 @@ class BufferAssignmentTest : public HloVerifiedTestBase {
         .ConsumeValueOrDie();
   }
 
+  std::unique_ptr<BufferAssignment> RunBufferAssignmentNoBuffersReuseForAdd(
+      HloModule* module, int64 alignment = 1) {
+    auto reuse_checker = [](const BufferAssignment& assignment,
+                            const BufferAllocation& alloc,
+                            const LogicalBuffer& buffer) {
+      return (buffer.instruction()->opcode() != HloOpcode::kAdd);
+    };
+    return BufferAssigner::Run(
+               module, absl::make_unique<DependencyHloOrdering>(module),
+               backend().compiler()->BufferSizeBytesFunction(),
+               [alignment](LogicalBuffer::Color) { return alignment; },
+               /*allow_input_output_aliasing=*/false,
+               /*allocate_buffers_for_constants=*/false,
+               /*colorer=*/BufferLiveness::DefaultColorer(),
+               /*reuse_checker=*/reuse_checker)
+        .ConsumeValueOrDie();
+  }
+
   std::unique_ptr<BufferAssignment> RunColoredBufferAssignment(
       HloModule* module, BufferLiveness::Colorer colorer, int64 alignment = 1) {
     return BufferAssigner::Run(
@@ -119,8 +138,7 @@ class BufferAssignmentTest : public HloVerifiedTestBase {
   }
 
   std::unique_ptr<BufferAssignment> RunBufferAssignmentWithInstructionSequence(
-      HloModule* module,
-      absl::Span<const HloInstruction* const> instruction_sequence,
+      HloModule* module, absl::Span<HloInstruction* const> instruction_sequence,
       int64 alignment = 1) {
     HloSchedule schedule(module);
     schedule.set_sequence(module->entry_computation(), instruction_sequence);
@@ -292,7 +310,7 @@ class BufferAssignmentTest : public HloVerifiedTestBase {
 static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
                             const std::vector<const HloInstruction*>& b,
                             const BufferAssignment& assignment) {
-  std::set<BufferAllocation::Slice> a_slices;
+  absl::flat_hash_set<BufferAllocation::Slice> a_slices;
   for (const HloInstruction* instruction : a) {
     if (assignment.HasTopLevelAllocation(instruction)) {
       a_slices.insert(
@@ -302,8 +320,8 @@ static bool BuffersDistinct(const std::vector<const HloInstruction*>& a,
 
   for (const HloInstruction* instruction : b) {
     if (assignment.HasTopLevelAllocation(instruction)) {
-      if (a_slices.count(assignment.GetUniqueTopLevelSlice(instruction)
-                             .ConsumeValueOrDie())) {
+      if (a_slices.contains(assignment.GetUniqueTopLevelSlice(instruction)
+                                .ConsumeValueOrDie())) {
         return false;
       }
     }
@@ -316,16 +334,16 @@ TEST_F(BufferAssignmentTest, ScalarConstant) {
   auto builder = HloComputation::Builder(TestName());
   auto const0 = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   {
-    auto buffers = RunBufferAssignment(module);
+    auto buffers = RunBufferAssignment(module.get());
     EXPECT_TRUE(buffers->HasTopLevelAllocation(const0));
   }
 
   {
-    auto buffers = RunBufferAssignmentNoBuffersForConstants(module);
+    auto buffers = RunBufferAssignmentNoBuffersForConstants(module.get());
     EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
   }
 }
@@ -340,17 +358,17 @@ TEST_F(BufferAssignmentTest, BufferForConst) {
       LiteralUtil::CreateR1<float>({4.1f, 4.2f, 4.3f, 4.4f})));
   auto add = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec4_, HloOpcode::kAdd, const0, const1));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   {
-    auto buffers = RunBufferAssignment(module);
+    auto buffers = RunBufferAssignment(module.get());
     EXPECT_TRUE(buffers->HasTopLevelAllocation(const0));
     EXPECT_TRUE(buffers->HasTopLevelAllocation(const1));
     GetAssignedOutputAllocation(*buffers, add);
   }
   {
-    auto buffers = RunBufferAssignmentNoBuffersForConstants(module);
+    auto buffers = RunBufferAssignmentNoBuffersForConstants(module.get());
     EXPECT_FALSE(buffers->HasTopLevelAllocation(const0));
     EXPECT_FALSE(buffers->HasTopLevelAllocation(const1));
     GetAssignedOutputAllocation(*buffers, add);
@@ -369,10 +387,10 @@ TEST_F(BufferAssignmentTest, HasAllocationAt) {
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param0));
   auto tuple = builder.AddInstruction(
       HloInstruction::CreateTuple({negate, param0, constant}));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
   // Make sure that HasAllocationAt() agrees with what HasTopLevelAllocation()
   // reports for the instruction directly.
   EXPECT_EQ(buffers->HasTopLevelAllocation(tuple),
@@ -392,10 +410,10 @@ TEST_F(BufferAssignmentTest, BufferForOutputConst) {
       LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 4.4f})));
   auto copy = builder.AddInstruction(
       HloInstruction::CreateUnary(const0->shape(), HloOpcode::kCopy, const0));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
   // The copy node now has an output buffer.
   GetAssignedOutputAllocation(*buffers, copy);
 }
@@ -421,10 +439,10 @@ TEST_F(BufferAssignmentTest, Basic) {
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kSubtract, add, param1));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -442,6 +460,90 @@ TEST_F(BufferAssignmentTest, Basic) {
   // The add node can reuse the mul node's buffer.
   const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
   EXPECT_EQ(add_buffer.index(), mul_buffer.index());
+
+  // The sub node has a valid output buffer assigned.
+  GetAssignedOutputAllocation(*buffers, sub);
+}
+
+TEST_F(BufferAssignmentTest, AliasedParamCanBeReused) {
+  // If an input buffer and output buffer aliases, the input buffer can be
+  // reused for other intermediate results.
+  //
+  // param0[100] ----- (neg1) -- (neg2)
+  //    |                           |
+  //    + -------- Aliased ---------+
+
+  auto builder = HloComputation::Builder(TestName());
+
+  auto param = builder.AddInstruction(
+      HloInstruction::CreateParameter(0, f32vec100_, "p0"));
+  auto neg_1 = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, param));
+  auto neg_2 = builder.AddInstruction(
+      HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, neg_1));
+
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK(module->input_output_alias_config().SetUpAlias(
+      {}, 0, {}, HloInputOutputAliasConfig::kUserAlias));
+
+  auto buffers = RunBufferAssignment(module.get());
+
+  BufferAllocation param_buffer = GetAssignedInputAllocation(*buffers, param);
+  BufferAllocation neg_1_buffer = GetAllocation(*buffers, neg_1, {});
+  BufferAllocation neg_2_buffer = GetAllocation(*buffers, neg_2, {});
+
+  // Everything use one buffer.
+  EXPECT_EQ(param_buffer.index(), neg_1_buffer.index());
+  EXPECT_EQ(neg_2_buffer.index(), neg_1_buffer.index());
+}
+
+TEST_F(BufferAssignmentTest, AddCannotReuse) {
+  // Pass in a special rule to indicate that "add" cannot reuse any buffer.
+  //
+  // paramscalar ------- (mul) -- (add) -- (sub)
+  //                     /        /        /
+  // param0[100] -------/        /        /
+  //                            /        /
+  // param1[100] --------------/--------/
+  auto builder = HloComputation::Builder(TestName());
+  auto paramscalar =
+      builder.AddInstruction(HloInstruction::CreateParameter(0, r0f32_, "p"));
+  auto broadcast = builder.AddInstruction(
+      HloInstruction::CreateBroadcast(f32vec100_, paramscalar, {}));
+  auto param0 = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, f32vec100_, "p1"));
+  auto param1 = builder.AddInstruction(
+      HloInstruction::CreateParameter(2, f32vec100_, "p2"));
+  auto mul = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kMultiply, broadcast, param0));
+  auto add = builder.AddInstruction(
+      HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
+  auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
+      f32vec100_, HloOpcode::kSubtract, add, param1));
+  auto module = CreateNewVerifiedModule();
+  module->AddEntryComputation(builder.Build());
+
+  auto buffers = RunBufferAssignmentNoBuffersReuseForAdd(module.get());
+
+  // Distinct input buffers were assigned for parameters.
+  BufferAllocation paramscalar_buffer =
+      GetAssignedInputAllocation(*buffers, paramscalar);
+  BufferAllocation param0_buffer = GetAssignedInputAllocation(*buffers, param0);
+  BufferAllocation param1_buffer = GetAssignedInputAllocation(*buffers, param1);
+  EXPECT_NE(paramscalar_buffer.index(), param0_buffer.index());
+  EXPECT_NE(paramscalar_buffer.index(), param1_buffer.index());
+  EXPECT_NE(param0_buffer.index(), param1_buffer.index());
+
+  // The mul node has a valid buffer assigned, doesn't share with input.
+  const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
+  EXPECT_NE(mul_buffer.index(), param0_buffer.index());
+
+  // The add node cannot reuse the mul node's buffer since we told buffer
+  // assignment so.
+  const BufferAllocation& add_buffer = GetTopLevelAllocation(*buffers, add);
+  EXPECT_NE(add_buffer.index(), mul_buffer.index());
 
   // The sub node has a valid output buffer assigned.
   GetAssignedOutputAllocation(*buffers, sub);
@@ -470,7 +572,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kSubtract, add, param1));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto colorer = [](const BufferLiveness& buffer_liveness) {
@@ -485,7 +587,7 @@ TEST_F(BufferAssignmentTest, BasicUniquelyColored) {
     return Status::OK();
   };
 
-  auto buffers = RunColoredBufferAssignment(module, colorer);
+  auto buffers = RunColoredBufferAssignment(module.get(), colorer);
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -531,7 +633,7 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
   auto sub = builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kSubtract, add, param1));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto colorer = [](const BufferLiveness& buffer_liveness) {
@@ -554,7 +656,7 @@ TEST_F(BufferAssignmentTest, BasicPartiallyColored) {
     return Status::OK();
   };
 
-  auto buffers = RunColoredBufferAssignment(module, colorer);
+  auto buffers = RunColoredBufferAssignment(module.get(), colorer);
 
   // Distinct input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -603,10 +705,10 @@ TEST_F(BufferAssignmentTest, MultipleUsersForNode) {
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
   auto sub = builder.AddInstruction(
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kSubtract, add, mul));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
 
   // Input buffers were assigned for parameters.
   BufferAllocation paramscalar_buffer =
@@ -638,7 +740,7 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
   // param0[100x10] ---> (map x+1)
   //
   // Builds the map function.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto map_computation =
       module->AddEmbeddedComputation(BuildMapComputationPlus1("f32+1"));
   auto inner_last = map_computation->root_instruction();
@@ -657,7 +759,7 @@ TEST_F(BufferAssignmentTest, TrivialMap) {
   EXPECT_EQ(3, level1.size()) << "Invalid nested add+1 size";
 
   // Assigns buffers and fetches sizes.
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
   int64 size0 = ValidateBuffers(level0, *buffers);
   int64 size1 = ValidateBuffers(level1, *buffers);
 
@@ -693,7 +795,7 @@ TEST_F(BufferAssignmentTest, CannotReuseInputBufferOfReduce) {
   // out-of-order reductions could overwrite an element before a use.)
   //
   // param0[100] --- (exp1) --- (exp2) --- (reduce x+y) --- (exp3)
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto reduce_computation =
       module->AddEmbeddedComputation(BuildReduceComputation("f32+f32"));
 
@@ -716,7 +818,7 @@ TEST_F(BufferAssignmentTest, CannotReuseInputBufferOfReduce) {
 
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
   const std::vector<const HloInstruction*> instrs = GetInstructions(exp3);
   ValidateBuffers(instrs, *buffers);
 
@@ -744,7 +846,7 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
   // const4[f32[4]] --- tuple --- while[condition, body]
   //
   // Builds the nested condition and body.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto condition_computation =
       module->AddEmbeddedComputation(BuildWhileConditionComputation("if<4"));
   auto body_computation =
@@ -772,7 +874,7 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
   EXPECT_EQ(8, levelb.size()) << "Invalid nested body size";
 
   // Assigns buffers and fetches sizes.
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
   int64 size0 = ValidateBuffers(level0, *buffers);
   int64 sizec = ValidateBuffers(levelc, *buffers);
   int64 sizeb = ValidateBuffers(levelb, *buffers);
@@ -810,7 +912,7 @@ TEST_F(BufferAssignmentTest, ExampleWhile) {
 }
 
 TEST_F(BufferAssignmentTest, ExampleConditional) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto true_computation = module->AddEmbeddedComputation(
       BuildR0F32UnaryOpComputation(HloOpcode::kCeil, "Ceil"));
   auto false_computation = module->AddEmbeddedComputation(
@@ -837,7 +939,7 @@ TEST_F(BufferAssignmentTest, ExampleConditional) {
   EXPECT_EQ(2, true_instrs.size());
   EXPECT_EQ(2, false_instrs.size());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
   ValidateBuffers(conditional_instrs, *buffers);
   ValidateBuffers(true_instrs, *buffers);
   ValidateBuffers(false_instrs, *buffers);
@@ -873,9 +975,9 @@ TEST_F(BufferAssignmentTest, UnaryOpReuseChain) {
   auto neg = builder.AddInstruction(
       HloInstruction::CreateUnary(f32vec100_, HloOpcode::kNegate, exp2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // tanh and exp2 can reuse exp1's buffer
   EXPECT_TRUE(assignment->HasTopLevelAllocation(exp1));
@@ -902,9 +1004,9 @@ TEST_F(BufferAssignmentTest, ReuseNonOperandBuffer) {
   auto broadcast = builder.AddInstruction(
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // negate and broadcast should share a buffer.
   EXPECT_TRUE(assignment->HasTopLevelAllocation(broadcast));
@@ -935,9 +1037,9 @@ TEST_F(BufferAssignmentTest, NoReuseLiveBuffer) {
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({negate, broadcast}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // The instructions should not share buffers.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
@@ -972,9 +1074,9 @@ TEST_F(BufferAssignmentTest, NoReuseAliasedBuffer) {
       HloInstruction::CreateBroadcast(f32a100x10_, slice, {1}));
   builder.AddInstruction(HloInstruction::CreateTuple({tuple, broadcast}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // The instructions should not share buffers.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
@@ -1007,9 +1109,9 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBuffer) {
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // The broadcast output buffer cannot be shared.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
@@ -1039,9 +1141,9 @@ TEST_F(BufferAssignmentTest, ReuseOutputBufferIfExactlySized) {
   auto broadcast = builder.AddInstruction(HloInstruction::CreateBroadcast(
       ShapeUtil::MakeShape(F32, {10, 10}), slice, {0}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // negate and broadcast should share a buffer.
   EXPECT_TRUE(assignment->HasTopLevelAllocation(broadcast));
@@ -1077,9 +1179,9 @@ TEST_F(BufferAssignmentTest, DoNotReuseOversizedOutputBufferInTuple) {
       ShapeUtil::MakeShape(F32, {10, 4}), slice, {0}));
   builder.AddInstruction(HloInstruction::CreateTuple({broadcast}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // The broadcast output buffer cannot be shared.
   EXPECT_NE(GetTopLevelAllocation(*assignment, broadcast),
@@ -1092,7 +1194,7 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
   // Verify that buffers for embedded computations are properly marked as
   // thread-local and that embedded parameters are not marked as
   // is_entry_computation_parameter.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto vec_shape = ShapeUtil::MakeShape(F32, {42});
   auto scalar_shape = ShapeUtil::MakeShape(F32, {});
 
@@ -1123,7 +1225,7 @@ TEST_F(BufferAssignmentTest, EmbeddedComputationBuffers) {
       HloInstruction::CreateMap(vec_shape, {call}, map_computation));
   module->AddEntryComputation(builder.Build());
 
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // Allocations for the map computation should be thread-local and not
   // live-out.
@@ -1170,9 +1272,9 @@ TEST_F(BufferAssignmentTest, TupleParameterAsOutput) {
                                  ShapeUtil::MakeShape(S32, {42})}),
       "param0"));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // There should be four allocations: one for vector of pointers, and one for
   // each tuple element.
@@ -1206,9 +1308,9 @@ TEST_F(BufferAssignmentTest, ElementOfNestedTupleParameterAsOutput) {
       builder.AddInstruction(HloInstruction::CreateGetTupleElement(
           ShapeUtil::GetSubshape(tuple_param->shape(), {1}), tuple_param, 1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // Only some of the elements of the input param are liveout.
   EXPECT_FALSE(
@@ -1250,9 +1352,9 @@ TEST_F(BufferAssignmentTest, TupleConstantAsOutput) {
   builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   EXPECT_EQ(3, assignment->Allocations().size());
 }
@@ -1264,9 +1366,9 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
       ShapeUtil::MakeTupleShape({ShapeUtil::MakeShape(PRED, {1, 2, 3, 4}),
                                  ShapeUtil::MakeShape(S32, {101})}),
       /*operands=*/{}, /*custom_call_target=*/"foo_function"));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   EXPECT_EQ(3, assignment->Allocations().size());
   EXPECT_TRUE(
@@ -1279,7 +1381,7 @@ TEST_F(BufferAssignmentTest, TupleCustomCallAsOutput) {
 
 TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
   // Test a computation which returns a tuple call value.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto elem_shape = f32vec4_;
   auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
 
@@ -1297,7 +1399,7 @@ TEST_F(BufferAssignmentTest, TupleCallAsOutput) {
       HloInstruction::CreateCall(tuple_shape, {param}, sub_computation));
   module->AddEntryComputation(builder.Build());
 
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   EXPECT_EQ(2, assignment->Allocations().size());
   // Buffers for call are colocated with the sub-computation.
@@ -1320,7 +1422,7 @@ TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
   // B: call(C, param)
   // C: call(D, param)
   // D: param
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto elem_shape = f32vec4_;
   auto tuple_shape = ShapeUtil::MakeTupleShape({elem_shape});
 
@@ -1359,7 +1461,7 @@ TEST_F(BufferAssignmentTest, TupleChainedCallAsOutput) {
   module->AddEntryComputation(std::move(a_computation));
   module->AddEmbeddedComputation(std::move(b_computation));
 
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // Buffers for call are colocated with the sub-computations.
   EXPECT_EQ(GetAllocation(*assignment, a_call, /*index=*/{}),
@@ -1393,9 +1495,9 @@ TEST_F(BufferAssignmentTest, BitcastAsOutput) {
   auto bitcast = builder.AddInstruction(
       HloInstruction::CreateUnary(param->shape(), HloOpcode::kBitcast, param));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // Bitcast should get the same allocation as the param.
   EXPECT_EQ(1, assignment->Allocations().size());
@@ -1420,9 +1522,9 @@ TEST_F(BufferAssignmentTest, AmbiguousBufferAsOutput) {
       HloInstruction::CreateTernary(tuple_shape, HloOpcode::kTupleSelect,
                                     pred_param, tuple_param0, tuple_param1));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // Select shallow copies one of its operands so it defines its own top-level
   // buffer and receives its own allocation.
@@ -1458,9 +1560,9 @@ TEST_F(BufferAssignmentTest, TupleBufferNotReused) {
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       scalar_shape, HloOpcode::kCopy, tuple_element));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module);
+  auto assignment = RunBufferAssignment(module.get());
 
   // There should be no buffer reuse. The copy should not reuse the tuple
   // buffer.
@@ -1500,9 +1602,9 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
       HloInstruction::CreateConcatenate(shape_5x4, {dot_ab, dot_bc}, 0));
 
   // Run buffer assignment with alignment=1.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
-  auto assignment = RunBufferAssignment(module, /*alignment=*/1);
+  auto assignment = RunBufferAssignment(module.get(), /*alignment=*/1);
 
   // There are 5 allocations: 3 parameters, 1 output, and 1 temp.
   EXPECT_EQ(5, assignment->Allocations().size());
@@ -1521,7 +1623,7 @@ TEST_F(BufferAssignmentTest, OneTempAllocation) {
   EXPECT_EQ(80, slice_bc.allocation()->size());
 
   // Re-run buffer assignment with alignment=64.
-  assignment = RunBufferAssignment(module, /*alignment=*/64);
+  assignment = RunBufferAssignment(module.get(), /*alignment=*/64);
   EXPECT_EQ(5, assignment->Allocations().size());
   slice_ab = assignment->GetUniqueTopLevelSlice(dot_ab).ConsumeValueOrDie();
   slice_bc = assignment->GetUniqueTopLevelSlice(dot_bc).ConsumeValueOrDie();
@@ -1564,10 +1666,10 @@ TEST_F(BufferAssignmentTest, TrivialPeakBuffers) {
       HloInstruction::CreateBinary(f32vec100_, HloOpcode::kAdd, mul, param1));
   builder.AddInstruction(HloInstruction::CreateBinary(
       f32vec100_, HloOpcode::kSubtract, add, param1));
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
 
   const BufferAllocation& mul_buffer = GetTopLevelAllocation(*buffers, mul);
   const std::vector<const LogicalBuffer*>& peak_buffers =
@@ -1605,11 +1707,11 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
 
       ShapeUtil::MakeShape(F32, {1}), concat, {0}, {1}, {1}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   auto buffers = RunBufferAssignmentWithInstructionSequence(
-      module, {param, log, rev, neg, concat, root});
+      module.get(), {param, log, rev, neg, concat, root});
 
   // The temporary buffer should hold the 4 interior instructions.
   const BufferAllocation& buffer = GetTopLevelAllocation(*buffers, concat);
@@ -1630,7 +1732,7 @@ TEST_F(BufferAssignmentTest, PeakBuffers) {
 }
 
 TEST_F(BufferAssignmentTest, PeakBuffersWhile) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   const Shape shape = ShapeUtil::MakeShape(F32, {123, 123});
   HloComputation* condition;
   {
@@ -1665,7 +1767,7 @@ TEST_F(BufferAssignmentTest, PeakBuffersWhile) {
       ShapeUtil::MakeShape(F32, {123, 123, 123}), bcast, {0}));
   module->AddEntryComputation(builder.Build());
 
-  auto buffers = RunBufferAssignment(module);
+  auto buffers = RunBufferAssignment(module.get());
   const BufferAllocation& buffer = GetTopLevelAllocation(*buffers, bcast);
   const std::vector<const LogicalBuffer*>& peak_buffers =
       buffer.PeakMemoryLogicalBuffers();
@@ -1715,13 +1817,13 @@ ENTRY main {
 }
 )";
 
-  ParseAndVerifyModule(hlo_text);
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(hlo_text));
   HloInstruction* constant_1 =
-      module().entry_computation()->GetInstructionWithName("constant.1.1");
+      m->entry_computation()->GetInstructionWithName("constant.1.1");
   HloInstruction* constant_2 =
-      module().entry_computation()->GetInstructionWithName("constant.1.2");
+      m->entry_computation()->GetInstructionWithName("constant.1.2");
 
-  auto buffers = RunBufferAssignment(&module());
+  auto buffers = RunBufferAssignment(m.get());
 
   {
     const BufferAllocation& allocation_for_const_1 =
@@ -1750,7 +1852,7 @@ ENTRY main {
   }
 }
 
-class WhileBufferAssignmentTest : public HloVerifiedTestBase {
+class WhileBufferAssignmentTest : public HloTestBase {
  protected:
   std::unique_ptr<HloComputation> BuildWhileConditionComputation(
       const string& name) {
@@ -1785,7 +1887,7 @@ class WhileBufferAssignmentTest : public HloVerifiedTestBase {
   std::unique_ptr<BufferAssignment> RunBufferAssignment(HloModule* module,
                                                         int64 alignment = 1) {
     HloSchedule schedule =
-        ScheduleModule(*module, ByteSizeOf).ConsumeValueOrDie();
+        ScheduleModule(module, ByteSizeOf).ConsumeValueOrDie();
     return BufferAssigner::Run(
                module, absl::make_unique<SequentialHloOrdering>(schedule),
                ByteSizeOf,
@@ -1810,7 +1912,7 @@ static void RunCopyInsertion(HloModule* module) {
 }
 
 TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -1849,8 +1951,8 @@ TEST_F(WhileBufferAssignmentTest, TwoForwardWhileLoops) {
       HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, tuple1));
 
   module->AddEntryComputation(builder.Build());
-  RunCopyInsertion(module);
-  auto assignment = RunBufferAssignment(module);
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
 
   // Verify 'input0' and read-only use while0{0} alias.
   EXPECT_EQ(assignment->GetUniqueSlice(input0, {}).ConsumeValueOrDie(),
@@ -1906,20 +2008,19 @@ ENTRY %test_module {
   ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
 })";
 
-  ParseAndVerifyModule(module_str);
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.
-  int64 instruction_count = module().instruction_count();
+  int64 instruction_count = m->instruction_count();
   CopyInsertion copy_insertion;
-  ASSERT_IS_OK(copy_insertion.Run(&module()).status());
-  ASSERT_EQ(instruction_count, module().instruction_count());
+  ASSERT_IS_OK(copy_insertion.Run(m.get()).status());
+  ASSERT_EQ(instruction_count, m->instruction_count());
 
   // Get the instructions in the module.
-  const HloInstruction* bcast =
-      module().entry_computation()->root_instruction();
+  const HloInstruction* bcast = m->entry_computation()->root_instruction();
   const HloInstruction* param =
-      module().entry_computation()->parameter_instruction(0);
+      m->entry_computation()->parameter_instruction(0);
   ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
   const HloInstruction* while1 = bcast->operand(0);
   ASSERT_EQ(while1->opcode(), HloOpcode::kWhile);
@@ -1927,7 +2028,7 @@ ENTRY %test_module {
   ASSERT_EQ(while0->opcode(), HloOpcode::kWhile);
 
   // Run buffer assignment.
-  auto assignment = RunBufferAssignment(&module());
+  auto assignment = RunBufferAssignment(m.get());
   TF_ASSERT_OK_AND_ASSIGN(auto slice_param,
                           assignment->GetUniqueSlice(param, {}));
   TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
@@ -1974,20 +2075,19 @@ ENTRY %test_module {
   ROOT %bcast = s32[1024,1024]{1,0} broadcast(s32[] %while.1), dimensions={}
 })";
 
-  ParseAndVerifyModule(module_str);
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(module_str));
 
   // Run CopyInsertion and check if the graph constructed above doesn't need
   // any copies inserted for BufferAssignment to run.
-  int64 instruction_count = module().instruction_count();
+  int64 instruction_count = m->instruction_count();
   CopyInsertion copy_insertion;
-  ASSERT_IS_OK(copy_insertion.Run(&module()).status());
-  ASSERT_EQ(instruction_count, module().instruction_count());
+  ASSERT_IS_OK(copy_insertion.Run(m.get()).status());
+  ASSERT_EQ(instruction_count, m->instruction_count());
 
   // Get the instructions in the module.
-  const HloInstruction* bcast =
-      module().entry_computation()->root_instruction();
+  const HloInstruction* bcast = m->entry_computation()->root_instruction();
   const HloInstruction* constant =
-      module().entry_computation()->GetInstructionWithName("constant.42");
+      m->entry_computation()->GetInstructionWithName("constant.42");
   ASSERT_EQ(bcast->opcode(), HloOpcode::kBroadcast);
   const HloInstruction* while1 = bcast->operand(0);
   ASSERT_EQ(while1->opcode(), HloOpcode::kWhile);
@@ -1995,7 +2095,7 @@ ENTRY %test_module {
   ASSERT_EQ(while0->opcode(), HloOpcode::kWhile);
 
   // Run buffer assignment.
-  auto assignment = RunBufferAssignment(&module());
+  auto assignment = RunBufferAssignment(m.get());
   TF_ASSERT_OK_AND_ASSIGN(auto slice_constant,
                           assignment->GetUniqueSlice(constant, {}));
   TF_ASSERT_OK_AND_ASSIGN(auto slice_while0,
@@ -2053,7 +2153,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   };
 
   // Build the entry computation as described in the comment above.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder("entry");
 
   auto token = builder.AddInstruction(HloInstruction::CreateToken());
@@ -2088,7 +2188,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   // any copies inserted for BufferAssignment to run.
   int64 instruction_count = module->instruction_count();
   CopyInsertion copy_insertion;
-  ASSERT_IS_OK(copy_insertion.Run(module).status());
+  ASSERT_IS_OK(copy_insertion.Run(module.get()).status());
   ASSERT_EQ(instruction_count, module->instruction_count());
 
   // Create a sequential order among all the instructions in the entry
@@ -2096,7 +2196,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
   // nodes are traversed during BufferAssignment.
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, [](const BufferValue& buffer) {
+      ScheduleModule(module.get(), [](const BufferValue& buffer) {
         return ShapeUtil::ByteSizeOf(buffer.shape(),
                                      /*pointer_size=*/sizeof(void*));
       }));
@@ -2107,12 +2207,12 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
 
   TF_ASSERT_OK_AND_ASSIGN(
       auto assignment,
-      BufferAssigner::Run(module,
-                          absl::make_unique<SequentialHloOrdering>(schedule),
-                          backend().compiler()->BufferSizeBytesFunction(),
-                          [](LogicalBuffer::Color) { return 1; },
-                          /*allow_input_output_aliasing=*/false,
-                          /*allocate_buffers_for_constants=*/true));
+      BufferAssigner::Run(
+          module.get(), absl::make_unique<SequentialHloOrdering>(schedule),
+          backend().compiler()->BufferSizeBytesFunction(),
+          [](LogicalBuffer::Color) { return 1; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true));
 
   // The result tuple elements must be assigned with different buffers.
   TF_ASSERT_OK_AND_ASSIGN(auto slice0, assignment->GetUniqueSlice(tuple, {0}));
@@ -2134,7 +2234,7 @@ TEST_F(WhileBufferAssignmentTest, ColocatedBuffers) {
 }
 
 TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -2166,8 +2266,8 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
       HloInstruction::CreateWhile(loop_state_shape_, cond1, body1, while0));
 
   module->AddEntryComputation(builder.Build());
-  RunCopyInsertion(module);
-  auto assignment = RunBufferAssignment(module);
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
 
   // while0 and while1 buffers should be completely aligned.
   EXPECT_EQ(assignment->GetUniqueSlice(while0, {0}).ConsumeValueOrDie(),
@@ -2179,7 +2279,7 @@ TEST_F(WhileBufferAssignmentTest, OneForwardBackwardWhileLoopSet) {
 }
 
 TEST_F(BufferAssignmentTest, TwoCalls) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   Shape r0f32 = ShapeUtil::MakeShape(xla::F32, {});
   HloComputation* sub_computation;
   {
@@ -2209,13 +2309,13 @@ TEST_F(BufferAssignmentTest, TwoCalls) {
 
   {
     FlattenCallGraph flatten;
-    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
-    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module);
+    std::unique_ptr<CallGraph> call_graph = CallGraph::Build(module.get());
   }
 
-  RunCopyInsertion(module);
-  auto assignment = RunBufferAssignment(module);
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
 
   EXPECT_TRUE(BuffersDistinct({call1}, {call2}, *assignment));
 }
@@ -2240,13 +2340,14 @@ ENTRY Main {
 )";
 
   HloModuleConfig config;
-  config.set_debug_options(legacy_flags::GetDebugOptionsFromFlags());
-  ParseAndVerifyModule(hlo_text, config);
+  config.set_debug_options(GetDebugOptionsFromFlags());
+  TF_ASSERT_OK_AND_ASSIGN(auto m,
+                          ParseAndReturnVerifiedModule(hlo_text, config));
 
-  auto buffers = RunBufferAssignment(&module());
+  auto buffers = RunBufferAssignment(m.get());
 
-  HloComputation* main = module().entry_computation();
-  HloComputation* callee = module().GetComputationWithName("Callee");
+  HloComputation* main = m->entry_computation();
+  HloComputation* callee = m->GetComputationWithName("Callee");
   EXPECT_NE(callee, nullptr);
 
   HloInstruction* param0 = callee->parameter_instruction(0);
@@ -2270,7 +2371,7 @@ ENTRY Main {
 }
 
 TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
 
   auto zero = builder.AddInstruction(
@@ -2317,40 +2418,41 @@ TEST_F(WhileBufferAssignmentTest, WhileLoopsInterferingResultRange) {
 
   {
     FlattenCallGraph flatten;
-    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module));
+    TF_ASSERT_OK_AND_ASSIGN(bool result, flatten.Run(module.get()));
     EXPECT_TRUE(result);
   }
 
-  RunCopyInsertion(module);
+  RunCopyInsertion(module.get());
 
   HloSchedule schedule =
-      ScheduleModule(*module, ByteSizeOf).ConsumeValueOrDie();
+      ScheduleModule(module.get(), ByteSizeOf).ConsumeValueOrDie();
 
   // To trigger b/38494731, we want a specific Hlo schedule for the
   // root computation, so we overwrite that entry with a manually
   // crafted sequence.
-  schedule.set_sequence(module->entry_computation(),
-                        {input1, weights1, one, output1, while1->operand(0),
-                         while1, input0, weights0, zero, output0,
-                         while0->operand(0), while0, gte0, gte1, root_add});
+  schedule.set_sequence(
+      module->entry_computation(),
+      {input1, weights1, one, output1, while1->mutable_operand(0), while1,
+       input0, weights0, zero, output0, while0->mutable_operand(0), while0,
+       gte0, gte1, root_add});
 
   // If this ASSERT fails, we constructed a bogus sequence above and this test
   // itself is buggy.
   TF_ASSERT_OK(schedule.Verify());
 
   auto assignment =
-      BufferAssigner::Run(module,
-                          absl::make_unique<SequentialHloOrdering>(schedule),
-                          ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
-                          /*allow_input_output_aliasing=*/false,
-                          /*allocate_buffers_for_constants=*/true)
+      BufferAssigner::Run(
+          module.get(), absl::make_unique<SequentialHloOrdering>(schedule),
+          ByteSizeOf, [](LogicalBuffer::Color) { return 1; },
+          /*allow_input_output_aliasing=*/false,
+          /*allocate_buffers_for_constants=*/true)
           .ConsumeValueOrDie();
 
   EXPECT_TRUE(BuffersDistinct({while0}, {while1}, *assignment));
 }
 
 TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder("entry");
 
   auto input0 = builder.AddInstruction(
@@ -2394,8 +2496,8 @@ TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
       HloInstruction::CreateGetTupleElement(data_shape_, while1, 2));
 
   module->AddEntryComputation(builder.Build());
-  RunCopyInsertion(module);
-  auto assignment = RunBufferAssignment(module);
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
   // Get BufferAllocation for root instruction.
   auto* root_alloc = assignment->GetUniqueTopLevelSlice(while1_out)
                          .ConsumeValueOrDie()
@@ -2406,5 +2508,58 @@ TEST_F(WhileBufferAssignmentTest, WhilesDontShareEntryParamIfLiveOut) {
   EXPECT_FALSE(root_alloc->is_entry_computation_parameter());
 }
 
+TEST_F(WhileBufferAssignmentTest, WhileWithDynamicUpdateSliceShare) {
+  const char* const hlo_string = R"(
+HloModule test
+
+while_body {
+  state = (s32[], f32[1280,1,128]{2,1,0}) parameter(0)
+  constant.1 = f32[] constant(0)
+  broadcast.6 = f32[128,1,128]{2,1,0} broadcast(constant.1), dimensions={}
+  get-tuple-element.4 = f32[1280,1,128]{2,1,0} get-tuple-element(state), index=1
+  get-tuple-element.3 = s32[] get-tuple-element(state), index=0
+  constant.2 = s32[] constant(128)
+  add.5 = s32[] add(get-tuple-element.3, constant.2)
+  constant.3 = s32[] constant(0)
+  dynamic-update-slice.5 = f32[1280,1,128]{2,1,0} dynamic-update-slice(get-tuple-element.4, broadcast.6, constant.3, constant.3, constant.3)
+  dynamic-update-slice.9 = f32[1280,1,128]{2,1,0} dynamic-update-slice(dynamic-update-slice.5, broadcast.6, constant.3, constant.3, constant.3)
+  ROOT tuple.85 = (s32[], s32[], s32[2]{0}, f32[1280,1,128]{2,1,0}) tuple(add.5, dynamic-update-slice.9)
+}
+
+while_condition {
+  state = (s32[], f32[1280,1,128]{2,1,0}) parameter(0)
+  get-tuple-element = s32[] get-tuple-element(state), index=0
+  get-tuple-element.1 = s32[] constant(3)
+  ROOT less-than.339.338 = pred[] less-than(get-tuple-element, get-tuple-element.1)
+}
+
+ENTRY entry_computation {
+  constant.7 = s32[] constant(0)
+  copy.1 = s32[] copy(constant.7)
+  constant.6 = f32[] constant(0)
+  broadcast.6 = f32[1280,1,128]{2,1,0} broadcast(constant.6), dimensions={}
+  tuple.1 = (s32[], f32[1280,1,128]{2,1,0}) tuple(copy.1, broadcast.6)
+  while.0 = (s32[], f32[1280,1,128]{2,1,0}) while(tuple.1), condition=while_condition, body=while_body
+  ROOT get-tuple-element.2 = s32[] get-tuple-element(while.0), index=0
+}
+
+)";
+  auto module_or_status =
+      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module = module_or_status.ConsumeValueOrDie();
+
+  RunCopyInsertion(module.get());
+  auto assignment = RunBufferAssignment(module.get());
+  // Get BufferAllocation for root instruction.
+  auto dus9 = FindInstruction(module.get(), "dynamic-update-slice.9");
+  auto dus9_alloc_slice =
+      assignment->GetUniqueTopLevelSlice(dus9).ConsumeValueOrDie();
+  auto dus5 = FindInstruction(module.get(), "dynamic-update-slice.5");
+  auto dus5_alloc_slice =
+      assignment->GetUniqueTopLevelSlice(dus5).ConsumeValueOrDie();
+  // Test that the two dynamic-update-slice ops share the same allocation slice.
+  EXPECT_EQ(dus9_alloc_slice.allocation(), dus5_alloc_slice.allocation());
+  EXPECT_EQ(dus9_alloc_slice, dus5_alloc_slice);
+}
 }  // namespace
 }  // namespace xla

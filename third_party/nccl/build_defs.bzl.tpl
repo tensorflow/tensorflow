@@ -1,89 +1,97 @@
 """Repository rule for NCCL."""
 
 load("@local_config_cuda//cuda:build_defs.bzl", "cuda_default_copts")
+load("@bazel_tools//tools/cpp:toolchain_utils.bzl", "find_cpp_toolchain")
 
-def _gen_nccl_h_impl(ctx):
-    """Creates nccl.h from a template."""
+def _process_src_impl(ctx):
+    """Applies various patches to the NCCL source."""
+    substitutions = {
+        "\"collectives.h": "\"collectives/collectives.h",
+        "\"../collectives.h": "\"collectives/collectives.h",
+        # Clang does not define __CUDACC_VER_*__, use CUDA_VERSION instead.
+        # TODO(csigg): Apply substitutions upstream and remove here.
+        "#if __CUDACC_VER_MAJOR__ >= 10 || (__CUDACC_VER_MAJOR__ >= 9 && __CUDACC_VER_MINOR__ >= 2)": "#if CUDART_VERSION >= 9200",
+        "#if __CUDACC_VER_MAJOR__ >= 10": "#if CUDART_VERSION >= 10000",
+        "#if __CUDACC_VER_MAJOR__ >= 9": "#if CUDART_VERSION >= 9000",
+        "#if __CUDACC_VER_MAJOR__ < 9": "#if CUDART_VERSION < 9000",
+        "nullptr_t": "std::nullptr_t",
+    }
+    if ctx.file.src.basename == "nccl.h.in":
+        substitutions.update({
+          "${nccl:Major}": "2",
+          "${nccl:Minor}": "3",
+          "${nccl:Patch}": "5",
+          "${nccl:Suffix}": "",
+          "${nccl:Version}": "2305",
+        })
+    if ctx.file.src.basename == "function.cu":
+        substitutions.update({
+            # Don't try to initialize the host shadow copy of this device-side
+            # global variable. There is no host pointer to a device-side
+            # function, which confuses clang.
+            # TODO(csigg): remove when fixed in clang.
+            "NCCL_FUNCS2B(ncclBroadcast),": "#if __CUDA_ARCH__\nNCCL_FUNCS2B(ncclBroadcast),",
+            "NCCL_FUNCS2A(ncclAllReduce)": "NCCL_FUNCS2A(ncclAllReduce)\n#endif",
+        })
     ctx.actions.expand_template(
-        output = ctx.outputs.output,
-        template = ctx.file.template,
-        substitutions = {
-            "${nccl:Major}": "2",
-            "${nccl:Minor}": "3",
-            "${nccl:Patch}": "5",
-            "${nccl:Suffix}": "",
-            "${nccl:Version}": "2305",
-        },
+        output = ctx.outputs.out,
+        template = ctx.file.src,
+        substitutions = substitutions,
     )
-gen_nccl_h = rule(
-    implementation = _gen_nccl_h_impl,
+
+_process_src = rule(
+    implementation = _process_src_impl,
     attrs = {
-        "template": attr.label(allow_single_file = True),
-        "output": attr.output(),
+        "src": attr.label(allow_single_file = True),
+        "out": attr.output(),
     },
 )
-"""Creates the NCCL header file."""
+"""Processes one NCCL source file so it can be compiled with bazel and clang."""
 
+def _out(src):
+    if not src.startswith("src/"):
+      fail("Source file not under src/...:", src)
+    src = src[4:]  # Strip 'src/'
+    if src == "nccl.h.in":
+      return "nccl.h"
+    if src.endswith(".cu"):
+      return src + ".cc"
+    return src
 
-def _process_srcs_impl(ctx):
-    """Appends .cc to .cu files, patches include directives."""
+def process_srcs(srcs):
+    """Processes files under src/ and copies them to the parent directory."""
+    [_process_src(
+      name = "_" + src,
+      src = src,
+      out = _out(src),
+    ) for src in srcs]
+    return ["_" + src for src in srcs]
+
+def _gen_device_srcs_impl(ctx):
     files = []
     for src in ctx.files.srcs:
-        if not src.is_source:
-          # Process only once, specifically "src/nccl.h".
-          files.append(src)
-          continue
-        name = src.basename
-        if src.extension == "cu":
-            name = ctx.attr.prefix + name + ".cc"
+        name = "%s_%s" % (ctx.attr.name, src.basename)
         file = ctx.actions.declare_file(name, sibling = src)
         ctx.actions.expand_template(
             output = file,
             template = src,
             substitutions = {
-                "\"collectives.h": "\"collectives/collectives.h",
-                "\"../collectives.h": "\"collectives/collectives.h",
-                "#if __CUDACC_VER_MAJOR__":
-                    "#if defined __CUDACC_VER_MAJOR__ && __CUDACC_VER_MAJOR__",
-                # Substitutions are applied in order.
-                "std::nullptr_t": "nullptr_t",
-                "nullptr_t": "std::nullptr_t",
+                "#define UNROLL 4": "#define UNROLL 4\n#define NCCL_OP %d" % ctx.attr.NCCL_OP,
             },
         )
         files.append(file)
     return [DefaultInfo(files = depset(files))]
-_process_srcs = rule(
-    implementation = _process_srcs_impl,
+
+gen_device_srcs = rule(
+    implementation = _gen_device_srcs_impl,
     attrs = {
         "srcs": attr.label_list(allow_files = True),
-        "prefix": attr.string(default = ""),
+        "NCCL_OP": attr.int(),
     },
 )
-"""Processes the NCCL srcs so they can be compiled with bazel and clang."""
+"""Adds prefix to each file name in srcs and adds #define NCCL_OP."""
 
-
-def nccl_library(name, srcs=None, hdrs=None, prefix=None, **kwargs):
-    """Processes the srcs and hdrs and creates a cc_library."""
-
-    _process_srcs(
-        name = name + "_srcs",
-        srcs = srcs,
-        prefix = prefix,
-    )
-    _process_srcs(
-        name = name + "_hdrs",
-        srcs = hdrs,
-    )
-
-    native.cc_library(
-        name = name,
-        srcs = [name + "_srcs"] if srcs else [],
-        hdrs = [name + "_hdrs"] if hdrs else [],
-        **kwargs
-    )
-
-
-def rdc_copts():
+def _rdc_copts():
     """Returns copts for compiling relocatable device code."""
 
     # The global functions can not have a lower register count than the
@@ -92,128 +100,291 @@ def rdc_copts():
     maxrregcount = "-maxrregcount=96"
 
     return cuda_default_copts() + select({
-          "@local_config_cuda//cuda:using_nvcc": [
-              "-nvcc_options",
-              "relocatable-device-code=true",
-              "-nvcc_options",
-              "ptxas-options=" + maxrregcount,
-          ],
-          "@local_config_cuda//cuda:using_clang": [
-              "-fcuda-rdc",
-              "-Xcuda-ptxas",
-              maxrregcount,
-          ],
-          "//conditions:default": [],
-      }) + ["-fvisibility=hidden"]
+        "@local_config_cuda//cuda:using_nvcc": [
+            "-nvcc_options",
+            "relocatable-device-code=true",
+            "-nvcc_options",
+            "ptxas-options=" + maxrregcount,
+        ],
+        "@local_config_cuda//cuda:using_clang": [
+            "-fcuda-rdc",
+            "-Xcuda-ptxas",
+            maxrregcount,
+            # Work around for clang bug (fixed in r348662), declaring
+            # '__device__ operator delete(void*, std::size_t)' non-inline.
+            # TODO(csigg): Only add this option for older clang versions.
+            "-std=gnu++11",
+        ],
+        "//conditions:default": [],
+    })
 
+def _lookup_file(filegroup, path):
+    """Extracts file at (relative) path in filegroup."""
+    for file in filegroup.files:
+        if file.path.endswith(path):
+            return file
+    return None
 
-def _filter_impl(ctx):
-    suffix = ctx.attr.suffix
-    files = [src for src in ctx.files.srcs if src.path.endswith(suffix)]
-    return [DefaultInfo(files = depset(files))]
-_filter = rule(
-    implementation = _filter_impl,
-    attrs = {
-        "srcs": attr.label_list(allow_files = True),
-        "suffix": attr.string(),
-    },
-)
-"""Filters the srcs to the ones ending with suffix."""
+def _pic_only(files):
+    """Returns the PIC files if there are any in 'files', otherwise 'files'."""
+    pic_only = [f for f in files if f.basename.find(".pic.") >= 0]
+    return pic_only if pic_only else files
 
+def _device_link_impl(ctx):
+    if not ctx.attr.gpu_archs:
+        fail("No GPU architecture specified. NCCL requires --config=cuda or similar.")
 
-def _gen_link_src_impl(ctx):
-    ctx.actions.expand_template(
-        output = ctx.outputs.output,
-        template = ctx.file.template,
-        substitutions = {
-            "REGISTERLINKBINARYFILE": '"%s"' % ctx.file.register_hdr.short_path,
-            "FATBINFILE": '"%s"' % ctx.file.fatbin_hdr.short_path,
-        },
-    )
-_gen_link_src = rule(
-    implementation = _gen_link_src_impl,
-    attrs = {
-        "register_hdr": attr.label(allow_single_file = True),
-        "fatbin_hdr": attr.label(allow_single_file = True),
-        "template": attr.label(allow_single_file = True),
-        "output": attr.output(),
-    },
-)
-"""Patches the include directives for the link.stub file."""
-
-
-def device_link(name, srcs):
-    """Links seperately compiled relocatable device code into a cc_library."""
-
-    # From .a and .pic.a archives, just use the latter.
-    _filter(
-        name = name + "_pic_a",
-        srcs = srcs,
-        suffix = ".pic.a",
-    )
-
-    cpu_arch = "X86_64"
-    native.genrule(
-        name = "get_cpu_gen",
-        outs = [cpu_arch],
-        cmd = "uname -m",
-    )
-    cpu_arch = cpu_arch.upper()
+    inputs = []
+    for dep in ctx.attr.deps:
+        inputs += dep.files.to_list()
+    inputs = _pic_only(inputs)
 
     # Device-link to cubins for each architecture.
-    images = []
+    name = ctx.attr.name
+    register_h = None
     cubins = []
-    for arch in %{gpu_architectures}:
-        cubin = "%s_%s.cubin" % (name, arch)
-        register_hdr = "%s_%s.h" % (name, arch)
-        nvlink = "@local_config_nccl//:nvlink"
-        cmd = ("$(location %s) --cpu-arch=%s " % (nvlink, cpu_arch) +
-            "--arch=%s $(SRCS) " % arch +
-            "--register-link-binaries=$(location %s) " % register_hdr +
-            "--output-file=$(location %s)" % cubin)
-        native.genrule(
-            name = "%s_%s" % (name, arch),
-            outs = [register_hdr, cubin],
-            srcs = [name + "_pic_a"],
-            cmd = cmd,
-            tools = [nvlink],
+    images = []
+    for arch in ctx.attr.gpu_archs:
+        cubin = ctx.actions.declare_file("%s_%s.cubin" % (name, arch))
+        register_h = ctx.actions.declare_file("%s_register_%s.h" % (name, arch))
+        ctx.actions.run(
+            outputs = [register_h, cubin],
+            inputs = inputs,
+            executable = ctx.file._nvlink,
+            arguments = ctx.attr.nvlink_args + [
+                "--arch=%s" % arch,
+                "--register-link-binaries=%s" % register_h.path,
+                "--output-file=%s" % cubin.path,
+            ] + [file.path for file in inputs],
+            mnemonic = "nvlink",
         )
-        images.append("--image=profile=%s,file=$(location %s)" % (arch, cubin))
         cubins.append(cubin)
+        images.append("--image=profile=%s,file=%s" % (arch, cubin.path))
 
     # Generate fatbin header from all cubins.
-    fatbin_hdr = name + ".fatbin.h"
-    fatbinary = "@local_config_nccl//:cuda/bin/fatbinary"
-    cmd = ("PATH=$$CUDA_TOOLKIT_PATH/bin:$$PATH " + # for bin2c
-          "$(location %s) -64 --cmdline=--compile-only --link " % fatbinary +
-          "--compress-all %s --create=%%{name}.fatbin " % " ".join(images) +
-          "--embedded-fatbin=$@")
-    native.genrule(
-        name = name + "_fatbin_h",
-        outs = [fatbin_hdr],
-        srcs = cubins,
-        cmd = cmd,
-        tools = [fatbinary],
+    tmp_fatbin = ctx.actions.declare_file("%s.fatbin" % name)
+    fatbin_h = ctx.actions.declare_file("%s_fatbin.h" % name)
+    bin2c = ctx.file._bin2c
+    ctx.actions.run(
+        outputs = [tmp_fatbin, fatbin_h],
+        inputs = cubins,
+        executable = ctx.file._fatbinary,
+        arguments = [
+            "-64",
+            "--cmdline=--compile-only",
+            "--link",
+            "--compress-all",
+            "--bin2c-path=%s" % bin2c.dirname,
+            "--create=%s" % tmp_fatbin.path,
+            "--embedded-fatbin=%s" % fatbin_h.path,
+        ] + images,
+        tools = [bin2c],
+        mnemonic = "fatbinary",
     )
 
     # Generate the source file #including the headers generated above.
-    _gen_link_src(
-        name = name + "_cc",
-        # Include just the last one, they are equivalent.
-        register_hdr = register_hdr,
-        fatbin_hdr = fatbin_hdr,
-        template = "@local_config_nccl//:cuda/bin/crt/link.stub",
-        output = name + ".cc",
+    ctx.actions.expand_template(
+        output = ctx.outputs.out,
+        template = ctx.file._link_stub,
+        substitutions = {
+            "REGISTERLINKBINARYFILE": '"%s"' % register_h.short_path,
+            "FATBINFILE": '"%s"' % fatbin_h.short_path,
+        },
     )
 
-    # Compile the source file into the cc_library.
+    return [DefaultInfo(files = depset([register_h, fatbin_h]))]
+
+_device_link = rule(
+    implementation = _device_link_impl,
+    attrs = {
+        "deps": attr.label_list(),
+        "out": attr.output(mandatory = True),
+        "gpu_archs": attr.string_list(),
+        "nvlink_args": attr.string_list(),
+        "_nvlink": attr.label(
+            default = Label("@local_config_cuda//cuda:cuda/bin/nvlink"),
+            allow_single_file = True,
+            executable = True,
+            cfg = "host",
+        ),
+        "_fatbinary": attr.label(
+            default = Label("@local_config_cuda//cuda:cuda/bin/fatbinary"),
+            allow_single_file = True,
+            executable = True,
+            cfg = "host",
+        ),
+        "_bin2c": attr.label(
+            default = Label("@local_config_cuda//cuda:cuda/bin/bin2c"),
+            allow_single_file = True,
+            executable = True,
+            cfg = "host",
+        ),
+        "_link_stub": attr.label(
+            default = Label("@local_config_cuda//cuda:cuda/bin/crt/link.stub"),
+            allow_single_file = True,
+        ),
+    },
+)
+"""Links device code and generates source code for kernel registration."""
+
+def _merge_archive_impl(ctx):
+    # Generate an mri script to the merge archives in srcs and pass it to 'ar'.
+    # See https://stackoverflow.com/a/23621751.
+    files = _pic_only(ctx.files.srcs)
+    mri_script = "create " + ctx.outputs.out.path
+    for f in files:
+        mri_script += "\\naddlib " + f.path
+    mri_script += "\\nsave\\nend"
+
+    cc_toolchain = find_cpp_toolchain(ctx)
+    ctx.actions.run_shell(
+        inputs = ctx.files.srcs,  # + ctx.files._crosstool,
+        outputs = [ctx.outputs.out],
+        command = ("printf \"%s\" " % mri_script +
+                   "| %s -M" % cc_toolchain.ar_executable),
+    )
+
+_merge_archive = rule(
+    implementation = _merge_archive_impl,
+    attrs = {
+        "srcs": attr.label_list(mandatory = True, allow_files = True),
+        "_cc_toolchain": attr.label(default = "@bazel_tools//tools/cpp:current_cc_toolchain"),
+        # "_crosstool": attr.label_list(cfg = "host", default = ["@bazel_tools//tools/cpp:crosstool"]),
+    },
+    outputs = {"out": "lib%{name}.a"},
+)
+"""Merges srcs into a single archive."""
+
+def cuda_rdc_library(name, hdrs = None, copts = None, linkstatic = True, **kwargs):
+    """Produces a cuda_library using separate compilation and linking.
+
+    CUDA separate compilation and linking allows device function calls across
+    translation units. This is different from the normal whole program
+    compilation where each translation unit contains all device code. For more
+    background, see
+    https://devblogs.nvidia.com/separate-compilation-linking-cuda-device-code/,
+    https://docs.nvidia.com/cuda/cuda-compiler-driver-nvcc/index.html#nvcc-options-for-separate-compilation
+
+    During separate compilation, the different CUDA source files are compiled
+    to 'relocatable device code' (RDC) and embedded in the host object files.
+    When using nvcc, linking the device code for each supported GPU
+    architecture and generating kernel registration code for the CUDA runtime
+    is handled automatically. Clang supports generating relocatable device
+    code, but it can't link it. We therefore rely on tools provided by the CUDA
+    SDK to link the device code and generate the host code to register the
+    kernels.
+
+    The nvlink tool extracts the RDC code from the object files and links it
+    into cubin files, one per GPU architecture. It also produces a header file
+    with a list of kernel names to register. The cubins are merged into a
+    binary blob using the fatbinary tool, and converted to a C header file with
+    the help of the bin2c tool. The registration header file, the fatbinary
+    header file, and the link.stub file (shipped with the CUDA SDK) are
+    compiled as ordinary host code.
+
+    Here is a diagram of the CUDA separate compilation trajectory:
+
+     x.cu.cc    y.cu.cc
+           \    /            cc_library (compile RDC and archive)
+            xy.a
+           /    \            * nvlink
+    register.h  xy.cubin
+          :      |           * fatbinary and bin2c
+          :     xy.fatbin.h
+          :      :           * #include
+          dlink.cc           * Expanded from crt/dlink.stub template
+             |               cc_library (host compile and archive)
+          dlink.a
+
+    The steps marked with '*' are implemented in the _device_link rule.
+
+    The object files in both xy.a and dlink.a reference symbols defined in the
+    other archive. The separate archives are a side effect of using two
+    cc_library targets to implement a single compilation trajectory. We could
+    fix this once bazel supports C++ sandwich. For now, we just merge the two
+    archives to avoid unresolved symbols:
+
+    xy.a      dlink.a
+        \    /           merge archive
+      xy_dlink.a
+           |             cc_library (or alternatively, cc_import)
+     final target
+
+    Another complication is that cc_library produces (depending on the
+    configuration) both PIC and non-PIC archives, but the distinction
+    is hidden from Starlark until C++ sandwich becomes available. We work
+    around this by dropping the non-PIC files if PIC files are available.
+
+    Args:
+      name: Target name.
+      hdrs: Header files.
+      copts: Compiler options.
+      linkstatic: Must be true.
+      **kwargs: Any other arguments.
+    """
+
+    if not hdrs:
+        hdrs = []
+    if not copts:
+        copts = []
+
+    # Compile host and device code into library.
+    lib = name + "_lib"
     native.cc_library(
-        name = name,
-        srcs = [name + "_cc"],
-        textual_hdrs = [register_hdr, fatbin_hdr],
+        name = lib,
+        hdrs = hdrs,
+        copts = _rdc_copts() + copts,
+        linkstatic = linkstatic,
+        **kwargs
+    )
+
+    # Generate source file containing linked device code.
+    dlink_hdrs = name + "_dlink_hdrs"
+    dlink_cc = name + "_dlink.cc"
+    _device_link(
+        name = dlink_hdrs,
+        deps = [lib],
+        out = dlink_cc,
+        gpu_archs = %{gpu_architectures},
+        nvlink_args = select({
+            "@org_tensorflow//tensorflow:linux_x86_64": ["--cpu-arch=X86_64"],
+            "@org_tensorflow//tensorflow:linux_ppc64le": ["--cpu-arch=PPC64LE"],
+            "//conditions:default": [],
+        }),
+    )
+
+    # Compile the source file into a library.
+    dlink = name + "_dlink"
+    native.cc_library(
+        name = dlink,
+        srcs = [dlink_cc],
+        textual_hdrs = [dlink_hdrs],
         deps = [
             "@local_config_cuda//cuda:cuda_headers",
-            "@local_config_cuda//cuda:cudart_static",
         ],
-        defines = ["__NV_EXTRA_INITIALIZATION=", "__NV_EXTRA_FINALIZATION="]
+        defines = [
+            # Silence warning about including internal header.
+            "__CUDA_INCLUDE_COMPILER_INTERNAL_HEADERS__",
+            # Macros that need to be defined starting with CUDA 10.
+            "__NV_EXTRA_INITIALIZATION=",
+            "__NV_EXTRA_FINALIZATION=",
+        ],
+        linkstatic = linkstatic,
+    )
+
+    # Repackage the two libs into a single archive. This is required because
+    # both libs reference symbols defined in the other one. For details, see
+    # https://eli.thegreenplace.net/2013/07/09/library-order-in-static-linking
+    archive = name + "_a"
+    _merge_archive(
+        name = archive,
+        srcs = [lib, dlink],
+    )
+
+    # Create cc target from archive.
+    native.cc_library(
+        name = name,
+        srcs = [archive],
+        hdrs = hdrs,
+        linkstatic = linkstatic,
     )

@@ -500,6 +500,9 @@ typedef Eigen::GpuDevice GPUDevice;
       Name("DeepCopy").Device(DEVICE_GPU).TypeConstraint<TYPE>("T"),      \
       CopyOp<GPUDevice>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("InplaceUpdate").Device(DEVICE_GPU).TypeConstraint<bool>("T"),
+    InplaceOp<GPUDevice, functor::I_UPDATE>);
 REGISTER(float);
 REGISTER(double);
 REGISTER(Eigen::half);

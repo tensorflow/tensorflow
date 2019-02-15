@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import context
 from tensorflow.python.training import optimizer as optimizer_lib
 
 
@@ -32,6 +31,9 @@ class Step(object):
   @property
   def distribution(self):
     return self._distribution
+
+  def initialize(self):
+    return []
 
   def __call__(self):
     """Perform one step of this training algorithm."""
@@ -50,12 +52,10 @@ class StandardInputStep(Step):
 
   def __init__(self, dataset_fn, distribution):
     super(StandardInputStep, self).__init__(distribution)
-    self._distributed_input = distribution.distribute_dataset(dataset_fn)
-    if context.executing_eagerly():
-      self._iterator = self._distributed_input.make_one_shot_iterator()
-    else:
-      # TODO(priyag): Expose initializer via some initializer property.
-      self._iterator = self._distributed_input.make_initializable_iterator()
+    self._iterator = distribution.make_input_fn_iterator(lambda _: dataset_fn())
+
+  def initialize(self):
+    return self._iterator.initialize()
 
 
 class StandardSingleLossStep(StandardInputStep):
@@ -90,29 +90,25 @@ class StandardSingleLossStep(StandardInputStep):
     super(StandardSingleLossStep, self).__init__(dataset_fn, distribution)
     self._loss_fn = loss_fn
     self._optimizer = optimizer
-    self._is_run_concurrently = False
     self._iterations_per_step = iterations_per_step
 
   def __call__(self):
     with self._distribution.scope():
-      def step_fn(ctx, *inputs):
+      def step_fn(ctx, inputs):
         """Function to run one iteration with one input."""
         gradients_fn = backprop.implicit_grad(self._loss_fn)
         gradients_fn = optimizer_lib.get_filtered_grad_fn(gradients_fn)
 
-        grads_and_vars = self.distribution.call_for_each_tower(
-            gradients_fn,
-            ctx, *inputs,
-            run_concurrently=self._is_run_concurrently)
+        grads_and_vars = self.distribution.extended.call_for_each_replica(
+            gradients_fn, args=(ctx, inputs))
         # If threads use layers, then we need to run the first step
         # sequentially, so that layers.build() is not executed in parallel.
         # Otherwise, multiple sets of mirrored variables are going to be
         # created.
-        self._is_run_concurrently = True
         return self._optimizer._distributed_apply(  # pylint: disable=protected-access
             self.distribution, grads_and_vars)
 
       # TODO(priyag): Return the outputs, context, etc as well.
-      ctx = self.distribution.run_steps_on_dataset(
+      ctx = self.distribution.extended.experimental_run_steps_on_iterator(
           step_fn, self._iterator, self._iterations_per_step)
       return ctx.run_op

@@ -30,6 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
@@ -80,7 +81,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
       self.assertEqual(tf_value_ans.get_shape()[1], np_ans.shape[1])
       self.assertEqual(tf_tensor_ans.get_shape()[1], np_ans.shape[1])
 
-      for out in (tf_value_ans.eval(), tf_tensor_ans.eval()):
+      for out in (tf_value_ans.eval(), self.evaluate(tf_tensor_ans)):
         if x.dtype == np.float32:
           self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-4)
         elif x.dtype == np.float64:
@@ -96,6 +97,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
 
     self._testMatmul(x, y, indices_dtype=indices_dtype)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     np.random.seed(127)  # Repeatable results
     self._testBasic(np.int32)
@@ -106,6 +108,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     self._testBasic(np.int32, indices_dtype=np.int32)
     self._testBasic(np.float32, indices_dtype=np.int32)
 
+  @test_util.run_deprecated_v1
   def testShapeInference(self):
     x = np.random.rand(10, 10)
     x[np.abs(x) < 0.5] = 0  # Make it sparse
@@ -229,6 +232,7 @@ class SparseTensorDenseMatMulTest(test.TestCase):
     self._testLarge(np.complex128)
 
   # Tests random sized matrices.
+  @test_util.run_deprecated_v1
   def testFloatRandom(self):
     np.random.seed(127)  # Repeatable results
     for _ in range(8):

@@ -109,16 +109,20 @@ class ShapeInference {
   // filter (rhs) to lhs in the way specified by the fields on window.
   static StatusOr<Shape> InferConvolveShape(
       const Shape& lhs, const Shape& rhs, int64 feature_group_count,
-      const Window& window,
+      int64 batch_group_count, const Window& window,
       const ConvolutionDimensionNumbers& dimension_numbers);
 
   // Infers the shape produced by the given FFT type on the given operand.
   static StatusOr<Shape> InferFftShape(const Shape& in, FftType fft_type,
                                        absl::Span<const int64> fft_length);
 
+  // Infers the shape produced by the given triangular solve operation.
+  static StatusOr<Shape> InferTriangularSolveShape(
+      const Shape& a, const Shape& b, const TriangularSolveOptions& options);
+
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
-  static StatusOr<Shape> InferCrossReplicaSumShape(
+  static StatusOr<Shape> InferAllReduceShape(
       absl::Span<const Shape* const> operand_shapes);
 
   // Infers final shape of an Alltoall operation that is created by the xla
@@ -176,14 +180,15 @@ class ShapeInference {
   // Infers the shape produced by a dynamic slice operation of size specified
   // in 'slice_sizes', with dynamic start indices shape 'start_indices_shape'.
   static StatusOr<Shape> InferDynamicSliceShape(
-      const Shape& operand_shape, const Shape& start_indices_shape,
-      absl::Span<const int64> slice_sizes);
+      const Shape& operand_shape, absl::Span<const Shape> start_index_shapes,
+      absl::Span<const int64> slice_sizes, bool allow_scalar_indices = true);
 
   // Infers the shape produced by a dynamic update slice operation based
   // on the shape of operand and update.
   static StatusOr<Shape> InferDynamicUpdateSliceShape(
       const Shape& operand_shape, const Shape& update_shape,
-      const Shape& start_indices_shape);
+      absl::Span<const Shape> start_index_shapes,
+      bool allow_scalar_indices = true);
 
   // Infers the shape produced by doing a compile-time-constant indexing into
   // the given input shape. This is essential for operations on tuples, because
@@ -231,13 +236,6 @@ class ShapeInference {
   // with the given operand shapes.
   static StatusOr<Shape> InferConcatOpShape(
       absl::Span<const Shape* const> arg_shapes, int64 dimension);
-
-  // Infers the shape produced by a kAfterAll. Trivially this shape is always a
-  // TOKEN shape. However, ShapeInference serves two purposes: inferring shapes
-  // and checking operand shapes. This method verifies that the operand shapes
-  // are all TOKENs.
-  static StatusOr<Shape> InferAfterAllShape(
-      absl::Span<const Shape* const> arg_shapes);
 
   // Helper that validates the given operand shape can be converted to the
   // target output_shape via a convert instruction -- the requirement is that
@@ -290,6 +288,9 @@ class ShapeInference {
       const Shape& operand_shape, const Shape& scatter_indices_shape,
       const Shape& updates_shape, const ProgramShape& to_apply_shape,
       const ScatterDimensionNumbers& scatter_dim_numbers);
+
+  static StatusOr<Shape> InferGetDimensionSizeShape(const Shape& shape,
+                                                    int64 dimension);
 
  private:
   // Helper that infers the shape produced by performing an element-wise binary

@@ -138,7 +138,7 @@ tf_export("train.FeatureLists")(FeatureLists)
 tf_export("train.FloatList")(FloatList)
 tf_export("train.Int64List")(Int64List)
 tf_export("train.JobDef")(JobDef)
-tf_export("train.SaverDef")(SaverDef)
+tf_export(v1=["train.SaverDef"])(SaverDef)
 tf_export("train.SequenceExample")(SequenceExample)
 tf_export("train.ServerDef")(ServerDef)
 # pylint: enable=undefined-variable

@@ -96,7 +96,11 @@ class BufferAllocation {
   // Whether this allocation is readonly i.e. backed by memory we cannot write
   // to.
   bool is_readonly() const {
-    return is_entry_computation_parameter() || is_constant();
+    // Entry parameters are generally readonly, except when they are aliased
+    // with any output.
+    return (is_entry_computation_parameter() &&
+            !is_parameter_aliased_with_output_) ||
+           is_constant();
   }
 
   bool is_tuple() const { return is_tuple_; }
@@ -186,9 +190,10 @@ class BufferAllocation {
              end > other.offset_;
     }
 
-    struct Hasher {
-      size_t operator()(Slice s) const;
-    };
+    template <typename H>
+    friend H AbslHashValue(H h, const Slice& s) {
+      return H::combine(std::move(h), s.index(), s.offset(), s.size());
+    }
 
     string ToString() const;
 
@@ -273,8 +278,10 @@ class BufferAllocation {
   void AddAssignment(const LogicalBuffer& buffer, int64 offset, int64 size);
 
   void set_entry_computation_parameter(int64 parameter_number,
-                                       ShapeIndex param_shape_index) {
+                                       ShapeIndex param_shape_index,
+                                       bool parameter_aliased_with_output) {
     is_entry_computation_parameter_ = true;
+    is_parameter_aliased_with_output_ = parameter_aliased_with_output;
     parameter_number_ = parameter_number;
     param_shape_index_ = std::move(param_shape_index);
   }
@@ -303,6 +310,9 @@ class BufferAllocation {
   // computation parameters are special be cause they have lifetimes which may
   // outlast the computation.
   bool is_entry_computation_parameter_ = false;
+
+  // Whether this entry computation parameter is aliased with output.
+  bool is_parameter_aliased_with_output_ = false;
 
   // If this allocation holds an entry computation parameter, this field
   // indicates the index (starting from 0) of the parameter.
@@ -361,6 +371,11 @@ class BufferAssignment {
   // Returns the allocation with the given index. CHECKs if no allocation exists
   // with the given index.
   const BufferAllocation& GetAllocation(BufferAllocation::Index index) const;
+
+  // Returns the allocation with the given instruction and shape index. nullptr
+  // if no allocation exists.
+  const BufferAllocation* GetInstructionAllocation(
+      const HloInstruction* hlo, const ShapeIndex& shape_index) const;
 
   // Builds and returns a vector containing the slices which might contain the
   // subvalue at the given index of given instruction.
@@ -520,6 +535,11 @@ class BufferAssignment {
 // A class which constructs a buffer assignment.
 class BufferAssigner {
  public:
+  // Returns false if a buffer cannot be assigned to given allocation.
+  using ReuseAllocationFunction = std::function<bool(
+      const BufferAssignment& assignment, const BufferAllocation& alloc,
+      const LogicalBuffer& buffer)>;
+
   // Build and return a BufferAssignment for the given module. The given
   // HloOrdering is used to determine buffer liveness. buffer_size and
   // color_alignment are functions which returns the size and alignment of a
@@ -531,15 +551,16 @@ class BufferAssigner {
       LogicalBuffer::AlignmentFunction color_alignment,
       bool allow_input_output_aliasing = false,
       bool allocate_buffers_for_constants = false,
-      BufferLiveness::Colorer colorer = BufferLiveness::DefaultColorer());
+      BufferLiveness::Colorer colorer = BufferLiveness::DefaultColorer(),
+      ReuseAllocationFunction reuse_checker = nullptr);
 
  private:
-  BufferAssigner(bool allow_input_output_aliasing,
-                 bool allocate_buffers_for_constants,
-                 BufferLiveness::Colorer colorer)
-      : allow_input_output_aliasing_(allow_input_output_aliasing),
-        allocate_buffers_for_constants_(allocate_buffers_for_constants),
-        colorer_(colorer) {}
+  BufferAssigner(bool allocate_buffers_for_constants,
+                 BufferLiveness::Colorer colorer,
+                 ReuseAllocationFunction reuse_checker)
+      : allocate_buffers_for_constants_(allocate_buffers_for_constants),
+        colorer_(colorer),
+        reuse_checker_(reuse_checker) {}
   virtual ~BufferAssigner() = default;
 
   // Create a buffer assignment.
@@ -627,15 +648,14 @@ class BufferAssigner {
                       LogicalBuffer::Color::Hasher>
   SplitBuffersByColor(const absl::flat_hash_set<const LogicalBuffer*>& buffers);
 
-  // If true, buffer assignments assumes that input parameter buffers and output
-  // buffers can be shared if their sizes match.
-  bool allow_input_output_aliasing_;
-
   // If true, allocate buffers for constant instructions.
   bool allocate_buffers_for_constants_;
 
   // Functor used to assign colors to newly allocated logical buffers.
   BufferLiveness::Colorer colorer_;
+
+  // Functor to check if a buffer can reuse an allocation.
+  ReuseAllocationFunction reuse_checker_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(BufferAssigner);
 };

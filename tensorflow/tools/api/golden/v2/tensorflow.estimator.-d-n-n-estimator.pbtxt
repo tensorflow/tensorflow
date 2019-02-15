@@ -1,0 +1,62 @@
+path: "tensorflow.estimator.DNNEstimator"
+tf_class {
+  is_instance: "<class \'tensorflow_estimator.python.estimator.canned.dnn.DNNEstimatorV2\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.estimator.EstimatorV2\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "config"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "model_dir"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "model_fn"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "params"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'head\', \'hidden_units\', \'feature_columns\', \'model_dir\', \'optimizer\', \'activation_fn\', \'dropout\', \'input_layer_partitioner\', \'config\', \'warm_start_from\', \'batch_norm\'], varargs=None, keywords=None, defaults=[\'None\', \'Adagrad\', \'<function relu instance>\', \'None\', \'None\', \'None\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "eval_dir"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "evaluate"
+    argspec: "args=[\'self\', \'input_fn\', \'steps\', \'hooks\', \'checkpoint_path\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "experimental_export_all_saved_models"
+    argspec: "args=[\'self\', \'export_dir_base\', \'input_receiver_fn_map\', \'assets_extra\', \'as_text\', \'checkpoint_path\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "export_saved_model"
+    argspec: "args=[\'self\', \'export_dir_base\', \'serving_input_receiver_fn\', \'assets_extra\', \'as_text\', \'checkpoint_path\', \'experimental_mode\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\', \'infer\'], "
+  }
+  member_method {
+    name: "get_variable_names"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_variable_value"
+    argspec: "args=[\'self\', \'name\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "latest_checkpoint"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "predict"
+    argspec: "args=[\'self\', \'input_fn\', \'predict_keys\', \'hooks\', \'checkpoint_path\', \'yield_single_examples\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'True\'], "
+  }
+  member_method {
+    name: "train"
+    argspec: "args=[\'self\', \'input_fn\', \'hooks\', \'steps\', \'max_steps\', \'saving_listeners\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
+  }
+}

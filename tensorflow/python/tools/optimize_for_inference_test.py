@@ -128,6 +128,7 @@ class OptimizeForInferenceTest(test.TestCase):
         graph_def, [], [add_name], dtypes.float32.as_datatype_enum)
     self.assertProtoEquals(expected_output, output)
 
+  @test_util.run_deprecated_v1
   def testFoldBatchNorms(self):
     with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
@@ -171,6 +172,7 @@ class OptimizeForInferenceTest(test.TestCase):
     for node in optimized_graph_def.node:
       self.assertNotEqual("BatchNormWithGlobalNormalization", node.op)
 
+  @test_util.run_deprecated_v1
   def testFoldFusedBatchNorms(self):
     for data_format, use_gpu in [("NHWC", False), ("NCHW", True)]:
       with self.cached_session(use_gpu=use_gpu) as sess:
@@ -222,6 +224,7 @@ class OptimizeForInferenceTest(test.TestCase):
       for node in optimized_graph_def.node:
         self.assertNotEqual("FusedBatchNorm", node.op)
 
+  @test_util.run_deprecated_v1
   def testFuseResizePadAndConv(self):
     with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
@@ -253,6 +256,7 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("MirrorPad", node.op)
       self.assertNotEqual("ResizeBilinear", node.op)
 
+  @test_util.run_deprecated_v1
   def testFuseResizeAndConv(self):
     with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]
@@ -282,6 +286,7 @@ class OptimizeForInferenceTest(test.TestCase):
       self.assertNotEqual("MirrorPad", node.op)
 
 
+  @test_util.run_deprecated_v1
   def testFusePadAndConv(self):
     with self.cached_session() as sess:
       inputs = [1, 4, 2, 5, 3, 6, -1, -4, -2, -5, -3, -6]

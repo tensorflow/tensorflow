@@ -68,12 +68,9 @@ class EagerServiceImplTest : public ::testing::Test {
     worker_env_.rendezvous_mgr = &rendezvous_mgr_;
     worker_env_.session_mgr = session_mgr_.get();
 
-    Device* device = DeviceFactory::NewDevice(
-        "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0");
-
-    worker_env_.local_devices = {device};
-
-    device_mgr_.reset(new DeviceMgr(worker_env_.local_devices));
+    device_mgr_ = absl::make_unique<DeviceMgr>(DeviceFactory::NewDevice(
+        "CPU", {}, "/job:localhost/replica:0/task:0/device:CPU:0"));
+    worker_env_.local_devices = device_mgr_->ListDevices();
     worker_env_.device_mgr = device_mgr_.get();
   }
 
@@ -345,8 +342,7 @@ TEST_F(EagerServiceImplTest, SendTensorTest) {
       response.context_id(), RemoteTensorHandleInternal(2, 0), &tensor_handle));
   TF_ASSERT_OK(tensor_handle->Tensor(&t));
 
-  Device* device = nullptr;
-  TF_ASSERT_OK(tensor_handle->Device(&device));
+  Device* device = tensor_handle->device();
   EXPECT_NE(device, nullptr);
   EXPECT_EQ(device->name(), "/job:localhost/replica:0/task:0/device:CPU:0");
 

@@ -1,4 +1,10 @@
 op {
   graph_op_name: "Erf"
-  visibility: HIDDEN
+  endpoint {
+    name: "math.erf"
+  }
+  endpoint {
+    name: "erf"
+    deprecation_version: 2
+  }
 }

@@ -27,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/python/lib/core/ndarray_tensor.h"
 
+#include "tensorflow/core/framework/types.h"
+
 #include "structmember.h"  // NOLINT // For PyMemberDef
 
 // forward declare
@@ -135,6 +137,40 @@ PyObject* PyIntFromDataType(TF_DataType l) {
 }  // namespace
 
 namespace tensorflow {
+// This function checks whether the desired type is "compatible" with the
+// inferred type. At a high level, compatibility means that all integral types
+// are compatible with each other, and all floating types are compatible with
+// each other.
+//
+// Type compatibility doesn't consider overflows (i.e. int64 is *always*
+// compatible with int32). This is intended to match graph behavior.
+bool IsCompatible(int desired_dtype, TF_DataType returned_dtype) {
+  tensorflow::DataType desired =
+      static_cast<tensorflow::DataType>(desired_dtype);
+  tensorflow::DataType returned =
+      static_cast<tensorflow::DataType>(returned_dtype);
+
+  if (desired == returned) return true;
+
+  if (tensorflow::DataTypeIsInteger(desired) &&
+      tensorflow::DataTypeIsInteger(returned)) {
+    return true;
+  } else if (tensorflow::DataTypeIsFloating(desired) &&
+             (tensorflow::DataTypeIsFloating(returned) ||
+              tensorflow::DataTypeIsInteger(returned))) {
+    return true;
+  } else if (tensorflow::DataTypeIsComplex(desired) &&
+             (tensorflow::DataTypeIsComplex(returned) ||
+              tensorflow::DataTypeIsInteger(returned) ||
+              tensorflow::DataTypeIsFloating(returned))) {
+    return true;
+  } else if (tensorflow::DataTypeIsQuantized(desired) &&
+             tensorflow::DataTypeIsInteger(returned)) {
+    return true;
+  }
+  return false;
+}
+
 // Casts data referred to by `handle` from type `src_type_enum` to type
 // `dst_type_enum`.
 TFE_TensorHandle* EagerCast(TFE_Context* ctx, TFE_TensorHandle* handle,
@@ -183,6 +219,14 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
                           .c_str());
       return nullptr;
     }
+  }
+  tensorflow::Safe_PyObjectPtr value_decrefer;
+  if (PyArray_IsScalar(value, Generic)) {
+    // Convert numpy scalars to numpy arrays.
+    value = PyArray_FromScalar(value, nullptr);
+    // The returned value needs to be DECREF'd, but the original value was
+    // created in python code, and doesn't need to be DECREF'd.
+    value_decrefer.reset(value);
   }
   if (PyArray_Check(value)) {
     int desired_np_dtype = -1;
@@ -376,20 +420,40 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
   if (handle == nullptr) return -1;
   TF_DataType handle_dtype = TFE_TensorHandleDataType(handle.get());
   if (desired_dtype >= 0 && desired_dtype != handle_dtype) {
-    handle = tensorflow::make_safe(tensorflow::EagerCast(
-        GetContext(context), handle.get(), handle_dtype,
-        static_cast<TF_DataType>(desired_dtype), self->status));
-    if (TF_GetCode(self->status) != TF_OK) {
-      PyErr_SetString(PyExc_TypeError,
-                      tensorflow::strings::StrCat(
-                          "Error while casting from DataType ", handle_dtype,
-                          " to ", desired_dtype, ". ", TF_Message(self->status))
-                          .c_str());
-      // Cleanup self->status before returning.
-      TF_SetStatus(self->status, TF_OK, "");
+    // Check type compatibility.
+    if (tensorflow::IsCompatible(desired_dtype, handle_dtype)) {
+      handle = tensorflow::make_safe(tensorflow::EagerCast(
+          GetContext(context), handle.get(), handle_dtype,
+          static_cast<TF_DataType>(desired_dtype), self->status));
+      if (TF_GetCode(self->status) != TF_OK) {
+        PyErr_SetString(
+            PyExc_TypeError,
+            tensorflow::strings::StrCat(
+                "Error while casting from DataType ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(handle_dtype)),
+                " to ",
+                tensorflow::DataTypeString(
+                    static_cast<tensorflow::DataType>(desired_dtype)),
+                ". ", TF_Message(self->status))
+                .c_str());
+        // Cleanup self->status before returning.
+        TF_SetStatus(self->status, TF_OK, "");
+        return -1;
+      }
+      handle_dtype = TFE_TensorHandleDataType(handle.get());
+    } else {
+      tensorflow::Safe_PyObjectPtr value_str(PyObject_Str(value));
+      PyErr_SetString(
+          PyExc_TypeError,
+          tensorflow::strings::StrCat(
+              "Cannot convert provided value to EagerTensor. Provided value: ",
+              TFE_GetPythonString(value_str.get()), " Requested dtype: ",
+              tensorflow::DataTypeString(
+                  static_cast<tensorflow::DataType>(desired_dtype)))
+              .c_str());
       return -1;
     }
-    handle_dtype = TFE_TensorHandleDataType(handle.get());
   }
 
   // Almost all TensorFlow kernels for GPU devices keep int32 tensors in host
@@ -437,9 +501,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
 void EagerTensor_dealloc(EagerTensor* self) {
   // Clear weak references to self.
   // Needs to happen before any actual destruction.
-  if (self->weakreflist != nullptr) {
-    PyObject_ClearWeakRefs((PyObject*)self);
-  }
+  PyObject_ClearWeakRefs((PyObject*)self);
 
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);
@@ -616,11 +678,29 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
 #endif
 }
 
+// Getter `backing_device`.
+static PyObject* EagerTensor_backing_device(EagerTensor* self) {
+  const char* device =
+      TFE_TensorHandleBackingDeviceName(self->handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
+#if PY_MAJOR_VERSION >= 3
+  return PyUnicode_FromString(device);
+#else
+  return PyBytes_FromString(device);
+#endif
+}
+
 static PyGetSetDef EagerTensor_getseters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("_id"), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
      const_cast<char*>("device"), nullptr},
+    {const_cast<char*>("backing_device"), (getter)EagerTensor_backing_device,
+     nullptr, const_cast<char*>("backing_device"), nullptr},
     {const_cast<char*>("_handle_data"), (getter)EagerTensor_tensor_handle,
      (setter)EagerTensor_settensor_handle, const_cast<char*>("_tensor_handle"),
      nullptr},

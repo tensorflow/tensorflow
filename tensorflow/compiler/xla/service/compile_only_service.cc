@@ -20,7 +20,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_cat.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
@@ -86,15 +86,15 @@ CompileOnlyService::CompileAheadOfTime(
           Executable::DumpToDirectory(per_host_path, filename, hlo_snapshot));
     }
 
-    const auto& program_shape = instance.computation.host_program_shape();
     ExecutionOptions execution_options;
     *execution_options.mutable_debug_options() = debug_options;
     *execution_options.mutable_shape_with_output_layout() =
-        *instance.result_layout;
+        instance.result_layout->ToProto();
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModuleConfig> module_config,
-        CreateModuleConfig(program_shape, instance.argument_layouts,
-                           &execution_options));
+        CreateModuleConfig(
+            ProgramShape(instance.computation.host_program_shape()),
+            instance.argument_layouts, &execution_options));
 
     TF_ASSIGN_OR_RETURN(
         std::unique_ptr<HloModule> hlo_module,

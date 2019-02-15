@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/cc/ops/standard_ops.h"
+#include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/clusters/single_machine.h"
@@ -80,8 +81,13 @@ class LayoutOptimizerTest : public GrapplerTest {
     Output filter =
         ops::Const(s->WithOpName("Filter"), Input::Initializer(filter_data));
 
+    ops::Conv2D::Attrs attrs;
+    if (padding == "EXPLICIT") {
+      attrs = attrs.ExplicitPaddings({0, 0, 1, 2, 3, 4, 0, 0});
+    }
+
     Output conv = ops::Conv2D(s->WithOpName("Conv2D").WithDevice(device), input,
-                              filter, {1, stride, stride, 1}, padding);
+                              filter, {1, stride, stride, 1}, padding, attrs);
     return conv;
   }
 
@@ -100,6 +106,28 @@ class LayoutOptimizerTest : public GrapplerTest {
     int input_depth = 3;
     int filter_count = 2;
     int stride = 1;
+    int dilation = dilated ? 2 : 1;
+    int64 padding_top = 1;
+    int64 padding_bottom = 2;
+    int64 padding_left = 3;
+    int64 padding_right = 4;
+    int64 output_height;
+    int64 output_width;
+    Padding padding_enum;
+    if (padding == "SAME") {
+      padding_enum = SAME;
+    } else if (padding == "VALID") {
+      padding_enum = VALID;
+    } else {
+      CHECK_EQ(padding, "EXPLICIT");
+      padding_enum = EXPLICIT;
+    }
+    TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+        input_height, filter_size, dilation, stride, padding_enum,
+        &output_height, &padding_top, &padding_bottom));
+    TF_CHECK_OK(GetWindowedOutputSizeVerboseV2(
+        input_width, filter_size, dilation, stride, padding_enum, &output_width,
+        &padding_left, &padding_right));
     TensorShape input_sizes_shape({4});
     Tensor input_data(DT_INT32, input_sizes_shape);
     test::FillValues<int>(&input_data,
@@ -112,8 +140,6 @@ class LayoutOptimizerTest : public GrapplerTest {
     Output filter =
         ops::Variable(s->WithOpName("Filter"), filter_shape, DT_FLOAT);
 
-    int output_height = input_height;
-    int output_width = input_width;
     TensorShape output_shape(
         {batch_size, output_height, output_width, filter_count});
     Tensor output_data(DT_FLOAT, output_shape);
@@ -124,10 +150,21 @@ class LayoutOptimizerTest : public GrapplerTest {
     Output conv_backprop_input;
     Output input_sizes_i =
         ops::Identity(s->WithOpName("InputSizesIdentity"), input_sizes);
-    ops::Conv2DBackpropInput::Attrs attrs;
-    if (dilated) {
-      attrs = attrs.Dilations({1, 2, 2, 1});
+    std::vector<int> dilations{1, dilation, dilation, 1};
+    std::vector<int> explicit_paddings;
+    if (padding == "EXPLICIT") {
+      explicit_paddings = {0,
+                           0,
+                           static_cast<int>(padding_top),
+                           static_cast<int>(padding_bottom),
+                           static_cast<int>(padding_left),
+                           static_cast<int>(padding_right),
+                           0,
+                           0};
     }
+    auto attrs =
+        ops::Conv2DBackpropInput::Attrs().Dilations(dilations).ExplicitPaddings(
+            explicit_paddings);
     if (const_input_size) {
       conv_backprop_input = ops::Conv2DBackpropInput(
           s->WithOpName("Conv2DBackpropInput"), input_sizes, filter, output,
@@ -186,7 +223,7 @@ class LayoutOptimizerTest : public GrapplerTest {
 
 TEST_F(LayoutOptimizerTest, Conv2DBackpropInput) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
-  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "SAME");
+  auto conv = SimpleConv2DBackpropInput(&s, 7, 2, "EXPLICIT");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));
@@ -296,6 +333,19 @@ TEST_F(LayoutOptimizerTest, EqualSizeWithSamePadding) {
 TEST_F(LayoutOptimizerTest, NotEqualSizeWithValidPadding) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto conv = SimpleConv2D(&s, 4, 2, "VALID");
+  Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  LayoutOptimizer optimizer;
+  GraphDef output;
+  Status status = optimizer.Optimize(virtual_cluster_.get(), item, &output);
+  NodeMap node_map(&output);
+  EXPECT_TRUE(node_map.GetNode("Conv2D-0-TransposeNHWCToNCHW-LayoutOptimizer"));
+}
+
+TEST_F(LayoutOptimizerTest, ExplicitPadding) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto conv = SimpleConv2D(&s, 4, 2, "EXPLICIT");
   Output fetch = ops::Identity(s.WithOpName("Fetch"), {conv});
   GrapplerItem item;
   TF_CHECK_OK(s.ToGraphDef(&item.graph));

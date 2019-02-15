@@ -33,8 +33,11 @@ from tensorflow.python.platform import test
 class StatelessRandomOpsTest(xla_test.XLATestCase):
   """Test cases for stateless random-number generator operators."""
 
-  def _random_types(self):
-    return self.float_types & {dtypes.float32, dtypes.float64}
+  def _random_types(self, include_int=False):
+    allowed_types = {dtypes.float32, dtypes.float64, dtypes.bfloat16}
+    if include_int:
+      allowed_types.update({dtypes.int32, dtypes.int64})
+    return self.all_tf_types & allowed_types
 
   def testDeterminism(self):
     # Stateless values should be equal iff the seeds are equal (roughly)
@@ -46,6 +49,11 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
       ]:
         for shape in (), (3,), (2, 5):
           for dtype in self._random_types():
+            # Skip bfloat16. The result of bfloat16 is truncated from 32-bit
+            # result. With different seeds, the 32-bit results are different,
+            # but the truncated 16-bit results might be the same.
+            if dtype == dtypes.bfloat16:
+              continue
             pure = stateless_op(shape, seed=seed_t, dtype=dtype)
             values = [(seed, pure.eval(feed_dict={
                 seed_t: seed
@@ -56,13 +64,16 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
 
   def testRandomUniformIsInRange(self):
     with self.cached_session() as sess, self.test_scope():
-      for dtype in self._random_types():
+      for dtype in self._random_types(include_int=True):
+        maxval = 1
+        if dtype.is_integer:
+          maxval = 100
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         x = stateless.stateless_random_uniform(
-            shape=[1000], seed=seed_t, dtype=dtype)
+            shape=[1000], seed=seed_t, maxval=maxval, dtype=dtype)
         y = sess.run(x, {seed_t: [0x12345678, 0xabcdef12]})
         self.assertTrue(np.all(y >= 0))
-        self.assertTrue(np.all(y < 1))
+        self.assertTrue(np.all(y < maxval))
 
   def _chi_squared(self, x, bins):
     """Pearson's Chi-squared test."""
@@ -75,12 +86,18 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
   def testDistributionOfStatelessRandomUniform(self):
     """Use Pearson's Chi-squared test to test for uniformity."""
     with self.cached_session() as sess, self.test_scope():
-      for dtype in self._random_types():
+      for dtype in self._random_types(include_int=True):
         seed_t = array_ops.placeholder(dtypes.int32, shape=[2])
         n = 1000
+        maxval = 1
+        if dtype.is_integer:
+          maxval = 100
         x = stateless.stateless_random_uniform(
-            shape=[n], seed=seed_t, dtype=dtype)
+            shape=[n], seed=seed_t, maxval=maxval, dtype=dtype)
         y = sess.run(x, {seed_t: [565656, 121212]})
+        if maxval > 1:
+          # Normalize y to range [0, 1).
+          y = y.astype(float) / maxval
         # Tests that the values are distributed amongst 10 bins with equal
         # probability. 16.92 is the Chi^2 value for 9 degrees of freedom with
         # p=0.05. This test is probabilistic and would be flaky if the random
@@ -121,7 +138,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         # The constant 2.492 is the 5% critical value for the Anderson-Darling
         # test where the mean and variance are known. This test is probabilistic
         # so to avoid flakiness the seed is fixed.
-        self.assertTrue(self._anderson_darling(y) < 2.492)
+        self.assertTrue(self._anderson_darling(y.astype(float)) < 2.492)
 
   def testTruncatedNormalIsInRange(self):
     for dtype in self._random_types():
@@ -139,7 +156,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
           return math.exp(-(x**2) / 2.) / math.sqrt(2 * math.pi)
 
         def probit(x, sess=sess):
-          return sess.run(special_math.ndtri(x))
+          return self.evaluate(special_math.ndtri(x))
 
         a = -2.
         b = 2.
@@ -157,6 +174,7 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         # Burkardt, John. "The Truncated Normal Distribution".
         # Department of Scientific Computing website. Florida State University.
         expected_mean = mu + (normal_pdf(alpha) - normal_pdf(beta)) / z * sigma
+        y = y.astype(float)
         actual_mean = np.mean(y)
         self.assertAllClose(actual_mean, expected_mean, atol=5e-4)
 
@@ -169,8 +187,8 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
             (alpha * normal_pdf(alpha) - beta * normal_pdf(beta)) / z) - (
                 (normal_pdf(alpha) - normal_pdf(beta)) / z)**2)
         actual_variance = np.var(y)
-        self.assertAllClose(actual_variance, expected_variance, rtol=1e-3)
-
+        self.assertAllClose(actual_variance, expected_variance,
+                            rtol=5e-3 if dtype == dtypes.bfloat16 else 1e-3)
 
 
 if __name__ == '__main__':

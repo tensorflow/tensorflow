@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ExperimentalIdentityIndexedDataset"
+  endpoint {
+    name: "data.ExperimentalIdentityIndexedDataset"
+  }
+}

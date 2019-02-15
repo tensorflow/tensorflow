@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables
@@ -36,8 +37,8 @@ class AssignOpTest(test.TestCase):
       p = variables.Variable(x)
       assign = state_ops.assign(p, y)
       p.initializer.run()
-      new_value = assign.eval()
-      return p.eval(), new_value
+      new_value = self.evaluate(assign)
+      return self.evaluate(p), new_value
 
   def _initAssignAddFetch(self, x, y, use_gpu=False):
     """Initialize a param to init, and compute param += y."""
@@ -45,8 +46,8 @@ class AssignOpTest(test.TestCase):
       p = variables.Variable(x)
       add = state_ops.assign_add(p, y)
       p.initializer.run()
-      new_value = add.eval()
-      return p.eval(), new_value
+      new_value = self.evaluate(add)
+      return self.evaluate(p), new_value
 
   def _initAssignSubFetch(self, x, y, use_gpu=False):
     """Initialize a param to init, and compute param -= y."""
@@ -54,8 +55,8 @@ class AssignOpTest(test.TestCase):
       p = variables.Variable(x)
       sub = state_ops.assign_sub(p, y)
       p.initializer.run()
-      new_value = sub.eval()
-      return p.eval(), new_value
+      new_value = self.evaluate(sub)
+      return self.evaluate(p), new_value
 
   def _testTypes(self, vals):
     for dtype in [np.float32, np.float64, np.int32, np.int64]:
@@ -81,23 +82,26 @@ class AssignOpTest(test.TestCase):
         self.assertAllEqual(x - y, var_value)
         self.assertAllEqual(x - y, op_value)
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
+  @test_util.run_v1_only("b/120545219")
   def testAssignNonStrictShapeChecking(self):
     with self.cached_session():
       data = array_ops.fill([1024, 1024], 0)
       p = variables.VariableV1([1])
       a = state_ops.assign(p, data, validate_shape=False)
       a.op.run()
-      self.assertAllEqual(p.eval(), data.eval())
+      self.assertAllEqual(p.eval(), self.evaluate(data))
 
       # Assign to yet another shape
       data2 = array_ops.fill([10, 10], 1)
       a2 = state_ops.assign(p, data2, validate_shape=False)
       a2.op.run()
-      self.assertAllEqual(p.eval(), data2.eval())
+      self.assertAllEqual(p.eval(), self.evaluate(data2))
 
+  @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignAdd(self):
     with self.cached_session():
       p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)
@@ -105,6 +109,7 @@ class AssignOpTest(test.TestCase):
       with self.assertRaisesOpError("use uninitialized"):
         a.op.run()
 
+  @test_util.run_v1_only("b/120545219")
   def testInitRequiredAssignSub(self):
     with self.cached_session():
       p = variables.VariableV1(array_ops.fill([1024, 1024], 1), dtypes.int32)

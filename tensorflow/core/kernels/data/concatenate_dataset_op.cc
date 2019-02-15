@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {
@@ -63,8 +63,8 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::Concatenate")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Concatenate")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -77,6 +77,18 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
 
     string DebugString() const override {
       return "ConcatenateDatasetOp::Dataset";
+    }
+
+    int64 Cardinality() const override {
+      int64 n1 = input_->Cardinality();
+      int64 n2 = to_concatenate_->Cardinality();
+      if (n1 == kInfiniteCardinality || n2 == kInfiniteCardinality) {
+        return kInfiniteCardinality;
+      }
+      if (n1 == kUnknownCardinality || n2 == kUnknownCardinality) {
+        return kUnknownCardinality;
+      }
+      return n1 + n2;
     }
 
    protected:
@@ -129,6 +141,12 @@ class ConcatenateDatasetOp : public BinaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeKnownRatioNode(std::move(args),
+                                         /*ratio=*/1);
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("i"), i_));

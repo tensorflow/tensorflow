@@ -25,7 +25,7 @@ from tensorflow.python.summary.writer.writer import FileWriter
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('summary.FileWriterCache')
+@tf_export(v1=['summary.FileWriterCache'])
 class FileWriterCache(object):
   """Cache for file writers.
 

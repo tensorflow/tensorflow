@@ -24,7 +24,7 @@ from tensorflow.contrib.image.python.ops import dense_image_warp
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
@@ -259,7 +259,7 @@ class DenseImageWarpTest(test_util.TensorFlowTestCase):
 
     shape = [1, 2, 1, 1]
     msg = 'Should have raised an exception for invalid image size'
-    with self.assertRaises(ValueError, msg=msg):
+    with self.assertRaises(errors.InvalidArgumentError, msg=msg):
       self.check_interpolation_correctness(shape, 'float32', 'float32')
 
 

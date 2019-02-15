@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/eager/eager_service_impl.h"
 
+#include "absl/memory/memory.h"
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/c/tf_status_helper.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -36,6 +37,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/env.h"
+#include "tensorflow/core/platform/host_info.h"
 
 namespace tensorflow {
 namespace eager {
@@ -86,7 +88,7 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
     return tensorflow::errors::Internal(
         "invalid eager env_ or env_->rendezvous_mgr.");
   }
-  std::vector<tensorflow::Device*> devices;
+  std::vector<std::unique_ptr<tensorflow::Device>> devices;
 
   TF_RETURN_IF_ERROR(tensorflow::DeviceFactory::AddDevices(
       // TODO(nareshmodi): Correctly set the SessionOptions.
@@ -96,12 +98,12 @@ Status EagerServiceImpl::CreateContext(const CreateContextRequest* request,
                       request->server_def().task_index()),
       &devices));
   response->mutable_device_attributes()->Reserve(devices.size());
-  for (auto& d : devices) {
+  for (const auto& d : devices) {
     *response->add_device_attributes() = d->attributes();
   }
 
-  std::unique_ptr<tensorflow::DeviceMgr> device_mgr(
-      new tensorflow::DeviceMgr(devices));
+  std::unique_ptr<tensorflow::DeviceMgr> device_mgr =
+      absl::make_unique<DeviceMgr>(std::move(devices));
 
   auto* r = env_->rendezvous_mgr->Find(request->rendezvous_id());
   auto session_name = strings::StrCat("eager_", request->rendezvous_id());
@@ -152,20 +154,19 @@ Status EagerServiceImpl::ExecuteOp(const Operation& operation,
   std::unique_ptr<tensorflow::EagerOperation> op;
   const char* name = operation.name().c_str();  // Shorthand
   const tensorflow::AttrTypeMap* types;
-  auto status = tensorflow::AttrTypeMapForOp(name, &types);
-  if (status.ok()) {
-    op.reset(
-        new tensorflow::EagerOperation(server_context->Context(), name, types));
-  } else if (errors::IsNotFound(status)) {
-    if (server_context->Context()->FindFunctionByName(name)) {
-      op.reset(new tensorflow::EagerOperation(server_context->Context(), name,
-                                              nullptr));
-    } else {
-      return status;
-    }
-  } else {
-    return status;
+  bool is_function = false;
+  TF_RETURN_IF_ERROR(tensorflow::AttrTypeMapForOp(name, &types, &is_function));
+  if (is_function && !server_context->Context()->FindFunctionByName(name)) {
+    return errors::NotFound(
+        "'", name,
+        "' is neither a type of a primitive operation nor a name "
+        "of a function registered in binary running on ",
+        port::Hostname(),
+        ". Make sure the operation or function is "
+        "registered in the binary running in this process.");
   }
+  op.reset(new tensorflow::EagerOperation(server_context->Context(), name,
+                                          is_function, types));
 
   TF_RETURN_IF_ERROR(op->SetDevice(operation.device().c_str()));
 

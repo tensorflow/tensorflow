@@ -25,7 +25,10 @@ from __future__ import print_function
 
 import abc
 
+import six
 
+
+@six.add_metaclass(abc.ABCMeta)
 class Evaluable(object):
   """Interface for objects that are evaluatable by, e.g., `Experiment`.
 
@@ -33,7 +36,6 @@ class Evaluable(object):
   [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
   for general migration instructions.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractproperty
   def model_dir(self):

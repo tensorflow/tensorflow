@@ -1,6 +1,7 @@
 # Where component owners are known, add them here.
 
 /tenosrflow/core/debug @caisq
+/tensorflow/core/nccl/ @azaks2 @chsigg
 /tensorflow/core/platform/windows/ @mrry
 /tensorflow/core/platform/s3 @yongtang
 /tensorflow/go @asimshankar
@@ -46,18 +47,17 @@
 /tensorflow/contrib/losses/ @alextp @ispirmustafa
 /tensorflow/contrib/makefile/ @petewarden @satok16 @wolffg
 /tensorflow/contrib/metrics/ @alextp @honkentuber @ispirmustafa
-/tensorflow/contrib/nccl/ @cwhipkey @zheng-xq
 /tensorflow/contrib/opt/ @strategist333 @alextp
 /tensorflow/contrib/pi_examples/ @maciekcc
 /tensorflow/contrib/quantization/ @petewarden
 /tensorflow/contrib/rnn/ @ebrevdo @scottzhu
-/tensorflow/contrib/saved_model/ @nfiedel @sukritiramesh @allenl
+/tensorflow/contrib/saved_model/ @nfiedel @sukritiramesh @allenlavoie
 /tensorflow/contrib/seq2seq/ @ebrevdo @lmthang
 /tensorflow/contrib/session_bundle/ @nfiedel @sukritiramesh
 /tensorflow/contrib/slim/ @sguada @thenbasilmanran
 /tensorflow/contrib/stateless/ @girving @alextp
 /tensorflow/contrib/tensor_forest/ @gilberthendry @thomascolthurst @yupbank
-/tensorflow/contrib/tensorrt/ @aaroey
+/tensorflow/contrib/tensorrt/ @aaroey @smit-hinsu @azaks2
 # NEED OWNER: /tensorflow/contrib/testing/
 /tensorflow/contrib/timeseries/ @allenlavoie
 /tensorflow/contrib/tpu/ @frankchn @saeta @jhseu @sourabhbajaj

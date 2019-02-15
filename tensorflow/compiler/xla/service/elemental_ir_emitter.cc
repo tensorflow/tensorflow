@@ -22,6 +22,7 @@ limitations under the License.
 
 // IWYU pragma: no_include "llvm/IR/Intrinsics.gen.inc"
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_cat.h"
 #include "llvm/IR/BasicBlock.h"
 #include "llvm/IR/Instructions.h"
@@ -439,14 +440,16 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
                                           {operand_value},
                                           {operand_value->getType()}, b_);
     case HloOpcode::kSign: {
-      // TODO(b/32151903): Ensure consistent sign behavior for -0.0.
       auto type = operand_value->getType();
       auto zero = llvm::ConstantFP::get(type, 0.0);
-      auto oeq = FCmpOEQ(operand_value, zero);
-      auto olt = FCmpOLT(operand_value, zero);
-      return Select(oeq, zero,
-                    Select(olt, llvm::ConstantFP::get(type, -1.0),
-                           llvm::ConstantFP::get(type, 1.0)));
+      auto ne0_i1 = FCmpONE(operand_value, zero);
+      auto ne0_float = UIToFP(ne0_i1, type);
+      llvm::Value* result = llvm_ir::EmitCallToIntrinsic(
+          llvm::Intrinsic::copysign, {ne0_float, operand_value},
+          {operand_value->getType()}, b_);
+      auto is_nan = FCmpUNO(operand_value, operand_value);
+      result = Select(is_nan, operand_value, result);
+      return result;
     }
     case HloOpcode::kIsFinite: {
       // abs(x) o!= inf, this works because the comparison returns false if
@@ -811,11 +814,14 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto c = EmitExtractReal(rhs_value);
       auto d = EmitExtractImag(rhs_value);
       auto aa_p_bb = FAdd(FMul(a, a), FMul(b, b));
+      auto zero = llvm::ConstantFP::get(a->getType(), 0);
       auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
+      auto one = llvm::ConstantFP::get(a->getType(), 1);
       auto half_c = FMul(one_half, c);
 
       TF_ASSIGN_OR_RETURN(auto aa_p_bb_to_half_c,
                           EmitPow(component_type, aa_p_bb, half_c));
+
       auto neg_d = FNeg(d);
       TF_ASSIGN_OR_RETURN(auto arg_lhs, EmitAtan2(component_type, b, a));
       auto neg_d_arg_lhs = FMul(neg_d, arg_lhs);
@@ -827,7 +833,13 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
       auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
       TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
       TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
-      return EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q));
+      // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
+      // Branch Cuts for Complex Elementary Functions or Much Ado About
+      // Nothing's Sign Bit, W. Kahan, Section 10.
+      return Select(
+          And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
+          EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
+          EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
     }
     default:
       return Unimplemented("binary complex op '%s'",
@@ -845,6 +857,9 @@ llvm::Value* ElementalIrEmitter::EmitFloatMin(llvm::Value* lhs_value,
   return llvm_ir::EmitFloatMin(lhs_value, rhs_value, b_);
 }
 
+// TODO(b/123355973): We have an implementation of erfinv in math.cc.  We
+// shouldn't have two implementations, especially since this one isn't testable
+// (it's only observable via a normally-distributed RNG).
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitErfInv(PrimitiveType prim_type,
                                                       llvm::Value* x) {
   if (prim_type != F16 && prim_type != F32 && prim_type != F64) {
@@ -1326,9 +1341,9 @@ llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
 
   // If implicit broadcast is needed, the source dimensions that are broadcast
   // have index 0.
-  CHECK_EQ(ShapeUtil::Rank(operand_shape), ShapeUtil::Rank(hlo.shape()));
+  CHECK_EQ(operand_shape.rank(), hlo.shape().rank());
   llvm_ir::IrArray::Index source_index(target_index.GetType());
-  for (int64 i = 0; i < ShapeUtil::Rank(hlo.shape()); ++i) {
+  for (int64 i = 0; i < hlo.shape().rank(); ++i) {
     if (hlo.shape().dimensions(i) == operand_shape.dimensions(i)) {
       source_index.push_back(target_index[i]);
     } else {
@@ -1352,26 +1367,69 @@ StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
       llvm_ir::PrimitiveTypeToIrType(elem_prim_ty, module_);
   llvm::Type* raw_value_ty = raw_value->getType();
 
-  // Convert raw integer to float in range [0, 1) if the element is a float.
+  // If we're generating a floating-point value, convert the raw integer R (i.e.
+  // `raw_value`) to a float in the range [0, 1).
+  //
+  // The basic approach is to choose a significand and exponent such that the
+  // significand is uniformly distributed and the exponent is distributed, well,
+  // exponentially (it's more likely to be close to 0 than far from 0).
+  //
+  // An easy way to do this is to say that the significand is the first S bits
+  // of R, and the exponent is determined by the number of trailing zeroes in R,
+  // exp = 2^-(cttz(R) + 1).  (+1 because the largest exponent should be -1;
+  // this way the largest value we can return is 1.999... * 2^-1 = 1-ε.)
+  //
+  // This results in a small bias.  Namely, if R has enough trailing zeroes, the
+  // significand and exponent will "overlap".  As a concrete example, consider
+  //
+  //         20 X's                 12 zeroes
+  //   R = 0bXXXXXXXXXXXXXXXXXXXX000000000000
+  //
+  // Here the exponent is 2^-13 because R has 12 trailing zeroes.  The
+  // significand is made up of the first 23 most-significant bits of R, which we
+  // observe contain 3 zeroes.  This is biased because any random value with
+  // exponent 2^-12 will have a significand which ends in `000`.
+  //
+  // For f32s, this problem occurs only when there are more than 32-23 = 9
+  // trailing zeros, which happens with probability 0.5^10 = ~0.1%. Moreover the
+  // probability of a large bias (i.e. many trailing 0s in the significand) is
+  // exponentially low.  So we deem this acceptable.
   llvm::Value* elem_value = raw_value;
   if (elem_ir_ty->isFloatingPointTy()) {
-    unsigned raw_value_size_in_bits = raw_value_ty->getPrimitiveSizeInBits();
-    CHECK(raw_value_size_in_bits == 32 || raw_value_size_in_bits == 64);
-    // Perform the division using the float type with the same number of bits
-    // as the raw value to avoid overflow.
-    if (raw_value_size_in_bits == 32) {
-      elem_value = UIToFP(elem_value, b_->getFloatTy());
-      elem_value = FDiv(elem_value,
-                        llvm::ConstantFP::get(b_->getFloatTy(), std::exp2(32)));
-    } else {
-      elem_value = UIToFP(elem_value, b_->getDoubleTy());
-      elem_value = FDiv(
-          elem_value, llvm::ConstantFP::get(b_->getDoubleTy(), std::exp2(64)));
-    }
+    const auto& dest_flt_semantics = elem_ir_ty->getFltSemantics();
+    const int bits = raw_value_ty->getPrimitiveSizeInBits();
+    CHECK_GE(bits, llvm::APFloat::semanticsSizeInBits(dest_flt_semantics));
 
-    if (elem_ir_ty != elem_value->getType()) {
-      elem_value = FPTrunc(elem_value, elem_ir_ty);
-    }
+    // Subtract 1 because semanticsPrecision includes the "hidden bit", i.e. the
+    // implicit "1." at the beginning of the significand.
+    const int significand_bits =
+        llvm::APFloat::semanticsPrecision(dest_flt_semantics) - 1;
+
+    llvm::Value* cttz = llvm_ir::EmitCallToIntrinsic(
+        llvm::Intrinsic::cttz, {raw_value, /*is_zero_undef=*/b_->getFalse()},
+        {raw_value->getType()}, b_);
+    llvm::Value* significand = LShr(raw_value, bits - significand_bits);
+
+    // Exponent bias is -127 for f32, meaning that if the exponent is E and the
+    // significand is S, then the value of the number is 2^(E - 127) * (1.S).
+    //
+    // We want cttz == 0 to correspond to 2^-1, so our exponent is computed as
+    // E = 126 - cttz.
+    //
+    // For f64, this is all the same, except the bias is -1023.
+    //
+    // In IEEE floating point, the absolute value of the exponent bias equals
+    // the value of the largest possible exponent.
+    const int bias = -llvm::APFloat::semanticsMaxExponent(dest_flt_semantics);
+    llvm::Value* exponent =
+        Sub(llvm::ConstantInt::get(cttz->getType(), -bias - 1), cttz);
+
+    // Now just slot everything into place!  The `Trunc` is here because
+    // raw_value may be larger than our float destination.
+    elem_value =
+        BitCast(Trunc(Or(Shl(exponent, significand_bits), significand),
+                      b_->getIntNTy(elem_ir_ty->getPrimitiveSizeInBits())),
+                elem_ir_ty);
   }
 
   // Convert the value for the requested distribution.
@@ -1671,26 +1729,66 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalConcatenate(
 
   b_->SetInsertPoint(init_block);
 
+  // Assign a unique id for each *different* operand, and count how often each
+  // operand is used. If all operands are different, the usage count will be 1
+  // for each operand.
+  absl::flat_hash_map<const HloInstruction*, int64> to_unique_operand_id;
+  std::vector<int64> operand_usage_count;
+  for (const auto* operand : hlo->operands()) {
+    if (to_unique_operand_id.contains(operand)) {
+      ++operand_usage_count[to_unique_operand_id[operand]];
+    } else {
+      int64 unique_operand_id = to_unique_operand_id.size();
+      to_unique_operand_id[operand] = unique_operand_id;
+      operand_usage_count.push_back(1);
+    }
+  }
+
+  // To avoid that we emit the same operand more than once, we create one basic
+  // block for each *different* operand with a PHI node for the different source
+  // index inputs.
+  std::vector<llvm::BasicBlock*> emit_operand_blocks(
+      to_unique_operand_id.size(), nullptr);
+  std::vector<llvm::PHINode*> source_index_phis(to_unique_operand_id.size(),
+                                                nullptr);
+  for (const auto* operand : hlo->operands()) {
+    int64 operand_id = to_unique_operand_id[operand];
+    if (emit_operand_blocks[operand_id] != nullptr) {
+      continue;
+    }
+
+    emit_operand_blocks[operand_id] = llvm_ir::CreateBasicBlock(
+        exit_block, StrCat("concat_index_from_operand_id", operand_id), b_);
+    auto saved_insert_point = b_->GetInsertPoint();
+    llvm_ir::SetToFirstInsertPoint(emit_operand_blocks[operand_id], b_);
+    source_index_phis[operand_id] =
+        PHI(source_index.GetType(), operand_usage_count[operand_id]);
+    auto operand_index = source_index;
+    operand_index[concat_dim] = source_index_phis[operand_id];
+
+    // Create the terminator of the block before calling operand generators,
+    // because they require non-degenerate basic blocks.
+    b_->SetInsertPoint(llvm::BranchInst::Create(
+        exit_block, /*InsertAtEnd=*/emit_operand_blocks[operand_id]));
+    TF_ASSIGN_OR_RETURN(llvm::Value * value,
+                        operand_to_generator.at(operand)(operand_index));
+    output->addIncoming(value, b_->GetInsertBlock());
+    b_->SetInsertPoint(init_block, saved_insert_point);
+  }
+
   for (int64 operand_idx = 0; operand_idx < hlo->operand_count();
        ++operand_idx) {
     const HloInstruction* operand = hlo->operand(operand_idx);
-    auto true_block = llvm_ir::CreateBasicBlock(
-        exit_block, StrCat("concat_index_from_operand", operand_idx), b_);
     auto false_block = llvm_ir::CreateBasicBlock(
         exit_block, StrCat("concat_index_not_from_operand", operand_idx), b_);
     auto concat_dim_size =
         llvm::ConstantInt::get(source_index[concat_dim]->getType(),
                                operand->shape().dimensions(concat_dim));
-    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size), true_block,
-           false_block);
-
-    // Create the terminator of the true block before calling operand
-    // generators, because they require non-degenerate basic blocks.
-    b_->SetInsertPoint(
-        llvm::BranchInst::Create(exit_block, /*InsertAtEnd=*/true_block));
-    TF_ASSIGN_OR_RETURN(llvm::Value * value,
-                        operand_to_generator.at(operand)(source_index));
-    output->addIncoming(value, b_->GetInsertBlock());
+    int64 operand_id = to_unique_operand_id[operand];
+    source_index_phis[operand_id]->addIncoming(source_index[concat_dim],
+                                               b_->GetInsertBlock());
+    CondBr(ICmpULT(source_index[concat_dim], concat_dim_size),
+           emit_operand_blocks[operand_id], false_block);
 
     // Subtract the size of the concat dimension of the current operand
     // from the source index.
@@ -1709,7 +1807,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     const llvm_ir::IrArray::Index& index) {
   // Emit IR to read dynamic start indices from hlo->operand(1).
   const HloInstruction* input_hlo = hlo->operand(0);
-  const int64 rank = ShapeUtil::Rank(input_hlo->shape());
+  const int64 rank = input_hlo->shape().rank();
   // Use the same index type for all tensor accesses in the same kernel.
   llvm::Type* index_type = index.GetType();
   llvm_ir::IrArray::Index slice_start_index(index_type, rank);
@@ -1717,9 +1815,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(hlo->operand(1))(dim_index));
+    llvm_ir::IrArray::Index zero_index(index_type);
+    TF_ASSIGN_OR_RETURN(
+        llvm::Value * start_index_value,
+        operand_to_generator.at(hlo->operand(1 + i))(zero_index));
 
     // Clamp the start index so that the sliced portion fits in the operand:
     // start_index = clamp(start_index, 0, operand_dim_size - output_dim_size)
@@ -1815,8 +1914,6 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalGather(
     // Clamp the gather index so that the gather region fits in the operand.
     // gather_dim_component_extended_inbound =
     //     clamp(gather_dim_component_extended, 0, largest_valid_start_index);
-
-    // TODO(b/111078873): This is implementation defined behavior.
     bool is_signed = ShapeUtil::ElementIsSigned(indices_shape);
     auto gather_dim_component_extended_inbound = EmitIntegralMin(
         index.GetConstantWithIndexType(largest_valid_start_index),
@@ -1854,7 +1951,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
   const HloInstruction* update_hlo = hlo->operand(1);
   const HloInstruction* start_hlo = hlo->operand(2);
   // Calculate slice start/end indices.
-  const int64 rank = ShapeUtil::Rank(input_hlo->shape());
+  const int64 rank = input_hlo->shape().rank();
   llvm_ir::IrArray::Index slice_start_index(index.GetType(), rank);
   llvm_ir::IrArray::Index slice_limit_index(index.GetType(), rank);
   // Slice intersection gathers (ANDs) conditions on all ranks for which
@@ -1866,9 +1963,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDynamicUpdateSlice(
     auto index_typed_const = [&](uint64 c) -> llvm::Constant* {
       return llvm::ConstantInt::get(index_type, c);
     };
-    llvm_ir::IrArray::Index dim_index(1, index_typed_const(i));
-    TF_ASSIGN_OR_RETURN(llvm::Value * start_index_value,
-                        operand_to_generator.at(start_hlo)(dim_index));
+
+    llvm_ir::IrArray::Index zero_index(index_type);
+    TF_ASSIGN_OR_RETURN(
+        llvm::Value * start_index_value,
+        operand_to_generator.at(hlo->operand(2 + i))(zero_index));
 
     // Clamp the start index so that the update region fits in the operand.
     // start_index = clamp(start_index, 0, input_dim_size - update_dim_size)
@@ -2186,7 +2285,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         auto* iota = Cast<HloIotaInstruction>(hlo);
         PrimitiveType element_type = iota->shape().element_type();
         IrArray::Index elem_index =
-            ShapeUtil::Rank(iota->shape()) > 1
+            iota->shape().rank() > 1
                 ? target_index.SourceIndexOfBroadcast(
                       iota->shape(),
                       ShapeUtil::MakeShapeWithDescendingLayout(
@@ -2206,13 +2305,15 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
                 : iota->shape();
         PrimitiveType component_element_type = component_shape.element_type();
         llvm::Value* iota_result;
-        if (ShapeUtil::ElementIsIntegral(component_shape)) {
+        if (primitive_util::IsIntegralType(component_element_type) ||
+            component_element_type == PRED) {
           iota_result = b_->CreateIntCast(
               elem_index_linear,
               llvm_ir::PrimitiveTypeToIrType(component_element_type, module_),
               /*isSigned=*/false);
         } else {
-          TF_RET_CHECK(ShapeUtil::ElementIsFloating(component_shape))
+          TF_RET_CHECK(
+              primitive_util::IsFloatingPointType(component_element_type))
               << component_element_type;
           llvm::Type* float_ir_type;
           if (component_element_type == BF16) {

@@ -115,7 +115,7 @@ class AdjustHsvInYiqOp<CPUDevice> : public AdjustHsvInYiqOpBase {
         *context->device()->tensorflow_cpu_worker_threads();
     Shard(worker_threads.num_threads, worker_threads.workers, channel_count,
           kCostPerChannel,
-          [channel_count, &input_data, &output_data, &tranformation_matrix](
+          [&input_data, &output_data, &tranformation_matrix](
               int64 start_channel, int64 end_channel) {
             // Applying projection matrix to input RGB vectors.
             const float* p = input_data.data() + start_channel * kChannelSize;

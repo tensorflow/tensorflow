@@ -75,6 +75,25 @@ Status FunctionalizeControlFlow(Graph* graph,
   return FunctionalizeControlFlow(/*lookup_library=*/nullptr, graph, library);
 }
 
+Status FunctionalizeControlFlowForGraphDef(GraphDef* graph_def,
+                                           FunctionLibraryDefinition* library) {
+  return FunctionalizeControlFlowForGraphDef(/*lookup_library=*/nullptr,
+                                             graph_def, library);
+}
+
+Status FunctionalizeControlFlowForGraphDef(
+    const FunctionLibraryDefinition* lookup_library, GraphDef* graph_def,
+    FunctionLibraryDefinition* library) {
+  FunctionDefLibrary function_lib = graph_def->library();
+  Graph graph(OpRegistry::Global());
+
+  TF_RETURN_IF_ERROR(ConvertGraphDefToGraph({}, *graph_def, &graph));
+  TF_RETURN_IF_ERROR(FunctionalizeControlFlow(lookup_library, &graph, library));
+  graph.ToGraphDef(graph_def);
+  std::swap(*graph_def->mutable_library(), function_lib);
+  return Status::OK();
+}
+
 Status FunctionalizeControlFlowForFunction(
     const string& func_name, const string& new_func_name,
     const protobuf::Map<string, tensorflow::AttrValue>& attrs,
@@ -242,23 +261,20 @@ Status FunctionalizeControlFlowPass::Run(
       continue;
     }
     const string func_attr = it->second;
-    if (kNodeTypeToFunctionAttrMapping->find(n->type_string()) !=
-        kNodeTypeToFunctionAttrMapping->end()) {
-      NameAttrList func;
-      TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), func_attr, &func));
-      VLOG(2) << "Graph has node " << n->type_string()
-              << ". Corresponding function: " << func.name();
-      string new_func_name = options.flib_def->UniqueFunctionName(
-          absl::StrCat(func.name(), "_f15n_"));
-      bool modified;
-      TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
-          func.name(), new_func_name, func.attr(), options.flib_def, flr,
-          &canonicalized_name_to_new_name, &modified));
-      if (modified) {
-        n->ClearAttr(func_attr);
-        func.set_name(new_func_name);
-        n->AddAttr(func_attr, func);
-      }
+    NameAttrList func;
+    TF_RETURN_IF_ERROR(GetNodeAttr(n->attrs(), func_attr, &func));
+    VLOG(2) << "Graph has node " << n->type_string()
+            << ". Corresponding function: " << func.name();
+    string new_func_name = options.flib_def->UniqueFunctionName(
+        absl::StrCat(func.name(), "_f15n_"));
+    bool modified;
+    TF_RETURN_IF_ERROR(FunctionalizeControlFlowForFunction(
+        func.name(), new_func_name, func.attr(), options.flib_def, flr,
+        &canonicalized_name_to_new_name, &modified));
+    if (modified) {
+      n->ClearAttr(func_attr);
+      func.set_name(new_func_name);
+      n->AddAttr(func_attr, func);
     }
   }
 

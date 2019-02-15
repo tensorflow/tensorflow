@@ -21,7 +21,7 @@ limitations under the License.
 
 #include "absl/strings/ascii.h"
 #include "absl/strings/str_join.h"
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -59,22 +59,20 @@ string CanonicalPlatformName(const string& name) {
 
 /* static */ StatusOr<std::vector<se::Platform*>>
 PlatformUtil::GetSupportedPlatforms() {
-  se::MultiPlatformManager::PlatformMap platform_map;
-  se::port::Status platforms_status = se::MultiPlatformManager::WithPlatforms(
-      [&platform_map](se::MultiPlatformManager::PlatformMap* map) {
-        platform_map = *map;
-        return se::port::Status::OK();
-      });
-  if (platform_map.empty()) {
+  std::vector<se::Platform*> all_platforms =
+      se::MultiPlatformManager::AllPlatforms();
+  if (all_platforms.empty()) {
     LOG(WARNING) << "no executor platforms available: platform map is empty";
   }
 
   // Gather all platforms which have an XLA compiler.
   std::vector<se::Platform*> platforms;
-  for (auto& platform_pair : platform_map) {
-    auto* platform = platform_pair.second;
+  for (se::Platform* platform : all_platforms) {
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
+      if (!platform->Initialized()) {
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
+      }
       platforms.push_back(platform);
     } else {
       LOG(INFO) << "platform " << platform->Name() << " present but no "
@@ -210,7 +208,9 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 }
 
 /* static */ StatusOr<std::vector<se::StreamExecutor*>>
-PlatformUtil::GetStreamExecutors(se::Platform* platform) {
+PlatformUtil::GetStreamExecutors(
+    se::Platform* platform,
+    const absl::optional<std::set<int>>& allowed_devices) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
     return NotFound("no %s devices found", platform->Name());
@@ -222,8 +222,8 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     // fix the number of devices to one.  However we do let the user override
     // this behavior to help run tests on the host that run models in parallel
     // across multiple devices.
-    device_count = legacy_flags::GetDebugOptionsFromFlags()
-                       .xla_force_host_platform_device_count();
+    device_count =
+        GetDebugOptionsFromFlags().xla_force_host_platform_device_count();
   }
   std::vector<se::StreamExecutor*> stream_executors(device_count, nullptr);
   VLOG(1) << "Initializing devices";
@@ -231,6 +231,17 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     tensorflow::thread::ThreadPool thread_pool(
         tensorflow::Env::Default(), "device_initialization", device_count);
     for (int i = 0; i < device_count; ++i) {
+      // Once a stream executor is instantiated it will cause allocations on
+      // the device, for example for GPUs cuda context, cudnn handles etc. will
+      // be constructed. By constructing stream executors only on the
+      // allowed_devices, we don't make any allocations on other devices.
+      // This helps in multi-process executions on the same host like horovod or
+      // shared hosts.
+      if (allowed_devices && allowed_devices->count(i) == 0) {
+        VLOG(1) << "Not initializing StreamExecutor for device " << i
+                << " since it is not in the visible device list";
+        continue;
+      }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
         se::StreamExecutorConfig config;
@@ -252,8 +263,8 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     // Block here in thread_pool destructor until all devices are initialized.
   }
   VLOG(1) << "Device initialization complete";
-  if (std::all_of(stream_executors.begin(), stream_executors.end(),
-                  [](se::StreamExecutor* s) { return s == nullptr; })) {
+  if (absl::c_all_of(stream_executors,
+                     [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",
                          platform->Name());
   }

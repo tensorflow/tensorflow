@@ -61,7 +61,8 @@ void LSTMBlockCellFpropWithEigen(
   // states1 = xh * w + b
   typename TTypes<T>::ConstMatrix const_xh(xh.data(), xh.dimensions());
   TensorBlasGemm<CPUDevice, T, false /* USE_CUBLAS */>::compute(
-      ctx, d, false, false, T(1), const_xh, w, T(0), icfo);
+      ctx, d, false, false, typename gemm_compute_type<T>::type(1.f), const_xh,
+      w, typename gemm_compute_type<T>::type(0.f), icfo);
   Eigen::array<Eigen::DenseIndex, 2> b_shape({1, b.dimensions()[0]});
   Eigen::array<Eigen::DenseIndex, 2> broadcast_shape({cell.batch_size(), 1});
   icfo.device(d) += b.reshape(b_shape).broadcast(broadcast_shape);
@@ -87,11 +88,11 @@ void LSTMBlockCellFpropWithEigen(
   if (use_peephole) {
     auto f_peep = cs_prev * wcf.reshape(p_shape).broadcast(p_broadcast_shape);
     f.device(d) = (icfo.slice(cell.icfo_f_offsets(), cell.cell_extents()) +
-                   f.constant(forget_bias) + f_peep)
+                   f.constant(T(forget_bias)) + f_peep)
                       .sigmoid();
   } else {
     f.device(d) = (icfo.slice(cell.icfo_f_offsets(), cell.cell_extents()) +
-                   f.constant(forget_bias))
+                   f.constant(T(forget_bias)))
                       .sigmoid();
   }
 
@@ -100,7 +101,7 @@ void LSTMBlockCellFpropWithEigen(
 
   if (cell_clip > 0.0f) {
     cs.device(d) =
-        cs.binaryExpr(cs.constant(cell_clip), Eigen::scalar_clip_op<T>());
+        cs.binaryExpr(cs.constant(T(cell_clip)), Eigen::scalar_clip_op<T>());
   }
 
   // co = tanh(cs)
@@ -225,6 +226,7 @@ void LSTMBlockCellBpropWithEigen(
   template struct LSTMBlockCellBprop<CPUDevice, T, false /* USE_CUBLAS */>;
 
 DEFINE_CPU_SPECS(float);
+DEFINE_CPU_SPECS(Eigen::half);
 #undef DEFINE_CPU_SPECS
 
 }  // namespace functor
@@ -373,7 +375,7 @@ class LSTMBlockCellOp : public OpKernel {
       Name("LSTMBlockCell").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       LSTMBlockCellOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
-// REGISTER_KERNEL(double);
+REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -398,7 +400,6 @@ namespace functor {
 
 DECLARE_GPU_SPEC(float);
 DECLARE_GPU_SPEC(Eigen::half);
-// DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 }  // end namespace functor
 
@@ -661,7 +662,7 @@ class LSTMBlockCellGradOp : public OpKernel {
       Name("LSTMBlockCellGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       LSTMBlockCellGradOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
-// REGISTER_KERNEL(double);
+REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -1008,7 +1009,7 @@ class BlockLSTMOp : public OpKernel {
       Name("BlockLSTM").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       BlockLSTMOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
-// REGISTER_KERNEL(double);
+REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA
@@ -1283,7 +1284,7 @@ class BlockLSTMGradOp : public OpKernel {
       Name("BlockLSTMGrad").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       BlockLSTMGradOp<CPUDevice, T, false>);
 REGISTER_KERNEL(float);
-// REGISTER_KERNEL(double);
+REGISTER_KERNEL(Eigen::half);
 #undef REGISTER_KERNEL
 
 #if GOOGLE_CUDA

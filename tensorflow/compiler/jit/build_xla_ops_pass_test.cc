@@ -24,7 +24,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/node_matchers.h"
 #include "tensorflow/core/common_runtime/device_factory.h"
 #include "tensorflow/core/graph/algorithm.h"
-#include "tensorflow/core/grappler/optimizers/data/graph_utils.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/test.h"
@@ -42,14 +41,8 @@ class BuildXlaOpsTest : public ::testing::Test {
               .ok());
   }
 
-  void TearDown() override {
-    for (Device* device : devices_) {
-      delete device;
-    }
-  }
-
  private:
-  std::vector<Device*> devices_;
+  std::vector<std::unique_ptr<Device>> devices_;
 };
 
 using ::tensorflow::testing::FindNodeByName;
@@ -74,6 +67,8 @@ Status BuildXlaOps(const Scope& s, std::unique_ptr<Graph>* result) {
       n->set_assigned_device_name(n->requested_device());
     }
   }
+
+  FixupSourceAndSinkEdges(graph.get());
 
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = &graph;
@@ -229,6 +224,24 @@ TEST_F(BuildXlaOpsTest, OnXlaDevice) {
   Node* write_op_new = FindNodeByName(graph.get(), write_op->name());
   ASSERT_NE(write_op_new, nullptr);
   EXPECT_THAT(write_op_new, assign_var);
+}
+
+TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
+  Scope root = Scope::NewRootScope().ExitOnError();
+
+  FunctionDefLibrary flib_def =
+      CreateFunctionDefLibWithConstFunction("cluster_0");
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
+  Node* call;
+  TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
+
+  std::unique_ptr<Graph> graph;
+  TF_ASSERT_OK(BuildXlaOps(root, &graph));
+
+  Node* sink_node = graph->sink_node();
+  EXPECT_THAT(sink_node, NodeWith(CtrlDeps(NodeWith(Op("_XlaRun")),
+                                           NodeWith(Op("cluster_0")),
+                                           NodeWith(Op("NoOp")))));
 }
 }  // namespace
 }  // namespace tensorflow

@@ -29,6 +29,7 @@ from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops  # pylint: disable=unused-import
 from tensorflow.python.ops import math_ops as math_ops_lib
@@ -102,6 +103,7 @@ class DeviceFunctionsTest(test.TestCase):
     self.assertDeviceEqual(var_5.device, "/device:GPU:0")
     self.assertDeviceEqual(var_6.device, "/device:CPU:0")
 
+  @test_util.run_v1_only("b/120545219")
   def testNestedDeviceFunctions(self):
     with ops.Graph().as_default():
       var_0 = variables.VariableV1(0)
@@ -210,21 +212,23 @@ class DeviceFunctionsTest(test.TestCase):
 
       with session.Session() as sess:
         init = variables.variables_initializer([variable_node])
-        sess.run(init)
-        output = sess.run(output_node)
+        self.evaluate(init)
+        output = self.evaluate(output_node)
         self.assertNear(4.0, output, 0.00001)
         variable_graph_def = sess.graph.as_graph_def()
 
-        # First get the constant_graph_def when variable_names_whitelist is set,
-        # note that if variable_names_whitelist is not set an error will be
-        # thrown because unused_variable_node is not initialized.
+        # Get the constant_graph_def.
         constant_graph_def = graph_util.convert_variables_to_constants(
-            sess,
-            variable_graph_def, ["output_node"],
-            variable_names_whitelist=set(["variable_node"]))
+            sess, variable_graph_def, ["output_node"])
 
+        # Ensure the library is copied and there are no variables after
+        # freezing.
         self.assertEqual(variable_graph_def.library,
                          constant_graph_def.library)
+        for node in constant_graph_def.node:
+          self.assertNotIn(
+              node.op,
+              ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
 
   def testConvertVariablesToConsts(self):
     self._test_variable_to_const_conversion(use_resource=False)
@@ -242,8 +246,8 @@ class DeviceFunctionsTest(test.TestCase):
         output_node = math_ops_lib.multiply(
             variable_node, 2.0, name="output_node")
         with session.Session() as sess:
-          sess.run(variable_node.initializer)
-          output = sess.run(output_node)
+          self.evaluate(variable_node.initializer)
+          output = self.evaluate(output_node)
           self.assertNear(2.0, output, 0.00001)
           variable_graph_def = sess.graph.as_graph_def()
           # First get the constant_graph_def when variable_names_whitelist is
@@ -256,7 +260,7 @@ class DeviceFunctionsTest(test.TestCase):
 
           # Then initialize the unused variable, and get another
           # constant_graph_def when variable_names_whitelist is not set.
-          sess.run(another_variable.initializer)
+          self.evaluate(another_variable.initializer)
           constant_graph_def_without_variable_whitelist = (
               graph_util.convert_variables_to_constants(
                   sess, variable_graph_def, ["output_node"]))
@@ -295,7 +299,7 @@ class DeviceFunctionsTest(test.TestCase):
             ["Variable", "VariableV2", "VarHandleOp", "ReadVariableOp"])
       with session.Session() as sess:
         output_node = sess.graph.get_tensor_by_name("output_node:0")
-        output = sess.run(output_node)
+        output = self.evaluate(output_node)
         self.assertNear(2.0, output, 0.00001)
 
   def create_node_def(self, op, name, inputs):

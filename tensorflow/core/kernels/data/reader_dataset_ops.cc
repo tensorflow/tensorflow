@@ -12,9 +12,9 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/io/buffered_inputstream.h"
 #include "tensorflow/core/lib/io/inputbuffer.h"
 #include "tensorflow/core/lib/io/random_inputstream.h"
@@ -91,8 +91,8 @@ class TextLineDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::TextLine")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::TextLine")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -142,9 +142,9 @@ class TextLineDatasetOp : public DatasetOpKernel {
 
             if (s.ok()) {
               // Produce the line as output.
-              Tensor line_tensor(ctx->allocator({}), DT_STRING, {});
-              line_tensor.scalar<string>()() = line_contents;
-              out_tensors->emplace_back(std::move(line_tensor));
+              out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
+                                        TensorShape({}));
+              out_tensors->back().scalar<string>()() = std::move(line_contents);
               *end_of_sequence = false;
               return Status::OK();
             } else if (!errors::IsOutOfRange(s)) {
@@ -168,6 +168,11 @@ class TextLineDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
@@ -216,20 +221,20 @@ class TextLineDatasetOp : public DatasetOpKernel {
         // Actually move on to next file.
         TF_RETURN_IF_ERROR(env->NewRandomAccessFile(
             dataset()->filenames_[current_file_index_], &file_));
-        input_stream_.reset(
-            new io::RandomAccessInputStream(file_.get(), false));
+        input_stream_ =
+            absl::make_unique<io::RandomAccessInputStream>(file_.get(), false);
 
         if (dataset()->use_compression_) {
-          zlib_input_stream_.reset(new io::ZlibInputStream(
+          zlib_input_stream_ = absl::make_unique<io::ZlibInputStream>(
               input_stream_.get(), dataset()->options_.input_buffer_size,
-              dataset()->options_.input_buffer_size, dataset()->options_));
-          buffered_input_stream_.reset(new io::BufferedInputStream(
+              dataset()->options_.input_buffer_size, dataset()->options_);
+          buffered_input_stream_ = absl::make_unique<io::BufferedInputStream>(
               zlib_input_stream_.get(), dataset()->options_.input_buffer_size,
-              false));
+              false);
         } else {
-          buffered_input_stream_.reset(new io::BufferedInputStream(
+          buffered_input_stream_ = absl::make_unique<io::BufferedInputStream>(
               input_stream_.get(), dataset()->options_.input_buffer_size,
-              false));
+              false);
         }
         return Status::OK();
       }
@@ -266,6 +271,9 @@ REGISTER_KERNEL_BUILDER(Name("TextLineDataset").Device(DEVICE_CPU),
 class FixedLengthRecordDatasetOp : public DatasetOpKernel {
  public:
   using DatasetOpKernel::DatasetOpKernel;
+  explicit FixedLengthRecordDatasetOp(OpKernelConstruction* ctx)
+      : DatasetOpKernel(ctx),
+        op_version_(ctx->def().op() == "FixedLengthRecordDataset" ? 1 : 2) {}
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     const Tensor* filenames_tensor;
@@ -306,9 +314,17 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
     if (buffer_size == 0) {
       buffer_size = 256 << 10;  // 256 kB as default.
     }
-
+    string compression_type;
+    if (op_version_ > 1) {
+      OP_REQUIRES_OK(ctx, ParseScalarArgument<string>(ctx, "compression_type",
+                                                      &compression_type));
+      OP_REQUIRES(ctx,
+                  compression_type.empty() || compression_type == "ZLIB" ||
+                      compression_type == "GZIP",
+                  errors::InvalidArgument("Unsupported compression_type."));
+    }
     *output = new Dataset(ctx, std::move(filenames), header_bytes, record_bytes,
-                          footer_bytes, buffer_size);
+                          footer_bytes, buffer_size, compression_type);
   }
 
  private:
@@ -316,18 +332,25 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
    public:
     explicit Dataset(OpKernelContext* ctx, std::vector<string> filenames,
                      int64 header_bytes, int64 record_bytes, int64 footer_bytes,
-                     int64 buffer_size)
+                     int64 buffer_size, const string& compression_type)
         : DatasetBase(DatasetContext(ctx)),
           filenames_(std::move(filenames)),
           header_bytes_(header_bytes),
           record_bytes_(record_bytes),
           footer_bytes_(footer_bytes),
-          buffer_size_(buffer_size) {}
+          buffer_size_(buffer_size),
+          compression_type_(compression_type) {}
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::FixedLengthRecord")}));
+      if (compression_type_.empty()) {
+        return absl::make_unique<UncompressedIterator>(
+            UncompressedIterator::Params{
+                this, strings::StrCat(prefix, "::FixedLengthRecord")});
+      } else {
+        return absl::make_unique<CompressedIterator>(CompressedIterator::Params{
+            this, strings::StrCat(prefix, "::FixedLengthRecord")});
+      }
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -354,22 +377,25 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       Node* record_bytes = nullptr;
       Node* footer_bytes = nullptr;
       Node* buffer_size = nullptr;
+      Node* compression_type = nullptr;
       TF_RETURN_IF_ERROR(b->AddVector(filenames_, &filenames));
       TF_RETURN_IF_ERROR(b->AddScalar(header_bytes_, &header_bytes));
       TF_RETURN_IF_ERROR(b->AddScalar(record_bytes_, &record_bytes));
       TF_RETURN_IF_ERROR(b->AddScalar(footer_bytes_, &footer_bytes));
       TF_RETURN_IF_ERROR(b->AddScalar(buffer_size_, &buffer_size));
-      TF_RETURN_IF_ERROR(b->AddDataset(
-          this,
-          {filenames, header_bytes, record_bytes, footer_bytes, buffer_size},
-          output));
+      TF_RETURN_IF_ERROR(b->AddScalar(compression_type_, &compression_type));
+      TF_RETURN_IF_ERROR(
+          b->AddDataset(this,
+                        {filenames, header_bytes, record_bytes, footer_bytes,
+                         buffer_size, compression_type},
+                        output));
       return Status::OK();
     }
 
    private:
-    class Iterator : public DatasetIterator<Dataset> {
+    class UncompressedIterator : public DatasetIterator<Dataset> {
      public:
-      explicit Iterator(const Params& params)
+      explicit UncompressedIterator(const Params& params)
           : DatasetIterator<Dataset>(params) {}
 
       Status GetNextInternal(IteratorContext* ctx,
@@ -427,8 +453,8 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           }
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          input_buffer_.reset(
-              new io::InputBuffer(file_.get(), dataset()->buffer_size_));
+          input_buffer_ = absl::make_unique<io::InputBuffer>(
+              file_.get(), dataset()->buffer_size_);
           TF_RETURN_IF_ERROR(
               input_buffer_->SkipNBytes(dataset()->header_bytes_));
         } while (true);
@@ -470,8 +496,8 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
           file_pos_limit_ = file_size - dataset()->footer_bytes_;
           TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
               dataset()->filenames_[current_file_index_], &file_));
-          input_buffer_.reset(
-              new io::InputBuffer(file_.get(), dataset()->buffer_size_));
+          input_buffer_ = absl::make_unique<io::InputBuffer>(
+              file_.get(), dataset()->buffer_size_);
           TF_RETURN_IF_ERROR(input_buffer_->Seek(current_pos));
         }
 
@@ -487,15 +513,208 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
     };
 
+    class CompressedIterator : public DatasetIterator<Dataset> {
+     public:
+      explicit CompressedIterator(const Params& params)
+          : DatasetIterator<Dataset>(params) {}
+
+      Status GetNextInternal(IteratorContext* ctx,
+                             std::vector<Tensor>* out_tensors,
+                             bool* end_of_sequence) override {
+        mutex_lock l(mu_);
+        do {
+          // We are currently processing a file, so try to read the next record.
+          if (buffered_input_stream_) {
+            const int64 current_pos = buffered_input_stream_->Tell();
+            if (dataset()->compression_type_.empty()) {
+              DCHECK_GE(file_pos_limit_, 0);
+              if (current_pos < file_pos_limit_) {
+                string record;
+                TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
+                    dataset()->record_bytes_, &record));
+                // Produce the record as output.
+                Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
+                record_tensor.scalar<string>()() = std::move(record);
+                out_tensors->emplace_back(std::move(record_tensor));
+                *end_of_sequence = false;
+                return Status::OK();
+              }
+            } else {
+              string record;
+              Status s = buffered_input_stream_->ReadNBytes(
+                  dataset()->record_bytes_, &record);
+              if (s.ok()) {
+                lookahead_cache_.append(record);
+                record = lookahead_cache_.substr(0, dataset()->record_bytes_);
+                lookahead_cache_ =
+                    lookahead_cache_.substr(dataset()->record_bytes_);
+                // Produce the record as output.
+                Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
+                record_tensor.scalar<string>()() = std::move(record);
+                out_tensors->emplace_back(std::move(record_tensor));
+                *end_of_sequence = false;
+                return Status::OK();
+              }
+              if (errors::IsOutOfRange(s) && !record.empty()) {
+                uint64 body_size =
+                    current_pos + record.size() -
+                    (dataset()->header_bytes_ + dataset()->footer_bytes_);
+                return errors::DataLoss(
+                    "Excluding the header (", dataset()->header_bytes_,
+                    " bytes) and footer (", dataset()->footer_bytes_,
+                    " bytes), input file \"",
+                    dataset()->filenames_[current_file_index_],
+                    "\" has body length ", body_size,
+                    " bytes, which is not an exact multiple of the record "
+                    "length (",
+                    dataset()->record_bytes_, " bytes).");
+              }
+            }
+
+            // We have reached the end of the current file, so maybe
+            // move on to next file.
+            buffered_input_stream_.reset();
+            file_.reset();
+            ++current_file_index_;
+          }
+
+          // Iteration ends when there are no more files to process.
+          if (current_file_index_ == dataset()->filenames_.size()) {
+            *end_of_sequence = true;
+            return Status::OK();
+          }
+
+          // Actually move on to next file.
+          if (dataset()->compression_type_.empty()) {
+            uint64 file_size;
+            TF_RETURN_IF_ERROR(ctx->env()->GetFileSize(
+                dataset()->filenames_[current_file_index_], &file_size));
+            file_pos_limit_ = file_size - dataset()->footer_bytes_;
+
+            uint64 body_size = file_size - (dataset()->header_bytes_ +
+                                            dataset()->footer_bytes_);
+
+            if (body_size % dataset()->record_bytes_ != 0) {
+              return errors::InvalidArgument(
+                  "Excluding the header (", dataset()->header_bytes_,
+                  " bytes) and footer (", dataset()->footer_bytes_,
+                  " bytes), input file \"",
+                  dataset()->filenames_[current_file_index_],
+                  "\" has body length ", body_size,
+                  " bytes, which is not an exact multiple of the record length "
+                  "(",
+                  dataset()->record_bytes_, " bytes).");
+            }
+          }
+          TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
+              dataset()->filenames_[current_file_index_], &file_));
+          if (!dataset()->compression_type_.empty()) {
+            const io::ZlibCompressionOptions zlib_options =
+                dataset()->compression_type_ == "ZLIB"
+                    ? io::ZlibCompressionOptions::DEFAULT()
+                    : io::ZlibCompressionOptions::GZIP();
+            file_stream_ =
+                absl::make_unique<io::RandomAccessInputStream>(file_.get());
+            buffered_input_stream_ = absl::make_unique<io::ZlibInputStream>(
+                file_stream_.get(), dataset()->buffer_size_,
+                dataset()->buffer_size_, zlib_options);
+          } else {
+            buffered_input_stream_ = absl::make_unique<io::BufferedInputStream>(
+                file_.get(), dataset()->buffer_size_);
+          }
+          TF_RETURN_IF_ERROR(
+              buffered_input_stream_->SkipNBytes(dataset()->header_bytes_));
+          lookahead_cache_.clear();
+          if (!dataset()->compression_type_.empty()) {
+            TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
+                dataset()->footer_bytes_, &lookahead_cache_));
+          }
+        } while (true);
+      }
+
+     protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
+      Status SaveInternal(IteratorStateWriter* writer) override {
+        mutex_lock l(mu_);
+        TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
+                                               current_file_index_));
+
+        // `buffered_input_stream_` is empty if
+        // 1. GetNext has not been called even once.
+        // 2. All files have been read and iterator has been exhausted.
+        int64 current_pos =
+            buffered_input_stream_ ? buffered_input_stream_->Tell() : -1;
+        TF_RETURN_IF_ERROR(
+            writer->WriteScalar(full_name("current_pos"), current_pos));
+        return Status::OK();
+      }
+
+      Status RestoreInternal(IteratorContext* ctx,
+                             IteratorStateReader* reader) override {
+        mutex_lock l(mu_);
+        int64 current_file_index;
+        TF_RETURN_IF_ERROR(reader->ReadScalar(full_name("current_file_index"),
+                                              &current_file_index));
+        current_file_index_ = size_t(current_file_index);
+        int64 current_pos;
+        TF_RETURN_IF_ERROR(
+            reader->ReadScalar(full_name("current_pos"), &current_pos));
+
+        // Seek to current_pos.
+        buffered_input_stream_.reset();
+        file_.reset();
+        if (current_pos >= 0) {  // There was an active buffered_input_stream_.
+          TF_RETURN_IF_ERROR(ctx->env()->NewRandomAccessFile(
+              dataset()->filenames_[current_file_index_], &file_));
+          const io::ZlibCompressionOptions zlib_options =
+              dataset()->compression_type_ == "ZLIB"
+                  ? io::ZlibCompressionOptions::DEFAULT()
+                  : io::ZlibCompressionOptions::GZIP();
+          file_stream_ =
+              absl::make_unique<io::RandomAccessInputStream>(file_.get());
+          buffered_input_stream_ = absl::make_unique<io::ZlibInputStream>(
+              file_stream_.get(), dataset()->buffer_size_,
+              dataset()->buffer_size_, zlib_options);
+          lookahead_cache_.clear();
+          TF_RETURN_IF_ERROR(buffered_input_stream_->SkipNBytes(
+              current_pos - dataset()->footer_bytes_));
+          TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
+              dataset()->footer_bytes_, &lookahead_cache_));
+        }
+
+        return Status::OK();
+      }
+
+     private:
+      mutex mu_;
+      size_t current_file_index_ GUARDED_BY(mu_) = 0;
+      std::unique_ptr<RandomAccessFile> file_
+          GUARDED_BY(mu_);  // must outlive buffered_input_stream_
+      std::unique_ptr<io::RandomAccessInputStream>
+          file_stream_;  // must outlive buffered_input_stream_
+      std::unique_ptr<io::InputStreamInterface> buffered_input_stream_
+          GUARDED_BY(mu_);
+      int64 file_pos_limit_ GUARDED_BY(mu_) = -1;
+      string lookahead_cache_ GUARDED_BY(mu_);
+    };
+
     const std::vector<string> filenames_;
     const int64 header_bytes_;
     const int64 record_bytes_;
     const int64 footer_bytes_;
     const int64 buffer_size_;
+    const string compression_type_;
   };
+  const int op_version_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordDataset").Device(DEVICE_CPU),
+                        FixedLengthRecordDatasetOp);
+REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordDatasetV2").Device(DEVICE_CPU),
                         FixedLengthRecordDatasetOp);
 
 class TFRecordDatasetOp : public DatasetOpKernel {
@@ -547,8 +766,8 @@ class TFRecordDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::TFRecord")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::TFRecord")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -592,13 +811,16 @@ class TFRecordDatasetOp : public DatasetOpKernel {
         do {
           // We are currently processing a file, so try to read the next record.
           if (reader_) {
-            Tensor result_tensor(ctx->allocator({}), DT_STRING, {});
-            Status s = reader_->ReadRecord(&result_tensor.scalar<string>()());
+            out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
+                                      TensorShape({}));
+            Status s =
+                reader_->ReadRecord(&out_tensors->back().scalar<string>()());
             if (s.ok()) {
-              out_tensors->emplace_back(std::move(result_tensor));
               *end_of_sequence = false;
               return Status::OK();
-            } else if (!errors::IsOutOfRange(s)) {
+            }
+            out_tensors->pop_back();
+            if (!errors::IsOutOfRange(s)) {
               return s;
             }
 
@@ -619,6 +841,11 @@ class TFRecordDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
@@ -661,8 +888,8 @@ class TFRecordDatasetOp : public DatasetOpKernel {
         const string& next_filename =
             dataset()->filenames_[current_file_index_];
         TF_RETURN_IF_ERROR(env->NewRandomAccessFile(next_filename, &file_));
-        reader_.reset(
-            new io::SequentialRecordReader(file_.get(), dataset()->options_));
+        reader_ = absl::make_unique<io::SequentialRecordReader>(
+            file_.get(), dataset()->options_);
         return Status::OK();
       }
 

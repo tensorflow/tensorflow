@@ -25,13 +25,15 @@ from __future__ import print_function
 
 import abc
 
+import six
 
+
+@six.add_metaclass(abc.ABCMeta)
 class Trainable(object):
   """Interface for objects that are trainable by, e.g., `Experiment`.
 
   THIS CLASS IS DEPRECATED.
   """
-  __metaclass__ = abc.ABCMeta
 
   @abc.abstractmethod
   def fit(self,

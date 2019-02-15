@@ -6,6 +6,7 @@ load("//tensorflow:tensorflow.bzl", "if_windows")
 load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load("@local_config_rocm//rocm:build_defs.bzl", "if_rocm")
 load(
     "//third_party/mkl:build_defs.bzl",
     "if_mkl_ml",
@@ -34,6 +35,7 @@ def pyx_library(
         deps = [],
         py_deps = [],
         srcs = [],
+        testonly = None,
         **kwargs):
     """Compiles a group of .pyx / .pxd / .py files.
 
@@ -75,6 +77,7 @@ def pyx_library(
             # Optionally use PYTHON_BIN_PATH on Linux platforms so that python 3
             # works. Windows has issues with cython_binary so skip PYTHON_BIN_PATH.
             cmd = "PYTHONHASHSEED=0 $(location @cython//:cython_binary) --cplus $(SRCS) --output-file $(OUTS)",
+            testonly = testonly,
             tools = ["@cython//:cython_binary"] + pxd_srcs,
         )
 
@@ -85,8 +88,9 @@ def pyx_library(
         native.cc_binary(
             name = shared_object_name,
             srcs = [stem + ".cpp"],
-            deps = deps + ["//third_party/python_runtime:headers"],
+            deps = deps + ["@org_tensorflow//third_party/python_runtime:headers"],
             linkshared = 1,
+            testonly = testonly,
         )
         shared_objects.append(shared_object_name)
 
@@ -97,6 +101,7 @@ def pyx_library(
         deps = py_deps,
         srcs_version = "PY2AND3",
         data = shared_objects,
+        testonly = testonly,
         **kwargs
     )
 
@@ -319,9 +324,6 @@ def tf_proto_library_cc(
         cc_grpc_version = None,
         j2objc_api_version = 1,
         cc_api_version = 2,
-        dart_api_version = 2,
-        java_api_version = 2,
-        py_api_version = 2,
         js_codegen = "jspb",
         default_header = False):
     js_codegen = js_codegen  # unused argument
@@ -436,10 +438,7 @@ def tf_proto_library(
         cc_libs = [],
         cc_api_version = 2,
         cc_grpc_version = None,
-        dart_api_version = 2,
         j2objc_api_version = 1,
-        java_api_version = 2,
-        py_api_version = 2,
         js_codegen = "jspb",
         provide_cc_alias = False,
         default_header = False):
@@ -531,19 +530,13 @@ def tf_additional_proto_hdrs():
     return [
         "platform/default/integral_types.h",
         "platform/default/logging.h",
-        "platform/default/protobuf.h",
     ] + if_windows([
         "platform/windows/integral_types.h",
     ])
 
-def tf_additional_proto_compiler_hdrs():
-    return [
-        "platform/default/protobuf_compiler.h",
-    ]
-
 def tf_additional_proto_srcs():
     return [
-        "platform/default/protobuf.cc",
+        "platform/protobuf.cc",
     ]
 
 def tf_additional_human_readable_json_deps():
@@ -551,6 +544,10 @@ def tf_additional_human_readable_json_deps():
 
 def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
+
+# TODO(fishx): Remove it after moving profiler proto out from contrib.
+def tf_profiler_all_protos():
+    return ["//tensorflow/core/profiler:protos_all"]
 
 def tf_protos_all_impl():
     return ["//tensorflow/core:protos_all_cc_impl"]
@@ -580,7 +577,10 @@ def tf_additional_device_tracer_cuda_deps():
     return []
 
 def tf_additional_device_tracer_deps():
-    return []
+    return [
+        "//tensorflow/core/profiler/lib:traceme",
+        "//tensorflow/core/profiler/internal/cpu:host_tracer",
+    ]
 
 def tf_additional_device_tracer_test_flags():
     return []
@@ -665,6 +665,8 @@ def tf_additional_cloud_op_deps():
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud:bigquery_reader_ops_op_lib",
@@ -672,13 +674,15 @@ def tf_additional_cloud_op_deps():
         ],
     })
 
-# TODO(jart, jhseu): Delete when GCP is default on.
+# TODO(jhseu): Delete when GCP is default on.
 def tf_additional_cloud_kernel_deps():
     return select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:linux_s390x": [],
         "//tensorflow:windows": [],
+        "//tensorflow:api_version_2": [],
+        "//tensorflow:windows_and_api_version_2": [],
         "//tensorflow:no_gcp_support": [],
         "//conditions:default": [
             "//tensorflow/contrib/cloud/kernels:bigquery_reader_ops",
@@ -731,7 +735,11 @@ def tf_additional_binary_deps():
     return ["@nsync//:nsync_cpp"] + if_cuda(
         [
             "//tensorflow/stream_executor:cuda_platform",
-            "//tensorflow/core/platform/default/build_config:cuda",
+        ],
+    ) + if_rocm(
+        [
+            "//tensorflow/stream_executor:rocm_platform",
+            "//tensorflow/core/platform/default/build_config:rocm",
         ],
     ) + [
         # TODO(allenl): Split these out into their own shared objects (they are

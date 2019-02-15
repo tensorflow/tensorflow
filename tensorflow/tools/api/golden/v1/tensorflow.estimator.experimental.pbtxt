@@ -1,15 +1,51 @@
 path: "tensorflow.estimator.experimental"
 tf_module {
+  member {
+    name: "InMemoryEvaluatorHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearSDCA"
+    mtype: "<type \'type\'>"
+  }
+  member_method {
+    name: "build_raw_supervised_input_receiver_fn"
+    argspec: "args=[\'features\', \'labels\', \'default_batch_size\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
   member_method {
     name: "call_logit_fn"
     argspec: "args=[\'logit_fn\', \'features\', \'mode\', \'params\', \'config\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "dnn_logit_fn_builder"
-    argspec: "args=[\'units\', \'hidden_units\', \'feature_columns\', \'activation_fn\', \'dropout\', \'input_layer_partitioner\', \'batch_norm\', \'shared_state_manager\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'units\', \'hidden_units\', \'feature_columns\', \'activation_fn\', \'dropout\', \'input_layer_partitioner\', \'batch_norm\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "linear_logit_fn_builder"
     argspec: "args=[\'units\', \'feature_columns\', \'sparse_combiner\'], varargs=None, keywords=None, defaults=[\'sum\'], "
+  }
+  member_method {
+    name: "make_early_stopping_hook"
+    argspec: "args=[\'estimator\', \'should_stop_fn\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'60\', \'None\'], "
+  }
+  member_method {
+    name: "make_stop_at_checkpoint_step_hook"
+    argspec: "args=[\'estimator\', \'last_step\', \'wait_after_file_check_secs\'], varargs=None, keywords=None, defaults=[\'30\'], "
+  }
+  member_method {
+    name: "stop_if_higher_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'threshold\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
+  member_method {
+    name: "stop_if_lower_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'threshold\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
+  member_method {
+    name: "stop_if_no_decrease_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'max_steps_without_decrease\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
+  }
+  member_method {
+    name: "stop_if_no_increase_hook"
+    argspec: "args=[\'estimator\', \'metric_name\', \'max_steps_without_increase\', \'eval_dir\', \'min_steps\', \'run_every_secs\', \'run_every_steps\'], varargs=None, keywords=None, defaults=[\'None\', \'0\', \'60\', \'None\'], "
   }
 }

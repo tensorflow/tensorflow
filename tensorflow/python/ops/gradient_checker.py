@@ -31,7 +31,6 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradients
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -158,7 +157,8 @@ def _compute_numeric_jacobian(x, x_shape, x_data, y, y_shape, delta,
   # as delta. Convert to float32 here. Since numeric_jacobian is expected to
   # be the groundtruth to compare against, it shouldn't lose any information.
   if x.dtype == dtypes.bfloat16:
-    x = math_ops.cast(x, dtypes.float32)
+    x = math_ops.cast(x, dtypes.float32)  # TODO(wangpeng): Now that the new x
+            # is an output of the old x, isn't feeding to the new x a mistake?
   if y.dtype == dtypes.bfloat16:
     y = math_ops.cast(y, dtypes.float32)
   if x_data.dtype == dtypes.bfloat16.as_numpy_dtype:
@@ -266,7 +266,7 @@ def _compute_gradient_list(x,
   return ret
 
 
-@tf_export("test.compute_gradient")
+@tf_export(v1=["test.compute_gradient"])
 def compute_gradient(x,
                      x_shape,
                      y,
@@ -301,7 +301,6 @@ def compute_gradient(x,
       as the initial value.
     delta: (optional) the amount of perturbation.
     init_targets: list of targets to run to initialize model params.
-      TODO(mrry): remove this argument.
     extra_feed_dict: dict that allows fixing specified tensor values
       during the Jacobian calculation.
 
@@ -311,6 +310,7 @@ def compute_gradient(x,
     where "x_size" is the number of elements in x and "y_size" is the
     number of elements in y. If x is a list, returns a list of two numpy arrays.
   """
+  # TODO(mrry): remove argument `init_targets`
   if extra_feed_dict is None:
     extra_feed_dict = {}
 
@@ -328,10 +328,17 @@ def compute_gradient(x,
     return ret
 
 
+def _compute_error(grad):
+  if isinstance(grad, tuple):
+    grad = [grad]
+  error = 0
+  for j_t, j_n in grad:
+    if j_t.size or j_n.size:  # Handle zero size tensors correctly
+      error = np.maximum(error, np.fabs(j_t - j_n).max())
+  return error
+
+
 @tf_export(v1=["test.compute_gradient_error"])
-@deprecation.deprecated_args(
-    None, "init_targets will be deprecated in TensorFlow 2.0",
-    ("init_targets", None))  # Do not trigger warning in V2
 def compute_gradient_error(x,
                            x_shape,
                            y,
@@ -373,59 +380,4 @@ def compute_gradient_error(x,
   """
   grad = compute_gradient(x, x_shape, y, y_shape, x_init_value, delta,
                           init_targets, extra_feed_dict=extra_feed_dict)
-  if isinstance(grad, tuple):
-    grad = [grad]
-  error = 0
-  for j_t, j_n in grad:
-    if j_t.size or j_n.size:  # Handle zero size tensors correctly
-      error = np.maximum(error, np.fabs(j_t - j_n).max())
-  return error
-
-
-@tf_export("test.compute_gradient_error", v1=[])
-def compute_gradient_error_v2(x,
-                              x_shape,
-                              y,
-                              y_shape,
-                              x_init_value=None,
-                              delta=1e-3,
-                              extra_feed_dict=None):
-  """Computes the gradient error.
-
-  Computes the maximum error for dy/dx between the computed Jacobian and the
-  numerically estimated Jacobian.
-
-  This function will modify the tensors passed in as it adds more operations
-  and hence changing the consumers of the operations of the input tensors.
-
-  This function adds operations to the current session. To compute the error
-  using a particular device, such as a GPU, use the standard methods for
-  setting a device (e.g. using with sess.graph.device() or setting a device
-  function in the session constructor).
-
-  Args:
-    x: a tensor or list of tensors
-    x_shape: the dimensions of x as a tuple or an array of ints. If x is a list,
-      then this is the list of shapes.
-    y: a tensor
-    y_shape: the dimensions of y as a tuple or an array of ints.
-    x_init_value: (optional) a numpy array of the same shape as "x" representing
-      the initial value of x. If x is a list, this should be a list of numpy
-      arrays.  If this is none, the function will pick a random tensor as the
-      initial value.
-    delta: (optional) the amount of perturbation.
-    extra_feed_dict: dict that allows fixing specified tensor values during the
-      Jacobian calculation.
-
-  Returns:
-    The maximum error in between the two Jacobians.
-  """
-  return compute_gradient_error(
-      x,
-      x_shape,
-      y,
-      y_shape,
-      x_init_value=x_init_value,
-      delta=delta,
-      init_targets=None,
-      extra_feed_dict=extra_feed_dict)
+  return _compute_error(grad)

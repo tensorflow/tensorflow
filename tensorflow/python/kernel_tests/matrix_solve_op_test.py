@@ -24,6 +24,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import linalg_ops
@@ -63,7 +64,7 @@ class MatrixSolveOpTest(test.TestCase):
               out = sess.run(tf_ans, {a_ph: a, b_ph: b})
             else:
               tf_ans = linalg_ops.matrix_solve(a, b, adjoint=adjoint)
-              out = tf_ans.eval()
+              out = self.evaluate(tf_ans)
               self.assertEqual(tf_ans.get_shape(), out.shape)
             self.assertEqual(np_ans.shape, out.shape)
             self.assertAllClose(np_ans, out, atol=tol, rtol=tol)
@@ -75,6 +76,7 @@ class MatrixSolveOpTest(test.TestCase):
         [m, n]))
     return matrix
 
+  @test_util.run_deprecated_v1
   def testSolve(self):
     for n in 1, 2, 4, 9:
       matrix = self._generateMatrix(n, n)
@@ -82,6 +84,7 @@ class MatrixSolveOpTest(test.TestCase):
         rhs = self._generateMatrix(n, nrhs)
         self._verifySolve(matrix, rhs)
 
+  @test_util.run_deprecated_v1
   def testSolveBatch(self):
     for n in 2, 5:
       matrix = self._generateMatrix(n, n)
@@ -90,6 +93,7 @@ class MatrixSolveOpTest(test.TestCase):
         for batch_dims in [[2], [2, 2], [7, 4]]:
           self._verifySolve(matrix, rhs, batch_dims=batch_dims)
 
+  @test_util.run_deprecated_v1
   def testNonSquareMatrix(self):
     # When the solve of a non-square matrix is attempted we should return
     # an error
@@ -98,6 +102,7 @@ class MatrixSolveOpTest(test.TestCase):
         matrix = constant_op.constant([[1., 2., 3.], [3., 4., 5.]])
         linalg_ops.matrix_solve(matrix, matrix)
 
+  @test_util.run_deprecated_v1
   def testWrongDimensions(self):
     # The matrix and right-hand sides should have the same number of rows.
     with self.session(use_gpu=True):
@@ -115,6 +120,7 @@ class MatrixSolveOpTest(test.TestCase):
                                        [0., -1., 1.]])
         linalg_ops.matrix_solve(matrix, matrix).eval()
 
+  @test_util.run_deprecated_v1
   def testConcurrent(self):
     with self.session(use_gpu=True) as sess:
       all_ops = []
@@ -126,7 +132,7 @@ class MatrixSolveOpTest(test.TestCase):
         s1 = linalg_ops.matrix_solve(lhs1, rhs1, adjoint=adjoint_)
         s2 = linalg_ops.matrix_solve(lhs2, rhs2, adjoint=adjoint_)
         all_ops += [s1, s2]
-      val = sess.run(all_ops)
+      val = self.evaluate(all_ops)
       self.assertAllEqual(val[0], val[1])
       self.assertAllEqual(val[2], val[3])
 

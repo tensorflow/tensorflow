@@ -26,6 +26,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import moving_averages
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
+from tensorflow.python.training.saving import saveable_object_util
 
 
 class MovingAverageOptimizer(optimizer.Optimizer):
@@ -106,6 +107,32 @@ class MovingAverageOptimizer(optimizer.Optimizer):
       self._swapped_variable_name_map[v_avg.op.name] = v.op.name
     return control_flow_ops.group(train_op, ma_op, name='train_with_avg')
 
+  def _find_swapped_variable(self, v_name_to_tensor, v_name, tensor):
+    """Returns name of swapped variable for given tensor.
+
+    Args:
+      v_name_to_tensor: Mapping from variable names to tensors.
+      v_name: name of the variable for which swapped variable should be returned
+      tensor: Tensor which correspond to variable for which swapped variable
+        should be returned.
+
+    Returns:
+      Tensor which correspond to swapped variable.
+
+    Raises:
+      ValueError: If swapped variable could not be found in v_name_to_tensor.
+    """
+    swapped_v_name = self._swapped_variable_name_map.get(v_name, None)
+    if swapped_v_name is None:
+      return tensor
+    else:
+      if swapped_v_name in v_name_to_tensor:
+        return v_name_to_tensor[swapped_v_name]
+      else:
+        raise ValueError(
+            ('Variable to swap %s is not part of variables to save. '
+             'This breaks MovingAverageOptimizer.') % swapped_v_name)
+
   def swapping_saver(self, var_list=None, name='swapping_saver', **kwargs):
     """Create a saver swapping moving averages and variables.
 
@@ -139,35 +166,35 @@ class MovingAverageOptimizer(optimizer.Optimizer):
     if var_list is None:
       var_list = variables.global_variables()
     if not isinstance(var_list, dict):
-      var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
-
-    # OpListToDict converts variables to tensors. We make sure we can get
-    # the unique variable name for normal and resource vaiables.
-    def get_v_name(tensor):
-      if tensor.op.type == 'ReadVariableOp':
-        return tensor.op.inputs[0].op.name
-      else:
-        return tensor.op.name
+      var_list = saveable_object_util.op_list_to_dict(var_list)
 
     v_name_to_tensor = {}
-    for tensor in six.itervalues(var_list):
-      v_name = get_v_name(tensor)
-      v_name_to_tensor[v_name] = tensor
+    for k, tensor_or_list in six.iteritems(var_list):
+      # For each partitioned variable OpListToDict returns list of constituent
+      # parts instead of single tensor.
+      if (isinstance(tensor_or_list, list)
+          or isinstance(tensor_or_list, variables.PartitionedVariable)):
+        for tensor in tensor_or_list:
+          v_name = tensor.op.name
+          v_name_to_tensor[v_name] = tensor
+      else:
+        v_name_to_tensor[k] = tensor_or_list
 
     # Now swap variables and moving averages
     swapped_var_list = {}
-    for k, tensor in six.iteritems(var_list):
-      v_name = get_v_name(tensor)
-      swapped_v_name = self._swapped_variable_name_map.get(v_name, None)
-      tensor_to_save = tensor
-      if swapped_v_name is not None:
-        if swapped_v_name in v_name_to_tensor:
-          tensor_to_save = v_name_to_tensor[swapped_v_name]
-        else:
-          raise ValueError(
-              ('Variable to swap %s is not part of variables to save. '
-               'This breaks MovingAverageOptimizer.') % swapped_v_name)
-      swapped_var_list[k] = tensor_to_save
+    for k, tensor_or_list in six.iteritems(var_list):
+      if isinstance(tensor_or_list, list):
+        tensor_list_to_save = []
+        for tensor in tensor_or_list:
+          v_name = tensor.op.name
+          swapped_variable = self._find_swapped_variable(v_name_to_tensor,
+                                                         v_name,
+                                                         tensor)
+          tensor_list_to_save.append(swapped_variable)
+        swapped_var_list[k] = tensor_list_to_save
+      else:
+        swapped_var_list[k] = self._find_swapped_variable(
+            v_name_to_tensor, k, tensor_or_list)
 
     # Build the swapping saver.
     return saver.Saver(swapped_var_list, name=name, **kwargs)

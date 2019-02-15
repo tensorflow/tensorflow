@@ -131,7 +131,7 @@ class CudaLaunchConfigTest : public ::testing::Test {
  protected:
   const int bufsize = 1024;
   int* outbuf = nullptr;
-  Eigen::CudaStreamDevice stream;
+  Eigen::GpuStreamDevice stream;
   Eigen::GpuDevice d = Eigen::GpuDevice(&stream);
 
   virtual void SetUp() {

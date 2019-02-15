@@ -50,7 +50,7 @@ class XlaTensor {
   // Assign the internal ShapedBuffer to new memory for the given dtype and
   // shape. If a ShapedBuffer exists already (has_shaped_buffer() == true), it
   // is replaced and the managed memory deallocated.
-  Status AllocateShapedBuffer(DataType dtype, const TensorShape& shape,
+  Status AllocateShapedBuffer(DataType dtype, const xla::Shape& on_host_shape,
                               xla::LocalClient* client, int device_ordinal);
 
   // Some Tensors can have complex on-device shapes, including tuple shapes. To
@@ -93,12 +93,14 @@ class XlaTensor {
   // stream.
   void WaitForDefinitionEventOnStream(se::Stream* stream);
 
-  // Sets the definition event of the tensor to 'event', and promises that the
-  // tensor has already been defined on stream.
-  // It is an error to call SetDefinitionEvent() twice, or to call
-  // SetDefinitionEvent() after WaitForDefinitionEventOnStream() has been
-  // called.
-  void SetDefinitionEvent(std::shared_ptr<se::Event> event, se::Stream* stream);
+  // (Re)sets the definition event of the tensor to 'event', and promises that
+  // the tensor has already been defined on stream. Removes any previous
+  // definition event or any previous promises about the tensor being defined on
+  // streams.
+  // It is legal to reset the definition event of a tensor when overwriting the
+  // tensor's value (at which point, it is effectively a new tensor once again.)
+  void ResetDefinitionEvent(std::shared_ptr<se::Event> event,
+                            se::Stream* stream);
 
   // Convert from a raw pointer to an XlaTensor, removing the pointer tag.
   static XlaTensor* FromOpaquePointer(void* ptr);

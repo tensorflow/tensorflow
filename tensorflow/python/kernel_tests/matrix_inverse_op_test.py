@@ -46,7 +46,7 @@ class InverseOpTest(test.TestCase):
           tiling = list(y.shape)
           tiling[-2:] = [1, 1]
           np_ans = np.tile(np_ans, tiling)
-        out = tf_ans.eval()
+        out = self.evaluate(tf_ans)
         self.assertAllClose(np_ans, out, rtol=1e-4, atol=1e-3)
         self.assertShapeEqual(y, tf_ans)
 
@@ -146,7 +146,7 @@ class InverseOpTest(test.TestCase):
         inv1 = linalg_ops.matrix_inverse(matrix1, adjoint=adjoint_)
         inv2 = linalg_ops.matrix_inverse(matrix2, adjoint=adjoint_)
         all_ops += [inv1, inv2]
-      inv = sess.run(all_ops)
+      inv = self.evaluate(all_ops)
       self.assertAllEqual(inv[0], inv[1])
       self.assertAllEqual(inv[2], inv[3])
 

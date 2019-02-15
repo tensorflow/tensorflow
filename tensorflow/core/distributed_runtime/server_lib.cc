@@ -49,16 +49,22 @@ void ServerFactory::Register(const string& server_type,
 Status ServerFactory::GetFactory(const ServerDef& server_def,
                                  ServerFactory** out_factory) {
   mutex_lock l(*get_server_factory_lock());
-  // TODO(mrry): Improve the error reporting here.
   for (const auto& server_factory : *server_factories()) {
     if (server_factory.second->AcceptsOptions(server_def)) {
       *out_factory = server_factory.second;
       return Status::OK();
     }
   }
+
+  std::vector<string> server_names;
+  for (const auto& server_factory : *server_factories()) {
+    server_names.push_back(server_factory.first);
+  }
+
   return errors::NotFound(
       "No server factory registered for the given ServerDef: ",
-      server_def.DebugString());
+      server_def.DebugString(), "\nThe available server factories are: [ ",
+      str_util::Join(server_names, ", "), " ]");
 }
 
 // Creates a server based on the given `server_def`, and stores it in

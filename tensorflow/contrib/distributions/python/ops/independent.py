@@ -166,8 +166,10 @@ class Independent(distribution_lib.Distribution):
   def _batch_shape_tensor(self):
     with ops.control_dependencies(self._runtime_assertions):
       batch_shape = self.distribution.batch_shape_tensor()
-      batch_ndims = (batch_shape.shape[0].value
-                     if batch_shape.shape.with_rank_at_least(1)[0].value
+      dim0 = tensor_shape.dimension_value(
+          batch_shape.shape.with_rank_at_least(1)[0])
+      batch_ndims = (dim0
+                     if dim0 is not None
                      else array_ops.shape(batch_shape)[0])
       return batch_shape[:batch_ndims - self.reinterpreted_batch_ndims]
 
@@ -182,8 +184,10 @@ class Independent(distribution_lib.Distribution):
   def _event_shape_tensor(self):
     with ops.control_dependencies(self._runtime_assertions):
       batch_shape = self.distribution.batch_shape_tensor()
-      batch_ndims = (batch_shape.shape[0].value
-                     if batch_shape.shape.with_rank_at_least(1)[0].value
+      dim0 = tensor_shape.dimension_value(
+          batch_shape.shape.with_rank_at_least(1)[0])
+      batch_ndims = (dim0
+                     if dim0 is not None
                      else array_ops.shape(batch_shape)[0])
       return array_ops.concat([
           batch_shape[batch_ndims - self.reinterpreted_batch_ndims:],
@@ -239,9 +243,11 @@ class Independent(distribution_lib.Distribution):
                              static_reinterpreted_batch_ndims, batch_ndims))
     elif validate_args:
       batch_shape = distribution.batch_shape_tensor()
+      dim0 = tensor_shape.dimension_value(
+          batch_shape.shape.with_rank_at_least(1)[0])
       batch_ndims = (
-          batch_shape.shape[0].value
-          if batch_shape.shape.with_rank_at_least(1)[0].value is not None
+          dim0
+          if dim0 is not None
           else array_ops.shape(batch_shape)[0])
       assertions.append(check_ops.assert_less_equal(
           reinterpreted_batch_ndims, batch_ndims,

@@ -1,0 +1,21 @@
+path: "tensorflow.train.CheckpointManager"
+tf_class {
+  is_instance: "<class \'tensorflow.python.training.checkpoint_management.CheckpointManager\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "checkpoints"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "latest_checkpoint"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'checkpoint\', \'directory\', \'max_to_keep\', \'keep_checkpoint_every_n_hours\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'self\', \'checkpoint_number\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+}

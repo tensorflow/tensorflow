@@ -61,8 +61,7 @@ void CleanNodeName(string* name) {
   name->erase(std::remove(name->begin(), name->end(), '%'), name->end());
   const string chars_to_replace = "<>[]";
   auto pred = [&](char c) {
-    return std::find(chars_to_replace.begin(), chars_to_replace.end(), c) !=
-           chars_to_replace.end();
+    return absl::c_linear_search(chars_to_replace, c);
   };
   std::replace_if(name->begin(), name->end(), pred, '_');
 }
@@ -159,15 +158,15 @@ void HloTfGraphBuilder::SetNodeAttrs(const HloInstruction* instruction,
   // Set the layout.
   if (LayoutUtil::HasLayout(instruction->shape())) {
     string layout_string;
-    if (ShapeUtil::IsTuple(instruction->shape())) {
+    if (instruction->shape().IsTuple()) {
       // For tuples, emit the full shape because the layout of a tuple is not
       // represented in a single Layout field.
       layout_string = ShapeUtil::HumanStringWithLayout(instruction->shape());
-    } else {
-      layout_string = StrCat(
-          "{",
-          absl::StrJoin(LayoutUtil::MinorToMajor(instruction->shape()), ","),
-          "}");
+    } else if (instruction->shape().has_layout()) {
+      // For non-tuples, only emit the layout when the shape has a Layout.
+      // This extra check is required because LayoutUtil::HasLayout ignores
+      // token, opaque types etc.
+      layout_string = instruction->shape().layout().ToString();
     }
     attrs["layout"].set_s(layout_string);
   }

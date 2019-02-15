@@ -25,9 +25,11 @@ from tensorflow.python.framework import function_def_to_graph
 from tensorflow.python.framework import graph_to_function_def
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import test_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -52,6 +54,7 @@ class FunctionDefToGraphTest(test.TestCase):
     fdef.signature.name = "_whats_in_a_name"
     return fdef
 
+  @test_util.run_deprecated_v1
   def testInputsAndOutputs(self):
     fdef = self._build_function_def()
     g = function_def_to_graph.function_def_to_graph(fdef)
@@ -186,6 +189,7 @@ class FunctionDefToGraphDefTest(test.TestCase):
     self.assertEqual(g.node[0].attr["shape"].shape.unknown_rank, False)
     self.assertFalse("shape" in g.node[2].attr)
 
+  @test_util.run_deprecated_v1
   def testFunctionCallsFromFunction(self):
     x = constant_op.constant(5.0)
     y = constant_op.constant(10.0)
@@ -222,12 +226,15 @@ class FunctionDefToGraphDefTest(test.TestCase):
 
   def testControlDependencies(self):
 
+    v = variables.Variable(1)
+
     @function.defun
     def fn(inp):
+      assign = v.assign(3, name="assign", read_value=False)
       x = constant_op.constant(2.0, name="x")
       # TODO(b/79881896): Test external control dependency once that's
       # supported.
-      with ops.control_dependencies([x, inp]):
+      with ops.control_dependencies([x, inp, assign]):
         constant_op.constant(3.0, name="y")
       return 4.0
 
@@ -236,9 +243,10 @@ class FunctionDefToGraphDefTest(test.TestCase):
     func_graph = function_def_to_graph.function_def_to_graph(fdef)
 
     op = func_graph.get_operation_by_name("y")
-    self.assertEqual(len(op.control_inputs), 2)
+    self.assertEqual(len(op.control_inputs), 3)
     self.assertEqual(op.control_inputs[0].name, "x")
     self.assertEqual(op.control_inputs[1].name, "inp")
+    self.assertEqual(op.control_inputs[2].name, "assign")
 
 
 if __name__ == "__main__":

@@ -307,7 +307,7 @@ def main(_):
       # The guide to serve an exported TensorFlow model is at:
       #    https://www.tensorflow.org/serving/serving_basic
       tf.logging.info("Starting to export model.")
-      revnet_classifier.export_savedmodel(
+      revnet_classifier.export_saved_model(
           export_dir_base=FLAGS.export_dir,
           serving_input_receiver_fn=imagenet_input.image_serving_input_fn)
 

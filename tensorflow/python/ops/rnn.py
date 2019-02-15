@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -54,7 +55,7 @@ def _transpose_batch_time(x):
     x transposed along the first two dimensions.
   """
   x_static_shape = x.get_shape()
-  if x_static_shape.ndims is not None and x_static_shape.ndims < 2:
+  if x_static_shape.rank is not None and x_static_shape.rank < 2:
     return x
 
   x_rank = array_ops.rank(x)
@@ -63,7 +64,7 @@ def _transpose_batch_time(x):
           ([1, 0], math_ops.range(2, x_rank)), axis=0))
   x_t.set_shape(
       tensor_shape.TensorShape([
-          x_static_shape[1].value, x_static_shape[0].value
+          x_static_shape.dims[1].value, x_static_shape.dims[0].value
       ]).concatenate(x_static_shape[2:]))
   return x_t
 
@@ -84,12 +85,12 @@ def _best_effort_input_batch_size(flat_input):
   """
   for input_ in flat_input:
     shape = input_.shape
-    if shape.ndims is None:
+    if shape.rank is None:
       continue
-    if shape.ndims < 2:
+    if shape.rank < 2:
       raise ValueError(
           "Expected input tensor %s to have rank at least 2" % input_)
-    batch_size = shape[1].value
+    batch_size = shape.dims[1].value
     if batch_size is not None:
       return batch_size
   # Fallback to the dynamic batch size of the first input.
@@ -116,7 +117,7 @@ def _infer_state_dtype(explicit_dtype, state):
     inferred_dtypes = [element.dtype for element in nest.flatten(state)]
     if not inferred_dtypes:
       raise ValueError("Unable to infer dtype from empty state.")
-    all_same = all([x == inferred_dtypes[0] for x in inferred_dtypes])
+    all_same = all(x == inferred_dtypes[0] for x in inferred_dtypes)
     if not all_same:
       raise ValueError(
           "State has tensors of different inferred_dtypes. Unable to infer a "
@@ -233,7 +234,7 @@ def _rnn_step(
     # TensorArray and scalar get passed through.
     if isinstance(output, tensor_array_ops.TensorArray):
       return new_output
-    if output.shape.ndims == 0:
+    if output.shape.rank == 0:
       return new_output
     # Otherwise propagate the old or the new value.
     with ops.colocate_with(new_output):
@@ -326,7 +327,7 @@ def _reverse_seq(input_seq, lengths):
   flat_results = [[] for _ in range(len(input_seq))]
   for sequence in zip(*flat_input_seq):
     input_shape = tensor_shape.unknown_shape(
-        ndims=sequence[0].get_shape().ndims)
+        rank=sequence[0].get_shape().rank)
     for input_ in sequence:
       input_shape.merge_with(input_.get_shape())
       input_.set_shape(input_shape)
@@ -347,7 +348,10 @@ def _reverse_seq(input_seq, lengths):
   return results
 
 
-@tf_export("nn.bidirectional_dynamic_rnn")
+@deprecation.deprecated(None, "Please use `keras.layers.Bidirectional("
+                        "keras.layers.RNN(cell))`, which is equivalent to "
+                        "this API")
+@tf_export(v1=["nn.bidirectional_dynamic_rnn"])
 def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               initial_state_fw=None, initial_state_bw=None,
                               dtype=None, parallel_iterations=None,
@@ -480,7 +484,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   return (outputs, output_states)
 
 
-@tf_export("nn.dynamic_rnn")
+@deprecation.deprecated(
+    None,
+    "Please use `keras.layers.RNN(cell)`, which is equivalent to this API")
+@tf_export(v1=["nn.dynamic_rnn"])
 def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 dtype=None, parallel_iterations=None, swap_memory=False,
                 time_major=False, scope=None):
@@ -617,7 +624,7 @@ def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
     parallel_iterations = parallel_iterations or 32
     if sequence_length is not None:
       sequence_length = math_ops.to_int32(sequence_length)
-      if sequence_length.get_shape().ndims not in (None, 1):
+      if sequence_length.get_shape().rank not in (None, 1):
         raise ValueError(
             "sequence_length must be a vector of length batch_size, "
             "but saw shape: %s" % sequence_length.get_shape())
@@ -737,8 +744,8 @@ def _dynamic_rnn_loop(cell,
       raise ValueError(
           "Input size (depth of inputs) must be accessible via shape inference,"
           " but saw value None.")
-    got_time_steps = shape[0].value
-    got_batch_size = shape[1].value
+    got_time_steps = shape.dims[0].value
+    got_batch_size = shape.dims[1].value
     if const_time_steps != got_time_steps:
       raise ValueError(
           "Time steps is not the same for all the elements in the input in a "
@@ -891,7 +898,7 @@ def _dynamic_rnn_loop(cell,
   return (final_outputs, final_state)
 
 
-@tf_export("nn.raw_rnn")
+@tf_export(v1=["nn.raw_rnn"])
 def raw_rnn(cell, loop_fn,
             parallel_iterations=None, swap_memory=False, scope=None):
   """Creates an `RNN` specified by RNNCell `cell` and loop function `loop_fn`.
@@ -1087,13 +1094,14 @@ def raw_rnn(cell, loop_fn,
                   else constant_op.constant(0, dtype=dtypes.int32))
 
     input_shape = [input_.get_shape() for input_ in flat_input]
-    static_batch_size = input_shape[0][0]
+    static_batch_size = tensor_shape.dimension_at_index(input_shape[0], 0)
 
     for input_shape_i in input_shape:
       # Static verification that batch sizes all match
-      static_batch_size.merge_with(input_shape_i[0])
+      static_batch_size.merge_with(
+          tensor_shape.dimension_at_index(input_shape_i, 0))
 
-    batch_size = static_batch_size.value
+    batch_size = tensor_shape.dimension_value(static_batch_size)
     const_batch_size = batch_size
     if batch_size is None:
       batch_size = array_ops.shape(flat_input[0])[0]
@@ -1176,7 +1184,7 @@ def raw_rnn(cell, loop_fn,
           # TensorArray and scalar get passed through.
           if isinstance(cur_i, tensor_array_ops.TensorArray):
             return cand_i
-          if cur_i.shape.ndims == 0:
+          if cur_i.shape.rank == 0:
             return cand_i
           # Otherwise propagate the old or the new value.
           with ops.colocate_with(cand_i):
@@ -1209,7 +1217,10 @@ def raw_rnn(cell, loop_fn,
     return (emit_ta, final_state, final_loop_state)
 
 
-@tf_export("nn.static_rnn")
+@deprecation.deprecated(
+    None, "Please use `keras.layers.RNN(cell, unroll=True)`, "
+    "which is equivalent to this API")
+@tf_export(v1=["nn.static_rnn"])
 def static_rnn(cell,
                inputs,
                initial_state=None,
@@ -1296,26 +1307,27 @@ def static_rnn(cell,
 
     # Temporarily avoid EmbeddingWrapper and seq2seq badness
     # TODO(lukaszkaiser): remove EmbeddingWrapper
-    if first_input.get_shape().ndims != 1:
+    if first_input.get_shape().rank != 1:
 
       input_shape = first_input.get_shape().with_rank_at_least(2)
-      fixed_batch_size = input_shape[0]
+      fixed_batch_size = input_shape.dims[0]
 
       flat_inputs = nest.flatten(inputs)
       for flat_input in flat_inputs:
         input_shape = flat_input.get_shape().with_rank_at_least(2)
-        batch_size, input_size = input_shape[0], input_shape[1:]
+        batch_size, input_size = tensor_shape.dimension_at_index(
+            input_shape, 0), input_shape[1:]
         fixed_batch_size.merge_with(batch_size)
-        for i, size in enumerate(input_size):
-          if size.value is None:
+        for i, size in enumerate(input_size.dims):
+          if tensor_shape.dimension_value(size) is None:
             raise ValueError(
                 "Input size (dimension %d of inputs) must be accessible via "
                 "shape inference, but saw value None." % i)
     else:
       fixed_batch_size = first_input.get_shape().with_rank_at_least(1)[0]
 
-    if fixed_batch_size.value:
-      batch_size = fixed_batch_size.value
+    if tensor_shape.dimension_value(fixed_batch_size):
+      batch_size = tensor_shape.dimension_value(fixed_batch_size)
     else:
       batch_size = array_ops.shape(first_input)[0]
     if initial_state is not None:
@@ -1333,7 +1345,7 @@ def static_rnn(cell,
     if sequence_length is not None:  # Prepare variables
       sequence_length = ops.convert_to_tensor(
           sequence_length, name="sequence_length")
-      if sequence_length.get_shape().ndims not in (None, 1):
+      if sequence_length.get_shape().rank not in (None, 1):
         raise ValueError(
             "sequence_length must be a vector of length batch_size")
 
@@ -1342,7 +1354,9 @@ def static_rnn(cell,
         size = _concat(batch_size, output_size)
         output = array_ops.zeros(
             array_ops.stack(size), _infer_state_dtype(dtype, state))
-        shape = _concat(fixed_batch_size.value, output_size, static=True)
+        shape = _concat(tensor_shape.dimension_value(fixed_batch_size),
+                        output_size,
+                        static=True)
         output.set_shape(tensor_shape.TensorShape(shape))
         return output
 
@@ -1479,7 +1493,10 @@ def static_state_saving_rnn(cell,
   return (outputs, state)
 
 
-@tf_export("nn.static_bidirectional_rnn")
+@deprecation.deprecated(None, "Please use `keras.layers.Bidirectional("
+                        "keras.layers.RNN(cell, unroll=True))`, which is "
+                        "equivalent to this API")
+@tf_export(v1=["nn.static_bidirectional_rnn"])
 def static_bidirectional_rnn(cell_fw,
                              cell_bw,
                              inputs,

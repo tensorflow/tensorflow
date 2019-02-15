@@ -61,7 +61,7 @@ TEST_F(LayoutAssignmentTest, Elementwise) {
             HloInstruction::CreateParameter(1, ashape, "y"));
         auto add = builder.AddInstruction(
             HloInstruction::CreateBinary(ashape, HloOpcode::kAdd, x, y));
-        auto module = CreateNewModule();
+        auto module = CreateNewVerifiedModule();
         HloComputation* computation =
             module->AddEntryComputation(builder.Build(add));
 
@@ -148,7 +148,7 @@ TEST_F(LayoutAssignmentTest, BatchNormInference) {
           {operand, scale, offset, mean, variance, epsilon, feature_index},
           kCudnnBatchNormForwardInferenceCallTarget));
 
-      auto module = CreateNewModule();
+      auto module = CreateNewVerifiedModule();
       HloComputation* computation =
           module->AddEntryComputation(builder.Build(batchnorm));
 
@@ -217,7 +217,7 @@ TEST_F(LayoutAssignmentTest, BatchNormTraining) {
           batchnorm_shape, {operand, scale, offset, epsilon, feature_index},
           kCudnnBatchNormForwardTrainingCallTarget));
 
-      auto module = CreateNewModule();
+      auto module = CreateNewVerifiedModule();
       HloComputation* computation =
           module->AddEntryComputation(builder.Build(batchnorm));
 
@@ -298,7 +298,7 @@ TEST_F(LayoutAssignmentTest, BatchNormGrad) {
                  feature_index},
                 kCudnnBatchNormBackwardCallTarget));
 
-        auto module = CreateNewModule();
+        auto module = CreateNewVerifiedModule();
         HloComputation* computation =
             module->AddEntryComputation(builder.Build(batchnorm));
 
@@ -368,12 +368,21 @@ TEST_F(LayoutAssignmentTest, DotLayout) {
 TEST_F(LayoutAssignmentTest, SortLayout) {
   const char* hlo_text = R"(
   HloModule SortLayout
+
+  compare {
+    p.0.lhs = f32[] parameter(0)
+    p.0.rhs = f32[] parameter(1)
+    p.1.lhs = f32[] parameter(2)
+    p.1.rhs = f32[] parameter(3)
+    ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+  }
+
   ENTRY sort {
-    keys = f32[3,2]{0,1} constant(f32[3,2]{0,1}{{0,1},{0,1},{0,1}})
+    keys = f32[3,2]{0,1} constant({{0,1},{0,1},{0,1}})
     values = f32[2,3]{1,0} parameter(0)
     transpose = f32[3,2]{1,0} transpose(values), dimensions={1,0}
     ROOT sort = (f32[3,2]{1,0}, f32[3,2]{1,0}) sort(keys, transpose),
-      dimensions={1}
+      dimensions={1}, to_apply=compare
   })";
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,

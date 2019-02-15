@@ -26,7 +26,6 @@ py_library(
         "python/training/resample.py",
         "python/training/sampling_ops.py",
         "python/training/sequence_queueing_state_saver.py",
-        "python/training/tensor_queue_dataset.py",
         "python/training/training.py",
         "python/training/tuner.py",
     ],
@@ -265,9 +264,9 @@ py_test(
 
 py_test(
     name = "training_test",
-    size = "large",
+    size = "medium",
     srcs = ["python/training/training_test.py"],
-    shard_count = 3,
+    shard_count = 8,
     srcs_version = "PY2AND3",
     tags = ["notsan"],
     deps = [
@@ -283,28 +282,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
         "//tensorflow/python/ops/losses",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "tensor_queue_dataset_test",
-    size = "large",
-    srcs = ["python/training/tensor_queue_dataset_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["notsan"],
-    deps = [
-        ":training_py",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_seed",
-        "//tensorflow/python:training",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/data",
-        "//tensorflow/python/data/experimental/kernel_tests/serialization:dataset_serialization_test_base",
         "//third_party/py/numpy",
     ],
 )

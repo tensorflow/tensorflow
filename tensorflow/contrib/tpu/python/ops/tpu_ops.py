@@ -24,19 +24,14 @@ import platform
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
 if platform.system() != "Windows":
   # pylint: disable=wildcard-import,unused-import,g-import-not-at-top
-  from tensorflow.contrib.tpu.ops import gen_tpu_ops
-  from tensorflow.contrib.tpu.ops.gen_tpu_ops import *
-
-  from tensorflow.contrib.util import loader
-  from tensorflow.python.platform import resource_loader
+  from tensorflow.python.ops import gen_tpu_ops
+  from tensorflow.python.ops.gen_tpu_ops import *
   # pylint: enable=wildcard-import,unused-import,g-import-not-at-top
-
-  _tpu_ops = loader.load_op_library(
-      resource_loader.get_path_to_datafile("_tpu_ops.so"))
 
   def _create_default_group_assignment():
     num_shards = tpu_function.get_tpu_context().number_of_shards
@@ -137,10 +132,18 @@ if platform.system() != "Windows":
     """
     return gen_tpu_ops.collective_permute(x, source_target_pairs, name=name)
 
+  @ops.RegisterGradient("CollectivePermute")
+  def _collective_permute_grad(op, grad):
+    # The gradient of a collective permute operation is also a collective
+    # permute, but with source/target pairs reversed. The gradient with respect
+    # to input argument `source_target_pairs` is `None`.
+    source_target_pairs = op.inputs[1][:, ::-1]
+    return [gen_tpu_ops.collective_permute(grad, source_target_pairs), None]
+
   @ops.RegisterGradient("CrossReplicaSum")
   def _cross_replica_sum_grad(op, grad):
     # The gradient of a cross replica sum is also a cross-replica sum.
-    # The graident with respect to group_assignment is None.
+    # The gradient with respect to group_assignment is None.
     return [gen_tpu_ops.cross_replica_sum(grad, op.inputs[1]), None]
 
   # This extra type checking exists to give a more helpful error message in
@@ -149,8 +152,38 @@ if platform.system() != "Windows":
 
   _SUPPORTED_INFEED_DTYPES = set([
       dtypes.bool, dtypes.int32, dtypes.int64, dtypes.bfloat16, dtypes.float32,
-      dtypes.complex64
+      dtypes.complex64, dtypes.uint32
   ])
+
+  @ops.RegisterGradient("TPUEmbeddingActivations")
+  def _embedding_activations_grad(activations_op, grad_wrt_activations):
+    """Saves the gradient of embedding activations ops in a graph collection."""
+    g = ops.get_default_graph()
+    table_id = activations_op.get_attr("table_id")
+    lookup_id = activations_op.get_attr("lookup_id")
+    table_gradients = g.get_collection_ref(
+        "tpu_embedding_gradients_table_%d" % table_id)
+
+    if not table_gradients:
+      raise RuntimeError(
+          "Gradients for TPUEmbedding have been generated in non-training mode."
+          "This is not expected. Consider putting your Optimizer.minimize code "
+          "behind the training mode condition check. For Estimator, you can "
+          "do \n\n"
+          "    if mode == tf.estimator.ModeKeys.TRAIN:\n"
+          "        train_op = opt.minimize(loss)\n"
+          "\n")
+
+    table_gradients[lookup_id] = array_ops.identity(grad_wrt_activations)
+    return [
+        # RegisterGradient requires that value be returned for all inputs. Since
+        # the first argument (tpu_gradient_variable_{table_name}) has shape [1],
+        # we will return zeros(shape=[1]). The actual gradient w.r.t. the
+        # embedding activations (grad_wrt_activations) has the same shape as the
+        # activations returned by  embedding_activations.
+        array_ops.zeros(arg.shape, dtype=dtypes.float32)
+        for arg in activations_op.inputs
+    ]
 
   def infeed_dequeue(dtype, shape, name=None):
     """A placeholder op for a value that will be fed into the computation.
@@ -209,13 +242,19 @@ if platform.system() != "Windows":
 
     Args:
       inputs: A TensorList of gradients with which to update embedding tables.
-        Contains one tensor per embedding table in the model.
+          This argument has the same length and shapes as the return value of
+          RecvTPUEmbeddingActivations, but contains gradients of the model's
+          loss with respect to the embedding activations. The embedding tables
+          are updated from these gradients via the optimizers specified in the
+          TPU embedding configuration given to tpu.initialize_system.
       config: Serialized TPUEmbeddingConfiguration proto.
-      learning_rates: A TensorList of float32 scalars, one for each embedding
-        table, containing the learning rates for each table when dynamic
-        learning rate is enabled through the OptimizationParameters in
-        TPUEmbeddingConfiguration. When the learning rate is constant, the list
-        should be empty (optional).
+      learning_rates: A TensorList of float32 scalars, one for each dynamic
+          learning rate tag: see the comments in
+          //third_party/tensorflow/core/protobuf/tpu/
+                                               optimization_parameters.proto.
+          Multiple tables can share the same dynamic learning rate tag as
+          specified in the configuration. If the learning rates for all tables
+          are constant, this list should be empty.
       name: A name for the operation (optional).
 
     Returns:
@@ -223,12 +262,11 @@ if platform.system() != "Windows":
     """
     if learning_rates is None:
       learning_rates = []
-    return gen_tpu_ops._send_tpu_embedding_gradients(
+    return gen_tpu_ops.send_tpu_embedding_gradients(
         inputs=inputs, learning_rates=learning_rates, config=config, name=name)
 
-
   send_tpu_embedding_gradients.__doc__ = (
-      gen_tpu_ops._send_tpu_embedding_gradients.__doc__)
+      gen_tpu_ops.send_tpu_embedding_gradients.__doc__)
 
   # pylint: disable=protected-access
   def enqueue_tpu_embedding_integer_batch(batch,
@@ -254,14 +292,14 @@ if platform.system() != "Windows":
     """
     if mode_override is None:
       mode_override = "unspecified"
-    return gen_tpu_ops._enqueue_tpu_embedding_integer_batch(
+    return gen_tpu_ops.enqueue_tpu_embedding_integer_batch(
         batch=batch,
         device_ordinal=device_ordinal,
         mode_override=mode_override,
         name=name)
 
   enqueue_tpu_embedding_integer_batch.__doc__ = (
-      gen_tpu_ops._enqueue_tpu_embedding_integer_batch.__doc__)
+      gen_tpu_ops.enqueue_tpu_embedding_integer_batch.__doc__)
 
   # pylint: disable=protected-access
   def enqueue_tpu_embedding_sparse_batch(sample_indices,
@@ -303,7 +341,7 @@ if platform.system() != "Windows":
     """
     if mode_override is None:
       mode_override = "unspecified"
-    return gen_tpu_ops._enqueue_tpu_embedding_sparse_batch(
+    return gen_tpu_ops.enqueue_tpu_embedding_sparse_batch(
         sample_indices=sample_indices,
         embedding_indices=embedding_indices,
         aggregation_weights=aggregation_weights,
@@ -313,7 +351,7 @@ if platform.system() != "Windows":
         name=name)
 
   enqueue_tpu_embedding_sparse_batch.__doc__ = (
-      gen_tpu_ops._enqueue_tpu_embedding_sparse_batch.__doc__)
+      gen_tpu_ops.enqueue_tpu_embedding_sparse_batch.__doc__)
 
   # pylint: disable=protected-access
   def enqueue_tpu_embedding_sparse_tensor_batch(sample_indices,
@@ -329,9 +367,8 @@ if platform.system() != "Windows":
     Args:
       sample_indices: A list of rank 1 Tensors specifying the training example
         to which the corresponding embedding_indices and aggregation_weights
-        values
-        belong. It corresponds to sp_ids.indices[:,0] in
-          embedding_lookup_sparse().
+        values belong. It corresponds to sp_ids.indices[:,0] in
+        embedding_lookup_sparse().
       embedding_indices: A list of rank 1 Tensors, indices into the embedding
         tables. It corresponds to sp_ids.values in embedding_lookup_sparse().
       aggregation_weights: A list of rank 1 Tensors containing per training
@@ -362,7 +399,7 @@ if platform.system() != "Windows":
     """
     if mode_override is None:
       mode_override = "unspecified"
-    return gen_tpu_ops._enqueue_tpu_embedding_sparse_tensor_batch(
+    return gen_tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch(
         sample_indices=sample_indices,
         embedding_indices=embedding_indices,
         aggregation_weights=aggregation_weights,
@@ -373,7 +410,7 @@ if platform.system() != "Windows":
         name=name)
 
   enqueue_tpu_embedding_sparse_tensor_batch.__doc__ = (
-      gen_tpu_ops._enqueue_tpu_embedding_sparse_tensor_batch.__doc__)
+      gen_tpu_ops.enqueue_tpu_embedding_sparse_tensor_batch.__doc__)
 
 else:
   # We have already built the appropriate libraries into the binary via CMake

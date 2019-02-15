@@ -13,10 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/graph/graph_def_builder.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
 namespace data {
@@ -46,8 +46,25 @@ class DatasetToGraphOp : public OpKernel {
   }
 };
 
+class DatasetCardinalityOp : public OpKernel {
+ public:
+  explicit DatasetCardinalityOp(OpKernelConstruction* ctx) : OpKernel(ctx) {}
+
+  void Compute(OpKernelContext* ctx) override {
+    DatasetBase* dataset;
+    OP_REQUIRES_OK(ctx, GetDatasetFromVariantTensor(ctx->input(0), &dataset));
+    Tensor* result;
+    OP_REQUIRES_OK(ctx, ctx->allocate_output(0, TensorShape({}), &result));
+    result->scalar<int64>()() = dataset->Cardinality();
+  }
+};
+
 REGISTER_KERNEL_BUILDER(Name("DatasetToGraph").Device(DEVICE_CPU),
                         DatasetToGraphOp);
+
+REGISTER_KERNEL_BUILDER(
+    Name("ExperimentalDatasetCardinality").Device(DEVICE_CPU),
+    DatasetCardinalityOp);
 
 }  // namespace data
 }  // namespace tensorflow

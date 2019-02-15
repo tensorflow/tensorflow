@@ -102,6 +102,7 @@ class PyFuncTest(test.TestCase):
           script_ops.eager_py_func(np_func, [x, y], [dtypes.float32]))
       self.assertEqual(z[0], np_func(1.0, 2.0).astype(np.float32))
 
+  @test_util.run_v1_only("b/120545219")
   def testArray(self):
     with self.cached_session():
       x = constant_op.constant([1.0, 2.0], dtypes.float64)
@@ -168,6 +169,7 @@ class PyFuncTest(test.TestCase):
                              (dtypes.float64, dtypes.float64)))
       self.assertAllClose(y, [0.0, 1.0])
 
+  @test_util.run_v1_only("b/120545219")
   def testStrings(self):
 
     def read_fixed_length_numpy_strings():
@@ -185,6 +187,7 @@ class PyFuncTest(test.TestCase):
           script_ops.py_func(read_and_return_strings, [x, y], dtypes.string))
       self.assertAllEqual(z, [b"hello there", b"hi there"])
 
+  @test_util.run_v1_only("b/120545219")
   def testStringsAreConvertedToBytes(self):
 
     def read_fixed_length_numpy_strings():
@@ -202,6 +205,7 @@ class PyFuncTest(test.TestCase):
           script_ops.py_func(read_and_return_strings, [x, y], dtypes.string))
       self.assertAllEqual(z, [b"hello there", b"hi there"])
 
+  @test_util.run_v1_only("b/120545219")
   def testObjectArraysAreConvertedToBytes(self):
 
     def read_object_array():
@@ -217,12 +221,14 @@ class PyFuncTest(test.TestCase):
       z, = script_ops.py_func(read_and_return_strings, [x, y], [dtypes.string])
       self.assertListEqual(list(z.eval()), [b"hello there", b"hi ya"])
 
+  @test_util.run_v1_only("b/120545219")
   def testStringPadding(self):
     correct = [b"this", b"is", b"a", b"test"]
     with self.cached_session():
       s, = script_ops.py_func(lambda: [correct], [], [dtypes.string])
       self.assertAllEqual(s.eval(), correct)
 
+  @test_util.run_v1_only("b/120545219")
   def testStringPaddingAreConvertedToBytes(self):
     inp = ["this", "is", "a", "test"]
     correct = [b"this", b"is", b"a", b"test"]
@@ -230,6 +236,7 @@ class PyFuncTest(test.TestCase):
       s, = script_ops.py_func(lambda: [inp], [], [dtypes.string])
       self.assertAllEqual(s.eval(), correct)
 
+  @test_util.run_v1_only("b/120545219")
   def testLarge(self):
     with self.cached_session() as sess:
       x = array_ops.zeros([1000000], dtype=np.float32)
@@ -243,6 +250,7 @@ class PyFuncTest(test.TestCase):
       x = self.evaluate(script_ops.py_func(lambda: 42.0, [], dtypes.float64))
       self.assertAllClose(x, 42.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testAlias(self):
     with self.cached_session():
       np_array = np.array([1.0, 2.0], dtype=np.float32)
@@ -251,6 +259,7 @@ class PyFuncTest(test.TestCase):
       value.op.run()
       self.assertAllEqual(np_array, [1.0, 2.0])
 
+  @test_util.run_v1_only("b/120545219")
   def testReturnUnicodeString(self):
     with self.cached_session():
       correct = u"你好 世界"
@@ -261,6 +270,7 @@ class PyFuncTest(test.TestCase):
       z, = script_ops.py_func(unicode_string, [], [dtypes.string])
       self.assertEqual(z.eval(), correct.encode("utf8"))
 
+  @test_util.run_v1_only("b/120545219")
   def testBadNumpyReturnType(self):
     with self.cached_session():
 
@@ -272,8 +282,9 @@ class PyFuncTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported numpy type"):
-        y.eval()
+        self.evaluate(y)
 
+  @test_util.run_v1_only("b/120545219")
   def testBadReturnType(self):
     with self.cached_session():
 
@@ -285,8 +296,9 @@ class PyFuncTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors.UnimplementedError,
                                    "Unsupported object type"):
-        z.eval()
+        self.evaluate(z)
 
+  @test_util.run_v1_only("b/120545219")
   def testReturnInput(self):
     with self.cached_session():
 
@@ -307,9 +319,9 @@ class PyFuncTest(test.TestCase):
     with session_lib.Session() as sess:
       producer = iter(range(3))
       x, = script_ops.py_func(lambda: next(producer), [], [dtypes.int64])
-      self.assertEqual(sess.run(x), 0)
-      self.assertEqual(sess.run(x), 1)
-      self.assertEqual(sess.run(x), 2)
+      self.assertEqual(self.evaluate(x), 0)
+      self.assertEqual(self.evaluate(x), 1)
+      self.assertEqual(self.evaluate(x), 2)
 
   def testStateless(self):
     # Not using self.cached_session(), which disables optimization.
@@ -317,10 +329,11 @@ class PyFuncTest(test.TestCase):
       producer = iter(range(3))
       x, = script_ops.py_func(
           lambda: next(producer), [], [dtypes.int64], stateful=False)
-      self.assertEqual(sess.run(x), 0)
-      self.assertEqual(sess.run(x), 0)
-      self.assertEqual(sess.run(x), 0)
+      self.assertEqual(self.evaluate(x), 0)
+      self.assertEqual(self.evaluate(x), 0)
+      self.assertEqual(self.evaluate(x), 0)
 
+  @test_util.run_v1_only("b/120545219")
   def testGradientFunction(self):
     # Input to tf.py_func is necessary, otherwise get_gradient_function()
     # returns None per default.
@@ -330,13 +343,15 @@ class PyFuncTest(test.TestCase):
     self.assertEqual(None, ops.get_gradient_function(x.op))
     self.assertEqual(None, ops.get_gradient_function(y.op))
 
+  @test_util.run_v1_only("b/120545219")
   def testCOrder(self):
     with self.cached_session():
       val = [[1, 2], [3, 4]]
       x, = script_ops.py_func(lambda: np.array(val, order="F"), [],
                               [dtypes.int64])
-      self.assertAllEqual(val, x.eval())
+      self.assertAllEqual(val, self.evaluate(x))
 
+  @test_util.run_v1_only("b/120545219")
   def testParallel(self):
     # Tests that tf.py_func's can run in parallel if they release the GIL.
     with self.cached_session() as session:
@@ -382,6 +397,7 @@ class PyFuncTest(test.TestCase):
       self.assertIsNone(ret)
       self.assertAllEqual([3], s.value)
 
+  @test_util.run_v1_only("b/120545219")
   def testNoReturnValueStateless(self):
 
     def do_nothing(unused_x):
@@ -390,7 +406,7 @@ class PyFuncTest(test.TestCase):
     f = script_ops.py_func(
         do_nothing, [constant_op.constant(3, dtypes.int64)], [], stateful=False)
     with self.cached_session() as sess:
-      self.assertEqual(sess.run(f), [])
+      self.assertEqual(self.evaluate(f), [])
 
   def _testExceptionHandling(self, py_exp, tf_exp, eager=False):
 
@@ -420,6 +436,7 @@ class PyFuncTest(test.TestCase):
     with self.assertRaisesWithPredicateMatch(tf_exp, expected_error_check):
       self.evaluate(f)
 
+  @test_util.run_v1_only("b/120545219")
   def testExceptionHandling(self):
     with self.cached_session():
       self._testExceptionHandling(ValueError, errors.InvalidArgumentError)
@@ -514,6 +531,7 @@ class PyFuncTest(test.TestCase):
       self.assertAllEqual(ret, [[3.0], [3.0], [3.0]])
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testEagerExceptionHandling(self):
     with test_util.device(use_gpu=True):
       self._testExceptionHandling(
@@ -533,6 +551,7 @@ class PyFuncTest(test.TestCase):
       self._testExceptionHandling(WeirdError, errors.UnknownError, eager=True)
 
   @test_util.run_in_graph_and_eager_modes
+  @test_util.run_v1_only("b/120545219")
   def testEagerReturningVariableRaisesError(self):
     def return_variable():
       return resource_variable_ops.ResourceVariable(0.0)
@@ -556,6 +575,7 @@ class PyFuncTest(test.TestCase):
     dy_dx = tape.gradient(y, x)
     self.assertEqual(self.evaluate(dy_dx), 6.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testEagerGradientGraph(self):
 
     def f(x):
@@ -566,6 +586,7 @@ class PyFuncTest(test.TestCase):
     dy_dx = gradients_impl.gradients(y, x)[0]
     self.assertEqual(self.evaluate(dy_dx), 6.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testEagerGradientGraphTwoOutputs(self):
 
     def f(x, y):
@@ -595,6 +616,7 @@ class PyFuncTest(test.TestCase):
     self.assertEqual(self.evaluate(dz_dx), 6.0)
     self.assertEqual(self.evaluate(dz_dy), 8.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testEagerGradientGraphMultipleArgs(self):
 
     def f(x, y):
@@ -608,6 +630,7 @@ class PyFuncTest(test.TestCase):
     self.assertEqual(self.evaluate(dz_dx), 6.0)
     self.assertEqual(self.evaluate(dz_dy), 8.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testEagerGradientGraphLogHuber(self):
 
     def log_huber(x, m):
@@ -629,6 +652,7 @@ class PyFuncTest(test.TestCase):
       self.assertEqual(y, 1.0)
       self.assertEqual(dy_dx, 2.0)
 
+  @test_util.run_v1_only("b/120545219")
   def testEagerRespectsDevicePlacmentOfOp(self):
 
     def f(x):

@@ -59,6 +59,8 @@ class XRTGenericDeviceAccessor {
 
   static Status InitScopedRef(OpKernelContext* ctx, int device_ordinal,
                               ScopedRef* scoped_ref);
+
+  static Status InitScopedRef(OpKernelContext* ctx, ScopedRef* scoped_ref);
 };
 
 }  // namespace tensorflow

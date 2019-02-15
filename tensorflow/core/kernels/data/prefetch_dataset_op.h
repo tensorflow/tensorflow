@@ -16,7 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
 #define TENSORFLOW_CORE_KERNELS_DATA_PREFETCH_DATASET_OP_H_
 
-#include "tensorflow/core/kernels/data/dataset.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/kernels/data/prefetch_autotuner.h"
 
 namespace tensorflow {

@@ -14,10 +14,10 @@ limitations under the License.
 ==============================================================================*/
 #include <numeric>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/util/sparse/sparse_tensor.h"
 
 namespace tensorflow {
@@ -41,8 +41,8 @@ class Dataset : public DatasetBase {
 
   std::unique_ptr<IteratorBase> MakeIteratorInternal(
       const string& prefix) const override {
-    return std::unique_ptr<IteratorBase>(
-        new Iterator({this, strings::StrCat(prefix, "::SparseTensorSlice")}));
+    return absl::make_unique<Iterator>(typename Iterator::Params{
+        this, strings::StrCat(prefix, "::SparseTensorSlice")});
   }
 
   const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -53,6 +53,8 @@ class Dataset : public DatasetBase {
   string DebugString() const override {
     return "SparseTensorSliceDatasetOp::Dataset";
   }
+
+  int64 Cardinality() const override { return sparse_tensor_.shape()[0]; }
 
  protected:
   Status AsGraphDefInternal(SerializationContext* ctx,
@@ -152,6 +154,11 @@ class Dataset : public DatasetBase {
     }
 
    protected:
+    std::shared_ptr<model::Node> CreateNode(
+        IteratorContext* ctx, model::Node::Args args) const override {
+      return model::MakeSourceNode(std::move(args));
+    }
+
     Status SaveInternal(IteratorStateWriter* writer) override {
       mutex_lock l(mu_);
       TF_RETURN_IF_ERROR(writer->WriteScalar(Iterator::full_name("i"), i_));
