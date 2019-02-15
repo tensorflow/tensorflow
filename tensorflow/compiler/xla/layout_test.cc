@@ -87,6 +87,15 @@ TEST_F(LayoutTest, Equality) {
             Layout().set_format(SPARSE).set_max_sparse_elements(42));
   EXPECT_NE(Layout().set_format(SPARSE).set_max_sparse_elements(42),
             Layout().set_format(SPARSE).set_max_sparse_elements(24));
+
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}, {Tile({42, 44})}), Layout({0, 1, 2})));
+  EXPECT_TRUE(Layout::Equal().IgnoreTiles()(Layout({0, 1, 2}, {Tile({42, 44})}),
+                                            Layout({0, 1, 2})));
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}, {}, 32), Layout({0, 1, 2}, {}, 1)));
+  EXPECT_TRUE(Layout::Equal().IgnoreElementSize()(Layout({0, 1, 2}, {}, 32),
+                                                  Layout({0, 1, 2}, {}, 1)));
 }
 
 TEST_F(LayoutTest, LayoutToFromProto) {

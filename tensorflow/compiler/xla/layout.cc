@@ -95,12 +95,24 @@ string Layout::ToString() const {
   }
 }
 
+bool Layout::Equal::operator()(const Layout& lhs, const Layout& rhs) {
+  if (lhs.format() != rhs.format() ||
+      lhs.minor_to_major() != rhs.minor_to_major() ||
+      lhs.max_sparse_elements() != rhs.max_sparse_elements()) {
+    return false;
+  }
+  if (!ignore_tiles_ && lhs.tiles() != rhs.tiles()) {
+    return false;
+  }
+  if (!ignore_element_size_ &&
+      lhs.element_size_in_bits() != rhs.element_size_in_bits()) {
+    return false;
+  }
+  return true;
+}
+
 bool Layout::operator==(const Layout& other) const {
-  return (other.format() == format() &&
-          other.minor_to_major() == minor_to_major() &&
-          other.element_size_in_bits() == element_size_in_bits() &&
-          other.max_sparse_elements() == max_sparse_elements() &&
-          other.tiles() == tiles());
+  return Equal()(*this, other);
 }
 
 std::ostream& operator<<(std::ostream& out, const Tile& tile) {
