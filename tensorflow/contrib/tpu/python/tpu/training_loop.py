@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.compiler import xla
+from tensorflow.contrib.tpu.python.tpu import tensor_tracer
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 
 from tensorflow.python.framework import ops
@@ -157,10 +158,18 @@ def while_loop(condition, body, inputs=None, infeed_queue=None, name=None):
       # TODO(phawkins): in principle this is too restrictive since it serializes
       # the training loop steps. In practice it does not matter since this loop
       # will be compiled by XLA.
-      return control_flow_ops.tuple(output_tensors,
-                                    control_inputs=output_operations)
-    else:
-      return output_tensors
+      output_tensors = control_flow_ops.tuple(output_tensors,
+                                              control_inputs=output_operations)
+
+    if tensor_tracer.TensorTracer.is_enabled():
+      num_replicas = tpu_function.get_tpu_context().number_of_shards
+      if num_replicas is None:
+        num_replicas = 1
+      tt = tensor_tracer.TensorTracer()
+      output_tensors = tt.trace_tpu(ops.get_default_graph(),
+                                    output_tensors, None,
+                                    num_replicas)
+    return output_tensors
 
   # If the body has arity 0, add a dummy loop-carried value to which we can add
   # control dependencies from any side-effecting operations.
