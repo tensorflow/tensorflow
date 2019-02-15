@@ -120,4 +120,5 @@ tf_py_test(
         "//tensorflow/python/keras:layers",
         "//tensorflow/python/training/checkpointable:util",
     ],
+    tags = ["nooss"],  # b/124472244
 )
