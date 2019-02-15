@@ -173,18 +173,18 @@ bool HasTPUAttributes(const NodeDef& node) {
 }
 
 template <typename T>
-bool IsDenormal(T x) {
-  return false;
+bool PackedValuesNotEqual(T a, T b) {
+  return a != b;
 }
 
 template <>
-bool IsDenormal(float x) {
-  return !std::isnormal(x);
+bool PackedValuesNotEqual(float a, float b) {
+  return reinterpret_cast<int32&>(a) != reinterpret_cast<int32&>(b);
 }
 
 template <>
-bool IsDenormal(double x) {
-  return !std::isnormal(x);
+bool PackedValuesNotEqual(double a, double b) {
+  return reinterpret_cast<int64&>(a) != reinterpret_cast<int64&>(b);
 }
 
 float QuantizedTypeMinAsFloat(DataType data_type) {
@@ -1076,7 +1076,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     int64 last_index = 0;                                                 \
     for (int64 i = 0; i < tensor->NumElements(); ++i) {                   \
       TYPE cur = *val_ptr++;                                              \
-      if (cur != last || IsDenormal<TYPE>(cur)) {                         \
+      if (PackedValuesNotEqual(cur, last)) {                              \
         last = cur;                                                       \
         last_index = i;                                                   \
       }                                                                   \
