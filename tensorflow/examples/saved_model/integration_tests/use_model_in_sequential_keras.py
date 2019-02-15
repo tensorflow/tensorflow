@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Load and use RNN model stored as a SavedModel."""
+"""Load and use text embedding module in sequential Keras."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +24,7 @@ from absl import flags
 import numpy as np
 
 import tensorflow as tf
-# TODO(vbardiovsky): Remove when load is available.
+# TODO(vbardiovsky): Remove when load symbol is public.
 from tensorflow.examples.saved_model.integration_tests import util
 from tensorflow.python.saved_model.load import load
 
@@ -35,27 +35,38 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("model_dir", None, "Directory to load SavedModel from.")
 
 
+def train(fine_tuning):
+  """Build a Keras model and train with mock data."""
+  features = np.array(["my first sentence", "my second sentence"])
+  labels = np.array([1, 0])
+  dataset = tf.data.Dataset.from_tensor_slices((features, labels))
+
+  module = tf.saved_model.load(FLAGS.model_dir)
+
+  # Create the sequential keras model.
+  l = tf.keras.layers
+  model = tf.keras.Sequential()
+  model.add(l.Reshape((), batch_input_shape=[None, 1], dtype=tf.string))
+  model.add(util.CustomLayer(module, output_shape=[10], trainable=fine_tuning))
+  model.add(l.Dense(100, activation="relu"))
+  model.add(l.Dense(50, activation="relu"))
+  model.add(l.Dense(1, activation="sigmoid"))
+
+  model.compile(
+      optimizer="adam",
+      loss="binary_crossentropy",
+      metrics=["accuracy"],
+      # TODO(b/124446120): Remove after fixed.
+      run_eagerly=True)
+
+  model.fit_generator(generator=dataset.batch(1), epochs=5)
+
+
 def main(argv):
   del argv
 
-  features = np.array(["my first sentence", "my second sentence"])
-  labels = np.array([1, 0])
-
-  dataset = tf.data.Dataset.from_tensor_slices((features, labels))
-
-  embed = tf.saved_model.load(FLAGS.model_dir)
-
-  # Create the sequential keras model.
-  model = tf.keras.Sequential()
-  model.add(util.CustomLayer(embed, batch_input_shape=[None],
-                             output_shape=[10], dtype=tf.string))
-  model.add(tf.keras.layers.Dense(100, activation="relu"))
-  model.add(tf.keras.layers.Dense(50, activation="relu"))
-  model.add(tf.keras.layers.Dense(1, activation="sigmoid"))
-  model.compile(
-      optimizer="adam", loss="binary_crossentropy", metrics=["accuracy"])
-
-  model.fit_generator(generator=dataset.batch(1), epochs=5)
+  train(fine_tuning=False)
+  train(fine_tuning=True)
 
 
 if __name__ == "__main__":
