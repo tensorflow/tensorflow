@@ -641,7 +641,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
                       dimvec.size(), base, size, DeleteArray, base);
 }
 
-Status MessageToBuffer(const tensorflow::protobuf::Message& in,
+Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out) {
   if (out->data != nullptr) {
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
