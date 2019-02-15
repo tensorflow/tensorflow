@@ -218,7 +218,8 @@ Function *impl::FunctionConversion::convertFunction(Function *f) {
 
   // Create a new function with argument types and result types converted.  Wrap
   // it into a unique_ptr to make sure it is cleaned up in case of error.
-  Type newFunctionType = dialectConversion->convertType(f->getType());
+  Type newFunctionType =
+      dialectConversion->convertFunctionSignatureType(f->getType());
   if (!newFunctionType)
     return emitError("could not convert function type");
   auto newFunction = llvm::make_unique<Function>(
@@ -303,6 +304,23 @@ bool impl::FunctionConversion::run(Module *module) {
     module->getFunctions().push_back(func);
 
   return false;
+}
+
+// Create a function type with arguments and results converted.
+FunctionType
+DialectConversion::convertFunctionSignatureType(FunctionType type) {
+  SmallVector<Type, 8> arguments;
+  SmallVector<Type, 4> results;
+
+  arguments.reserve(type.getNumInputs());
+  for (auto t : type.getInputs())
+    arguments.push_back(convertType(t));
+
+  results.reserve(type.getNumResults());
+  for (auto t : type.getResults())
+    results.push_back(convertType(t));
+
+  return FunctionType::get(arguments, results, type.getContext());
 }
 
 PassResult DialectConversion::runOnModule(Module *m) {

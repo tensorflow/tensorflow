@@ -33,6 +33,7 @@
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 
+#include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Type.h"
 
@@ -60,6 +61,14 @@ public:
   static Type pack(ArrayRef<Type> types, llvm::Module &llvmModule,
                    MLIRContext &context);
 
+  // Convert a function signature type to the LLVM IR dialect.  The outer
+  // function type remains `mlir::FunctionType`.  Argument types are converted
+  // to LLVM IR as is.  If the function returns a single result, its type is
+  // converted.  Otherwise, the types of results are packed into an LLVM IR
+  // structure type.
+  static FunctionType convertFunctionSignature(FunctionType t,
+                                               llvm::Module &llvmModule);
+
 private:
   // Construct a type converter.
   explicit TypeConverter(llvm::Module &llvmModule, MLIRContext *context)
@@ -70,7 +79,11 @@ private:
   // one.  Additionally, if the function returns more than one value, pack the
   // results into an LLVM IR structure type so that the converted function type
   // returns at most one result.
-  FunctionType convertFunctionType(FunctionType type);
+  Type convertFunctionType(FunctionType type);
+
+  // Convert function type arguments and results without converting the
+  // function type itself.
+  FunctionType convertFunctionSignatureType(FunctionType type);
 
   // Convert the index type.  Uses llvmModule data layout to create an integer
   // of the pointer bitwidth.
@@ -187,8 +200,29 @@ Type TypeConverter::getPackedResultType(ArrayRef<Type> types) {
 // argument and result types.  If MLIR Function has zero results, the LLVM
 // Function has one VoidType result.  If MLIR Function has more than one result,
 // they are into an LLVM StructType in their order of appearance.
-FunctionType TypeConverter::convertFunctionType(FunctionType type) {
+Type TypeConverter::convertFunctionType(FunctionType type) {
   // Convert argument types one by one and check for errors.
+  SmallVector<llvm::Type *, 8> argTypes;
+  for (auto t : type.getInputs()) {
+    auto converted = convertType(t);
+    if (!converted)
+      return {};
+    argTypes.push_back(unwrap(converted));
+  }
+
+  // If function does not return anything, create the void result type,
+  // if it returns on element, convert it, otherwise pack the result types into
+  // a struct.
+  llvm::Type *resultType = type.getNumResults() == 0
+                               ? llvm::Type::getVoidTy(llvmContext)
+                               : unwrap(getPackedResultType(type.getResults()));
+  if (!resultType)
+    return {};
+  return wrap(llvm::FunctionType::get(resultType, argTypes, /*isVarArg=*/false)
+                  ->getPointerTo());
+}
+
+FunctionType TypeConverter::convertFunctionSignatureType(FunctionType type) {
   SmallVector<Type, 8> argTypes;
   for (auto t : type.getInputs()) {
     auto converted = convertType(t);
@@ -199,13 +233,13 @@ FunctionType TypeConverter::convertFunctionType(FunctionType type) {
 
   // If function does not return anything, return immediately.
   if (type.getNumResults() == 0)
-    return FunctionType::get(argTypes, {}, mlirContext);
+    return FunctionType::get(argTypes, {}, type.getContext());
 
-  // Convert result types to a single LLVM result type.
-  Type resultType = getPackedResultType(type.getResults());
-  if (!resultType)
-    return {};
-  return FunctionType::get(argTypes, {resultType}, mlirContext);
+  // Otherwise pack the result types into a struct.
+  if (auto result = getPackedResultType(type.getResults()))
+    return FunctionType::get(argTypes, {result}, type.getContext());
+
+  return {};
 }
 
 // MemRefs are converted into LLVM structure types to accommodate dynamic sizes.
@@ -267,6 +301,11 @@ Type TypeConverter::convertType(Type type) {
 
 Type TypeConverter::convert(Type t, llvm::Module &module) {
   return TypeConverter(module, t.getContext()).convertType(t);
+}
+
+FunctionType TypeConverter::convertFunctionSignature(FunctionType t,
+                                                     llvm::Module &module) {
+  return TypeConverter(module, t.getContext()).convertFunctionSignatureType(t);
 }
 
 Type TypeConverter::getMemRefElementPtrType(MemRefType t,
@@ -993,6 +1032,11 @@ protected:
   // Convert types using the stored LLVM IR module.
   Type convertType(Type t) override {
     return TypeConverter::convert(t, *module);
+  }
+
+  // Convert function signatures using the stored LLVM IR module.
+  FunctionType convertFunctionSignatureType(FunctionType t) override {
+    return TypeConverter::convertFunctionSignature(t, *module);
   }
 
 private:

@@ -164,12 +164,12 @@ protected:
   initConverters(MLIRContext *mlirContext) = 0;
 
   /// Derived classes must reimplement this hook if they need to convert
-  /// block or function argument types or function result types.
-  ///
-  /// For functions types, this function will be passed a function type and the
-  /// result must be another function type with arguments and results converted.
-  /// Note: even if some target dialects have first-class function types, they
-  /// cannot be used at the top level of MLIR function signature.
+  /// block or function argument types or function result types.  If the target
+  /// dialect has support for custom first-class function types, convertType
+  /// should create those types for arguments of MLIR function type.  It can be
+  /// used for values (constant, operands, resutls) of function type but not for
+  /// the function signatures.  For the latter, convertFunctionSignatureType is
+  /// used instead.
   ///
   /// For block attribute types, this function will be called for each attribute
   /// individually.
@@ -178,6 +178,19 @@ protected:
   /// default-constructed Type.  The failure will be then propagated to trigger
   /// the pass failure.
   virtual Type convertType(Type t) { return t; }
+
+  /// Derived classes must reimplement this hook if they need to change the
+  /// function signature during conversion.  This function will be called on
+  /// a function type corresponding to a function signature and must produce the
+  /// converted MLIR function type.
+  ///
+  /// Note: even if some target dialects have first-class function types, they
+  /// cannot be used at the top level of MLIR function signature.
+  ///
+  /// The default behavior of this function is to call convertType on individual
+  /// function operands and results, and then create a new MLIR function type
+  /// from those.
+  virtual FunctionType convertFunctionSignatureType(FunctionType t);
 };
 
 } // end namespace mlir
