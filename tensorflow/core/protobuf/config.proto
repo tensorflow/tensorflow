@@ -252,11 +252,6 @@ message IPUOptions {
 
   // Option to disable caching of sub-graphs containing convolutions
   bool disable_graph_convolution_caching = 9;
-
-  // When set, break the device up into several smaller virtual devices, each
-  // targetable using the IPU_REPLICATED_CORE ordinals.  The system can only
-  // support one such sharded device.
-  bool enable_sharding = 10;
 };
 
 // Options passed to the graph optimizer

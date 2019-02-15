@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform_id.h"
+#include "tensorflow/compiler/plugin/poplar/driver/transfer_manager.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -125,6 +126,11 @@ std::string GetOutputCopyHandle(int64 output_index, int64 flat_tensor_index) {
 
 std::string GetInfeedCopyHandle(const std::string& name, int64 shape_index) {
   return tensorflow::strings::Printf("infeed_%s.%lld", name.c_str(),
+                                     shape_index);
+}
+
+std::string GetOutfeedCopyHandle(const std::string& name, int64 shape_index) {
+  return tensorflow::strings::Printf("outfeed_%s.%lld", name.c_str(),
                                      shape_index);
 }
 
@@ -244,6 +250,51 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
             std::memcpy(
                 dest, tensor_data_ptr,
                 ShapeUtil::ByteSizeOf(infeed_dataset_iterator->shapes[j]));
+          });
+    }
+  }
+}
+
+void PoplarExecutor::ConnectOutfeedToStreamCallback(
+    se::StreamExecutor* executor, const OutfeedInfos& outfeed_infos) {
+  for (const auto& outfeed_info : outfeed_infos) {
+    const auto& operand_shape = outfeed_info->operands()[0]->shape();
+
+    std::vector<std::pair<Shape, size_t>> shapes_sizes;
+    if (operand_shape.IsTuple()) {
+      for (int64 j = 0; j < operand_shape.tuple_shapes_size(); ++j) {
+        const Shape& tuple_element_shape =
+            ShapeUtil::GetTupleElementShape(operand_shape, j);
+        int64 size = ShapeUtil::ByteSizeOf(tuple_element_shape, sizeof(void*));
+        shapes_sizes.emplace_back(std::make_pair(tuple_element_shape, size));
+      }
+    } else {
+      int64 size = ShapeUtil::ByteSizeOf(operand_shape);
+      shapes_sizes.emplace_back(std::make_pair(operand_shape, size));
+    }
+
+    for (unsigned j = 0; j < shapes_sizes.size(); ++j) {
+      const Shape shape = std::get<0>(shapes_sizes[j]);
+      size_t byte_size = std::get<1>(shapes_sizes[j]);
+
+      current_engine_->connectStreamToCallback(
+          GetOutfeedCopyHandle(outfeed_info->name(), j),
+          [&, shape, byte_size](void* src) {
+            auto* xfeed_manager = GetXfeedManager(ordinal_);
+            auto* xfeed_buffer =
+                xfeed_manager->outfeed()->BlockingDequeueBuffer();
+            const auto N = xfeed_buffer->length();
+
+            void* dest = xfeed_buffer->data();
+            if (N != byte_size) {
+              LOG(FATAL) << "Outfeed buffer size != poplar datastream size : "
+                         << N << " != " << byte_size;
+              return;
+            }
+
+            std::memcpy(dest, src, N);
+            xfeed_manager->outfeed()->ReleaseCurrentBuffer(
+                xfeed_buffer->length(), xfeed_buffer->data(), shape);
           });
     }
   }
@@ -397,11 +448,6 @@ std::string PoplarExecutor::GetDeviceTargetName() const {
   return poplar::toString(poplar_device_.getTarget().getTargetType());
 }
 
-bool PoplarExecutor::ShardingEnabled() const {
-  return (current_config_.device_config_size() > 0 &&
-          current_config_.enable_sharding());
-}
-
 static bool DeviceConfigurationsEqual(const tensorflow::IPUOptions& a,
                                       const tensorflow::IPUOptions& b) {
   return google::protobuf::util::MessageDifferencer::Equivalent(a, b);
@@ -462,17 +508,13 @@ Status PoplarExecutor::ConfigurePoplarDevice(
           }
         } else {
           // User has specified a configuration
-          if (!current_config_.enable_sharding() &&
-              ordinal_ >= current_config_.device_config_size()) {
+          if (ordinal_ >= current_config_.device_config_size()) {
             return InternalError(
                 "Device ordinal %d not in device configuration list.",
                 ordinal_);
           }
 
-          auto device = current_config_.device_config(0);
-          if (!current_config_.enable_sharding()) {
-            device = current_config_.device_config(ordinal_);
-          }
+          auto device = current_config_.device_config(ordinal_);
 
           if (device.selection_case() ==
               tensorflow::IPUOptions::DeviceConfig::SelectionCase::kCfgIndex) {
@@ -522,10 +564,7 @@ Status PoplarExecutor::ConfigurePoplarDevice(
 
           int num_ipus = 1;
           if (current_config_.device_config_size() > 0) {
-            auto device = current_config_.device_config(0);
-            if (!current_config_.enable_sharding()) {
-              device = current_config_.device_config(ordinal_);
-            }
+            auto device = current_config_.device_config(ordinal_);
 
             if (device.selection_case() ==
                 tensorflow::IPUOptions::DeviceConfig::SelectionCase::
@@ -1330,10 +1369,14 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       MoveHostToDevice();
     }
 
-    retbuf = GetOutputBuffer(executable, allocator, BufferOutputAllocation(),
-                             output_shape, args, input_output_aliasing_map);
+    // Outfeeds add empty tuples as output shape, no need to get an output
+    // buffer in this case
+    if (!ShapeUtil::IsEmptyTuple(output_shape)) {
+      retbuf = GetOutputBuffer(executable, allocator, BufferOutputAllocation(),
+                               output_shape, args, input_output_aliasing_map);
 
-    UpdateOutputsHandleMap(executable, output_shape, retbuf);
+      UpdateOutputsHandleMap(executable, output_shape, retbuf);
+    }
 
     VLOG(1) << "Executing on poplar stream ordinal " << ordinal_ << " of type "
             << GetDeviceTargetName();
@@ -1346,6 +1389,11 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
       const auto& infeed_infos = executable.GetInfeedInfos();
       if (!infeed_infos.empty()) {
         ConnectInfeedsToStreamCallback(infeed_infos);
+      }
+
+      const auto& outfeed_infos = executable.GetOutfeedInfos();
+      if (!outfeed_infos.empty()) {
+        ConnectOutfeedToStreamCallback(executor, outfeed_infos);
       }
 
       // Run the main engine

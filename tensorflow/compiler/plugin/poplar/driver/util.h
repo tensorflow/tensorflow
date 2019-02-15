@@ -67,11 +67,7 @@ StatusOr<std::vector<NativeT>> WideConstToNativeType(
 
 bool IsPopOpsFusion(const HloComputation*, const std::string& postfix = "");
 bool IsPopOpsFusion(const HloInstruction*, const std::string& postfix = "");
-bool IsRepeatCall(const HloComputation*);
-bool IsRepeatCall(const HloInstruction*);
-// This functions assumes that IsRepeatCall(inst) is true
-HloComputation* GetRepeatBody(HloInstruction* inst);
-const HloComputation* GetRepeatBody(const HloInstruction* inst);
+bool IsRepeatLoop(const HloInstruction*);
 
 bool IsSupportedSharding(const HloSharding&);
 

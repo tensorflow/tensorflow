@@ -9,11 +9,15 @@ message PoplarBackendConfig {
 
   // Instruction config for a fusion instruction
   message FusionConfig {
-    //Convolutions
+    // Convolutions
     Window window = 1;
     ConvolutionDimensionNumbers dimension_numbers = 2;
     int64 feature_group_count = 3;
     int64 batch_group_count = 4;
+
+    // Repeats
+    bool is_repeat_loop = 5;
+    int64 repeat_count = 6;
   };
 
   FusionConfig fusion_config = 1;

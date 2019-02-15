@@ -62,28 +62,24 @@ void FindAllUsers::FindUsers(HloInstruction* tgt, const InstructionList& stack,
           path.push_back(user);
           switch (user->opcode()) {
             case HloOpcode::kCall: {
-              if (IsRepeatCall(user)) {
-                if (op_index == 1) {
-                  HloComputation* comp = GetRepeatBody(user);
-                  HloInstruction* param = comp->parameter_instruction(0);
+              HloComputation* comp = user->to_apply();
+              HloInstruction* param = comp->parameter_instruction(op_index);
 
-                  InstructionList new_stack(stack);
-                  new_stack.push_back(user);
-                  FindUsers(param, new_stack, index);
-                }
-              } else {
-                HloComputation* comp = user->to_apply();
-                HloInstruction* param = comp->parameter_instruction(op_index);
-
-                InstructionList new_stack(stack);
-                new_stack.push_back(user);
-                FindUsers(param, new_stack, index);
-              }
+              InstructionList new_stack(stack);
+              new_stack.push_back(user);
+              FindUsers(param, new_stack, index);
               break;
             }
             case HloOpcode::kFusion: {
               if (IsPopOpsFusion(user)) {
                 paths.insert(path);
+              } else if (IsRepeatLoop(user)) {
+                HloComputation* comp = user->fused_instructions_computation();
+                HloInstruction* param = comp->parameter_instruction(op_index);
+
+                InstructionList new_stack(stack);
+                new_stack.push_back(user);
+                FindUsers(param, new_stack, index);
               }
               break;
             }
