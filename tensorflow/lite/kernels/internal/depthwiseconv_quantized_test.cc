@@ -36,6 +36,7 @@ limitations under the License.
 namespace tflite {
 namespace {
 
+using optimized_ops::depthwise_conv::DotProduct3x3KernelType;
 using ::testing::Bool;
 using ::testing::Values;
 
@@ -138,11 +139,24 @@ inline void DispatchDepthwiseConv(
 #endif
     }
     case DepthwiseConvImplementation::kUseNeon3x3DotProduct:
-    case DepthwiseConvImplementation::kUseCModel3x3DotProduct:
     case DepthwiseConvImplementation::kUseUnwound3x3DotProduct:
     case DepthwiseConvImplementation::kUseIntrinsics3x3DotProduct:
       // TODO(b/118426582) Placeholder for future dispatches.
       break;
+    case DepthwiseConvImplementation::kUseCModel3x3DotProduct: {
+      DotProduct3x3KernelType kernel_type =
+          optimized_ops::depthwise_conv::CategorizeDotProductKernel(params);
+
+      ASSERT_TRUE(kernel_type == DotProduct3x3KernelType::kPlain ||
+                  kernel_type == DotProduct3x3KernelType::kStride2)
+          << "Kernel type = " << static_cast<int>(kernel_type);
+
+      optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
+          DepthwiseConvImplementation::kUseCModel3x3DotProduct>(
+          params, input_shape, input_data, filter_shape, filter_data,
+          bias_shape, bias_data, output_shape, output_data);
+      return;
+    }
     case DepthwiseConvImplementation::kUseGenericKernel: {
       optimized_ops::depthwise_conv::DepthwiseConvGeneral(
           params, input_shape, input_data, filter_shape, filter_data,
@@ -617,6 +631,20 @@ INSTANTIATE_TEST_SUITE_P(
         Bool(),                                        // test_stride
         Bool(),                                        // test_pad
         Bool(),                                        // test_depth_multiplier
+        Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
+        Values(false)                                  // loose_tolerance
+        ),
+    TestParam::TestNameSuffix);
+
+INSTANTIATE_TEST_SUITE_P(
+    CModel, DepthwiseConvTest,
+    testing::Combine(
+        Values(DepthwiseConvImplementation::
+                   kUseCModel3x3DotProduct),           // forced_invocation
+        Values(1000),                                  // tests_to_run
+        Bool(),                                        // test_stride
+        Bool(),                                        // test_pad
+        Values(false),                                 // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
         Values(false)                                  // loose_tolerance
         ),
