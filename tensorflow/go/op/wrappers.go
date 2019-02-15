@@ -19274,6 +19274,14 @@ func TPUReplicateMetadataPaddingMap(value []string) TPUReplicateMetadataAttr {
 	}
 }
 
+// TPUReplicateMetadataStepMarkerLocation sets the optional step_marker_location attribute to value.
+// If not specified, defaults to "STEP_MARK_AT_ENTRY"
+func TPUReplicateMetadataStepMarkerLocation(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["step_marker_location"] = value
+	}
+}
+
 // Metadata indicaitng how the TPU computation should be replicated.
 //
 // Arguments:
