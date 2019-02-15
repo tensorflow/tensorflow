@@ -6774,7 +6774,7 @@ tf_cc_test_mkl(
     name = "mkl_conv_ops_test",
     size = "small",
     srcs = ["mkl_conv_ops_test.cc"],
-    tags = ["no_mac"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -6959,7 +6959,7 @@ tf_cc_test_mkl(
     name = "mkl_requantize_ops_test",
     size = "small",
     srcs = ["mkl_requantize_ops_test.cc"],
-    tags = ["no_mac"],  #TODO(penporn): Re-enable the test on MacOS.
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_requantize_ops",
         ":ops_testutil",
