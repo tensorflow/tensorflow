@@ -47,9 +47,7 @@ from tensorflow.python.training import gradient_descent
 
 # Global config for grappler setting that is used for graph mode test.
 _rewrites = rewriter_config_pb2.RewriterConfig()
-_rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
-_customer_optimizer = _rewrites.custom_optimizers.add()
-_customer_optimizer.name = 'ImplementationSelector'
+_rewrites.implementation_selector = rewriter_config_pb2.RewriterConfig.ON
 _rewrites.min_graph_nodes = -1
 _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
