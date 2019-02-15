@@ -26,12 +26,14 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import resource_variable_ops
@@ -285,6 +287,18 @@ class DefFunctionTest(test.TestCase):
 
     with self.assertRaisesRegexp(ValueError, 'inner'):
       f(array_ops.zeros(shape=(8, 42, 3)))
+
+  def testRuntimeErrorNotSticky(self):
+
+    @def_function.function
+    def fail(i):
+      control_flow_ops.Assert(math_ops.equal(i, 0), ['ick'])
+
+    fail(constant_op.constant(0))  # OK
+    with self.assertRaises(errors.InvalidArgumentError):
+      fail(constant_op.constant(1))  # InvalidArgument: "ick"
+    fail(constant_op.constant(0))  # OK
+
 
   def test_serialization_signature_cache(self):
 
