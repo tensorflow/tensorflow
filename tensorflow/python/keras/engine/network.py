@@ -238,6 +238,9 @@ class Network(base_layer.Layer):
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
     self._dynamic = False
+    # `_expects_training_arg` is True since the `training` argument is always
+    # present in the signature of the `call` method of a graph network.
+    self._expects_training_arg = True
 
     self._input_layers = []
     self._output_layers = []

@@ -561,6 +561,16 @@ class Layer(checkpointable.Checkpointable):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
+          # Explicitly pass the learning phase placeholder to `call` if
+          # the `training` argument was left unspecified by the user.
+          # This behavior is restricted to the managed Keras FuncGraph.
+          learning_phase_passed_by_framework = False
+          if (self._expects_training_arg and
+              not base_layer_utils.training_arg_passed_to_call(
+                  tf_inspect.getfullargspec(self.call), args, kwargs) and
+              getattr(graph, 'name', None) == 'keras_graph'):
+            learning_phase_passed_by_framework = True
+            kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
               outputs = self.call(inputs, *args, **kwargs)
@@ -590,6 +600,8 @@ class Layer(checkpointable.Checkpointable):
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
           if base_layer_utils.have_all_keras_metadata(inputs):
+            if learning_phase_passed_by_framework:
+              kwargs.pop('training')
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
           self._handle_activity_regularization(inputs, outputs)
