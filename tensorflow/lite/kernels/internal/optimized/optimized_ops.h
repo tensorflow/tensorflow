@@ -867,10 +867,10 @@ inline void FullyConnectedAsGEMV(
   for (int k = 0; k < kPeel * input_size; k += 64) {
     optimized_ops_preload_l1_stream(filter_data + k);
   }
-  TFLITE_DCHECK(!(output_size % kPeel));
-  const int32* bias_ptr = bias_data;
-  uint8* output_ptr = output_data;
+  TFLITE_DCHECK_GE(output_size, kPeel);
+
   for (int out = 0; out < output_size; out += kPeel) {
+    out = std::min(out, output_size - kPeel);
     int32x4_t acc[kPeel];
     for (int k = 0; k < kPeel; k++) {
       acc[k] = vdupq_n_s32(0);
@@ -969,8 +969,7 @@ inline void FullyConnectedAsGEMV(
         vpadd_s32(pairwise_reduced_acc[2], pairwise_reduced_acc[3]);
     int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
     // Add bias values.
-    int32x4_t bias_vec = vld1q_s32(bias_ptr);
-    bias_ptr += 4;
+    int32x4_t bias_vec = vld1q_s32(bias_data + out);
     reduced = vaddq_s32(reduced, bias_vec);
     if (shift_left) {
       const int32 multiplier_power_of_two = 1 << output_shift;
@@ -993,10 +992,11 @@ inline void FullyConnectedAsGEMV(
     // Apply the clamping from the activation function
     res8 = vmax_u8(res8, vdup_n_u8(output_activation_min));
     res8 = vmin_u8(res8, vdup_n_u8(output_activation_max));
-    // Store results to destination. Assumes 32bit alignment.
-    vst1_lane_u32(reinterpret_cast<uint32*>(output_ptr),
-                  vreinterpret_u32_u8(res8), 0);
-    output_ptr += kPeel;
+    // Store results to destination.
+    vst1_lane_u8(output_data + out + 0, res8, 0);
+    vst1_lane_u8(output_data + out + 1, res8, 1);
+    vst1_lane_u8(output_data + out + 2, res8, 2);
+    vst1_lane_u8(output_data + out + 3, res8, 3);
   }
 }
 #endif  // USE_NEON
@@ -1054,14 +1054,16 @@ inline void FullyConnected(
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
 #ifdef USE_NEON
-  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
-                                      output_shape, output_dim_count - 1);
-  if (batches == 1 && !(output_size % 4)) {
-    return FullyConnectedAsGEMV(
-        input_shape, input_data, input_offset, filter_shape, filter_data,
-        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
-        output_shift, output_activation_min, output_activation_max,
-        output_shape, output_data);
+  if (batches == 1) {
+    const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
+                                        output_shape, output_dim_count - 1);
+    if (output_size >= 4) {
+      return FullyConnectedAsGEMV(
+          input_shape, input_data, input_offset, filter_shape, filter_data,
+          filter_offset, bias_shape, bias_data, output_offset,
+          output_multiplier, output_shift, output_activation_min,
+          output_activation_max, output_shape, output_data);
+    }
   }
 #endif  // USE_NEON
   const int filter_rows = filter_shape.Dims(filter_dim_count - 2);
@@ -2084,6 +2086,21 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
+
+#ifdef USE_NEON
+  if (gemm_input_cols == 1 && output_rows >= 4) {
+    RuntimeShape fc_filter_shape{
+        filter_shape.Dims(0),
+        filter_shape.Dims(filter_shape.DimensionsCount() - 1)};
+
+    return FullyConnectedAsGEMV(
+        *gemm_input_shape, gemm_input_data, input_offset, fc_filter_shape,
+        filter_data, filter_offset, bias_shape, bias_data, output_offset,
+        output_multiplier, output_shift, output_activation_min,
+        output_activation_max, output_shape, output_data);
+  }
+#endif
+
   gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> filter_matrix(
       filter_data, filter_rows, filter_cols);
   gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
