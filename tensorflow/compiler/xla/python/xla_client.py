@@ -679,6 +679,22 @@ class Computation(object):
     proto = hlo_pb2.HloModuleProto.FromString(serialized)
     return proto
 
+  def GetHloText(self):
+    """Get the textual HLO representation of this computation.
+
+    Returns:
+       A string containing the textual HLO.
+    """
+    return self.computation.GetHloText()
+
+  def GetHloDotGraph(self):
+    """Get a Graphviz Dot representation of this computation.
+
+    Returns:
+       A string containing the graphviz dot graph.
+    """
+    return self.computation.GetHloDotGraph()
+
   def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None,
               backend=None):
     """Compiles a computation.
