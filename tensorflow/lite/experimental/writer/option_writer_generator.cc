@@ -179,6 +179,7 @@ class OpOptionData {
     op_to_option_["LOG"] = "";
     op_to_option_["SQRT"] = "";
     op_to_option_["RSQRT"] = "";
+    op_to_option_["Rank"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";

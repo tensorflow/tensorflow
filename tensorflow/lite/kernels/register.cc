@@ -113,6 +113,7 @@ TfLiteRegistration* Register_NOT_EQUAL();
 TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
+TfLiteRegistration* Register_RANK();
 TfLiteRegistration* Register_POW();
 TfLiteRegistration* Register_FAKE_QUANT();
 TfLiteRegistration* Register_PACK();
@@ -336,6 +337,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
+  AddBuiltin(BuiltinOperator_RANK, Register_RANK());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
   AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
   AddBuiltin(BuiltinOperator_PACK, Register_PACK(),

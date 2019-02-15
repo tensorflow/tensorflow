@@ -223,6 +223,7 @@ enum BuiltinOperator : byte {
   GATHER_ND = 107,
   COS = 108,
   WHERE = 109,
+  RANK = 110,
 }
 
 // Options for the builtin operators.
@@ -312,6 +313,7 @@ union BuiltinOptions {
   GatherNdOptions,
   CosOptions,
   WhereOptions,
+  RankOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -650,6 +652,9 @@ table NotEqualOptions {
 table ShapeOptions {
   // Optional output type of the operation (int32 or int64). Defaults to int32.
   out_type : TensorType;
+}
+
+table RankOptions {
 }
 
 table PowOptions {

@@ -2452,6 +2452,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
   ops.push_back(MakeUnique<SimpleOperator<ReverseV2Operator>>(
       "REVERSE_V2", OperatorType::kReverseV2));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowRankOperator>>(
+      "RANK", OperatorType::kRank));
   return ops;
 }
 }  // namespace

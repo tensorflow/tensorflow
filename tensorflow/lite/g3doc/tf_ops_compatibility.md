@@ -725,6 +725,17 @@ Options {
 }
 ```
 
+**RANK**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 0-D int32 Tensor representing the rank of input
+}
+```
+
 **RELU**
 
 ```
