@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.  # # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
@@ -29,7 +27,7 @@ die() {
 echo "Collecting system information..."
 
 OUTPUT_FILE=tf_env.txt
-python_bin_path=$(which python || which python3 || die "Cannot find Python binary")
+python_bin_path=$(which python3 || which python || die "Cannot find Python binary")
 
 {
   echo
@@ -85,7 +83,7 @@ ${python_bin_path} /tmp/check_tf.py 2>&1  >> ${OUTPUT_FILE}
 DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tmp/loadedlibs
 
 {
-  grep libcudnn.so /tmp/loadedlibs
+  grep libMIOpen.so /tmp/loadedlibs
   echo
   echo '== env =========================================================='
   if [ -z ${LD_LIBRARY_PATH+x} ]; then
@@ -101,15 +99,14 @@ DEBUG_LD=libs ${python_bin_path} -c "import tensorflow"  2>>${OUTPUT_FILE} > /tm
   
   
   echo
-  echo '== nvidia-smi ==================================================='
-  nvidia-smi 2>&1
+  echo '== rocm-smi ==================================================='
+  "/opt/rocm/bin/rocm-smi" 2>&1
   
   echo
-  echo '== cuda libs  ==================================================='
+  echo '== rocm info ==================================================='
 } >> ${OUTPUT_FILE}
 
-find /usr/local -type f -name 'libcudart*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
-find /usr/local -type f -name 'libudnn*'  2>/dev/null | grep cuda |  grep -v "\\.cache" >> ${OUTPUT_FILE}
+"/opt/rocm/bin/rocminfo" >> ${OUTPUT_FILE}
 
 # Remove any words with google.
 mv $OUTPUT_FILE old-$OUTPUT_FILE
