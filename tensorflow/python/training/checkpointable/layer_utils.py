@@ -21,6 +21,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
+
+from tensorflow.python.training.checkpointable import object_identity
+
 
 def is_layer(obj):
   """Implicit check for Layer-like objects."""
@@ -36,15 +40,21 @@ def has_weights(obj):
 
 
 def filter_empty_layer_containers(layer_list):
-  """Filter out empty Layer-like containers."""
+  """Filter out empty Layer-like containers and uniquify."""
+  existing = object_identity.ObjectIdentitySet()
+  to_visit = collections.deque(layer_list)
   filtered = []
-  for obj in layer_list:
+  while to_visit:
+    obj = to_visit.popleft()
+    if obj in existing:
+      continue
+    existing.add(obj)
     if is_layer(obj):
       filtered.append(obj)
     elif hasattr(obj, "layers"):
       # Checkpointable data structures will not show up in ".layers" lists, but
       # the layers they contain will.
-      filtered.extend(obj.layers)
+      to_visit.extend(obj.layers)
   return filtered
 
 
