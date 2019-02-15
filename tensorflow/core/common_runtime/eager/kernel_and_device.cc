@@ -194,6 +194,7 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
   params.cancellation_manager = &cm_;
+  cm_.Reset();
   params.log_memory = log_memory_;
   std::unique_ptr<StepStatsCollector> step_stats_collector;
   if (stats != nullptr) {
@@ -258,6 +259,7 @@ Status KernelAndDeviceFunc::Run(
   opts.rendezvous = nullptr;
   opts.create_rendezvous = true;
   opts.cancellation_manager = &cm_;
+  cm_.Reset();
   // eager runtime does not yet support collective ops.
   opts.collective_executor = nullptr;
   opts.allow_dead_tensors = true;
