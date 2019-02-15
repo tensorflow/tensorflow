@@ -750,6 +750,12 @@ class DatasetV2(object):
     elements. For perfect shuffling, a buffer size greater than or equal to the
     full size of the dataset is required.
 
+    For instance, if your dataset contains 10,000 elements but `buffer_size` is
+    set to 1,000, then `shuffle` will initially select a random element from
+    only the first 1,000 elements in the buffer. Once an element is selected,
+    its space in the buffer is replaced by the next (i.e. 1,001-st) element,
+    maintaining the 1,000 element buffer.
+
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
         number of elements from this dataset from which the new
