@@ -26,8 +26,8 @@ namespace {
 // TODO(fishx): Rename TPUProfiler to something more generic.
 class ProfilerServiceImpl : public TPUProfiler::Service {
  public:
-  explicit ProfilerServiceImpl(ProfilerContext* const profiler_context)
-      : profiler_context_(*profiler_context) {}
+  explicit ProfilerServiceImpl(const ProfilerContext& profiler_context)
+      : profiler_context_(profiler_context) {}
   ~ProfilerServiceImpl() override {}
 
   ::grpc::Status Monitor(::grpc::ServerContext* ctx, const MonitorRequest* req,
@@ -69,7 +69,7 @@ class ProfilerServiceImpl : public TPUProfiler::Service {
 }  // namespace
 
 std::unique_ptr<TPUProfiler::Service> CreateProfilerService(
-    ProfilerContext* const profiler_context) {
+    const ProfilerContext& profiler_context) {
   return MakeUnique<ProfilerServiceImpl>(profiler_context);
 }
 

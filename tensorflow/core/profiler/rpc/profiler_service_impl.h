@@ -25,7 +25,7 @@ limitations under the License.
 namespace tensorflow {
 
 std::unique_ptr<TPUProfiler::Service> CreateProfilerService(
-    ProfilerContext* const profiler_context);
+    const ProfilerContext& profiler_context);
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVICE_IMPL_H_
