@@ -13,8 +13,8 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 cc_library(
-    name = "lookup_table_interface",
-    hdrs = ["lookup_table_interface.h"],
+    name = "resource_interface_templates",
+    hdrs = ["resource_interface_templates.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
@@ -23,8 +23,8 @@ cc_library(
 )
 
 cc_library(
-    name = "table_op_utils",
-    hdrs = ["table_op_utils.h"],
+    name = "op_kernel_templates",
+    hdrs = ["op_kernel_templates.h"],
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_internal",
@@ -40,15 +40,50 @@ cc_library(
 )
 
 tf_kernel_library(
-    name = "fingerprint64_map_ops",
+    name = "fingerprint64_map_op_kernels",
     srcs = [
-        "fingerprint64_map_ops.cc",
+        "fingerprint64_map_op_kernels.cc",
     ],
     deps = [
-        ":lookup_table_interface",
-        ":table_op_utils",
+        ":op_kernel_templates",
+        ":resource_interface_templates",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_kernel_library(
+    name = "flat_hash_map_op_kernels",
+    srcs = [
+        "flat_hash_map_op_kernels.cc",
+    ],
+    deps = [
+        ":op_kernel_templates",
+        ":resource_interface_templates",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/kernels:tensor_flag_utils",
+        "@com_google_absl//absl/base:core_headers",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_kernel_library(
+    name = "generic_table_op_kernels",
+    srcs = [
+        "generic_table_op_kernels.cc",
+    ],
+    deps = [
+        ":op_kernel_templates",
+        ":resource_interface_templates",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/kernels:string_view_variant_wrapper",
         "@com_google_absl//absl/strings",
     ],
 )
