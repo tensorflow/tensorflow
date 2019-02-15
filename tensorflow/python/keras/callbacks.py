@@ -441,6 +441,10 @@ class Callback(object):
   def __init__(self):
     self.validation_data = None
     self.model = None
+    # Whether this Callback should only run on the chief worker in a
+    # Multi-Worker setting.
+    # TODO(omalleyt): Make this attr public once solution is stable.
+    self._chief_worker_only = None
 
   def set_params(self, params):
     self.params = params
@@ -1165,6 +1169,10 @@ class TensorBoard(Callback):
     self._writers = []  # file writers to be closed
     self._train_writer = None  # set in `_initialize_writers`
     self._validation_writer = None  # set in `_initialize_writers`
+
+    # TensorBoard should only write summaries on the chief when in a
+    # Multi-Worker setting.
+    self._chief_worker_only = True
 
   def _validate_kwargs(self, kwargs):
     """Handle arguments were supported in V1."""

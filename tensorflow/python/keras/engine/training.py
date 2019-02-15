@@ -674,6 +674,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run training inside the distributed coordinator."""
+          filtered_callbacks = distributed_training_utils.filter_callbacks(
+              callbacks)
           return training_distributed.fit_distributed(
               self,
               x=x,
@@ -681,7 +683,7 @@ class Model(Network):
               batch_size=batch_size,
               epochs=epochs,
               verbose=verbose,
-              callbacks=callbacks,
+              callbacks=filtered_callbacks,
               validation_split=validation_split,
               validation_data=validation_data,
               shuffle=shuffle,
@@ -934,6 +936,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run evaluation inside the distributed coordinator."""
+          filtered_callbacks = distributed_training_utils.filter_callbacks(
+              callbacks)
           return training_distributed.evaluate_distributed(
               self,
               x=x,
@@ -942,7 +946,7 @@ class Model(Network):
               verbose=verbose,
               sample_weight=sample_weight,
               steps=steps,
-              callbacks=callbacks)
+              callbacks=filtered_callbacks)
 
         # Independent worker only for now.
         return dc.run_distribute_coordinator(
