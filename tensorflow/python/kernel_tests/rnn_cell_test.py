@@ -1428,13 +1428,8 @@ class BidirectionalRNNTest(test.TestCase):
       # Both sequences in batch are length=8.  Check that the time=i
       # forward output is equal to time=8-1-i backward output
       for i in range(8):
-        self.assertEqual(out[i][0][0], out[8 - 1 - i][0][3])
-        self.assertEqual(out[i][0][1], out[8 - 1 - i][0][4])
-        self.assertEqual(out[i][0][2], out[8 - 1 - i][0][5])
-      for i in range(8):
-        self.assertEqual(out[i][1][0], out[8 - 1 - i][1][3])
-        self.assertEqual(out[i][1][1], out[8 - 1 - i][1][4])
-        self.assertEqual(out[i][1][2], out[8 - 1 - i][1][5])
+        self.assertAllClose(out[i][0][0:3], out[8 - 1 - i][0][3:6])
+        self.assertAllClose(out[i][1][0:3], out[8 - 1 - i][1][3:6])
       # Via the reasoning above, the forward and backward final state should be
       # exactly the same
       self.assertAllClose(s_fw, s_bw)
