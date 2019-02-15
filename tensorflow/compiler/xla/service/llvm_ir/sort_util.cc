@@ -152,7 +152,7 @@ Status EmitTiledCompareLoop(
   KernelSupportLibrary ksl(b);
 
   llvm::Intrinsic::ID tid_intrinsic =
-      llvm_target_features.simt_intrinsic("__thread_id_x");
+      llvm_target_features.GetIntrinsicID("__thread_id_x");
   llvm::Value* thread_id =
       llvm_ir::EmitCallToIntrinsic(tid_intrinsic, {}, {}, b);
   llvm_ir::AddRangeMetadata(0, tile_size / 2,
@@ -204,7 +204,7 @@ Status EmitTiledCompareLoop(
   }
   // Wait until all reads have happened.
   llvm::Intrinsic::ID barrier_intrinsic_id =
-      llvm_target_features.simt_intrinsic("barrier");
+      llvm_target_features.GetIntrinsicID("barrier");
   llvm_ir::EmitCallToIntrinsic(barrier_intrinsic_id, {}, {}, b);
 
   // Now emit the bodies of the comparison loops.

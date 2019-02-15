@@ -297,9 +297,9 @@ string CudnnConvKindToString(CudnnConvKind kind) {
 llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b,
                              llvm_ir::LLVMTargetFeatures& llvm_target_features) {
   llvm::Intrinsic::ID tid_intrinsic =
-      llvm_target_features.simt_intrinsic("__thread_id_x");
+      llvm_target_features.GetIntrinsicID("__thread_id_x");
   llvm::Intrinsic::ID group_id_intrinsic =
-      llvm_target_features.simt_intrinsic("__block_id_x");
+      llvm_target_features.GetIntrinsicID("__block_id_x");
   return b->CreateAnd(
       b->CreateICmpEQ(b->getInt32(0),
                       llvm_ir::EmitCallToIntrinsic(tid_intrinsic, {}, {}, b)),

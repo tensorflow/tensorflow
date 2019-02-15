@@ -159,7 +159,7 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
 IrArray::Index KernelMappingScheme::EmitBlockIndex(
     llvm::Type* index_ty, LLVMTargetFeatures& llvm_target_features) {
   llvm::Intrinsic::ID groupid_intrinsic =
-      llvm_target_features.simt_intrinsic("__block_id_x");
+      llvm_target_features.GetIntrinsicID("__block_id_x");
   llvm::Value* block_id =
       llvm_ir::EmitCallToIntrinsic(groupid_intrinsic, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
@@ -223,7 +223,7 @@ KernelMappingScheme::EmitThreadYXCoordinate(
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
   llvm::Intrinsic::ID tid_intrinsic =
-      llvm_target_features.simt_intrinsic("__thread_id_x");
+      llvm_target_features.GetIntrinsicID("__thread_id_x");
   llvm::CallInst* thread_id_raw =
       llvm_ir::EmitCallToIntrinsic(tid_intrinsic, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);

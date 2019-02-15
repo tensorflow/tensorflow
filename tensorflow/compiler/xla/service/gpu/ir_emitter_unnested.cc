@@ -517,7 +517,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
 
           GpuElementalIrEmitter operand_elemental_emitter(
               hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
-              GetNestedComputer());
+              GetNestedComputer(), &llvm_target_features_);
           FusedIrEmitter operand_fused_emitter(
               GetGeneratorForOperandIrArrays(fusion),
               &operand_elemental_emitter);
@@ -538,7 +538,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
           // Spin up a new fused emitter for the scatter kernel and emit it.
           GpuElementalIrEmitter scatter_elemental_emitter(
               hlo_module_config_, ir_emitter_context_->llvm_module(), &b_,
-              GetNestedComputer());
+              GetNestedComputer(), &llvm_target_features_);
           FusedIrEmitter scatter_fused_emitter(
               GetGeneratorForOperandIrArrays(fusion),
               &scatter_elemental_emitter);
@@ -581,7 +581,7 @@ Status IrEmitterUnnested::HandleFusion(HloInstruction* fusion) {
         BuildKernelThunk(fusion, /*implements_whole_instruction=*/true);
     GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                             ir_emitter_context_->llvm_module(),
-                                            &b_, GetNestedComputer());
+                                            &b_, GetNestedComputer(), &llvm_target_features_);
 
     // Shape of the dynamic-update-slice's "update" operand.
     Shape update_shape = root->operand(1)->shape();
@@ -932,7 +932,7 @@ Status IrEmitterUnnested::HandleRng(HloInstruction* rng) {
   TF_RETURN_IF_ERROR(EmitTargetElementLoopInThunk(
       *rng,
       GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
-                            GetNestedComputer())
+                            GetNestedComputer(), &llvm_target_features_)
           .MakeElementGenerator(rng, operand_to_generator),
       rng_thunk.get()));
 
@@ -1877,7 +1877,7 @@ StatusOr<std::unique_ptr<Thunk>> IrEmitterUnnested::BuildInitializerThunk(
     // If init_value was fused into this reduce we have to generate it first.
     GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                             ir_emitter_context_->llvm_module(),
-                                            &b_, GetNestedComputer());
+                                            &b_, GetNestedComputer(), &llvm_target_features_);
 
     FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(hlo),
                                  &elemental_emitter);
@@ -2381,7 +2381,7 @@ void IrEmitterUnnested::EmitTileElementForFusion(
       kernel_info->GetTiledParameterInfo();
   std::vector<IrArray> output_arrays = ConstructIrArrayForOutputs(*hlo);
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
-                                     GetNestedComputer());
+                                     GetNestedComputer(), &llvm_target_features_);
   FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(hlo),
                                &elem_emitter);
   tiled_param_info->set_y(y_loc);
@@ -2598,7 +2598,7 @@ void IrEmitterUnnested::EmitPrologueForReduction(
       static_cast<ReductionCodegenInfo*>(kernel_info);
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_,
                                           ir_emitter_context_->llvm_module(),
-                                          &b_, GetNestedComputer());
+                                          &b_, GetNestedComputer(), &llvm_target_features_);
   const HloInstruction* first_reduce = nullptr;
   for (int i = 0, e = output_instructions.size(); i != e; ++i) {
     if (output_instructions[i]->opcode() != HloOpcode::kReduce) {
@@ -2773,7 +2773,7 @@ void IrEmitterUnnested::EmitTileElementForReduction(
   std::vector<std::pair<llvm_ir::ElementGenerator, ShapeIndex>>
       extra_output_gens;
   GpuElementalIrEmitter elem_emitter(hlo_module_config_, module_, &b_,
-                                     GetNestedComputer());
+                                     GetNestedComputer(), &llvm_target_features_);
   FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(unnested_hlo),
                                &elem_emitter);
   absl::Span<HloInstruction* const> output_instructions =
@@ -3069,7 +3069,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
 
       // Wait for all threads to reach this point using `__syncthreads` in CUDA.
       llvm::Intrinsic::ID barrier_intrinsic_id =
-          GetTargetMachineFeatures().simt_intrinsic("barrier");
+          GetTargetMachineFeatures().GetIntrinsicID("barrier");
       llvm_ir::EmitCallToIntrinsic(barrier_intrinsic_id, {}, {}, &b_);
     }
 
@@ -3093,7 +3093,7 @@ LaunchDimensions IrEmitterUnnested::EmitKernel(
     // and overwrite the shared memory buffers.
     if (block_contains_multi_tiles && !tiled_param_ids.empty()) {
       llvm::Intrinsic::ID barrier_intrinsic_id =
-          GetTargetMachineFeatures().simt_intrinsic("barrier");
+          GetTargetMachineFeatures().GetIntrinsicID("barrier");
       llvm_ir::EmitCallToIntrinsic(barrier_intrinsic_id, {}, {}, &b_);
     }
   };

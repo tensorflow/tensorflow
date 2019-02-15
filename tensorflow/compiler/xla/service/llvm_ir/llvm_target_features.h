@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_LLVM_TARGET_FEATURES_H_
 
 #include <string>
+#include <tuple>
 #include "llvm/IR/Intrinsics.h"
 
 namespace xla {
@@ -27,21 +28,26 @@ namespace llvm_ir {
 class LLVMTargetFeatures {
  public:
   // Return simt intrinsic for
-  virtual llvm::Intrinsic::ID simt_intrinsic(const std::string &name) = 0;
+  virtual llvm::Intrinsic::ID  GetIntrinsicID(const std::string &name) = 0;
 
   virtual ~LLVMTargetFeatures() = default;
+  virtual  std::tuple<bool, std::string>  GetDeviceFunctionCall(const std::string &name) = 0;
 };
 
 class AMDGPUMachineFeatures : public LLVMTargetFeatures {
  public:
-  llvm::Intrinsic::ID simt_intrinsic(const std::string &name);
+  llvm::Intrinsic::ID  GetIntrinsicID(const std::string &name) ;
+
+  std::tuple<bool, std::string>  GetDeviceFunctionCall(const std::string &name); 
   AMDGPUMachineFeatures(){};
   ~AMDGPUMachineFeatures(){};
 };
 
 class NVPTXMachineFeatures : public LLVMTargetFeatures {
  public:
-  llvm::Intrinsic::ID simt_intrinsic(const std::string &name);
+  llvm::Intrinsic::ID GetIntrinsicID(const std::string &name);
+  std::tuple<bool, std::string> GetDeviceFunctionCall(const std::string &name);
+
   NVPTXMachineFeatures(){};
   ~NVPTXMachineFeatures(){};
 };
