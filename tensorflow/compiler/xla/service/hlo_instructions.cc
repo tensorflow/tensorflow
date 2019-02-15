@@ -2046,6 +2046,17 @@ bool HloCustomCallInstruction::IdenticalSlowPath(
   if (batch_group_count_ != casted_other.batch_group_count_) {
     return false;
   }
+  if (layout_constrained() != casted_other.layout_constrained()) {
+    return false;
+  }
+  if (layout_constrained()) {
+    for (int64 i = 0; i < operand_shapes_with_layout_.size(); ++i) {
+      if (!ShapeUtil::Equal(operand_shapes_with_layout_[i],
+                            casted_other.operand_shapes_with_layout_[i])) {
+        return false;
+      }
+    }
+  }
   return custom_call_target_ == casted_other.custom_call_target_ &&
          opaque_ == casted_other.opaque_;
 }
@@ -2056,6 +2067,10 @@ HloCustomCallInstruction::CloneWithNewOperandsImpl(
     HloCloneContext* context) const {
   auto cloned = absl::make_unique<HloCustomCallInstruction>(
       shape, new_operands, custom_call_target(), opaque());
+  if (layout_constrained()) {
+    cloned->layout_constrained_ = true;
+    cloned->operand_shapes_with_layout_ = operand_shapes_with_layout();
+  }
   if (window_ != nullptr) {
     cloned->set_window(*window_);
   }
