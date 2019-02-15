@@ -131,6 +131,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     grpc_enabled = True,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1688,6 +1689,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2605,6 +2607,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2764,6 +2767,7 @@ cuda_py_test(
     ],
     shard_count = 2,
     tags = [
+        "no_rocm",
         "optonly",  # flaky timeouts unless optimized
     ],
     xla_enable_strict_auto_jit = True,
@@ -2805,6 +2809,7 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
+        "no_rocm",
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
@@ -2868,6 +2873,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2887,6 +2893,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops_gen",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3147,6 +3154,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 30,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3285,7 +3293,10 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
-    tags = ["no_windows"],
+    tags = [
+        "no_rocm",  # flaky test
+        "no_windows",
+    ],
     # TODO(kuny): Add xla_enable_strict_auto_jit = True after b/124377352 is fixed.
 )
 
