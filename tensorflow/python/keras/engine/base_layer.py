@@ -1832,6 +1832,9 @@ class TensorFlowOpLayer(Layer):
         name=name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
+    # Layer uses original op unless it is called on new inputs.
+    # This means `built` is not set in `__call__`.
+    self.built = True
 
   def call(self, inputs):
     if context.executing_eagerly():
