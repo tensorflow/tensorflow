@@ -530,19 +530,13 @@ def tf_additional_proto_hdrs():
     return [
         "platform/default/integral_types.h",
         "platform/default/logging.h",
-        "platform/default/protobuf.h",
     ] + if_windows([
         "platform/windows/integral_types.h",
     ])
 
-def tf_additional_proto_compiler_hdrs():
-    return [
-        "platform/default/protobuf_compiler.h",
-    ]
-
 def tf_additional_proto_srcs():
     return [
-        "platform/default/protobuf.cc",
+        "platform/protobuf.cc",
     ]
 
 def tf_additional_human_readable_json_deps():
