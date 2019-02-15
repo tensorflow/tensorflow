@@ -205,6 +205,8 @@ class _EagerDefinedFunction(object):
         [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
         [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
         [],
+        [], # control_outputs
+        [], # control_output_names
         None,
         compat.as_str(""))
 
