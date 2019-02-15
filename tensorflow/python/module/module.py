@@ -38,7 +38,11 @@ class ModuleMetaclass(type):
 
   def __new__(mcs, name, bases, clsdict):
     for key, value in clsdict.items():
-      if key in ("__init__", "name_scope"):
+      if key == "name_scope":
+        continue
+
+      elif key.startswith("__") and key != "__call__":
+        # Don't patch methods like `__getattr__` or `__del__`.
         continue
 
       elif tf_inspect.isfunction(value):
