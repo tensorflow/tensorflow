@@ -903,7 +903,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             return static_cast<ElementwiseT>(NAN);
           }
           return static_cast<ElementwiseT>(
-              std::fmin(high, std::fmax(value, low)));
+              std::min<NativeT>(high, std::max<NativeT>(value, low)));
         };
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[clamp],
