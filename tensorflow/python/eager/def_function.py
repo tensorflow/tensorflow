@@ -861,8 +861,8 @@ def function(func=None,
   def f(x): return tf.add(x, 1.)
   ```
 
-  When an `input_signature` is specified, the callable will only accept `Tensor`
-  (or NumPy `ndarray`) objects as arguments.
+  When an `input_signature` is specified, the callable will convert the inputs
+  to the specified TensorSpecs.
 
   _Tracing and staging_
 
