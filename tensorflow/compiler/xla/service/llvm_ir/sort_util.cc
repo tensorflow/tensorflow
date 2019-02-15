@@ -291,15 +291,13 @@ Status EmitTiledCompareLoop(
 }
 }  // namespace
 
-Status EmitSortInPlace(int64 dimension_to_sort, const IrArray& keys_array,
-                       const std::vector<IrArray>& values_arrays,
-                       int64 iota_values_parameter_index,
-                       absl::string_view name,
-                       absl::Span<const int64> xor_masks, llvm::IRBuilder<>* b,
-                       const gpu::LaunchDimensions& launch_dimensions,
-                       int64 num_iterations_in_sort_dim, const int64 tile_size,
-                       const EmitCallToNestedComputationCallback& emit_compare_callback,
-                       LLVMTargetFeatures& llvm_target_features) {
+Status EmitSortInPlace(
+    int64 dimension_to_sort, const std::vector<IrArray>& values_arrays,
+    absl::string_view name, absl::Span<const int64> xor_masks,
+    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
+    int64 num_iterations_in_sort_dim, const int64 tile_size,
+    LLVMTargetFeatures& llvm_target_features,
+    const EmitCallToNestedComputationCallback& emit_compare_callback){
   // Iterate through the keys shape in physical order, but skip the dimension to
   // sort and make it the innermost loop which is the loop where the comparisons
   // happen. In the dimension to sort, if we use tiling, we iterate through it

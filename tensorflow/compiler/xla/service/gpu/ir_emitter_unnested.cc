@@ -1257,12 +1257,11 @@ Status IrEmitterUnnested::HandleSort(HloInstruction* sort) {
         launch_dimensions,
         xor_masks.size() > 1 ? num_iterations_in_sort_dim
                              : standard_num_iterations_in_sort_dim,
-        kTileSize,
+        kTileSize, GetTargetMachineFeatures(), 
         [&](absl::Span<llvm::Value* const> operands, llvm::Value* output) {
           return EmitCallToNestedComputation(*sort->to_apply(), operands,
                                              output);
-        },
-        GetTargetMachineFeatures());
+        });
   };
   std::vector<int64> xor_masks;
   for (int64 stage = 0; stage < num_stages; ++stage) {
