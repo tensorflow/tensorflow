@@ -1446,14 +1446,6 @@ class _ModelFnWrapper(object):
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
 
-      if tensor_tracer.TensorTracer.is_enabled():
-        tt = tensor_tracer.TensorTracer()
-        loss = tt.trace_tpu(ops.get_default_graph(),
-                            loss, train_op,
-                            self._ctx.num_replicas,
-                            self._ctx.num_of_replicas_per_host,
-                            self._ctx.num_hosts)
-
       if self._ctx.embedding_config is None:
         apply_sparse_grads = []
       else:
