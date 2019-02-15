@@ -67,6 +67,14 @@ TF_CAPI_EXPORT extern void TFE_DeleteProfilerContext(
 TF_CAPI_EXPORT extern void TFE_StartProfilerServer(TFE_ProfilerContext* context,
                                                    int port);
 
+// Enables only graph collection in RunMetadata on the functions executed from
+// this context.
+TF_CAPI_EXPORT extern void TFE_ContextEnableGraphCollection(TFE_Context* ctx);
+
+// Disables only graph collection in RunMetadata on the functions executed from
+// this context.
+TF_CAPI_EXPORT extern void TFE_ContextDisableGraphCollection(TFE_Context* ctx);
+
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif
