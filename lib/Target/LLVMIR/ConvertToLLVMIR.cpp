@@ -61,6 +61,9 @@ private:
   bool convertBlock(const Block &bb, bool ignoreArguments);
   bool convertInstruction(const Instruction &inst, llvm::IRBuilder<> &builder);
 
+  llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
+                                  Location loc);
+
   // Original and translated module.
   const Module &mlirModule;
   std::unique_ptr<llvm::Module> llvmModule;
@@ -112,16 +115,19 @@ static llvm::FunctionType *convertFunctionType(llvm::LLVMContext &llvmContext,
 // This currently supports integer, floating point, splat and dense element
 // attributes and combinations thereof.  In case of error, report it to `loc`
 // and return nullptr.
-static llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
-                                       MLIRContext &context, Location loc) {
+llvm::Constant *ModuleTranslation::getLLVMConstant(llvm::Type *llvmType,
+                                                   Attribute attr,
+                                                   Location loc) {
   if (auto intAttr = attr.dyn_cast<IntegerAttr>())
     return llvm::ConstantInt::get(llvmType, intAttr.getValue());
   if (auto floatAttr = attr.dyn_cast<FloatAttr>())
     return llvm::ConstantFP::get(llvmType, floatAttr.getValue());
+  if (auto funcAttr = attr.dyn_cast<FunctionAttr>())
+    return functionMapping.lookup(funcAttr.getValue());
   if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
     auto *vectorType = cast<llvm::VectorType>(llvmType);
     auto *child = getLLVMConstant(vectorType->getElementType(),
-                                  splatAttr.getValue(), context, loc);
+                                  splatAttr.getValue(), loc);
     return llvm::ConstantVector::getSplat(vectorType->getNumElements(), child);
   }
   if (auto denseAttr = attr.dyn_cast<DenseElementsAttr>()) {
@@ -133,13 +139,13 @@ static llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
     denseAttr.getValues(nested);
     for (auto n : nested) {
       constants.push_back(
-          getLLVMConstant(vectorType->getElementType(), n, context, loc));
+          getLLVMConstant(vectorType->getElementType(), n, loc));
       if (!constants.back())
         return nullptr;
     }
     return llvm::ConstantVector::get(constants);
   }
-  context.emitError(loc, "unsupported constant value");
+  mlirModule.getContext()->emitError(loc, "unsupported constant value");
   return nullptr;
 }
 
@@ -222,8 +228,8 @@ bool ModuleTranslation::convertInstruction(const Instruction &inst,
   if (auto op = inst.dyn_cast<LLVM::ConstantOp>()) {
     Attribute attr = op->getAttr("value");
     auto type = op->getResult()->getType().cast<LLVM::LLVMType>();
-    valueMapping[op->getResult()] = getLLVMConstant(
-        type.getUnderlyingType(), attr, *inst.getContext(), inst.getLoc());
+    valueMapping[op->getResult()] =
+        getLLVMConstant(type.getUnderlyingType(), attr, inst.getLoc());
     return false;
   }
 
@@ -239,19 +245,31 @@ bool ModuleTranslation::convertInstruction(const Instruction &inst,
         return remapped;
       };
 
-  // Emit function calls.  In addition to operands, we also need to look up the
-  // remapped function itself.
+  // Emit function calls.  If the "callee" attribute is present, this is a
+  // direct function call and we also need to look up the remapped function
+  // itself.  Otherwise, this is an indirect call and the callee is the first
+  // operand, look it up as a normal value.  Return the llvm::Value representing
+  // the function result, which may be of llvm::VoidTy type.
+  auto convertCall = [this, lookupValues,
+                      &builder](const Instruction &inst) -> llvm::Value * {
+    auto operands = lookupValues(inst.getOperands());
+    ArrayRef<llvm::Value *> operandsRef(operands);
+    if (auto attr = inst.getAttrOfType<FunctionAttr>("callee")) {
+      return builder.CreateCall(functionMapping.lookup(attr.getValue()),
+                                operandsRef);
+    } else {
+      return builder.CreateCall(operandsRef.front(), operandsRef.drop_front());
+    }
+  };
+
+  // Emit calls.  If the called function has a result, remap the corresponding
+  // value.
   if (auto op = inst.dyn_cast<LLVM::CallOp>()) {
-    auto attr = op->getAttrOfType<FunctionAttr>("callee");
-    valueMapping[op->getResult()] =
-        builder.CreateCall(functionMapping.lookup(attr.getValue()),
-                           lookupValues(op->getOperands()));
+    valueMapping[op->getResult()] = convertCall(inst);
     return false;
   }
-  if (auto op = inst.dyn_cast<LLVM::Call0Op>()) {
-    auto attr = op->getAttrOfType<FunctionAttr>("callee");
-    builder.CreateCall(functionMapping.lookup(attr.getValue()),
-                       lookupValues(op->getOperands()));
+  if (inst.isa<LLVM::Call0Op>()) {
+    convertCall(inst);
     return false;
   }
 

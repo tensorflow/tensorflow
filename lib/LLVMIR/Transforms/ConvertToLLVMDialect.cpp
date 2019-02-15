@@ -427,6 +427,9 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
             ? voidType
             : TypeConverter::pack(getTypes(op->getResults()),
                                   this->dialect.getLLVMModule(), *mlirContext);
+    assert(
+        packedType &&
+        "type conversion failed, such operation should not have been matched");
 
     auto newOp = rewriter.create<TargetOp>(op->getLoc(), packedType, operands,
                                            op->getAttrs());
@@ -497,25 +500,47 @@ struct SelectOpLowering
 // Refine the matcher for call operations that return one result or more.
 // Since tablegen'ed MLIR Ops cannot have variadic results, we separate calls
 // that have 0 or 1 result (LLVM calls cannot have more than 1).
-struct CallOpLowering : public OneToOneLLVMOpLowering<CallOp, LLVM::CallOp> {
-  using Super::Super;
+template <typename SourceOp>
+struct NonZeroResultCallLowering
+    : public OneToOneLLVMOpLowering<SourceOp, LLVM::CallOp> {
+  using OneToOneLLVMOpLowering<SourceOp, LLVM::CallOp>::OneToOneLLVMOpLowering;
+  using Super = NonZeroResultCallLowering<SourceOp>;
+
   PatternMatchResult match(Instruction *op) const override {
     if (op->getNumResults() > 0)
-      return Super::match(op);
-    return matchFailure();
+      return OneToOneLLVMOpLowering<SourceOp, LLVM::CallOp>::match(op);
+    return this->matchFailure();
   }
 };
 
 // Refine the matcher for call operations that return zero results.
 // Since tablegen'ed MLIR Ops cannot have variadic results, we separate calls
 // that have 0 or 1 result (LLVM calls cannot have more than 1).
-struct Call0OpLowering : public OneToOneLLVMOpLowering<CallOp, LLVM::Call0Op> {
-  using Super::Super;
+template <typename SourceOp>
+struct ZeroResultCallLowering
+    : public OneToOneLLVMOpLowering<SourceOp, LLVM::Call0Op> {
+  using OneToOneLLVMOpLowering<SourceOp, LLVM::Call0Op>::OneToOneLLVMOpLowering;
+  using Super = ZeroResultCallLowering<SourceOp>;
+
   PatternMatchResult match(Instruction *op) const override {
     if (op->getNumResults() == 0)
-      return Super::match(op);
-    return matchFailure();
+      return OneToOneLLVMOpLowering<SourceOp, LLVM::Call0Op>::match(op);
+    return this->matchFailure();
   }
+};
+
+struct Call0OpLowering : public ZeroResultCallLowering<CallOp> {
+  using Super::Super;
+};
+struct CallOpLowering : public NonZeroResultCallLowering<CallOp> {
+  using Super::Super;
+};
+struct CallIndirect0OpLowering : public ZeroResultCallLowering<CallIndirectOp> {
+  using Super::Super;
+};
+struct CallIndirectOpLowering
+    : public NonZeroResultCallLowering<CallIndirectOp> {
+  using Super::Super;
 };
 
 struct ConstLLVMOpLowering
@@ -1021,7 +1046,8 @@ protected:
     // FIXME: this should be tablegen'ed
     return ConversionListBuilder<
         AddFOpLowering, AddIOpLowering, AllocOpLowering, BranchOpLowering,
-        Call0OpLowering, CallOpLowering, CmpIOpLowering, CondBranchOpLowering,
+        Call0OpLowering, CallIndirect0OpLowering, CallIndirectOpLowering,
+        CallOpLowering, CmpIOpLowering, CondBranchOpLowering,
         ConstLLVMOpLowering, DeallocOpLowering, DimOpLowering, DivISOpLowering,
         DivIUOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
         MulIOpLowering, RemISOpLowering, RemIUOpLowering, ReturnOpLowering,

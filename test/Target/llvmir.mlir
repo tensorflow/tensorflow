@@ -735,3 +735,25 @@ func @ops(%arg0: !llvm<"float">, %arg1: !llvm<"float">, %arg2: !llvm<"i32">, %ar
   %10 = "llvm.insertvalue"(%9, %3) {position: [1]} : (!llvm<"{ float, i32 }">, !llvm<"i32">) -> !llvm<"{ float, i32 }">
   "llvm.return"(%10) : (!llvm<"{ float, i32 }">) -> ()
 }
+
+//
+// Indirect function calls
+//
+
+// CHECK-LABEL: define void @indirect_const_call(i64) {
+func @indirect_const_call(%arg0: !llvm<"i64">) {
+// CHECK-NEXT:  call void @body(i64 %0)
+  %0 = "llvm.constant"() {value: @body : (!llvm<"i64">) -> ()} : () -> !llvm<"void (i64)*">
+  "llvm.call0"(%0, %arg0) : (!llvm<"void (i64)*">, !llvm<"i64">) -> ()
+// CHECK-NEXT:  ret void
+  "llvm.return"() : () -> ()
+}
+
+// CHECK-LABEL: define i32 @indirect_call(i32 (float)*, float) {
+func @indirect_call(%arg0: !llvm<"i32 (float)*">, %arg1: !llvm<"float">) -> !llvm<"i32"> {
+// CHECK-NEXT:  %3 = call i32 %0(float %1)
+  %0 = "llvm.call"(%arg0, %arg1) : (!llvm<"i32 (float)*">, !llvm<"float">) -> !llvm<"i32">
+// CHECK-NEXT:  ret i32 %3
+  "llvm.return"(%0) : (!llvm<"i32">) -> ()
+}
+
