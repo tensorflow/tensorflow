@@ -411,17 +411,21 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "filter": "filters",
         },
         "tf.contrib.summary.audio": {
+            "tensor": "data",
             "family": None,
         },
         "tf.contrib.summary.histogram": {
+            "tensor": "data",
             "family": None,
         },
         "tf.contrib.summary.image": {
+            "tensor": "data",
             "bad_color": None,
             "max_images": "max_outputs",
             "family": None,
         },
         "tf.contrib.summary.scalar": {
+            "tensor": "data",
             "family": None,
         },
     }
@@ -962,6 +966,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "only effects core estimator. If you are using "
         "tf.contrib.learn.Estimator, please switch to using core estimator.")
 
+    # TODO(b/124529441): if possible eliminate need for manual checking.
+    contrib_summary_comment = (
+        ast_edits.WARNING,
+        "(Manual check required) tf.contrib.summary.* functions have been "
+        "migrated best-effort to tf.compat.v2.summary.* equivalents where "
+        "possible, but the resulting code may not always work. Please check "
+        "manually; you can report migration failures on b/124529441.")
+
     # Function warnings. <function name> placeholder inside warnings will be
     # replaced by function name.
     # You can use *. to add items which do not check the FQN, and apply to e.g.,
@@ -1003,6 +1015,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             assert_rank_comment,
         "tf.assert_rank_in":
             assert_rank_comment,
+        "tf.contrib.summary.audio":
+            contrib_summary_comment,
+        "tf.contrib.summary.histogram":
+            contrib_summary_comment,
+        "tf.contrib.summary.image":
+            contrib_summary_comment,
+        "tf.contrib.summary.scalar":
+            contrib_summary_comment,
         "tf.debugging.assert_equal":
             assert_return_type_comment,
         "tf.debugging.assert_greater":
@@ -1340,7 +1360,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
 
     # Specially handled functions
     # Each transformer is a callable which will be called with the arguments
-    #   transformer(parent, node, full_name, name, logs, errors)
+    #   transformer(parent, node, full_name, name, logs)
     # Where logs is a list to which (level, line, col, msg) tuples can be
     # appended, full_name is the FQN of the function called (or None if that is
     # unknown), name is the name of the function called (or None is that is
@@ -1411,6 +1431,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             _add_argument_transformer,
             arg_name="data_format",
             arg_value_ast=ast.Str("NHWC")),
+        "tf.contrib.summary.audio": _add_summary_step_transformer,
+        "tf.contrib.summary.histogram": _add_summary_step_transformer,
+        "tf.contrib.summary.image": _add_summary_step_transformer,
+        "tf.contrib.summary.scalar": _add_summary_step_transformer,
     }
 
     self.module_deprecations = {
@@ -1522,7 +1546,7 @@ def _add_argument_transformer(parent, node, full_name, name, logs,
                               arg_name, arg_value_ast):
   """Adds an argument (as a final kwarg arg_name=arg_value_ast)."""
   node.keywords.append(ast.keyword(arg=arg_name, value=arg_value_ast))
-  logs.add((
+  logs.append((
       ast_edits.INFO, node.lineno, node.col_offset,
       "Adding argument '%s' to call to %s." % (pasta.dump(node.keywords[-1],
                                                           full_name or name))
@@ -1804,3 +1828,22 @@ def _extract_glimpse_transformer(parent, node, full_name, name, logs):
                  "Changing uniform_noise arg of tf.image.extract_glimpse to "
                  "noise, and recomputing value.\n"))
     return node
+
+
+def _add_summary_step_transformer(parent, node, full_name, name, logs):
+  """Adds a step argument to the summary API call if not specified.
+
+  The inserted argument value is tf.compat.v1.train.get_or_create_global_step().
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "step":
+      return node
+  default_value = "tf.compat.v1.train.get_or_create_global_step()"
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(default_value)
+  node.keywords.append(ast.keyword(arg="step", value=ast_value))
+  logs.append((
+      ast_edits.WARNING, node.lineno, node.col_offset,
+      "Summary API writing function %s now requires a 'step' argument; "
+      "inserting default of %s." % (full_name or name, default_value)))
+  return node
