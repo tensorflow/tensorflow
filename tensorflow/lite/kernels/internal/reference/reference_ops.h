@@ -4473,30 +4473,45 @@ void Fill(const RuntimeShape& value_shape, const T* value_data,
 }
 
 template <typename Scalar>
-void Reverse(int axis, const RuntimeShape& input_shape,
-             const Scalar* input_data, const RuntimeShape& output_shape,
-             Scalar* output_data) {
+void Reverse(std::vector<bool>& axes, int input_size,
+             const RuntimeShape& input_shape, const Scalar* input_data,
+             const RuntimeShape& output_shape, Scalar* output_data) {
   gemmlowp::ScopedProfilingLabel label("Reverse");
+  int axes_size = static_cast<int>(axes.size());
+  int axis = 0;
 
-  int outer_size = 1;
-  for (int i = 0; i < axis; ++i) {
-    outer_size *= input_shape.Dims(i);
-  }
-
-  int copy_size = 1;
-  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
-    copy_size *= input_shape.Dims(i);
-  }
-
-  const int dims_at_axis = input_shape.Dims(axis);
-  for (int i = 0; i < outer_size; ++i) {
-    for (int j = 0; j < dims_at_axis; ++j) {
-      const int start_pos = (i * dims_at_axis + j) * copy_size;
-      Scalar* output_ptr = output_data + start_pos;
-      int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
-      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+  Scalar* input_copy = (Scalar*)malloc(input_size * sizeof(Scalar));
+  memcpy(input_copy, input_data, input_size * sizeof(Scalar));
+  // Currently as Tensorflow limits Dimension to 8,
+  // So the cost for below loop is minimum
+  for (int axis_i = 0; axis_i < axes_size; ++axis_i) {
+    if (axes[axis_i] == false) {
+      continue;
     }
+    axis = axis_i;
+    int outer_size = 1;
+    for (int i = 0; i < axis; ++i) {
+      outer_size *= input_shape.Dims(i);
+    }
+
+    int copy_size = 1;
+    for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
+      copy_size *= input_shape.Dims(i);
+    }
+
+    const int dims_at_axis = input_shape.Dims(axis);
+    for (int i = 0; i < outer_size; ++i) {
+      for (int j = 0; j < dims_at_axis; ++j) {
+        const int start_pos = (i * dims_at_axis + j) * copy_size;
+        Scalar* output_ptr = output_data + start_pos;
+        int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
+        memcpy(output_ptr, input_copy + loc, copy_size * sizeof(Scalar));
+      }
+    }
+    // retain data for next axis
+    memcpy(input_copy, output_data, input_size * sizeof(Scalar));
   }
+  free(input_copy);
 }
 
 template <typename Scalar, typename TS>

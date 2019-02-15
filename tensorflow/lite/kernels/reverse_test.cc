@@ -77,6 +77,38 @@ TEST(ReverseOpTest, FloatMultiDimensions) {
                         17, 18, 15, 16, 13, 14, 23, 24, 21, 22, 19, 20}));
 }
 
+TEST(ReverseOpTest, FloatMultiDimMultiAxis) {
+  ReverseOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                              {TensorType_INT32, {2}});
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.PopulateTensor<int32_t>(model.axis(), {1, 2});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({6,  5,  4,  3,  2,  1,  12, 11, 10, 9,  8,  7,
+                        18, 17, 16, 15, 14, 13, 24, 23, 22, 21, 20, 19}));
+}
+
+TEST(ReverseOpTest, FloatMultiDimMultiAxisRev) {
+  ReverseOpModel<float> model({TensorType_FLOAT32, {4, 3, 2}},
+                              {TensorType_INT32, {2}});
+  model.PopulateTensor<float>(model.input(),
+                              {1,  2,  3,  4,  5,  6,  7,  8,  9,  10, 11, 12,
+                               13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24});
+  model.PopulateTensor<int32_t>(model.axis(), {2, 1});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(4, 3, 2));
+  EXPECT_THAT(
+      model.GetOutput(),
+      ElementsAreArray({6,  5,  4,  3,  2,  1,  12, 11, 10, 9,  8,  7,
+                        18, 17, 16, 15, 14, 13, 24, 23, 22, 21, 20, 19}));
+}
+
 // int32 tests
 TEST(ReverseOpTest, Int32OneDimension) {
   ReverseOpModel<int32_t> model({TensorType_INT32, {4}},
