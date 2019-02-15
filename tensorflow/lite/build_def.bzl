@@ -286,6 +286,7 @@ def generated_test_models():
         "prelu",
         "pow",
         "range",
+        "rank",
         "reduce_any",
         "reduce_max",
         "reduce_min",

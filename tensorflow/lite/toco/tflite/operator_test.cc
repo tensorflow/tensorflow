@@ -154,6 +154,7 @@ TEST_F(OperatorTest, SimpleOperators) {
   CheckSimpleOperator<FillOperator>("FILL", OperatorType::kFill);
   CheckSimpleOperator<ReverseV2Operator>("REVERSE_V2",
                                          OperatorType::kReverseV2);
+  CheckSimpleOperator<TensorFlowRankOperator>("RANK", OperatorType::kRank);
 }
 
 TEST_F(OperatorTest, BuiltinAdd) {

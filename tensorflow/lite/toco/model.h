@@ -24,11 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_types.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -1259,13 +1259,12 @@ struct RangeOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// This operation outputs a 0-D integer tensor representing the rank of
-// the input.
+// This operation outputs a 0-D int32 Tensor representing the rank of input.
 //
-// TensorFlow equivalent: Rank.  We currently assume that the output is int32
-// and not int64.  The output type could be stored herein.
-struct RankOperator : Operator {
-  RankOperator() : Operator(OperatorType::kRank) {}
+// TensorFlow equivalent: Rank.
+struct TensorFlowRankOperator : Operator {
+  TensorFlowRankOperator() : Operator(OperatorType::kRank) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt32;
 };
 
 // Element-wise negation (-x) operator.

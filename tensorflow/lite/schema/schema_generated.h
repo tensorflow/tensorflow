@@ -217,6 +217,9 @@ struct NotEqualOptionsT;
 struct ShapeOptions;
 struct ShapeOptionsT;
 
+struct RankOptions;
+struct RankOptionsT;
+
 struct PowOptions;
 struct PowOptionsT;
 
@@ -545,11 +548,12 @@ enum BuiltinOperator {
   BuiltinOperator_GATHER_ND = 107,
   BuiltinOperator_COS = 108,
   BuiltinOperator_WHERE = 109,
+  BuiltinOperator_RANK = 110,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_WHERE
+  BuiltinOperator_MAX = BuiltinOperator_RANK
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[109] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[110] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -659,7 +663,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[109] {
     BuiltinOperator_ADD_N,
     BuiltinOperator_GATHER_ND,
     BuiltinOperator_COS,
-    BuiltinOperator_WHERE
+    BuiltinOperator_WHERE,
+    BuiltinOperator_RANK
   };
   return values;
 }
@@ -776,6 +781,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "GATHER_ND",
     "COS",
     "WHERE",
+    "RANK",
     nullptr
   };
   return names;
@@ -873,11 +879,12 @@ enum BuiltinOptions {
   BuiltinOptions_GatherNdOptions = 83,
   BuiltinOptions_CosOptions = 84,
   BuiltinOptions_WhereOptions = 85,
+  BuiltinOptions_RankOptions = 86,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_WhereOptions
+  BuiltinOptions_MAX = BuiltinOptions_RankOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[86] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[87] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -964,7 +971,8 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[86] {
     BuiltinOptions_AddNOptions,
     BuiltinOptions_GatherNdOptions,
     BuiltinOptions_CosOptions,
-    BuiltinOptions_WhereOptions
+    BuiltinOptions_WhereOptions,
+    BuiltinOptions_RankOptions
   };
   return values;
 }
@@ -1057,6 +1065,7 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "GatherNdOptions",
     "CosOptions",
     "WhereOptions",
+    "RankOptions",
     nullptr
   };
   return names;
@@ -1409,6 +1418,10 @@ template<> struct BuiltinOptionsTraits<CosOptions> {
 
 template<> struct BuiltinOptionsTraits<WhereOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_WhereOptions;
+};
+
+template<> struct BuiltinOptionsTraits<RankOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_RankOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2121,6 +2134,14 @@ struct BuiltinOptionsUnion {
   const WhereOptionsT *AsWhereOptions() const {
     return type == BuiltinOptions_WhereOptions ?
       reinterpret_cast<const WhereOptionsT *>(value) : nullptr;
+  }
+  RankOptionsT *AsRankOptions() {
+    return type == BuiltinOptions_RankOptions ?
+      reinterpret_cast<RankOptionsT *>(value) : nullptr;
+  }
+  const RankOptionsT *AsRankOptions() const {
+    return type == BuiltinOptions_RankOptions ?
+      reinterpret_cast<const RankOptionsT *>(value) : nullptr;
   }
 };
 
@@ -6340,6 +6361,46 @@ inline flatbuffers::Offset<ShapeOptions> CreateShapeOptions(
 
 flatbuffers::Offset<ShapeOptions> CreateShapeOptions(flatbuffers::FlatBufferBuilder &_fbb, const ShapeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct RankOptionsT : public flatbuffers::NativeTable {
+  typedef RankOptions TableType;
+  RankOptionsT() {
+  }
+};
+
+struct RankOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef RankOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  RankOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RankOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<RankOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct RankOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit RankOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  RankOptionsBuilder &operator=(const RankOptionsBuilder &);
+  flatbuffers::Offset<RankOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<RankOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<RankOptions> CreateRankOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  RankOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<RankOptions> CreateRankOptions(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct PowOptionsT : public flatbuffers::NativeTable {
   typedef PowOptions TableType;
   PowOptionsT() {
@@ -7806,6 +7867,9 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const WhereOptions *builtin_options_as_WhereOptions() const {
     return builtin_options_type() == BuiltinOptions_WhereOptions ? static_cast<const WhereOptions *>(builtin_options()) : nullptr;
   }
+  const RankOptions *builtin_options_as_RankOptions() const {
+    return builtin_options_type() == BuiltinOptions_RankOptions ? static_cast<const RankOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8175,6 +8239,10 @@ template<> inline const CosOptions *Operator::builtin_options_as<CosOptions>() c
 
 template<> inline const WhereOptions *Operator::builtin_options_as<WhereOptions>() const {
   return builtin_options_as_WhereOptions();
+}
+
+template<> inline const RankOptions *Operator::builtin_options_as<RankOptions>() const {
+  return builtin_options_as_RankOptions();
 }
 
 struct OperatorBuilder {
@@ -10374,6 +10442,29 @@ inline flatbuffers::Offset<ShapeOptions> CreateShapeOptions(flatbuffers::FlatBuf
       _out_type);
 }
 
+inline RankOptionsT *RankOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new RankOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void RankOptions::UnPackTo(RankOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<RankOptions> RankOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateRankOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<RankOptions> CreateRankOptions(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const RankOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRankOptions(
+      _fbb);
+}
+
 inline PowOptionsT *PowOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new PowOptionsT();
   UnPackTo(_o, _resolver);
@@ -11537,6 +11628,10 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const WhereOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<const RankOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -11895,6 +11990,10 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const WhereOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<const RankOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -12241,6 +12340,10 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const WhereOptionsT *>(value);
       return CreateWhereOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<const RankOptionsT *>(value);
+      return CreateRankOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -12585,6 +12688,10 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_WhereOptions: {
       value = new WhereOptionsT(*reinterpret_cast<WhereOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_RankOptions: {
+      value = new RankOptionsT(*reinterpret_cast<RankOptionsT *>(u.value));
       break;
     }
     default:
@@ -13016,6 +13123,11 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_WhereOptions: {
       auto ptr = reinterpret_cast<WhereOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<RankOptionsT *>(value);
       delete ptr;
       break;
     }
