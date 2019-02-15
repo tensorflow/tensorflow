@@ -500,7 +500,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     BlockReduceKernel<IN_T, OUT_T, num_threads>
         <<<num_blocks, num_threads, 0, cu_stream>>>(in, out, in_size, op, init);
     return;
-  } else if (in_size <= 1 << 19) {
+  } else if (in_size <= 1 << 18) {
     const int num_threads = 256;
     const int num_blocks = std::min(32, Eigen::divup(in_size, num_threads));
     // it seems like tailoring this to the GPU
