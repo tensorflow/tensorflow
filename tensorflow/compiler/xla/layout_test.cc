@@ -42,6 +42,9 @@ TEST_F(LayoutTest, ToString) {
   EXPECT_EQ(
       Layout({1, 0}, {Tile({2, 55})}).set_element_size_in_bits(42).ToString(),
       "{1,0:T(2,55)E(42)}");
+  EXPECT_EQ(
+      Layout({1, 0}, {Tile({-2, 55})}).set_element_size_in_bits(42).ToString(),
+      "{1,0:T(Invalid value -2,55)E(42)}");
 }
 
 TEST_F(LayoutTest, StreamOut) {
