@@ -412,6 +412,8 @@ class _DefinedFunction(object):
           [t._as_tf_output() for t in temp_graph.inputs],
           [t._as_tf_output() for t in temp_graph.outputs],
           output_names,
+          [], # control_outputs
+          [], # control_output_names
           None,  # opts
           description)
       self._c_func = c_api_util.ScopedTFFunction(c_func)
