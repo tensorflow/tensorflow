@@ -42,6 +42,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_config
 from tensorflow.contrib.tpu.python.tpu import tpu_context
 from tensorflow.contrib.tpu.python.tpu import tpu_embedding_gradient
 from tensorflow.contrib.tpu.python.tpu import tpu_feed
+from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import training_loop
 from tensorflow.contrib.tpu.python.tpu import util as util_lib
 from tensorflow.contrib.tpu.python.tpu._tpu_estimator_embedding import AdamParameters  # pylint: disable=unused-import
@@ -3156,6 +3157,7 @@ def _train_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
    captured_training_hooks) = (
        model_fn_wrapper.convert_to_single_tpu_train_step(dequeue_fn))
 
+  @tpu_function.on_device_training_loop
   def multi_tpu_train_steps_on_single_shard():
     return training_loop.repeat(iterations_per_loop_var, single_tpu_train_step,
                                 [_INITIAL_LOSS])
@@ -3178,6 +3180,7 @@ def _predict_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
    captured_predict_hooks
   ) = model_fn_wrapper.convert_to_single_tpu_predict_step(dequeue_fn)
 
+  @tpu_function.on_device_training_loop
   def multi_tpu_predict_steps_on_single_shard():
 
     def cond(scalar_stopping_signal):
