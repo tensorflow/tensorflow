@@ -3120,35 +3120,40 @@ tensorflow::Status ConvertRsqrt(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
+std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap() {
+  static auto* const m =
+      new std::unordered_map<string, nvinfer1::UnaryOperation>({
+        {"Neg", nvinfer1::UnaryOperation::kNEG},
+            {"Exp", nvinfer1::UnaryOperation::kEXP},
+            {"Log", nvinfer1::UnaryOperation::kLOG},
+            {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
+            {"Abs", nvinfer1::UnaryOperation::kABS},
+            {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+            {"Sin", nvinfer1::UnaryOperation::kSIN},
+            {"Cos", nvinfer1::UnaryOperation::kCOS},
+            {"Tan", nvinfer1::UnaryOperation::kTAN},
+            {"Sinh", nvinfer1::UnaryOperation::kSINH},
+            {"Cosh", nvinfer1::UnaryOperation::kCOSH},
+            {"Asin", nvinfer1::UnaryOperation::kASIN},
+            {"Acos", nvinfer1::UnaryOperation::kACOS},
+            {"Atan", nvinfer1::UnaryOperation::kATAN},
+            {"Asinh", nvinfer1::UnaryOperation::kASINH},
+            {"Acosh", nvinfer1::UnaryOperation::kACOSH},
+            {"Atanh", nvinfer1::UnaryOperation::kATANH},
+            {"Ceil", nvinfer1::UnaryOperation::kCEIL},
+            {"Floor", nvinfer1::UnaryOperation::kFLOOR},
+#endif
+      });
+  return m;
+}
+
 tensorflow::Status ConvertUnary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  static const std::unordered_map<string, nvinfer1::UnaryOperation> ops = {
-    {"Neg", nvinfer1::UnaryOperation::kNEG},
-    {"Exp", nvinfer1::UnaryOperation::kEXP},
-    {"Log", nvinfer1::UnaryOperation::kLOG},
-    {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
-    {"Abs", nvinfer1::UnaryOperation::kABS},
-    {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
-    {"Sin", nvinfer1::UnaryOperation::kSIN},
-    {"Cos", nvinfer1::UnaryOperation::kCOS},
-    {"Tan", nvinfer1::UnaryOperation::kTAN},
-    {"Sinh", nvinfer1::UnaryOperation::kSINH},
-    {"Cosh", nvinfer1::UnaryOperation::kCOSH},
-    {"Asin", nvinfer1::UnaryOperation::kASIN},
-    {"Acos", nvinfer1::UnaryOperation::kACOS},
-    {"Atan", nvinfer1::UnaryOperation::kATAN},
-    {"Asinh", nvinfer1::UnaryOperation::kASINH},
-    {"Acosh", nvinfer1::UnaryOperation::kACOSH},
-    {"Atanh", nvinfer1::UnaryOperation::kATANH},
-    {"Ceil", nvinfer1::UnaryOperation::kCEIL},
-    {"Floor", nvinfer1::UnaryOperation::kFLOOR},
-#endif
-  };
-  auto op_pair = ops.find(node_def.op());
-  if (op_pair == ops.end()) {
+  auto op_pair = UnaryOperationMap()->find(node_def.op());
+  if (op_pair == UnaryOperationMap()->end()) {
     return tensorflow::errors::Unimplemented(
         "Unary op: ", node_def.op(), " not supported at: ", node_def.name());
   }
@@ -3169,7 +3174,7 @@ tensorflow::Status ConvertUnary(OpConverterParams* params) {
   } else if (node_def.op() == "Acos") {
     params->converter->ProvideQuantizationRange(output_tensor, 0.0f, M_PI);
   } else if (node_def.op() == "Neg" || node_def.op() == "Abs") {
-    // Neg and Abs will have same range as output since TRT uses symmetric
+    // Neg and Abs will have same range as input since TRT uses symmetric
     // quantization.
     // TODO(tmorris): Should we infer ranges for Ceil and Floor as well?
     params->converter->MarkQuantizationRangesAsInferrable(
@@ -3875,11 +3880,8 @@ static void RegisterValidatableOpConverters(
   for (auto normalization_op_type : {"FusedBatchNorm", "FusedBatchNormV2"}) {
     (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
   }
-  for (auto unary_op_type :
-       {"Abs", "Acos", "Acosh", "Asin", "Asinh", "Atan", "Atanh", "Ceil", "Cos",
-        "Cosh", "Exp", "Floor", "Log", "Neg", "Reciprocal", "Sin", "Sinh",
-        "Sqrt", "Tan"}) {
-    (*registration)[unary_op_type] = ConvertUnary;
+  for (auto unary_op_pair : *UnaryOperationMap()) {
+    (*registration)[unary_op_pair.first] = ConvertUnary;
   }
 }
 
