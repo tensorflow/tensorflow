@@ -78,6 +78,7 @@ cc_library(
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/client/lib:qr",
         "//tensorflow/compiler/xla/service:computation_placer",
+        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
         "//tensorflow/compiler/xla/service:platform_util",
         "//tensorflow/compiler/xla/service:shaped_buffer",
         "//tensorflow/compiler/xla/service/cpu:custom_call_target_registry",
@@ -85,7 +86,7 @@ cc_library(
         "//tensorflow/compiler/xrt/cc:xrt_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//third_party/python_runtime:headers",
+        "//third_party/python_runtime:headers",  # buildcleaner: keep
         "@com_google_absl//absl/memory",
         "@com_google_absl//absl/types:span",
     ],
