@@ -69,6 +69,9 @@ def main(_):
   # Since there are 2 devices and 10 samples, we set steps=5.
   steps = 5
 
+  # The `batch_size` can be acquired from the argumtent `input_context`
+  # automatically accroding to the specific DistributionStrategy if that
+  # argument exists. The following `train_input_fn` shows the usage. 
   def train_input_fn(input_context):
     batch_size = input_context.get_per_replica_batch_size(2)
     features = tf.data.Dataset.from_tensors([[1.]]).repeat(10).batch(batch_size)
