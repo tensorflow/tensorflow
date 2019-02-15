@@ -564,6 +564,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nest.assert_same_structure",
         "tf.contrib.framework.nest.flatten":
             "tf.nest.flatten",
+        "tf.contrib.framework.nest.is_sequence":
+            "tf.nest.is_nested",
         "tf.contrib.framework.nest.map_structure":
             "tf.nest.map_structure",
         "tf.contrib.framework.nest.pack_sequence_as":

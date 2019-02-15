@@ -184,6 +184,20 @@ is_sequence = _pywrap_tensorflow.IsSequence
 is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
 
 
+@tf_export("nest.is_nested")
+def is_nested(seq):
+  """Returns true if its input is a collections.Sequence (except strings).
+
+  Args:
+    seq: an input sequence.
+
+  Returns:
+    True if the sequence is a not a string and is a collections.Sequence or a
+    dict.
+  """
+  return is_sequence(seq)
+
+
 @tf_export("nest.flatten")
 def flatten(structure, expand_composites=False):
   """Returns a flat list from a given nested structure.
