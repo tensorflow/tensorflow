@@ -160,7 +160,6 @@ tf_kernel_library(
     name = "clustering_ops",
     prefix = "clustering_ops",
     deps = [
-        "//tensorflow/core:clustering_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
