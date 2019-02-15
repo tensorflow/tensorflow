@@ -2483,6 +2483,83 @@ TEST_F(ArithmeticOptimizerTest, DoNotConvertSqrtDivToRsqrtMulDivisorFetchNode) {
   }
 }
 
+TEST_F(ArithmeticOptimizerTest, FuseSquaredDiff) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  auto y = ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  Output sub_x_y = ops::Sub(s.WithOpName("sub_x_y"), x, y);
+  Output square_sub_x_y = ops::Square(s.WithOpName("output"), sub_x_y);
+
+  GrapplerItem item;
+  item.fetch = {"output"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFuseSquaredDiff(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("Identity", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("sub_x_y", node.input(0));
+    } else if (node.name() == "sub_x_y") {
+      EXPECT_EQ("SquaredDifference", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+    }
+  }
+}
+
+TEST_F(ArithmeticOptimizerTest, DoNotFuseSquaredDiffFetchNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  auto y = ops::Const(s.WithOpName("y"), {3.0f, 4.0f}, {1, 2});
+  Output sub_x_y = ops::Sub(s.WithOpName("sub_x_y"), x, y);
+  Output square_sub_x_y = ops::Square(s.WithOpName("output"), sub_x_y);
+
+  GrapplerItem item;
+  item.fetch = {"output", "sub_x_y"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  const auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(2, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyFuseSquaredDiff(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  const auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(2, tensors.size());
+
+  for (int i = 0; i < tensors.size(); i++) {
+    EXPECT_EQ(tensors[i].NumElements(), tensors_expected[i].NumElements());
+    test::ExpectTensorNear<float>(tensors_expected[i], tensors[i], 1e-6);
+  }
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "output") {
+      EXPECT_EQ("Square", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("sub_x_y", node.input(0));
+    } else if (node.name() == "sub_x_y") {
+      EXPECT_EQ("Sub", node.op());
+      EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      EXPECT_EQ("y", node.input(1));
+    }
+  }
+}
+
 TEST_F(ArithmeticOptimizerTest, ConvertPow) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
