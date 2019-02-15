@@ -1439,9 +1439,7 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined(array_ops.ones([2, 1]))
 
     # Wrong number of arguments.
-    with self.assertRaisesRegexp(
-        ValueError,
-        'Arguments and signature arguments do not match.*'):
+    with self.assertRaisesRegexp(TypeError, 'Received 2 argument\(s\)'):
       defined(array_ops.ones([2]), array_ops.ones([2]))
     with self.assertRaisesRegexp(ValueError,
                                  'Structure of Python function inputs.*'):
@@ -1470,6 +1468,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
                                  'Structure of Python function inputs.*'):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
+
+  def testUnderspecifiedInputSignature(self):
+    @function.defun(input_signature=[
+        tensor_spec.TensorSpec([], dtypes.float32),
+    ])
+    def foo(a, training=True):
+      if training:
+        return a
+      else:
+        return -1.0 * a
+
+    x = constant_op.constant(1.0)
+    with self.assertRaisesRegexp(TypeError, 'only pass arguments'):
+      foo(x, training=True)
+
+    with self.assertRaisesRegexp(TypeError, 'only pass arguments'):
+      foo(x, training=False)
+
+    self.assertAllEqual(x.numpy(), foo(x).numpy())
 
   def testInputSignatureWithPartialFunction(self):
     self.skipTest('b/124441704')
