@@ -48,6 +48,8 @@ Build the `TensorFlowLiteTests` target:
 bazel test tensorflow/lite/experimental/swift:TensorFlowLiteTests --swiftcopt=-enable-testing
 ```
 
+Note that `--swiftcopt=-enable-testing` is required for optimized builds (`-c opt`).
+
 ### Tulsi
 
 Open the `TensorFlowLite.tulsiproj` using the [TulsiApp](https://github.com/bazelbuild/tulsi) or by
