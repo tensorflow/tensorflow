@@ -89,7 +89,7 @@ TrtCandidateSelector::TrtCandidateSelector(
 Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
-  static const std::set<string> candidate_ops = {
+  static const auto* candidate_ops = new std::set<string>{
       "Abs",
       "Add",
       "AvgPool",
@@ -142,9 +142,9 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "Transpose",
   };
   bool is_supported_op_type =
-      (candidate_ops.count(node->type_string()) ||
+      (candidate_ops->count(node->type_string()) ||
        PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
-  static const std::set<string> quantize_ops = {
+  static const auto* quantize_ops = new std::set<string>{
       "QuantizeAndDequantizeV2",
       "QuantizeAndDequantizeV3",
       "FakeQuantWithMinMaxVars",
@@ -154,7 +154,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
   if (precision_mode_ == TrtPrecisionMode::INT8 &&
-      quantize_ops.count(node->type_string())) {
+      quantize_ops->count(node->type_string())) {
     is_supported_op_type = true;
   }
   // LINT.ThenChange(//tensorflow/compiler/tf2tensorrt/convert/convert_nodes.cc)
