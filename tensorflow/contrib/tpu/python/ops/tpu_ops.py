@@ -24,6 +24,7 @@ import platform
 from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging as logging
 
 if platform.system() != "Windows":
@@ -154,6 +155,36 @@ if platform.system() != "Windows":
       dtypes.complex64, dtypes.uint32
   ])
 
+  @ops.RegisterGradient("TPUEmbeddingActivations")
+  def _embedding_activations_grad(activations_op, grad_wrt_activations):
+    """Saves the gradient of embedding activations ops in a graph collection."""
+    g = ops.get_default_graph()
+    table_id = activations_op.get_attr("table_id")
+    lookup_id = activations_op.get_attr("lookup_id")
+    table_gradients = g.get_collection_ref(
+        "tpu_embedding_gradients_table_%d" % table_id)
+
+    if not table_gradients:
+      raise RuntimeError(
+          "Gradients for TPUEmbedding have been generated in non-training mode."
+          "This is not expected. Consider putting your Optimizer.minimize code "
+          "behind the training mode condition check. For Estimator, you can "
+          "do \n\n"
+          "    if mode == tf.estimator.ModeKeys.TRAIN:\n"
+          "        train_op = opt.minimize(loss)\n"
+          "\n")
+
+    table_gradients[lookup_id] = array_ops.identity(grad_wrt_activations)
+    return [
+        # RegisterGradient requires that value be returned for all inputs. Since
+        # the first argument (tpu_gradient_variable_{table_name}) has shape [1],
+        # we will return zeros(shape=[1]). The actual gradient w.r.t. the
+        # embedding activations (grad_wrt_activations) has the same shape as the
+        # activations returned by  embedding_activations.
+        array_ops.zeros(arg.shape, dtype=dtypes.float32)
+        for arg in activations_op.inputs
+    ]
+
   def infeed_dequeue(dtype, shape, name=None):
     """A placeholder op for a value that will be fed into the computation.
 
@@ -233,7 +264,6 @@ if platform.system() != "Windows":
       learning_rates = []
     return gen_tpu_ops.send_tpu_embedding_gradients(
         inputs=inputs, learning_rates=learning_rates, config=config, name=name)
-
 
   send_tpu_embedding_gradients.__doc__ = (
       gen_tpu_ops.send_tpu_embedding_gradients.__doc__)
