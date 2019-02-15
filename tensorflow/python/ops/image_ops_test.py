@@ -2469,7 +2469,6 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-05)
 
-  @test_util.disable_xla("b/124291162")  # Incorrect literal type
   def testResizeUpAlignCornersTrue(self):
     img_shape = [1, 3, 2, 1]
     data = [6, 3, 3, 6, 6, 9]
@@ -3616,7 +3615,8 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     # If we negate all pixel-values then the total variation is unchanged.
     self._test(-a, tot_var)
 
-    # Scale the pixel-values by a float. This scales the total variation as well.
+    # Scale the pixel-values by a float. This scales the total variation as
+    # well.
     b = 1.1 * a
     self._test(b, 1.1 * tot_var)
 
