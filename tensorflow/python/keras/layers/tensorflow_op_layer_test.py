@@ -229,6 +229,16 @@ class AutoLambdaTest(keras_parameterized.TestCase):
     y = keras.layers.Masking(0.)(x)
     self.assertTrue(y._keras_mask._keras_history_checked)
 
+  def test_built(self):
+    inputs = keras.Input(shape=(10,))
+    outputs = gen_nn_ops.relu(inputs)
+    model = keras.Model(inputs, outputs)
+    model.compile('sgd', 'mse')
+    for layer in model.layers:
+      self.assertTrue(layer.built)
+    # Test something that requires Layers to be built.
+    model.summary()
+
 
 if __name__ == '__main__':
   test.main()
