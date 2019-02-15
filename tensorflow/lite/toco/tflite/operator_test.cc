@@ -820,6 +820,10 @@ TEST_F(OperatorTest, VersioningBatchToSpaceNDTest) {
   SimpleVersioningTest<BatchToSpaceNDOperator>();
 }
 
+TEST_F(OperatorTest, VersioningTanhTest) {
+  SimpleVersioningTest<TanhOperator>();
+}
+
 TEST_F(OperatorTest, VersioningStridedSliceTest) {
   SimpleVersioningTest<StridedSliceOperator>();
 }
@@ -835,6 +839,12 @@ TEST_F(OperatorTest, VersioningSliceTest) {
 TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
 
 TEST_F(OperatorTest, VersioningSubTest) { SimpleVersioningTest<SubOperator>(); }
+
+TEST_F(OperatorTest, VersioningPadTest) { SimpleVersioningTest<PadOperator>(); }
+
+TEST_F(OperatorTest, VersioningPadV2Test) {
+  SimpleVersioningTest<PadV2Operator>();
+}
 
 TEST_F(OperatorTest, VersioningSelectTest) {
   SelectOperator select_op;

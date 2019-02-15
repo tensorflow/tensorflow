@@ -549,17 +549,11 @@ body {
   ROOT b_t0 = (s32[], f16[4], f16[4]) tuple(p.4, s0, p.6)
 }
 
-__repeat {
-  repeat_count = s32[] parameter(0)
-  input_tuple = (s32[], f16[4], f16[4]) parameter(1)
-  ROOT call = (s32[], f16[4], f16[4]) call((s32[], f16[4], f16[4]) input_tuple), to_apply=body
-}
-
 ENTRY in {
   constant.4 = s32[] constant(10)
   p0 = f16[4] parameter(0)
   in = (s32[], f16[4], f16[4]) tuple(s32[] constant.4, f16[4] p0, f16[4] p0)
-  r0 = (s32[], f16[4], f16[4]) call(s32[] constant.4, (s32[], f16[4], f16[4]) in), to_apply=__repeat
+  r0 = (s32[], f16[4], f16[4]) fusion((s32[], f16[4], f16[4]) in), kind=kCustom, calls=body, backend_config="{\"fusionConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
   e1 = f16[4] get-tuple-element(r0), index=1
   e2 = f16[4] get-tuple-element(r0), index=2
   s0 = f16[4] sine(e1)
@@ -580,7 +574,8 @@ ENTRY in {
   auto* s0 = comp->GetInstructionWithName("s0");
   auto* s1 = comp->GetInstructionWithName("s1");
 
-  auto* r_comp = GetRepeatBody(comp->GetInstructionWithName("r0"));
+  auto* r_comp =
+      comp->GetInstructionWithName("r0")->fused_instructions_computation();
   auto* r_s0 = r_comp->GetInstructionWithName("s0");
 
   FindAllUsers finder;

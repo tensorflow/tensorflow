@@ -36,37 +36,27 @@ class Tensor;
 
 namespace xla {
 class HloInstruction;
-
 namespace poplarplugin {
+struct TensorTarget;
 
 const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap();
 
 // Allocating functions.
 StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
-    const TensorMap&);
+    poplar::Graph&, CompilerResources&, const std::string&, const TensorTarget&,
+    const IPUCustomKernelsUtil::AttributeMap&, const TensorMap&);
 StatusOr<poplar::Tensor> AllocateLstmLayerBwdOp(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
-    const TensorMap&);
+    poplar::Graph&, CompilerResources&, const std::string&, const TensorTarget&,
+    const IPUCustomKernelsUtil::AttributeMap&, const TensorMap&);
 StatusOr<poplar::Tensor> AllocateNormInferenceAndTrainingOp(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
-    const TensorMap&);
+    poplar::Graph&, CompilerResources&, const std::string&, const TensorTarget&,
+    const IPUCustomKernelsUtil::AttributeMap&, const TensorMap&);
 StatusOr<poplar::Tensor> AllocateNormGradOp(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
-    const TensorMap&);
+    poplar::Graph&, CompilerResources&, const std::string&, const TensorTarget&,
+    const IPUCustomKernelsUtil::AttributeMap&, const TensorMap&);
 StatusOr<poplar::Tensor> AllocateNormStatisticsOp(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64, absl::optional<const HloInstruction*>,
-    absl::optional<int64>, const IPUCustomKernelsUtil::AttributeMap&,
-    const TensorMap&);
+    poplar::Graph&, CompilerResources&, const std::string&, const TensorTarget&,
+    const IPUCustomKernelsUtil::AttributeMap&, const TensorMap&);
 
 // Creating functions.
 StatusOr<poplar::program::Program> CreateLstmLayerFwdOp(

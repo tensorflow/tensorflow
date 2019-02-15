@@ -14,6 +14,8 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_to_repeat_simplify.h"
+
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 #include "tensorflow/compiler/plugin/poplar/driver/while_loop_util.h"
@@ -189,22 +191,13 @@ HloInstruction* GetFinalValue(HloInstruction* init_value_inst,
 
 HloInstruction* ConvertToRepeat(HloInstruction* while_inst,
                                 const int64 number_of_iterations) {
-  // We represent repeat as a Call with name "__repeat" with 2 operands:
-  // * Operand 0: Is a constant which represents the number of repeats
-  // * Operand 1: Is the input tuple which was passed to the while loop.
-  // The computation to apply is as follows (its stands for input_tuple_shape):
-  // repeat (s32[], its) {
-  //   input_tuple = (its) parameter(1)
-  //   ROOT call = (its) call((its) input_tuple), to_apply=repeat_body
-  // }
-  // We therefore clone the repeat computation.
+  // We represent repeat as a Fusion of type Custom and store the number of
+  // iterations in the  backend config field. We therefore clone the repeat
+  // computation to use as the fusion computation.
   HloComputation* parent_computation = while_inst->parent();
   HloModule* module = parent_computation->parent();
   HloComputation* repeat_body =
       module->AddEmbeddedComputation(while_inst->while_body()->Clone());
-  HloInstruction* repeat_count =
-      parent_computation->AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR0((int32)number_of_iterations)));
   HloInstruction* repeat_body_root = repeat_body->root_instruction();
 
   // Note that we can also clone the input tuple iff it's a kTuple and then we
@@ -214,23 +207,6 @@ HloInstruction* ConvertToRepeat(HloInstruction* while_inst,
   input_tuple = can_hoist_input_tuple
                     ? parent_computation->AddInstruction(input_tuple->Clone())
                     : input_tuple;
-
-  // Build the body.
-  auto builder_repeat = HloComputation::Builder("__repeat");
-  {
-    Shape repeat_shape = ShapeUtil::MakeTupleShape(
-        {repeat_count->shape(), input_tuple->shape()});
-    // Unused repeat count.
-    builder_repeat.AddInstruction(HloInstruction::CreateParameter(
-        0, repeat_count->shape(), "repeat_count"));
-    auto repeat_input_tuple =
-        builder_repeat.AddInstruction(HloInstruction::CreateParameter(
-            1, input_tuple->shape(), "input_tuple"));
-    builder_repeat.AddInstruction(HloInstruction::CreateCall(
-        input_tuple->shape(), {repeat_input_tuple}, repeat_body));
-  }
-  HloComputation* repeat_comp =
-      module->AddEmbeddedComputation(builder_repeat.Build());
 
   // Also hoist out all the constants.
   // A map of scalar values which we know the value of after the loop has
@@ -364,19 +340,22 @@ HloInstruction* ConvertToRepeat(HloInstruction* while_inst,
     }
   }
 
-  HloInstruction* repeat_call =
-      parent_computation->AddInstruction(HloInstruction::CreateCall(
-          input_tuple->shape(), {repeat_count, input_tuple}, repeat_comp));
+  HloInstruction* repeat_fusion =
+      parent_computation->AddInstruction(HloInstruction::CreateFusion(
+          input_tuple->shape(), HloInstruction::FusionKind::kCustom,
+          {input_tuple}, repeat_body));
+  PoplarBackendConfig backend_config;
+  auto* cfg = backend_config.mutable_fusion_config();
+  cfg->set_repeat_count(number_of_iterations);
+  cfg->set_is_repeat_loop(true);
+  repeat_fusion->set_backend_config(backend_config);
 
-  // Copy sharding info from the while_inst to the repeat call.
+  // Copy sharding info from the while_inst to the repeat.
   if (while_inst->has_sharding()) {
-    repeat_call->set_sharding(while_inst->sharding());
-    for (HloInstruction* inst : repeat_comp->MakeInstructionPostOrder()) {
-      inst->set_sharding(while_inst->sharding());
-    }
+    repeat_fusion->set_sharding(while_inst->sharding());
   }
 
-  return repeat_call;
+  return repeat_fusion;
 }
 
 }  // namespace
@@ -395,6 +374,7 @@ StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
     }
   }
 
+  absl::flat_hash_set<HloInstruction*> while_insts_to_remove;
   for (auto* while_inst : while_insts) {
     // For each while loop, try and simplify the logic to convert the loop into
     // a repeat.
@@ -415,14 +395,18 @@ StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
     }
 
     if (simplified) {
-      HloInstruction* repeat_call = ConvertToRepeat(while_inst, count);
-      HloComputation* parent_computation = repeat_call->parent();
-      while_inst->ReplaceAllUsesWith(repeat_call);
-      parent_computation->RemoveInstructionAndUnusedOperands(while_inst);
-      changed = true;
+      HloInstruction* repeat_fusion = ConvertToRepeat(while_inst, count);
+      HloComputation* parent_computation = repeat_fusion->parent();
+      while_inst->ReplaceAllUsesWith(repeat_fusion);
       VLOG(1) << "Simplified while loop " << while_inst->name()
               << " with a repeat of count " << count;
+      while_insts_to_remove.insert(while_inst);
+      changed = true;
     }
+  }
+
+  for (HloInstruction* while_inst : while_insts_to_remove) {
+    while_inst->parent()->RemoveInstructionAndUnusedOperands(while_inst);
   }
 
   return changed;

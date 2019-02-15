@@ -20,13 +20,11 @@ from __future__ import print_function
 
 import six as _six
 from tensorflow.compiler.tf2tensorrt.python.ops import trt_ops
-from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl as _impl
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -428,7 +426,7 @@ class TrtGraphConverter(GraphConverter):
     trt_ops.load_trt_ops()
     # pylint: disable=g-import-not-at-top,unused-import,line-too-long,unused-variable
     # Import a random symbol to trigger loading of TRT library.
-    from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
+    from tensorflow.python.compiler.tensorrt.wrap_conversion import get_linked_tensorrt_version
     # pylint: enable=g-import-not-at-top,unused-import,line-too-long,unused-variable
 
     if rewriter_config_template is not None and not isinstance(
@@ -768,51 +766,3 @@ def create_inference_graph(
   if output_saved_model_dir:
     trt_converter.save(output_saved_model_dir)
   return converted_graph_def
-
-
-def calib_graph_to_infer_graph(calibration_graph_def, is_dynamic_op=False):
-  """Convert an existing calibration graph to inference graph.
-
-  Args:
-    calibration_graph_def: the calibration GraphDef object with calibration data
-    is_dynamic_op: whether to create dynamic static engines from calibration
-
-  Returns:
-    New GraphDef with TRTEngineOps placed in graph replacing calibration nodes.
-  Raises:
-    RuntimeError: if the returned status message is malformed.
-  """
-  # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
-  # even if it cannot find TensorRT library.
-  trt_ops.load_trt_ops()
-  # pylint: disable=g-import-not-at-top,line-too-long
-  from tensorflow.python.compiler.tensorrt.wrap_conversion import calib_convert
-  # pylint: enable=g-import-not-at-top,line-too-long
-
-  is_calib_graph = False
-  for n in calibration_graph_def.node:
-    if n.op == "TRTEngineOp":
-      is_calib_graph = is_calib_graph or not n.attr["calibration_data"].s
-  if not is_calib_graph:
-    tf_logging.error(
-        "Not a calib graph. Doesn't seem to contain any calibration nodes.")
-    return None
-  graph_str = calibration_graph_def.SerializeToString()
-  out = calib_convert(graph_str, is_dynamic_op)
-  status = _to_string(out[0])
-  output_graph_def_string = out[1]
-  del graph_str  # Save some memory
-  if len(status) < 2:
-    raise _impl.UnknownError(None, None, status)
-  if status[:2] != "OK":
-    msg = status.split(";")
-    if len(msg) == 1:
-      raise RuntimeError("Status message is malformed {}".format(status))
-    # pylint: disable=protected-access
-    raise _impl._make_specific_exception(None, None, ";".join(msg[1:]),
-                                         int(msg[0]))
-    # pylint: enable=protected-access
-  output_graph_def = graph_pb2.GraphDef()
-  output_graph_def.ParseFromString(output_graph_def_string)
-  del output_graph_def_string  # Save some memory
-  return output_graph_def

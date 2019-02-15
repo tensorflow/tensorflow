@@ -214,7 +214,7 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << proto.called_computation_ids_size();
       auto sort_operands = all_operands();
       instruction = CreateSort(shape, proto.dimensions(0), all_operands(),
-                               computations(0));
+                               computations(0), proto.is_stable());
       break;
     }
     case HloOpcode::kTranspose:
@@ -304,6 +304,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kParameter:
       instruction =
           CreateParameter(proto.parameter_number(), shape, proto.name());
+      if (!proto.parameter_replication().replicated_at_leaf_buffers().empty()) {
+        instruction->set_parameter_replicated_at_leaf_buffers(
+            proto.parameter_replication().replicated_at_leaf_buffers());
+      }
       break;
     case HloOpcode::kGetTupleElement:
       TF_RET_CHECK(proto.operand_ids_size() == 1)
@@ -1170,9 +1174,10 @@ HloInstruction::CreateBroadcastSequence(
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateSort(
     const Shape& shape, int64 dimension,
-    absl::Span<HloInstruction* const> operands, HloComputation* compare) {
+    absl::Span<HloInstruction* const> operands, HloComputation* compare,
+    bool is_stable) {
   return absl::make_unique<HloSortInstruction>(shape, dimension, operands,
-                                               compare);
+                                               compare, is_stable);
 }
 
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateFusion(
@@ -3319,6 +3324,19 @@ RandomDistribution HloInstruction::random_distribution() const {
 
 int64 HloInstruction::parameter_number() const {
   return Cast<HloParameterInstruction>(this)->parameter_number();
+}
+
+void HloInstruction::set_parameter_replicated_at_leaf_buffers(
+    absl::Span<const bool> parameter_replicated_at_leaf_buffers) {
+  return Cast<HloParameterInstruction>(this)
+      ->set_parameter_replicated_at_leaf_buffers(
+          parameter_replicated_at_leaf_buffers);
+}
+
+const absl::optional<std::vector<bool>>&
+HloInstruction::parameter_replicated_at_leaf_buffers() const {
+  return Cast<HloParameterInstruction>(this)
+      ->parameter_replicated_at_leaf_buffers();
 }
 
 int64 HloInstruction::tuple_index() const {

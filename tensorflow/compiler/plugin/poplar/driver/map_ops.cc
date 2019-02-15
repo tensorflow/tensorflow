@@ -3,6 +3,8 @@
 #include "absl/strings/str_cat.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
+
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/plugin/poplar/driver/custom_ops/custom_ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
@@ -381,16 +383,16 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
 
   poplar::program::Sequence main_seq;
 
-  CHECK_EQ(inst->operand(0)->opcode(), HloOpcode::kConstant);
-  TF_ASSIGN_OR_RETURN(int64 repeat_count, LiteralScalarToNativeType<int64>(
-                                              inst->operand(0)->literal()));
-
+  TF_ASSIGN_OR_RETURN(PoplarBackendConfig cfg,
+                      inst->backend_config<PoplarBackendConfig>());
+  int64 repeat_count = cfg.fusion_config().repeat_count();
   ArgVectors inputs;
-  inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 1, main_seq));
+  inputs.push_back(FindInstructionInputs(tensor_map, res, inst, 0, main_seq));
 
   ComputationMap::iterator body;
   TF_ASSIGN_OR_RETURN(
-      body, GetOrCompileSubComputation(res, inputs, GetRepeatBody(inst)));
+      body, GetOrCompileSubComputation(res, inputs,
+                                       inst->fused_instructions_computation()));
 
   unsigned int param_count = inputs[0].size();
 

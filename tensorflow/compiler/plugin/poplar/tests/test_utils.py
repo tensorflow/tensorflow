@@ -39,8 +39,6 @@ def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
 
   if sharded:
-    opts.enable_sharding = True
-
     dev = opts.device_config.add()
     dev.auto_count = 2
 

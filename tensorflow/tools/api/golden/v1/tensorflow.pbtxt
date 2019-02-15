@@ -141,6 +141,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "Module"
+    mtype: "<class \'tensorflow.python.module.module.ModuleMetaclass\'>"
+  }
+  member {
     name: "NameAttrList"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }

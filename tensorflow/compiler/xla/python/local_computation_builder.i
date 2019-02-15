@@ -23,6 +23,7 @@ limitations under the License.
 //    C++                                  Python
 // -------------------------------------+---------------------------------------
 //  Span<int64>                        <-  sequence of int
+//  vector<int>                        ->  sequence of int
 //  Span<LocalOp>                      <-  sequence of LocalOp
 //  Literal                            <-> (nested tuple of) numpy ndarray
 //  std::vector<Literal>               <-  sequence of (nested tuple of) ndarray
@@ -215,6 +216,15 @@ tensorflow::ImportNumpy();
 
 // Basic types
 
+
+%typemap(out) std::vector<int> {
+  PyObject* out = PyList_New($1.size());
+  for (int i = 0; i < $1.size(); ++i) {
+    PyList_SET_ITEM(out, i, PyInt_FromLong($1[i]));
+  }
+  $result = out;
+}
+
 %typemap(out) StatusOr<bool> {
   if ($1.ok()) {
     $result = PyBool_FromLong($1.ConsumeValueOrDie());
@@ -287,6 +297,19 @@ tensorflow::ImportNumpy();
 }
 
 // Computation and buffer/allocation types
+
+%typemap(out) StatusOr<xla::swig::LocalClient> {
+  if ($1.ok()) {
+    xla::swig::LocalClient value = $1.ValueOrDie();
+    {
+      auto $1 = value;
+      $typemap(out, xla::swig::LocalClient)
+    }
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
 
 %typemap(out) StatusOr<xla::swig::LocalExecutable*> {
   if ($1.ok()) {
@@ -979,17 +1002,17 @@ tensorflow::ImportNumpy();
 %ignoreall
 %unignore xla;
 %unignore xla::swig;
-%unignore xla::swig::InitializeReplicaCount;
-%unignore xla::swig::InitializePlatformName;
-%unignore xla::swig::GetReplicaCount;
 %unignore xla::swig::RegisterCpuCustomCallTarget;
-%unignore xla::swig::TransferToInfeedLocal;
-%unignore xla::swig::TransferToInfeedLocalReplica;
-%unignore xla::swig::TransferFromOutfeedLocalReplica;
+%unignore xla::swig::LocalClient;
+%unignore xla::swig::LocalClient::Get;
+%unignore xla::swig::LocalClient::DeviceCount;
+%unignore xla::swig::LocalClient::TransferToInfeed;
+%unignore xla::swig::LocalClient::TransferFromOutfeed;
 %unignore xla::swig::LocalShapedBuffer;
 %unignore xla::swig::LocalShapedBuffer::FromLiteral;
 %unignore xla::swig::LocalShapedBuffer::ToLiteral;
 %unignore xla::swig::LocalShapedBuffer::shape;
+%unignore xla::swig::LocalShapedBuffer::DestructureTuple;
 %unignore xla::swig::LocalShapedBufferTuple;
 %unignore xla::swig::LocalShapedBufferTuple::Release;
 %unignore xla::swig::LocalShapedBufferTuple::size;
@@ -1001,9 +1024,11 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::XrtAllocationTuple::Release;
 %unignore xla::swig::XrtAllocationTuple::size;
 %unignore xla::swig::LocalExecutable;
+%unignore xla::swig::LocalExecutable::DeviceOrdinals;
 %unignore xla::swig::LocalExecutable::Execute;
 %unignore xla::swig::LocalExecutable::ExecutePerReplica;
 %unignore xla::swig::XrtExecutable;
+%unignore xla::swig::XrtExecutable::DeviceOrdinals;
 %unignore xla::swig::XrtExecutable::Execute;
 %unignore xla::swig::Computation;
 %unignore xla::swig::Computation::Compile;
@@ -1128,7 +1153,6 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::ComputationBuilder::Gather;
 %unignore xla::swig::ComputationBuilder::Scatter;
 %unignore xla::swig::DeleteComputation;
-%unignore xla::swig::DestructureLocalShapedBufferTuple;
 %unignore xla::swig::DestructureXrtAllocationTuple;
 %unignore xla::swig::DeleteLocalShapedBuffer;
 %unignore xla::swig::DeleteXrtAllocation;

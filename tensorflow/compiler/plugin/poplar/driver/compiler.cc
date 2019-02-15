@@ -164,7 +164,7 @@ bool GetConstantOutput(const HloInstruction* root, const Shape& layout,
 
 bool AnyComputationHasSideEffects(const HloModule* module) {
   for (const auto& comp : module->computations()) {
-    if (IsRepeatCall(comp) || IsPopOpsFusion(comp)) {
+    if (IsPopOpsFusion(comp)) {
       continue;
     }
 
@@ -173,6 +173,20 @@ bool AnyComputationHasSideEffects(const HloModule* module) {
     }
   }
   return false;
+}
+
+bool ShardingEnabled(const HloModule* module) {
+  std::vector<HloComputation*> comps = module->MakeNonfusionComputations();
+  for (const auto* c : comps) {
+    for (const auto* inst : c->instructions()) {
+      if (inst->has_sharding()) {
+        auto sharding = inst->sharding();
+        if (IsSupportedSharding(sharding)) {
+          return true;
+        }
+      }
+    }
+  }
 }
 
 bool AreAllOutputsParameters(
@@ -294,7 +308,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
   popops::addCodelets(resources.main_graph);
   poprand::addCodelets(resources.main_graph);
 
-  if (poplarExecutor->ShardingEnabled()) {
+  if (ShardingEnabled(module.get())) {
     auto numIPUs = resources.main_graph.getTarget().getNumIPUs();
     auto tilesPerIPU = resources.main_graph.getTarget().getTilesPerIPU();
     for (unsigned ipu = 0; ipu < numIPUs; ++ipu) {
@@ -494,7 +508,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       std::move(profile_index_map), std::move(engine),
       std::move(resources.annotations.input_output_aliasing_map),
       is_constant_graph, std::move(constant_output), is_remap_graph,
-      std::move(remaped_output), std::move(resources.annotations.infeed_infos));
+      std::move(remaped_output), std::move(resources.annotations.infeed_infos),
+      std::move(resources.annotations.outfeed_infos));
+
   executable.reset(poplar_executable);
 
   if (poplarExecutor->HaveExecutableCache()) {

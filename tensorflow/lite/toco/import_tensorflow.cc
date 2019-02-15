@@ -1092,11 +1092,14 @@ tensorflow::Status ConvertBatchMatMulOperator(
     Model* model) {
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
 
-  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
-  CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
-  CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
-
   auto* batch_matmul = new BatchMatMulOperator;
+  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+  if (HasAttr(node, "adj_x")) {
+    batch_matmul->adj_x = GetBoolAttr(node, "adj_x");
+  }
+  if (HasAttr(node, "adj_y")) {
+    batch_matmul->adj_y = GetBoolAttr(node, "adj_y");
+  }
   batch_matmul->inputs = {node.input(0), node.input(1)};
   batch_matmul->outputs = {node.name()};
 

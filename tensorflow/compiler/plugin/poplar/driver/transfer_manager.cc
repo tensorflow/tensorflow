@@ -46,6 +46,30 @@ class PoplarInfeedBuffer : public cpu::runtime::XfeedBuffer {
   se::DeviceMemoryBase device_memory_;
 };
 
+class PoplarOutfeedBuffer : public cpu::runtime::XfeedBuffer {
+ public:
+  PoplarOutfeedBuffer(void* destination, int32 length)
+      : destination_(destination), length_(length) {}
+
+  StatusOr<Shape> WaitForNotification() {
+    done_.WaitForNotification();
+    return status_;
+  }
+
+  int32 length() override { return length_; }
+  void* data() override { return destination_; }
+  void Done(StatusOr<Shape> shape) override {
+    status_ = std::move(shape);
+    done_.Notify();
+  }
+
+ private:
+  void* destination_;
+  int32 length_;
+  StatusOr<Shape> status_;
+  tensorflow::Notification done_;
+};
+
 PoplarTransferManager::PoplarTransferManager()
     : GenericTransferManager(kPoplarPlatformId,
                              /*pointer_size=*/sizeof(void*)) {}
@@ -91,6 +115,56 @@ Status PoplarTransferManager::TransferLiteralToInfeed(
   return Status::OK();
 }
 
+Status PoplarTransferManager::TransferLiteralFromOutfeed(
+    se::StreamExecutor* executor, const Shape& literal_shape,
+    MutableBorrowingLiteral literal) {
+  if (!literal_shape.IsTuple()) {
+    int64 size = GetByteSizeRequirement(literal_shape);
+
+    absl::Span<const int64> dimensions(literal_shape.dimensions().data(),
+                                       literal_shape.dimensions().size());
+
+    TF_ASSIGN_OR_RETURN(
+        Shape received_shape,
+        TransferArrayBufferFromOutfeed(executor, literal.untyped_data(), size));
+    TF_RET_CHECK(ShapeUtil::Compatible(received_shape, literal.shape()))
+        << "Shape received from outfeed "
+        << ShapeUtil::HumanString(received_shape)
+        << " did not match the shape that was requested for outfeed: "
+        << ShapeUtil::HumanString(literal_shape);
+    TF_RET_CHECK(size == GetByteSizeRequirement(received_shape));
+    *literal.mutable_shape_do_not_use() = received_shape;
+    return Status::OK();
+  }
+
+  if (ShapeUtil::IsNestedTuple(literal_shape)) {
+    return Unimplemented(
+        "Nested tuple outfeeds are not yet implemented on IPU.");
+  }
+
+  std::vector<std::pair<void*, int64>> buffer_data;
+  for (int64 i = 0; i < literal_shape.tuple_shapes_size(); ++i) {
+    const Shape& tuple_element_shape =
+        ShapeUtil::GetTupleElementShape(literal_shape, i);
+    int64 size = GetByteSizeRequirement(tuple_element_shape);
+    buffer_data.push_back({literal.untyped_data({i}), size});
+  }
+
+  TF_ASSIGN_OR_RETURN(Shape received_shape,
+                      TransferTupleBuffersFromOutfeed(executor, buffer_data));
+
+  TF_RET_CHECK(ShapeUtil::Compatible(received_shape, literal_shape))
+      << "Shape received from outfeed "
+      << ShapeUtil::HumanString(received_shape)
+      << " did not match the shape that was requested for outfeed: "
+      << ShapeUtil::HumanString(literal_shape);
+  TF_RET_CHECK(GetByteSizeRequirement(literal_shape) ==
+               GetByteSizeRequirement(received_shape));
+
+  TF_RET_CHECK(ShapeUtil::Equal(literal.shape(), literal_shape));
+  return Status::OK();
+}
+
 Status PoplarTransferManager::TransferBufferToInfeed(
     se::StreamExecutor* executor, int64 size, const void* source) {
   TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
@@ -121,6 +195,65 @@ PoplarTransferManager::TransferBufferToInfeedInternal(
   std::memcpy(queued_buffer->data(), source, size);
 
   return queued_buffer;
+}
+
+StatusOr<Shape> PoplarTransferManager::TransferTupleBuffersFromOutfeed(
+    se::StreamExecutor* executor,
+    absl::Span<const std::pair<void*, int64>> buffer_data) {
+  return TransferBuffersFromOutfeedInternal(executor, buffer_data,
+                                            /*is_tuple=*/true);
+}
+
+StatusOr<Shape> PoplarTransferManager::TransferArrayBufferFromOutfeed(
+    se::StreamExecutor* executor, void* destination, int64 size_bytes) {
+  return TransferBuffersFromOutfeedInternal(
+      executor, {{destination, size_bytes}}, /*is_tuple=*/false);
+}
+
+StatusOr<Shape> PoplarTransferManager::TransferBuffersFromOutfeedInternal(
+    se::StreamExecutor* executor,
+    absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple) {
+  std::vector<std::unique_ptr<PoplarOutfeedBuffer>> buffers;
+  for (auto b : buffer_data) {
+    int64 size = b.second;
+    if (size > std::numeric_limits<int32>::max()) {
+      return InvalidArgument("Outfeed shape is too large: needs %d bytes",
+                             size);
+    }
+
+    if (size <= 0) {
+      return InvalidArgument("Outfeed shape must have positive size; got %d",
+                             size);
+    }
+
+    int32 size_32 = static_cast<int32>(size);
+    VLOG(2)
+        << "Enqueueing outfeed buffer (for the device to populate) of length "
+        << size_32 << "B";
+    buffers.emplace_back(
+        absl::make_unique<PoplarOutfeedBuffer>(b.first, size_32));
+  }
+
+  std::vector<cpu::runtime::XfeedBuffer*> buffer_pointers;
+  buffer_pointers.reserve(buffers.size());
+  for (auto& b : buffers) {
+    buffer_pointers.push_back(b.get());
+  }
+
+  cpu::runtime::XfeedManager* xfeed_manager =
+      xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
+  xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
+  VLOG(2) << "Waiting for buffer to be notified as populated.";
+  std::vector<Shape> outfed_shapes;
+  for (auto& buffer : buffers) {
+    TF_ASSIGN_OR_RETURN(Shape outfed_shape, buffer->WaitForNotification());
+    outfed_shapes.push_back(std::move(outfed_shape));
+  }
+  if (is_tuple) {
+    return ShapeUtil::MakeTupleShape(outfed_shapes);
+  }
+  TF_RET_CHECK(outfed_shapes.size() == 1);
+  return std::move(outfed_shapes[0]);
 }
 
 }  // namespace poplarplugin

@@ -1471,6 +1471,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       defined([a], [a, a, a])
     defined([a, a], [a, a])
 
+  def testInputSignatureWithPartialFunction(self):
+    self.skipTest('b/124441704')
+    def full_function(a, b, c=3.0):
+      return a, b, c
+
+    partial = functools.partial(full_function, 1, c=4)
+    a, b, c = partial(2.0)
+    signature = [tensor_spec.TensorSpec([], dtypes.float32)]
+    defined = function.defun(partial, input_signature=signature)
+    x = constant_op.constant(2.0)
+    func_a, func_b, func_c = defined(x)
+    self.assertEqual(func_a.numpy(), a)
+    self.assertEqual(func_b.numpy(), b)
+    self.assertEqual(func_c.numpy(), c)
+
   def testInputSignatureForFunctionWithNonTensorInputsNotAllowed(self):
 
     def foo(a, training=True):

@@ -30,14 +30,11 @@ class Tensor;
 
 namespace xla {
 class HloInstruction;
-
+struct TensorTarget;
 namespace poplarplugin {
 
 typedef StatusOr<poplar::Tensor> (*CustomPoplibOpAllocator)(
-    poplar::Graph&, CompilerResources&, const std::string&,
-    const HloInstruction*, const int64,
-    absl::optional<const HloInstruction*> optional_layout,
-    absl::optional<int64> optional_layout_output_idx,
+    poplar::Graph&, CompilerResources&, const std::string&, const TensorTarget&,
     const IPUCustomKernelsUtil::AttributeMap&, const TensorMap&);
 
 typedef StatusOr<poplar::program::Program> (*CustomPoplibOpCreator)(

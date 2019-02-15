@@ -4064,7 +4064,17 @@ def make_mirror_pad_tests(zip_path):
 def make_unroll_batch_matmul_tests(zip_path):
   """Make a set of tests to test unroll_batch_matmul."""
 
-  test_parameters = [{"dtype": [tf.float32], "shape": [[(2, 2, 3), (2, 3, 2)]]}]
+  test_parameters = [{
+      "dtype": [tf.float32],
+      "shape": [[(2, 2, 3), (2, 3, 2), False, False],
+                [(2, 2, 3), (2, 3, 2), True, True],
+                [(2, 2, 3), (2, 2, 3), False, True],
+                [(2, 2, 3), (2, 2, 3), True, False],
+                [(4, 2, 2, 3), (4, 2, 3, 2), False, False],
+                [(4, 2, 2, 3), (4, 2, 3, 2), True, True],
+                [(4, 2, 2, 3), (4, 2, 2, 3), False, True],
+                [(4, 2, 2, 3), (4, 2, 2, 3), True, False]]
+  }]
 
   def build_graph(parameters):
     """Build the batch_matmul op testing graph."""
@@ -4073,7 +4083,11 @@ def make_unroll_batch_matmul_tests(zip_path):
     input_tensor2 = tf.placeholder(
         dtype=parameters["dtype"], shape=parameters["shape"][1])
     # Should be unrolled and replaced with fully_connected ops in the end.
-    out = tf.matmul(input_tensor1, input_tensor2)
+    out = tf.matmul(
+        input_tensor1,
+        input_tensor2,
+        transpose_a=parameters["shape"][2],
+        transpose_b=parameters["shape"][3])
     return [input_tensor1, input_tensor2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

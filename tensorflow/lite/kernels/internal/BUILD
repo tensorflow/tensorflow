@@ -313,6 +313,7 @@ cc_library(
         "reference/integer_ops/logistic.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
+        "reference/integer_ops/tanh.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],
@@ -586,7 +587,10 @@ cc_test(
 
 cc_test(
     name = "depthwiseconv_quantized_test",
-    srcs = ["depthwiseconv_quantized_test.cc"],
+    srcs = [
+        "depthwiseconv_quantized_test.cc",
+        "optimized/depthwiseconv_uint8_transitional.h",
+    ],
     shard_count = 2,
     deps = [
         ":optimized_base",
@@ -595,6 +599,7 @@ cc_test(
         ":types",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@gemmlowp",
     ],
 )
 

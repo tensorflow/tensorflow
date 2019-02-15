@@ -24,6 +24,7 @@ limitations under the License.
 
 namespace tflite {
 namespace optimized_ops {
+namespace depthwise_conv {
 
 // Implementation of quantized DepthwiseConv
 
@@ -1946,6 +1947,8 @@ inline void DepthwiseConvGeneral(
   }
 }
 
+}  // namespace depthwise_conv
+
 inline void DepthwiseConv(
     const DepthwiseParams& params, const RuntimeShape& input_shape,
     const uint8* input_data, const RuntimeShape& filter_shape,
@@ -1980,23 +1983,23 @@ inline void DepthwiseConv(
 
   // Call kernel optimized for depthwise convolutions using 3x3 filters if
   // parameters are supported.
-  if (Fast3x3FilterKernelSupported(
+  if (depthwise_conv::Fast3x3FilterKernelSupported(
           input_shape, filter_shape, stride_width, stride_height,
           dilation_width_factor, dilation_height_factor, pad_width, pad_height,
           depth_multiplier, output_shape, output_shift)) {
     gemmlowp::ScopedProfilingLabel specialized_label("DepthwiseConv/8bit/3x3");
-    DepthwiseConv3x3Filter(params, input_shape, input_data, filter_shape,
-                           filter_data, bias_shape, bias_data, output_shape,
-                           output_data);
+    depthwise_conv::DepthwiseConv3x3Filter(
+        params, input_shape, input_data, filter_shape, filter_data, bias_shape,
+        bias_data, output_shape, output_data);
     return;
   }
 #endif
 
   gemmlowp::ScopedProfilingLabel specialized_label(
       "DepthwiseConv/8bit/General");
-  DepthwiseConvGeneral(params, input_shape, input_data, filter_shape,
-                       filter_data, bias_shape, bias_data, output_shape,
-                       output_data);
+  depthwise_conv::DepthwiseConvGeneral(params, input_shape, input_data,
+                                       filter_shape, filter_data, bias_shape,
+                                       bias_data, output_shape, output_data);
 }
 
 }  // namespace optimized_ops

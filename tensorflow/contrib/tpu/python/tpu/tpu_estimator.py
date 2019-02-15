@@ -1363,7 +1363,7 @@ def call_computation(computation,
     # TPU core with every `Session.run()` call. Note that the entire inference
     # graph executes on a single core, and that invocations of this graph
     # will round-robin among the cores attached to a host.
-    @function.Defun()
+    @function.Defun(capture_resource_var_by_value=False)
     def tpu_subgraph():
       return computation()
 
@@ -1445,14 +1445,6 @@ class _ModelFnWrapper(object):
         captured_scaffold_fn.capture(None)
 
       captured_training_hooks.capture(estimator_spec.training_hooks)
-
-      if tensor_tracer.TensorTracer.is_enabled():
-        tt = tensor_tracer.TensorTracer()
-        loss = tt.trace_tpu(ops.get_default_graph(),
-                            loss, train_op,
-                            self._ctx.num_replicas,
-                            self._ctx.num_of_replicas_per_host,
-                            self._ctx.num_hosts)
 
       if self._ctx.embedding_config is None:
         apply_sparse_grads = []
@@ -2464,8 +2456,14 @@ class TPUEstimator(estimator_lib.Estimator):
           device_assignment = ctx.device_assignment
       else:
         device_assignment = None
-      tensors_on_cpu = tpu.rewrite_for_inference(
-          tpu_computation, device_assignment=device_assignment)
+
+      if self._experimental_exported_model_uses_all_cores:
+        tensors_on_cpu = tpu.rewrite(
+            tpu_computation, device_assignment=device_assignment)
+      else:
+        tensors_on_cpu = tpu.rewrite_for_inference(
+            tpu_computation, device_assignment=device_assignment)
+
       (estimator_spec, export_outputs_dict, export_outputs_list,
        predictions_dict) = (
            tpu_capture.get())

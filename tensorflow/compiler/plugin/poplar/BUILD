@@ -604,6 +604,24 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "ipu_outfeed_test",
+    srcs = ["tests/ipu_outfeed_test.cc"],
+    size = "small",
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        ":test_utils",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:local_client_test_base",
+        "//tensorflow/compiler/xla/client/lib:arithmetic",
+    ],
+)
+
 xla_test(
     name = "fused_batch_norm_test",
     srcs = ["tests/fused_batch_norm_test.cc"],
@@ -1164,6 +1182,23 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+py_test(
+    name = "forward_allocation_test",
+    size = "medium",
+    srcs = ["tests/forward_allocation_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:layers",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -1217,6 +1252,8 @@ test_suite(
         "group_norm_test",
         "root_token_replacer_test",
         "deferred_allocation_visitor_test",
+        "ipu_outfeed_test",
+        "forward_allocation_test",
     ],
 )
 

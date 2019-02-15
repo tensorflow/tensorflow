@@ -76,6 +76,7 @@ enum PoplarProgramType {
 class PoplarExecutable;
 
 std::string GetInfeedCopyHandle(const std::string& name, int64 shape_index);
+std::string GetOutfeedCopyHandle(const std::string& name, int64 shape_index);
 std::string GetInputCopyHandle(int64 parameter, int64 index);
 std::string GetOutputCopyHandle(int64 output_index, int64 flat_tensor_index);
 
@@ -279,8 +280,6 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
     return current_config_.disable_graph_convolution_caching();
   }
 
-  bool ShardingEnabled() const;
-
   poplar::OptionFlags GetConvolutionOptions() const { return conv_options_; }
 
   poplar::OptionFlags GetPoolingOptions() const { return pooling_options_; }
@@ -483,6 +482,11 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   // Connect buffers provided by infeed transfer manager to Poplar
   // HostToDevice FIFO
   void ConnectInfeedsToStreamCallback(const InfeedInfos& infeed_infos);
+
+  // Connect buffers provided by transfer manager to Poplar
+  // deviceToHostFIFO()
+  void ConnectOutfeedToStreamCallback(se::StreamExecutor* executor,
+                                      const OutfeedInfos& outfeed_infos);
 
   void DeferredDeallocation();
 

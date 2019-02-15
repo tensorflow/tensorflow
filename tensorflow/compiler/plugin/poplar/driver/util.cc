@@ -1,5 +1,6 @@
 #include "tensorflow/compiler/plugin/poplar/driver/util.h"
 
+#include "tensorflow/compiler/plugin/poplar/driver/backend_config.pb.h"
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
@@ -144,21 +145,15 @@ bool IsPopOpsFusion(const xla::HloInstruction* inst,
          IsPopOpsFusion(inst->fused_instructions_computation(), postfix);
 }
 
-bool IsRepeatCall(const xla::HloComputation* comp) {
-  return tensorflow::str_util::StartsWith(comp->name(), "__repeat");
-}
-
-bool IsRepeatCall(const xla::HloInstruction* inst) {
-  return inst->opcode() == xla::HloOpcode::kCall &&
-         IsRepeatCall(inst->to_apply());
-}
-
-xla::HloComputation* GetRepeatBody(xla::HloInstruction* inst) {
-  return inst->to_apply()->root_instruction()->to_apply();
-}
-
-const xla::HloComputation* GetRepeatBody(const xla::HloInstruction* inst) {
-  return inst->to_apply()->root_instruction()->to_apply();
+bool IsRepeatLoop(const xla::HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kFusion) {
+    auto statusor = inst->backend_config<PoplarBackendConfig>();
+    if (statusor.ok()) {
+      PoplarBackendConfig cfg = statusor.ValueOrDie();
+      return cfg.fusion_config().is_repeat_loop();
+    }
+  }
+  return false;
 }
 
 bool IsSupportedSharding(const HloSharding& sharding) {

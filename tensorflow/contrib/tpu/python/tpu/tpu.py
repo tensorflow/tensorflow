@@ -903,6 +903,17 @@ def split_compile_and_replicate(computation,
     else:
       output_tensors, control_deps = _postprocess_non_flat_outputs(outputs)
 
+    # tensor_tracer imports tpu.py. Local import to tensor_tracer to avoid
+    # import-cycle
+    # pylint: disable=g-import-not-at-top
+    from tensorflow.contrib.tpu.python.tpu import tensor_tracer
+    # pylint: enable=g-import-not-at-top
+    if tensor_tracer.TensorTracer.is_enabled():
+      tt = tensor_tracer.TensorTracer()
+      output_tensors = tt.trace_tpu(ops.get_default_graph(),
+                                    output_tensors, control_deps,
+                                    num_replicas)
+
     context.ExitResult(output_tensors)
   finally:
     context.report_unsupported_operations()

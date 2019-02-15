@@ -219,7 +219,7 @@ TEST(QuantizedActivationsOpTest, Relu6Int8) {
               ElementsAreArray({0, 0, 32, 64, 48, 0, 96, 16}));
 }
 
-TEST(QuantizedActivationsOpTest, Tanh) {
+TEST(QuantizedActivationsOpTest, TanhUint8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;
   QuantizedActivationsOpModel m(
@@ -240,6 +240,29 @@ TEST(QuantizedActivationsOpTest, Tanh) {
                   kQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({128, 0, 251, 255, 0, 5, 255, 225}));
+}
+
+TEST(QuantizedActivationsOpTest, TanhInt8) {
+  const float kMin = -1;
+  const float kMax = 127.f / 128.f;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_TANH,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 8 * kMin, 8 * kMax},
+      /*output=*/{TensorType_INT8, {1, 2, 4, 1}, kMin, kMax});
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,   //
+      -4, -2, 8, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      0.0, -0.999987, 0.964027, 0.999329,     //
+                      -0.999329, -0.96402, 0.99999, 0.76159,  //
+                  },
+                  kQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(),
+              ElementsAreArray({0, -128, 123, 127, -128, -123, 127, 97}));
 }
 
 TEST(QuantizedActivationsOpTest, TanhInt16) {

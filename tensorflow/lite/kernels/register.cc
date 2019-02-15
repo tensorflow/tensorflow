@@ -168,7 +168,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_TANH, Register_TANH());
+  AddBuiltin(BuiltinOperator_TANH, Register_TANH(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -234,8 +235,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_PAD, Register_PAD());
-  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
+  AddBuiltin(BuiltinOperator_PAD, Register_PAD(), /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR(),
              /* min_version */ 1,
