@@ -69,6 +69,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
@@ -315,6 +316,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     HloPassPipeline pipeline("IPU");
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<HloComputationNameUniquify>();
+    pipeline.AddPass<TriangularSolveExpander>();
     pipeline.AddPass<NotSupportedGatherExpander>();
     pipeline.AddPass<NotSupportedScatterExpander>();
     pipeline.AddPass<DynamicIndexSplitter>();

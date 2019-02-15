@@ -525,5 +525,9 @@ Status BaseVisitor::HandleReplicaId(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleTriangularSolve(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 }  // namespace poplarplugin
 }  // namespace xla
