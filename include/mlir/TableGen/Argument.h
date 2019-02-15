@@ -42,7 +42,7 @@ class StringRef;
 namespace mlir {
 namespace tblgen {
 
-// A struct wrapping an attribute and its name together
+// A struct wrapping an op attribute and its name together
 struct NamedAttribute {
   // Returns the MLIR attribute name.
   std::string getName() const;
@@ -51,17 +51,17 @@ struct NamedAttribute {
   Attribute attr;
 };
 
-// A struct wrapping an operand and its name together
-struct Operand {
+// A struct wrapping an op operand/result and its name together
+struct Value {
   // Returns true if this operand has constraint that need to be satisfied.
-  bool hasMatcher() const;
+  bool hasPredicate() const;
 
   llvm::StringRef name;
   Type type;
 };
 
 // Operation argument: either attribute or operand
-using Argument = llvm::PointerUnion<NamedAttribute *, Operand *>;
+using Argument = llvm::PointerUnion<NamedAttribute *, Value *>;
 
 } // end namespace tblgen
 } // end namespace mlir

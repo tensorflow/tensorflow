@@ -474,7 +474,7 @@ void OpEmitter::emitVerifier() {
 
     // TODO: Commonality between matchers could be extracted to have a more
     // concise code.
-    if (operand.hasMatcher()) {
+    if (operand.hasPredicate()) {
       auto description = operand.type.getDescription();
       OUT(4) << "if (!("
              << formatv(operand.type.getConditionTemplate(),

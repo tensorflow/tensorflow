@@ -29,6 +29,6 @@ std::string tblgen::NamedAttribute::getName() const {
   return llvm::join_items("$", split.first, split.second);
 }
 
-bool tblgen::Operand::hasMatcher() const {
+bool tblgen::Value::hasPredicate() const {
   return !type.getPredicate().isNull();
 }

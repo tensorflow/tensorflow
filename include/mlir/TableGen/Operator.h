@@ -87,15 +87,15 @@ public:
   const NamedAttribute &getAttribute(int index) const;
 
   // Op operand iterators.
-  using operand_iterator = Operand *;
+  using operand_iterator = Value *;
   operand_iterator operand_begin();
   operand_iterator operand_end();
   llvm::iterator_range<operand_iterator> getOperands();
 
   // Op operand accessors.
   int getNumOperands() const { return operands.size(); }
-  Operand &getOperand(int index) { return operands[index]; }
-  const Operand &getOperand(int index) const { return operands[index]; }
+  Value &getOperand(int index) { return operands[index]; }
+  const Value &getOperand(int index) const { return operands[index]; }
 
   // Returns true if this operation has a variadic operand.
   bool hasVariadicOperand() const;
@@ -127,7 +127,7 @@ private:
   SmallVector<StringRef, 2> splittedDefName;
 
   // The operands of the op.
-  SmallVector<Operand, 4> operands;
+  SmallVector<Value, 4> operands;
 
   // The attributes of the op.
   SmallVector<NamedAttribute, 4> attributes;

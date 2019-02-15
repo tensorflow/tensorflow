@@ -42,9 +42,9 @@ using namespace mlir;
 
 using mlir::tblgen::DagNode;
 using mlir::tblgen::NamedAttribute;
-using mlir::tblgen::Operand;
 using mlir::tblgen::Operator;
 using mlir::tblgen::RecordOperatorMap;
+using mlir::tblgen::Value;
 
 namespace {
 class PatternEmitter {
@@ -177,7 +177,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
     }
 
     // Next handle DAG leaf: operand or attribute
-    if (auto *operand = opArg.dyn_cast<Operand *>()) {
+    if (auto *operand = opArg.dyn_cast<Value *>()) {
       emitOperandMatch(tree, i, depth, indent);
     } else if (auto *namedAttr = opArg.dyn_cast<NamedAttribute *>()) {
       emitAttributeMatch(tree, i, depth, indent);
@@ -190,7 +190,7 @@ void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
 void PatternEmitter::emitOperandMatch(DagNode tree, int index, int depth,
                                       int indent) {
   Operator &op = tree.getDialectOp(opMap);
-  auto *operand = op.getArg(index).get<Operand *>();
+  auto *operand = op.getArg(index).get<Value *>();
   auto matcher = tree.getArgAsLeaf(index);
 
   // If a constraint is specified, we need to generate C++ statements to

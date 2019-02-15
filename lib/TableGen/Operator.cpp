@@ -148,7 +148,7 @@ void tblgen::Operator::populateOperandsAndAttributes() {
     Record *argDef = argDefInit->getDef();
     if (argDef->isSubClassOf(attrClass))
       break;
-    operands.push_back(Operand{givenName, Type(argDefInit)});
+    operands.push_back(Value{givenName, Type(argDefInit)});
   }
 
   // Handle native attributes.
