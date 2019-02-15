@@ -255,6 +255,7 @@ class DatasetIterator(InputIteratorImpl):
         cloned_dataset = dataset
         if not context.executing_eagerly():
           cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
         iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
                                                 worker_devices)
         iterators.append(iterator)
@@ -352,7 +353,8 @@ def _get_batched_dataset(d):
 
   if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
     return d
-  elif isinstance(d, dataset_ops.PrefetchDataset):
+  elif isinstance(d, (dataset_ops.PrefetchDataset,
+                      dataset_ops._OptionsDataset)):
     return _get_batched_dataset(d._input_dataset)
 
   raise ValueError(

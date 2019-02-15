@@ -5,12 +5,24 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member_method {
+    name: "audio"
+    argspec: "args=[\'name\', \'data\', \'sample_rate\', \'step\', \'max_outputs\', \'encoding\', \'description\'], varargs=None, keywords=None, defaults=[\'3\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "create_file_writer"
     argspec: "args=[\'logdir\', \'max_queue\', \'flush_millis\', \'filename_suffix\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "flush"
     argspec: "args=[\'writer\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "histogram"
+    argspec: "args=[\'name\', \'data\', \'step\', \'buckets\', \'description\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "image"
+    argspec: "args=[\'name\', \'data\', \'step\', \'max_outputs\', \'description\'], varargs=None, keywords=None, defaults=[\'3\', \'None\'], "
   }
   member_method {
     name: "import_event"
@@ -21,8 +33,16 @@ tf_module {
     argspec: "args=[\'condition\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "scalar"
+    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "summary_scope"
     argspec: "args=[\'name\', \'default_name\', \'values\'], varargs=None, keywords=None, defaults=[\'summary\', \'None\'], "
+  }
+  member_method {
+    name: "text"
+    argspec: "args=[\'name\', \'data\', \'step\', \'description\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "write"

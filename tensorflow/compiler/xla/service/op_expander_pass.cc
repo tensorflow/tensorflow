@@ -36,6 +36,9 @@ StatusOr<bool> OpExpanderPass::Run(HloModule* module) {
   for (HloInstruction* inst : matching_instructions) {
     TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root,
                         ExpandInstruction(inst));
+    if (expanded_root == nullptr) {
+      continue;
+    }
     TF_RETURN_IF_ERROR(inst->parent()->ReplaceInstruction(inst, expanded_root));
   }
 

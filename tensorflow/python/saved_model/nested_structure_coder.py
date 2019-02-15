@@ -361,10 +361,7 @@ class _TensorShapeCodec(object):
   """Codec for `TensorShape`."""
 
   def can_encode(self, pyobj):
-    return isinstance(pyobj, (tensor_shape.TensorShape,
-                              # TODO(b/121255889): Should not need these.
-                              tensor_shape.TensorShapeV1,
-                              tensor_shape.TensorShapeV2))
+    return isinstance(pyobj, tensor_shape.TensorShape)
 
   def do_encode(self, tensor_shape_value, encode_fn):
     del encode_fn

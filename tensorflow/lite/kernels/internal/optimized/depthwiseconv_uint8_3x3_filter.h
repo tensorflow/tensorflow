@@ -23,6 +23,10 @@ limitations under the License.
 
 namespace tflite {
 namespace optimized_ops {
+namespace depthwise_conv {
+
+constexpr int kDepthwiseConvScratchWorkspaceSize = 10 * 10 * 64;
+constexpr int kDepthwiseConvAdjustedBiasLimit = 256;
 
 // See CategorizeDotProductKernel for definitive taxonomy.
 enum class DotProduct3x3KernelType {
@@ -61,12 +65,13 @@ inline DotProduct3x3KernelType CategorizeDotProductKernel(
   }
 }
 
+#define STR(s) STR_UNEXPANDED(s)
+#define STR_UNEXPANDED(s) #s
+
 // Enable for arm64 except for the Nvidia Linux 4 Tegra (L4T) running on
 // Jetson TX-2. This compiler does not support the offsetof() macro.
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 #include <stddef.h>
-
-#define DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE 10 * 10 * 64
 
 // Encapsulates constant parameters used in DepthwiseConv.
 // 64-bit is used for types that will be added to 64-bit addresses in asm.
@@ -90,9 +95,6 @@ struct DepthwiseConvParams {
   int32 output_width;
   int32 output_height;
 };
-
-#define STR(s) STR_UNEXPANDED(s)
-#define STR_UNEXPANDED(s) #s
 
 // Represents the number of bytes offset from the start of the
 // DepthwiseConvParams struct. This is used in the asm to load parameters.
@@ -168,7 +170,46 @@ static_assert(offsetof(DepthwiseConvParams, output_width) ==
 static_assert(offsetof(DepthwiseConvParams, output_height) ==
                   OFFSET_OUTPUT_HEIGHT,
               "");
+#endif
 
+// Encapsulates constant parameters used in DepthwiseConv using dot-product ops.
+// 64-bit is used for types that will be added to 64-bit addresses in asm.
+//
+// This structure is specifically designed for use in asm.
+struct DepthwiseConvDotProdParams {
+  int64_t input_depth;
+  int64_t output_depth;
+  int32 workspace_height_stride;
+  int32 input_width_overall_micro_repeats;
+  int32 input_width_micro_repeats;
+  int32 depth_micro_repeats;
+  int32 inbound_block_height;
+  int32 residual_width;
+  int32 input_height_stride;
+  int32 stride;
+  int32 output_width_overall_micro_repeats;
+  int32 output_width_micro_repeats;
+  int32 output_residual_width;
+  int32 output_height_stride;
+  int32 bias_increment;
+  int32 padding_left;
+  int32 padding_right;
+  int32 padding_top;
+  int32 padding_bottom;
+  int32 height_macro_count;
+  int32 width_macro_count;
+  int32 outbound_block_height;
+  int32 workspace_width_micro_repeats;
+  int32 input_offset;
+  int32 output_offset;
+  int32 output_multiplier;
+  int32 output_shift;
+  int32 quantized_activation_min;
+  int32 quantized_activation_max;
+  int32 four_over_stride;
+};
+
+#if defined(__aarch64__) && !defined(GOOGLE_L4T)
 template <int32 kDepth, int32 kStrideWidth, int32 kStrideHeight>
 struct DepthwiseConvWindow {};
 
@@ -2964,8 +3005,6 @@ struct DepthwiseConvPartial<EdgeType::kVertical, 1, 1> {
 #undef OFFSET_INPUT_HEIGHT
 #undef OFFSET_OUTPUT_WIDTH
 #undef OFFSET_OUTPUT_HEIGHT
-#undef STR
-#undef STR_UNEXPANDED
 
 // Copies a subset of the input designated by |input_ptr| into |output_ptr|
 // with the specified output dimensions. Supports output depths of 64 only as
@@ -3048,7 +3087,7 @@ struct DepthwiseConvMultiRow {
         get_shuffle_input_size(kStrideWidth, shuffle_params.output_width));
     TFLITE_DCHECK(64 * shuffle_params.input_width *
                       shuffle_params.input_height <=
-                  DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE);
+                  kDepthwiseConvScratchWorkspaceSize);
 
     int32 out_x = start_x;
 
@@ -3376,7 +3415,7 @@ inline void DepthwiseConv3x3Filter(
   // allocated on the stack. Eventually we will want to move it to the heap
   // and have it allocated outside of this function, like the im2col_array
   // used in gemmlowp.
-  uint8 shuffle_workspace[DEPTHWISECONV_SHUFFLE_WORKSPACE_SIZE];
+  uint8 shuffle_workspace[kDepthwiseConvScratchWorkspaceSize];
 
   for (int32 b = 0; b < batches; ++b) {
     const uint8* input_ptr = input_data + b * input_batch_size;
@@ -3455,9 +3494,12 @@ inline void DepthwiseConv3x3Filter(
     }
   }
 }
-
 #endif  // __aarch64__
 
+#undef STR
+#undef STR_UNEXPANDED
+
+}  // namespace depthwise_conv
 }  // namespace optimized_ops
 }  // namespace tflite
 

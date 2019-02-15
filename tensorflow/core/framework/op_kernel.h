@@ -1467,23 +1467,21 @@ class OpKernelRegistrar {
     // Perform the check in the header to allow compile-time optimization
     // to a no-op, allowing the linker to remove the kernel symbols.
     if (kernel_def != nullptr) {
-      struct PtrOpKernelFactory : public OpKernelFactory {
-        explicit PtrOpKernelFactory(
-            OpKernel* (*create_func)(OpKernelConstruction*))
-            : create_func_(create_func) {}
-
-        OpKernel* Create(OpKernelConstruction* context) override {
-          return (*create_func_)(context);
-        }
-
-        OpKernel* (*create_func_)(OpKernelConstruction*);
-      };
       InitInternal(kernel_def, kernel_class_name,
                    absl::make_unique<PtrOpKernelFactory>(create_fn));
     }
   }
 
  private:
+  struct PtrOpKernelFactory : public OpKernelFactory {
+    explicit PtrOpKernelFactory(OpKernel* (*create_func)(OpKernelConstruction*))
+        : create_func_(create_func) {}
+
+    OpKernel* Create(OpKernelConstruction* context) override;
+
+    OpKernel* (*create_func_)(OpKernelConstruction*);
+  };
+
   void InitInternal(const KernelDef* kernel_def, StringPiece kernel_class_name,
                     std::unique_ptr<OpKernelFactory> factory);
 };

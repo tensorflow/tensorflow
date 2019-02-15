@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 
 from absl.testing import parameterized
+import six
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import def_function
@@ -414,6 +415,43 @@ class SimpleModule(module.Module):
 
 IS_MEMBER = lambda v: isinstance(v, MemberType)
 IS_MODULE = lambda v: isinstance(v, module.Module)
+
+
+class CustomMetaclass(type):
+
+  TAG = "__custom_metaclass__"
+
+  def __new__(mcs, name, bases, clsdict):
+    new_type = super(CustomMetaclass, mcs).__new__(mcs, name, bases, clsdict)
+    setattr(new_type, CustomMetaclass.TAG, True)
+    return new_type
+
+
+class CombiningMetaclass(module.ModuleMetaclass, CustomMetaclass):
+
+  TAG = "__combining_metaclass__"
+
+  def __new__(mcs, name, bases, clsdict):
+    new_type = super(CombiningMetaclass, mcs).__new__(mcs, name, bases, clsdict)
+    setattr(new_type, CombiningMetaclass.TAG, True)
+    return new_type
+
+
+@six.add_metaclass(CombiningMetaclass)
+class ModuleWithCustomMetaclass(module.Module):
+
+  def __init__(self):
+    super(ModuleWithCustomMetaclass, self).__init__()
+    self.init_name_scope = get_name_scope()
+
+
+class CustomMetaclassTest(test.TestCase):
+
+  def testSupportsCustomMetaclass(self):
+    m = ModuleWithCustomMetaclass()
+    self.assertEqual(m.init_name_scope, "module_with_custom_metaclass/")
+    self.assertTrue(getattr(ModuleWithCustomMetaclass, CombiningMetaclass.TAG))
+    self.assertTrue(getattr(ModuleWithCustomMetaclass, CustomMetaclass.TAG))
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

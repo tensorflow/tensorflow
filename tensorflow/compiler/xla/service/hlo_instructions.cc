@@ -659,8 +659,11 @@ std::unique_ptr<HloInstruction> HloReduceInstruction::CloneWithNewOperandsImpl(
 
 HloSortInstruction::HloSortInstruction(
     const Shape& shape, int64 dimension,
-    absl::Span<HloInstruction* const> operands, HloComputation* compare)
-    : HloInstruction(HloOpcode::kSort, shape), dimensions_({dimension}) {
+    absl::Span<HloInstruction* const> operands, HloComputation* compare,
+    bool is_stable)
+    : HloInstruction(HloOpcode::kSort, shape),
+      dimensions_({dimension}),
+      is_stable_(is_stable) {
   for (auto* value : operands) {
     AppendOperand(value);
   }
@@ -672,12 +675,18 @@ HloInstructionProto HloSortInstruction::ToProto() const {
   for (int64 dimension : dimensions_) {
     proto.add_dimensions(dimension);
   }
+  proto.set_is_stable(is_stable());
   return proto;
 }
 
 std::vector<string> HloSortInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("dimensions={", StrJoin(dimensions(), ","), "}")};
+  std::vector<string> attrs;
+  attrs.push_back(StrCat("dimensions={", StrJoin(dimensions(), ","), "}"));
+  if (is_stable()) {
+    attrs.push_back("is_stable=true");
+  }
+  return attrs;
 }
 
 bool HloSortInstruction::IdenticalSlowPath(
@@ -688,14 +697,17 @@ bool HloSortInstruction::IdenticalSlowPath(
   if (dimensions() != casted_other.dimensions()) {
     return false;
   }
+  if (is_stable() != casted_other.is_stable()) {
+    return false;
+  }
   return eq_computations(to_apply(), other.to_apply());
 }
 
 std::unique_ptr<HloInstruction> HloSortInstruction::CloneWithNewOperandsImpl(
     const Shape& shape, absl::Span<HloInstruction* const> new_operands,
     HloCloneContext* context) const {
-  return absl::make_unique<HloSortInstruction>(shape, dimensions(0),
-                                               new_operands, to_apply());
+  return absl::make_unique<HloSortInstruction>(
+      shape, dimensions(0), new_operands, to_apply(), is_stable());
 }
 
 HloTransposeInstruction::HloTransposeInstruction(
@@ -1523,7 +1535,28 @@ HloParameterInstruction::HloParameterInstruction(int64 parameter_number,
 HloInstructionProto HloParameterInstruction::ToProto() const {
   HloInstructionProto proto = HloInstruction::ToProto();
   proto.set_parameter_number(parameter_number_);
+  if (parameter_replicated_at_leaf_buffers_) {
+    for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
+      proto.mutable_parameter_replication()->add_replicated_at_leaf_buffers(
+          replicated);
+    }
+  }
   return proto;
+}
+
+std::vector<string> HloParameterInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& /*options*/) const {
+  std::vector<string> result;
+  if (!parameter_replicated_at_leaf_buffers_) {
+    return result;
+  }
+  std::vector<string> buffers_replicated_strs;
+  for (bool replicated : *parameter_replicated_at_leaf_buffers_) {
+    buffers_replicated_strs.push_back(replicated ? "true" : "false");
+  }
+  result.push_back(StrCat("parameter_replication={",
+                          StrJoin(buffers_replicated_strs, ","), "}"));
+  return result;
 }
 
 string HloParameterInstruction::OperandsToStringWithCanonicalNameMap(

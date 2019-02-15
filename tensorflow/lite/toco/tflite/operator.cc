@@ -764,6 +764,12 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -801,6 +807,12 @@ class PadV2 : public BuiltinOperator<PadV2Operator, ::tflite::PadV2Options,
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1666,6 +1678,20 @@ class Slice : public SimpleOperator<SliceOperator> {
   }
 };
 
+class Tanh : public SimpleOperator<TanhOperator> {
+ public:
+  explicit Tanh() : SimpleOperator("TANH", OperatorType::kTanh) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class OneHot : public BuiltinOperator<OneHotOperator, ::tflite::OneHotOptions,
                                       ::tflite::BuiltinOptions_OneHotOptions> {
  public:
@@ -2374,8 +2400,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<PReluOperator>>("PRELU", OperatorType::kPRelu));
   ops.push_back(MakeUnique<Logistic>());
-  ops.push_back(
-      MakeUnique<SimpleOperator<TanhOperator>>("TANH", OperatorType::kTanh));
+  ops.push_back(MakeUnique<Tanh>());
   ops.push_back(
       MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
   ops.push_back(
