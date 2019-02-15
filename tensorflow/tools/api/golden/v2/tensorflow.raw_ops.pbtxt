@@ -981,6 +981,10 @@ tf_module {
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "EuclideanNorm"
+    argspec: "args=[\'input\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "Exit"
     argspec: "args=[\'data\'], varargs=None, keywords=None, defaults=None"
   }
@@ -2659,7 +2663,7 @@ tf_module {
   member_method {
     name: "Requantize"
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'requested_output_min\', \'requested_output_max\', \'out_type\'], varargs=None, keywords=None, defaults=None"
-  }  
+  }
   member_method {
     name: "RequantizePerChannel"
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'requested_output_min\', \'requested_output_max\', \'out_type\'], varargs=None, keywords=None, defaults=None"

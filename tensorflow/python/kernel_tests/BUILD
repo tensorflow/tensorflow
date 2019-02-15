@@ -2199,7 +2199,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    shard_count = 4,
+    shard_count = 6,
     tags = ["no_windows_gpu"],
     xla_enable_strict_auto_jit = True,
 )
