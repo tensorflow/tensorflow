@@ -28,31 +28,6 @@ namespace gpu {
 
 namespace {
 
-bool IsFusible(const HloInstruction& hlo) {
-  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
-  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
-  // unfused GTE is an input to a kernel (including a fusion kernel), we
-  // compute the address of the GTE at the top of the kernel.  Often we know the
-  // address of the GTE result statically, so we can do this without chasing any
-  // pointers.
-  return (hlo.IsElementwise() && hlo.operand_count() > 0) ||
-         hlo.opcode() == HloOpcode::kBitcast ||
-         hlo.opcode() == HloOpcode::kBroadcast ||
-         hlo.opcode() == HloOpcode::kConcatenate ||
-         hlo.opcode() == HloOpcode::kDynamicSlice ||
-         hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
-         hlo.opcode() == HloOpcode::kFusion ||
-         hlo.opcode() == HloOpcode::kGather ||
-         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
-         hlo.opcode() == HloOpcode::kReduce ||
-         hlo.opcode() == HloOpcode::kReduceWindow ||
-         hlo.opcode() == HloOpcode::kReshape ||
-         hlo.opcode() == HloOpcode::kReverse ||
-         hlo.opcode() == HloOpcode::kScatter ||
-         hlo.opcode() == HloOpcode::kSlice ||
-         hlo.opcode() == HloOpcode::kTranspose;
-}
-
 bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
   if (constant->opcode() != HloOpcode::kConstant ||
       !ShapeUtil::IsScalar(constant->shape())) {

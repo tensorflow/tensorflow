@@ -21,6 +21,7 @@ namespace xla {
 namespace gpu {
 
 namespace {
+
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
   if (instr.opcode() == HloOpcode::kFusion) {
@@ -129,6 +130,25 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
   // TODO(tjoerg): Further relax the constraint. The datatype does not matter.
   return ShapeUtil::EqualIgnoringFpPrecision(get_loop_shape(instr_1),
                                              get_loop_shape(instr_2));
+}
+
+bool IsFusible(const HloInstruction& instr) {
+  return (instr.IsElementwise() && instr.operand_count() > 0) ||
+         instr.opcode() == HloOpcode::kBitcast ||
+         instr.opcode() == HloOpcode::kBroadcast ||
+         instr.opcode() == HloOpcode::kConcatenate ||
+         instr.opcode() == HloOpcode::kDynamicSlice ||
+         instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
+         instr.opcode() == HloOpcode::kFusion ||
+         instr.opcode() == HloOpcode::kGather ||
+         instr.opcode() == HloOpcode::kIota || instr.opcode() == HloOpcode::kPad ||
+         instr.opcode() == HloOpcode::kReduce ||
+         instr.opcode() == HloOpcode::kReduceWindow ||
+         instr.opcode() == HloOpcode::kReshape ||
+         instr.opcode() == HloOpcode::kReverse ||
+         instr.opcode() == HloOpcode::kScatter ||
+         instr.opcode() == HloOpcode::kSlice ||
+         instr.opcode() == HloOpcode::kTranspose;
 }
 
 }  // namespace gpu
