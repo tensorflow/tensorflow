@@ -180,7 +180,7 @@ TEST_F(QuantizedConv2DTest, Small) {
 
   // Output -> float
   const int expected_width = image_width;
-  const int expected_height = image_height * filter_count;
+  const int expected_height = image_height;
   Tensor expected_float(
       DT_FLOAT, TensorShape({image_batch_count, expected_height, expected_width,
                              filter_count}));
@@ -203,11 +203,13 @@ TEST_F(QuantizedConv2DTest, Small) {
   test::ExpectTensorNear<float>(expected_float, output_float, 1.0);
 }
 
-// Output -> int32
+// Output -> qint32
 TEST_F(QuantizedConv2DTest, Small32Bit) {
   const int stride = 1;
   ConfigureQuantizedConv2D(stride);
 
+  // The illustrations and details regarding inputs and outputs
+  // are in TEST_F(QuantizedConv2DTest, Small)
   const int depth = 1;
   const int image_width = 4;
   const int image_height = 3;
@@ -239,9 +241,9 @@ TEST_F(QuantizedConv2DTest, Small32Bit) {
 
   TF_ASSERT_OK(RunOpKernel());
 
-  // Output -> int32
+  // Output -> qint32
   const int expected_width = image_width;
-  const int expected_height = image_height * filter_count;
+  const int expected_height = image_height;
   Tensor expected(DT_QINT32, TensorShape({image_batch_count, expected_height,
                                           expected_width, filter_count}));
   test::FillValues<qint32>(
@@ -259,7 +261,7 @@ TEST_F(QuantizedConv2DTest, Small32Bit) {
   test::ExpectTensorEqual<qint32>(expected, output_quantized);
 }
 
-// Output -> int32
+// Output -> qint32
 TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
   const int stride = 1;
   TF_ASSERT_OK(NodeDefBuilder("quantized_conv_op", "_MklQuantizedConv2D")
@@ -288,6 +290,8 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
                    .Finalize(node_def()));
   TF_ASSERT_OK(InitOp());
 
+  // The illustrations and details regarding inputs and outputs
+  // are in TEST_F(QuantizedConv2DTest, Small)
   const int depth = 1;
   const int image_width = 4;
   const int image_height = 3;
@@ -319,9 +323,9 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
 
   TF_ASSERT_OK(RunOpKernel());
 
-  // Output -> int32
+  // Output -> qint32
   const int expected_width = image_width;
-  const int expected_height = image_height * filter_count;
+  const int expected_height = image_height;
   Tensor expected(DT_QINT32, TensorShape({image_batch_count, expected_height,
                                           expected_width, filter_count}));
   test::FillValues<qint32>(
@@ -339,7 +343,7 @@ TEST_F(QuantizedConv2DTest, Small32BitWithPadding) {
   test::ExpectTensorEqual<qint32>(expected, output_quantized);
 }
 
-// Output -> int32
+// Output -> qint32
 TEST_F(QuantizedConv2DTest, OddPadding) {
   const int stride = 2;
   ConfigureQuantizedConv2D(stride);
@@ -375,9 +379,9 @@ TEST_F(QuantizedConv2DTest, OddPadding) {
 
   TF_ASSERT_OK(RunOpKernel());
 
-  // Output -> int32
+  // Output -> qint32
   const int expected_width = image_width / stride;
-  const int expected_height = (image_height * filter_count) / stride;
+  const int expected_height = image_height / stride;
   Tensor expected(DT_QINT32, TensorShape({image_batch_count, expected_height,
                                           expected_width, filter_count}));
   test::FillValues<qint32>(&expected, {348, 252, 274, 175});
@@ -393,7 +397,7 @@ TEST_F(QuantizedConv2DTest, OddPadding) {
   test::ExpectTensorEqual<qint32>(expected, output_quantized);
 }
 
-// Output -> int32
+// Output -> qint32
 TEST_F(QuantizedConv2DTest, OddPaddingBatch) {
   const int stride = 2;
   ConfigureQuantizedConv2D(stride);
@@ -431,9 +435,9 @@ TEST_F(QuantizedConv2DTest, OddPaddingBatch) {
 
   TF_ASSERT_OK(RunOpKernel());
 
-  // Output -> int32
+  // Output -> qint32
   const int expected_width = image_width / stride;
-  const int expected_height = (image_height * filter_count) / stride;
+  const int expected_height = image_height / stride;
   Tensor expected(DT_QINT32, TensorShape({image_batch_count, expected_height,
                                           expected_width, filter_count}));
   test::FillValues<qint32>(
