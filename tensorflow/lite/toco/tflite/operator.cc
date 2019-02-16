@@ -471,18 +471,29 @@ class FullyConnected
     }
   }
 
+  // +-----------------+--------------------+--------------------------+
+  // |                 |    Weight::Default | Weight::Shuffled4x16Int8 |
+  // +-----------------+--------------------+--------------------------+
+  // | Float           |                  1 |                        2 |
+  // | Quantized Uint8 |                  1 |                        2 |
+  // | Hybrid          |                  3 |                        3 |
+  // | Quantized Int8  |                  4 |                        4 |
+  // +-----------------+--------------------+--------------------------+
   int GetVersion(const OperatorSignature& op_signature) const override {
     const auto& fc_op =
         static_cast<const FullyConnectedOperator&>(*op_signature.op);
-    if (fc_op.weights_format == FullyConnectedWeightsFormat::kDefault) {
-      return 1;
-    }
     const string& input_name = op_signature.op->inputs[0];
     const string& weights_name = op_signature.op->inputs[1];
     const string& output_name = op_signature.op->outputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
     const Array& weights_array = op_signature.model->GetArray(weights_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
+    // Int8 fully fixed point kernel is at version 4.
+    if (input_array.data_type == ArrayDataType::kInt8 &&
+        weights_array.data_type == ArrayDataType::kInt8 &&
+        output_array.data_type == ArrayDataType::kInt8) {
+      return 4;
+    }
     // If the op is a signed int8 hybrid operation, we need to return
     // version 3.
     if (input_array.data_type == ArrayDataType::kFloat &&
@@ -490,7 +501,15 @@ class FullyConnected
         output_array.data_type == ArrayDataType::kFloat) {
       return 3;
     }
-    return 2;
+    // For float and uint8 fixed point kernels, if the weight is
+    // Shuffled4x16Int8, is is version 2.
+    if (fc_op.weights_format ==
+        FullyConnectedWeightsFormat::kShuffled4x16Int8) {
+      return 2;
+    }
+
+    // Otherwise (weight is default), the version is 1.
+    return 1;
   }
 };
 
