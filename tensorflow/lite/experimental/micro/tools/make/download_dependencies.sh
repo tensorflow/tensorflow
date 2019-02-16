@@ -39,6 +39,7 @@ AM_SDK_URL="http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.0.0.zip"
 AP3_URL="https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
 CUST_CMSIS_URL="https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
 GCC_EMBEDDED_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
+KISSFFT_URL="http://downloads.sourceforge.net/project/kissfft/kissfft/v1_3_0/kiss_fft130.zip"
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
@@ -100,6 +101,15 @@ patch_am_sdk() {
   echo "Finished preparing Apollo3 files"
 }
 
+patch_kissfft() {
+  sed -i -E "s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\n#ifndef FIXED_POINT\n#define FIXED_POINT (16)\n#endif\n// End patch.\n\n#ifdef FIXED_POINT@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
+  sed -i -E "s@#define KISS_FFT_MALLOC malloc@#define KISS_FFT_MALLOC(X) (void*)(0) /* Patched. */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
+  sed -i -E "s@#define KISS_FFT_FREE free@#define KISS_FFT_FREE(X) /* Patched. */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
+  sed -i -E "s@(fprintf.*\);)@/* \1 */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
+  sed -i -E "s@(exit.*\);)@return; /* \1 */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
+  echo "Finished patching kissfft"
+}
+
 download_and_extract "${GEMMLOWP_URL}" "${DOWNLOADS_DIR}/gemmlowp"
 download_and_extract "${FLATBUFFERS_URL}" "${DOWNLOADS_DIR}/flatbuffers"
 download_and_extract "${CMSIS_URL}" "${DOWNLOADS_DIR}/cmsis"
@@ -111,5 +121,7 @@ patch_am_sdk "${DOWNLOADS_DIR}/AmbiqSuite-Rel2.0.0"
 download_and_extract "${AP3_URL}" "${DOWNLOADS_DIR}/apollo3_ext"
 download_and_extract "${CUST_CMSIS_URL}" "${DOWNLOADS_DIR}/CMSIS_ext"
 download_and_extract "${GCC_EMBEDDED_URL}" "${DOWNLOADS_DIR}/gcc_embedded"
+download_and_extract "${KISSFFT_URL}" "${DOWNLOADS_DIR}/kissfft"
+patch_kissfft "${DOWNLOADS_DIR}/kissfft"
 
 echo "download_dependencies.sh completed successfully." >&2
