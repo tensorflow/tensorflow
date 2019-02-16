@@ -1788,3 +1788,25 @@ func @should_fuse_after_two_loop_interchanges() {
   // CHECK-NEXT:  return
   return
 }
+
+// -----
+
+func @should_fuse_live_out_writer(%arg0 : memref<10xf32>) -> memref<10xf32> {
+  %cst = constant 0.000000e+00 : f32
+  for %i0 = 0 to 10 {
+    store %cst, %arg0[%i0] : memref<10xf32>
+  }
+  for %i1 = 0 to 10 {
+    %1 = load %arg0[%i1] : memref<10xf32>
+    store %1, %arg0[%i1] : memref<10xf32>
+  }
+  return %arg0 : memref<10xf32>
+
+  // CHECK:       %cst = constant 0.000000e+00 : f32
+  // CHECK-NEXT:  for %i0 = 0 to 10 {
+  // CHECK-NEXT:    store %cst, %arg0[%i0] : memref<10xf32>
+  // CHECK-NEXT:    %0 = load %arg0[%i0] : memref<10xf32>
+  // CHECK-NEXT:    store %0, %arg0[%i0] : memref<10xf32>
+  // CHECK-NEXT:  }
+  // CHECK-NEXT:  return %arg0 : memref<10xf32>
+}
