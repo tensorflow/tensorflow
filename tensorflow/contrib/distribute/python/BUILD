@@ -800,6 +800,6 @@ tf_xla_py_test(
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:util",
     ],
 )

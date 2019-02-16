@@ -42,7 +42,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -78,7 +78,7 @@ class StackedRNNCells(Layer):
   ```
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, cells, **kwargs):
     for cell in cells:
       if not hasattr(cell, 'call'):
@@ -443,7 +443,7 @@ class RNN(Layer):
   ```
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self,
                cell,
                return_sequences=False,
@@ -468,8 +468,8 @@ class RNN(Layer):
     self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
-    if isinstance(cell, checkpointable.Checkpointable):
-      self._track_checkpointable(self.cell, name='cell')
+    if isinstance(cell, trackable.Trackable):
+      self._track_trackable(self.cell, name='cell')
     self.return_sequences = return_sequences
     self.return_state = return_state
     self.go_backwards = go_backwards

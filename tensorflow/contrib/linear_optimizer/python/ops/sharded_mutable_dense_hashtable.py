@@ -36,7 +36,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 
 
-# TODO(rohanj): This should subclass Checkpointable and implement
+# TODO(rohanj): This should subclass Trackable and implement
 # _gather_saveables_for_checkpoint.
 class ShardedMutableDenseHashTable(object):
   """A sharded version of MutableDenseHashTable.

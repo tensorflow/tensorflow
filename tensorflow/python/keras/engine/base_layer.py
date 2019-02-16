@@ -46,8 +46,8 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -57,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.Checkpointable):
+class Layer(trackable.Trackable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -110,7 +110,7 @@ class Layer(checkpointable.Checkpointable):
       constraints on inputs that can be accepted by the layer.
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
     # These properties should be set by the user via keyword arguments.
@@ -272,7 +272,7 @@ class Layer(checkpointable.Checkpointable):
         marked as non-trainable. `trainable` defaults to `True` unless
         `synchronization` is set to `ON_READ`.
       constraint: constraint instance (callable).
-      partitioner: Partitioner to be passed to the `Checkpointable` API.
+      partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
@@ -345,9 +345,9 @@ class Layer(checkpointable.Checkpointable):
         name=name,
         shape=shape,
         # TODO(allenl): a `make_variable` equivalent should be added as a
-        # `Checkpointable` method.
+        # `Trackable` method.
         getter=getter or base_layer_utils.make_variable,
-        # Manage errors in Layer rather than Checkpointable.
+        # Manage errors in Layer rather than Trackable.
         overwrite=True,
         initializer=initializer,
         dtype=dtype,
@@ -1629,7 +1629,7 @@ class Layer(checkpointable.Checkpointable):
 
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
-        checkpointable_layer_utils.has_weights(value)):
+        trackable_layer_utils.has_weights(value)):
       # Initialize `_layers` here in case `__init__` has not yet been called.
       if not hasattr(self, '_layers'):
         self._layers = []
@@ -1666,7 +1666,7 @@ class Layer(checkpointable.Checkpointable):
     return []
 
   # This is a hack so that the is_layer (within
-  # training/checkpointable/layer_utils.py) check doesn't get the weights attr.
+  # training/trackable/layer_utils.py) check doesn't get the weights attr.
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True

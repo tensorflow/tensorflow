@@ -34,9 +34,9 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.checkpointable import data_structures
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
 
 
 class HasList(training.Model):
@@ -145,12 +145,12 @@ class ListTests(test.TestCase):
     model.l2.append(second_layer)
     self.assertEqual([first_layer, second_layer], model.layers)
 
-  def testNotCheckpointable(self):
-    class NotCheckpointable(object):
+  def testNotTrackable(self):
+    class NotTrackable(object):
       pass
 
     with self.assertRaises(ValueError):
-      data_structures.List([NotCheckpointable()])
+      data_structures.List([NotTrackable()])
 
   def testCallNotImplemented(self):
     with self.assertRaisesRegexp(TypeError, "not callable"):
@@ -287,8 +287,8 @@ class ListWrapperTest(test.TestCase):
   def testListWrapperBasic(self):
     # _ListWrapper, unlike List, compares like the built-in list type (since it
     # is used to automatically replace lists).
-    a = tracking.AutoCheckpointable()
-    b = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
+    b = tracking.AutoTrackable()
     self.assertEqual([a, a],
                      [a, a])
     self.assertEqual(data_structures._ListWrapper([a, a]),
@@ -321,7 +321,7 @@ class ListWrapperTest(test.TestCase):
     self.assertEqual([a, a], [a] + data_structures._ListWrapper([a]))
     self.assertIsInstance(data_structures._ListWrapper([a]), list)
 
-  def testAcceptsNonCheckpointableContent(self):
+  def testAcceptsNonTrackableContent(self):
     l = data_structures._ListWrapper([1, 2, 3])
     self.assertEqual(l, [1, 2, 3])
 
@@ -360,14 +360,14 @@ class ListWrapperTest(test.TestCase):
     self.assertEqual(l, [1, 2, 4])
     self.assertUnableToSave(l, "Unable to save .*__delslice__")
 
-  def testSetSlice_canSaveForNonCheckpointableItems(self):
+  def testSetSlice_canSaveForNonTrackableItems(self):
     l = data_structures._ListWrapper([1, 2, 3, 4])
     l[:] = 2, 8, 9, 0
     self.assertEqual(l, [2, 8, 9, 0])
-    l._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+    l._maybe_initialize_trackable()  # pylint: disable=protected-access
     self.assertEqual(len(l._checkpoint_dependencies), 0)  # pylint: disable=protected-access
 
-  def testSetSlice_cannotSaveIfCheckpointableModified(self):
+  def testSetSlice_cannotSaveIfTrackableModified(self):
     v1 = resource_variable_ops.ResourceVariable(1.)
     v2 = resource_variable_ops.ResourceVariable(1.)
     l = data_structures._ListWrapper([1, 2, v1, v2])
@@ -391,12 +391,12 @@ class ListWrapperTest(test.TestCase):
     self.assertEqual(l, [1, 2, 3, 4])
     # Regardless of being a no-op for the input list, we still refuse to save.
     # This is intentional since otherwise we would end up with a hard to debug
-    # case for users (e.g. sometimes sort on a ListWrapper is checkpointable and
+    # case for users (e.g. sometimes sort on a ListWrapper is trackable and
     # other times it is not).
     self.assertUnableToSave(l, "Unable to save .*sort")
 
   def assertUnableToSave(self, l, msg):
-    l._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+    l._maybe_initialize_trackable()  # pylint: disable=protected-access
     with self.assertRaisesRegexp(ValueError, msg):
       return l._checkpoint_dependencies  # pylint: disable=protected-access
 
@@ -466,7 +466,7 @@ class MappingTests(test.TestCase):
 
   def testLayerCollectionWithExternalMutation(self):
     d = {}
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     root.wrapper = d
     self.assertEqual([], root.wrapper.layers)
     self.assertEqual([], root.wrapper.trainable_weights)
@@ -484,7 +484,7 @@ class MappingTests(test.TestCase):
     self.assertEqual(2, len(has_mappings))
     self.assertNotIn(data_structures.Mapping(), has_mappings)
     # In contrast to Mapping, dict wrappers are not hashable
-    a = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
     a.d = {}
     self.assertEqual({}, a.d)
     self.assertFalse({} != a.d)  # pylint: disable=g-explicit-bool-comparison
@@ -493,7 +493,7 @@ class MappingTests(test.TestCase):
       set([a.d])
 
   def testDictWrapperBadKeys(self):
-    a = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
     a.d = {}
     a.d[1] = data_structures.List()
     model = training.Model()
@@ -503,7 +503,7 @@ class MappingTests(test.TestCase):
       model.save_weights(save_path)
 
   def testDictWrapperNoDependency(self):
-    a = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
     a.d = data_structures.NoDependency({})
     a.d[1] = [3]
     self.assertEqual([a], util.list_objects(a))
@@ -513,8 +513,8 @@ class MappingTests(test.TestCase):
     model.save_weights(save_path)
     model.load_weights(save_path)
 
-  def testNonStringKeyNotCheckpointableValue(self):
-    a = tracking.AutoCheckpointable()
+  def testNonStringKeyNotTrackableValue(self):
+    a = tracking.AutoTrackable()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = data_structures.NoDependency([3])
@@ -525,18 +525,18 @@ class MappingTests(test.TestCase):
     model.save_weights(save_path)
     model.load_weights(save_path)
 
-  def testNonAppendNotCheckpointable(self):
+  def testNonAppendNotTrackable(self):
     # Non-append mutations (deleting or overwriting values) are OK when the
     # values aren't tracked.
-    a = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
     a.d = {}
     a.d["a"] = [3]
     a.d[1] = 3
     a.d[1] = 2
     self.assertEqual(2, a.d[1])
     del a.d[1]
-    a.d[2] = data_structures.NoDependency(tracking.AutoCheckpointable())
-    second = tracking.AutoCheckpointable()
+    a.d[2] = data_structures.NoDependency(tracking.AutoTrackable())
+    second = tracking.AutoTrackable()
     a.d[2] = data_structures.NoDependency(second)
     self.assertIs(second, a.d[2])
     self.assertEqual([a, a.d, a.d["a"]], util.list_objects(a))
@@ -598,7 +598,7 @@ class MappingTests(test.TestCase):
     self.assertEqual({1: 3}, new_dict)
 
   def testListShallowCopy(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     orig_list = [[1.]]
     root.a = orig_list
     copied = copy.copy(root.a)
@@ -615,7 +615,7 @@ class MappingTests(test.TestCase):
       util.list_objects(copy.copy(root.a))
 
   def testListDeepCopy(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     orig_list = [[1.]]
     root.a = orig_list
     copied = copy.deepcopy(root.a)
@@ -632,7 +632,7 @@ class MappingTests(test.TestCase):
       util.list_objects(copy.deepcopy(root.a))
 
   def testDictShallowCopy(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     orig_dict = {"a": [1.]}
     root.a = orig_dict
     copied = copy.copy(root.a)
@@ -649,7 +649,7 @@ class MappingTests(test.TestCase):
       util.list_objects(copy.copy(root.a))
 
   def testDictDeepCopy(self):
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     orig_dict = {"a": [1.]}
     root.a = orig_dict
     copied = copy.deepcopy(root.a)
@@ -665,9 +665,9 @@ class MappingTests(test.TestCase):
     with self.assertRaises(ValueError):
       util.list_objects(copy.deepcopy(root.a))
 
-  def testShallowCopyCheckpointable(self):
-    original = tracking.AutoCheckpointable()
-    original_sub = tracking.AutoCheckpointable()
+  def testShallowCopyTrackable(self):
+    original = tracking.AutoTrackable()
+    original_sub = tracking.AutoTrackable()
     original.a = [[1.]]
     original.b = {"a": original_sub}
     shallow_copied = copy.copy(original)
@@ -679,16 +679,16 @@ class MappingTests(test.TestCase):
     self.assertIn(shallow_copied.b, shallow_deps)
     self.assertIn(shallow_copied.b["a"], shallow_deps)
 
-  def testDeepCopyCheckpointable(self):
-    original = tracking.AutoCheckpointable()
-    original_sub = tracking.AutoCheckpointable()
+  def testDeepCopyTrackable(self):
+    original = tracking.AutoTrackable()
+    original_sub = tracking.AutoTrackable()
     original.a = [[1.]]
     original.b = {"a": original_sub}
     deep_copied = copy.deepcopy(original)
     self.assertIsNot(original, deep_copied)
     self.assertIsNot(original_sub, deep_copied.b["a"])
     self.assertEqual([[1.]], deep_copied.a)
-    self.assertIsInstance(deep_copied.b["a"], tracking.AutoCheckpointable)
+    self.assertIsInstance(deep_copied.b["a"], tracking.AutoTrackable)
     deps = util.list_objects(deep_copied)
     self.assertIn(deep_copied.a, deps)
     self.assertIn(deep_copied.b, deps)

@@ -26,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import signature_constants
-from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.tracking import base
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -170,7 +170,7 @@ def _normalize_outputs(outputs, function_name, signature_key):
 # saved if they contain a _SignatureMap. A ".signatures" attribute containing
 # any other type (e.g. a regular dict) will raise an exception asking the user
 # to first "del obj.signatures" if they want it overwritten.
-class _SignatureMap(collections.Mapping, base.Checkpointable):
+class _SignatureMap(collections.Mapping, base.Trackable):
   """A collection of SavedModel signatures."""
 
   def __init__(self):
@@ -205,7 +205,7 @@ revived_types.register_revived_type(
     "signature_map",
     lambda obj: isinstance(obj, _SignatureMap),
     versions=[revived_types.VersionedTypeRegistration(
-        # Standard dependencies are enough to reconstruct the checkpointable
+        # Standard dependencies are enough to reconstruct the trackable
         # items in dictionaries, so we don't need to save any extra information.
         object_factory=lambda proto: _SignatureMap(),
         version=1,

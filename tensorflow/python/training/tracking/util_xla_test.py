@@ -25,15 +25,15 @@ from tensorflow.python.keras.layers import core
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
-class NonLayerCheckpointable(tracking.AutoCheckpointable):
+class NonLayerTrackable(tracking.AutoTrackable):
 
   def __init__(self):
-    super(NonLayerCheckpointable, self).__init__()
-    self.a_variable = checkpointable_utils.add_variable(
+    super(NonLayerTrackable, self).__init__()
+    self.a_variable = trackable_utils.add_variable(
         self, name="a_variable", shape=[])
 
 
@@ -44,8 +44,8 @@ class Subclassed(training.Model):
     super(Subclassed, self).__init__()
     self._named_dense = core.Dense(1, use_bias=True)
     self._second = core.Dense(1, use_bias=False)
-    # We can still track Checkpointables which aren't Layers.
-    self._non_layer = NonLayerCheckpointable()
+    # We can still track Trackables which aren't Layers.
+    self._non_layer = NonLayerTrackable()
 
   def call(self, values):
     ret = self._second(self._named_dense(values))
@@ -62,7 +62,7 @@ class CheckpointingTests(xla_test.XLATestCase):
       with self.test_scope():
         model = Subclassed()
         optimizer = adam.Adam(0.001)
-        root = checkpointable_utils.Checkpoint(
+        root = trackable_utils.Checkpoint(
             optimizer=optimizer, model=model)
         manager = checkpoint_management.CheckpointManager(
             root, checkpoint_directory, max_to_keep=2)

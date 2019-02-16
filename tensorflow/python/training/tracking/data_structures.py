@@ -1,4 +1,4 @@
-"""Checkpointable data structures."""
+"""Trackable data structures."""
 # Copyright 2018 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -28,16 +28,16 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import layer_utils
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import layer_utils
 
 
 class NoDependency(object):
-  """Allows attribute assignment to `Checkpointable` objects with no dependency.
+  """Allows attribute assignment to `Trackable` objects with no dependency.
 
   Example usage:
   ```python
-  obj = Checkpointable()
+  obj = Trackable()
   obj.has_dependency = tf.Variable(0., name="dep")
   obj.no_dependency = NoDependency(tf.Variable(1., name="nodep"))
   assert obj.no_dependency.name == "nodep:0"
@@ -61,8 +61,8 @@ def _wrap_or_unwrap(value):
   """Wraps basic data structures, unwraps NoDependency objects."""
   if isinstance(value, NoDependency):
     return value.value
-  if isinstance(value, base.Checkpointable):
-    return value  # Skip conversion for already checkpointable objects.
+  if isinstance(value, base.Trackable):
+    return value  # Skip conversion for already trackable objects.
   elif isinstance(value, dict):
     return _DictWrapper(value)
   elif isinstance(value, list):
@@ -77,19 +77,19 @@ def _wrap_or_unwrap(value):
   # come up with names. Dictionaries should look like lists.
 
 
-def sticky_attribute_assignment(checkpointable, name, value):
+def sticky_attribute_assignment(trackable, name, value):
   """Adds dependencies, generally called from __setattr__.
 
-  This behavior is shared between Checkpointable and Model.
+  This behavior is shared between Trackable and Model.
 
-  Respects NoDependency indicators, but otherwise makes checkpointable objects
+  Respects NoDependency indicators, but otherwise makes trackable objects
   out of common data structures and tracks objects by their attribute names.
 
   Args:
-    checkpointable: The object to add dependencies to (generally the one having
+    trackable: The object to add dependencies to (generally the one having
       an attribute assigned).
     name: The attribute name being assigned.
-    value: The value being assigned. Not necessarily a checkpointable object.
+    value: The value being assigned. Not necessarily a trackable object.
 
   Returns:
     The value which should be stored in the attribute (unwrapped from a
@@ -102,18 +102,18 @@ def sticky_attribute_assignment(checkpointable, name, value):
   value = _wrap_or_unwrap(value)
   if not add_dependency:
     return value
-  if isinstance(value, base.Checkpointable):
-    checkpointable._track_checkpointable(  # pylint: disable=protected-access
+  if isinstance(value, base.Trackable):
+    trackable._track_trackable(  # pylint: disable=protected-access
         value, name=name,
-        # Allow the user to switch the Checkpointable which is tracked by this
+        # Allow the user to switch the Trackable which is tracked by this
         # name, since assigning a new variable to an attribute has
         # historically been fine (e.g. Adam did this).
         overwrite=True)
   return value
 
 
-class CheckpointableDataStructure(base.Checkpointable):
-  """Base class for data structures which contain checkpointable objects."""
+class TrackableDataStructure(base.Trackable):
+  """Base class for data structures which contain trackable objects."""
 
   def __init__(self):
     self.trainable = True
@@ -122,14 +122,14 @@ class CheckpointableDataStructure(base.Checkpointable):
   def _track_value(self, value, name):
     """Add a dependency on `value`."""
     value = sticky_attribute_assignment(
-        checkpointable=self, value=value, name=name)
+        trackable=self, value=value, name=name)
     if isinstance(value, variables.Variable):
       self._extra_variables.append(value)
-    if not isinstance(value, base.Checkpointable):
+    if not isinstance(value, base.Trackable):
       raise ValueError(
-          ("Only checkpointable objects (such as Layers or Optimizers) may be "
+          ("Only trackable objects (such as Layers or Optimizers) may be "
            "stored in a List object. Got %s, which does not inherit from "
-           "Checkpointable.") % (value,))
+           "Trackable.") % (value,))
     if hasattr(value, "_use_resource_variables"):
       # In subclassed models, legacy layers (tf.layers) must always use
       # resource variables.
@@ -138,7 +138,7 @@ class CheckpointableDataStructure(base.Checkpointable):
 
   @property
   def _values(self):
-    """An iterable/sequence which may contain checkpointable objects."""
+    """An iterable/sequence which may contain trackable objects."""
     raise NotImplementedError("Abstract method")
 
   @property
@@ -148,7 +148,7 @@ class CheckpointableDataStructure(base.Checkpointable):
     # they're wrapping if out of sync.
     collected = []
     for obj in self._values:
-      if (isinstance(obj, CheckpointableDataStructure)
+      if (isinstance(obj, TrackableDataStructure)
           or layer_utils.is_layer(obj)
           or layer_utils.has_weights(obj)):
         collected.append(obj)
@@ -215,19 +215,19 @@ class CheckpointableDataStructure(base.Checkpointable):
     return id(self)
 
   def __eq__(self, other):
-    # Similar to Tensors, checkpointable data structures use object-identity
+    # Similar to Tensors, trackable data structures use object-identity
     # equality to support set/dict membership.
     return self is other
 
 
-class List(CheckpointableDataStructure, collections.Sequence):
-  """An append-only sequence type which is checkpointable.
+class List(TrackableDataStructure, collections.Sequence):
+  """An append-only sequence type which is trackable.
 
   Maintains checkpoint dependencies on its contents (which must also be
-  checkpointable), and forwards any `Layer` metadata such as updates and losses.
+  trackable), and forwards any `Layer` metadata such as updates and losses.
 
   Note that `List` is purely a container. It lets a `tf.keras.Model` or
-  other checkpointable object know about its contents, but does not call any
+  other trackable object know about its contents, but does not call any
   `Layer` instances which are added to it. To indicate a sequence of `Layer`
   instances which should be called sequentially, use `tf.keras.Sequential`.
 
@@ -248,7 +248,7 @@ class List(CheckpointableDataStructure, collections.Sequence):
       return aggregation
   ```
 
-  This kind of wrapping is necessary because `Checkpointable` objects do not
+  This kind of wrapping is necessary because `Trackable` objects do not
   (yet) deeply inspect regular Python data structures, so for example assigning
   a regular list (`self.layer_list = [layers.Dense(3)]`) does not create a
   checkpoint dependency and does not add the `Layer` instance's weights to its
@@ -284,12 +284,12 @@ class List(CheckpointableDataStructure, collections.Sequence):
     return self
 
   def append(self, value):
-    """Add a new checkpointable value."""
+    """Add a new trackable value."""
     value = self._track_value(value, self._name_element(len(self._storage)))
     self._storage.append(value)
 
   def extend(self, values):
-    """Add a sequence of checkpointable values."""
+    """Add a sequence of trackable values."""
     for value in values:
       self.append(value)
 
@@ -350,7 +350,7 @@ class _ListWrapper(List, collections.MutableSequence,
   occupied, meaning both elements get the same names at different times) and
   refuses to save.
 
-  On assignment to an attribute of a Model or Checkpointable object, Python
+  On assignment to an attribute of a Model or Trackable object, Python
   lists are replaced with _ListWrapper. Wrapping a list in a
   `tf.contrib.checkpoint.NoDependency` object prevents this.
   """
@@ -410,7 +410,7 @@ class _ListWrapper(List, collections.MutableSequence,
     if self._non_append_mutation:
       raise ValueError(
           ("Unable to save the object %s (a list wrapper constructed to track "
-           "checkpointable TensorFlow objects). A list element was replaced "
+           "trackable TensorFlow objects). A list element was replaced "
            "(__setitem__, __setslice__), deleted (__delitem__, __delslice__), "
            "or moved (sort). In order to support restoration on object "
            "creation, tracking is exclusively for append-only data structures."
@@ -420,7 +420,7 @@ class _ListWrapper(List, collections.MutableSequence,
     if self._external_modification:
       raise ValueError(
           ("Unable to save the object %s (a list wrapper constructed to track "
-           "checkpointable TensorFlow objects). The wrapped list was modified "
+           "trackable TensorFlow objects). The wrapped list was modified "
            "outside the wrapper (its final value was %s, its value when a "
            "checkpoint dependency was added was %s), which breaks restoration "
            "on object creation.\n\nIf you don't need this list checkpointed, "
@@ -449,7 +449,7 @@ class _ListWrapper(List, collections.MutableSequence,
         value_now = self._storage[i] if i < len_now else None
         value_before = storage_copy[i] if i < len_before else None
 
-        if isinstance(value_before, base.Checkpointable):
+        if isinstance(value_before, base.Trackable):
           self._non_append_mutation = True
 
         if value_now is not None and value_now != value_before:
@@ -457,20 +457,20 @@ class _ListWrapper(List, collections.MutableSequence,
                                                self._name_element(i))
 
     else:
-      if isinstance(self._storage[key], base.Checkpointable):
+      if isinstance(self._storage[key], base.Trackable):
         self._non_append_mutation = True
       self._storage[key] = self._track_value(value, self._name_element(key))
 
     self._update_snapshot()
 
   def append(self, value):
-    """Add a new checkpointable value."""
+    """Add a new trackable value."""
     self._check_external_modification()
     super(_ListWrapper, self).append(value)
     self._update_snapshot()
 
   def extend(self, values):
-    """Add a sequence of checkpointable values."""
+    """Add a sequence of trackable values."""
     self._check_external_modification()
     super(_ListWrapper, self).extend(values)
     self._update_snapshot()
@@ -514,14 +514,14 @@ class _ListWrapper(List, collections.MutableSequence,
     del self._storage[slice(i, j)]
 
   def _track_value(self, value, name):
-    """Allows storage of non-checkpointable objects."""
+    """Allows storage of non-trackable objects."""
     try:
       value = super(_ListWrapper, self)._track_value(value=value, name=name)
     except ValueError:
-      # Even if this value isn't checkpointable, we need to make sure
+      # Even if this value isn't trackable, we need to make sure
       # NoDependency objects get unwrapped.
       value = sticky_attribute_assignment(
-          checkpointable=self, value=value, name=name)
+          trackable=self, value=value, name=name)
     return value
 
   def __repr__(self):
@@ -534,11 +534,11 @@ class _ListWrapper(List, collections.MutableSequence,
     }
 
 
-class Mapping(CheckpointableDataStructure, collections.Mapping):
-  """An append-only checkpointable mapping data structure with string keys.
+class Mapping(TrackableDataStructure, collections.Mapping):
+  """An append-only trackable mapping data structure with string keys.
 
   Maintains checkpoint dependencies on its contents (which must also be
-  checkpointable), named based on its keys.
+  trackable), named based on its keys.
 
   Note that once a key has been added, it may not be deleted or replaced. If
   names may not be unique, see `tf.contrib.checkpoint.UniqueNameTracker`.
@@ -615,7 +615,7 @@ class Mapping(CheckpointableDataStructure, collections.Mapping):
 # patching all of the "wrapped" dict's methods instead of creating a wrapper
 # object is an option, but not a very attractive one (replacing methods without
 # creating reference cycles is difficult, and then dicts would need to be
-# special cased everywhere as being checkpointable).
+# special cased everywhere as being trackable).
 class _DictWrapper(Mapping, collections.MutableMapping):
   """Wraps built-in dicts to support restore-on-create for variables.
 
@@ -671,7 +671,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
       raise ValueError(
           "Unable to save the object %s (a dictionary wrapper constructed "
           "automatically on attribute assignment). The wrapped dictionary "
-          "contains a non-string key which maps to a checkpointable object or "
+          "contains a non-string key which maps to a trackable object or "
           "mutable data structure.\n\nIf you don't need this dictionary "
           "checkpointed, wrap it in a tf.contrib.checkpoint.NoDependency "
           "object; it will be automatically un-wrapped and subsequently "
@@ -680,7 +680,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
       raise ValueError(
           "Unable to save the object %s (a dictionary wrapper constructed "
           "automatically on attribute assignment). A key mapping to a "
-          "checkpointable object was overwritten or deleted, which would "
+          "trackable object was overwritten or deleted, which would "
           "cause problems for restoration.\n\nIf you don't need this "
           "dictionary checkpointed, wrap it in a "
           "tf.contrib.checkpoint.NoDependency object; it will be automatically "
@@ -721,7 +721,7 @@ class _DictWrapper(Mapping, collections.MutableMapping):
     self._last_wrapped_dict_snapshot = dict(self)
 
   def _track_value(self, value, name):
-    """Allows storage of non-checkpointable objects."""
+    """Allows storage of non-trackable objects."""
     if isinstance(name, six.string_types):
       string_key = True
     else:
@@ -731,15 +731,15 @@ class _DictWrapper(Mapping, collections.MutableMapping):
       no_dependency = isinstance(value, NoDependency)
       value = super(_DictWrapper, self)._track_value(value=value, name=name)
       if not (string_key or no_dependency):
-        # A non-string key maps to a checkpointable value. This data structure
+        # A non-string key maps to a trackable value. This data structure
         # is not saveable.
         self._non_string_key = True
       return value
     except ValueError:
-      # Even if this value isn't checkpointable, we need to make sure
+      # Even if this value isn't trackable, we need to make sure
       # NoDependency objects get unwrapped.
       return sticky_attribute_assignment(
-          checkpointable=self, value=value, name=name)
+          trackable=self, value=value, name=name)
 
   def _name_element(self, key):
     """Don't throw errors for non-string keys."""
@@ -758,19 +758,19 @@ class _DictWrapper(Mapping, collections.MutableMapping):
     else:
       value = _wrap_or_unwrap(value)
       existing_dependency = None
-      if not no_dep and isinstance(value, base.Checkpointable):
+      if not no_dep and isinstance(value, base.Trackable):
         # Non-string keys are OK as long as we have no reason to add a
         # dependency on the value (either because the value is not
-        # checkpointable, or because it was wrapped in a NoDependency object).
+        # trackable, or because it was wrapped in a NoDependency object).
         self._non_string_key = True
     current_value = self._storage.setdefault(key, value)
     if current_value is not value:
-      if ((not no_dep and isinstance(value, base.Checkpointable))
+      if ((not no_dep and isinstance(value, base.Trackable))
           # We don't want to just check that the existing object is
-          # checkpointable, since it may have been wrapped in a NoDependency
+          # trackable, since it may have been wrapped in a NoDependency
           # object.
           or existing_dependency is not None):
-        # A checkpointable object was replaced under the same key; this means
+        # A trackable object was replaced under the same key; this means
         # that restoring would be error-prone, so we'll throw an exception on
         # save.
         self._non_append_mutation = True
@@ -781,8 +781,8 @@ class _DictWrapper(Mapping, collections.MutableMapping):
   def __delitem__(self, key):
     self._check_external_modification()
     existing_value = self[key]
-    if isinstance(existing_value, base.Checkpointable):
-      # Deleting tracked checkpointable values means restoring is problematic,
+    if isinstance(existing_value, base.Trackable):
+      # Deleting tracked trackable values means restoring is problematic,
       # so we'll throw an exception on save.
       self._non_append_mutation = True
     del self._storage[key]
@@ -812,10 +812,10 @@ def _is_function(x):
   return isinstance(x, (def_function.Function, defun.ConcreteFunction))
 
 revived_types.register_revived_type(
-    "checkpointable_dict_wrapper",
+    "trackable_dict_wrapper",
     lambda obj: isinstance(obj, _DictWrapper),
     versions=[revived_types.VersionedTypeRegistration(
-        # Standard dependencies are enough to reconstruct the checkpointable
+        # Standard dependencies are enough to reconstruct the trackable
         # items in dictionaries, so we don't need to save any extra information.
         object_factory=lambda proto: _DictWrapper({}),
         version=1,
@@ -832,7 +832,7 @@ def _set_list_item(list_object, index_string, value):
 
 
 revived_types.register_revived_type(
-    "checkpointable_list_wrapper",
+    "trackable_list_wrapper",
     lambda obj: isinstance(obj, _ListWrapper),
     versions=[revived_types.VersionedTypeRegistration(
         object_factory=lambda proto: _ListWrapper([]),

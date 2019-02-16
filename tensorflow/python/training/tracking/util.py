@@ -1,4 +1,4 @@
-"""Utilities for saving/loading Checkpointable objects."""
+"""Utilities for saving/loading Trackable objects."""
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,7 +21,7 @@ import abc
 import os
 import weakref
 
-from tensorflow.core.protobuf import checkpointable_object_graph_pb2
+from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import context
@@ -40,13 +40,13 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as v1_saver_lib
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import data_structures
-from tensorflow.python.training.checkpointable import graph_view as graph_view_lib
-from tensorflow.python.training.checkpointable import object_identity
-from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.saving import functional_saver
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import graph_view as graph_view_lib
+from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
@@ -61,7 +61,7 @@ class _CheckpointRestoreCoordinator(object):
     """Specify the checkpoint being loaded.
 
     Args:
-      object_graph_proto: The CheckpointableObjectGraph protocol buffer
+      object_graph_proto: The TrackableObjectGraph protocol buffer
         associated with this checkpoint.
       save_path: A string, the path to the checkpoint, as returned by
         `tf.train.latest_checkpoint`.
@@ -80,7 +80,7 @@ class _CheckpointRestoreCoordinator(object):
     # not loaded into any object, for error checking.
     self.unused_attributes = weakref.WeakKeyDictionary()
     # Dictionary mapping from an id in the protocol buffer flat array to
-    # Checkpointable Python objects. This mapping may be deferred if a
+    # Trackable Python objects. This mapping may be deferred if a
     # checkpoint is restored before all dependencies have been tracked. Uses
     # weak references so that partial restorations don't create reference cycles
     # (as objects with deferred dependencies will generally have references to
@@ -177,7 +177,7 @@ class _NameBasedRestoreCoordinator(object):
     self.unused_attributes = weakref.WeakKeyDictionary()
     self.restore_uid = ops.uid()
 
-  def globally_named_object_attributes(self, checkpointable):
+  def globally_named_object_attributes(self, trackable):
     """Create globally named SaveableObjects from attributes.
 
     If an object's attribute has no global name specified (default construction
@@ -186,13 +186,13 @@ class _NameBasedRestoreCoordinator(object):
     fail; see `NameBasedSaverStatus`).
 
     Args:
-      checkpointable: An object to save.
+      trackable: An object to save.
 
     Yields:
-      SaveableObjects for `checkpointable`'s attributes.
+      SaveableObjects for `trackable`'s attributes.
     """
     for attribute_name, saveable_factory in (
-        checkpointable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
+        trackable._gather_saveables_for_checkpoint().items()):  # pylint: disable=protected-access
       if callable(saveable_factory):
         try:
           # This saveable object factory does not have a default name= argument,
@@ -201,7 +201,7 @@ class _NameBasedRestoreCoordinator(object):
           # fails.
           saveable = saveable_factory()
         except TypeError:
-          self.unused_attributes.setdefault(checkpointable, []).append(
+          self.unused_attributes.setdefault(trackable, []).append(
               attribute_name)
           continue
       else:
@@ -214,14 +214,14 @@ class _NameBasedRestoreCoordinator(object):
             op=op, name=name):
           yield saveable_object
 
-  def eager_restore(self, checkpointable):
-    """Runs restore ops for `checkpointable`'s attributes."""
+  def eager_restore(self, trackable):
+    """Runs restore ops for `trackable`'s attributes."""
     # When graph building, we don't add any restore ops to the graph until
     # run_restore_ops/initialize_or_restore on the status object for name-based
     # checkpoints.
     assert context.executing_eagerly()
     for saveable in self.globally_named_object_attributes(
-        checkpointable):
+        trackable):
       restored_tensors = []
       tensor_missing = False
       for spec in saveable.specs:
@@ -281,10 +281,10 @@ def _default_getter(name, shape, dtype, initializer=None,
     )
 
 
-def add_variable(checkpointable, name, shape=None, dtype=dtypes.float32,
+def add_variable(trackable, name, shape=None, dtype=dtypes.float32,
                  initializer=None):
-  """Add a variable to a Checkpointable with no scope influence."""
-  return checkpointable._add_variable_with_custom_getter(  # pylint: disable=protected-access
+  """Add a variable to a Trackable with no scope influence."""
+  return trackable._add_variable_with_custom_getter(  # pylint: disable=protected-access
       name=name, shape=shape, dtype=dtype,
       initializer=initializer, getter=_default_getter)
 
@@ -307,7 +307,7 @@ def object_metadata(save_path):
     save_path: The path to the checkpoint, as returned by `save` or
       `tf.train.latest_checkpoint`.
   Returns:
-    A parsed `tf.contrib.checkpoint.CheckpointableObjectGraph` protocol buffer.
+    A parsed `tf.contrib.checkpoint.TrackableObjectGraph` protocol buffer.
   Raises:
     ValueError: If an object graph was not found in the checkpoint.
   """
@@ -322,44 +322,44 @@ def object_metadata(save_path):
          'saver and does not contain an object dependency graph.') % (
              save_path, base.OBJECT_GRAPH_PROTO_KEY))
   object_graph_proto = (
-      checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+      trackable_object_graph_pb2.TrackableObjectGraph())
   object_graph_proto.ParseFromString(object_graph_string)
   return object_graph_proto
 
 
-def list_objects(root_checkpointable):
+def list_objects(root_trackable):
   """Traverse the object graph and list all accessible objects.
 
-  Looks for `Checkpointable` objects which are dependencies of
-  `root_checkpointable`. Includes slot variables only if the variable they are
-  slotting for and the optimizer are dependencies of `root_checkpointable`
+  Looks for `Trackable` objects which are dependencies of
+  `root_trackable`. Includes slot variables only if the variable they are
+  slotting for and the optimizer are dependencies of `root_trackable`
   (i.e. if they would be saved with a checkpoint).
 
   Args:
-    root_checkpointable: A `Checkpointable` object whose dependencies should be
+    root_trackable: A `Trackable` object whose dependencies should be
       flattened.
   Returns:
     A flat list of objects.
   """
-  return graph_view_lib.ObjectGraphView(root_checkpointable).list_objects()
+  return graph_view_lib.ObjectGraphView(root_trackable).list_objects()
 
 
-def gather_initializers(root_checkpointable):
+def gather_initializers(root_trackable):
   """Traverse the object graph and find initialization ops.
 
-  Looks for `Checkpointable` objects which are dependencies of
-  `root_checkpointable` and which have an `initializer` property. Includes
+  Looks for `Trackable` objects which are dependencies of
+  `root_trackable` and which have an `initializer` property. Includes
   initializers for slot variables only if the variable they are slotting for and
-  the optimizer are dependencies of `root_checkpointable` (i.e. if they would be
+  the optimizer are dependencies of `root_trackable` (i.e. if they would be
   saved with a checkpoint).
 
   Args:
-    root_checkpointable: A `Checkpointable` object to gather initializers for.
+    root_trackable: A `Trackable` object to gather initializers for.
   Returns:
     A list of initialization ops.
   """
-  checkpointable_objects = list_objects(root_checkpointable)
-  return [c.initializer for c in checkpointable_objects
+  trackable_objects = list_objects(root_trackable)
+  return [c.initializer for c in trackable_objects
           if hasattr(c, "initializer") and c.initializer is not None]
 
 
@@ -369,7 +369,7 @@ def capture_dependencies(template):
 
   Requires that `template.variable_scope` is active.
 
-  This scope is intended as a compatibility measure, allowing a checkpointable
+  This scope is intended as a compatibility measure, allowing a trackable
   object to add dependencies on variables created in a block of code which is
   not aware of object-based saving (and instead uses variable names
   heavily). This is how `Template` objects add dependencies on variables and
@@ -383,17 +383,17 @@ def capture_dependencies(template):
   """
   name_prefix = template.variable_scope.name
 
-  def _checkpointable_custom_creator(next_creator, name, initial_value,
-                                     checkpointable_parent=None, **kwargs):
-    """A variable creation hook which adds Checkpointable dependencies.
+  def _trackable_custom_creator(next_creator, name, initial_value,
+                                trackable_parent=None, **kwargs):
+    """A variable creation hook which adds Trackable dependencies.
 
     Set for example during a `Template`'s first wrapped function
-    execution. Ensures that (a) `template` depends on any checkpointable
+    execution. Ensures that (a) `template` depends on any trackable
     objects using their own `capture_dependencies` scope inside this scope which
     create variables, and (b) that any variables not in a more deeply nested
     scope are added as dependencies directly.
 
-    The `checkpointable_parent` argument is passed between custom creators but
+    The `trackable_parent` argument is passed between custom creators but
     ignored when the variable object itself is created. This argument indicates
     (if not `None`) that a more deeply nested scope has already added the
     variable as a dependency, and that parent scopes should add a dependency on
@@ -407,8 +407,8 @@ def capture_dependencies(template):
         but scopes opened within this scope are respected.
       initial_value: See `variable_scope.variable_creator_scope`. Taken
         explicitly so the argument can be re-named and used with
-        `Checkpointable._add_variable_with_custom_getter`.
-      checkpointable_parent: If not None, a more deeply nested checkpointable
+        `Trackable._add_variable_with_custom_getter`.
+      trackable_parent: If not None, a more deeply nested trackable
         object and its name prefix which were passed to `capture_dependencies`
         to add a dependency on (rather than depending on the variable directly).
       **kwargs: Passed through to the next creator.
@@ -425,28 +425,28 @@ def capture_dependencies(template):
           **inner_kwargs)
     if name is not None and name.startswith(name_prefix):
       scope_stripped_name = name[len(name_prefix) + 1:]
-      if not checkpointable_parent:
+      if not trackable_parent:
         return template._add_variable_with_custom_getter(  # pylint: disable=protected-access
             initializer=initial_value,
             name=scope_stripped_name,
             getter=_call_next_creator_renaming_initializer,
-            # Disable error checking for Checkpointable. Exceptions are instead
+            # Disable error checking for Trackable. Exceptions are instead
             # raised if necessary when the object-based saver tries to
             # save/restore the object.
             overwrite=True,
-            checkpointable_parent=(template, name_prefix),
+            trackable_parent=(template, name_prefix),
             **kwargs)
       else:
-        parent_object, parent_name_prefix = checkpointable_parent
-        template._track_checkpointable(  # pylint: disable=protected-access
+        parent_object, parent_name_prefix = trackable_parent
+        template._track_trackable(  # pylint: disable=protected-access
             parent_object,
             name=parent_name_prefix[len(name_prefix) + 1:],
             overwrite=True)
     return next_creator(
         name=name, initial_value=initial_value,
-        checkpointable_parent=(template, name_prefix), **kwargs)
+        trackable_parent=(template, name_prefix), **kwargs)
 
-  with variable_scope.variable_creator_scope(_checkpointable_custom_creator):
+  with variable_scope.variable_creator_scope(_trackable_custom_creator):
     yield
 
 
@@ -540,8 +540,8 @@ class CheckpointLoadStatus(_LoadStatus):
     """
     self.assert_existing_objects_matched()
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
-      checkpointable = self._checkpoint.object_by_proto_id.get(node_id, None)
-      if checkpointable is None:
+      trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
+      if trackable is None:
         raise AssertionError("Unresolved object in checkpoint: %s" % (node,))
     if self._checkpoint.slot_restorations:
       # Sanity check; this collection should be clear if everything has been
@@ -556,7 +556,7 @@ class CheckpointLoadStatus(_LoadStatus):
     return self
 
   def assert_existing_objects_matched(self):
-    """Asserts that checkpointable Python objects have been matched.
+    """Asserts that trackable Python objects have been matched.
 
     Note that this is a weaker assertion than `assert_consumed`. It will only
     fail for existing Python objects which are (transitive) dependencies of the
@@ -573,19 +573,19 @@ class CheckpointLoadStatus(_LoadStatus):
         of the root object but does not have a value in the checkpoint.
     """
     for node_id, node in enumerate(self._checkpoint.object_graph_proto.nodes):
-      checkpointable = self._checkpoint.object_by_proto_id.get(node_id, None)
-      if (checkpointable is not None
-          and checkpointable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
+      trackable = self._checkpoint.object_by_proto_id.get(node_id, None)
+      if (trackable is not None
+          and trackable._update_uid < self._checkpoint.restore_uid):  # pylint: disable=protected-access
         raise AssertionError(
             "Object not assigned a value from checkpoint: %s" % (node,))
-    for checkpointable_object in self._graph_view.list_objects():
+    for trackable_object in self._graph_view.list_objects():
       # Remove data structures that do not contain any variables from
       # restoration checks.
-      if (isinstance(checkpointable_object,
-                     data_structures.CheckpointableDataStructure) and
-          not checkpointable_object._checkpoint_dependencies):
+      if (isinstance(trackable_object,
+                     data_structures.TrackableDataStructure) and
+          not trackable_object._checkpoint_dependencies):
         continue
-      self._checkpoint.all_python_objects.add(checkpointable_object)
+      self._checkpoint.all_python_objects.add(trackable_object)
     unused_python_objects = (
         object_identity.ObjectIdentitySet(self._checkpoint.all_python_objects)
         - object_identity.ObjectIdentitySet(
@@ -599,8 +599,8 @@ class CheckpointLoadStatus(_LoadStatus):
 
   def assert_nontrivial_match(self):
     """Raises an exception if only the root object matched."""
-    for checkpointable_object in self._graph_view.list_objects():
-      self._checkpoint.all_python_objects.add(checkpointable_object)
+    for trackable_object in self._graph_view.list_objects():
+      self._checkpoint.all_python_objects.add(trackable_object)
     if len(self._checkpoint.object_by_proto_id) <= 1:
       unused_python_objects = (
           object_identity.ObjectIdentitySet(
@@ -719,9 +719,9 @@ class InitializationOnlyStatus(_LoadStatus):
       return  # run eagerly
     if session is None:
       session = ops.get_default_session()
-    checkpointable_objects = self._graph_view.list_objects()
+    trackable_objects = self._graph_view.list_objects()
     initializers = [
-        c.initializer for c in checkpointable_objects
+        c.initializer for c in trackable_objects
         if hasattr(c, "initializer") and c.initializer is not None
         and (getattr(c, "_update_uid", self._restore_uid - 1)
              < self._restore_uid)]
@@ -755,11 +755,11 @@ class NameBasedSaverStatus(_LoadStatus):
       raise AssertionError(
           "Some objects had attributes which were not restored: %s"
           % (unused_attributes,))
-    for checkpointable in self._graph_view.list_objects():
+    for trackable in self._graph_view.list_objects():
       # pylint: disable=protected-access
-      checkpointable._maybe_initialize_checkpointable()
-      if checkpointable._update_uid < self._checkpoint.restore_uid:
-        raise AssertionError("Object not restored: %s" % (checkpointable,))
+      trackable._maybe_initialize_trackable()
+      if trackable._update_uid < self._checkpoint.restore_uid:
+        raise AssertionError("Object not restored: %s" % (trackable,))
       # pylint: enable=protected-access
     return self
 
@@ -783,17 +783,17 @@ class NameBasedSaverStatus(_LoadStatus):
     """Walk the object graph, using global names for SaveableObjects."""
     objects = self._graph_view.list_objects()
     saveable_objects = []
-    for checkpointable in objects:
+    for trackable in objects:
       # pylint: disable=protected-access
-      checkpointable._maybe_initialize_checkpointable()
-      if checkpointable._update_uid < self._checkpoint.restore_uid:
-        checkpointable._update_uid = self._checkpoint.restore_uid
+      trackable._maybe_initialize_trackable()
+      if trackable._update_uid < self._checkpoint.restore_uid:
+        trackable._update_uid = self._checkpoint.restore_uid
       else:
         continue
       # pylint: enable=protected-access
       saveable_objects.extend(
           self._checkpoint.globally_named_object_attributes(
-              checkpointable))
+              trackable))
     return saveable_objects
 
   def run_restore_ops(self, session=None):
@@ -829,20 +829,20 @@ class _SessionWithFeedDictAdditions(session_lib.SessionInterface):
         fetches=fetches, feed_dict=feed_dict, **kwargs)
 
 
-class CheckpointableSaver(object):
-  """Saves and restores a `Checkpointable` object and its dependencies.
+class TrackableSaver(object):
+  """Saves and restores a `Trackable` object and its dependencies.
 
-  See `Checkpointable` for details of dependency management. `Saver` wraps
+  See `Trackable` for details of dependency management. `Saver` wraps
   `tf.train.Saver` for saving, including extra information about the graph of
   dependencies between Python objects. When restoring, it uses this information
   about the save-time dependency graph to more robustly match objects with their
   checkpointed values. When executing eagerly, it supports restoring variables
   on object creation (see `Saver.restore`).
 
-  Values in a checkpoint are mapped to `Checkpointable` Python objects
+  Values in a checkpoint are mapped to `Trackable` Python objects
   (`Variable`s, `Optimizer`s, `Layer`s) based on the names provided when the
   checkpoint was written. To avoid breaking existing checkpoints when modifying
-  a class, dependency names (the names of attributes to which `Checkpointable`
+  a class, dependency names (the names of attributes to which `Trackable`
   objects are assigned) may not change. These names are local to objects, in
   contrast to the `Variable.name`-based save/restore from `tf.train.Saver`, and
   so allow additional program transformations.
@@ -926,7 +926,7 @@ class CheckpointableSaver(object):
     """Save a training checkpoint.
 
     The saved checkpoint includes variables created by this object and any
-    Checkpointable objects it depends on at the time `Saver.save()` is called.
+    Trackable objects it depends on at the time `Saver.save()` is called.
 
     Args:
       file_prefix: A prefix to use for the checkpoint filenames
@@ -935,8 +935,8 @@ class CheckpointableSaver(object):
       checkpoint_number: An integer variable or Tensor, used to number
         checkpoints. Typically this value is saved along with other variables in
         training checkpoints, which will happen automatically if it was created
-        by `root_checkpointable` or one of its dependencies (via
-        `Checkpointable._add_variable`).
+        by `root_trackable` or one of its dependencies (via
+        `Trackable._add_variable`).
       session: The session to evaluate variables in. Ignored when executing
         eagerly. If not provided when graph building, the default session is
         used.
@@ -984,10 +984,10 @@ class CheckpointableSaver(object):
   def restore(self, save_path):
     """Restore a training checkpoint.
 
-    Restores `root_checkpointable` and any objects that it tracks
+    Restores `root_trackable` and any objects that it tracks
     (transitive). Either assigns values immediately if variables to restore have
     been created already, or defers restoration until the variables are
-    created. Dependencies added to the `root_checkpointable` passed to the
+    created. Dependencies added to the `root_trackable` passed to the
     constructor after this call will be matched if they have a corresponding
     object in the checkpoint.
 
@@ -1056,11 +1056,11 @@ class CheckpointableSaver(object):
       restore_coordinator = _NameBasedRestoreCoordinator(
           save_path=save_path, dtype_map=dtype_map)
       if not graph_building:
-        for existing_checkpointable in self._graph_view.list_objects():
+        for existing_trackable in self._graph_view.list_objects():
           # pylint: disable=protected-access
-          existing_checkpointable._maybe_initialize_checkpointable()
-          existing_checkpointable._name_based_restores.add(restore_coordinator)
-          existing_checkpointable._name_based_attribute_restore(
+          existing_trackable._maybe_initialize_trackable()
+          existing_trackable._name_based_restores.add(restore_coordinator)
+          existing_trackable._name_based_attribute_restore(
               restore_coordinator)
           # pylint: enable=protected-access
       return NameBasedSaverStatus(
@@ -1077,7 +1077,7 @@ class CheckpointableSaver(object):
         file_prefix_tensor = constant_op.constant(save_path)
       file_prefix_feed_dict = None
     object_graph_proto = (
-        checkpointable_object_graph_pb2.CheckpointableObjectGraph())
+        trackable_object_graph_pb2.TrackableObjectGraph())
     object_graph_proto.ParseFromString(object_graph_string)
     checkpoint = _CheckpointRestoreCoordinator(
         object_graph_proto=object_graph_proto,
@@ -1094,8 +1094,8 @@ class CheckpointableSaver(object):
     return load_status
 
 
-def frozen_saver(root_checkpointable):
-  """Creates a static `tf.train.Saver` from a checkpointable object.
+def frozen_saver(root_trackable):
+  """Creates a static `tf.train.Saver` from a trackable object.
 
   The returned `Saver` saves object-based checkpoints, but these checkpoints
   will no longer reflect structural changes to the object graph, only changes to
@@ -1109,34 +1109,34 @@ def frozen_saver(root_checkpointable):
   object graph and the current Python object graph.
 
   Args:
-    root_checkpointable: A checkpointable object to save.
+    root_trackable: A trackable object to save.
 
   Returns:
     A saver which saves object-based checkpoints for the object graph frozen at
     the time `frozen_saver` was called.
   """
   named_saveable_objects = graph_view_lib.ObjectGraphView(
-      root_checkpointable).frozen_saveable_objects()
+      root_trackable).frozen_saveable_objects()
   return functional_saver.Saver(named_saveable_objects)
 
 
 def saver_with_op_caching(obj):
-  """A CheckpointableSaver with a SaveableObject cache when graph building."""
+  """A TrackableSaver with a SaveableObject cache when graph building."""
   if context.executing_eagerly():
     saveables_cache = None
   else:
     saveables_cache = object_identity.ObjectIdentityWeakKeyDictionary()
-  return CheckpointableSaver(graph_view_lib.ObjectGraphView(
+  return TrackableSaver(graph_view_lib.ObjectGraphView(
       weakref.ref(obj),
       saveables_cache=saveables_cache))
 
 
 @tf_export("train.Checkpoint")
-class Checkpoint(tracking.AutoCheckpointable):
-  """Groups checkpointable objects, saving and restoring them.
+class Checkpoint(tracking.AutoTrackable):
+  """Groups trackable objects, saving and restoring them.
 
   `Checkpoint`'s constructor accepts keyword arguments whose values are types
-  that contain checkpointable state, such as `tf.train.Optimizer`
+  that contain trackable state, such as `tf.train.Optimizer`
   implementations, `tf.Variable`, `tf.keras.Layer` implementations, or
   `tf.keras.Model` implementations. It saves these values with a checkpoint, and
   maintains a `save_counter` for numbering checkpoints.
@@ -1228,17 +1228,17 @@ class Checkpoint(tracking.AutoCheckpointable):
 
     Args:
       **kwargs: Keyword arguments are set as attributes of this object, and are
-        saved with the checkpoint. Values must be checkpointable objects.
+        saved with the checkpoint. Values must be trackable objects.
     Raises:
-      ValueError: If objects in `kwargs` are not checkpointable.
+      ValueError: If objects in `kwargs` are not trackable.
     """
     super(Checkpoint, self).__init__()
     for k, v in sorted(kwargs.items(), key=lambda item: item[0]):
-      if not isinstance(v, (base.Checkpointable, def_function.Function)):
+      if not isinstance(v, (base.Trackable, def_function.Function)):
         raise ValueError(
-            ("`Checkpoint` was expecting a checkpointable object (an object "
-             "derived from `CheckpointableBase`), got %s. If you believe this "
-             "object should be checkpointable (i.e. it is part of the "
+            ("`Checkpoint` was expecting a trackable object (an object "
+             "derived from `TrackableBase`), got %s. If you believe this "
+             "object should be trackable (i.e. it is part of the "
              "TensorFlow Python API and manages state), please open an issue.")
             % (v,))
       setattr(self, k, v)
@@ -1261,7 +1261,7 @@ class Checkpoint(tracking.AutoCheckpointable):
     """Writes a training checkpoint.
 
     The checkpoint includes variables created by this object and any
-    checkpointable objects it depends on at the time `Checkpoint.write()` is
+    trackable objects it depends on at the time `Checkpoint.write()` is
     called.
 
     `write` does not number checkpoints, increment `save_counter`, or update the
@@ -1308,7 +1308,7 @@ class Checkpoint(tracking.AutoCheckpointable):
     """Saves a training checkpoint and provides basic checkpoint management.
 
     The saved checkpoint includes variables created by this object and any
-    checkpointable objects it depends on at the time `Checkpoint.save()` is
+    trackable objects it depends on at the time `Checkpoint.save()` is
     called.
 
     `save` is a basic convenience wrapper around the `write` method,
@@ -1372,7 +1372,7 @@ class Checkpoint(tracking.AutoCheckpointable):
     restore have been created already, or defers restoration until the variables
     are created. Dependencies added after this call will be matched if they have
     a corresponding object in the checkpoint (the restore request will queue in
-    any checkpointable object waiting for the expected dependency to be added).
+    any trackable object waiting for the expected dependency to be added).
 
     When graph building, restoration ops are added to the graph but not run
     immediately.

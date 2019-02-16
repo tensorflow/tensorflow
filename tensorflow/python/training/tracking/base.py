@@ -44,18 +44,18 @@ OBJECT_GRAPH_PROTO_KEY = "_CHECKPOINTABLE_OBJECT_GRAPH"
 
 
 # A key indicating a variable's value in an object's checkpointed Tensors
-# (Checkpointable._gather_saveables_for_checkpoint). If this is the only key and
+# (Trackable._gather_saveables_for_checkpoint). If this is the only key and
 # the object has no dependencies, then its value may be restored on object
 # creation (avoiding double assignment when executing eagerly).
 VARIABLE_VALUE_KEY = "VARIABLE_VALUE"
 OBJECT_CONFIG_JSON_KEY = "OBJECT_CONFIG_JSON"
 
-CheckpointableReference = collections.namedtuple(
-    "CheckpointableReference",
+TrackableReference = collections.namedtuple(
+    "TrackableReference",
     [
         # The local name for this dependency.
         "name",
-        # The Checkpointable object being referenced.
+        # The Trackable object being referenced.
         "ref"
     ])
 
@@ -195,26 +195,26 @@ class CheckpointPosition(object):
 
     Args:
       checkpoint: A _CheckpointRestoreCoordinator object.
-      proto_id: The index of this object in CheckpointableObjectGraph.nodes.
+      proto_id: The index of this object in TrackableObjectGraph.nodes.
     """
     self._checkpoint = checkpoint
     self._proto_id = proto_id
 
-  def restore(self, checkpointable):
-    """Restore this value into `checkpointable`."""
+  def restore(self, trackable):
+    """Restore this value into `trackable`."""
     with ops.init_scope():
-      if self.bind_object(checkpointable):
+      if self.bind_object(trackable):
         # This object's correspondence with a checkpointed object is new, so
         # process deferred restorations for it and its dependencies.
-        restore_ops = checkpointable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
+        restore_ops = trackable._restore_from_checkpoint_position(self)  # pylint: disable=protected-access
         if restore_ops:
           self._checkpoint.new_restore_ops(restore_ops)
 
-  def bind_object(self, checkpointable):
+  def bind_object(self, trackable):
     """Set a checkpoint<->object correspondence and process slot variables.
 
     Args:
-      checkpointable: The object to record a correspondence for.
+      trackable: The object to record a correspondence for.
     Returns:
       True if this is a new assignment, False if this object has already been
       mapped to a checkpointed `Object` proto.
@@ -222,13 +222,13 @@ class CheckpointPosition(object):
       AssertionError: If another object is already bound to the `Object` proto.
     """
     checkpoint = self.checkpoint
-    checkpoint.all_python_objects.add(checkpointable)
+    checkpoint.all_python_objects.add(trackable)
     current_assignment = checkpoint.object_by_proto_id.get(self._proto_id, None)
     if current_assignment is None:
-      checkpoint.object_by_proto_id[self._proto_id] = checkpointable
+      checkpoint.object_by_proto_id[self._proto_id] = trackable
       for deferred_slot_restoration in (
           checkpoint.deferred_slot_restorations.pop(self._proto_id, ())):
-        checkpointable._create_or_restore_slot_variable(  # pylint: disable=protected-access
+        trackable._create_or_restore_slot_variable(  # pylint: disable=protected-access
             slot_variable_position=CheckpointPosition(
                 checkpoint=checkpoint,
                 proto_id=deferred_slot_restoration.slot_variable_id),
@@ -244,7 +244,7 @@ class CheckpointPosition(object):
           checkpoint.deferred_slot_restorations.setdefault(
               slot_restoration.optimizer_id, []).append(
                   _DeferredSlotVariableRestoration(
-                      original_variable=checkpointable,
+                      original_variable=trackable,
                       slot_variable_id=slot_restoration.slot_variable_id,
                       slot_name=slot_restoration.slot_name))
         else:
@@ -252,7 +252,7 @@ class CheckpointPosition(object):
               slot_variable_position=CheckpointPosition(
                   checkpoint=checkpoint,
                   proto_id=slot_restoration.slot_variable_id),
-              variable=checkpointable,
+              variable=trackable,
               slot_name=slot_restoration.slot_name)
       return True  # New assignment
     else:
@@ -260,14 +260,14 @@ class CheckpointPosition(object):
       # we don't need to do anything besides check that the mapping is
       # consistent (if the dependency DAG is not a tree then there are
       # multiple paths to the same object).
-      if current_assignment is not checkpointable:
+      if current_assignment is not trackable:
         logging.warning(
             ("Inconsistent references when loading the checkpoint into this "
-             "object graph. Either the Checkpointable object references in the "
+             "object graph. Either the Trackable object references in the "
              "Python program have changed in an incompatible way, or the "
              "checkpoint was generated in an incompatible program.\n\nTwo "
              "checkpoint references resolved to different objects (%s and %s).")
-            % (current_assignment, checkpointable))
+            % (current_assignment, trackable))
       return False  # Not a new assignment
 
   def is_simple_variable(self):
@@ -306,7 +306,7 @@ class CheckpointPosition(object):
 
   def _gather_ops_or_named_saveables(self):
     """Looks up or creates SaveableObjects which don't have cached ops."""
-    saveables = self.checkpointable._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
+    saveables = self.trackable._gather_saveables_for_checkpoint()  # pylint: disable=protected-access
     # Name saveables based on the name this object had when it was checkpointed.
     named_saveables = {}
     python_saveables = []
@@ -334,7 +334,7 @@ class CheckpointPosition(object):
         # attribute, we can re-use it to avoid re-creating some ops when graph
         # building.
         saveable_list = saveables_cache.get(
-            self.checkpointable, {}).get(serialized_tensor.name, (None,))
+            self.trackable, {}).get(serialized_tensor.name, (None,))
         if len(saveable_list) == 1:
           # Almost every attribute will have exactly one SaveableObject.
           saveable, = saveable_list
@@ -348,7 +348,7 @@ class CheckpointPosition(object):
         # the SaveableObject.
         if serialized_tensor.checkpoint_key not in saveable.name:
           saveable = None
-          del saveables_cache[self.checkpointable]
+          del saveables_cache[self.trackable]
           break
       if saveable is None:
         # If there was no cached SaveableObject, we should check if the Python
@@ -361,7 +361,7 @@ class CheckpointPosition(object):
           # checkpoint was loaded.
           if not serialized_tensor.optional_restore:
             self._checkpoint.unused_attributes.setdefault(
-                self.checkpointable, []).append(serialized_tensor.name)
+                self.trackable, []).append(serialized_tensor.name)
           continue
         if callable(saveable_factory):
           saveable = saveable_factory(name=serialized_tensor.checkpoint_key)
@@ -369,7 +369,7 @@ class CheckpointPosition(object):
           saveable = saveable_factory
         if saveables_cache is not None:
           saveables_cache.setdefault(
-              self.checkpointable, {})[serialized_tensor.name] = [saveable]
+              self.trackable, {})[serialized_tensor.name] = [saveable]
       if isinstance(saveable, PythonStateSaveable):
         python_saveables.append(saveable)
       else:
@@ -379,7 +379,7 @@ class CheckpointPosition(object):
   def restore_ops(self):
     """Create or fetch restore ops for this object's attributes.
 
-    Requires that the `Checkpointable` Python object has been bound to an object
+    Requires that the `Trackable` Python object has been bound to an object
     ID in the checkpoint.
 
     Returns:
@@ -398,7 +398,7 @@ class CheckpointPosition(object):
     return self._checkpoint
 
   @property
-  def checkpointable(self):
+  def trackable(self):
     return self._checkpoint.object_by_proto_id[self._proto_id]
 
   @property
@@ -436,11 +436,11 @@ _SlotVariableRestoration = collections.namedtuple(
 def no_automatic_dependency_tracking(method):
   """Disables automatic dependency tracking on attribute assignment.
 
-  Use to decorate any method of a Checkpointable object. Attribute assignment in
+  Use to decorate any method of a Trackable object. Attribute assignment in
   that method will not add dependencies (also respected in Model). Harmless if
   used in a class which does not do automatic dependency tracking (which means
   it's safe to use in base classes which may have subclasses which also inherit
-  from Checkpointable).
+  from Trackable).
 
   Args:
     method: The method to decorate.
@@ -461,37 +461,37 @@ def no_automatic_dependency_tracking(method):
       target=method, decorator_func=_method_wrapper)
 
 
-class Checkpointable(object):
-  """Base class for `Checkpointable` objects without automatic dependencies.
+class Trackable(object):
+  """Base class for `Trackable` objects without automatic dependencies.
 
   This class has no __setattr__ override for performance reasons. Dependencies
   must be added explicitly. Unless attribute assignment is performance-critical,
-  use `AutoCheckpointable` instead. Use `Checkpointable` for `isinstance`
+  use `AutoTrackable` instead. Use `Trackable` for `isinstance`
   checks.
   """
 
-  # Checkpointable does not do automatic dependency tracking, but uses the
+  # Trackable does not do automatic dependency tracking, but uses the
   # no_automatic_dependency_tracking decorator so it can avoid adding
-  # dependencies if a subclass is Checkpointable / inherits from Model (both of
+  # dependencies if a subclass is Trackable / inherits from Model (both of
   # which have __setattr__ overrides).
   @no_automatic_dependency_tracking
-  def _maybe_initialize_checkpointable(self):
+  def _maybe_initialize_trackable(self):
     """Initialize dependency management.
 
     Not __init__, since most objects will forget to call it.
     """
     if hasattr(self, "_unconditional_checkpoint_dependencies"):
       # __init__ already called. This check means that we don't need
-      # Checkpointable.__init__() in the constructor of every TensorFlow object.
+      # Trackable.__init__() in the constructor of every TensorFlow object.
       return
-    # A list of CheckpointableReference objects. Some classes implementing
-    # `Checkpointable`, notably `Optimizer`s, may override the
+    # A list of TrackableReference objects. Some classes implementing
+    # `Trackable`, notably `Optimizer`s, may override the
     # _checkpoint_dependencies property with conditional dependencies
     # (e.g. based on the current graph when saving).
     self._unconditional_checkpoint_dependencies = []
-    # Maps names -> Checkpointable objects
+    # Maps names -> Trackable objects
     self._unconditional_dependency_names = {}
-    # Restorations for other Checkpointable objects on which this object may
+    # Restorations for other Trackable objects on which this object may
     # eventually depend. Maps local name -> CheckpointPosition list. Optimizers
     # tack on conditional dependencies, and so need separate management of
     # deferred dependencies too.
@@ -530,8 +530,8 @@ class Checkpointable(object):
     May be overridden to include conditional dependencies.
 
     Returns:
-      A list of `CheckpointableReference` objects indicating named
-      `Checkpointable` dependencies which should be saved along with this
+      A list of `TrackableReference` objects indicating named
+      `Trackable` dependencies which should be saved along with this
       object.
     """
     return self._unconditional_checkpoint_dependencies
@@ -540,7 +540,7 @@ class Checkpointable(object):
   def _deferred_dependencies(self):
     """A dictionary with deferred dependencies.
 
-    Stores restorations for other Checkpointable objects on which this object
+    Stores restorations for other Trackable objects on which this object
     may eventually depend. May be overridden by sub-classes (e.g. Optimizers use
     conditional dependencies based the current graph, and so need separate
     management of deferred dependencies too).
@@ -559,7 +559,7 @@ class Checkpointable(object):
     Args:
       name: The local name of the dependency.
     Returns:
-      A `Checkpointable` object, or `None` if no dependency by this name was
+      A `Trackable` object, or `None` if no dependency by this name was
       found.
     """
     return self._unconditional_dependency_names.get(name, None)
@@ -568,9 +568,9 @@ class Checkpointable(object):
       self, name, shape=None, dtype=dtypes.float32,
       initializer=None, getter=None, overwrite=False,
       **kwargs_for_getter):
-    """Restore-on-create for a variable be saved with this `Checkpointable`.
+    """Restore-on-create for a variable be saved with this `Trackable`.
 
-    If the user has requested that this object or another `Checkpointable` which
+    If the user has requested that this object or another `Trackable` which
     depends on this object be restored from a checkpoint (deferred loading
     before variable object creation), `initializer` may be ignored and the value
     from the checkpoint used instead.
@@ -592,7 +592,7 @@ class Checkpointable(object):
     Raises:
       ValueError: If the variable name is not unique.
     """
-    self._maybe_initialize_checkpointable()
+    self._maybe_initialize_trackable()
     with ops.init_scope():
       if context.executing_eagerly():
         # If this is a variable with a single Tensor stored in the checkpoint,
@@ -608,11 +608,11 @@ class Checkpointable(object):
               isinstance(initializer, CheckpointInitialValue)
               and (initializer.restore_uid
                    > checkpoint_initializer.restore_uid))):
-        # If multiple Checkpointable objects are "creating" the same variable
+        # If multiple Trackable objects are "creating" the same variable
         # via the magic of custom getters, the one with the highest restore UID
         # (the one called last) has to make the final initializer. If another
         # custom getter interrupts this process by overwriting the initializer,
-        # then we'll catch that when we call _track_checkpointable. So this is
+        # then we'll catch that when we call _track_trackable. So this is
         # "best effort" to set the initializer with the highest restore UID.
         initializer = checkpoint_initializer
         shape = None
@@ -624,12 +624,12 @@ class Checkpointable(object):
     # assign again. It will add this variable to our dependencies, and if there
     # is a non-trivial restoration queued, it will handle that. This also
     # handles slot variables.
-    if not overwrite or isinstance(new_variable, Checkpointable):
-      return self._track_checkpointable(new_variable, name=name,
-                                        overwrite=overwrite)
+    if not overwrite or isinstance(new_variable, Trackable):
+      return self._track_trackable(new_variable, name=name,
+                                   overwrite=overwrite)
     else:
       # TODO(allenl): Some variable types are not yet supported. Remove this
-      # fallback once all get_variable() return types are Checkpointable.
+      # fallback once all get_variable() return types are Trackable.
       return new_variable
 
   def _preload_simple_restoration(self, name, shape):
@@ -668,46 +668,46 @@ class Checkpointable(object):
     return CheckpointInitialValue(
         checkpoint_position=checkpoint_position, shape=shape)
 
-  def _track_checkpointable(self, checkpointable, name, overwrite=False):
-    """Declare a dependency on another `Checkpointable` object.
+  def _track_trackable(self, trackable, name, overwrite=False):
+    """Declare a dependency on another `Trackable` object.
 
     Indicates that checkpoints for this object should include variables from
-    `checkpointable`.
+    `trackable`.
 
-    Variables in a checkpoint are mapped to `Checkpointable`s based on the names
+    Variables in a checkpoint are mapped to `Trackable`s based on the names
     provided when the checkpoint was written. To avoid breaking existing
     checkpoints when modifying a class, neither variable names nor dependency
-    names (the names passed to `_track_checkpointable`) may change.
+    names (the names passed to `_track_trackable`) may change.
 
     Args:
-      checkpointable: A `Checkpointable` which this object depends on.
-      name: A local name for `checkpointable`, used for loading checkpoints into
+      trackable: A `Trackable` which this object depends on.
+      name: A local name for `trackable`, used for loading checkpoints into
         the correct objects.
       overwrite: Boolean, whether silently replacing dependencies is OK. Used
         for __setattr__, where throwing an error on attribute reassignment would
         be inappropriate.
 
     Returns:
-      `checkpointable`, for convenience when declaring a dependency and
+      `trackable`, for convenience when declaring a dependency and
       assigning to a member variable in one statement.
 
     Raises:
-      TypeError: If `checkpointable` does not inherit from `Checkpointable`.
+      TypeError: If `trackable` does not inherit from `Trackable`.
       ValueError: If another object is already tracked by this name.
     """
-    self._maybe_initialize_checkpointable()
-    if not isinstance(checkpointable, Checkpointable):
+    self._maybe_initialize_trackable()
+    if not isinstance(trackable, Trackable):
       raise TypeError(
-          ("Checkpointable._track_checkpointable() passed type %s, not a "
-           "Checkpointable.") % (type(checkpointable),))
-    new_reference = CheckpointableReference(name=name, ref=checkpointable)
+          ("Trackable._track_trackable() passed type %s, not a "
+           "Trackable.") % (type(trackable),))
+    new_reference = TrackableReference(name=name, ref=trackable)
     current_object = self._lookup_dependency(name)
     if (current_object is not None
-        and current_object is not checkpointable):
+        and current_object is not trackable):
       if not overwrite:
         raise ValueError(
-            ("Called Checkpointable._track_checkpointable() with name='%s', "
-             "but a Checkpointable with this name is already declared as a "
+            ("Called Trackable._track_trackable() with name='%s', "
+             "but a Trackable with this name is already declared as a "
              "dependency. Names must be unique (or overwrite=True).") % (name,))
       # This is a weird thing to do, but we're not going to stop people from
       # using __setattr__.
@@ -718,20 +718,20 @@ class Checkpointable(object):
     elif current_object is None:
       self._unconditional_checkpoint_dependencies.append(new_reference)
       self._handle_deferred_dependencies(
-          name=name, checkpointable=checkpointable)
-    self._unconditional_dependency_names[name] = checkpointable
-    return checkpointable
+          name=name, trackable=trackable)
+    self._unconditional_dependency_names[name] = trackable
+    return trackable
 
-  def _handle_deferred_dependencies(self, name, checkpointable):
-    """Pop and load any deferred checkpoint restores into `checkpointable`.
+  def _handle_deferred_dependencies(self, name, trackable):
+    """Pop and load any deferred checkpoint restores into `trackable`.
 
-    This method does not add a new dependency on `checkpointable`, but it does
+    This method does not add a new dependency on `trackable`, but it does
     check if any outstanding/deferred dependencies have been queued waiting for
     this dependency to be added (matched based on `name`). If so,
-    `checkpointable` and its dependencies are restored. The restorations are
+    `trackable` and its dependencies are restored. The restorations are
     considered fulfilled and so are deleted.
 
-    `_track_checkpointable` is more appropriate for adding a
+    `_track_trackable` is more appropriate for adding a
     normal/unconditional dependency, and includes handling for deferred
     restorations. This method allows objects such as `Optimizer` to use the same
     restoration logic while managing conditional dependencies themselves, by
@@ -741,25 +741,25 @@ class Checkpointable(object):
 
     Args:
       name: The name of the dependency within this object (`self`), used to
-        match `checkpointable` with values saved in a checkpoint.
-      checkpointable: The Checkpointable object to restore (inheriting from
-        `Checkpointable`).
+        match `trackable` with values saved in a checkpoint.
+      trackable: The Trackable object to restore (inheriting from
+        `Trackable`).
     """
-    self._maybe_initialize_checkpointable()
-    checkpointable._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+    self._maybe_initialize_trackable()
+    trackable._maybe_initialize_trackable()  # pylint: disable=protected-access
     deferred_dependencies_list = self._deferred_dependencies.pop(name, ())
     for checkpoint_position in sorted(
         deferred_dependencies_list,
         key=lambda restore: restore.checkpoint.restore_uid,
         reverse=True):
-      checkpoint_position.restore(checkpointable)
+      checkpoint_position.restore(trackable)
 
     # Pass on any name-based restores queued in this object.
     for name_based_restore in sorted(
         self._name_based_restores,
         key=lambda checkpoint: checkpoint.restore_uid,
         reverse=True):
-      checkpointable._name_based_attribute_restore(name_based_restore)  # pylint: disable=protected-access
+      trackable._name_based_attribute_restore(name_based_restore)  # pylint: disable=protected-access
 
   def _restore_from_checkpoint_position(self, checkpoint_position):
     """Restore this object and its dependencies (may be deferred)."""
@@ -772,7 +772,7 @@ class Checkpointable(object):
     while visit_queue:
       current_position = visit_queue.popleft()
       restore_ops.extend(nest.flatten(
-          current_position.checkpointable  # pylint: disable=protected-access
+          current_position.trackable  # pylint: disable=protected-access
           ._single_restoration_from_checkpoint_position(
               checkpoint_position=current_position,
               visit_queue=visit_queue)))
@@ -781,7 +781,7 @@ class Checkpointable(object):
   def _single_restoration_from_checkpoint_position(
       self, checkpoint_position, visit_queue):
     """Restore this object, and either queue its dependencies or defer them."""
-    self._maybe_initialize_checkpointable()
+    self._maybe_initialize_trackable()
     checkpoint = checkpoint_position.checkpoint
     # If the UID of this restore is lower than our current update UID, we don't
     # need to actually restore the object. However, we should pass the
@@ -802,7 +802,7 @@ class Checkpointable(object):
         self._deferred_dependencies.setdefault(child.local_name, []).append(
             child_position)
       else:
-        if child_position.bind_object(checkpointable=local_object):
+        if child_position.bind_object(trackable=local_object):
           # This object's correspondence is new, so dependencies need to be
           # visited. Delay doing it so that we get a breadth-first dependency
           # resolution order (shallowest paths first). The caller is responsible
@@ -818,7 +818,7 @@ class Checkpointable(object):
     or variables easily converted to `SaveableObject`s (as in `tf.train.Saver`'s
     `var_list` constructor argument).
 
-    `SaveableObjects` have a name set, which Checkpointable needs to generate
+    `SaveableObjects` have a name set, which Trackable needs to generate
     itself. So rather than returning `SaveableObjects` directly, this method
     should return a dictionary of callables which take `name` arguments and
     return `SaveableObjects` with that name.
@@ -861,10 +861,10 @@ class Checkpointable(object):
         state_callback=_state_callback)}
 
   def _list_functions_for_serialization(self):
-    """Lists the functions of this checkpointable to serialize.
+    """Lists the functions of this trackable to serialize.
 
     Internal sub-classes can override this with specific logic. E.g.
-    `AutoCheckpointable` provides an implementation that returns the `attr`
+    `AutoTrackable` provides an implementation that returns the `attr`
     that return functions.
 
     Returns:

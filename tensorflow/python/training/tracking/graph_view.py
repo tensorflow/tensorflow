@@ -1,4 +1,4 @@
-"""Manages a graph of Checkpointable objects."""
+"""Manages a graph of Trackable objects."""
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -20,16 +20,16 @@ from __future__ import print_function
 import collections
 import weakref
 
-from tensorflow.core.protobuf import checkpointable_object_graph_pb2
+from tensorflow.core.protobuf import trackable_object_graph_pb2
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.training import optimizer as optimizer_v1
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import object_identity
-from tensorflow.python.training.checkpointable import tracking
 from tensorflow.python.training.saving import saveable_object as saveable_object_lib
 from tensorflow.python.training.saving import saveable_object_util
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import tracking
 
 
 _ESCAPE_CHAR = "."  # For avoiding conflicts with user-specified names.
@@ -60,8 +60,8 @@ def _escape_local_name(name):
 
 def _object_prefix_from_path(path_to_root):
   return "/".join(
-      (_escape_local_name(checkpointable.name)
-       for checkpointable in path_to_root))
+      (_escape_local_name(trackable.name)
+       for trackable in path_to_root))
 
 
 def _slot_variable_naming_for_optimizer(optimizer_path):
@@ -86,28 +86,28 @@ def _slot_variable_naming_for_optimizer(optimizer_path):
   return _name_slot_variable
 
 
-def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
+def _serialize_slot_variables(trackable_objects, node_ids, object_names):
   """Gather and name slot variables."""
-  non_slot_objects = list(checkpointable_objects)
+  non_slot_objects = list(trackable_objects)
   slot_variables = object_identity.ObjectIdentityDictionary()
-  for checkpointable in non_slot_objects:
-    if (isinstance(checkpointable, optimizer_v1.Optimizer)
+  for trackable in non_slot_objects:
+    if (isinstance(trackable, optimizer_v1.Optimizer)
         # TODO(b/110718070): Fix Keras imports.
-        or hasattr(checkpointable, "_create_or_restore_slot_variable")):
+        or hasattr(trackable, "_create_or_restore_slot_variable")):
       naming_scheme = _slot_variable_naming_for_optimizer(
-          optimizer_path=object_names[checkpointable])
-      slot_names = checkpointable.get_slot_names()
+          optimizer_path=object_names[trackable])
+      slot_names = trackable.get_slot_names()
       for slot_name in slot_names:
         for original_variable_node_id, original_variable in enumerate(
             non_slot_objects):
           try:
-            slot_variable = checkpointable.get_slot(
+            slot_variable = trackable.get_slot(
                 original_variable, slot_name)
           except (AttributeError, KeyError):
             slot_variable = None
           if slot_variable is None:
             continue
-          slot_variable._maybe_initialize_checkpointable()  # pylint: disable=protected-access
+          slot_variable._maybe_initialize_trackable()  # pylint: disable=protected-access
           if slot_variable._checkpoint_dependencies:  # pylint: disable=protected-access
             # TODO(allenl): Gather dependencies of slot variables.
             raise NotImplementedError(
@@ -117,22 +117,22 @@ def _serialize_slot_variables(checkpointable_objects, node_ids, object_names):
           if slot_variable in node_ids:
             raise NotImplementedError(
                 "A slot variable was re-used as a dependency of a "
-                "Checkpointable object. This is not currently allowed. File a "
+                "Trackable object. This is not currently allowed. File a "
                 "feature request if this limitation bothers you.")
           checkpoint_name = naming_scheme(
               variable_path=object_names[original_variable],
               slot_name=slot_name)
           object_names[slot_variable] = checkpoint_name
-          slot_variable_node_id = len(checkpointable_objects)
+          slot_variable_node_id = len(trackable_objects)
           node_ids[slot_variable] = slot_variable_node_id
-          checkpointable_objects.append(slot_variable)
+          trackable_objects.append(slot_variable)
           slot_variable_proto = (
-              checkpointable_object_graph_pb2.CheckpointableObjectGraph
-              .CheckpointableObject.SlotVariableReference(
+              trackable_object_graph_pb2.TrackableObjectGraph
+              .TrackableObject.SlotVariableReference(
                   slot_name=slot_name,
                   original_variable_node_id=original_variable_node_id,
                   slot_variable_node_id=slot_variable_node_id))
-          slot_variables.setdefault(checkpointable, []).append(
+          slot_variables.setdefault(trackable, []).append(
               slot_variable_proto)
   return slot_variables
 
@@ -144,9 +144,9 @@ class ObjectGraphView(object):
     """Configure the graph view.
 
     Args:
-      root: A `Checkpointable` object whose variables (including the variables
+      root: A `Trackable` object whose variables (including the variables
         of dependencies, recursively) should be saved. May be a weak reference.
-      saveables_cache: A dictionary mapping `Checkpointable` objects ->
+      saveables_cache: A dictionary mapping `Trackable` objects ->
         attribute names -> SaveableObjects, used to avoid re-creating
         SaveableObjects when graph building.
     """
@@ -155,13 +155,13 @@ class ObjectGraphView(object):
 
   def list_dependencies(self, obj):
     # pylint: disable=protected-access
-    obj._maybe_initialize_checkpointable()
+    obj._maybe_initialize_trackable()
     return obj._checkpoint_dependencies
     # pylint: enable=protected-access
 
   @property
   def saveables_cache(self):
-    """Maps Checkpointable objects -> attribute names -> list(SaveableObjects).
+    """Maps Trackable objects -> attribute names -> list(SaveableObjects).
 
     Used to avoid re-creating SaveableObjects when graph building. None when
     executing eagerly.
@@ -187,25 +187,25 @@ class ObjectGraphView(object):
     path_to_root = object_identity.ObjectIdentityDictionary()
     path_to_root[self.root] = ()
     while to_visit:
-      current_checkpointable = to_visit.popleft()
-      if isinstance(current_checkpointable, tracking.NotCheckpointable):
+      current_trackable = to_visit.popleft()
+      if isinstance(current_trackable, tracking.NotTrackable):
         raise NotImplementedError(
             ("The object %s does not support object-based saving. File a "
              "feature request if this limitation bothers you. In the meantime, "
              "you can remove the dependency on this object and save everything "
              "else.")
-            % (current_checkpointable,))
-      bfs_sorted.append(current_checkpointable)
-      for name, dependency in self.list_dependencies(current_checkpointable):
+            % (current_trackable,))
+      bfs_sorted.append(current_trackable)
+      for name, dependency in self.list_dependencies(current_trackable):
         if dependency not in path_to_root:
           path_to_root[dependency] = (
-              path_to_root[current_checkpointable] + (
-                  base.CheckpointableReference(name, dependency),))
+              path_to_root[current_trackable] + (
+                  base.TrackableReference(name, dependency),))
           to_visit.append(dependency)
     return bfs_sorted, path_to_root
 
   def _add_attributes_to_object_graph(
-      self, checkpointable_objects, object_graph_proto, node_ids, object_names,
+      self, trackable_objects, object_graph_proto, node_ids, object_names,
       object_map):
     """Create SaveableObjects and corresponding SerializedTensor protos."""
     named_saveable_objects = []
@@ -218,14 +218,14 @@ class ObjectGraphView(object):
       # functions computing volatile Python state to be saved with the
       # checkpoint.
       feed_additions = {}
-    for checkpoint_id, (checkpointable, object_proto) in enumerate(
-        zip(checkpointable_objects, object_graph_proto.nodes)):
-      assert node_ids[checkpointable] == checkpoint_id
-      object_name = object_names[checkpointable]
+    for checkpoint_id, (trackable, object_proto) in enumerate(
+        zip(trackable_objects, object_graph_proto.nodes)):
+      assert node_ids[trackable] == checkpoint_id
+      object_name = object_names[trackable]
       if object_map is None:
-        object_to_save = checkpointable
+        object_to_save = trackable
       else:
-        object_to_save = object_map.get(checkpointable, checkpointable)
+        object_to_save = object_map.get(trackable, trackable)
       if self._saveables_cache is not None:
         cached_attributes = self._saveables_cache.setdefault(object_to_save, {})
       else:
@@ -272,7 +272,7 @@ class ObjectGraphView(object):
               raise AssertionError(
                   ("The object %s produced a SaveableObject with name '%s' for "
                    "attribute '%s'. Expected a name containing '%s'.")
-                  % (checkpointable, name, saveable.name,
+                  % (trackable, name, saveable.name,
                      attribute.checkpoint_key))
           if cached_attributes is not None:
             cached_attributes[name] = saveables
@@ -302,7 +302,7 @@ class ObjectGraphView(object):
                       ("The object %s tried to feed a value for the Tensor %s "
                        "when saving, but another object is already feeding a "
                        "value.")
-                      % (checkpointable, new_feed_key))
+                      % (trackable, new_feed_key))
               feed_additions.update(saveable_feed_dict)
           named_saveable_objects.append(saveable)
         if optional_restore is None:
@@ -311,44 +311,44 @@ class ObjectGraphView(object):
 
     return named_saveable_objects, feed_additions
 
-  def _fill_object_graph_proto(self, checkpointable_objects,
+  def _fill_object_graph_proto(self, trackable_objects,
                                node_ids,
                                slot_variables,
                                object_graph_proto=None):
-    """Name non-slot `Checkpointable`s and add them to `object_graph_proto`."""
+    """Name non-slot `Trackable`s and add them to `object_graph_proto`."""
     if object_graph_proto is None:
       object_graph_proto = (
-          checkpointable_object_graph_pb2.CheckpointableObjectGraph())
-    for checkpoint_id, checkpointable in enumerate(checkpointable_objects):
-      assert node_ids[checkpointable] == checkpoint_id
+          trackable_object_graph_pb2.TrackableObjectGraph())
+    for checkpoint_id, trackable in enumerate(trackable_objects):
+      assert node_ids[trackable] == checkpoint_id
       object_proto = object_graph_proto.nodes.add()
-      object_proto.slot_variables.extend(slot_variables.get(checkpointable, ()))
-      for child in self.list_dependencies(checkpointable):
+      object_proto.slot_variables.extend(slot_variables.get(trackable, ()))
+      for child in self.list_dependencies(trackable):
         child_proto = object_proto.children.add()
         child_proto.node_id = node_ids[child.ref]
         child_proto.local_name = child.name
     return object_graph_proto
 
-  def _serialize_gathered_objects(self, checkpointable_objects, path_to_root,
+  def _serialize_gathered_objects(self, trackable_objects, path_to_root,
                                   object_map=None):
     """Create SaveableObjects and protos for gathered objects."""
     object_names = object_identity.ObjectIdentityDictionary()
     for obj, path in path_to_root.items():
       object_names[obj] = _object_prefix_from_path(path)
     node_ids = object_identity.ObjectIdentityDictionary()
-    for node_id, node in enumerate(checkpointable_objects):
+    for node_id, node in enumerate(trackable_objects):
       node_ids[node] = node_id
     slot_variables = _serialize_slot_variables(
-        checkpointable_objects=checkpointable_objects,
+        trackable_objects=trackable_objects,
         node_ids=node_ids,
         object_names=object_names)
     object_graph_proto = self._fill_object_graph_proto(
-        checkpointable_objects=checkpointable_objects,
+        trackable_objects=trackable_objects,
         node_ids=node_ids,
         slot_variables=slot_variables)
     named_saveable_objects, feed_additions = (
         self._add_attributes_to_object_graph(
-            checkpointable_objects=checkpointable_objects,
+            trackable_objects=trackable_objects,
             object_graph_proto=object_graph_proto,
             node_ids=node_ids,
             object_names=object_names,
@@ -360,7 +360,7 @@ class ObjectGraphView(object):
 
     Non-slot variables are keyed based on a shortest path from the root saveable
     to the object which owns the variable (i.e. the one which called
-    `Checkpointable._add_variable` to create it).
+    `Trackable._add_variable` to create it).
 
     Slot variables are keyed based on a shortest path to the variable being
     slotted for, a shortest path to their optimizer, and the slot name.
@@ -368,7 +368,7 @@ class ObjectGraphView(object):
     Returns:
       A tuple of (named_variables, object_graph_proto, feed_additions):
         named_variables: A dictionary mapping names to variable objects.
-        object_graph_proto: A CheckpointableObjectGraph protocol buffer
+        object_graph_proto: A TrackableObjectGraph protocol buffer
           containing the serialized object graph and variable references.
         feed_additions: A dictionary mapping from Tensors to values which should
           be fed when saving.
@@ -376,20 +376,20 @@ class ObjectGraphView(object):
     Raises:
       ValueError: If there are invalid characters in an optimizer's slot names.
     """
-    checkpointable_objects, path_to_root = self._breadth_first_traversal()
+    trackable_objects, path_to_root = self._breadth_first_traversal()
     return self._serialize_gathered_objects(
-        checkpointable_objects, path_to_root)
+        trackable_objects, path_to_root)
 
   def frozen_saveable_objects(self, object_map=None, to_graph=None):
     """Creates SaveableObjects with the current object graph frozen."""
-    checkpointable_objects, path_to_root = self._breadth_first_traversal()
+    trackable_objects, path_to_root = self._breadth_first_traversal()
     if to_graph:
       target_context = to_graph.as_default
     else:
       target_context = ops.NullContextmanager
     with target_context():
       named_saveable_objects, graph_proto, _ = self._serialize_gathered_objects(
-          checkpointable_objects,
+          trackable_objects,
           path_to_root,
           object_map)
       with ops.device("/cpu:0"):
@@ -404,28 +404,28 @@ class ObjectGraphView(object):
   def objects_ids_and_slot_variables(self):
     """Traverse the object graph and list all accessible objects.
 
-    Looks for `Checkpointable` objects which are dependencies of
-    `root_checkpointable`. Includes slot variables only if the variable they are
-    slotting for and the optimizer are dependencies of `root_checkpointable`
+    Looks for `Trackable` objects which are dependencies of
+    `root_trackable`. Includes slot variables only if the variable they are
+    slotting for and the optimizer are dependencies of `root_trackable`
     (i.e. if they would be saved with a checkpoint).
 
     Returns:
-      A tuple of (checkpointable objects, object -> node id, slot variables)
+      A tuple of (trackable objects, object -> node id, slot variables)
     """
-    checkpointable_objects, path_to_root = self._breadth_first_traversal()
+    trackable_objects, path_to_root = self._breadth_first_traversal()
     object_names = object_identity.ObjectIdentityDictionary()
     for obj, path in path_to_root.items():
       object_names[obj] = _object_prefix_from_path(path)
     node_ids = object_identity.ObjectIdentityDictionary()
-    for node_id, node in enumerate(checkpointable_objects):
+    for node_id, node in enumerate(trackable_objects):
       node_ids[node] = node_id
     slot_variables = _serialize_slot_variables(
-        checkpointable_objects=checkpointable_objects,
+        trackable_objects=trackable_objects,
         node_ids=node_ids,
         object_names=object_names)
-    return checkpointable_objects, node_ids, slot_variables
+    return trackable_objects, node_ids, slot_variables
 
   def list_objects(self):
     """Traverse the object graph and list all accessible objects."""
-    checkpointable_objects, _, _ = self.objects_ids_and_slot_variables()
-    return checkpointable_objects
+    trackable_objects, _, _ = self.objects_ids_and_slot_variables()
+    return trackable_objects

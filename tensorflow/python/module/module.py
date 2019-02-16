@@ -27,7 +27,7 @@ import six
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
@@ -149,7 +149,7 @@ def with_name_scope(unbound_method):
 
 
 @tf_export("Module", "experimental.Module")
-class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
+class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
   """Base neural network module class.
 
   A module is a named container for `tf.Variable`s, other `tf.Module`s and
@@ -375,7 +375,7 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-# AutoCheckpointable adds object attributes that users will not expect us to
+# AutoTrackable adds object attributes that users will not expect us to
 # include when flattening (these reference dependencies reachable via other
 # object attributes).
 AUTO_CHECKPOINTABLE_ATTRS = ("_unconditional_checkpoint_dependencies",

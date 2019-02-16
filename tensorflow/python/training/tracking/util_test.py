@@ -46,17 +46,17 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_lib
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import graph_view
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
-class NonLayerCheckpointable(tracking.AutoCheckpointable):
+class NonLayerTrackable(tracking.AutoTrackable):
 
   def __init__(self):
-    super(NonLayerCheckpointable, self).__init__()
-    self.a_variable = checkpointable_utils.add_variable(
+    super(NonLayerTrackable, self).__init__()
+    self.a_variable = trackable_utils.add_variable(
         self, name="a_variable", shape=[])
 
 
@@ -68,8 +68,8 @@ class MyModel(training.Model):
     super(MyModel, self).__init__()
     self._named_dense = core.Dense(1, use_bias=True)
     self._second = core.Dense(1, use_bias=False)
-    # We can still track Checkpointables which aren't Layers.
-    self._non_layer = NonLayerCheckpointable()
+    # We can still track Trackables which aren't Layers.
+    self._non_layer = NonLayerTrackable()
 
   def call(self, values):
     ret = self._second(self._named_dense(values))
@@ -89,19 +89,19 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testAddVariable(self):
-    obj = NonLayerCheckpointable()
+    obj = NonLayerTrackable()
     with self.assertRaisesRegexp(ValueError, "do not specify shape"):
-      checkpointable_utils.add_variable(
+      trackable_utils.add_variable(
           obj, name="shape_specified_twice", shape=[], initializer=1)
-    constant_initializer = checkpointable_utils.add_variable(
+    constant_initializer = trackable_utils.add_variable(
         obj, name="constant_initializer", initializer=1)
     with variable_scope.variable_scope("some_variable_scope"):
-      ones_initializer = checkpointable_utils.add_variable(
+      ones_initializer = trackable_utils.add_variable(
           obj,
           name="ones_initializer",
           shape=[2],
           initializer=init_ops.ones_initializer(dtype=dtypes.float32))
-    bare_initializer = checkpointable_utils.add_variable(
+    bare_initializer = trackable_utils.add_variable(
         obj,
         name="bare_initializer",
         shape=[2, 2],
@@ -112,12 +112,12 @@ class InterfaceTests(test.TestCase):
     # naming conflicts within an object.
     other_duplicate = resource_variable_ops.ResourceVariable(
         name="duplicate", initial_value=1.)
-    duplicate = checkpointable_utils.add_variable(
+    duplicate = trackable_utils.add_variable(
         obj, name="duplicate", shape=[])
     with self.assertRaisesRegexp(ValueError, "'duplicate'.*already declared"):
-      checkpointable_utils.add_variable(obj, name="duplicate", shape=[])
+      trackable_utils.add_variable(obj, name="duplicate", shape=[])
 
-    self.evaluate(checkpointable_utils.gather_initializers(obj))
+    self.evaluate(trackable_utils.gather_initializers(obj))
     self.assertEqual("constant_initializer:0", constant_initializer.name)
     self.assertEqual(1, self.evaluate(constant_initializer))
     self.assertEqual("some_variable_scope/ones_initializer:0",
@@ -149,20 +149,20 @@ class InterfaceTests(test.TestCase):
 
   def testInitNotCalled(self):
 
-    class NoInit(tracking.AutoCheckpointable):
+    class NoInit(tracking.AutoTrackable):
 
       def __init__(self):
         pass
 
-    # __init__ for Checkpointable will be called implicitly.
-    checkpointable_utils.add_variable(NoInit(), "var", shape=[])
+    # __init__ for Trackable will be called implicitly.
+    trackable_utils.add_variable(NoInit(), "var", shape=[])
 
   def testShapeDtype(self):
-    root = tracking.AutoCheckpointable()
-    v1 = checkpointable_utils.add_variable(
+    root = tracking.AutoTrackable()
+    v1 = trackable_utils.add_variable(
         root, name="v1", initializer=3., dtype=dtypes.float64)
     self.assertEqual(dtypes.float64, v1.dtype)
-    v2 = checkpointable_utils.add_variable(
+    v2 = trackable_utils.add_variable(
         root,
         name="v2",
         shape=[3],
@@ -176,34 +176,34 @@ class InterfaceTests(test.TestCase):
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       dense = core.Dense(1)
-      checkpoint = checkpointable_utils.Checkpoint(dense=dense)
+      checkpoint = trackable_utils.Checkpoint(dense=dense)
       dense(constant_op.constant([[1.]]))
       save_path = checkpoint.save(checkpoint_prefix)
 
-    objects = checkpointable_utils.object_metadata(save_path)
+    objects = trackable_utils.object_metadata(save_path)
     all_variable_names = []
     for obj in objects.nodes:
       for attribute in obj.attributes:
         all_variable_names.append(attribute.full_name)
     self.assertIn("dense/kernel", all_variable_names)
 
-  def testNotCheckpointable(self):
+  def testNotTrackable(self):
 
     class CallsFunctionalStuff(
-        tracking.NotCheckpointable, tracking.AutoCheckpointable):
+        tracking.NotTrackable, tracking.AutoTrackable):
       pass
 
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
-    checkpoint = checkpointable_utils.Checkpoint(x=CallsFunctionalStuff())
+    checkpoint = trackable_utils.Checkpoint(x=CallsFunctionalStuff())
     with self.assertRaises(NotImplementedError):
       checkpoint.save(prefix)
 
     class CallsFunctionalStuffOtherMRO(
-        tracking.AutoCheckpointable, tracking.NotCheckpointable):
+        tracking.AutoTrackable, tracking.NotTrackable):
       pass
 
-    checkpoint_reversed = checkpointable_utils.Checkpoint(
+    checkpoint_reversed = trackable_utils.Checkpoint(
         x=CallsFunctionalStuffOtherMRO())
     with self.assertRaises(NotImplementedError):
       checkpoint_reversed.save(prefix)
@@ -230,8 +230,8 @@ class _MirroringSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
         self._mirrored_variable.assign(tensor))
 
 
-class _OwnsMirroredVariables(base.Checkpointable):
-  """A Checkpointable object which returns a more complex SaveableObject."""
+class _OwnsMirroredVariables(base.Trackable):
+  """A Trackable object which returns a more complex SaveableObject."""
 
   def __init__(self):
     self.non_dep_variable = variable_scope.get_variable(
@@ -264,7 +264,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     other_model = MyModel()
     optimizer = adam.Adam(0.001)
     step = training_util.get_or_create_global_step()
-    root_checkpointable = checkpointable_utils.Checkpoint(
+    root_trackable = trackable_utils.Checkpoint(
         optimizer=optimizer, model=model, step=step)
 
     with backprop.GradientTape() as tape:
@@ -281,11 +281,11 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     gradients = tape.gradient(loss, variables)
     optimizer.apply_gradients(zip(gradients, variables))
 
-    self.evaluate(checkpointable_utils.gather_initializers(
-        root_checkpointable))
+    self.evaluate(trackable_utils.gather_initializers(
+        root_trackable))
     self.evaluate(train_op)
     named_variables, serialized_graph, _ = graph_view.ObjectGraphView(
-        root_checkpointable).serialize_object_graph()
+        root_trackable).serialize_object_graph()
     expected_slot_keys = (
         "model/_second/kernel/.OPTIMIZER_SLOT/optimizer/m",
         "model/_second/kernel/.OPTIMIZER_SLOT/optimizer/v",
@@ -361,7 +361,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testMoreComplexSaveableReturned(self):
     v = _OwnsMirroredVariables()
-    checkpoint = checkpointable_utils.Checkpoint(v=v)
+    checkpoint = trackable_utils.Checkpoint(v=v)
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
     self.evaluate(v.non_dep_variable.assign(42.))
@@ -398,7 +398,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def testSaveRestore(self):
     model = MyModel()
     optimizer = adam.Adam(0.001)
-    root_checkpointable = checkpointable_utils.Checkpoint(
+    root_trackable = trackable_utils.Checkpoint(
         optimizer=optimizer, model=model)
     input_value = constant_op.constant([[3.]])
     with backprop.GradientTape() as tape:
@@ -406,31 +406,31 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     variables = model.trainable_variables
     gradients = tape.gradient(loss, variables)
     train_op = optimizer.apply_gradients(zip(gradients, variables))
-    root_checkpointable.save_counter  # pylint: disable=pointless-statement
-    self.evaluate(checkpointable_utils.gather_initializers(
-        root_checkpointable))
+    root_trackable.save_counter  # pylint: disable=pointless-statement
+    self.evaluate(trackable_utils.gather_initializers(
+        root_trackable))
     self.evaluate(train_op)
     prefix = os.path.join(self.get_temp_dir(), "ckpt")
     self.evaluate(state_ops.assign(model._named_dense.variables[1], [42.]))
     m_bias_slot = optimizer.get_slot(model._named_dense.variables[1], "m")
     self.evaluate(state_ops.assign(m_bias_slot, [1.5]))
-    save_path = root_checkpointable.save(file_prefix=prefix)
+    save_path = root_trackable.save(file_prefix=prefix)
     self.evaluate(state_ops.assign(model._named_dense.variables[1], [43.]))
-    self.evaluate(state_ops.assign(root_checkpointable.save_counter, 3))
+    self.evaluate(state_ops.assign(root_trackable.save_counter, 3))
     optimizer_variables = self.evaluate(
         sorted(optimizer.variables(), key=lambda v: v.name))
     self.evaluate(state_ops.assign(m_bias_slot, [-2.]))
     # Immediate restoration
-    status = root_checkpointable.restore(save_path=save_path).assert_consumed()
+    status = root_trackable.restore(save_path=save_path).assert_consumed()
     status.run_restore_ops()
     self.assertAllEqual([42.], self.evaluate(model._named_dense.variables[1]))
-    self.assertAllEqual(1, self.evaluate(root_checkpointable.save_counter))
+    self.assertAllEqual(1, self.evaluate(root_trackable.save_counter))
     self.assertAllEqual([1.5], self.evaluate(m_bias_slot))
     if not context.executing_eagerly():
       return  # Restore-on-create is only supported when executing eagerly
     on_create_model = MyModel()
     on_create_optimizer = adam.Adam(0.001)
-    on_create_root = checkpointable_utils.Checkpoint(
+    on_create_root = trackable_utils.Checkpoint(
         optimizer=on_create_optimizer, model=on_create_model)
     # Deferred restoration
     status = on_create_root.restore(save_path=save_path)
@@ -471,7 +471,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     for training_continuation in range(3):
       model = MyModel()
       optimizer = adam.Adam(0.001)
-      root = checkpointable_utils.Checkpoint(
+      root = trackable_utils.Checkpoint(
           optimizer=optimizer, model=model)
       root.restore(checkpoint_management.latest_checkpoint(
           checkpoint_directory))
@@ -497,7 +497,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.Adam(0.001)
-          root = checkpointable_utils.Checkpoint(
+          root = trackable_utils.Checkpoint(
               optimizer=optimizer, model=model)
           input_value = constant_op.constant([[3.]])
           with backprop.GradientTape() as tape:
@@ -544,7 +544,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       with test_util.device(use_gpu=True):
         model = MyModel()
         optimizer = adam.Adam(0.001)
-        root = checkpointable_utils.Checkpoint(
+        root = trackable_utils.Checkpoint(
             optimizer=optimizer, model=model)
         manager = checkpoint_management.CheckpointManager(
             root, checkpoint_directory, max_to_keep=1)
@@ -569,12 +569,12 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       directory = self.get_temp_dir()
       prefix = os.path.join(directory, "ckpt")
       v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
-      checkpoint = checkpointable_utils.Checkpoint(v=v)
+      checkpoint = trackable_utils.Checkpoint(v=v)
       self.evaluate(v.assign(3))
       # Create the save counter so assert_consumed doesn't complain about it not
       # existing in the checkpoint on restore.
       self.evaluate(checkpoint.save_counter.assign(12))
-      saver = checkpointable_utils.frozen_saver(checkpoint)
+      saver = trackable_utils.frozen_saver(checkpoint)
       with ops.device("cpu:0"):
         prefix_tensor = constant_op.constant(prefix)
       save_path = self.evaluate(saver.save(prefix_tensor))
@@ -586,14 +586,14 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       # Restore using another frozen saver on an identical object graph
       del v, checkpoint, saver
       v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
-      checkpoint = checkpointable_utils.Checkpoint(v=v)
-      saver = checkpointable_utils.frozen_saver(checkpoint)
+      checkpoint = trackable_utils.Checkpoint(v=v)
+      saver = trackable_utils.frozen_saver(checkpoint)
       self.evaluate(saver.restore(prefix_tensor))
       self.assertEqual(3, self.evaluate(v))
 
       # Restore as an object-based checkpoint
       del v, checkpoint, saver
-      checkpoint = checkpointable_utils.Checkpoint()
+      checkpoint = trackable_utils.Checkpoint()
       status = checkpoint.restore(save_path)
       v = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
       if context.executing_eagerly():
@@ -609,7 +609,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     directory = self.get_temp_dir()
     prefix = os.path.join(directory, "ckpt")
     step = resource_variable_ops.ResourceVariable(0, dtype=dtypes.int64)
-    checkpoint = checkpointable_utils.Checkpoint(step=step)
+    checkpoint = trackable_utils.Checkpoint(step=step)
     self.evaluate(step.initializer)
     for i in range(5):
       path = checkpoint.write("%s-%d" % (prefix, self.evaluate(step)))
@@ -630,7 +630,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         model = MyModel()
         # Don't actually train so we can test variable values
         optimizer = adam.Adam(0.)
-        root = checkpointable_utils.Checkpoint(
+        root = trackable_utils.Checkpoint(
             optimizer=optimizer, model=model)
         checkpoint_path = checkpoint_management.latest_checkpoint(
             checkpoint_directory)
@@ -662,8 +662,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   # pylint: enable=cell-var-from-loop
 
   def _get_checkpoint_name(self, name):
-    root = tracking.AutoCheckpointable()
-    checkpointable_utils.add_variable(
+    root = tracking.AutoTrackable()
+    trackable_utils.add_variable(
         root, name=name, shape=[1, 2], dtype=dtypes.float64)
     (named_variable,), _, _ = graph_view.ObjectGraphView(
         root).serialize_object_graph()
@@ -683,21 +683,21 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testNumberedPath(self):
-    root = tracking.AutoCheckpointable()
-    leaf = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
+    leaf = tracking.AutoTrackable()
     root.leaf = leaf
-    checkpointable_utils.add_variable(leaf, name="v", shape=[])
+    trackable_utils.add_variable(leaf, name="v", shape=[])
     (named_variable,), _, _ = graph_view.ObjectGraphView(
         root).serialize_object_graph()
     self.assertEqual(r"leaf/v/.ATTRIBUTES/VARIABLE_VALUE", named_variable.name)
 
   @test_util.run_in_graph_and_eager_modes
   def testLocalNameValidation(self):
-    root = tracking.AutoCheckpointable()
-    leaf = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
+    leaf = tracking.AutoTrackable()
     # Dots are escaped, which avoids conflicts with reserved names.
-    root._track_checkpointable(leaf, name=".ATTRIBUTES")
-    checkpointable_utils.add_variable(checkpointable=leaf, name="a", shape=[])
+    root._track_trackable(leaf, name=".ATTRIBUTES")
+    trackable_utils.add_variable(trackable=leaf, name="a", shape=[])
     (named_variable,), _, _ = graph_view.ObjectGraphView(
         root).serialize_object_graph()
     self.assertEqual("..ATTRIBUTES/a/.ATTRIBUTES/VARIABLE_VALUE",
@@ -721,7 +721,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       optimizer = adam.Adam(learning_rate=0.05)
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-      checkpoint = checkpointable_utils.Checkpoint(
+      checkpoint = trackable_utils.Checkpoint(
           model=model, optimizer=optimizer)
       for _ in range(2):
         checkpoint.save(checkpoint_prefix)
@@ -735,13 +735,13 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testLateDependencyTracking(self):
 
-    class Dependency(tracking.AutoCheckpointable):
+    class Dependency(tracking.AutoTrackable):
 
       def build(self):
-        self.var = checkpointable_utils.add_variable(
+        self.var = trackable_utils.add_variable(
             self, "var", initializer=0.)
 
-    class LateDependencies(checkpointable_utils.Checkpoint):
+    class LateDependencies(trackable_utils.Checkpoint):
 
       def add_dep(self):
         self.dep = Dependency()
@@ -766,13 +766,13 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testDepAfterVar(self):
 
-    class Dependency(tracking.AutoCheckpointable):
+    class Dependency(tracking.AutoTrackable):
 
       def build(self):
-        self.var = checkpointable_utils.add_variable(
+        self.var = trackable_utils.add_variable(
             self, "var", initializer=0.)
 
-    class DepAfterVar(checkpointable_utils.Checkpoint):
+    class DepAfterVar(trackable_utils.Checkpoint):
 
       def add_dep(self):
         dep = Dependency()
@@ -797,8 +797,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def testDeferredSlotRestoration(self):
     checkpoint_directory = self.get_temp_dir()
 
-    root = checkpointable_utils.Checkpoint()
-    root.var = checkpointable_utils.add_variable(
+    root = trackable_utils.Checkpoint()
+    root.var = trackable_utils.add_variable(
         root, name="var", initializer=0.)
     optimizer = adam.Adam(0.1)
     variables = [root.var]
@@ -807,8 +807,8 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # Note that `optimizer` has not been added as a dependency of
     # `root`. Create a one-off grouping so that slot variables for `root.var`
     # get initialized too.
-    self.evaluate(checkpointable_utils.gather_initializers(
-        checkpointable_utils.Checkpoint(root=root, optimizer=optimizer)))
+    self.evaluate(trackable_utils.gather_initializers(
+        trackable_utils.Checkpoint(root=root, optimizer=optimizer)))
     self.evaluate(train_op)
     self.evaluate(state_ops.assign(root.var, 12.))
     no_slots_path = root.save(os.path.join(checkpoint_directory, "no_slots"))
@@ -818,14 +818,14 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         optimizer.get_slot(slot_name="m", var=root.var),
         14.))
     slots_path = root.save(os.path.join(checkpoint_directory, "with_slots"))
-    new_root = checkpointable_utils.Checkpoint()
+    new_root = trackable_utils.Checkpoint()
     # Load the slot-containing checkpoint (deferred), then immediately overwrite
     # the non-slot variable (also deferred).
     slot_status = new_root.restore(slots_path)
     no_slot_status = new_root.restore(no_slots_path)
     with self.assertRaises(AssertionError):
       no_slot_status.assert_consumed()
-    new_root.var = checkpointable_utils.add_variable(
+    new_root.var = trackable_utils.add_variable(
         new_root, name="var", shape=[])
     no_slot_status.assert_consumed()
     no_slot_status.run_restore_ops()
@@ -862,21 +862,21 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def testOverlappingRestores(self):
     checkpoint_directory = self.get_temp_dir()
-    save_root = checkpointable_utils.Checkpoint()
-    save_root.dep = tracking.AutoCheckpointable()
-    save_root.dep.var = checkpointable_utils.add_variable(
+    save_root = trackable_utils.Checkpoint()
+    save_root.dep = tracking.AutoTrackable()
+    save_root.dep.var = trackable_utils.add_variable(
         save_root.dep, name="var", initializer=0.)
     self.evaluate(state_ops.assign(save_root.dep.var, 12.))
     first_path = save_root.save(os.path.join(checkpoint_directory, "first"))
     self.evaluate(state_ops.assign(save_root.dep.var, 13.))
     second_path = save_root.save(os.path.join(checkpoint_directory, "second"))
 
-    first_root = checkpointable_utils.Checkpoint()
-    second_root = checkpointable_utils.Checkpoint()
+    first_root = trackable_utils.Checkpoint()
+    second_root = trackable_utils.Checkpoint()
     first_status = first_root.restore(first_path)
     second_status = second_root.restore(second_path)
-    load_dep = tracking.AutoCheckpointable()
-    load_dep.var = checkpointable_utils.add_variable(
+    load_dep = tracking.AutoTrackable()
+    load_dep.var = trackable_utils.add_variable(
         load_dep, name="var", shape=[])
     first_root.dep = load_dep
     first_status.assert_consumed()
@@ -889,12 +889,12 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     # Try again with the order of the restore() reversed. The last restore
     # determines the final value.
-    first_root = checkpointable_utils.Checkpoint()
-    second_root = checkpointable_utils.Checkpoint()
+    first_root = trackable_utils.Checkpoint()
+    second_root = trackable_utils.Checkpoint()
     second_status = second_root.restore(second_path)
     first_status = first_root.restore(first_path)
-    load_dep = tracking.AutoCheckpointable()
-    load_dep.var = checkpointable_utils.add_variable(
+    load_dep = tracking.AutoTrackable()
+    load_dep.var = trackable_utils.add_variable(
         load_dep, name="var", shape=[])
     first_root.dep = load_dep
     first_status.assert_consumed()
@@ -909,22 +909,22 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def testAmbiguousLoad(self):
     # Not OK to split one checkpoint object into two
     checkpoint_directory = self.get_temp_dir()
-    save_root = checkpointable_utils.Checkpoint()
-    save_root.dep_one = tracking.AutoCheckpointable()
-    save_root.dep_two = tracking.AutoCheckpointable()
-    dep_three = tracking.AutoCheckpointable()
+    save_root = trackable_utils.Checkpoint()
+    save_root.dep_one = tracking.AutoTrackable()
+    save_root.dep_two = tracking.AutoTrackable()
+    dep_three = tracking.AutoTrackable()
     save_root.dep_one.dep_three = dep_three
     save_root.dep_two.dep_three = dep_three
-    checkpointable_utils.add_variable(dep_three, name="var", initializer=0.)
-    self.evaluate(checkpointable_utils.gather_initializers(save_root))
+    trackable_utils.add_variable(dep_three, name="var", initializer=0.)
+    self.evaluate(trackable_utils.gather_initializers(save_root))
     save_path = save_root.save(os.path.join(checkpoint_directory, "ckpt"))
-    load_root = checkpointable_utils.Checkpoint()
+    load_root = trackable_utils.Checkpoint()
     status = load_root.restore(save_path)
-    load_root.dep_one = tracking.AutoCheckpointable()
-    load_root.dep_two = tracking.AutoCheckpointable()
-    load_root.dep_one.dep_three = tracking.AutoCheckpointable()
-    load_root.dep_two.dep_three = tracking.AutoCheckpointable()
-    checkpointable_utils.add_variable(
+    load_root.dep_one = tracking.AutoTrackable()
+    load_root.dep_two = tracking.AutoTrackable()
+    load_root.dep_one.dep_three = tracking.AutoTrackable()
+    load_root.dep_two.dep_three = tracking.AutoTrackable()
+    trackable_utils.add_variable(
         load_root.dep_one.dep_three, name="var", initializer=0.)
     with self.assertRaises(AssertionError):
       status.assert_consumed()
@@ -935,21 +935,21 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def testObjectsCombined(self):
     # Currently fine to load two checkpoint objects into one Python object
     checkpoint_directory = self.get_temp_dir()
-    save_root = checkpointable_utils.Checkpoint()
-    save_root.dep_one = tracking.AutoCheckpointable()
-    save_root.dep_two = tracking.AutoCheckpointable()
-    checkpointable_utils.add_variable(
+    save_root = trackable_utils.Checkpoint()
+    save_root.dep_one = tracking.AutoTrackable()
+    save_root.dep_two = tracking.AutoTrackable()
+    trackable_utils.add_variable(
         save_root.dep_one, name="var1", initializer=32., dtype=dtypes.float64)
-    checkpointable_utils.add_variable(
+    trackable_utils.add_variable(
         save_root.dep_two, name="var2", initializer=64., dtype=dtypes.float64)
-    self.evaluate(checkpointable_utils.gather_initializers(save_root))
+    self.evaluate(trackable_utils.gather_initializers(save_root))
     save_path = save_root.save(os.path.join(checkpoint_directory, "ckpt"))
-    load_root = checkpointable_utils.Checkpoint()
-    load_root.dep_one = tracking.AutoCheckpointable()
+    load_root = trackable_utils.Checkpoint()
+    load_root.dep_one = tracking.AutoTrackable()
     load_root.dep_two = load_root.dep_one
-    v1 = checkpointable_utils.add_variable(
+    v1 = trackable_utils.add_variable(
         load_root.dep_one, name="var1", shape=[], dtype=dtypes.float64)
-    v2 = checkpointable_utils.add_variable(
+    v2 = trackable_utils.add_variable(
         load_root.dep_one, name="var2", shape=[], dtype=dtypes.float64)
     status = load_root.restore(
         save_path).assert_consumed().assert_existing_objects_matched()
@@ -961,29 +961,29 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def testDependencyLoop(self):
     # Note: this test creates garbage during eager execution because it
     # purposefully creates a reference cycle.
-    first = checkpointable_utils.Checkpoint()
-    second = checkpointable_utils.Checkpoint()
+    first = trackable_utils.Checkpoint()
+    second = trackable_utils.Checkpoint()
     first.second = second
     second.first = first
-    first.v = checkpointable_utils.add_variable(
+    first.v = trackable_utils.add_variable(
         first, "v1", initializer=[3., 1., 4.])
-    second.v = checkpointable_utils.add_variable(
+    second.v = trackable_utils.add_variable(
         second, "v2", initializer=[1., 1., 2., 3.])
-    self.evaluate(checkpointable_utils.gather_initializers(first))
+    self.evaluate(trackable_utils.gather_initializers(first))
     checkpoint_directory = self.get_temp_dir()
     save_path = first.save(os.path.join(checkpoint_directory, "ckpt"))
 
     # Test deferred loading
-    first_load = checkpointable_utils.Checkpoint()
+    first_load = trackable_utils.Checkpoint()
     status = first_load.restore(save_path)
-    second_load = tracking.AutoCheckpointable()
+    second_load = tracking.AutoTrackable()
     first_load.second = second_load
     second_load.first = first_load
     with self.assertRaises(AssertionError):
       status.assert_consumed()
-    first_load.v = checkpointable_utils.add_variable(
+    first_load.v = trackable_utils.add_variable(
         first_load, "v1", shape=[3])
-    second_load.v = checkpointable_utils.add_variable(
+    second_load.v = trackable_utils.add_variable(
         second_load, "v2", shape=[4])
     status.assert_consumed()
     status.run_restore_ops()
@@ -1004,14 +1004,14 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def testRestoreOnAssign(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    first = checkpointable_utils.Checkpoint()
+    first = trackable_utils.Checkpoint()
     first.var1 = variables_lib.Variable(0., name="outside_var")
     first.var2 = variables_lib.Variable(0., name="blah")
     self.evaluate(first.var1.assign(4.))
     self.evaluate(first.var2.assign(8.))
     save_path = first.save(checkpoint_prefix)
 
-    second = checkpointable_utils.Checkpoint()
+    second = trackable_utils.Checkpoint()
     second.var2 = variables_lib.Variable(0., name="blah")
     status = second.restore(save_path)
     recreated_var1 = variables_lib.Variable(0., name="outside_var")
@@ -1030,13 +1030,13 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = checkpointable_utils.Checkpoint()
+        obj = trackable_utils.Checkpoint()
         obj.var = variables_lib.Variable(0., name="v")
         obj.opt = adam.Adam(0.1)
         variables = [obj.var]
         gradients = [1.]
         obj.opt.apply_gradients(zip(gradients, variables))
-        self.evaluate(checkpointable_utils.gather_initializers(obj))
+        self.evaluate(trackable_utils.gather_initializers(obj))
         obj.save(checkpoint_prefix)
         graph.finalize()
         obj.save(checkpoint_prefix)
@@ -1046,10 +1046,10 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     # No checkpoints are deleted by default
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    obj = tracking.AutoCheckpointable()
+    obj = tracking.AutoTrackable()
     obj.var = variable_scope.get_variable(name="v", initializer=0.)
-    self.evaluate(checkpointable_utils.gather_initializers(obj))
-    saver = checkpointable_utils.Checkpoint(obj=obj)
+    self.evaluate(trackable_utils.gather_initializers(obj))
+    saver = trackable_utils.Checkpoint(obj=obj)
     for _ in range(10):
       saver.save(checkpoint_prefix)
     expected_filenames = ["checkpoint"]
@@ -1066,10 +1066,10 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   def testCheckpointStateChangingVarList(self):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-    obj = tracking.AutoCheckpointable()
+    obj = tracking.AutoTrackable()
     obj.var = variable_scope.get_variable(name="v", initializer=0.)
-    self.evaluate(checkpointable_utils.gather_initializers(obj))
-    checkpoint = checkpointable_utils.Checkpoint(obj=obj)
+    self.evaluate(trackable_utils.gather_initializers(obj))
+    checkpoint = trackable_utils.Checkpoint(obj=obj)
     looped_variables = []
     for iteration in range(10):
       new_variable = resource_variable_ops.ResourceVariable(iteration)
@@ -1119,13 +1119,13 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       with graph.as_default(), self.session(graph):
         checkpoint_directory = self.get_temp_dir()
         checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
-        obj = checkpointable_utils.Checkpoint()
+        obj = trackable_utils.Checkpoint()
         obj.var = variables_lib.Variable(0., name="v")
         obj.opt = adam.Adam(0.1)
         variables = [obj.var]
         gradients = [1.]
         obj.opt.apply_gradients(zip(gradients, variables))
-        self.evaluate(checkpointable_utils.gather_initializers(obj))
+        self.evaluate(trackable_utils.gather_initializers(obj))
         save_path = obj.save(checkpoint_prefix)
         obj.restore(save_path)
         graph.finalize()
@@ -1134,7 +1134,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
   @test_util.run_in_graph_and_eager_modes
   def test_sequential(self):
     model = sequential.Sequential()
-    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    checkpoint = trackable_utils.Checkpoint(model=model)
     model.add(core.Dense(4))
     second_dense = core.Dense(5)
     model.add(second_dense)
@@ -1151,7 +1151,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertAllEqual([1., 2., 3., 4., 5.], self.evaluate(second_dense.bias))
 
     deferred_sequential = sequential.Sequential()
-    deferred_sequential_checkpoint = checkpointable_utils.Checkpoint(
+    deferred_sequential_checkpoint = trackable_utils.Checkpoint(
         model=deferred_sequential)
     status = deferred_sequential_checkpoint.restore(save_path)
     deferred_sequential.add(core.Dense(4))
@@ -1171,9 +1171,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     with test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.Adam(0.001)
-      root = checkpointable_utils.Checkpoint(
+      root = trackable_utils.Checkpoint(
           model=model)  # Do not save the optimizer with the checkpoint.
-      optimizer_checkpoint = checkpointable_utils.Checkpoint(
+      optimizer_checkpoint = trackable_utils.Checkpoint(
           optimizer=optimizer)
 
       checkpoint_path = checkpoint_management.latest_checkpoint(
@@ -1207,7 +1207,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     with test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.Adam(0.001)
-      root = checkpointable_utils.Checkpoint(
+      root = trackable_utils.Checkpoint(
           optimizer=optimizer, model=model)
       status = root.restore(save_path=model_save_path)
       input_value = constant_op.constant([[3.]])
@@ -1231,9 +1231,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     with test_util.device(use_gpu=True):
       model = MyModel()
       optimizer = adam.Adam(0.001, beta_1=1.0)
-      root = checkpointable_utils.Checkpoint(
+      root = trackable_utils.Checkpoint(
           optimizer=optimizer, model=model)
-      opt_root = checkpointable_utils.Checkpoint(
+      opt_root = trackable_utils.Checkpoint(
           optimizer=optimizer)
       status = root.restore(save_path=model_save_path)
       init_only_optimizer_status = opt_root.restore(save_path=None)
@@ -1254,9 +1254,9 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
       self.assertEqual(42., self.evaluate(optimizer.beta_1))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_restore_after_adding_empty_checkpointable_data_structure(self):
-    model = NonLayerCheckpointable()
-    checkpoint = checkpointable_utils.Checkpoint(model=model)
+  def test_restore_after_adding_empty_trackable_data_structure(self):
+    model = NonLayerTrackable()
+    checkpoint = trackable_utils.Checkpoint(model=model)
     checkpoint.restore(None).initialize_or_restore()
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
@@ -1264,17 +1264,17 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     del model, checkpoint
 
-    model = NonLayerCheckpointable()
+    model = NonLayerTrackable()
     model.dict = {"a": 1}
     model.list = {"b": 1}
-    checkpoint = checkpointable_utils.Checkpoint(model=model)
+    checkpoint = trackable_utils.Checkpoint(model=model)
     load_status = checkpoint.restore(save_path)
     load_status.assert_existing_objects_matched().run_restore_ops()
 
   @test_util.run_in_graph_and_eager_modes
   def test_write_checkpoint_from_function(self):
     checkpoint_prefix = os.path.join(self.get_temp_dir(), "ckpt")
-    save_checkpoint = checkpointable_utils.Checkpoint(
+    save_checkpoint = trackable_utils.Checkpoint(
         v=variables_lib.Variable(1.))
 
     @def_function.function
@@ -1284,7 +1284,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
 
     self.evaluate([save_checkpoint.v.initializer])
     self.evaluate(_write_checkpoint())
-    load_checkpoint = checkpointable_utils.Checkpoint(
+    load_checkpoint = trackable_utils.Checkpoint(
         v=variables_lib.Variable(0.))
     load_checkpoint.restore(checkpoint_prefix).run_restore_ops()
     self.assertEqual(1., self.evaluate(load_checkpoint.v))
@@ -1295,12 +1295,12 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
     self.assertEqual(3., self.evaluate(load_checkpoint.v))
 
 
-class _ManualScope(tracking.AutoCheckpointable):
+class _ManualScope(tracking.AutoTrackable):
 
   def __call__(self):
     with variable_scope.variable_scope("ManualScope") as vs:
       self.variable_scope = vs
-      with checkpointable_utils.capture_dependencies(template=self):
+      with trackable_utils.capture_dependencies(template=self):
         return self._build()
 
   def _build(self):
@@ -1310,7 +1310,7 @@ class _ManualScope(tracking.AutoCheckpointable):
 class TemplateTests(parameterized.TestCase, test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
-  def test_checkpointable_save_restore(self):
+  def test_trackable_save_restore(self):
 
     def _templated():
       v = variable_scope.get_variable(
@@ -1327,12 +1327,12 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     six.assertCountEqual(
         self,
         [v1_save, v2_save, manual_scope, manual_scope_v, save_template],
-        checkpointable_utils.list_objects(save_template))
+        trackable_utils.list_objects(save_template))
     manual_dep, = manual_scope._checkpoint_dependencies
     self.assertEqual("in_manual_scope", manual_dep.name)
     self.assertIs(manual_scope_v, manual_dep.ref)
     optimizer = adam.Adam(0.0)
-    save_root = checkpointable_utils.Checkpoint(
+    save_root = trackable_utils.Checkpoint(
         my_template=save_template, optimizer=optimizer)
     optimizer.minimize(v1_save.read_value,
                        var_list=[v1_save])
@@ -1346,7 +1346,7 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
 
     load_template = template.make_template("s2", _templated)
     load_optimizer = adam.Adam(0.0)
-    load_root = checkpointable_utils.Checkpoint(
+    load_root = trackable_utils.Checkpoint(
         my_template=load_template, optimizer=load_optimizer)
     status = load_root.restore(save_path)
     var, var_plus_one, var2, _, _ = load_template()
@@ -1362,7 +1362,7 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     self.assertAllEqual([14.], self.evaluate(var2))
 
   @test_util.run_in_graph_and_eager_modes
-  def test_checkpointable_save_restore_nested(self):
+  def test_trackable_save_restore_nested(self):
 
     def _inner_template():
       v = variable_scope.get_variable(
@@ -1379,7 +1379,7 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
 
     with variable_scope.variable_scope("ignored"):
       save_template = template.make_template("s1", _outer_template)
-      save_root = checkpointable_utils.Checkpoint(my_template=save_template)
+      save_root = trackable_utils.Checkpoint(my_template=save_template)
       (inner_template_one, inner_template_two), _ = save_template()
     self.evaluate(inner_template_one.variables[0].assign([20.]))
     self.evaluate(inner_template_two.variables[0].assign([25.]))
@@ -1388,7 +1388,7 @@ class TemplateTests(parameterized.TestCase, test.TestCase):
     save_path = save_root.save(checkpoint_prefix)
 
     load_template = template.make_template("s2", _outer_template)
-    load_root = checkpointable_utils.Checkpoint(my_template=load_template)
+    load_root = trackable_utils.Checkpoint(my_template=load_template)
     status = load_root.restore(save_path)
     (inner_template_one, inner_template_two), (v1, v2, v3) = load_template()
     outer_template_dependencies = load_root.my_template._checkpoint_dependencies
@@ -1413,15 +1413,15 @@ class CheckpointCompatibilityTests(test.TestCase):
     input_value = constant_op.constant([[3.]])
     model = MyModel()
     optimizer = adam.Adam(0.001)
-    root_checkpointable = checkpointable_utils.Checkpoint(
+    root_trackable = trackable_utils.Checkpoint(
         optimizer=optimizer, model=model)
     with backprop.GradientTape() as tape:
       loss = model(input_value)
     variables = model.trainable_variables
     gradients = tape.gradient(loss, variables)
     train_op = optimizer.apply_gradients(zip(gradients, variables))
-    self.evaluate(checkpointable_utils.gather_initializers(
-        root_checkpointable))
+    self.evaluate(trackable_utils.gather_initializers(
+        root_trackable))
     self.evaluate(train_op)
     # A regular variable, a slot variable, and a non-slot Optimizer variable
     # with known values to check when loading.
@@ -1429,24 +1429,24 @@ class CheckpointCompatibilityTests(test.TestCase):
     self.evaluate(optimizer.get_slot(
         var=model._named_dense.bias, slot_name="m").assign([2.]))
     self.evaluate(optimizer.beta_1.assign(3.))
-    return root_checkpointable
+    return root_trackable
 
-  def _set_sentinels(self, root_checkpointable):
-    self.evaluate(root_checkpointable.model._named_dense.bias.assign([101.]))
+  def _set_sentinels(self, root_trackable):
+    self.evaluate(root_trackable.model._named_dense.bias.assign([101.]))
     self.evaluate(
-        root_checkpointable.optimizer.get_slot(
-            var=root_checkpointable.model._named_dense.bias, slot_name="m")
+        root_trackable.optimizer.get_slot(
+            var=root_trackable.model._named_dense.bias, slot_name="m")
         .assign([102.]))
-    self.evaluate(root_checkpointable.optimizer.beta_1.assign(103.))
+    self.evaluate(root_trackable.optimizer.beta_1.assign(103.))
 
-  def _check_sentinels(self, root_checkpointable):
+  def _check_sentinels(self, root_trackable):
     self.assertAllEqual(
-        [1.], self.evaluate(root_checkpointable.model._named_dense.bias))
+        [1.], self.evaluate(root_trackable.model._named_dense.bias))
     self.assertAllEqual([2.], self.evaluate(
-        root_checkpointable.optimizer.get_slot(
-            var=root_checkpointable.model._named_dense.bias, slot_name="m")))
+        root_trackable.optimizer.get_slot(
+            var=root_trackable.model._named_dense.bias, slot_name="m")))
     self.assertAllEqual(3.,
-                        self.evaluate(root_checkpointable.optimizer.beta_1))
+                        self.evaluate(root_trackable.optimizer.beta_1))
 
   def _write_name_based_checkpoint(self):
     checkpoint_directory = self.get_temp_dir()
@@ -1470,7 +1470,7 @@ class CheckpointCompatibilityTests(test.TestCase):
       self._set_sentinels(root)
       with self.assertRaises(AssertionError):
         self._check_sentinels(root)
-      object_saver = checkpointable_utils.CheckpointableSaver(
+      object_saver = trackable_utils.TrackableSaver(
           graph_view.ObjectGraphView(root))
       self._set_sentinels(root)
       status = object_saver.restore(save_path)
@@ -1543,7 +1543,7 @@ class PythonMetadataTests(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     dense = core.Dense(1)
-    checkpoint = checkpointable_utils.Checkpoint(dense=dense)
+    checkpoint = trackable_utils.Checkpoint(dense=dense)
     dense(constant_op.constant([[1.]]))
     checkpoint.restore(None).initialize_or_restore()
     save_path = checkpoint.save(checkpoint_prefix)
@@ -1563,7 +1563,7 @@ class PythonMetadataTests(test.TestCase):
       return json.loads(layer_json.decode("utf-8"))
 
     layer_data = _get_dense_node_from_object_graph(
-        checkpointable_utils.object_metadata(save_path))
+        trackable_utils.object_metadata(save_path))
     self.assertEqual("Dense", layer_data["class_name"])
     self.assertEqual(1, layer_data["config"]["units"])
 
@@ -1573,7 +1573,7 @@ class PythonMetadataTests(test.TestCase):
     dense.units = 42
     save_path = checkpoint.save(checkpoint_prefix)
     layer_data = _get_dense_node_from_object_graph(
-        checkpointable_utils.object_metadata(save_path))
+        trackable_utils.object_metadata(save_path))
     self.assertEqual("Dense", layer_data["class_name"])
     self.assertEqual(42, layer_data["config"]["units"])
 
