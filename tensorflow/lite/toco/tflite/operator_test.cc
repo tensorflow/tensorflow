@@ -866,6 +866,43 @@ TEST_F(OperatorTest, VersioningSelectTest) {
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
+TEST_F(OperatorTest, VersioningFullyConnectedTest) {
+  FullyConnectedOperator fully_connected_op;
+  fully_connected_op.inputs = {"input", "weight"};
+  fully_connected_op.outputs = {"output"};
+  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
+  const BaseOperator* op =
+      operator_by_type_map.at(fully_connected_op.type).get();
+
+  Model uint8_model;
+  Array& input_uint8_array =
+      uint8_model.GetOrCreateArray(fully_connected_op.inputs[0]);
+  input_uint8_array.data_type = ArrayDataType::kUint8;
+  Array& weight_uint8_array =
+      uint8_model.GetOrCreateArray(fully_connected_op.inputs[1]);
+  weight_uint8_array.data_type = ArrayDataType::kUint8;
+  Array& output_uint8_array =
+      uint8_model.GetOrCreateArray(fully_connected_op.outputs[0]);
+  output_uint8_array.data_type = ArrayDataType::kUint8;
+  OperatorSignature uint8_signature = {.model = &uint8_model,
+                                       .op = &fully_connected_op};
+  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
+
+  Model int8_model;
+  Array& input_int8_array =
+      int8_model.GetOrCreateArray(fully_connected_op.inputs[0]);
+  input_int8_array.data_type = ArrayDataType::kInt8;
+  Array& weight_int8_array =
+      int8_model.GetOrCreateArray(fully_connected_op.inputs[1]);
+  weight_int8_array.data_type = ArrayDataType::kInt8;
+  Array& output_int8_array =
+      int8_model.GetOrCreateArray(fully_connected_op.outputs[0]);
+  output_int8_array.data_type = ArrayDataType::kInt8;
+  OperatorSignature int8_signature = {.model = &int8_model,
+                                      .op = &fully_connected_op};
+  EXPECT_EQ(op->GetVersion(int8_signature), 4);
+}
+
 }  // namespace
 }  // namespace tflite
 
