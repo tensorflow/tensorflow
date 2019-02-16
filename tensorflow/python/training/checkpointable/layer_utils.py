@@ -21,8 +21,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 from tensorflow.python.training.checkpointable import object_identity
 
 
@@ -42,10 +40,10 @@ def has_weights(obj):
 def filter_empty_layer_containers(layer_list):
   """Filter out empty Layer-like containers and uniquify."""
   existing = object_identity.ObjectIdentitySet()
-  to_visit = collections.deque(layer_list)
+  to_visit = layer_list[::-1]
   filtered = []
   while to_visit:
-    obj = to_visit.popleft()
+    obj = to_visit.pop()
     if obj in existing:
       continue
     existing.add(obj)
@@ -54,7 +52,7 @@ def filter_empty_layer_containers(layer_list):
     elif hasattr(obj, "layers"):
       # Checkpointable data structures will not show up in ".layers" lists, but
       # the layers they contain will.
-      to_visit.extend(obj.layers)
+      to_visit.extend(obj.layers[::-1])
   return filtered
 
 
