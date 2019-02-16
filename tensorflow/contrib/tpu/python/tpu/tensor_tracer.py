@@ -237,7 +237,8 @@ class TensorTracer(object):
      (2) which Ops to be traced (via op.name or op.type)
      (3) output trace file path.
   """
-
+  # The set of graphs that are rewritten by tensor tracer.
+  _traced_graphs = set()
   @staticmethod
   def _match_next_flag(flags, pos):
     """Returns the match for the next TensorTracer flag.
@@ -1559,6 +1560,12 @@ class TensorTracer(object):
       RuntimeError: If tensor_fetches is None or empty.
     """
 
+    if graph in TensorTracer._traced_graphs:
+      logging.warning('Graph is already rewritten with tensor tracer, ignoring '
+                      'multiple calls.')
+      return tensor_fetches
+    else:
+      TensorTracer._traced_graphs.add(graph)
     self._device_type = _DEVICE_TYPE_TPU
     self._num_replicas = num_replicas
     self._num_replicas_per_host = num_replicas_per_host
@@ -1604,6 +1611,14 @@ class TensorTracer(object):
     Raises:
       RuntimeError: If tensor_fetches is None or empty.
     """
+
+    if graph in TensorTracer._traced_graphs:
+      logging.warning('Graph is already rewritten with tensor tracer, ignoring '
+                      'multiple calls.')
+      return tensor_fetches
+    else:
+      TensorTracer._traced_graphs.add(graph)
+
     self._device_type = _DEVICE_TYPE_CPU
     self._num_replicas = 1
     self._num_replicas_per_host = 1

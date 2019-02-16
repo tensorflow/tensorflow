@@ -28,7 +28,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -43,7 +43,7 @@ class IteratorCheckpointingTest(test_base.DatasetTestBase):
     ) else dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next if context.executing_eagerly(
     ) else functools.partial(self.evaluate, iterator.get_next())
-    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertAllEqual([1, 4], get_next())
     save_path = checkpoint.save(checkpoint_prefix)
     self.assertAllEqual([9, 16], get_next())
@@ -73,7 +73,7 @@ class IteratorCheckpointingTest(test_base.DatasetTestBase):
     ) else dataset_ops.make_one_shot_iterator(dataset_2)
     get_next_3 = iterator_3.get_next if context.executing_eagerly(
     ) else functools.partial(self.evaluate, iterator_3.get_next())
-    checkpoint = checkpointable_utils.Checkpoint(
+    checkpoint = trackable_utils.Checkpoint(
         iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
     self.assertAllEqual([1, 4], get_next_1())
     self.assertAllEqual(0, get_next_3())
@@ -96,7 +96,7 @@ class IteratorCheckpointingTest(test_base.DatasetTestBase):
     ) else dataset_ops.make_one_shot_iterator(dataset)
     get_next = iterator.get_next if context.executing_eagerly(
     ) else functools.partial(self.evaluate, iterator.get_next())
-    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertAllEqual(0, get_next())
     self.assertAllEqual(1, get_next())
     save_path = checkpoint.save(checkpoint_prefix)
@@ -115,7 +115,7 @@ class IteratorCheckpointingTest(test_base.DatasetTestBase):
     iterator = iter(dataset) if context.executing_eagerly(
     ) else dataset_ops.make_initializable_iterator(dataset)
     get_next = iterator.get_next
-    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     for i in range(5):
       checkpoint.restore(
           checkpoint_management.latest_checkpoint(

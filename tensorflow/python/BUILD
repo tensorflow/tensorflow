@@ -1815,7 +1815,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/training/checkpointable:__pkg__",
+        "//tensorflow/python/training/tracking:__pkg__",
     ],
 )
 
@@ -3371,7 +3371,7 @@ py_library(
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -3669,6 +3669,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     shard_count = 16,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3729,7 +3730,7 @@ py_library(
         ["training/**/*.py"],
         exclude = [
             "**/*test*",
-            "training/checkpointable/**/*.py",
+            "training/tracking/**/*.py",
             "training/saving/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
@@ -3790,8 +3791,8 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3871,9 +3872,9 @@ py_library(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/tracking:base",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],

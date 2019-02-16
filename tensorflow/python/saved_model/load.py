@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Import a checkpointable object from a SavedModel."""
+"""Import a trackable object from a SavedModel."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -36,10 +36,10 @@ from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import graph_view
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import graph_view
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 
@@ -149,16 +149,16 @@ class _Loader(object):
   def _restore_checkpoint(self):
     """Load state from checkpoint into the deserialized objects."""
     variables_path = saved_model_utils.get_variables_path(self._export_dir)
-    # TODO(andresp): Clean use of private methods of CheckpointableSaver.
+    # TODO(andresp): Clean use of private methods of TrackableSaver.
     # pylint: disable=protected-access
-    saver = util.CheckpointableSaver(graph_view.ObjectGraphView(self.get(0)))
+    saver = util.TrackableSaver(graph_view.ObjectGraphView(self.get(0)))
     saver._file_prefix_placeholder = constant_op.constant(variables_path)
     load_status = saver.restore(variables_path)
     load_status.assert_existing_objects_matched()
     checkpoint = load_status._checkpoint
 
     # When running in eager mode, the `restore` call above has already run and
-    # restored the state of checkpointables, call `position.restore_ops()` will
+    # restored the state of trackables, call `position.restore_ops()` will
     # return an empty list as there is nothing left to do. In graph mode, that
     # will return the list of ops that must run to restore the object on that
     # position. We have to wire them in the initializers of the objects so that
@@ -205,7 +205,7 @@ class _Loader(object):
       # individually callable by adding a `__call__` method to the classes of
       # the objects instances that have a `__call__` property.
 
-      class _UserObject(tracking.AutoCheckpointable):
+      class _UserObject(tracking.AutoTrackable):
         pass
 
       return _UserObject(), setattr
@@ -282,7 +282,7 @@ def load(export_dir, tags=None):
   print(f(x=tf.constant([[1.]])))
   ```
 
-  Objects exported with `tf.saved_model.save` additionally have checkpointable
+  Objects exported with `tf.saved_model.save` additionally have trackable
   objects and functions assigned to attributes:
 
   ```python
@@ -303,9 +303,9 @@ def load(export_dir, tags=None):
       `tf.saved_model.load`.
 
   Returns:
-    A checkpointable object with a `signatures` attribute mapping from signature
+    A trackable object with a `signatures` attribute mapping from signature
     keys to functions. If the SavedModel was exported by `tf.saved_model.load`,
-    it also points to checkpointable objects and functions which were attached
+    it also points to trackable objects and functions which were attached
     to the exported object.
 
   Raises:

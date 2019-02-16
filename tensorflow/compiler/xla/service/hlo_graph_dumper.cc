@@ -1491,6 +1491,17 @@ string ExportGraph(const string& graph,
 
 }  // namespace
 
+string HloComputationToDotGraph(const HloComputation& computation,
+                                const DotGraphOptions& options) {
+  DebugOptions default_debug_options;
+  return HloDotDumper(&computation, options.label,
+                      options.debug_options ? *options.debug_options
+                                            : default_debug_options,
+                      options.show_backend_config, options.profile,
+                      NodeFilter())
+      .Dump();
+}
+
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,

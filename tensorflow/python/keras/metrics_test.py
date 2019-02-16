@@ -37,7 +37,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -131,7 +131,7 @@ class KerasSumTest(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
     m = metrics.Sum()
-    checkpoint = checkpointable_utils.Checkpoint(sum=m)
+    checkpoint = trackable_utils.Checkpoint(sum=m)
     self.evaluate(variables.variables_initializer(m.variables))
 
     # update state
@@ -149,7 +149,7 @@ class KerasSumTest(test.TestCase):
 
     # restore to a different checkpoint sum object
     restore_sum = metrics.Sum()
-    restore_checkpoint = checkpointable_utils.Checkpoint(sum=restore_sum)
+    restore_checkpoint = trackable_utils.Checkpoint(sum=restore_sum)
     status = restore_checkpoint.restore(save_path)
     restore_update = restore_sum(300.)
     status.assert_consumed().run_restore_ops()
@@ -267,7 +267,7 @@ class KerasMeanTest(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
     m = metrics.Mean()
-    checkpoint = checkpointable_utils.Checkpoint(mean=m)
+    checkpoint = trackable_utils.Checkpoint(mean=m)
     self.evaluate(variables.variables_initializer(m.variables))
 
     # update state
@@ -285,7 +285,7 @@ class KerasMeanTest(test.TestCase):
 
     # restore to a different checkpoint mean object
     restore_mean = metrics.Mean()
-    restore_checkpoint = checkpointable_utils.Checkpoint(mean=restore_mean)
+    restore_checkpoint = trackable_utils.Checkpoint(mean=restore_mean)
     status = restore_checkpoint.restore(save_path)
     restore_update = restore_mean(300.)
     status.assert_consumed().run_restore_ops()

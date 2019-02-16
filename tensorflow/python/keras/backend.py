@@ -5310,10 +5310,15 @@ def in_multi_worker_mode():
 def configure_and_create_distributed_session(distribution_strategy):
   """Configure session config and create a session with it."""
 
-  # TODO(priyag): Throw error if a session already exists.
   def _create_session(distribution_strategy):
     """Create the Distributed Strategy session."""
     session_config = get_default_session_config()
+
+    # If a session already exists, merge in its config; in the case there is a
+    # conflict, take values of the existing config.
+    global _SESSION
+    if getattr(_SESSION, 'session', None) and _SESSION.session._config:
+      session_config.MergeFrom(_SESSION.session._config)
 
     if is_tpu_strategy(distribution_strategy):
       # TODO(priyag, yuefengz): Remove this workaround when Distribute

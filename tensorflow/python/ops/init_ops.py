@@ -1322,8 +1322,9 @@ def lecun_normal(seed=None):
   """LeCun normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(1 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(1 / fan_in)` where `fan_in` is the number of
+  input units in the weight tensor.
 
   Arguments:
       seed: A Python integer. Used to seed the random generator.
@@ -1372,8 +1373,9 @@ def he_normal(seed=None):
   """He normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(2 / fan_in)` where `fan_in` is the number of
+  input units in the weight tensor.
 
   Arguments:
       seed: A Python integer. Used to seed the random generator.

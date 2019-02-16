@@ -112,5 +112,29 @@ inline LSHProjectionType LSHProjectionTypeToSchema(
   }
 }
 
+inline MirrorPadMode MirrorPaddingModeToSchema(TfLiteMirrorPaddingMode mode) {
+  switch (mode) {
+    case kTfLiteMirrorPaddingUnknown:
+      return MirrorPadMode_REFLECT;  // TODO(aselle): consider an error
+    case kTfLiteMirrorPaddingReflect:
+      return MirrorPadMode_REFLECT;
+    case kTfLiteMirrorPaddingSymmetric:
+      return MirrorPadMode_SYMMETRIC;
+  }
+}
+
+inline CombinerType CombinerTypeToSchema(TfLiteCombinerType type) {
+  switch (type) {
+    case kTfLiteCombinerTypeSum:
+      return CombinerType_SUM;
+    case kTfLiteCombinerTypeMean:
+      return CombinerType_MEAN;
+    case kTfLiteCombinerTypeSqrtn:
+      return CombinerType_SQRTN;
+  }
+}
+
+// int
+
 }  // namespace tflite
 #endif  // TENSORFLOW_LITE_EXPERIMENTAL_WRITER_ENUM_MAPPING_H_

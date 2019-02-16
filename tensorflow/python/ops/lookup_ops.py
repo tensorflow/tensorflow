@@ -38,10 +38,10 @@ from tensorflow.python.ops import string_ops
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_lookup_ops import *
-# pylint: enable=wildcard-import
-from tensorflow.python.training.checkpointable import base as checkpointable_base
-from tensorflow.python.training.checkpointable import tracking as checkpointable
 from tensorflow.python.training.saver import BaseSaverBuilder
+# pylint: enable=wildcard-import
+from tensorflow.python.training.tracking import base as trackable_base
+from tensorflow.python.training.tracking import tracking as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -102,7 +102,7 @@ def _check_table_dtypes(table, key_dtype, value_dtype):
                     (table.value_dtype, value_dtype))
 
 
-class LookupInterface(checkpointable.TrackableResource):
+class LookupInterface(trackable.TrackableResource):
   """Represent a lookup table that persists across different steps."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -165,8 +165,8 @@ class InitializableLookupTableBase(LookupInterface):
     self._default_value = ops.convert_to_tensor(
         default_value, dtype=self._value_dtype)
     self._default_value.get_shape().merge_with(tensor_shape.scalar())
-    if isinstance(initializer, checkpointable_base.Checkpointable):
-      self._initializer = self._track_checkpointable(
+    if isinstance(initializer, trackable_base.Trackable):
+      self._initializer = self._track_trackable(
           initializer, "_initializer")
     self._resource_handle = self.create_resource()
     self._init_op = self.initialize()
@@ -314,7 +314,7 @@ class HashTable(InitializableLookupTableBase):
     return exported_keys, exported_values
 
 
-class TableInitializerBase(checkpointable_base.Checkpointable):
+class TableInitializerBase(trackable_base.Trackable):
   """Base class for lookup table initializers."""
 
   def __init__(self, key_dtype, value_dtype):
@@ -543,8 +543,8 @@ class TextFileInitializer(TableInitializerBase):
     self._vocab_size = vocab_size
     self._delimiter = delimiter
     self._name = name
-    self._filename = self._track_checkpointable(
-        checkpointable.TrackableAsset(filename),
+    self._filename = self._track_trackable(
+        trackable.TrackableAsset(filename),
         "_filename")
 
     super(TextFileInitializer, self).__init__(key_dtype, value_dtype)

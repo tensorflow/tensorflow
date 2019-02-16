@@ -334,7 +334,10 @@ tf_py_test(
 
 py_library(
     name = "tpu_embedding",
-    srcs = ["python/tpu/tpu_embedding.py"],
+    srcs = [
+        "python/tpu/tpu_embedding.py",
+        "python/tpu/tpu_embedding_gradient.py",
+    ],
     srcs_version = "PY2AND3",
     deps = [
         ":tpu_lib",

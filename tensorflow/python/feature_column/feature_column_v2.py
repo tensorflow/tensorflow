@@ -141,11 +141,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.engine.base_layer import Layer
 # TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
 # of the main repo.
 from tensorflow.python.keras import utils
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -162,7 +162,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -3228,7 +3228,7 @@ def _raise_shared_embedding_column_error():
                    '`DenseFeatures` or `LinearModel` instead.')
 
 
-class SharedEmbeddingColumnCreator(tracking.AutoCheckpointable):
+class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
 
   def __init__(self,
                dimension,

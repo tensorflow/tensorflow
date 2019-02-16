@@ -32,6 +32,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
@@ -966,56 +967,79 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             epochs=1)
 
 
+# A summary that was emitted during a test. Fields:
+#   logdir: str. The logdir of the FileWriter to which the summary was
+#     written.
+#   tag: str. The name of the summary.
+_ObservedSummary = collections.namedtuple('_ObservedSummary', ('logdir', 'tag'))
+
+
 class _MockSummaryFile(object):
-  """Mocks a TensorBoard summary file, recording the tag names it sees."""
+  """Record summary tag names and the files to which they're written.
+
+  Fields `scalars`, `images`, and `histograms` are sets containing
+  `_ObservedSummary` values.
+  """
 
   def __init__(self):
-    self.scalar_names = set()
-    self.hist_names = set()
-    self.image_names = set()
-
-
-def _make_mock_scalar_summary(summary_file):
-
-  def _mock_scalar_summary(name, *args, **kwargs):  # pylint: disable=unused-argument
-    summary_file.scalar_names.update({name})
-
-  return _mock_scalar_summary
-
-
-def _make_mock_hist_summary(summary_file):
-
-  def _mock_hist_summary(name, *args, **kwargs):  # pylint: disable=unused-argument
-    summary_file.hist_names.update({name})
-
-  return _mock_hist_summary
-
-
-def _make_mock_image_summary(summary_file):
-
-  def _mock_image_summary(name, *args, **kwargs):  # pylint: disable=unused-argument
-    summary_file.image_names.update({name})
-
-  return _mock_image_summary
+    self.scalars = set()
+    self.images = set()
+    self.histograms = set()
 
 
 @tf_contextlib.contextmanager
-def _mock_summary_api(summary_file):
+def _mock_summary_api():
+  summary_file = _MockSummaryFile()
+
+  # Keep track of the logdir associated with each created resource.
+  # (There doesn't seem to be an easy way to get this information after
+  # the fact.)
+  resource_logdirs = {}
+  real_create_file_writer = summary_ops_v2.create_file_writer
+
+  def mock_create_file_writer(logdir, *args, **kwargs):
+    writer = real_create_file_writer(logdir, *args, **kwargs)
+    resource = writer._resource
+    assert resource is not None
+    assert resource not in resource_logdirs, (resource, resource_logdirs)
+    resource_logdirs[resource] = logdir
+    return writer
+
+  def make_mock_summary(summary_set):
+
+    def mock_summary(tag, *args, **kwargs):
+      del args  # unused
+      del kwargs  # unused
+      resource = context.context().summary_writer_resource
+      logdir = resource_logdirs[resource]
+      summary_set.add(_ObservedSummary(logdir=logdir, tag=tag))
+
+    return mock_summary
+
   with test.mock.patch.object(summary_ops_v2,
-                              'scalar',
-                              _make_mock_scalar_summary(summary_file)), \
+                              'create_file_writer',
+                              mock_create_file_writer), \
+        test.mock.patch.object(summary_ops_v2,
+                               'scalar',
+                               make_mock_summary(summary_file.scalars)), \
         test.mock.patch.object(summary_ops_v2,
                                'histogram',
-                               _make_mock_hist_summary(summary_file)), \
+                               make_mock_summary(summary_file.histograms)), \
         test.mock.patch.object(summary_ops_v2,
                                'image',
-                               _make_mock_image_summary(summary_file)):
-    yield
+                               make_mock_summary(summary_file.images)):
+    yield summary_file
 
 
 @keras_parameterized.run_with_all_model_types
 @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
 class TestTensorBoardV2(keras_parameterized.TestCase):
+
+  def setUp(self):
+    super(TestTensorBoardV2, self).setUp()
+    self.logdir = os.path.join(self.get_temp_dir(), 'tb')
+    self.train_dir = os.path.join(self.logdir, 'train')
+    self.validation_dir = os.path.join(self.logdir, 'validation')
 
   def _get_model(self):
     layers = [
@@ -1028,13 +1052,11 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     return model
 
   def test_TensorBoard_basic(self):
-    summary_file = _MockSummaryFile()
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
+    with _mock_summary_api() as summary_file:
       model.fit(
           x,
           y,
@@ -1043,17 +1065,18 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
           validation_data=(x, y),
           callbacks=[tb_cbk])
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'epoch_loss', 'epoch_val_loss'})
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        })
 
   def test_TensorBoard_batch_metrics(self):
-    summary_file = _MockSummaryFile()
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq=1)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
+    with _mock_summary_api() as summary_file:
       model.fit(
           x,
           y,
@@ -1062,17 +1085,22 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
           validation_data=(x, y),
           callbacks=[tb_cbk])
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'batch_loss', 'epoch_loss', 'epoch_val_loss'})
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
 
   def test_TensorBoard_weight_histograms(self):
-    summary_file = _MockSummaryFile()
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     temp_dir = self.get_temp_dir() + '/tb'
     tb_cbk = keras.callbacks.TensorBoard(temp_dir, histogram_freq=1)
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
+    with _mock_summary_api() as summary_file:
       model.fit(
           x,
           y,
@@ -1081,24 +1109,29 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
           validation_data=(x, y),
           callbacks=[tb_cbk])
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'epoch_loss', 'epoch_val_loss'})
-
-    # Strip Layer names as Layers are created multiple times in test.
-    hist_names = {
-        name[name.rfind('/') + 1:] for name in summary_file.hist_names
-    }
-    self.assertEqual(hist_names, {'bias_0', 'kernel_0'})
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.histograms),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+        },
+    )
 
   def test_TensorBoard_weight_images(self):
-    summary_file = _MockSummaryFile()
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     temp_dir = self.get_temp_dir() + '/tb'
     tb_cbk = keras.callbacks.TensorBoard(
         temp_dir, histogram_freq=1, write_images=True)
 
-    with _mock_summary_api(summary_file):  # pylint: disable=not-context-manager
+    with _mock_summary_api() as summary_file:
       model.fit(
           x,
           y,
@@ -1107,19 +1140,39 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
           validation_data=(x, y),
           callbacks=[tb_cbk])
 
-    self.assertEqual(summary_file.scalar_names,
-                     {'epoch_loss', 'epoch_val_loss'})
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.histograms),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.images),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+        },
+    )
 
-    # Strip Layer names as Layers are created multiple times in test.
-    hist_names = {
-        name[name.rfind('/') + 1:] for name in summary_file.hist_names
-    }
-    self.assertEqual(hist_names, {'bias_0', 'kernel_0'})
+  def _strip_layer_names(self, summaries):
+    """Deduplicate summary names modulo layer suffix.
 
-    image_names = {
-        name[name.rfind('/') + 1:] for name in summary_file.image_names
-    }
-    self.assertEqual(image_names, {'bias_0', 'kernel_0'})
+    Args:
+      summaries: A `set` of `_ObservedSummary` values.
+
+    Returns:
+      A new `set` of `_ObservedSummary` values with layer suffixes
+      removed.
+    """
+    return {s._replace(tag=s.tag[s.tag.rfind('/') + 1:]) for s in summaries}
 
   def test_TensorBoard_invalid_argument(self):
     with self.assertRaisesRegexp(ValueError, 'Unrecognized arguments'):

@@ -252,6 +252,12 @@ class Computation {
   // string on failure.
   string GetSerializedProto() const;
 
+  // Returns the computation in human-readable HLO text format.
+  StatusOr<string> GetHloText() const;
+
+  // Returns the computation in graphviz dot format.
+  StatusOr<string> GetHloDotGraph() const;
+
   // Returns the program shape for this computation.
   StatusOr<ProgramShape> GetProgramShape() const;
 

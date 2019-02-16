@@ -106,6 +106,7 @@ bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPartitionedCall(const NodeDef& node);
+bool IsQuantizedMatMul(const NodeDef& node);
 bool IsNeg(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);

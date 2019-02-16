@@ -28,19 +28,21 @@ std::unique_ptr<Thread> StartProfilerServer(
   Env* env = profiler_context->eager_context != nullptr
                  ? profiler_context->eager_context->TFEnv()
                  : Env::Default();
-  return WrapUnique(
-      env->StartThread({}, "profiler server", [profiler_context, port]() {
-        string server_address = strings::StrCat("0.0.0.0:", port);
-        std::unique_ptr<TPUProfiler::Service> service =
-            CreateProfilerService(profiler_context);
-        ::grpc::ServerBuilder builder;
-        builder.AddListeningPort(server_address,
-                                 ::grpc::InsecureServerCredentials());
-        builder.RegisterService(service.get());
-        std::unique_ptr<::grpc::Server> server(builder.BuildAndStart());
-        LOG(INFO) << "Profiling Server listening on " << server_address;
-        server->Wait();
-      }));
+  // Starting the server in the child thread may be delay and user may already
+  // delete the profiler context at that point. So we need to make a copy.
+  ProfilerContext ctx = *profiler_context;
+  return WrapUnique(env->StartThread({}, "profiler server", [ctx, port]() {
+    string server_address = strings::StrCat("0.0.0.0:", port);
+    std::unique_ptr<TPUProfiler::Service> service =
+        CreateProfilerService(ctx);
+    ::grpc::ServerBuilder builder;
+    builder.AddListeningPort(server_address,
+                             ::grpc::InsecureServerCredentials());
+    builder.RegisterService(service.get());
+    std::unique_ptr<::grpc::Server> server(builder.BuildAndStart());
+    LOG(INFO) << "Profiling Server listening on " << server_address;
+    server->Wait();
+  }));
 }
 
 }  // namespace tensorflow

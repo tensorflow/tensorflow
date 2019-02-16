@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/cpu/custom_call_target_registry.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -580,6 +581,32 @@ string Computation::GetSerializedProto() const {
     return "";
   }
   return result;
+}
+
+StatusOr<string> Computation::GetHloText() const {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation_.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation_.proto(), module_config));
+  HloPrintOptions options;
+  options = HloPrintOptions::ShortParsable();
+  options.set_print_large_constants(false);
+  return hlo_module->ToString(options);
+}
+
+StatusOr<string> Computation::GetHloDotGraph() const {
+  TF_ASSIGN_OR_RETURN(const HloModuleConfig module_config,
+                      HloModule::CreateModuleConfigFromProto(
+                          computation_.proto(), GetDebugOptionsFromFlags()));
+  TF_ASSIGN_OR_RETURN(
+      std::unique_ptr<HloModule> hlo_module,
+      HloModule::CreateFromProto(computation_.proto(), module_config));
+  hlo_graph_dumper::DotGraphOptions options;
+  options.debug_options = &hlo_module->config().debug_options();
+  return hlo_graph_dumper::HloComputationToDotGraph(
+      *hlo_module->entry_computation(), options);
 }
 
 StatusOr<ProgramShape> Computation::GetProgramShape() const {
