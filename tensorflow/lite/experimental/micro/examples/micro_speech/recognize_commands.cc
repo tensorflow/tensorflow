@@ -28,7 +28,7 @@ RecognizeCommands::RecognizeCommands(tflite::ErrorReporter* error_reporter,
       suppression_ms_(suppression_ms),
       minimum_count_(minimum_count),
       previous_results_(error_reporter) {
-  previous_top_label_ = "_silence_";
+  previous_top_label_ = "silence";
   previous_top_label_time_ = 0;
 }
 

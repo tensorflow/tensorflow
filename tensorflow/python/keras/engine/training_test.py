@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
@@ -52,6 +53,129 @@ try:
   import scipy.sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
 except ImportError:
   scipy_sparse = None
+
+
+class CompileTest(keras_parameterized.TestCase):
+
+  def _get_multi_output_model(self):
+    input_a = keras.layers.Input(shape=(3,), name='input_a')
+    output_a = keras.layers.Dense(1, name='dense_1')(input_a)
+    output_b = keras.layers.Dense(1, name='dense_2')(input_a)
+    return keras.models.Model(input_a, [output_a, output_b])
+
+  def _do_test_compile_with_model_and_single_loss(self, model, loss):
+    model.compile(optimizer='adam', loss=loss)
+    self.assertEqual(model.loss, loss)
+
+    loss = losses.get(loss)
+    if not isinstance(loss, list):
+      loss_list = [loss] * len(model.outputs)
+
+    self.assertEqual(len(model.loss_functions), len(loss_list))
+    for i in range(len(loss_list)):
+      self.assertIsInstance(model.loss_functions[i], losses.LossFunctionWrapper)
+      if not isinstance(loss_list[i], losses.LossFunctionWrapper):
+        self.assertEqual(model.loss_functions[i].fn, loss_list[i])
+    self.assertAllEqual(model.loss_weights_list, [1.] * len(loss_list))
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(('loss_string', 'mse'),
+                                  ('loss_function', losses.mean_squared_error),
+                                  ('loss_instance', losses.MeanSquaredError()))
+  def test_compile_with_single_output(self, loss):
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+    self._do_test_compile_with_model_and_single_loss(model, loss)
+
+  @keras_parameterized.run_all_keras_modes
+  @parameterized.named_parameters(('loss_string', 'mse'),
+                                  ('loss_function', losses.mean_squared_error),
+                                  ('loss_instance', losses.MeanSquaredError()))
+  def test_compile_with_multi_output(self, loss):
+    model = self._get_multi_output_model()
+    self._do_test_compile_with_model_and_single_loss(model, loss)
+
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_multi_output_and_multi_loss(self):
+    model = self._get_multi_output_model()
+    # Test loss is a list.
+    loss = ['mse', 'mae']
+    model.compile(optimizer='adam', loss=loss)
+    self.assertEqual(model.loss_functions[0].fn, losses.mean_squared_error)
+    self.assertEqual(model.loss_functions[1].fn, losses.mean_absolute_error)
+    self.assertAllEqual(model.loss_weights_list, [1., 1.])
+
+    # Test loss is a dict.
+    loss = {'dense_1': 'mae', 'dense_2': 'mse'}
+    model.compile(optimizer='adam', loss=loss)
+    self.assertEqual(model.loss_functions[0].fn, losses.mean_absolute_error)
+    self.assertEqual(model.loss_functions[1].fn, losses.mean_squared_error)
+    self.assertAllEqual(model.loss_weights_list, [1., 1.])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_multi_output_and_loss_weights_list(self):
+    model = self._get_multi_output_model()
+    loss_weights = [1., 2.]
+    model.compile(optimizer='adam', loss='mse', loss_weights=loss_weights)
+    self.assertAllEqual(model.loss_weights_list, [1., 2.])
+
+  def test_compile_with_multi_output_and_loss_weights_dict(self):
+    with context.graph_mode():
+      model = self._get_multi_output_model()
+      loss_weights = {'dense_1': 1., 'dense_2': 2.}
+      model.compile(optimizer='adam', loss='mse', loss_weights=loss_weights)
+      self.assertAllEqual(model.loss_weights_list, [1., 2.])
+
+      input_np = np.random.random((10, 3))
+      output_a_np = np.random.random((10, 1))
+      output_b_np = np.random.random((10, 1))
+
+      with self.cached_session() as sess:
+        sess.run(variables_lib.global_variables_initializer())
+        total_loss, y_preds = sess.run(
+            [model.total_loss, model.outputs],
+            feed_dict={
+                'input_a:0': input_np,
+                'dense_1_target:0': output_a_np,
+                'dense_2_target:0': output_b_np
+            })
+        self.assertAllClose(
+            total_loss,
+            np.mean(
+                np.add((output_a_np - y_preds[0])**2,
+                       2 * (output_b_np - y_preds[1])**2)))
+
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_incorrect_loss_size(self):
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+    with self.assertRaisesRegexp(ValueError, 'The model has 1 outputs'):
+      model.compile(optimizer='adam', loss=['mse', 'mae'])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_incorrect_loss_key(self):
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+    with self.assertRaisesRegexp(
+        ValueError, 'Unknown entry in loss dictionary: unknown_output'):
+      model.compile(optimizer='adam', loss={'unknown_output': 'mse'})
+
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_incorrect_loss_weights_size(self):
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+    with self.assertRaisesRegexp(ValueError,
+                                 'it should have one entry per model output'):
+      model.compile(optimizer='adam', loss='mse', loss_weights=[1., 2.])
+
+  @keras_parameterized.run_all_keras_modes
+  def test_compile_with_incorrect_loss_weights_key(self):
+    model = testing_utils.get_small_sequential_mlp(
+        num_hidden=10, num_classes=2, input_dim=3)
+    with self.assertRaisesRegexp(
+        ValueError, 'Unknown entry in loss_weights dictionary: unknown_output'):
+      model.compile(
+          optimizer='adam', loss='mse', loss_weights={'unknown_output': 1.})
 
 
 class TrainingTest(keras_parameterized.TestCase):
@@ -885,9 +1009,9 @@ class TestExceptionsAndWarnings(keras_parameterized.TestCase):
                 'dense_1': metrics_module.CategoricalAccuracy(),
             },
             run_eagerly=testing_utils.should_run_eagerly())
-        msg = ('Output "dense_1" missing from loss dictionary. We assume this '
+        msg = ('Output dense_1 missing from loss dictionary. We assume this '
                'was done on purpose. The fit and evaluate APIs will not be '
-               'expecting any data to be passed to "dense_1".')
+               'expecting any data to be passed to dense_1.')
         self.assertRegexpMatches(str(mock_log.call_args), msg)
 
 
@@ -2136,6 +2260,67 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.evaluate(x_test, y_test, batch_size=5)
     self.assertEqual(self.evaluate(acc_obj.count), 10)
 
+  @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
+  @keras_parameterized.run_all_keras_modes
+  def test_metrics_valid_compile_input_formats(self):
+    inp_1 = keras.layers.Input(shape=(1,), name='input_1')
+    inp_2 = keras.layers.Input(shape=(1,), name='input_2')
+    x = keras.layers.Dense(3, kernel_initializer='ones', trainable=False)
+    out_1 = keras.layers.Dense(
+        1, kernel_initializer='ones', name='output_1', trainable=False)
+    out_2 = keras.layers.Dense(
+        1, kernel_initializer='ones', name='output_2', trainable=False)
+
+    branch_a = [inp_1, x, out_1]
+    branch_b = [inp_2, x, out_2]
+    model = testing_utils.get_multi_io_model(branch_a, branch_b)
+
+    # list of metrics.
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        metrics=[keras.metrics.MeanSquaredError()],
+        weighted_metrics=[keras.metrics.MeanSquaredError()],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    # list of list of metrics.
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        metrics=[
+            keras.metrics.MeanSquaredError(),
+            [keras.metrics.MeanSquaredError(),
+             keras.metrics.Accuracy()]
+        ],
+        weighted_metrics=[
+            keras.metrics.MeanSquaredError(),
+            [keras.metrics.MeanSquaredError(),
+             keras.metrics.Accuracy()]
+        ],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    # dict of metrics.
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        metrics={
+            'output_1':
+                keras.metrics.MeanSquaredError(),
+            'output_2': [
+                keras.metrics.MeanSquaredError(),
+                keras.metrics.Accuracy()
+            ],
+        },
+        weighted_metrics={
+            'output_1':
+                keras.metrics.MeanSquaredError(),
+            'output_2': [
+                keras.metrics.MeanSquaredError(),
+                keras.metrics.Accuracy()
+            ],
+        },
+        run_eagerly=testing_utils.should_run_eagerly())
+
   @keras_parameterized.run_all_keras_modes
   def test_invalid_metrics(self):
     num_classes = 5
@@ -2152,6 +2337,17 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
           loss='categorical_crossentropy',
           metrics=metrics_module.CategoricalAccuracy(),
           run_eagerly=testing_utils.should_run_eagerly())
+
+    inp = keras.layers.Input(shape=(1,))
+    x = keras.layers.Dense(3, activation='relu')(inp)
+    out_1 = keras.layers.Dense(1, activation='sigmoid', name='output_1')(x)
+    out_2 = keras.layers.Dense(1, activation='sigmoid', name='output_2')(x)
+    model = keras.models.Model(inp, [out_1, out_2])
+    with self.assertRaisesRegex(
+        ValueError, 'When passing a list of lists as `metrics`, '
+        'it should have one entry per model output. '
+        'The model has 2 outputs, but you passed metrics='):
+      model.compile('rmsprop', loss='mse', metrics=[['mse']])
 
   @keras_parameterized.run_all_keras_modes
   def test_metrics_masking(self):

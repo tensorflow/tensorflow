@@ -525,11 +525,42 @@ struct TensorValue {
 // Used to store partitioned graphs from function-calling ops.
 struct GraphCollector {
   mutex mu;
-  std::vector<GraphDef> graphs GUARDED_BY(mu);
+  std::vector<GraphDef> partitioned_graphs GUARDED_BY(mu);
+  GraphDef raw_graph GUARDED_BY(mu);
+  GraphDef optimized_graph GUARDED_BY(mu);
 
-  void CollectGraph(const GraphDef& graph) {
+  bool dirty GUARDED_BY(mu);
+
+  GraphCollector() : dirty(false) {}
+
+  void CollectRawGraph(const GraphDef& graph) {
     mutex_lock ml(mu);
-    graphs.push_back(graph);
+    raw_graph.MergeFrom(graph);
+    dirty = true;
+  }
+
+  void CollectOptimizedGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    optimized_graph.MergeFrom(graph);
+    dirty = true;
+  }
+
+  void CollectPartitionedGraph(const GraphDef& graph) {
+    mutex_lock ml(mu);
+    partitioned_graphs.push_back(graph);
+    dirty = true;
+  }
+
+  void ClearGraphs() EXCLUSIVE_LOCKS_REQUIRED(mu) {
+    raw_graph.Clear();
+    optimized_graph.Clear();
+    partitioned_graphs.clear();
+    dirty = false;
+  }
+
+  bool HasUpdatedGraphs() {
+    mutex_lock ml(mu);
+    return dirty;
   }
 };
 
@@ -1436,23 +1467,21 @@ class OpKernelRegistrar {
     // Perform the check in the header to allow compile-time optimization
     // to a no-op, allowing the linker to remove the kernel symbols.
     if (kernel_def != nullptr) {
-      struct PtrOpKernelFactory : public OpKernelFactory {
-        explicit PtrOpKernelFactory(
-            OpKernel* (*create_func)(OpKernelConstruction*))
-            : create_func_(create_func) {}
-
-        OpKernel* Create(OpKernelConstruction* context) override {
-          return (*create_func_)(context);
-        }
-
-        OpKernel* (*create_func_)(OpKernelConstruction*);
-      };
       InitInternal(kernel_def, kernel_class_name,
                    absl::make_unique<PtrOpKernelFactory>(create_fn));
     }
   }
 
  private:
+  struct PtrOpKernelFactory : public OpKernelFactory {
+    explicit PtrOpKernelFactory(OpKernel* (*create_func)(OpKernelConstruction*))
+        : create_func_(create_func) {}
+
+    OpKernel* Create(OpKernelConstruction* context) override;
+
+    OpKernel* (*create_func_)(OpKernelConstruction*);
+  };
+
   void InitInternal(const KernelDef* kernel_def, StringPiece kernel_class_name,
                     std::unique_ptr<OpKernelFactory> factory);
 };

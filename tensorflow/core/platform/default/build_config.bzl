@@ -530,19 +530,13 @@ def tf_additional_proto_hdrs():
     return [
         "platform/default/integral_types.h",
         "platform/default/logging.h",
-        "platform/default/protobuf.h",
     ] + if_windows([
         "platform/windows/integral_types.h",
     ])
 
-def tf_additional_proto_compiler_hdrs():
-    return [
-        "platform/default/protobuf_compiler.h",
-    ]
-
 def tf_additional_proto_srcs():
     return [
-        "platform/default/protobuf.cc",
+        "platform/protobuf.cc",
     ]
 
 def tf_additional_human_readable_json_deps():
@@ -550,6 +544,10 @@ def tf_additional_human_readable_json_deps():
 
 def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
+
+# TODO(fishx): Remove it after moving profiler proto out from contrib.
+def tf_profiler_all_protos():
+    return ["//tensorflow/core/profiler:protos_all"]
 
 def tf_protos_all_impl():
     return ["//tensorflow/core:protos_all_cc_impl"]

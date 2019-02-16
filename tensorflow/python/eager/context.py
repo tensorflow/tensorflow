@@ -141,8 +141,8 @@ class _EagerContext(threading.local):
     self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.recording_summaries = False
     self.summary_writer_resource = None
+    self.recording_summaries = None
     self.scalar_cache = {}
     self._ones_rank_cache = None
     self._zeros_cache = None
@@ -521,6 +521,16 @@ class Context(object):
     self._eager_context.summary_writer_resource = resource
 
   @property
+  def recording_summaries(self):
+    """Returns summary recording condition."""
+    return self._eager_context.recording_summaries
+
+  @recording_summaries.setter
+  def recording_summaries(self, condition):
+    """Sets summary recording condition."""
+    self._eager_context.recording_summaries = condition
+
+  @property
   def device_name(self):
     """Returns the device name for the current thread."""
     return self._eager_context.device_name
@@ -715,14 +725,6 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
-  def enable_run_metadata(self):
-    """Enables tracing of op execution via RunMetadata.
-
-    To retrieve the accumulated metadata call context.export_run_metadata()
-    and to stop tracing call context.disable_run_metadata().
-    """
-    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
-
   @tf_contextlib.contextmanager
   def device_policy(self, policy):
     handle = self._handle
@@ -735,11 +737,33 @@ class Context(object):
       pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
           handle, old)
 
+  def enable_run_metadata(self):
+    """Enables tracing of op execution via RunMetadata.
+
+    To retrieve the accumulated metadata call context.export_run_metadata()
+    and to stop tracing call context.disable_run_metadata().
+    """
+    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
+
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableRunMetadata(self._context_handle)
+
+  def enable_graph_collection(self):
+    """Enables graph collection of executed functions.
+
+    To retrieve the accumulated graphs call context.export_run_metadata()
+    and to stop collecting graphs call context.disable_graph_collection().
+    """
+    pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
+
+  def disable_graph_collection(self):
+    """Disables graph collections of executed functions."""
+    if not self._context_handle:
+      return
+    pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
 
   def export_run_metadata(self):
     """Returns a RunMetadata proto with accumulated information.
@@ -966,6 +990,20 @@ def enable_run_metadata():
 def disable_run_metadata():
   """Disables tracing of op execution via RunMetadata."""
   context().disable_run_metadata()
+
+
+def enable_graph_collection():
+  """Enables tracing of op execution via RunMetadata.
+
+  To retrieve the accumulated metadata call context.export_run_metadata()
+  and to stop tracing call context.disable_run_metadata().
+  """
+  context().enable_graph_collection()
+
+
+def disable_graph_collection():
+  """Disables tracing of op execution via RunMetadata."""
+  context().disable_graph_collection()
 
 
 def export_run_metadata():

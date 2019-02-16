@@ -1092,11 +1092,14 @@ tensorflow::Status ConvertBatchMatMulOperator(
     Model* model) {
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
 
-  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
-  CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
-  CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
-
   auto* batch_matmul = new BatchMatMulOperator;
+  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+  if (HasAttr(node, "adj_x")) {
+    batch_matmul->adj_x = GetBoolAttr(node, "adj_x");
+  }
+  if (HasAttr(node, "adj_y")) {
+    batch_matmul->adj_y = GetBoolAttr(node, "adj_y");
+  }
   batch_matmul->inputs = {node.input(0), node.input(1)};
   batch_matmul->outputs = {node.name()};
 
@@ -1567,6 +1570,21 @@ tensorflow::Status ConvertGatherOperator(
     // Gather form that assumes axis=0.
     op->axis = {0};
   }
+  op->outputs.push_back(node.name());
+  model->operators.emplace_back(op);
+  return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertGatherNdOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "GatherNd");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  const auto indices_data_type = GetDataTypeAttr(node, "Tindices");
+  CHECK(indices_data_type == DT_INT32 || indices_data_type == DT_INT64);
+  auto* op = new GatherNdOperator;
+  op->inputs.push_back(node.input(0));
+  op->inputs.push_back(node.input(1));
   op->outputs.push_back(node.name());
   model->operators.emplace_back(op);
   return tensorflow::Status::OK();
@@ -2396,6 +2414,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Const", ConvertConstOperator},
       {"Conv2D", ConvertConvOperator},
       {"Conv2DBackpropInput", ConvertTransposeConvOperator},
+      {"Cos", ConvertSimpleOperator<CosOperator, 1, 1>},
       {"CTCBeamSearchDecoder", ConvertCTCBeamSearchDecoderOperator},
       {"DepthToSpace", ConvertDepthToSpaceOperator},
       {"DepthwiseConv2dNative", ConvertDepthwiseConvOperator},
@@ -2414,6 +2433,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"FusedBatchNorm", ConvertFusedBatchNormOperator},
       {"Gather", ConvertGatherOperator},
       {"GatherV2", ConvertGatherOperator},
+      {"GatherNd", ConvertGatherNdOperator},
       {"Greater", ConvertSimpleOperator<TensorFlowGreaterOperator, 2, 1>},
       {"GreaterEqual",
        ConvertSimpleOperator<TensorFlowGreaterEqualOperator, 2, 1>},
@@ -2452,7 +2472,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Prod", ConvertReduceOperator<TensorFlowProdOperator>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
-      {"Rank", ConvertSimpleOperator<RankOperator, 1, 1>},
+      {"Rank", ConvertSimpleOperator<TensorFlowRankOperator, 1, 1>},
       {"RealDiv", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"Relu", ConvertSimpleOperator<ReluOperator, 1, 1>},
       {"Relu6", ConvertSimpleOperator<Relu6Operator, 1, 1>},

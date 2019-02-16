@@ -195,6 +195,12 @@ class TRT_ShapedWeights {
     return absl::Span<const T>(tensor_.flat<T>().data(), count());
   }
 
+  template <typename T>
+  std::vector<T> ToVector() const {
+    auto span = GetSpan<T>();
+    return std::vector<T>(span.data(), span.data() + span.size());
+  }
+
   // TODO(aaroey): make these private.
   nvinfer1::Dims shape_;  // Note: shape.type[] is not used.
   tensorflow::DataType type_;

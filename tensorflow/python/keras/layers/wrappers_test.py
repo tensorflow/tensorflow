@@ -27,7 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import util as checkpointable_util
+from tensorflow.python.training.tracking import util as trackable_util
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -88,8 +88,8 @@ class TimeDistributedTest(test.TestCase):
     model.get_config()
 
     # check whether the model variables are present in the
-    # checkpointable list of objects
-    checkpointed_objects = set(checkpointable_util.list_objects(model))
+    # trackable list of objects
+    checkpointed_objects = set(trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
@@ -303,8 +303,8 @@ class BidirectionalTest(test.TestCase):
         model.fit(x, y, epochs=1, batch_size=1)
 
         # check whether the model variables are present in the
-        # checkpointable list of objects
-        checkpointed_objects = set(checkpointable_util.list_objects(model))
+        # trackable list of objects
+        checkpointed_objects = set(trackable_util.list_objects(model))
         for v in model.variables:
           self.assertIn(v, checkpointed_objects)
 

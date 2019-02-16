@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/public/session.h"
 
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
+
 namespace tensorflow {
 namespace tensorrt {
 namespace segment {
@@ -265,3 +268,6 @@ TEST_F(SegmentTest, BigIfElse) {
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA

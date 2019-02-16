@@ -176,7 +176,7 @@ StatusOr<Literal> HloRunner::Execute(
                       TransferLiteralsToDevice(arguments));
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                       ExecuteWithDeviceBuffers(
-                          /*module=*/std::move(executable),
+                          /*executable=*/executable.get(),
                           /*arguments=*/argument_buffers,
                           /*profile=*/profile));
   return TransferLiteralFromDevice(result);
@@ -235,7 +235,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 }
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
-    std::unique_ptr<Executable> executable,
+    Executable* executable,
     const absl::Span<const ShapedBuffer* const> arguments,
     ExecutionProfile* profile) {
   // Get service run options.
@@ -254,7 +254,7 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 }
 
 StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
-    std::unique_ptr<Executable> executable,
+    Executable* executable,
     const absl::Span<const ScopedShapedBuffer> arguments,
     ExecutionProfile* profile) {
   std::vector<const ShapedBuffer*> argument_pointers;

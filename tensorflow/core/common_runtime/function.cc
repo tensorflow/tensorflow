@@ -818,7 +818,7 @@ void PruneFunctionBody(Graph* g) {
     // TODO(mrry): Investigate whether the `n->IsControlFlow()` test is
     // still needed. It would be preferable to prune entire loops and/or
     // conditionals if they are not used in the graph.
-    if (n->IsControlFlow() || n->IsDataset() ||
+    if (n->IsControlFlow() ||
         (n->op_def().is_stateful() && n->type_string() != kArgOp)) {
       nodes.insert(n);
     }

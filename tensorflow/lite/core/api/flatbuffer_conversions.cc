@@ -680,6 +680,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     // ok for now, since there is no call implementation either.
     case BuiltinOperator_CALL:
     case BuiltinOperator_CONCAT_EMBEDDINGS:
+    case BuiltinOperator_COS:
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_DEQUANTIZE:
     case BuiltinOperator_EMBEDDING_LOOKUP:
@@ -729,6 +730,8 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_REVERSE_V2:
     case BuiltinOperator_ADD_N:
     case BuiltinOperator_GATHER_ND:
+    case BuiltinOperator_WHERE:
+    case BuiltinOperator_RANK:
       break;
   }
   return kTfLiteOk;

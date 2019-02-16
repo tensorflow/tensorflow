@@ -174,12 +174,12 @@ class DatasetV2(object):
     options = self.options()
     if options.experimental_threading is not None:
       t_options = options.experimental_threading
-      if t_options.private_threadpool_size is not None:
-        dataset = _PrivateThreadPoolDataset(dataset,
-                                            t_options.private_threadpool_size)
       if t_options.max_intra_op_parallelism is not None:
         dataset = _MaxIntraOpParallelismDataset(
             dataset, t_options.max_intra_op_parallelism)
+      if t_options.private_threadpool_size is not None:
+        dataset = _PrivateThreadPoolDataset(dataset,
+                                            t_options.private_threadpool_size)
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
     if static_optimizations:
       if self._has_captured_ref():
@@ -749,6 +749,12 @@ class DatasetV2(object):
     samples elements from this buffer, replacing the selected elements with new
     elements. For perfect shuffling, a buffer size greater than or equal to the
     full size of the dataset is required.
+
+    For instance, if your dataset contains 10,000 elements but `buffer_size` is
+    set to 1,000, then `shuffle` will initially select a random element from
+    only the first 1,000 elements in the buffer. Once an element is selected,
+    its space in the buffer is replaced by the next (i.e. 1,001-st) element,
+    maintaining the 1,000 element buffer.
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the

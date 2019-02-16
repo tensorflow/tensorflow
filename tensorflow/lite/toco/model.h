@@ -24,11 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_types.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -45,6 +45,7 @@ enum class OperatorType : uint8 {
   kCeil,
   kConv,
   kConcatenation,
+  kCos,
   kDepthwiseConv,
   kDepthToSpace,
   kSpaceToDepth,
@@ -163,7 +164,8 @@ enum class OperatorType : uint8 {
   kUnidirectionalSequenceRnn,
   kBidirectionalSequenceLstm,
   kReverseV2,
-  kBidirectionalSequenceRnn
+  kBidirectionalSequenceRnn,
+  kGatherNd
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -964,6 +966,8 @@ struct TensorFlowIdentityOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct BatchMatMulOperator : Operator {
   BatchMatMulOperator() : Operator(OperatorType::kBatchMatMul) {}
+  bool adj_x = false;
+  bool adj_y = false;
 };
 
 // General matrix multiplication operator. We don't want to support general
@@ -1166,6 +1170,17 @@ struct ExpOperator : Operator {
   ExpOperator() : Operator(OperatorType::kExp) {}
 };
 
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = cos(x)).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Cos
+struct CosOperator : Operator {
+  CosOperator() : Operator(OperatorType::kCos) {}
+};
+
 // Given a tensor input, this operation inserts a dimension of 1 at the
 // dimension index axis of input's shape. The dimension index axis starts at
 // zero; if you specify a negative number for axis it is counted backward from
@@ -1244,13 +1259,12 @@ struct RangeOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// This operation outputs a 0-D integer tensor representing the rank of
-// the input.
+// This operation outputs a 0-D int32 Tensor representing the rank of input.
 //
-// TensorFlow equivalent: Rank.  We currently assume that the output is int32
-// and not int64.  The output type could be stored herein.
-struct RankOperator : Operator {
-  RankOperator() : Operator(OperatorType::kRank) {}
+// TensorFlow equivalent: Rank.
+struct TensorFlowRankOperator : Operator {
+  TensorFlowRankOperator() : Operator(OperatorType::kRank) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt32;
 };
 
 // Element-wise negation (-x) operator.
@@ -1705,6 +1719,17 @@ struct GatherOperator : Operator {
   // This field is not used by the standard TF Lite export but it is still need
   // for legacy Gather implementations.
   int input_rank = 0;
+};
+
+// GatherNd operator. It gathers slices from params according to indices.
+//
+// Inputs:
+//   inputs[0]: required: the params array
+//   inputs[1]: required: the indices to gather
+//
+// TensorFlow equivalent: GatherNd
+struct GatherNdOperator : Operator {
+  GatherNdOperator() : Operator(OperatorType::kGatherNd) {}
 };
 
 // ArgMax operator. It returns the index of the maximum value along axis.

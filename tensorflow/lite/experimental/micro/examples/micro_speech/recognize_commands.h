@@ -19,7 +19,7 @@ limitations under the License.
 #include <cstdint>
 
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 
 // Partial implementation of std::dequeue, just providing the functionality
@@ -129,8 +129,8 @@ class RecognizeCommands {
   // help reduce spurious recognitions.
   explicit RecognizeCommands(tflite::ErrorReporter* error_reporter,
                              int32_t average_window_duration_ms = 1000,
-                             uint8_t detection_threshold = 51,
-                             int32_t suppression_ms = 500,
+                             uint8_t detection_threshold = 200,
+                             int32_t suppression_ms = 1500,
                              int32_t minimum_count = 3);
 
   // Call this with the results of running a model on sample data.

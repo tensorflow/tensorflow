@@ -275,7 +275,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -310,12 +310,12 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:graph_view",
-        "//tensorflow/python/training/checkpointable:object_identity",
-        "//tensorflow/python/training/checkpointable:tracking",
-        "//tensorflow/python/training/checkpointable:util",
         "//tensorflow/python/training/saving:functional_saver",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:object_identity",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -356,10 +356,10 @@ py_library(
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:graph_view",
-        "//tensorflow/python/training/checkpointable:tracking",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -375,7 +375,7 @@ py_library(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:saver",
         "//tensorflow/python/eager:wrap_function",
-        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python/training/tracking",
     ],
 )
 
@@ -392,7 +392,7 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python/training/tracking:tracking",
     ],
 )
 
@@ -417,7 +417,7 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python/training/tracking:tracking",
         "//tensorflow/python:variables",
     ],
 )

@@ -1111,6 +1111,34 @@ def make_exp_tests(zip_path):
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
+def make_cos_tests(zip_path):
+  """Make a set of tests to do cos."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32],
+      "input_shape": [[], [3], [1, 100], [4, 2, 3], [5, 224, 224, 3]],
+  }]
+
+  def build_graph(parameters):
+    """Build the cos op testing graph."""
+    input_tensor = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+
+    out = tf.cos(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    values = [
+        create_tensor_data(parameters["input_dtype"], parameters["input_shape"],
+                           min_value=-np.pi, max_value=np.pi)
+    ]
+    return values, sess.run(outputs, feed_dict=dict(zip(inputs, values)))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
 def make_log_softmax_tests(zip_path):
   """Make a set of tests to do log_softmax."""
 
@@ -1309,8 +1337,6 @@ def make_gather_tests(zip_path):
 
   test_parameters = [
       {
-          # TODO(b/110347007): add tests for Nd indices when they are supported
-          # by TfLite.
           "params_dtype": [tf.float32, tf.int32, tf.int64],
           "params_shape": [[10], [1, 2, 20]],
           "indices_dtype": [tf.int32, tf.int64],
@@ -1357,6 +1383,41 @@ def make_gather_tests(zip_path):
       build_graph,
       build_inputs,
       expected_tf_failures=12)
+
+
+def make_gather_nd_tests(zip_path):
+  """Make a set of tests to do gather_nd."""
+
+  test_parameters = [{
+      "params_dtype": [tf.float32, tf.int32, tf.int64],
+      "params_shape": [[5, 5, 10]],
+      "indices_dtype": [tf.int32, tf.int64],
+      "indices_shape": [[3, 1], [2, 2], [2, 3], [2, 1, 3]],
+  }]
+
+  def build_graph(parameters):
+    """Build the gather_nd op testing graph."""
+    params = tf.placeholder(
+        dtype=parameters["params_dtype"],
+        name="params",
+        shape=parameters["params_shape"])
+    indices = tf.placeholder(
+        dtype=parameters["indices_dtype"],
+        name="indices",
+        shape=parameters["indices_shape"])
+    out = tf.gather_nd(params, indices)
+    return [params, indices], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    params = create_tensor_data(parameters["params_dtype"],
+                                parameters["params_shape"])
+    indices = create_tensor_data(parameters["indices_dtype"],
+                                 parameters["indices_shape"], 0,
+                                 parameters["params_shape"][0] - 1)
+    return [params, indices], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [params, indices])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 
 def make_gather_with_constant_tests(zip_path):
@@ -2192,6 +2253,29 @@ def make_shape_tests(zip_path):
     # to prevent the Shape operation from being optimized out during conversion.
     input_value = tf.placeholder(dtype=parameters["input_dtype"], name="input")
     out = tf.shape(input_value, out_type=parameters["out_type"])
+    return [input_value], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_rank_tests(zip_path):
+  """Make a set of tests to do rank."""
+
+  test_parameters = [{
+      "input_dtype": [tf.float32, tf.int32],
+      "input_shape": [[], [0], [1, 1, 1, 3], [2, 3, 4, 5], [5, 5], [10]],
+  }]
+
+  def build_graph(parameters):
+    """Build the rank op testing graph."""
+    input_value = tf.placeholder(dtype=parameters["input_dtype"], name="input")
+    out = tf.rank(input_value)
     return [input_value], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):
@@ -4003,7 +4087,17 @@ def make_mirror_pad_tests(zip_path):
 def make_unroll_batch_matmul_tests(zip_path):
   """Make a set of tests to test unroll_batch_matmul."""
 
-  test_parameters = [{"dtype": [tf.float32], "shape": [[(2, 2, 3), (2, 3, 2)]]}]
+  test_parameters = [{
+      "dtype": [tf.float32],
+      "shape": [[(2, 2, 3), (2, 3, 2), False, False],
+                [(2, 2, 3), (2, 3, 2), True, True],
+                [(2, 2, 3), (2, 2, 3), False, True],
+                [(2, 2, 3), (2, 2, 3), True, False],
+                [(4, 2, 2, 3), (4, 2, 3, 2), False, False],
+                [(4, 2, 2, 3), (4, 2, 3, 2), True, True],
+                [(4, 2, 2, 3), (4, 2, 2, 3), False, True],
+                [(4, 2, 2, 3), (4, 2, 2, 3), True, False]]
+  }]
 
   def build_graph(parameters):
     """Build the batch_matmul op testing graph."""
@@ -4012,7 +4106,11 @@ def make_unroll_batch_matmul_tests(zip_path):
     input_tensor2 = tf.placeholder(
         dtype=parameters["dtype"], shape=parameters["shape"][1])
     # Should be unrolled and replaced with fully_connected ops in the end.
-    out = tf.matmul(input_tensor1, input_tensor2)
+    out = tf.matmul(
+        input_tensor1,
+        input_tensor2,
+        transpose_a=parameters["shape"][2],
+        transpose_b=parameters["shape"][3])
     return [input_tensor1, input_tensor2], [out]
 
   def build_inputs(parameters, sess, inputs, outputs):

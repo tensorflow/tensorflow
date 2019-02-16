@@ -414,6 +414,18 @@ Outputs {
 }
 ```
 
+**GATHER_ND**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
+}
+```
+
 **GREATER**
 
 ```
@@ -710,6 +722,17 @@ Outputs {
 }
 Options {
   dtype
+}
+```
+
+**RANK**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 0-D int32 Tensor representing the rank of input
 }
 ```
 

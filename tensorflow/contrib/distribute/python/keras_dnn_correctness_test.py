@@ -47,7 +47,9 @@ class TestDistributionStrategyDnnCorrectness(
       # We add few non-linear layers to make it non-trivial.
       model = keras.Sequential()
       model.add(keras.layers.Dense(10, activation='relu', input_shape=(1,)))
-      model.add(keras.layers.Dense(10, activation='relu'))
+      model.add(keras.layers.Dense(
+          10, activation='relu',
+          kernel_regularizer=keras.regularizers.l2(1e-4)))
       model.add(keras.layers.Dense(10, activation='relu'))
       model.add(keras.layers.Dense(1))
 

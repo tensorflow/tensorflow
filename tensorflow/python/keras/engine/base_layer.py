@@ -46,8 +46,8 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -57,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.Checkpointable):
+class Layer(trackable.Trackable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -110,7 +110,7 @@ class Layer(checkpointable.Checkpointable):
       constraints on inputs that can be accepted by the layer.
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
     # These properties should be set by the user via keyword arguments.
@@ -272,7 +272,7 @@ class Layer(checkpointable.Checkpointable):
         marked as non-trainable. `trainable` defaults to `True` unless
         `synchronization` is set to `ON_READ`.
       constraint: constraint instance (callable).
-      partitioner: Partitioner to be passed to the `Checkpointable` API.
+      partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
@@ -345,9 +345,9 @@ class Layer(checkpointable.Checkpointable):
         name=name,
         shape=shape,
         # TODO(allenl): a `make_variable` equivalent should be added as a
-        # `Checkpointable` method.
+        # `Trackable` method.
         getter=getter or base_layer_utils.make_variable,
-        # Manage errors in Layer rather than Checkpointable.
+        # Manage errors in Layer rather than Trackable.
         overwrite=True,
         initializer=initializer,
         dtype=dtype,
@@ -535,8 +535,6 @@ class Layer(checkpointable.Checkpointable):
       # framework.
       if base_layer_utils.needs_keras_history(inputs):
         base_layer_utils.create_keras_history(inputs)
-      # Do not track these Tensors in any sublayers invoked during `call`.
-      base_layer_utils.mark_checked(inputs)
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
@@ -551,62 +549,77 @@ class Layer(checkpointable.Checkpointable):
         # pass to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    # Check input assumptions set after layer building, e.g. input shape.
-    if build_graph:
-      # Symbolic execution on symbolic tensors. We will attempt to build
-      # the corresponding TF subgraph inside `backend.get_graph()`
-      input_spec.assert_input_compatibility(self.input_spec, inputs, self.name)
-      graph = backend.get_graph()
-      with graph.as_default(), ops.name_scope(self._name_scope()):
-        # Build layer if applicable (if the `build` method has been overridden).
-        self._maybe_build(inputs)
-        if not self.dynamic:
-          try:
-            outputs = self.call(inputs, *args, **kwargs)
-          except TypeError as e:
-            messages = ('`tf.Tensor` as a Python `bool` is not allowed',
-                        'Tensor objects are only iterable when eager')
-            exception_str = str(e)
-            for msg in messages:
-              if msg in exception_str:
-                raise TypeError('You are attempting to use Python control '
-                                'flow in a layer that was not declared to be '
-                                'dynamic. Pass `dynamic=True` to the class '
-                                'constructor.\nEncountered error:\n"""\n' +
-                                exception_str + '\n"""')
-            raise
-        else:
-          # We will use static shape inference to return symbolic tensors
-          # matching the specifications of the layer outputs.
-          # Since `self.dynamic` is True, we will never attempt to
-          # run the underlying TF graph (which is disconnected).
-          # TODO(fchollet): consider py_func as an alternative, which
-          # would enable us to run the underlying graph if needed.
-          outputs = self._symbolic_call(inputs)
+    with base_layer_utils.call_context():
+      # Check input assumptions set after layer building, e.g. input shape.
+      if build_graph:
+        # Symbolic execution on symbolic tensors. We will attempt to build
+        # the corresponding TF subgraph inside `backend.get_graph()`
+        input_spec.assert_input_compatibility(self.input_spec, inputs,
+                                              self.name)
+        graph = backend.get_graph()
+        with graph.as_default(), ops.name_scope(self._name_scope()):
+          # Build layer if applicable (if the `build` method has been
+          # overridden).
+          self._maybe_build(inputs)
+          # Explicitly pass the learning phase placeholder to `call` if
+          # the `training` argument was left unspecified by the user.
+          # This behavior is restricted to the managed Keras FuncGraph.
+          learning_phase_passed_by_framework = False
+          if (self._expects_training_arg and
+              not base_layer_utils.training_arg_passed_to_call(
+                  tf_inspect.getfullargspec(self.call), args, kwargs) and
+              getattr(graph, 'name', None) == 'keras_graph'):
+            learning_phase_passed_by_framework = True
+            kwargs['training'] = backend.learning_phase()
+          if not self.dynamic:
+            try:
+              outputs = self.call(inputs, *args, **kwargs)
+            except TypeError as e:
+              messages = ('`tf.Tensor` as a Python `bool` is not allowed',
+                          'Tensor objects are only iterable when eager')
+              exception_str = str(e)
+              for msg in messages:
+                if msg in exception_str:
+                  raise TypeError('You are attempting to use Python control '
+                                  'flow in a layer that was not declared to be '
+                                  'dynamic. Pass `dynamic=True` to the class '
+                                  'constructor.\nEncountered error:\n"""\n' +
+                                  exception_str + '\n"""')
+              raise
+          else:
+            # We will use static shape inference to return symbolic tensors
+            # matching the specifications of the layer outputs.
+            # Since `self.dynamic` is True, we will never attempt to
+            # run the underlying TF graph (which is disconnected).
+            # TODO(fchollet): consider py_func as an alternative, which
+            # would enable us to run the underlying graph if needed.
+            outputs = self._symbolic_call(inputs)
 
-        if outputs is None:
-          raise ValueError('A layer\'s `call` method should return a '
-                           'Tensor or a list of Tensors, not None '
-                           '(layer: ' + self.name + ').')
-        if base_layer_utils.have_all_keras_metadata(inputs):
-          inputs, outputs = self._set_connectivity_metadata_(
-              inputs, outputs, args, kwargs)
-        self._handle_activity_regularization(inputs, outputs)
-        self._set_mask_metadata(inputs, outputs, previous_mask)
-        if hasattr(self, '_set_inputs') and not self.inputs:
-          # Subclassed network: explicitly set metadata normally set by
-          # a call to self._set_inputs().
-          # TODO(b/120997007): This should be done in Eager as well, but
-          # causes garbage collection issues because of the placeholders
-          # created on the default Keras graph.
-          self._set_inputs(inputs, outputs)
-    else:
-      # Eager execution on data tensors.
-      with ops.name_scope(self._name_scope()):
-        self._maybe_build(inputs)
-        outputs = self.call(inputs, *args, **kwargs)
-        self._handle_activity_regularization(inputs, outputs)
-        self._set_mask_metadata(inputs, outputs, previous_mask)
+          if outputs is None:
+            raise ValueError('A layer\'s `call` method should return a '
+                             'Tensor or a list of Tensors, not None '
+                             '(layer: ' + self.name + ').')
+          if base_layer_utils.have_all_keras_metadata(inputs):
+            if learning_phase_passed_by_framework:
+              kwargs.pop('training')
+            inputs, outputs = self._set_connectivity_metadata_(
+                inputs, outputs, args, kwargs)
+          self._handle_activity_regularization(inputs, outputs)
+          self._set_mask_metadata(inputs, outputs, previous_mask)
+          if hasattr(self, '_set_inputs') and not self.inputs:
+            # Subclassed network: explicitly set metadata normally set by
+            # a call to self._set_inputs().
+            # TODO(b/120997007): This should be done in Eager as well, but
+            # causes garbage collection issues because of the placeholders
+            # created on the default Keras graph.
+            self._set_inputs(inputs, outputs)
+      else:
+        # Eager execution on data tensors.
+        with ops.name_scope(self._name_scope()):
+          self._maybe_build(inputs)
+          outputs = self.call(inputs, *args, **kwargs)
+          self._handle_activity_regularization(inputs, outputs)
+          self._set_mask_metadata(inputs, outputs, previous_mask)
 
     if not context.executing_eagerly():
       # Optionally load weight values specified at layer instantiation.
@@ -1616,7 +1629,7 @@ class Layer(checkpointable.Checkpointable):
 
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
-        checkpointable_layer_utils.has_weights(value)):
+        trackable_layer_utils.has_weights(value)):
       # Initialize `_layers` here in case `__init__` has not yet been called.
       if not hasattr(self, '_layers'):
         self._layers = []
@@ -1653,7 +1666,7 @@ class Layer(checkpointable.Checkpointable):
     return []
 
   # This is a hack so that the is_layer (within
-  # training/checkpointable/layer_utils.py) check doesn't get the weights attr.
+  # training/trackable/layer_utils.py) check doesn't get the weights attr.
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
@@ -1819,6 +1832,9 @@ class TensorFlowOpLayer(Layer):
         name=name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
+    # Layer uses original op unless it is called on new inputs.
+    # This means `built` is not set in `__call__`.
+    self.built = True
 
   def call(self, inputs):
     if context.executing_eagerly():
