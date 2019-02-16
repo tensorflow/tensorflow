@@ -466,7 +466,7 @@ class MklConvOp : public OpKernel {
                 errors::InvalidArgument("filter must be 4-dimensional: ",
                                         filter.shape().DebugString()));
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; ++i) {
       OP_REQUIRES(context, FastBoundsCheck(filter.dim_size(i),
                                            std::numeric_limits<int>::max()),
                   errors::InvalidArgument("filter too large"));
@@ -939,9 +939,10 @@ class MklConvOp : public OpKernel {
       // `padding_list` attribute. Otherwise, we get it from one of the inputs.
       bool quantized_pad_enabled = false;
       for (auto const& padding_val : padding_list_) {
-        if (!padding_val) continue;
-        quantized_pad_enabled = true;
-        break;
+        if (padding_val) {
+          quantized_pad_enabled = true;
+          break;
+        }
       }
 
       if (fuse_pad_ || quantized_pad_enabled) {
