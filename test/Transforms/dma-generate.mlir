@@ -1,4 +1,14 @@
-// RUN: mlir-opt %s -split-input-file -dma-generate -verify | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -dma-generate -dma-skip-non-unit-stride-loops -verify | FileCheck %s
+// RUN: mlir-opt %s -split-input-file -dma-generate -dma-fast-mem-capacity=16 -dma-fast-mem-space=2 | FileCheck %s --check-prefix FAST-MEM-16KB
+
+// We run most test cases with -dma-skip-non-unit-stride-loops to allow testing
+// DMA generation at inner levels easily - since the DMA generation would
+// otherwise always generate DMAs at the outermost level (default for fast mem
+// capacity is infinite). Using a specific capacity makes it harder to write
+// a test case as one would have to calculate total footprints. With
+// -dma-skip-non-unit-stride-loops, non-unit strides will always be skipped and
+// its inner loops will be traversed till a unit stride loop is found (or the
+// innermost block is reached).
 
 // Index of the buffer for the second DMA is remapped.
 // CHECK-DAG: [[MAP_MINUS_256:#map[0-9]+]] = (d0) -> (d0 - 256)
@@ -455,22 +465,52 @@ func @dma_mixed_loop_blocks() {
 // -----
 
 // CHECK-LABEL: func @relative_loop_bounds
-func @relative_loop_bounds(%arg0: memref<1024xf32>) {
+func @relative_loop_bounds(%arg0: memref<1027xf32>) {
   for %i0 = 0 to 1024 {
     for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 4)(%i0) {
       %0 = constant 0.0 : f32
-      store %0, %arg0[%i2] : memref<1024xf32>
+      store %0, %arg0[%i2] : memref<1027xf32>
     }
   }
   return
 }
-// CHECK:      [[BUF:%[0-9]+]] = alloc() : memref<1024xf32, 1>
+// CHECK:      [[BUF:%[0-9]+]] = alloc() : memref<1027xf32, 1>
 // CHECK-NEXT: [[MEM:%[0-9]+]] = alloc() : memref<1xi32>
 // CHECK-NEXT: for %i0 = 0 to 1024 {
 // CHECK-NEXT:    for %i1 = {{#map[0-9]+}}(%i0) to {{#map[0-9]+}}(%i0) {
 // CHECK-NEXT:      %cst = constant 0.000000e+00 : f32
-// CHECK-NEXT:      store %cst, [[BUF]][%i1] : memref<1024xf32, 1>
+// CHECK-NEXT:      store %cst, [[BUF]][%i1] : memref<1027xf32, 1>
 // CHECK-NEXT:    }
 // CHECK-NEXT:  }
-// CHECK-NEXT:  dma_start [[BUF]][%c0], %arg0[%c0], %c1024, [[MEM]][%c0] : memref<1024xf32, 1>, memref<1024xf32>, memref<1xi32>
-// CHECK-NEXT:  dma_wait [[MEM]][%c0], %c1024 : memref<1xi32>
+// CHECK-NEXT:  dma_start [[BUF]][%c0], %arg0[%c0], %c1027, [[MEM]][%c0] : memref<1027xf32, 1>, memref<1027xf32>, memref<1xi32>
+// CHECK-NEXT:  dma_wait [[MEM]][%c0], %c1027 : memref<1xi32>
+
+// ----
+
+// Since the fast memory size is 4 KB, DMA generation will happen right under
+// %i0.
+
+// FAST-MEM-16KB-LABEL: func @load_store_same_memref
+func @load_store_same_memref(%arg0: memref<256x1024xf32>) {
+  // FAST-MEM-16KB:  for %i0 = 0 to 256 step 4
+  for %i0 = 0 to 256 step 4 {
+    // FAST-MEM-16KB: [[BUF:%[0-9]+]] = alloc() : memref<4x1024xf32, 2>
+    // FAST-MEM-16KB:    dma_start %arg0
+    // FAST-MEM-16KB-NEXT: dma_wait
+    // FAST-MEM-16KB:  for %i1
+    for %i1 = 0 to 1024 step 4 {
+      // FAST-MEM-16KB:  for %i2
+      for %i2 = (d0) -> (d0)(%i0) to (d0) -> (d0 + 4)(%i0) {
+        // FAST-MEM-16KB:  for %i3
+        for %i3 = (d0) -> (d0)(%i1) to (d0) -> (d0 + 4)(%i1) {
+          %3 = load %arg0[%i2, %i3] : memref<256x1024xf32>
+          %4 = mulf %3, %3 : f32
+          store %4, %arg0[%i2, %i3] : memref<256x1024xf32>
+        } // FAST-MEM-16KB: }
+      } // FAST-MEM-16KB: }
+    } // FAST-MEM-16KB: }
+    // FAST-MEM-16KB:    dma_start [[BUF]]
+    // FAST-MEM-16KB-NEXT: dma_wait
+  }
+  return
+}

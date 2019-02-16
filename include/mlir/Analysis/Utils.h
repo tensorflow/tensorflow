@@ -27,6 +27,7 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/AffineStructures.h"
+#include "mlir/IR/Block.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/SmallVector.h"
@@ -158,9 +159,11 @@ struct MemRefRegion {
 
   /// Returns a constant upper bound on the number of elements in this region if
   /// bounded by a known constant (always possible for static shapes), None
-  /// otherwise. The 'shape' vector is set to the corresponding dimension-wise
-  /// bounds major to minor. We use int64_t instead of uint64_t since index
-  /// types can be at most int64_t.
+  /// otherwise. Note that the symbols of the region are treated specially,
+  /// i.e., the returned bounding constant holds for *any given* value of the
+  /// symbol identifiers. The 'shape' vector is set to the corresponding
+  /// dimension-wise bounds major to minor. We use int64_t instead of uint64_t
+  /// since index types can be at most int64_t.
   Optional<int64_t> getConstantBoundingSizeAndShape(
       SmallVectorImpl<int64_t> *shape = nullptr,
       std::vector<SmallVector<int64_t, 4>> *lbs = nullptr,
@@ -225,8 +228,6 @@ unsigned getNumCommonSurroundingLoops(const Instruction &A,
 /// Gets the memory footprint of all data touched in the specified memory space
 /// in bytes; if the memory space is unspecified, considers all memory spaces.
 Optional<int64_t> getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
-                                          int memorySpace = -1);
-Optional<int64_t> getMemoryFootprintBytes(const Block &block,
                                           int memorySpace = -1);
 } // end namespace mlir
 

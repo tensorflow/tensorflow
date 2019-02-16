@@ -49,12 +49,16 @@ static llvm::cl::opt<unsigned> clFastMemoryCapacity(
         "Set fast memory space capacity in KiB (default: unlimited)"),
     llvm::cl::cat(clOptionsCategory));
 
-static const unsigned kDefaultFastMemorySpace = 1;
-
 static llvm::cl::opt<unsigned> clFastMemorySpace(
-    "dma-fast-mem-space", llvm::cl::init(kDefaultFastMemorySpace),
+    "dma-fast-mem-space", llvm::cl::init(1),
     llvm::cl::desc(
         "Fast memory space identifier for DMA generation (default: 1)"),
+    llvm::cl::cat(clOptionsCategory));
+
+static llvm::cl::opt<bool> clSkipNonUnitStrideLoop(
+    "dma-skip-non-unit-stride-loops", llvm::cl::Hidden, llvm::cl::init(false),
+    llvm::cl::desc("Testing purposes: avoid non-unit stride loop choice depths "
+                   "for DMA placement"),
     llvm::cl::cat(clOptionsCategory));
 
 namespace {
@@ -76,7 +80,7 @@ struct DmaGeneration : public FunctionPass {
         fastMemCapacityBytes(fastMemCapacityBytes) {}
 
   PassResult runOnFunction(Function *f) override;
-  bool runOnBlock(Block *block, uint64_t consumedCapacityBytes);
+  bool runOnBlock(Block *block);
   uint64_t runOnBlock(Block::iterator begin, Block::iterator end);
 
   bool generateDma(const MemRefRegion &region, Block *block,
@@ -457,11 +461,9 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
 /// `regions`; each region is either a sequence of one or more instructions
 /// starting and ending with a load or store op, or just a loop (which could
 /// have other loops nested within). Returns false on an error, true otherwise.
-bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
+bool DmaGeneration::runOnBlock(Block *block) {
   if (block->empty())
     return true;
-
-  uint64_t priorConsumedCapacityBytes = consumedCapacityBytes;
 
   // Every loop in the block starts and ends a region. A contiguous sequence of
   // operation instructions starting and ending with a load/store op is also
@@ -482,35 +484,37 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
 
   for (auto it = curBegin; it != block->end(); ++it) {
     if (auto forOp = it->dyn_cast<AffineForOp>()) {
-      // We'll assume for now that loops with steps are tiled loops, and so DMAs
-      // are not performed for that depth, but only further inside.
-      // If the memory footprint of the 'for' loop is higher than fast
-      // memory capacity (when provided), we recurse to DMA at an inner level
-      // until we find a depth at which footprint fits in the capacity. If the
-      // footprint can't be calcuated, we assume for now it fits.
-
       // Returns true if the footprint is known to exceed capacity.
       auto exceedsCapacity = [&](OpPointer<AffineForOp> forOp) {
-        Optional<int64_t> footprint;
-        return ((footprint = getMemoryFootprintBytes(forOp, 0)).hasValue() &&
-                consumedCapacityBytes +
-                        static_cast<uint64_t>(footprint.getValue()) >
+        Optional<int64_t> footprint =
+            getMemoryFootprintBytes(forOp,
+                                    /*memorySpace=*/0);
+        return (footprint.hasValue() &&
+                static_cast<uint64_t>(footprint.getValue()) >
                     fastMemCapacityBytes);
       };
 
-      if (forOp->getStep() != 1 || exceedsCapacity(forOp)) {
-        // We'll split and do the DMAs one or more levels inside for forInst
-        consumedCapacityBytes += runOnBlock(/*begin=*/curBegin, /*end=*/it);
+      // If the memory footprint of the 'for' loop is higher than fast
+      // memory capacity (when provided), we recurse to DMA at an inner level
+      // until we find a depth at which footprint fits in fast mem capacity. If
+      // the footprint can't be calculated, we assume for now it fits. Recurse
+      // inside if footprint for 'forOp' exceeds capacity, or when
+      // clSkipNonUnitStrideLoop is set and the step size is not one.
+      bool recurseInner = clSkipNonUnitStrideLoop ? forOp->getStep() != 1
+                                                  : exceedsCapacity(forOp);
+      if (recurseInner) {
+        // We'll recurse and do the DMAs at an inner level for 'forInst'.
+        runOnBlock(/*begin=*/curBegin, /*end=*/it);
         // Recurse onto the body of this loop.
-        runOnBlock(forOp->getBody(), consumedCapacityBytes);
+        runOnBlock(forOp->getBody());
         // The next region starts right after the 'for' instruction.
         curBegin = std::next(it);
       } else {
         // We have enough capacity, i.e., DMAs will be computed for the portion
-        // of the block until 'it', and for the 'for' loop. For the
-        // latter, they are placed just before this loop (for incoming DMAs) and
-        // right after (for outgoing ones).
-        consumedCapacityBytes += runOnBlock(/*begin=*/curBegin, /*end=*/it);
+        // of the block until 'it', and for 'it', which is 'forOp'. Note that
+        // for the latter, the DMAs are placed just before this loop (for
+        // incoming DMAs) and right after (for outgoing ones).
+        runOnBlock(/*begin=*/curBegin, /*end=*/it);
 
         // Inner loop DMAs have their own scope - we don't thus update consumed
         // capacity. The footprint check above guarantees this inner loop's
@@ -519,7 +523,7 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
         curBegin = std::next(it);
       }
     } else if (!it->isa<LoadOp>() && !it->isa<StoreOp>()) {
-      consumedCapacityBytes += runOnBlock(/*begin=*/curBegin, /*end=*/it);
+      runOnBlock(/*begin=*/curBegin, /*end=*/it);
       curBegin = std::next(it);
     }
   }
@@ -528,29 +532,7 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
   if (curBegin != block->end()) {
     // Can't be a terminator because it would have been skipped above.
     assert(!curBegin->isKnownTerminator() && "can't be a terminator");
-    consumedCapacityBytes +=
-        runOnBlock(/*begin=*/curBegin, /*end=*/block->end());
-  }
-
-  if (llvm::DebugFlag) {
-    uint64_t thisBlockDmaSizeBytes =
-        consumedCapacityBytes - priorConsumedCapacityBytes;
-    if (thisBlockDmaSizeBytes > 0) {
-      emitNoteForBlock(
-          *block,
-          Twine(llvm::divideCeil(thisBlockDmaSizeBytes, 1024)) +
-              " KiB of DMA buffers in fast memory space for this block\n");
-    }
-  }
-
-  if (consumedCapacityBytes > fastMemCapacityBytes) {
-    StringRef str = "Total size of all DMA buffers' for this block "
-                    "exceeds fast memory capacity\n";
-    if (auto *inst = block->getContainingInst())
-      inst->emitError(str);
-    else
-      block->getFunction()->emitError(str);
-    return false;
+    runOnBlock(/*begin=*/curBegin, /*end=*/block->end());
   }
 
   return true;
@@ -558,6 +540,9 @@ bool DmaGeneration::runOnBlock(Block *block, uint64_t consumedCapacityBytes) {
 
 /// Generates DMAs for a contiguous sequence of instructions in `block` in the
 /// iterator range [begin, end). Returns the total size of the DMA buffers used.
+//  Since we generate alloc's and dealloc's for all DMA buffers (before and
+//  after the range of instructions resp), all of the fast memory capacity is
+//  assumed to be available.
 uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   if (begin == end)
     return 0;
@@ -574,6 +559,9 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   readRegions.clear();
   writeRegions.clear();
   fastBufferMap.clear();
+
+  // To check for errors when walking the block.
+  bool error = false;
 
   // Walk this range of instructions  to gather all memory regions.
   block->walk(begin, end, [&](Instruction *opInst) {
@@ -598,6 +586,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
       if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
         LLVM_DEBUG(
             opInst->emitError("Non-constant memref sizes not yet supported"));
+        error = true;
         return;
       }
     }
@@ -628,16 +617,25 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
             LLVM_DEBUG(llvm::dbgs()
                        << "Memory region bounding box failed; "
                           "over-approximating to the entire memref\n");
+            // If the union fails, we will overapproximate.
             if (!getFullMemRefAsRegion(opInst, dmaDepth, region.get())) {
               LLVM_DEBUG(opInst->emitError(
                   "Non-constant memref sizes not yet supported"));
+              error = true;
+              return true;
             }
+            it->second->getConstraints()->clearAndCopyFrom(
+                *region->getConstraints());
           }
           return true;
         };
 
     bool existsInRead = updateRegion(readRegions);
+    if (error)
+      return;
     bool existsInWrite = updateRegion(writeRegions);
+    if (error)
+      return;
 
     // Finally add it to the region list.
     if (region->isWrite() && !existsInWrite) {
@@ -646,6 +644,12 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
       readRegions[region->memref] = std::move(region);
     }
   });
+
+  if (error) {
+    begin->emitError(
+        "DMA generation failed for one or more memref's in this block\n");
+    return 0;
+  }
 
   uint64_t totalDmaBuffersSizeInBytes = 0;
   bool ret = true;
@@ -677,10 +681,20 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   // For a range of operation instructions, a note will be emitted at the
   // caller.
   OpPointer<AffineForOp> forOp;
+  uint64_t sizeInKib = llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024);
   if (llvm::DebugFlag && (forOp = begin->dyn_cast<AffineForOp>())) {
     forOp->emitNote(
-        Twine(llvm::divideCeil(totalDmaBuffersSizeInBytes, 1024)) +
+        Twine(sizeInKib) +
         " KiB of DMA buffers in fast memory space for this block\n");
+  }
+
+  if (totalDmaBuffersSizeInBytes > fastMemCapacityBytes) {
+    StringRef str = "Total size of all DMA buffers' for this block "
+                    "exceeds fast memory capacity\n";
+    if (auto *inst = block->getContainingInst())
+      inst->emitError(str);
+    else
+      block->getFunction()->emitError(str);
   }
 
   return totalDmaBuffersSizeInBytes;
@@ -691,7 +705,7 @@ PassResult DmaGeneration::runOnFunction(Function *f) {
   zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
 
   for (auto &block : *f) {
-    runOnBlock(&block, /*consumedCapacityBytes=*/0);
+    runOnBlock(&block);
   }
   // This function never leaves the IR in an invalid state.
   return success();

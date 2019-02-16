@@ -261,7 +261,7 @@ PassResult
 PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
-    LLVM_DEBUG(llvm::dbgs() << "unknown trip count loop\n");
+    LLVM_DEBUG(forOp->emitNote("unknown trip count loop"));
     return success();
   }
 
@@ -269,7 +269,7 @@ PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   findMatchingStartFinishInsts(forOp, startWaitPairs);
 
   if (startWaitPairs.empty()) {
-    LLVM_DEBUG(llvm::dbgs() << "No dma start/finish pairs\n";);
+    LLVM_DEBUG(forOp->emitNote("No dma start/finish pairs\n"));
     return success();
   }
 

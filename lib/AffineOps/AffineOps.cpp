@@ -1047,18 +1047,19 @@ bool mlir::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
     LLVM_DEBUG(llvm::dbgs()
                << "Domain conservative: non-unit stride not handled\n");
 
+  int64_t step = forOp->getStep();
+
   // Adds a lower or upper bound when the bounds aren't constant.
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
     auto operands =
         lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
     for (const auto &operand : operands) {
-      unsigned loc;
-      if (!constraints->findId(*operand, &loc)) {
+      unsigned pos;
+      if (!constraints->findId(*operand, &pos)) {
         if (isValidSymbol(operand)) {
           constraints->addSymbolId(constraints->getNumSymbolIds(),
                                    const_cast<Value *>(operand));
-          loc =
-              constraints->getNumDimIds() + constraints->getNumSymbolIds() - 1;
+          pos = constraints->getNumDimAndSymbolIds() - 1;
           // Check if the symbol is a constant.
           if (auto *opInst = operand->getDefiningInst()) {
             if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
@@ -1068,17 +1069,22 @@ bool mlir::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
         } else {
           constraints->addDimId(constraints->getNumDimIds(),
                                 const_cast<Value *>(operand));
-          loc = constraints->getNumDimIds() - 1;
+          pos = constraints->getNumDimIds() - 1;
+          if (auto loop = getForInductionVarOwner(operand)) {
+            // Outer loop IVs could be used in forOp's bounds.
+            if (!addAffineForOpDomain(loop, constraints))
+              return false;
+          }
         }
       }
     }
     // Record positions of the operands in the constraint system.
     SmallVector<unsigned, 8> positions;
     for (const auto &operand : operands) {
-      unsigned loc;
-      if (!constraints->findId(*operand, &loc))
+      unsigned pos;
+      if (!constraints->findId(*operand, &pos))
         assert(0 && "expected to be found");
-      positions.push_back(loc);
+      positions.push_back(pos);
     }
 
     auto boundMap =
@@ -1106,7 +1112,7 @@ bool mlir::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
       ineq[constraints->getNumCols() - 1] =
           lower ? -flatExpr[flatExpr.size() - 1]
                 // Upper bound in flattenedExpr is an exclusive one.
-                : flatExpr[flatExpr.size() - 1] - 1;
+                : flatExpr[flatExpr.size() - 1] - step;
       constraints->addInequality(ineq);
     }
     return true;
@@ -1121,7 +1127,8 @@ bool mlir::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
   }
 
   if (forOp->hasConstantUpperBound()) {
-    constraints->addConstantUpperBound(pos, forOp->getConstantUpperBound() - 1);
+    constraints->addConstantUpperBound(pos,
+                                       forOp->getConstantUpperBound() - step);
     return true;
   }
   // Non-constant upper bound case.

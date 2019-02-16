@@ -37,7 +37,7 @@ using namespace mlir;
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
 // List of tile sizes. If any of them aren't provided, they are filled with
-// clTileSize.
+// clTileSize / kDefaultTileSize.
 static llvm::cl::list<unsigned> clTileSizes(
     "tile-sizes",
     llvm::cl::desc(
@@ -50,8 +50,8 @@ namespace {
 struct LoopTiling : public FunctionPass {
   LoopTiling() : FunctionPass(&LoopTiling::passID) {}
   PassResult runOnFunction(Function *f) override;
-  constexpr static unsigned kDefaultTileSize = 4;
 
+  constexpr static unsigned kDefaultTileSize = 4;
   static char passID;
 };
 
@@ -158,7 +158,8 @@ static void constructTiledIndexSetHyperRect(
 UtilResult mlir::tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
                              ArrayRef<unsigned> tileSizes) {
   assert(!band.empty());
-  assert(band.size() == tileSizes.size());
+  assert(band.size() == tileSizes.size() && "Incorrect number of tile sizes");
+
   // Check if the supplied for inst's are all successively nested.
   for (unsigned i = 1, e = band.size(); i < e; i++) {
     assert(band[i]->getInstruction()->getParentInst() ==

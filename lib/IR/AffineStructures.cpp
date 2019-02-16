@@ -2059,6 +2059,7 @@ bool FlatAffineConstraints::unionBoundingBox(
     auto extent = getConstantBoundOnDimSize(d, &lb, &lbDivisor);
     if (!extent.hasValue())
       // TODO(bondhugula): symbolic extents when necessary.
+      // TODO(bondhugula): handle union if a dimension is unbounded.
       return false;
 
     otherLb.clear();

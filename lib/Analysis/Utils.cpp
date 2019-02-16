@@ -28,12 +28,15 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
 #include "llvm/Support/raw_ostream.h"
 
 #define DEBUG_TYPE "analysis-utils"
 
 using namespace mlir;
+
+using llvm::SmallDenseMap;
 
 /// Populates 'loops' with IVs of the loops surrounding 'inst' ordered from
 /// the outermost 'for' instruction to the innermost one.
@@ -132,6 +135,9 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
   write = access.isStore();
 
   unsigned rank = access.getRank();
+
+  LLVM_DEBUG(llvm::dbgs() << "MemRefRegion::compute: " << *inst
+                          << "depth: " << loopDepth << "\n";);
 
   if (rank == 0) {
     SmallVector<OpPointer<AffineForOp>, 4> ivs;
@@ -607,36 +613,41 @@ unsigned mlir::getNumCommonSurroundingLoops(const Instruction &A,
   return numCommonLoops;
 }
 
-Optional<int64_t>
-mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
-                              int memorySpace) {
-  return getMemoryFootprintBytes(*forOp->getBody(), memorySpace);
-}
+static Optional<int64_t> getMemoryFootprintBytes(const Block &block,
+                                                 Block::const_iterator start,
+                                                 Block::const_iterator end,
+                                                 int memorySpace) {
+  SmallDenseMap<Value *, std::unique_ptr<MemRefRegion>, 4> regions;
 
-Optional<int64_t> mlir::getMemoryFootprintBytes(const Block &block,
-                                                int memorySpace) {
-  std::vector<std::unique_ptr<MemRefRegion>> regions;
+  // Cast away constness since the walker uses non-const versions; but we
+  // guarantee that the visitor callback isn't mutating opInst.
+  auto *cStart = reinterpret_cast<Block::iterator *>(&start);
+  auto *cEnd = reinterpret_cast<Block::iterator *>(&end);
 
   // Walk this 'for' instruction to gather all memory regions.
   bool error = false;
-  const_cast<Block *>(&block)->walk([&](Instruction *opInst) {
+  const_cast<Block *>(&block)->walk(*cStart, *cEnd, [&](Instruction *opInst) {
     if (!opInst->isa<LoadOp>() && !opInst->isa<StoreOp>()) {
       // Neither load nor a store op.
       return;
     }
 
-    // TODO(bondhugula): eventually, we need to be performing a union across
-    // all regions for a given memref instead of creating one region per
-    // memory op. This way we would be allocating O(num of memref's) sets
-    // instead of O(num of load/store op's).
+    // Compute the memref region symbolic in any IVs enclosing this block.
     auto region = std::make_unique<MemRefRegion>(opInst->getLoc());
-    if (!region->compute(opInst, /*loopDepth=*/0)) {
-      LLVM_DEBUG(llvm::dbgs() << "Error obtaining memory region\n");
-      // TODO: stop the walk if an error occurred.
+    if (!region->compute(opInst,
+                         /*loopDepth=*/getNestingDepth(*block.begin()))) {
+      opInst->emitError("Error obtaining memory region\n");
       error = true;
       return;
     }
-    regions.push_back(std::move(region));
+    auto it = regions.find(region->memref);
+    if (it == regions.end()) {
+      regions[region->memref] = std::move(region);
+    } else if (!it->second->unionBoundingBox(*region)) {
+      opInst->emitError("Error performing a union on a memory region\n");
+      error = true;
+      return;
+    }
   });
 
   if (error)
@@ -644,10 +655,19 @@ Optional<int64_t> mlir::getMemoryFootprintBytes(const Block &block,
 
   int64_t totalSizeInBytes = 0;
   for (const auto &region : regions) {
-    auto size = region->getRegionSize();
+    Optional<int64_t> size = region.second->getRegionSize();
     if (!size.hasValue())
       return None;
     totalSizeInBytes += size.getValue();
   }
   return totalSizeInBytes;
+}
+
+Optional<int64_t>
+mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
+                              int memorySpace) {
+  auto *forInst = forOp->getInstruction();
+  return ::getMemoryFootprintBytes(
+      *forInst->getBlock(), Block::const_iterator(forInst),
+      std::next(Block::const_iterator(forInst)), memorySpace);
 }
