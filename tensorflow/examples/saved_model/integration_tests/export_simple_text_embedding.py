@@ -27,7 +27,7 @@ import tensorflow as tf
 
 # TODO(vbardiovsky): remove these when symbols are public.
 from tensorflow.python.ops import lookup_ops
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 FLAGS = flags.FLAGS
 

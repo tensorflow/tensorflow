@@ -272,7 +272,7 @@ def assert_same_structure(nest1, nest2, check_types=True,
         size. Note that namedtuples with identical name and fields are always
         considered to have the same shallow structure. Two types will also be
         considered the same if they are both list subtypes (which allows "list"
-        and "_ListWrapper" from checkpointable dependency tracking to compare
+        and "_ListWrapper" from trackable dependency tracking to compare
         equal).
     expand_composites: If true, then composite tensors such as `tf.SparseTensor`
         and `tf.RaggedTensor` are expanded into their component tensors.

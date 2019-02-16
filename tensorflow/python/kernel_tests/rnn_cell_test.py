@@ -49,7 +49,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 
 
@@ -2804,7 +2804,7 @@ class RNNCellTest(test.TestCase, parameterized.TestCase):
       wrapper(array_ops.ones([1, 1]),
               state=wrapper.zero_state(batch_size=1, dtype=dtypes.float32))
       self.evaluate([v.initializer for v in cell.variables])
-      checkpoint = checkpointable_utils.Checkpoint(wrapper=wrapper)
+      checkpoint = trackable_utils.Checkpoint(wrapper=wrapper)
       prefix = os.path.join(self.get_temp_dir(), "ckpt")
       self.evaluate(cell._bias.assign([40.]))
       save_path = checkpoint.save(prefix)

@@ -170,7 +170,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],

@@ -27,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.training import saver as tf_saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 
 class _Initializer(tracking.TrackableResource):
@@ -123,7 +123,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     self.restore_variables(wrapped, saver)
     with wrapped.graph.as_default():
       init_op = loader_impl.get_init_op(meta_graph_def)
-    root = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
     if init_op is not None:
       asset_feed_tensors = []
       asset_paths = []
@@ -141,6 +141,7 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     else:
       root.asset_paths = []
     signature_functions = self._extract_signatures(wrapped, meta_graph_def)
+
     root.signatures = signature_serialization.create_signature_map(
         signature_functions)
     root.variables = list(wrapped.graph.variables)

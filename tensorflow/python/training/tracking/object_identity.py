@@ -25,7 +25,7 @@ class _ObjectIdentityWrapper(object):
   """Wraps an object, mapping __eq__ on wrapper to "is" on wrapped.
 
   Since __eq__ is based on object identity, it's safe to also define __hash__
-  based on object ids. This lets us add unhashable types like checkpointable
+  based on object ids. This lets us add unhashable types like trackable
   _ListWrapper objects to object-identity collections.
   """
 
@@ -61,7 +61,7 @@ class _WeakObjectIdentityWrapper(_ObjectIdentityWrapper):
 class ObjectIdentityDictionary(collections.MutableMapping):
   """A mutable mapping data structure which compares using "is".
 
-  This is necessary because we have checkpointable objects (_ListWrapper) which
+  This is necessary because we have trackable objects (_ListWrapper) which
   have behavior identical to built-in Python lists (including being unhashable
   and comparing based on the equality of their contents by default).
   """

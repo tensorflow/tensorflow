@@ -21,7 +21,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.training.checkpointable import object_identity
+from tensorflow.python.training.tracking import object_identity
 
 
 def is_layer(obj):
@@ -50,7 +50,7 @@ def filter_empty_layer_containers(layer_list):
     if is_layer(obj):
       filtered.append(obj)
     elif hasattr(obj, "layers"):
-      # Checkpointable data structures will not show up in ".layers" lists, but
+      # Trackable data structures will not show up in ".layers" lists, but
       # the layers they contain will.
       to_visit.extend(obj.layers[::-1])
   return filtered

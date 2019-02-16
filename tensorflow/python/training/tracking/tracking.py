@@ -1,4 +1,4 @@
-"""Dependency tracking for checkpointable objects."""
+"""Dependency tracking for trackable objects."""
 # Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -21,8 +21,8 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import data_structures
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.util import tf_contextlib
 
 
@@ -30,21 +30,21 @@ from tensorflow.python.util import tf_contextlib
 _RESOURCE_TRACKER_STACK = []
 
 
-class NotCheckpointable(object):
+class NotTrackable(object):
   """Marks instances of child classes as unsaveable using an object-based API.
 
-  Useful for marking objects which would otherwise look checkpointable because
-  of inheritance (e.g. through `Layer`) as not checkpointable. Inheriting from
-  `NotCheckpointable` does not prevent an object from being assigned to any
+  Useful for marking objects which would otherwise look trackable because
+  of inheritance (e.g. through `Layer`) as not trackable. Inheriting from
+  `NotTrackable` does not prevent an object from being assigned to any
   attributes, but will throw an error on save/restore.
   """
   pass
 
 
-class AutoCheckpointable(base.Checkpointable):
+class AutoTrackable(base.Trackable):
   """Manages dependencies on other objects.
 
-  `Checkpointable` objects may have dependencies: other `Checkpointable` objects
+  `Trackable` objects may have dependencies: other `Trackable` objects
   which should be saved if the object declaring the dependency is saved. A
   correctly saveable program has a dependency graph such that if changing a
   global variable affects an object (e.g. changes the behavior of any of its
@@ -52,32 +52,32 @@ class AutoCheckpointable(base.Checkpointable):
   the variable.
 
   Dependency edges have names, and are created implicitly when a
-  `Checkpointable` object is assigned to an attribute of another
-  `Checkpointable` object. For example:
+  `Trackable` object is assigned to an attribute of another
+  `Trackable` object. For example:
 
   ```
-  obj = Checkpointable()
+  obj = Trackable()
   obj.v = ResourceVariable(0.)
   ```
 
-  The `Checkpointable` object `obj` now has a dependency named "v" on a
+  The `Trackable` object `obj` now has a dependency named "v" on a
   variable.
 
-  `Checkpointable` objects may specify `Tensor`s to be saved and restored
+  `Trackable` objects may specify `Tensor`s to be saved and restored
   directly (e.g. a `Variable` indicating how to save itself) rather than through
   dependencies on other objects. See
-  `Checkpointable._gather_saveables_for_checkpoint` for details.
+  `Trackable._gather_saveables_for_checkpoint` for details.
   """
 
   def __setattr__(self, name, value):
-    """Support self.foo = checkpointable syntax."""
+    """Support self.foo = trackable syntax."""
     if getattr(self, "_setattr_tracking", True):
       value = data_structures.sticky_attribute_assignment(
-          checkpointable=self, value=value, name=name)
-    super(AutoCheckpointable, self).__setattr__(name, value)
+          trackable=self, value=value, name=name)
+    super(AutoTrackable, self).__setattr__(name, value)
 
   def __delattr__(self, name):
-    self._maybe_initialize_checkpointable()
+    self._maybe_initialize_trackable()
     if name in self._unconditional_dependency_names:
       del self._unconditional_dependency_names[name]
       for index, (dep_name, _) in enumerate(
@@ -85,14 +85,14 @@ class AutoCheckpointable(base.Checkpointable):
         if dep_name == name:
           del self._unconditional_checkpoint_dependencies[index]
           break
-    super(AutoCheckpointable, self).__delattr__(name)
+    super(AutoTrackable, self).__delattr__(name)
 
   def _no_dependency(self, value):
-    """Override to allow CheckpointableBase to disable dependency tracking."""
+    """Override to allow TrackableBase to disable dependency tracking."""
     return data_structures.NoDependency(value)
 
   def _list_functions_for_serialization(self):
-    """Return a dict of `Function`s of a checkpointable."""
+    """Return a dict of `Function`s of a trackable."""
     functions = dict()
     for attribute_name in dir(self):
       try:
@@ -150,7 +150,7 @@ def resource_tracker_scope(resource_tracker):
     _RESOURCE_TRACKER_STACK = old
 
 
-class TrackableResource(base.Checkpointable):
+class TrackableResource(base.Trackable):
   """Base class for all resources that need to be tracked."""
 
   def __init__(self):
@@ -193,7 +193,7 @@ class TrackableResource(base.Checkpointable):
     }
 
 
-class TrackableAsset(base.Checkpointable):
+class TrackableAsset(base.Trackable):
   """Base class for asset files which need to be tracked."""
 
   def __init__(self, path):

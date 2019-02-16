@@ -22,29 +22,29 @@ import os
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import util
 
 
 class InterfaceTests(test.TestCase):
 
   def testOverwrite(self):
-    root = base.Checkpointable()
-    leaf = base.Checkpointable()
-    root._track_checkpointable(leaf, name="leaf")
+    root = base.Trackable()
+    leaf = base.Trackable()
+    root._track_trackable(leaf, name="leaf")
     (current_name, current_dependency), = root._checkpoint_dependencies
     self.assertIs(leaf, current_dependency)
     self.assertEqual("leaf", current_name)
-    duplicate_name_dep = base.Checkpointable()
+    duplicate_name_dep = base.Trackable()
     with self.assertRaises(ValueError):
-      root._track_checkpointable(duplicate_name_dep, name="leaf")
-    root._track_checkpointable(duplicate_name_dep, name="leaf", overwrite=True)
+      root._track_trackable(duplicate_name_dep, name="leaf")
+    root._track_trackable(duplicate_name_dep, name="leaf", overwrite=True)
     (current_name, current_dependency), = root._checkpoint_dependencies
     self.assertIs(duplicate_name_dep, current_dependency)
     self.assertEqual("leaf", current_name)
 
   def testAddVariableOverwrite(self):
-    root = base.Checkpointable()
+    root = base.Trackable()
     a = root._add_variable_with_custom_getter(
         name="v", shape=[], getter=variable_scope.get_variable)
     self.assertEqual([root, a], util.list_objects(root))
@@ -61,15 +61,15 @@ class InterfaceTests(test.TestCase):
             getter=variable_scope.get_variable)
 
   def testAssertConsumedWithUnusedPythonState(self):
-    has_config = base.Checkpointable()
+    has_config = base.Trackable()
     has_config.get_config = lambda: {}
     saved = util.Checkpoint(obj=has_config)
     save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    restored = util.Checkpoint(obj=base.Checkpointable())
+    restored = util.Checkpoint(obj=base.Trackable())
     restored.restore(save_path).assert_consumed()
 
   def testAssertConsumedFailsWithUsedPythonState(self):
-    has_config = base.Checkpointable()
+    has_config = base.Trackable()
     attributes = {
         "foo_attr": functools.partial(
             base.PythonStringStateSaveable,
@@ -78,7 +78,7 @@ class InterfaceTests(test.TestCase):
     has_config._gather_saveables_for_checkpoint = lambda: attributes
     saved = util.Checkpoint(obj=has_config)
     save_path = saved.save(os.path.join(self.get_temp_dir(), "ckpt"))
-    restored = util.Checkpoint(obj=base.Checkpointable())
+    restored = util.Checkpoint(obj=base.Trackable())
     status = restored.restore(save_path)
     with self.assertRaisesRegexp(AssertionError, "foo_attr"):
       status.assert_consumed()

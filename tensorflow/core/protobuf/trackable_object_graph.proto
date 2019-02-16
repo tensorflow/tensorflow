@@ -8,10 +8,10 @@ package tensorflow;
 // own variables, allowing for more robust checkpoint loading into modified
 // programs.
 
-message CheckpointableObjectGraph {
-  message CheckpointableObject {
+message TrackableObjectGraph {
+  message TrackableObject {
     message ObjectReference {
-      // An index into `CheckpointableObjectGraph.nodes`, indicating the object
+      // An index into `TrackableObjectGraph.nodes`, indicating the object
       // being referenced.
       int32 node_id = 1;
       // A user-provided name for the edge.
@@ -37,12 +37,12 @@ message CheckpointableObjectGraph {
     }
 
     message SlotVariableReference {
-      // An index into `CheckpointableObjectGraph.nodes`, indicating the
+      // An index into `TrackableObjectGraph.nodes`, indicating the
       // variable object this slot was created for.
       int32 original_variable_node_id = 1;
       // The name of the slot (e.g. "m"/"v").
       string slot_name = 2;
-      // An index into `CheckpointableObjectGraph.nodes`, indicating the
+      // An index into `TrackableObjectGraph.nodes`, indicating the
       // `Object` with the value of the slot variable.
       int32 slot_variable_node_id = 3;
     }
@@ -55,5 +55,5 @@ message CheckpointableObjectGraph {
     repeated SlotVariableReference slot_variables = 3;
   }
 
-  repeated CheckpointableObject nodes = 1;
+  repeated TrackableObject nodes = 1;
 }

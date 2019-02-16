@@ -25,35 +25,35 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine import training
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import base
-from tensorflow.python.training.checkpointable import data_structures
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
 
 
 class InterfaceTests(test.TestCase):
 
   def testMultipleAssignment(self):
-    root = tracking.AutoCheckpointable()
-    root.leaf = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
+    root.leaf = tracking.AutoTrackable()
     root.leaf = root.leaf
-    duplicate_name_dep = tracking.AutoCheckpointable()
+    duplicate_name_dep = tracking.AutoTrackable()
     with self.assertRaisesRegexp(ValueError, "already declared"):
-      root._track_checkpointable(duplicate_name_dep, name="leaf")
+      root._track_trackable(duplicate_name_dep, name="leaf")
     # No error; we're overriding __setattr__, so we can't really stop people
     # from doing this while maintaining backward compatibility.
     root.leaf = duplicate_name_dep
-    root._track_checkpointable(duplicate_name_dep, name="leaf", overwrite=True)
+    root._track_trackable(duplicate_name_dep, name="leaf", overwrite=True)
     self.assertIs(duplicate_name_dep, root._lookup_dependency("leaf"))
     (_, dep_object), = root._checkpoint_dependencies
     self.assertIs(duplicate_name_dep, dep_object)
 
   def testNoDependency(self):
-    root = tracking.AutoCheckpointable()
-    hasdep = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
+    hasdep = tracking.AutoTrackable()
     root.hasdep = hasdep
-    nodep = tracking.AutoCheckpointable()
+    nodep = tracking.AutoTrackable()
     root.nodep = data_structures.NoDependency(nodep)
     self.assertEqual(1, len(root._checkpoint_dependencies))
     self.assertIs(root._checkpoint_dependencies[0].ref, root.hasdep)
@@ -66,14 +66,14 @@ class InterfaceTests(test.TestCase):
       def __init__(self):
         super(NoDependencyModel, self).__init__()
         self.a = []
-        self.b = tracking.AutoCheckpointable()
+        self.b = tracking.AutoTrackable()
 
     nodeps = NoDependencyModel()
     self.assertEqual([nodeps], util.list_objects(nodeps))
 
   def testRemoveDependency(self):
-    root = tracking.AutoCheckpointable()
-    root.a = tracking.AutoCheckpointable()
+    root = tracking.AutoTrackable()
+    root.a = tracking.AutoTrackable()
     self.assertEqual(1, len(root._checkpoint_dependencies))
     self.assertEqual(1, len(root._unconditional_checkpoint_dependencies))
     self.assertIs(root.a, root._checkpoint_dependencies[0].ref)
@@ -81,16 +81,16 @@ class InterfaceTests(test.TestCase):
     self.assertFalse(hasattr(root, "a"))
     self.assertEqual(0, len(root._checkpoint_dependencies))
     self.assertEqual(0, len(root._unconditional_checkpoint_dependencies))
-    root.a = tracking.AutoCheckpointable()
+    root.a = tracking.AutoTrackable()
     self.assertEqual(1, len(root._checkpoint_dependencies))
     self.assertEqual(1, len(root._unconditional_checkpoint_dependencies))
     self.assertIs(root.a, root._checkpoint_dependencies[0].ref)
 
   def testListBasic(self):
-    a = tracking.AutoCheckpointable()
-    b = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
+    b = tracking.AutoTrackable()
     a.l = [b]
-    c = tracking.AutoCheckpointable()
+    c = tracking.AutoTrackable()
     a.l.append(c)
     a_deps = util.list_objects(a)
     self.assertIn(b, a_deps)
@@ -102,10 +102,10 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testMutationDirtiesList(self):
-    a = tracking.AutoCheckpointable()
-    b = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
+    b = tracking.AutoTrackable()
     a.l = [b]
-    c = tracking.AutoCheckpointable()
+    c = tracking.AutoTrackable()
     a.l.insert(0, c)
     checkpoint = util.Checkpoint(a=a)
     with self.assertRaisesRegexp(ValueError, "A list element was replaced"):
@@ -113,11 +113,11 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testOutOfBandEditDirtiesList(self):
-    a = tracking.AutoCheckpointable()
-    b = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
+    b = tracking.AutoTrackable()
     held_reference = [b]
     a.l = held_reference
-    c = tracking.AutoCheckpointable()
+    c = tracking.AutoTrackable()
     held_reference.append(c)
     checkpoint = util.Checkpoint(a=a)
     with self.assertRaisesRegexp(ValueError, "The wrapped list was modified"):
@@ -125,25 +125,25 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testNestedLists(self):
-    a = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
     a.l = []
-    b = tracking.AutoCheckpointable()
+    b = tracking.AutoTrackable()
     a.l.append([b])
-    c = tracking.AutoCheckpointable()
+    c = tracking.AutoTrackable()
     a.l[0].append(c)
     a_deps = util.list_objects(a)
     self.assertIn(b, a_deps)
     self.assertIn(c, a_deps)
     a.l[0].append(1)
-    d = tracking.AutoCheckpointable()
+    d = tracking.AutoTrackable()
     a.l[0].append(d)
     a_deps = util.list_objects(a)
     self.assertIn(d, a_deps)
     self.assertIn(b, a_deps)
     self.assertIn(c, a_deps)
     self.assertNotIn(1, a_deps)
-    e = tracking.AutoCheckpointable()
-    f = tracking.AutoCheckpointable()
+    e = tracking.AutoTrackable()
+    f = tracking.AutoTrackable()
     a.l1 = [[], [e]]
     a.l1[0].append(f)
     a_deps = util.list_objects(a)
@@ -198,7 +198,7 @@ class InterfaceTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testAssertions(self):
-    a = tracking.AutoCheckpointable()
+    a = tracking.AutoTrackable()
     a.l = {"k": [numpy.zeros([2, 2])]}
     self.assertAllEqual(nest.flatten({"k": [numpy.zeros([2, 2])]}),
                         nest.flatten(a.l))

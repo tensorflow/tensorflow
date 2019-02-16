@@ -76,7 +76,7 @@ def make_variable(name,
   that has fewer constraints (`variable_scope.variable()`).
 
   In the longer term, it seems like a similar "default variable creator" method
-  should exist in `CheckpointableBase` instead. When this happens, we can get
+  should exist in `Trackable` instead. When this happens, we can get
   rid of this temporary solution.
 
   TODO(fchollet): remove this method when no longer needed.
