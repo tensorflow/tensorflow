@@ -2756,7 +2756,7 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
     // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
     // dimension.
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -2785,7 +2785,7 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
     // for y4 == 1 and the loop over y3 is contained within the
     // AddScalarBroadcast function.
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -3142,7 +3142,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
   int y4 = params.broadcast_shape[4];
   if (y4 > 1) {
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -3159,7 +3159,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
     }
   } else {
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
