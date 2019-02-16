@@ -80,10 +80,12 @@ class InterfaceTests(test.TestCase):
 
   def testLayerDeduplication(self):
     model = training.Model()
-    layer = core.Dense(1)
-    model.l = layer
-    model.other_path = [layer]
-    self.assertEqual([layer], model.layers)
+    layer_one = core.Dense(1)
+    layer_two = core.Dense(1)
+    model.other_path = [layer_one, layer_two]
+    model.l2 = layer_two
+    model.l1 = layer_one
+    self.assertEqual([layer_one, layer_two], model.layers)
 
   @test_util.run_in_graph_and_eager_modes(assert_no_eager_garbage=True)
   def testAddVariable(self):
