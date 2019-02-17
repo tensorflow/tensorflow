@@ -258,6 +258,7 @@ class MapDefunOp : public AsyncOpKernel {
             "output: ",
             index);
       }
+      Tensor* out;
       {  // Locking scope
         mutex_lock l(compute_opts_->mu);
         if (!compute_opts_->output_shapes.at(index).IsCompatibleWith(
@@ -272,15 +273,15 @@ class MapDefunOp : public AsyncOpKernel {
           // this index. Store the shape and allocate the output accordingly.
           compute_opts_->output_shapes.at(index) = val.shape();
 
-          Tensor* out = nullptr;
           TensorShape actual_shape = val.shape();
           actual_shape.InsertDim(0, compute_opts_->batch_size);
           TF_RETURN_IF_ERROR(
               compute_opts_->output.allocate(index, actual_shape, &out));
+        } else {
+          out = (compute_opts_->output)[index];
         }
-        return batch_util::CopyElementToSlice(
-            val, (compute_opts_->output)[index], iter_);
       }
+      return batch_util::CopyElementToSlice(val, out, iter_);
     }
 
    private:
