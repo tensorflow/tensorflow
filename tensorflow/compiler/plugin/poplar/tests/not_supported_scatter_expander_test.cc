@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/not_supported_scatter_expander.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/not_supported_scatter_expander.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 

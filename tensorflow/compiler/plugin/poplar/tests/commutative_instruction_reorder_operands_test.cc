@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/commutative_instruction_reorder_operands.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/commutative_instruction_reorder_operands.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
@@ -110,8 +110,8 @@ TEST_F(CommutativeInstructionReorderOperandsTest, ReorderBinary) {
       builder.AddInstruction(HloInstruction::CreateParameter(0, s1, "i1"));
   auto i2 =
       builder.AddInstruction(HloInstruction::CreateParameter(1, s2, "i2"));
-  auto pad = builder.AddInstruction(
-      HloInstruction::CreatePad(s2, i1, zero, padding));
+  auto pad =
+      builder.AddInstruction(HloInstruction::CreatePad(s2, i1, zero, padding));
   builder.AddInstruction(
       HloInstruction::CreateBinary(s2, HloOpcode::kMultiply, pad, i2));
 

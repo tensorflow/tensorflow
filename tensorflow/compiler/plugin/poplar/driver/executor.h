@@ -26,7 +26,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/host/host_timer.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
 
 #include "tensorflow/compiler/xla/literal.h"
