@@ -1280,21 +1280,21 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
     ask_cuda_compute_capabilities = (
         'Please specify a list of comma-separated '
-        'Cuda compute capabilities you want to '
+        'CUDA compute capabilities you want to '
         'build with.\nYou can find the compute '
         'capability of your device at: '
         'https://developer.nvidia.com/cuda-gpus.\nPlease'
         ' note that each additional compute '
         'capability significantly increases your '
-        'build time and binary size. [Default is: %s]: ' %
+        'build time and binary size, and that '
+        'TensorFlow only supports compute '
+        'capabilities >= 3.5' [Default is: %s]: ' %
         default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
         ask_cuda_compute_capabilities, default_cuda_compute_capabilities)
     # Check whether all capabilities from the input is valid
     all_valid = True
-    # Provide a warning for capabilities less than 3.5
-    warning_flag = False
     # Remove all whitespace characters before splitting the string
     # that users may insert by accident, as this will result in error
     tf_cuda_compute_capabilities = ''.join(tf_cuda_compute_capabilities.split())
@@ -1304,19 +1304,13 @@ def set_tf_cuda_compute_capabilities(environ_cp):
         print('Invalid compute capability: ' % compute_capability)
         all_valid = False
       else:
-        ver = int(m.group(0).split('.')[0])
-        if ver < 3:
-          print('Only compute capabilities 3.0 or higher are supported.')
+        ver = float(m.group(0))
+        if ver < 3.5:
+          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
+                'or higher. Please re-specify the list of compute capabilities,'
+                ' excluding all those versions that are less than 3.5')
           all_valid = False
-        elif warning_flag = False and float(compute_capability) < 3.5:
-          warning_flag = True
-
-    if warning_flag:
-      print('Warning: TensorFlow can be build with CUDA compute capabilities ' \
-            'higher than 3.0 but it works with compute capabilities >= 3.5 ' \
-            'only. You may remove all compute capabilities lesser than 3.5 ' \
-            'to reduce the build time.')
-
+    
     if all_valid:
       break
 
