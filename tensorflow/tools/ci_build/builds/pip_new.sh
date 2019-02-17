@@ -493,10 +493,10 @@ run_test_with_bazel() {
   # PIP tests should have a "different" path. Different than the one we place
   # virtualenv, because we are deleting and recreating it here.
   PIP_TEST_PREFIX=bazel_pip
-  PIP_TEST_ROOT=$(pwd)/${PIP_TEST_PREFIX}
-  sudo rm -rf $PIP_TEST_ROOT
-  mkdir -p $PIP_TEST_ROOT
-  ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
+  TEST_ROOT=$(pwd)/${PIP_TEST_PREFIX}
+  sudo rm -rf $TEST_ROOT
+  mkdir -p $TEST_ROOT
+  ln -s $(pwd)/tensorflow ${TEST_ROOT}/tensorflow
 
   if [[ "${IS_OSS_SERIAL}" == "1" ]]; then
     remove_test_filter_tag -no_oss
@@ -537,7 +537,7 @@ run_test_with_bazel() {
 
   TEST_TARGETS_LN=""
   for TARGET in ${BAZEL_TEST_TARGETS[@]}; do
-    TARGET_RE="$(echo ${TARGET} | sed -e 's/\/\//\/${PIP_TEST_PREFIX}\//g')"
+    TARGET_RE="$(echo ${TARGET} | sed -e 's/\/\//\/${TEST_ROOT}\//g')"
     TEST_TARGETS_LN+="${TARGET_RE} "
   done
   echo "Test targets (symlink): ${TEST_TARGETS_LN}"
@@ -545,7 +545,7 @@ run_test_with_bazel() {
   # Run the test.
   bazel test --build_tests_only ${BAZEL_BUILD_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- ${TEST_TARGETS_LN}
 
-  unlink ${PIP_TEST_ROOT}/tensorflow
+  unlink ${TEST_ROOT}/tensorflow
 }
 
 run_all_tests() {
