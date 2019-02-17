@@ -2206,6 +2206,7 @@ def layer_norm(inputs,
                trainable=True,
                begin_norm_axis=1,
                begin_params_axis=-1,
+               epsilon=1e-12,
                scope=None):
   """Adds a Layer Normalization layer.
 
@@ -2312,14 +2313,13 @@ def layer_norm(inputs,
     norm_axes = list(range(begin_norm_axis, inputs_rank))
     mean, variance = nn.moments(inputs, norm_axes, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.
-    variance_epsilon = 1e-12
     outputs = nn.batch_normalization(
         inputs,
         mean,
         variance,
         offset=beta,
         scale=gamma,
-        variance_epsilon=variance_epsilon)
+        variance_epsilon=epsilon)
     outputs.set_shape(inputs_shape)
     if activation_fn is not None:
       outputs = activation_fn(outputs)
