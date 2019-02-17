@@ -956,6 +956,44 @@ class TrainingTest(keras_parameterized.TestCase):
         callbacks=[val_counter])
     self.assertEqual(val_counter.val_runs, expected_runs)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_add_loss_correctness(self):
+    if testing_utils.should_run_eagerly():
+      self.skipTest('b/124303407')
+
+    class Bias(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+      def call(self, inputs):
+        return inputs + self.bias
+
+    inputs = keras.Input(shape=(1,))
+    outputs = Bias()(inputs)
+    model = keras.Model(inputs, outputs)
+    targets = keras.Input(shape=(1,))
+
+    model.add_loss(
+        math_ops.reduce_mean(
+            keras.losses.mean_absolute_error(targets, outputs)))
+
+    # If we want to use the loss class instance as shown below, we will need to
+    # add graph scope as the reduction logic involves some eager mode checks.
+    with keras.backend.get_graph().as_default():
+      model.add_loss(keras.losses.MeanAbsoluteError()(targets, outputs))
+
+    model.compile(
+        keras.optimizer_v2.gradient_descent.SGD(0.033333),
+        loss=keras.losses.MeanAbsoluteError(),
+        target_tensors=[targets],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    x = np.array([[0.], [1.], [2.]])
+    y = np.array([[0.5], [2.], [3.5]])
+    history = model.fit(x, y, batch_size=3, epochs=5)
+    self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8], 1e-3)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 

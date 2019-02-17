@@ -696,7 +696,12 @@ class Layer(trackable.Trackable):
       A list of tensors.
     """
     collected_losses = []
-    if context.executing_eagerly():
+
+    # If any eager losses are present, we assume the model to be part of an
+    # eager training loop (either a custom one or the one used when
+    # `run_eagerly=True`), and so we always return just the eager losses in that
+    # case.
+    if self._eager_losses:
       collected_losses.extend(self._eager_losses)
     else:
       collected_losses.extend(self._losses)
@@ -727,6 +732,7 @@ class Layer(trackable.Trackable):
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
+        Other types of input are ignored.
       inputs: Ignored when executing eagerly. If anything other than None is
         passed, it signals the losses are conditional on some of the layer's
         inputs, and thus they should only be run where these inputs are
@@ -752,10 +758,13 @@ class Layer(trackable.Trackable):
         self._callable_losses.append(
             functools.partial(_tag_unconditional, loss))
       else:
-        if context.executing_eagerly():
-          self._eager_losses.append(_tag_unconditional(loss))
-        else:
+        if not tensor_util.is_tensor(loss):
+          # Ignoring constant values as this does not affect the gradients.
+          return
+        if tf_utils.is_symbolic_tensor(loss):
           self._losses.append(_tag_unconditional(loss))
+        else:
+          self._eager_losses.append(_tag_unconditional(loss))
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
