@@ -21,7 +21,6 @@ namespace xla {
 namespace gpu {
 
 namespace {
-
 void AppendParams(const HloInstruction& instr,
                   std::vector<HloInstruction*>* params) {
   if (instr.opcode() == HloOpcode::kFusion) {
