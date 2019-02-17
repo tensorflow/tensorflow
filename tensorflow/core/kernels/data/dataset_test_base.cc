@@ -58,7 +58,9 @@ Status DatasetOpsTestBase::CreateTensorSliceDataset(
     DatasetBase** tensor_slice_dataset) {
   std::unique_ptr<OpKernel> tensor_slice_dataset_kernel;
   DataTypeVector dtypes;
+  dtypes.reserve(components->size());
   std::vector<PartialTensorShape> shapes;
+  shapes.reserve(components->size());
   for (const auto& t : *components) {
     dtypes.push_back(t.dtype());
     gtl::InlinedVector<int64, 4> partial_dim_sizes;

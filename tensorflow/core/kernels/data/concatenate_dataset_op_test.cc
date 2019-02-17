@@ -77,34 +77,39 @@ struct TestParam {
   int64 expected_cardinality;
   std::vector<int> breakpoints;
 } TestCases[] = {
-    // Same shape.
-    {{{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2}, {1, 2, 3, 4}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                               {5, 6, 7, 8})},
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                               {11, 12, 13, 14}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                               {15, 16, 17, 18})}},
-     {{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {1, 2}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {5, 6}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {3, 4}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {7, 8}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {11, 12}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {15, 16}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {13, 14}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {17, 18})}},
-     {DT_INT64, DT_INT64},
+    // Test case 1: same shape.
+    {/*input_tensors*/ {{DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 2}, {1, 2, 3, 4}),
+                         DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 2}, {5, 6, 7, 8})},
+                        {DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 2}, {11, 12, 13, 14}),
+                         DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 2}, {15, 16, 17, 18})}},
+     /*expected_outputs*/
+     {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {1, 2}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {5, 6}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {3, 4}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {7, 8}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {11, 12}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {15, 16}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {13, 14}),
+      DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {17, 18})},
+     /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
+     /*expected_output_shapes*/
      {PartialTensorShape({2}), PartialTensorShape({2})},
-     4,
-     {0, 2, 5}},
-    // Different shape.
-    {{{DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 3},
-                                               {1, 2, 3, 4, 5, 6}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                               {7, 8, 9, 10})},
-      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 2},
-                                               {11, 12, 13, 14}),
-       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2, 1}, {15, 16})}},
+     /*expected_cardinality*/ 4,
+     /*breakpoints*/ {0, 2, 5}},
+    // Test case 2: different shape.
+    {/*input_tensors*/ {{DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 3}, {1, 2, 3, 4, 5, 6}),
+                         DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 2}, {7, 8, 9, 10})},
+                        {DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 2}, {11, 12, 13, 14}),
+                         DatasetOpsTestBase::CreateTensor<int64>(
+                             TensorShape{2, 1}, {15, 16})}},
+     /*expected_outputs*/
      {DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3}, {1, 2, 3}),
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {7, 8}),
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{3}, {4, 5, 6}),
@@ -113,50 +118,62 @@ struct TestParam {
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {15}),
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{2}, {13, 14}),
       DatasetOpsTestBase::CreateTensor<int64>(TensorShape{1}, {16})},
-     {DT_INT64, DT_INT64},
+     /*expected_output_dtypes*/ {DT_INT64, DT_INT64},
+     /*expected_output_shapes*/
      {PartialTensorShape({-1}), PartialTensorShape({-1})},
-     4,
-     {0, 2, 5}}};
+     /*expected_cardinality*/ 4,
+     /*breakpoints*/ {0, 2, 5}}};
 
-struct DatasetGetNextTest : ConcatenateDatasetOpTest,
+struct ConcatenateDatasetOpTestHelper : ConcatenateDatasetOpTest {
+  ~ConcatenateDatasetOpTestHelper() {
+    if (dataset) dataset->Unref();
+  }
+
+  Status CreateDatasetFromTestCase(const TestParam &test_case) {
+    std::vector<Tensor> tensor_slice_dataset_tensors;
+    TF_RETURN_IF_ERROR(CreateTensorSliceDatasetTensors(
+        test_case.input_tensors, &tensor_slice_dataset_tensors));
+    gtl::InlinedVector<TensorValue, 4> inputs;
+    for (auto &tensor : tensor_slice_dataset_tensors) {
+      inputs.emplace_back(&tensor);
+    }
+    TF_RETURN_IF_ERROR(CreateConcatenateDatasetKernel(
+        test_case.expected_output_dtypes, test_case.expected_output_shapes,
+        &dataset_kernel));
+    TF_RETURN_IF_ERROR(CreateConcatenateDatasetContext(
+        dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
+    TF_RETURN_IF_ERROR(CreateDataset(dataset_kernel.get(),
+                                     dataset_kernel_ctx.get(), &dataset));
+    return Status::OK();
+  }
+
+  Status CreateIteratorFromTestCase(const TestParam &test_case) {
+    TF_RETURN_IF_ERROR(CreateDatasetFromTestCase(test_case));
+    TF_RETURN_IF_ERROR(
+        CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
+    TF_RETURN_IF_ERROR(
+        dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
+    return Status::OK();
+  }
+
+  std::unique_ptr<OpKernel> dataset_kernel;
+  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
+  DatasetBase *dataset = nullptr;  // owned by this class.
+  std::unique_ptr<IteratorContext> iterator_ctx;
+  std::unique_ptr<IteratorBase> iterator;
+};
+
+struct DatasetGetNextTest : public ConcatenateDatasetOpTestHelper,
                             ::testing::WithParamInterface<TestParam> {};
 
 TEST_P(DatasetGetNextTest, GetNext) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+  const TestParam &test_case = GetParam();
+  TF_ASSERT_OK(CreateIteratorFromTestCase(test_case));
 
-  std::vector<std::vector<Tensor>> tensor_vectors = GetParam().input_tensors;
-  std::vector<Tensor> expected_outputs = GetParam().expected_outputs;
-  auto expected_outputs_it = expected_outputs.begin();
-  std::vector<PartialTensorShape> expected_output_shapes =
-      GetParam().expected_output_shapes;
-  DataTypeVector expected_output_dtypes = GetParam().expected_output_dtypes;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(
-      expected_output_dtypes, expected_output_shapes, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
+  auto expected_outputs_it = test_case.expected_outputs.begin();
   bool end_of_sequence = false;
   std::vector<Tensor> out_tensors;
   while (!end_of_sequence) {
@@ -164,221 +181,99 @@ TEST_P(DatasetGetNextTest, GetNext) {
         iterator->GetNext(iterator_ctx.get(), &out_tensors, &end_of_sequence));
     if (!end_of_sequence) {
       for (auto &tensor : out_tensors) {
-        EXPECT_NE(expected_outputs_it, expected_outputs.end());
+        EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
         TF_EXPECT_OK(ExpectEqual(tensor, *expected_outputs_it));
         expected_outputs_it++;
       }
     }
   }
-  EXPECT_EQ(expected_outputs_it, expected_outputs.end());
+  EXPECT_EQ(expected_outputs_it, test_case.expected_outputs.end());
 }
 
 INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetGetNextTest,
                         ::testing::ValuesIn(TestCases));
 
-TEST_F(ConcatenateDatasetOpTest, DifferentDtypes) {
+TEST_F(ConcatenateDatasetOpTestHelper, DifferentDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
 
-  std::vector<std::vector<Tensor>> tensor_vectors = {
-      {CreateTensor<int64>(TensorShape({2, 2}), {1, 2, 3, 4})},
-      {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}};
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-  std::vector<PartialTensorShape> output_shapes =
-      TestCases[0].expected_output_shapes;
-  DataTypeVector output_dtypes = TestCases[0].expected_output_dtypes;
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(output_dtypes, output_shapes,
-                                              &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  EXPECT_EQ(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset)
-          .code(),
-      tensorflow::error::INVALID_ARGUMENT);
+  TestParam test_case_with_different_dtypes = {
+      /*input_tensors*/ {
+          {CreateTensor<int64>(TensorShape({2, 2}), {1, 2, 3, 4})},
+          {CreateTensor<double>(TensorShape({2, 2}), {1.0, 2.0, 3.0, 4.0})}},
+      /*expected_outputs*/ {},
+      /*expected_output_dtypes*/ {DT_INT64},
+      /*expected_output_shapes*/ {PartialTensorShape({2})},
+      /*expected_cardinality*/ 0,
+      /*breakpoints*/ {}};
+
+  EXPECT_EQ(CreateDatasetFromTestCase(test_case_with_different_dtypes).code(),
+            tensorflow::error::INVALID_ARGUMENT);
 }
 
-TEST_F(ConcatenateDatasetOpTest, DatasetName) {
+TEST_F(ConcatenateDatasetOpTestHelper, DatasetName) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = TestCases[0].input_tensors;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-  std::vector<PartialTensorShape> output_shapes =
-      TestCases[0].expected_output_shapes;
-  DataTypeVector output_dtypes = TestCases[0].expected_output_dtypes;
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(output_dtypes, output_shapes,
-                                              &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
+  TF_ASSERT_OK(CreateDatasetFromTestCase(TestCases[0]));
 
   EXPECT_EQ(dataset->name(), kOpName);
 }
 
-struct DatasetOutputDtypesTest : ConcatenateDatasetOpTest,
+struct DatasetOutputDtypesTest : ConcatenateDatasetOpTestHelper,
                                  ::testing::WithParamInterface<TestParam> {};
 
 TEST_P(DatasetOutputDtypesTest, DatasetOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = GetParam().input_tensors;
-  std::vector<Tensor> expected_outputs = GetParam().expected_outputs;
-  std::vector<PartialTensorShape> expected_output_shapes =
-      GetParam().expected_output_shapes;
-  DataTypeVector expected_output_dtypes = GetParam().expected_output_dtypes;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(
-      expected_output_dtypes, expected_output_shapes, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  EXPECT_OK(VerifyTypesMatch(dataset->output_dtypes(), expected_output_dtypes));
+  const TestParam &test_case = GetParam();
+  TF_ASSERT_OK(CreateDatasetFromTestCase(test_case));
+  EXPECT_OK(VerifyTypesMatch(dataset->output_dtypes(),
+                             test_case.expected_output_dtypes));
 }
 
 INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetOutputDtypesTest,
                         ::testing::ValuesIn(TestCases));
 
-struct DatasetOutputShapesTest : ConcatenateDatasetOpTest,
+struct DatasetOutputShapesTest : ConcatenateDatasetOpTestHelper,
                                  ::testing::WithParamInterface<TestParam> {};
 
 TEST_P(DatasetOutputShapesTest, DatasetOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = GetParam().input_tensors;
-  std::vector<Tensor> expected_outputs = GetParam().expected_outputs;
-  std::vector<PartialTensorShape> expected_output_shapes =
-      GetParam().expected_output_shapes;
-  DataTypeVector expected_output_dtypes = GetParam().expected_output_dtypes;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(
-      expected_output_dtypes, expected_output_shapes, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  EXPECT_OK(
-      VerifyShapesCompatible(dataset->output_shapes(), expected_output_shapes));
+  const TestParam &test_case = GetParam();
+  TF_ASSERT_OK(CreateDatasetFromTestCase(test_case));
+  EXPECT_OK(VerifyShapesCompatible(dataset->output_shapes(),
+                                   test_case.expected_output_shapes));
 }
 
 INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetOutputShapesTest,
                         ::testing::ValuesIn(TestCases));
 
-struct DatasetCardinalityTest : ConcatenateDatasetOpTest,
+struct DatasetCardinalityTest : ConcatenateDatasetOpTestHelper,
                                 ::testing::WithParamInterface<TestParam> {};
 
 TEST_P(DatasetCardinalityTest, Cardinality) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
+  const TestParam &test_case = GetParam();
+  TF_ASSERT_OK(CreateDatasetFromTestCase(test_case));
 
-  std::vector<std::vector<Tensor>> tensor_vectors = GetParam().input_tensors;
-  std::vector<Tensor> expected_outputs = GetParam().expected_outputs;
-  std::vector<PartialTensorShape> expected_output_shapes =
-      GetParam().expected_output_shapes;
-  DataTypeVector expected_output_dtypes = GetParam().expected_output_dtypes;
-  int64 expected_cardinality = GetParam().expected_cardinality;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(
-      expected_output_dtypes, expected_output_shapes, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  EXPECT_EQ(dataset->Cardinality(), expected_cardinality);
+  EXPECT_EQ(dataset->Cardinality(), GetParam().expected_cardinality);
 }
 
 INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetCardinalityTest,
                         ::testing::ValuesIn(TestCases));
 
-TEST_F(ConcatenateDatasetOpTest, DatasetSave) {
+TEST_F(ConcatenateDatasetOpTestHelper, DatasetSave) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = TestCases[0].input_tensors;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-  std::vector<PartialTensorShape> output_shapes =
-      TestCases[0].expected_output_shapes;
-  DataTypeVector output_dtypes = TestCases[0].expected_output_dtypes;
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(output_dtypes, output_shapes,
-                                              &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
+  TF_ASSERT_OK(CreateDatasetFromTestCase(TestCases[0]));
 
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
@@ -388,169 +283,56 @@ TEST_F(ConcatenateDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(writer.Flush());
 }
 
-struct IteratorOutputDtypesTest : ConcatenateDatasetOpTest,
+struct IteratorOutputDtypesTest : ConcatenateDatasetOpTestHelper,
                                   ::testing::WithParamInterface<TestParam> {};
 
 TEST_P(IteratorOutputDtypesTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = GetParam().input_tensors;
-  std::vector<Tensor> expected_outputs = GetParam().expected_outputs;
-  std::vector<PartialTensorShape> expected_output_shapes =
-      GetParam().expected_output_shapes;
-  DataTypeVector expected_output_dtypes = GetParam().expected_output_dtypes;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(
-      expected_output_dtypes, expected_output_shapes, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
-  TF_EXPECT_OK(
-      VerifyTypesMatch(iterator->output_dtypes(), expected_output_dtypes));
+  const TestParam &test_case = GetParam();
+  TF_ASSERT_OK(CreateIteratorFromTestCase(test_case));
+  TF_EXPECT_OK(VerifyTypesMatch(iterator->output_dtypes(),
+                                test_case.expected_output_dtypes));
 }
 
 INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, IteratorOutputDtypesTest,
                         ::testing::ValuesIn(TestCases));
 
-struct IteratorOutputShapesTest : ConcatenateDatasetOpTest,
+struct IteratorOutputShapesTest : ConcatenateDatasetOpTestHelper,
                                   ::testing::WithParamInterface<TestParam> {};
 
 TEST_P(IteratorOutputShapesTest, IteratorOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = GetParam().input_tensors;
-  std::vector<Tensor> expected_outputs = GetParam().expected_outputs;
-  std::vector<PartialTensorShape> expected_output_shapes =
-      GetParam().expected_output_shapes;
-  DataTypeVector expected_output_dtypes = GetParam().expected_output_dtypes;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(
-      expected_output_dtypes, expected_output_shapes, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
-
+  const TestParam &test_case = GetParam();
+  TF_ASSERT_OK(CreateIteratorFromTestCase(test_case));
   TF_EXPECT_OK(VerifyShapesCompatible(iterator->output_shapes(),
-                                      expected_output_shapes));
+                                      test_case.expected_output_shapes));
 }
 
 INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, IteratorOutputShapesTest,
                         ::testing::ValuesIn(TestCases));
 
-TEST_F(ConcatenateDatasetOpTest, IteratorOutputPrefix) {
+TEST_F(ConcatenateDatasetOpTestHelper, IteratorOutputPrefix) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = TestCases[0].input_tensors;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-  std::vector<PartialTensorShape> output_shapes =
-      TestCases[0].expected_output_shapes;
-  DataTypeVector output_dtypes = TestCases[0].expected_output_dtypes;
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(output_dtypes, output_shapes,
-                                              &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
+  TF_ASSERT_OK(CreateIteratorFromTestCase(TestCases[0]));
   EXPECT_EQ(iterator->prefix(), "Iterator::Concatenate");
 }
 
-struct IteratorRoundtripTest : ConcatenateDatasetOpTest,
+struct IteratorRoundtripTest : ConcatenateDatasetOpTestHelper,
                                ::testing::WithParamInterface<TestParam> {};
 
 TEST_P(IteratorRoundtripTest, Roundtrip) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
-
-  std::vector<std::vector<Tensor>> tensor_vectors = GetParam().input_tensors;
-  std::vector<Tensor> expected_outputs = GetParam().expected_outputs;
-  auto expected_outputs_it = expected_outputs.begin();
-  std::vector<PartialTensorShape> expected_output_shapes =
-      GetParam().expected_output_shapes;
-  DataTypeVector expected_output_dtypes = GetParam().expected_output_dtypes;
-  std::vector<Tensor> tensor_slice_dataset_tensors;
-  TF_ASSERT_OK(CreateTensorSliceDatasetTensors(tensor_vectors,
-                                               &tensor_slice_dataset_tensors));
-  gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &tensor : tensor_slice_dataset_tensors) {
-    inputs.emplace_back(&tensor);
-  }
-
-  std::unique_ptr<OpKernel> dataset_kernel;
-  TF_ASSERT_OK(CreateConcatenateDatasetKernel(
-      expected_output_dtypes, expected_output_shapes, &dataset_kernel));
-  std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
-  TF_ASSERT_OK(CreateConcatenateDatasetContext(dataset_kernel.get(), &inputs,
-                                               &dataset_kernel_ctx));
-  DatasetBase *dataset;
-  TF_ASSERT_OK(
-      CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
-  core::ScopedUnref scoped_unref(dataset);
-
-  std::unique_ptr<IteratorContext> iterator_ctx;
-  TF_ASSERT_OK(CreateIteratorContext(dataset_kernel_ctx.get(), &iterator_ctx));
-  std::unique_ptr<IteratorBase> iterator;
-  TF_ASSERT_OK(
-      dataset->MakeIterator(iterator_ctx.get(), "Iterator", &iterator));
+  const TestParam &test_case = GetParam();
+  auto expected_outputs_it = test_case.expected_outputs.begin();
+  TF_ASSERT_OK(CreateIteratorFromTestCase(test_case));
 
   std::unique_ptr<SerializationContext> serialization_ctx;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_ctx));
@@ -572,7 +354,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
                                      &end_of_sequence));
       if (!end_of_sequence) {
         for (auto &tensor : out_tensors) {
-          EXPECT_NE(expected_outputs_it, expected_outputs.end());
+          EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
           TF_EXPECT_OK(ExpectEqual(tensor, *expected_outputs_it));
           expected_outputs_it++;
         }
@@ -582,7 +364,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
 
     if (breakpoint >= dataset->Cardinality()) {
       EXPECT_TRUE(end_of_sequence);
-      EXPECT_EQ(expected_outputs_it, expected_outputs.end());
+      EXPECT_EQ(expected_outputs_it, test_case.expected_outputs.end());
     } else {
       EXPECT_FALSE(end_of_sequence);
     }
