@@ -194,7 +194,4 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
 
 
 if __name__ == "__main__":
-  import time
-
-  time.sleep(20)
   googletest.main()
