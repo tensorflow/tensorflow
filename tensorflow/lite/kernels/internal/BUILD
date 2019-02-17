@@ -312,6 +312,7 @@ cc_library(
         "reference/integer_ops/dequantize.h",
         "reference/integer_ops/fully_connected.h",
         "reference/integer_ops/logistic.h",
+        "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
         "reference/integer_ops/tanh.h",
