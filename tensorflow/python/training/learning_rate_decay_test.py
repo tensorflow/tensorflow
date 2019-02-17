@@ -39,8 +39,10 @@ class CyclicLearningRateTest(test_util.TensorFlowTestCase):
     if mode == 'triangular2':
       clr = clr/(math.pow(2, (cycle - 1)))
     if mode == 'exp_range':
-      clr = clr * math.pow(.99994, step)
-    return clr + lr
+      gamma = 0.99994
+      clr = clr * math.pow(gamma, step)
+    clr = clr + lr
+    return clr
 
   @test_util.run_in_graph_and_eager_modes()
   def test_triangular(self):
