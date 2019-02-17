@@ -2042,6 +2042,9 @@ def atrous_conv2d_transpose(value,
     if not output_shape_.get_shape().is_compatible_with(tensor_shape.vector(4)):
       raise ValueError("output_shape must have shape (4,), got {}".format(
           output_shape_.get_shape()))
+ 
+    if isinstance(output_shape, tuple):
+      raise ValueError("output_shape cannot be of type tuple")
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
