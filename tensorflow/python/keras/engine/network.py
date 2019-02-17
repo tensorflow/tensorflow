@@ -531,7 +531,12 @@ class Network(base_layer.Layer):
   @property
   def _unfiltered_losses(self):
     losses = []
-    if context.executing_eagerly():
+
+    # If any eager losses are present, we assume the model to be part of an
+    # eager training loop (either a custom one or the one used when
+    # `run_eagerly=True`), and so we always return just the eager losses in that
+    # case.
+    if self._eager_losses:
       losses.extend(self._eager_losses)
     else:
       losses.extend(self._losses)

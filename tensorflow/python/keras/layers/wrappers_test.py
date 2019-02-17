@@ -558,10 +558,15 @@ class BidirectionalTest(test.TestCase):
       assert len(layer.losses) == 4
       assert len(layer.get_losses_for(None)) == 4
       assert not layer.get_losses_for(x)
+
+      # Create a random tensor that is not conditional on the inputs.
+      with keras.backend.get_graph().as_default():
+        const_tensor = constant_op.constant(1)
+
       layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.forward_layer.add_loss(1, inputs=None)
+      layer.forward_layer.add_loss(const_tensor, inputs=None)
       layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.backward_layer.add_loss(1, inputs=None)
+      layer.backward_layer.add_loss(const_tensor, inputs=None)
       assert len(layer.losses) == 8
       assert len(layer.get_losses_for(None)) == 6
       assert len(layer.get_losses_for(x)) == 2
