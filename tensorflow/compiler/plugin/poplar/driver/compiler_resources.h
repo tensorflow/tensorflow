@@ -34,7 +34,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-using ComputationMap = std::map<const HloComputation*, SubComputationVisitor>;
+using ComputationMap =
+    std::map<const HloComputation*, std::shared_ptr<SubComputationVisitor>>;
 
 // This structure contains additional information required to lower the graph
 // from an XLA graph to a poplar graph.

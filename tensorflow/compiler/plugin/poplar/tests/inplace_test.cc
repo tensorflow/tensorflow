@@ -116,11 +116,11 @@ ENTRY c1 {
   InplaceFinder inplaceFinder(annotations);
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
-  std::set<std::string> in_place_ops = {"p0_b", "p1_b",   "p2_b", "u0_b",
-                                        "u1_b", "root_b", "p0_c", "t"};
+  std::set<std::string> in_place_ops = {
+      "p0_b", "p1_b", "p2_b", "u0_b", "u1_b", "root_b", "p0_c", "t", "while"};
   auto inplace_instructions = annotations.inplace_instructions;
 
-  EXPECT_THAT(inplace_instructions.size(), 8);
+  EXPECT_THAT(inplace_instructions.size(), 9);
   for (const auto* inst : inplace_instructions) {
     EXPECT_THAT(in_place_ops.count(inst->name()), 1);
   }
@@ -559,9 +559,9 @@ ENTRY entry {
   EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
 
   auto& inplace_instructions = annotations.inplace_instructions;
-  EXPECT_THAT(inplace_instructions.size(), 6);
-  std::set<std::string> in_place_ops = {"p_body.2", "root",     "p_body.1",
-                                        "add",      "p_cond.1", "while_init"};
+  EXPECT_THAT(inplace_instructions.size(), 7);
+  std::set<std::string> in_place_ops = {
+      "p_body.2", "root", "p_body.1", "add", "p_cond.1", "while_init", "while"};
   for (auto i : inplace_instructions) {
     EXPECT_TRUE(in_place_ops.count(i->name()));
   }

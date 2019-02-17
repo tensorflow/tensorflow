@@ -65,6 +65,11 @@ StatusOr<poplar::Tensor> AddNormOffsetTensor(
     std::vector<const HloInstruction*> forward_path,
     const TensorMap& tensor_map);
 
+// Returns true if the given tensor source has a special layout allocation
+// target.
+bool HasTensorAllocationTarget(const TensorSource& src,
+                               const CompilerResources& resources);
+
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,
                                    const xla::Shape& shape,

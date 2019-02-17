@@ -33,11 +33,12 @@ namespace xla {
 namespace poplarplugin {
 
 SubComputationVisitor::SubComputationVisitor(
-    CompilerResources& res, const ArgVectors& inputs,
+    CompilerResources& res, const ArgVectors& inputs, bool inplace_inputs,
     const std::vector<const SubComputationVisitor*>& dependent_subcomputations)
     : FullVisitor(res),
       temp_inputs_(inputs),
       inputs_(temp_inputs_.size()),
+      inplace_inputs_(inplace_inputs),
       dependent_subcomputations_(dependent_subcomputations) {}
 
 bool SubComputationVisitor::InputIsUsedInThisSubComputation(
@@ -88,41 +89,47 @@ Status SubComputationVisitor::HandleParameter(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   HloParameterInstruction* param_inst =
       static_cast<HloParameterInstruction*>(inst);
+  const auto param_num = param_inst->parameter_number();
+
   poplar::Graph& graph = GetGraph(resources_, param_inst);
 
-  ArgVector inputs;
   std::vector<xla::Shape> shapes = FlattenedXlaShape(param_inst->shape());
-  std::vector<bool> used(shapes.size());
-  std::vector<bool> allocated(shapes.size());
-  const auto param_num = param_inst->parameter_number();
+  auto& inputs = inputs_[param_num];
+  auto& used = used_tensors_[param_num];
+  auto& allocated = allocated_tensors_[param_num];
+  inputs.resize(shapes.size());
+  used.resize(shapes.size());
+  allocated.resize(shapes.size());
   for (unsigned int i = 0; i < shapes.size(); i++) {
+    auto src = std::make_pair(inst, i);
     auto& t = temp_inputs_[param_num][i];
     used[i] = InputIsUsedInThisSubComputation(param_inst, shapes, i);
     allocated[i] =
         InputIsUsedInDependentSubComputations(param_inst, i) || used[i];
     if (!allocated[i]) {
-      inputs.push_back(t);
-      TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, t));
+      inputs[i] = t;
     } else {
-      if (t.containsConstant()) {
-        auto src = std::make_pair(inst, i);
-        TF_ASSIGN_OR_RETURN(
-            poplar::Tensor out,
-            AddTensor(graph, src, shapes[i], resources_, tensor_map));
-        inputs.push_back(out);
-        TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
+      if (inplace_inputs_) {
+        inputs[i] = t;
       } else {
-        auto name = StrCat(GetDebugName(inst), "_in_", i);
-        poplar::Tensor out = graph.clone(t, name);
-        inputs.push_back(out);
-        TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, out));
+        // For used non-inplace inputs we have the following cases:
+        // 1. This input has an allocation target.
+        // 2. This input contains constants.
+        // 3. This input does not have a target.
+        // For cases 1 and 2 we allocate a new tensor. For case 3 we clone the
+        // layout of the input.
+        if (HasTensorAllocationTarget(src, resources_) ||
+            t.containsConstant()) {
+          TF_ASSIGN_OR_RETURN(inputs[i], AddTensor(graph, src, shapes[i],
+                                                   resources_, tensor_map));
+        } else {
+          auto name = StrCat(GetDebugName(inst), "_in_", i);
+          inputs[i] = graph.clone(t, name);
+        }
       }
     }
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i, inputs[i]));
   }
-
-  inputs_[param_num] = inputs;
-  used_tensors_[param_num] = used;
-  allocated_tensors_[param_num] = allocated;
 
   return Status::OK();
 }

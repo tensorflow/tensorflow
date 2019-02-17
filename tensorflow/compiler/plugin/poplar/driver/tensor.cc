@@ -613,6 +613,12 @@ static StatusOr<poplar::Tensor> AddElementwiseBinary(
   return graph.clone(other_side, debug_name);
 }
 
+bool HasTensorAllocationTarget(const TensorSource& src,
+                               const CompilerResources& resources) {
+  auto& tensor_allocation_map = resources.annotations.tensor_allocation_map;
+  return tensor_allocation_map.find(src) != tensor_allocation_map.end();
+}
+
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,
                                    const xla::Shape& shape,

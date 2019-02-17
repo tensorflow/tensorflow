@@ -175,6 +175,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
         case HloOpcode::kTranspose:
         case HloOpcode::kTuple:
         case HloOpcode::kPad:
+        case HloOpcode::kWhile:
           inplace_instructions_queue.push_front(inst);
           break;
         case HloOpcode::kAdd:

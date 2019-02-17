@@ -37,6 +37,7 @@ using TensorInputDescription = absl::flat_hash_map<int64, std::vector<bool>>;
 class SubComputationVisitor : public FullVisitor {
  public:
   SubComputationVisitor(CompilerResources& res, const ArgVectors& inputs,
+                        bool inplace_inputs = false,
                         const std::vector<const SubComputationVisitor*>&
                             dependent_subcomputations = {});
 
@@ -60,6 +61,9 @@ class SubComputationVisitor : public FullVisitor {
   ArgVectors temp_inputs_;
   ArgVectors inputs_;
   OutVector outputs_;
+
+  // If set to true, this computation consumes the inputs.
+  bool inplace_inputs_;
 
   const std::vector<const SubComputationVisitor*>& dependent_subcomputations_;
   // Allocated tensors for inputs which are used by this subcomputation only.

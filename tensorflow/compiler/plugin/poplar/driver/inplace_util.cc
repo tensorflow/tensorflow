@@ -178,8 +178,10 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
           return absl::make_unique<NotInplaceHloInstructionDescription>();
         }
       } else if (IsRepeatLoop(inst)) {
-        // TODO T4848
-        return absl::make_unique<NotInplaceHloInstructionDescription>();
+        // Inplace on it's input tuple.
+        CHECK_EQ(inst->operand_count(), 1);
+        return absl::make_unique<InplaceHloInstructionDescription>(
+            OperandIndexes({0}));
       } else {
         // A non poplibs fusion is inplace on all operands.
         OperandIndexes indexes(inst->operand_count());
@@ -187,14 +189,17 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
         return absl::make_unique<InplaceHloInstructionDescription>(indexes);
       }
     }
+
     case HloOpcode::kCall: {
-      // TODO T4848
+      // Calls are not inplace.
       return absl::make_unique<NotInplaceHloInstructionDescription>();
     }
 
     case HloOpcode::kWhile: {
-      // TODO T4848
-      return absl::make_unique<NotInplaceHloInstructionDescription>();
+      // Inplace on it's input tuple.
+      CHECK_EQ(inst->operand_count(), 1);
+      return absl::make_unique<InplaceHloInstructionDescription>(
+          OperandIndexes({0}));
     }
 
     case HloOpcode::kCustomCall: {
