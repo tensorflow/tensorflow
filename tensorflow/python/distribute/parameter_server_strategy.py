@@ -317,7 +317,8 @@ class ParameterServerStrategyExtended(
           if kwargs.get("trainable", True):
             collections.append(ops.GraphKeys.TRAINABLE_VARIABLES)
             l = g.get_collection_ref(ops.GraphKeys.TRAINABLE_VARIABLES)
-            l.remove(v)
+            if v in l:
+              l.remove(v)
           g.add_to_collections(collections, wrapped)
         elif ops.GraphKeys.GLOBAL_STEP in collections:
           ops.add_to_collections(ops.GraphKeys.GLOBAL_STEP, wrapped)
