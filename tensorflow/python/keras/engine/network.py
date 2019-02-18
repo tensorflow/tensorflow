@@ -1393,6 +1393,8 @@ class Network(base_layer.Layer):
       if not proceed:
         return
     if save_format == 'h5':
+      if not os.path.exists(os.path.dirname(filepath)):
+        os.makedirs(os.path.dirname(filepath))
       with h5py.File(filepath, 'w') as f:
         hdf5_format.save_weights_to_hdf5_group(f, self.layers)
     else:
