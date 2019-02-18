@@ -149,8 +149,6 @@ class RecognizeCommands {
 
   // Working variables
   PreviousResultsQueue previous_results_;
-  int previous_results_head_;
-  int previous_results_tail_;
   const char* previous_top_label_;
   int32_t previous_top_label_time_;
 };
