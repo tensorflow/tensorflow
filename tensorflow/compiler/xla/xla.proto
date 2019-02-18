@@ -72,8 +72,7 @@ message DebugOptions {
   // Path to dump HLO graphs to.
   string xla_hlo_graph_path = 4;
 
-  // Dump HLO graphs as TensorFlow GraphDefs.
-  bool xla_hlo_dump_as_graphdef = 5;
+  reserved 5;  // Was xla_hlo_dump_as_graphdef
 
   // HLO modules matching this regex will be dumped to LOG(INFO). Set to ".*" to
   // dump *all* HLO modules.
@@ -171,9 +170,7 @@ message DebugOptions {
   // HLO graph.
   bool xla_hlo_graph_sharding_color = 92;
 
-  // Prefix the name scopes of the TF graph exports with "devX" device
-  // assignments, if available.
-  bool xla_hlo_tfgraph_device_scopes = 93;
+  reserved 93;  // Was xla_hlo_tfgraph_device_scopes
 
   // If true, the GPU backend is free to use cudnn for HLO batch normalization
   // ops.
