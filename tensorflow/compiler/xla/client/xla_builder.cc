@@ -1490,18 +1490,18 @@ XlaOp XlaBuilder::AfterAll(absl::Span<const XlaOp> tokens) {
     if (tokens.empty()) {
       return InvalidArgument("AfterAll requires at least one operand");
     }
-    for (int i = 0; i < tokens.size(); ++i) {
-      const XlaOp& operand = tokens[i];
-      TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
-      if (!operand_shape.IsToken()) {
-        return InvalidArgument(
-            "All operands to AfterAll must be tokens; operand %d has shape %s",
-            i, ShapeUtil::HumanString(operand_shape));
-      }
-    }
     HloInstructionProto instr;
     *instr.mutable_shape() = ShapeUtil::MakeTokenShape().ToProto();
     return AddInstruction(std::move(instr), HloOpcode::kAfterAll, tokens);
+  });
+}
+
+XlaOp XlaBuilder::AddDependency(const XlaOp& operand, const XlaOp& token) {
+  return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(const Shape& operand_shape, GetShape(operand));
+    HloInstructionProto instr;
+    *instr.mutable_shape() = operand_shape.ToProto();
+    return AddInstruction(std::move(instr), HloOpcode::kAddDependency, {operand, token});
   });
 }
 
@@ -3414,6 +3414,10 @@ XlaOp CreateToken(XlaBuilder* builder) { return builder->CreateToken(); }
 
 XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens) {
   return builder->AfterAll(tokens);
+}
+
+XlaOp AddDependency(const XlaOp& operand, const XlaOp& token) {
+  return operand.builder()->AddDependency(operand, token);
 }
 
 XlaOp BatchNormTraining(const XlaOp& operand, const XlaOp& scale,

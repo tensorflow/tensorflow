@@ -678,6 +678,8 @@ class XlaBuilder {
 
   XlaOp AfterAll(absl::Span<const XlaOp> tokens);
 
+  XlaOp AddDependency(const XlaOp& operand, const XlaOp& token);
+
   XlaOp Recv(const Shape& shape, const ChannelHandle& handle);
   XlaOp RecvWithToken(const XlaOp& token, const Shape& shape,
                       const ChannelHandle& handle);
@@ -1142,6 +1144,7 @@ class XlaBuilder {
                                 const string& outfeed_config);
   friend XlaOp CreateToken(XlaBuilder* builder);
   friend XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
+  friend XlaOp AddDependency(const XlaOp& operand, const XlaOp& token);
 
   friend XlaOp GetDimensionSize(const XlaOp& operand, int64 dimension);
 };
@@ -1924,6 +1927,11 @@ XlaOp CreateToken(XlaBuilder* builder);
 // takes a variadic number of token-shaped operands. The number of operands must
 // be greater than zero. Used for joining tokens.
 XlaOp AfterAll(XlaBuilder* builder, absl::Span<const XlaOp> tokens);
+
+// Enqueues an AddDependency instruction which consumes a non-token operand
+// and a token, and passes the non-token unchanged.  It is used for dependency
+// control.
+XlaOp AddDependency(const XlaOp& operand, const XlaOp& token);
 
 // Normalizes operand across spatial and batch dimensions for each feature.
 //

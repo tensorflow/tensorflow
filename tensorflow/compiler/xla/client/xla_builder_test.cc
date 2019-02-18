@@ -917,9 +917,18 @@ TEST_F(XlaBuilderTest, AfterAllWithNonTokenOperands) {
   XlaBuilder b(TestName());
   AfterAll(&b, {CreateToken(&b), ConstantR0<float>(&b, 1.0)});
   Status status = b.Build().status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr("All operands to AfterAll must be tokens"));
+  ASSERT_IS_OK(status);
+}
+
+TEST_F(XlaBuilderTest, AddDependency) {
+  XlaBuilder b(TestName());
+  auto token = CreateToken(&b);
+  auto tensor = ConstantR1<float>(&b, {0.0, 1.0});
+  auto out = AddDependency(tensor, token);
+  TF_ASSERT_OK_AND_ASSIGN(auto shape, b.GetShape(out));
+  EXPECT_TRUE(ShapeUtil::Equal(shape, ShapeUtil::MakeShape(F32, {2})));
+  Status status = b.Build().status();
+  ASSERT_IS_OK(status);
 }
 
 TEST_F(XlaBuilderTest, CheckInputOutputAlias) {
