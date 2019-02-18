@@ -1917,6 +1917,25 @@ class UnidirectionalSequenceRnn
   }
 };
 
+class Where : public BuiltinOperator<WhereOperator, ::tflite::WhereOptions,
+                                     ::tflite::BuiltinOptions_WhereOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateWhereOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
 std::unique_ptr<flexbuffers::Builder> WriteFlexOpOptions(
     const string& tensorflow_node_def) {
   auto fbb = absl::make_unique<flexbuffers::Builder>();
@@ -2398,6 +2417,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<UnidirectionalSequenceRnn>(
       ::tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
       OperatorType::kUnidirectionalSequenceRnn));
+  ops.push_back(
+      MakeUnique<Where>(::tflite::BuiltinOperator_WHERE, OperatorType::kWhere));
 
   // Custom Operators.
   ops.push_back(

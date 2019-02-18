@@ -165,7 +165,8 @@ enum class OperatorType : uint8 {
   kBidirectionalSequenceLstm,
   kReverseV2,
   kBidirectionalSequenceRnn,
-  kGatherNd
+  kGatherNd,
+  kWhere
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -2034,6 +2035,18 @@ struct UnidirectionalSequenceRnnOperator : Operator {
       : Operator(OperatorType::kUnidirectionalSequenceRnn) {}
   bool time_major;
   FusedActivationFunctionType fused_activation_function;
+};
+
+// Where Operator:
+// Return the coordinates of the true values in condition tensor in row-major
+// order.
+//
+// Inputs:
+//  inputs[0]: required: boolean condition tensor
+//
+//  TensorFlow equivalent: Where
+struct WhereOperator : Operator {
+  WhereOperator() : Operator(OperatorType::kWhere) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

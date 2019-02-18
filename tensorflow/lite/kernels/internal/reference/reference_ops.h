@@ -4586,6 +4586,34 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
   }
 }
 
+template <typename D, typename T>
+void SelectTrueCoords(const RuntimeShape& input_condition_shape,
+                      const D* input_condition_data, T* output_data) {
+  const size_t size = input_condition_shape.FlatSize();
+  const size_t cond_rank = input_condition_shape.DimensionsCount();
+
+  std::vector<int> dims_to_count(cond_rank, 0);
+  int cur_flat_size = size;
+  for (int i = 0; i < cond_rank; ++i) {
+    dims_to_count[i] = cur_flat_size / input_condition_shape.Dims(i);
+    cur_flat_size = dims_to_count[i];
+  }
+
+  int output_index = 0;
+  for (int i = 0; i < size; ++i) {
+    if (input_condition_data[i]) {
+      // Insert the coordinate of the current item (row major) into output.
+      int flat_index = i;
+      for (int j = 0; j < cond_rank; ++j) {
+        int coord_j = flat_index / dims_to_count[j];
+        output_data[output_index * cond_rank + j] = coord_j;
+        flat_index %= dims_to_count[j];
+      }
+      output_index++;
+    }
+  }
+}
+
 // For easy implementation, the indices is always a vector of size-4 vectors.
 template <typename T, typename TI>
 inline void SparseToDense(const std::vector<std::vector<TI>>& indices,

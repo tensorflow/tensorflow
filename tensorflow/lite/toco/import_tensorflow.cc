@@ -2514,6 +2514,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
       {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
+      {"Where", ConvertSimpleOperator<WhereOperator, 1, 1>},
   });
 }
 
