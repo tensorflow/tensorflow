@@ -146,7 +146,8 @@ bool IsFusible(const HloInstruction& instr) {
          instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
          instr.opcode() == HloOpcode::kFusion ||
          instr.opcode() == HloOpcode::kGather ||
-         instr.opcode() == HloOpcode::kIota || instr.opcode() == HloOpcode::kPad ||
+         instr.opcode() == HloOpcode::kIota ||
+         instr.opcode() == HloOpcode::kPad ||
          instr.opcode() == HloOpcode::kReduce ||
          instr.opcode() == HloOpcode::kReduceWindow ||
          instr.opcode() == HloOpcode::kReshape ||
