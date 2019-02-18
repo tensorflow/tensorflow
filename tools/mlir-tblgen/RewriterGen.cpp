@@ -1,4 +1,4 @@
-//===- RewriterGen.cpp - MLIR pattern rewriter generator ------------===//
+//===- RewriterGen.cpp - MLIR pattern rewriter generator ------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //

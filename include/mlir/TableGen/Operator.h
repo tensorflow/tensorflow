@@ -52,9 +52,6 @@ public:
   // Returns the operation name.
   StringRef getOperationName() const;
 
-  // Returns the TableGen definition name split around '_'.
-  const SmallVectorImpl<StringRef> &getSplitDefName() const;
-
   // Returns dialect name of the op.
   StringRef getDialectName() const;
 
@@ -63,6 +60,9 @@ public:
 
   // Returns the C++ class name of the op with namespace added.
   std::string getQualCppClassName() const;
+
+  // Returns the TableGen definition name split around '_'.
+  const SmallVectorImpl<StringRef> &getSplitDefName() const;
 
   // Returns the number of results this op produces.
   int getNumResults() const;
@@ -78,11 +78,12 @@ public:
   attribute_iterator attribute_end() const;
   llvm::iterator_range<attribute_iterator> getAttributes() const;
 
-  // Op attribute accessors.
   int getNumAttributes() const { return attributes.size(); }
   // Returns the total number of native attributes.
   int getNumNativeAttributes() const;
   int getNumDerivedAttributes() const;
+
+  // Op attribute accessors.
   NamedAttribute &getAttribute(int index) { return attributes[index]; }
   const NamedAttribute &getAttribute(int index) const;
 
@@ -92,19 +93,21 @@ public:
   operand_iterator operand_end();
   llvm::iterator_range<operand_iterator> getOperands();
 
-  // Op operand accessors.
   int getNumOperands() const { return operands.size(); }
+
+  // Op operand accessors.
   Value &getOperand(int index) { return operands[index]; }
   const Value &getOperand(int index) const { return operands[index]; }
 
   // Returns true if this operation has a variadic operand.
   bool hasVariadicOperand() const;
 
+  // Returns the total number of arguments.
+  int getNumArgs() const { return getNumOperands() + getNumNativeAttributes(); }
+
   // Op argument (attribute or operand) accessors.
   Argument getArg(int index);
   StringRef getArgName(int index) const;
-  // Returns the total number of arguments.
-  int getNumArgs() const { return getNumOperands() + getNumNativeAttributes(); }
 
   // Returns true if this op has the given MLIR C++ `trait`.
   // TODO: We should add a C++ wrapper class for TableGen OpTrait instead of

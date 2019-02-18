@@ -127,7 +127,7 @@ private:
 
   // Emits the build() method that takes each result-type/operand/attribute as
   // a stand-alone parameter. Using the first operand's type as all result
-  // types if `hasResultType` is false.
+  // types if `isAllSameType` is true.
   void emitStandaloneParamBuilder(bool isAllSameType);
 
   // The record corresponding to the op.
@@ -239,19 +239,21 @@ void OpEmitter::emitNamedOperands() {
 }
 
 void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
-  OUT(2) << "static void build(Builder* builder, OperationState* result";
+  OUT(2) << "static void build(Builder *builder, OperationState *result";
 
   auto numResults = op.getNumResults();
+  auto numOperands = op.getNumOperands();
 
   // Emit parameters for all return types
-  if (isAllSameType)
-    for (unsigned i = 0, e = numResults; i != e; ++i)
+  if (!isAllSameType) {
+    for (unsigned i = 0; i != numResults; ++i)
       os << ", Type returnType" << i;
+  }
 
   // Emit parameters for all operands
-  for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
+  for (int i = 0; i != numOperands; ++i) {
     auto &operand = op.getOperand(i);
-    os << (operand.type.isVariadic() ? ", ArrayRef<Value*> " : ", Value* ")
+    os << (operand.type.isVariadic() ? ", ArrayRef<Value *> " : ", Value *")
        << getArgumentName(op, i);
   }
 
@@ -269,7 +271,7 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   // Push all result types to the result
   if (numResults > 0) {
     OUT(4) << "result->addTypes({";
-    if (isAllSameType) {
+    if (!isAllSameType) {
       os << "returnType0";
       for (unsigned i = 1; i != numResults; ++i)
         os << ", returnType" << i;
@@ -283,12 +285,11 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   }
 
   // Push all operands to the result
-  auto numOperands = op.getNumOperands();
   bool hasVariadicOperand = op.hasVariadicOperand();
   int numNonVariadicOperands = numOperands - int(hasVariadicOperand);
   if (numNonVariadicOperands > 0) {
     OUT(4) << "result->addOperands({" << getArgumentName(op, 0);
-    for (int i = 1, e = numNonVariadicOperands; i < e; ++i) {
+    for (int i = 1; i < numNonVariadicOperands; ++i) {
       os << ", " << getArgumentName(op, i);
     }
     os << "});\n";
@@ -334,7 +335,7 @@ void OpEmitter::emitBuilder() {
 
   // 1. Stand-alone parameters
 
-  emitStandaloneParamBuilder(/*isAllSameType=*/true);
+  emitStandaloneParamBuilder(/*isAllSameType=*/false);
 
   // 2. Aggregated parameters
 
@@ -349,7 +350,8 @@ void OpEmitter::emitBuilder() {
          << "    result->addTypes(resultTypes);\n";
 
   // Operands
-  OUT(4) << "assert(args.size() == " << numNonVariadicOperands
+  OUT(4) << "assert(args.size()" << (hasVariadicOperand ? " >= " : " == ")
+         << numNonVariadicOperands
          << "u && \"mismatched number of parameters\");\n"
          << "    result->addOperands(args);\n\n";
 
@@ -368,7 +370,7 @@ void OpEmitter::emitBuilder() {
   // 3. Deduced result types
 
   if (op.hasTrait("SameOperandsAndResultType"))
-    emitStandaloneParamBuilder(/*isAllSameType=*/false);
+    emitStandaloneParamBuilder(/*isAllSameType=*/true);
 }
 
 void OpEmitter::emitCanonicalizationPatterns() {
@@ -529,7 +531,7 @@ void OpEmitter::emitTraits() {
     else
       os << "AtLeastNOperands<" << (numOperands - 1) << ">::Impl";
   } else {
-    switch (op.getNumOperands()) {
+    switch (numOperands) {
     case 0:
       os << "ZeroOperands";
       break;
