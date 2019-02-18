@@ -132,6 +132,12 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
 }
 
 bool IsFusible(const HloInstruction& instr) {
+  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
+  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
+  // unfused GTE is an input to a kernel (including a fusion kernel), we
+  // compute the address of the GTE at the top of the kernel.  Often we know the
+  // address of the GTE result statically, so we can do this without chasing any
+  // pointers.
   return (instr.IsElementwise() && instr.operand_count() > 0) ||
          instr.opcode() == HloOpcode::kBitcast ||
          instr.opcode() == HloOpcode::kBroadcast ||
