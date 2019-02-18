@@ -720,8 +720,7 @@ class BatchFunctionKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     BatchResource* br;
-    std::function<Status(BatchResource * *r)> creator = [this,
-                                                         c](BatchResource** r) {
+    std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
       std::unique_ptr<BatchResource> new_resource;
       TF_RETURN_IF_ERROR(
           BatchResource::Create(num_batch_threads_, max_batch_size_,
@@ -801,16 +800,15 @@ class BatchKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     BatchResource* br;
-    std::function<Status(BatchResource * *r)> creator =
-        [this](BatchResource** r) {
-          std::unique_ptr<BatchResource> new_resource;
-          TF_RETURN_IF_ERROR(BatchResource::Create(
-              num_batch_threads_, max_batch_size_, batch_timeout_micros_,
-              max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle,
-              &new_resource));
-          *r = new_resource.release();
-          return Status::OK();
-        };
+    std::function<Status(BatchResource**)> creator = [this](BatchResource** r) {
+      std::unique_ptr<BatchResource> new_resource;
+      TF_RETURN_IF_ERROR(BatchResource::Create(
+          num_batch_threads_, max_batch_size_, batch_timeout_micros_,
+          max_enqueued_batches_, allowed_batch_sizes_, kInvalidHandle,
+          &new_resource));
+      *r = new_resource.release();
+      return Status::OK();
+    };
     OP_REQUIRES_OK_ASYNC(c,
                          c->resource_manager()->LookupOrCreate(
                              container_, shared_name_, &br, creator),
@@ -1066,7 +1064,7 @@ class UnbatchKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     UnbatchResource* ubr;
-    std::function<Status(UnbatchResource * *r)> creator =
+    std::function<Status(UnbatchResource**)> creator =
         [this](UnbatchResource** r) {
           *r = new UnbatchResource(timeout_micros_);
           return Status::OK();
@@ -1252,8 +1250,8 @@ class UnbatchGradKernel : public AsyncOpKernel {
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) final {
     UnbatchGradResource* ubr;
-    std::function<Status(UnbatchGradResource * *r)> creator =
-        [this](UnbatchGradResource** r) {
+    std::function<Status(UnbatchGradResource**)> creator =
+        [](UnbatchGradResource** r) {
           *r = new UnbatchGradResource();
           return Status::OK();
         };

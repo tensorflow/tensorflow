@@ -25,6 +25,7 @@ from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.eager import context
 from tensorflow.python.framework import c_api_util
 from tensorflow.python.platform import gfile
+from tensorflow.python.platform import tf_logging as logging
 
 LOGDIR_PLUGIN = 'plugins/profile'
 
@@ -45,7 +46,17 @@ def start():
   if _profiler is not None:
     raise AssertionError('Another profiler is running.')
   with _profiler_lock:
-    _profiler = pywrap_tensorflow.TFE_NewProfiler(context.context()._handle)  # pylint: disable=protected-access
+    profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
+    if context.default_execution_mode == context.EAGER_MODE:
+      pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
+          profiler_context,
+          context.context()._handle)  # pylint: disable=protected-access
+    _profiler = pywrap_tensorflow.TFE_NewProfiler(profiler_context)
+    pywrap_tensorflow.TFE_DeleteProfilerContext(profiler_context)
+    if not pywrap_tensorflow.TFE_ProfilerIsOk(_profiler):
+      logging.warning('Another profiler session is running which is probably '
+                      'created by profiler server. Please avoid using profiler '
+                      'server and profiler APIs at the same time.')
 
 
 def stop():
@@ -88,12 +99,13 @@ def start_profiler_server(port):
   Args:
     port: port profiler server listens to.
   """
-  opts = pywrap_tensorflow.TFE_NewProfilerServerOptions()
+  profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
   if context.default_execution_mode == context.EAGER_MODE:
-    pywrap_tensorflow.TFE_ProfilerServerOptionsSetEagerContext(
-        opts,
+    pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
+        profiler_context,
         context.context()._handle)  # pylint: disable=protected-access
-  pywrap_tensorflow.TFE_StartProfilerServer(opts, port)
+  pywrap_tensorflow.TFE_StartProfilerServer(profiler_context, port)
+  pywrap_tensorflow.TFE_DeleteProfilerContext(profiler_context)
 
 
 class Profiler(object):

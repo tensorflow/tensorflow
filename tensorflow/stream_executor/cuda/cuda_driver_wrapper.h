@@ -44,22 +44,22 @@ namespace wrap {
 #define TO_STR_(x) #x
 #define TO_STR(x) TO_STR_(x)
 
-#define STREAM_EXECUTOR_LIBCUDA_WRAP(cudaSymbolName)                        \
-  template <typename... Args>                                               \
-  auto cudaSymbolName(Args... args)->decltype(::cudaSymbolName(args...)) {  \
-    using FuncPtrT = std::add_pointer<decltype(::cudaSymbolName)>::type;    \
-    static FuncPtrT loaded = []() -> FuncPtrT {                             \
-      static const char *kName = TO_STR(cudaSymbolName);                    \
-      void *f;                                                              \
-      auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary( \
-          stream_executor::internal::CachedDsoLoader::GetLibcudaDsoHandle() \
-              .ValueOrDie(),                                                \
-          kName, &f);                                                       \
-      CHECK(s.ok()) << "could not find " << kName                           \
-                    << " in libcuda DSO; dlerror: " << s.error_message();   \
-      return reinterpret_cast<FuncPtrT>(f);                                 \
-    }();                                                                    \
-    return loaded(args...);                                                 \
+#define STREAM_EXECUTOR_LIBCUDA_WRAP(cudaSymbolName)                           \
+  template <typename... Args>                                                  \
+  auto cudaSymbolName(Args... args)->decltype(::cudaSymbolName(args...)) {     \
+    using FuncPtrT = std::add_pointer<decltype(::cudaSymbolName)>::type;       \
+    static FuncPtrT loaded = []() -> FuncPtrT {                                \
+      static const char *kName = TO_STR(cudaSymbolName);                       \
+      void *f;                                                                 \
+      auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary(    \
+          stream_executor::internal::CachedDsoLoader::GetCudaDriverDsoHandle() \
+              .ValueOrDie(),                                                   \
+          kName, &f);                                                          \
+      CHECK(s.ok()) << "could not find " << kName                              \
+                    << " in libcuda DSO; dlerror: " << s.error_message();      \
+      return reinterpret_cast<FuncPtrT>(f);                                    \
+    }();                                                                       \
+    return loaded(args...);                                                    \
   }
 #endif
 

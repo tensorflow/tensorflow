@@ -32,6 +32,8 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_decorator
+from tensorflow.python.util import tf_inspect
 
 
 def _is_tensor(t):
@@ -64,7 +66,15 @@ def _inputs_compatible(args, stored_inputs):
 
 def _deserialize_function_spec(function_spec_proto, coder):
   """Deserialize a FunctionSpec object from its proto representation."""
-  fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  typeless_fullargspec = coder.decode_proto(function_spec_proto.fullargspec)
+  fullargspec = tf_inspect.FullArgSpec(
+      args=typeless_fullargspec.args,
+      varargs=typeless_fullargspec.varargs,
+      varkw=typeless_fullargspec.varkw,
+      defaults=typeless_fullargspec.defaults,
+      kwonlyargs=typeless_fullargspec.kwonlyargs,
+      kwonlydefaults=typeless_fullargspec.kwonlydefaults,
+      annotations=typeless_fullargspec.annotations)
   is_method = function_spec_proto.is_method
   args_to_prepend = coder.decode_proto(function_spec_proto.args_to_prepend)
   kwargs_to_include = coder.decode_proto(function_spec_proto.kwargs_to_include)
@@ -172,10 +182,16 @@ def recreate_function(saved_function, concrete_functions):
   for concrete_function_name in saved_function.concrete_functions:
     concrete_function_objects.append(concrete_functions[concrete_function_name])
 
-  return RestoredFunction(restored_function_body,
-                          restored_function_body.__name__,
-                          function_spec,
-                          concrete_function_objects)
+  restored_function = RestoredFunction(
+      restored_function_body,
+      restored_function_body.__name__,
+      function_spec,
+      concrete_function_objects)
+
+  return tf_decorator.make_decorator(
+      restored_function_body,
+      restored_function,
+      decorator_argspec=function_spec.fullargspec)
 
 
 def load_function_def_library(library):
@@ -196,8 +212,9 @@ def load_function_def_library(library):
   """
   functions = {}
 
+  load_shared_name_suffix = "_load_{}".format(ops.uid())
   for fdef in _sort_function_defs(library):
-    copy = _fix_fdef(fdef, functions)
+    copy = _fix_fdef(fdef, functions, load_shared_name_suffix)
 
     func_graph = function_def_lib.function_def_to_graph(copy)
     for dep in _list_function_deps(fdef):
@@ -247,7 +264,7 @@ def _sort_function_defs(library):
   return [reverse[x] for x in output]
 
 
-def _fix_fdef(orig_fdef, functions):
+def _fix_fdef(orig_fdef, functions, shared_name_suffix):
   """Fixes a FunctionDef proto to be loaded in current context.
 
   In particular, when loading a function library into an eager context, one
@@ -256,6 +273,10 @@ def _fix_fdef(orig_fdef, functions):
   Args:
     orig_fdef: FunctionDef proto to fix. It is not modified.
     functions: map from function name to a ConcreteFunction instance.
+    shared_name_suffix: A unique string for this load which helps to avoid
+      `shared_name` collisions across loads. Two functions from the same load
+      using the same `shared_name` still need to share, but functions from
+      different loads with the same `shared_name` should not.
 
   Returns:
     A fixed copy of the original FunctionDef.
@@ -280,10 +301,10 @@ def _fix_fdef(orig_fdef, functions):
         attr_value.func.name = functions[attr_value.func.name].name
 
     # TODO(b/124205571): Avoid accidental sharing and destruction of restored
-    # resources. For now drop "shared_name" when loading functions to avoid
+    # resources. For now uniquify "shared_name" when loading functions to avoid
     # sharing.
     if "shared_name" in node_def.attr:
-      del node_def.attr["shared_name"]
+      node_def.attr["shared_name"].s += compat.as_bytes(shared_name_suffix)
 
   fdef.signature.name = _clean_function_name(fdef.signature.name)
   return fdef

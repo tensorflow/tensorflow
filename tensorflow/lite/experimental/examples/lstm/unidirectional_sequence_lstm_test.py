@@ -20,8 +20,8 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.tflite_lstm import dynamic_rnn
-from tensorflow.lite.experimental.examples.lstm.tflite_lstm import TFLiteLSTMCell
+from tensorflow.lite.experimental.examples.lstm.rnn import dynamic_rnn
+from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test

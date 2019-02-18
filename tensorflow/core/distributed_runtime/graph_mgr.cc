@@ -356,6 +356,12 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   Status s = RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
   rendezvous->Unref();
+  if (!s.ok()) {
+    // Failing to fetch the outputs should not be possible, so rewrite the error
+    // status to an INTERNAL error.
+    s = errors::Internal("Failed to fetch outputs for step ", step_id,
+                         ". (Original error message: ", s.ToString(), ")");
+  }
   return s;
 }
 

@@ -38,7 +38,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer as optimizer_v1
 from tensorflow.python.training import slot_creator
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
 
@@ -223,7 +223,7 @@ class _OptimizerV2State(object):
       }
     self._slots = {}
     self._non_slot_dict = {}
-    # Extra state to help Optimizers implement Checkpointable. Holds information
+    # Extra state to help Optimizers implement Trackable. Holds information
     # about variables which will be restored as soon as they're created.
     self._deferred_dependencies = {}  # Non-slot variables
     self._deferred_slot_restorations = {}  # Slot variables
@@ -366,8 +366,8 @@ class _OptimizerV2State(object):
     slot variable needs to be restored).
 
     Args:
-      slot_variable_position: A `checkpointable._CheckpointPosition` object
-        indicating the slot variable `Checkpointable` object to be restored.
+      slot_variable_position: A `trackable._CheckpointPosition` object
+        indicating the slot variable `Trackable` object to be restored.
       slot_name: The name of this `Optimizer`'s slot to restore into.
       variable: The variable object this slot is being created for.
       optional_op_name: Name to use when scoping the Variable that needs to be
@@ -385,7 +385,7 @@ class _OptimizerV2State(object):
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = checkpointable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self.create_slot(
           var=variable,
@@ -1259,10 +1259,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
     return self._per_graph_state.get(var._graph_key, None)
 
   # --------------
-  # Overridden methods from Checkpointable.
+  # Overridden methods from Trackable.
   # --------------
 
-  def _track_checkpointable(self, *args, **kwargs):
+  def _track_trackable(self, *args, **kwargs):
     """Optimizers may not track dependencies. Raises an error."""
     raise NotImplementedError(
         "Optimizers may not have dependencies. File a feature request if this "
@@ -1270,7 +1270,7 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   @property
   def _checkpoint_dependencies(self):
-    """From Checkpointable. Gather graph-specific non-slot variables to save."""
+    """From Trackable. Gather graph-specific non-slot variables to save."""
     current_graph_non_slot_variables = []
     state = self._get_per_graph_state()
     if state is not None:
@@ -1279,14 +1279,14 @@ class OptimizerV2(optimizer_v1.Optimizer):
           # Avoid comparing variables
           key=lambda item: item[0]):
         current_graph_non_slot_variables.append(
-            checkpointable.CheckpointableReference(
+            trackable.TrackableReference(
                 name=name, ref=variable_object))
     # Note: ignores super(); Optimizers may not have any dependencies outside of
     # state objects.
     return current_graph_non_slot_variables
 
   def _lookup_dependency(self, name):
-    """From Checkpointable. Find a non-slot variable in the current graph."""
+    """From Trackable. Find a non-slot variable in the current graph."""
     state = self._get_per_graph_state()
     if state is None:
       return None
@@ -1295,10 +1295,10 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   @property
   def _deferred_dependencies(self):
-    """Lets Checkpointable know where non-slot variables are created.
+    """Lets Trackable know where non-slot variables are created.
 
     If necessary, creates a new state object for the current default graph.
-    Checkpointable will then add entries to that state's deferred dependency
+    Trackable will then add entries to that state's deferred dependency
     dictionary. The state object will check that dictionary when creating
     non-slot variables, restoring their value if an entry is found.
 
@@ -1311,14 +1311,14 @@ class OptimizerV2(optimizer_v1.Optimizer):
 
   def _create_or_restore_slot_variable(self, slot_variable_position, slot_name,
                                        variable):
-    """Checkpointable: Restore a slot variable's value, possibly creating it.
+    """Trackable: Restore a slot variable's value, possibly creating it.
 
     Called when a variable which has an associated slot variable is created or
     restored.
 
     Args:
-      slot_variable_position: A `checkpointable._CheckpointPosition` object
-        indicating the slot variable `Checkpointable` object to be restored.
+      slot_variable_position: A `trackable._CheckpointPosition` object
+        indicating the slot variable `Trackable` object to be restored.
       slot_name: The name of this `Optimizer`'s slot to restore into.
       variable: The variable object this slot is being created for.
     """

@@ -454,7 +454,7 @@ tensorflow::Status Export(const TocoFlags& toco_flags, const Model& model,
       return status;
     } break;
     case GRAPHVIZ_DOT:
-      DumpGraphviz(model, output_file_contents);
+      DumpGraphviz(model, output_file_contents, "Computation Graph");
       break;
     default:
       LOG(FATAL) << "Unhandled output_format='"

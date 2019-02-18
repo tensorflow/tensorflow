@@ -867,81 +867,138 @@ inline void FullyConnectedAsGEMV(
   for (int k = 0; k < kPeel * input_size; k += 64) {
     optimized_ops_preload_l1_stream(filter_data + k);
   }
-  TFLITE_DCHECK(!(output_size % kPeel));
-  const int32* bias_ptr = bias_data;
-  uint8* output_ptr = output_data;
+  TFLITE_DCHECK_GE(output_size, kPeel);
+
   for (int out = 0; out < output_size; out += kPeel) {
-    int32x4_t acc[kPeel];
-    for (int k = 0; k < kPeel; k++) {
-      acc[k] = vdupq_n_s32(0);
-    }
+    out = std::min(out, output_size - kPeel);
+    int32x4_t acc0 = vdupq_n_s32(0);
+    int32x4_t acc1 = acc0;
+    int32x4_t acc2 = acc0;
+    int32x4_t acc3 = acc0;
     const int16x8_t input_offset_vec = vdupq_n_s16(input_offset);
     const int16x8_t filter_offset_vec = vdupq_n_s16(filter_offset);
     int in = 0;
     for (; in <= input_size - 16; in += 16) {
       const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
-      uint8x16_t filter_val_u8[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8* filter_ptr = filter_data + in + (out + k) * input_size;
-        filter_val_u8[k] = vld1q_u8(filter_ptr);
-        optimized_ops_preload_l1_stream(filter_ptr + 64);
-      }
-      int16x8_t input_val[2];
-      const uint8x8_t low = vget_low_u8(input_val_u8);
-      const uint8x8_t high = vget_high_u8(input_val_u8);
-      input_val[0] = vreinterpretq_s16_u16(vmovl_u8(low));
-      input_val[1] = vreinterpretq_s16_u16(vmovl_u8(high));
-      input_val[0] = vaddq_s16(input_val[0], input_offset_vec);
-      input_val[1] = vaddq_s16(input_val[1], input_offset_vec);
-      int16x8_t filter_val[kPeel][2];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8x8_t low = vget_low_u8(filter_val_u8[k]);
-        const uint8x8_t high = vget_high_u8(filter_val_u8[k]);
-        filter_val[k][0] = vreinterpretq_s16_u16(vmovl_u8(low));
-        filter_val[k][1] = vreinterpretq_s16_u16(vmovl_u8(high));
-        filter_val[k][0] = vaddq_s16(filter_val[k][0], filter_offset_vec);
-        filter_val[k][1] = vaddq_s16(filter_val[k][1], filter_offset_vec);
-      }
-      for (int p = 0; p < 2; p++) {
-        for (int k = 0; k < kPeel; k++) {
-          acc[k] = vmlal_s16(acc[k], vget_low_s16(filter_val[k][p]),
-                             vget_low_s16(input_val[p]));
-        }
-        for (int k = 0; k < kPeel; k++) {
-          acc[k] = vmlal_s16(acc[k], vget_high_s16(filter_val[k][p]),
-                             vget_high_s16(input_val[p]));
-        }
-      }
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x16_t filter_val_u8_0 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_1 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_2 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_3 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      int16x8_t input_val_0, input_val_1;
+      uint8x8_t low = vget_low_u8(input_val_u8);
+      uint8x8_t high = vget_high_u8(input_val_u8);
+      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
+      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
+      low = vget_low_u8(filter_val_u8_0);
+      high = vget_high_u8(filter_val_u8_0);
+      int16x8_t filter_val_0_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_0_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_0_0 = vaddq_s16(filter_val_0_0, filter_offset_vec);
+      filter_val_0_1 = vaddq_s16(filter_val_0_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_1);
+      high = vget_high_u8(filter_val_u8_1);
+      int16x8_t filter_val_1_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_1_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_1_0 = vaddq_s16(filter_val_1_0, filter_offset_vec);
+      filter_val_1_1 = vaddq_s16(filter_val_1_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_2);
+      high = vget_high_u8(filter_val_u8_2);
+      int16x8_t filter_val_2_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_2_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_2_0 = vaddq_s16(filter_val_2_0, filter_offset_vec);
+      filter_val_2_1 = vaddq_s16(filter_val_2_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_3);
+      high = vget_high_u8(filter_val_u8_3);
+      int16x8_t filter_val_3_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_3_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_3_0 = vaddq_s16(filter_val_3_0, filter_offset_vec);
+      filter_val_3_1 = vaddq_s16(filter_val_3_1, filter_offset_vec);
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_0),
+                       vget_low_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_0),
+                       vget_low_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_0),
+                       vget_low_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_0),
+                       vget_low_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_1),
+                       vget_low_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_1),
+                       vget_low_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_1),
+                       vget_low_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_1),
+                       vget_low_s16(input_val_1));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_0),
+                       vget_high_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_0),
+                       vget_high_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_0),
+                       vget_high_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_0),
+                       vget_high_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_1),
+                       vget_high_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_1),
+                       vget_high_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_1),
+                       vget_high_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_1),
+                       vget_high_s16(input_val_1));
     }
     for (; in <= input_size - 8; in += 8) {
       const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
-      uint8x8_t filter_val_u8[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8* filter_ptr = filter_data + in + (out + k) * input_size;
-        filter_val_u8[k] = vld1_u8(filter_ptr);
-      }
-      int16x8_t input_val;
-      input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x8_t filter_val_u8_0 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_1 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_2 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_3 = vld1_u8(filter_ptr);
+      int16x8_t input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
       input_val = vaddq_s16(input_val, input_offset_vec);
-      int16x8_t filter_val[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        filter_val[k] = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8[k]));
-        filter_val[k] = vaddq_s16(filter_val[k], filter_offset_vec);
-      }
-      for (int k = 0; k < kPeel; k++) {
-        acc[k] = vmlal_s16(acc[k], vget_low_s16(filter_val[k]),
-                           vget_low_s16(input_val));
-      }
-      for (int k = 0; k < kPeel; k++) {
-        acc[k] = vmlal_s16(acc[k], vget_high_s16(filter_val[k]),
-                           vget_high_s16(input_val));
-      }
+      int16x8_t filter_val_0 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_0));
+      filter_val_0 = vaddq_s16(filter_val_0, filter_offset_vec);
+      int16x8_t filter_val_1 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_1));
+      filter_val_1 = vaddq_s16(filter_val_1, filter_offset_vec);
+      int16x8_t filter_val_2 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_2));
+      filter_val_2 = vaddq_s16(filter_val_2, filter_offset_vec);
+      int16x8_t filter_val_3 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_3));
+      filter_val_3 = vaddq_s16(filter_val_3, filter_offset_vec);
+      acc0 =
+          vmlal_s16(acc0, vget_low_s16(filter_val_0), vget_low_s16(input_val));
+      acc1 =
+          vmlal_s16(acc1, vget_low_s16(filter_val_1), vget_low_s16(input_val));
+      acc2 =
+          vmlal_s16(acc2, vget_low_s16(filter_val_2), vget_low_s16(input_val));
+      acc3 =
+          vmlal_s16(acc3, vget_low_s16(filter_val_3), vget_low_s16(input_val));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0),
+                       vget_high_s16(input_val));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1),
+                       vget_high_s16(input_val));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2),
+                       vget_high_s16(input_val));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3),
+                       vget_high_s16(input_val));
     }
     if (in < input_size) {
-      int32 buf[4 * kPeel];
-      for (int k = 0; k < 4; k++) {
-        vst1q_s32(buf + 4 * k, acc[k]);
-      }
+      int32 buf[16];
+      vst1q_s32(buf + 0, acc0);
+      vst1q_s32(buf + 4, acc1);
+      vst1q_s32(buf + 8, acc2);
+      vst1q_s32(buf + 12, acc3);
       for (; in < input_size; in++) {
         int lane = (in + 8 - input_size) % 4;
         const int32 input_val = input_data[in] + input_offset;
@@ -951,26 +1008,28 @@ inline void FullyConnectedAsGEMV(
           buf[lane + 4 * k] += filter_val * input_val;
         }
       }
-      for (int k = 0; k < 4; k++) {
-        acc[k] = vld1q_s32(buf + 4 * k);
-      }
+      acc0 = vld1q_s32(buf + 0);
+      acc1 = vld1q_s32(buf + 4);
+      acc2 = vld1q_s32(buf + 8);
+      acc3 = vld1q_s32(buf + 12);
     }
 
     // Horizontally reduce accumulators
-    int32x2_t pairwise_reduced_acc[kPeel];
-    for (int k = 0; k < kPeel; k++) {
-      pairwise_reduced_acc[k] =
-          vpadd_s32(vget_low_s32(acc[k]), vget_high_s32(acc[k]));
-    }
-    static_assert(kPeel == 4, "the code below currently assumes kPeel = 4");
+    int32x2_t pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(acc0), vget_high_s32(acc0));
+    int32x2_t pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(acc1), vget_high_s32(acc1));
+    int32x2_t pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(acc2), vget_high_s32(acc2));
+    int32x2_t pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(acc3), vget_high_s32(acc3));
     const int32x2_t reduced_lo =
-        vpadd_s32(pairwise_reduced_acc[0], pairwise_reduced_acc[1]);
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
     const int32x2_t reduced_hi =
-        vpadd_s32(pairwise_reduced_acc[2], pairwise_reduced_acc[3]);
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
     int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
     // Add bias values.
-    int32x4_t bias_vec = vld1q_s32(bias_ptr);
-    bias_ptr += 4;
+    int32x4_t bias_vec = vld1q_s32(bias_data + out);
     reduced = vaddq_s32(reduced, bias_vec);
     if (shift_left) {
       const int32 multiplier_power_of_two = 1 << output_shift;
@@ -993,10 +1052,11 @@ inline void FullyConnectedAsGEMV(
     // Apply the clamping from the activation function
     res8 = vmax_u8(res8, vdup_n_u8(output_activation_min));
     res8 = vmin_u8(res8, vdup_n_u8(output_activation_max));
-    // Store results to destination. Assumes 32bit alignment.
-    vst1_lane_u32(reinterpret_cast<uint32*>(output_ptr),
-                  vreinterpret_u32_u8(res8), 0);
-    output_ptr += kPeel;
+    // Store results to destination.
+    vst1_lane_u8(output_data + out + 0, res8, 0);
+    vst1_lane_u8(output_data + out + 1, res8, 1);
+    vst1_lane_u8(output_data + out + 2, res8, 2);
+    vst1_lane_u8(output_data + out + 3, res8, 3);
   }
 }
 #endif  // USE_NEON
@@ -1054,14 +1114,16 @@ inline void FullyConnected(
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
 #ifdef USE_NEON
-  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
-                                      output_shape, output_dim_count - 1);
-  if (batches == 1 && !(output_size % 4)) {
-    return FullyConnectedAsGEMV(
-        input_shape, input_data, input_offset, filter_shape, filter_data,
-        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
-        output_shift, output_activation_min, output_activation_max,
-        output_shape, output_data);
+  if (batches == 1) {
+    const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
+                                        output_shape, output_dim_count - 1);
+    if (output_size >= 4) {
+      return FullyConnectedAsGEMV(
+          input_shape, input_data, input_offset, filter_shape, filter_data,
+          filter_offset, bias_shape, bias_data, output_offset,
+          output_multiplier, output_shift, output_activation_min,
+          output_activation_max, output_shape, output_data);
+    }
   }
 #endif  // USE_NEON
   const int filter_rows = filter_shape.Dims(filter_dim_count - 2);
@@ -2084,6 +2146,21 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
+
+#ifdef USE_NEON
+  if (gemm_input_cols == 1 && output_rows >= 4) {
+    RuntimeShape fc_filter_shape{
+        filter_shape.Dims(0),
+        filter_shape.Dims(filter_shape.DimensionsCount() - 1)};
+
+    return FullyConnectedAsGEMV(
+        *gemm_input_shape, gemm_input_data, input_offset, fc_filter_shape,
+        filter_data, filter_offset, bias_shape, bias_data, output_offset,
+        output_multiplier, output_shift, output_activation_min,
+        output_activation_max, output_shape, output_data);
+  }
+#endif
+
   gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> filter_matrix(
       filter_data, filter_rows, filter_cols);
   gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
@@ -2679,7 +2756,7 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
     // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
     // dimension.
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -2708,7 +2785,7 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
     // for y4 == 1 and the loop over y3 is contained within the
     // AddScalarBroadcast function.
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -3065,7 +3142,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
   int y4 = params.broadcast_shape[4];
   if (y4 > 1) {
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -3082,7 +3159,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
     }
   } else {
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -3710,6 +3787,14 @@ inline void AveragePool(const PoolParams& params,
                         const uint8* input_data,
                         const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("AveragePool/8bit");
+
+  // Here, and in other pooling ops, in order to maintain locality of reference,
+  // to minimize some recalculations, and to load into NEON vector registers, we
+  // use an inner loop down the depth. Since depths can be large and hence we
+  // would need arbitrarily large temporary storage, we divide the work up into
+  // depth tranches just within the batch loop.
+  static constexpr int kPoolingAccTrancheSize = 256;
+
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -3722,69 +3807,76 @@ inline void AveragePool(const PoolParams& params,
   const int output_width = output_shape.Dims(2);
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
+
+  uint16 acc[kPoolingAccTrancheSize];
   for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin =
-            (out_x * stride_width) - params.padding_values.width;
-        const int in_y_origin =
-            (out_y * stride_height) - params.padding_values.height;
-        const int filter_x_start = std::max(0, -in_x_origin);
-        const int filter_x_end =
-            std::min(params.filter_width, input_width - in_x_origin);
-        const int filter_y_start = std::max(0, -in_y_origin);
-        const int filter_y_end =
-            std::min(params.filter_height, input_height - in_y_origin);
-        const int filter_count =
-            (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
-        // 2560 is required by MobileNetV2 with depth multiplier 2.
-        static constexpr int kAccBufferMaxSize = 4096;
-        TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
-        uint16 acc[kAccBufferMaxSize];
-        memset(acc, 0, depth * sizeof(acc[0]));
-        const uint8* input_ptr =
-            input_data +
-            depth * (in_x_origin +
-                     input_width * (in_y_origin + input_height * batch));
-        for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-          const uint8* input_row_ptr =
-              input_ptr + depth * (fy * input_width + filter_x_start);
-          for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-            int channel = 0;
+    // We proceed through the depth in tranches (see comment above). The
+    // depth_base is the depth at the beginning of the tranche. The
+    // tranche_depth is the depth dimension of the tranche.
+    for (int depth_base = 0; depth_base < depth;
+         depth_base += kPoolingAccTrancheSize) {
+      const int tranche_depth =
+          std::min(depth - depth_base, kPoolingAccTrancheSize);
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
+          const int filter_x_start = std::max(0, -in_x_origin);
+          const int filter_x_end =
+              std::min(params.filter_width, input_width - in_x_origin);
+          const int filter_y_start = std::max(0, -in_y_origin);
+          const int filter_y_end =
+              std::min(params.filter_height, input_height - in_y_origin);
+          const int filter_count =
+              (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
+          memset(acc, 0, tranche_depth * sizeof(acc[0]));
+          const uint8* input_ptr =
+              input_data + depth_base +
+              depth * (in_x_origin +
+                       input_width * (in_y_origin + input_height * batch));
+          for (int fy = filter_y_start; fy < filter_y_end; fy++) {
+            const uint8* input_row_ptr =
+                input_ptr + depth * (fy * input_width + filter_x_start);
+            for (int fx = filter_x_start; fx < filter_x_end; fx++) {
+              const uint8* input_channel_ptr = input_row_ptr;
+              int channel = 0;
 #ifdef USE_NEON
-            for (; channel <= depth - 16; channel += 16) {
-              uint16x8_t acc_reg[2];
-              for (int i = 0; i < 2; i++) {
-                acc_reg[i] = vld1q_u16(acc + channel + 8 * i);
+              for (; channel <= tranche_depth - 16; channel += 16) {
+                uint16x8_t acc_reg[2];
+                for (int i = 0; i < 2; i++) {
+                  acc_reg[i] = vld1q_u16(acc + channel + 8 * i);
+                }
+                uint8x16_t input_reg = vld1q_u8(input_channel_ptr);
+                input_channel_ptr += 16;
+                acc_reg[0] = vaddw_u8(acc_reg[0], vget_low_u8(input_reg));
+                acc_reg[1] = vaddw_u8(acc_reg[1], vget_high_u8(input_reg));
+                for (int i = 0; i < 2; i++) {
+                  vst1q_u16(acc + channel + 8 * i, acc_reg[i]);
+                }
               }
-              uint8x16_t input_reg = vld1q_u8(input_row_ptr);
-              input_row_ptr += 16;
-              acc_reg[0] = vaddw_u8(acc_reg[0], vget_low_u8(input_reg));
-              acc_reg[1] = vaddw_u8(acc_reg[1], vget_high_u8(input_reg));
-              for (int i = 0; i < 2; i++) {
-                vst1q_u16(acc + channel + 8 * i, acc_reg[i]);
+              for (; channel <= tranche_depth - 8; channel += 8) {
+                uint16x8_t acc_reg = vld1q_u16(acc + channel);
+                uint8x8_t input_reg = vld1_u8(input_channel_ptr);
+                input_channel_ptr += 8;
+                acc_reg = vaddw_u8(acc_reg, input_reg);
+                vst1q_u16(acc + channel, acc_reg);
               }
-            }
-            for (; channel <= depth - 8; channel += 8) {
-              uint16x8_t acc_reg = vld1q_u16(acc + channel);
-              uint8x8_t input_reg = vld1_u8(input_row_ptr);
-              input_row_ptr += 8;
-              acc_reg = vaddw_u8(acc_reg, input_reg);
-              vst1q_u16(acc + channel, acc_reg);
-            }
 #endif
-            for (; channel < depth; ++channel) {
-              acc[channel] += *input_row_ptr++;
+              for (; channel < tranche_depth; ++channel) {
+                acc[channel] += *input_channel_ptr++;
+              }
+              input_row_ptr += depth;
             }
           }
-        }
-        uint8* output_ptr =
-            output_data + Offset(output_shape, batch, out_y, out_x, 0);
-        int channel = 0;
+          uint8* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                   out_x, depth_base);
+          int channel = 0;
 #ifdef USE_NEON
 #define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                               \
   if (filter_count == FILTER_COUNT) {                                   \
-    for (; channel <= depth - 8; channel += 8) {                        \
+    for (; channel <= tranche_depth - 8; channel += 8) {                \
       uint16 buf[8];                                                    \
       for (int i = 0; i < 8; i++) {                                     \
         buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT;  \
@@ -3795,25 +3887,26 @@ inline void AveragePool(const PoolParams& params,
       vst1_u8(output_ptr + channel, buf8);                              \
     }                                                                   \
   }
-        AVGPOOL_DIVIDING_BY(9)
-        AVGPOOL_DIVIDING_BY(15)
+          AVGPOOL_DIVIDING_BY(9)
+          AVGPOOL_DIVIDING_BY(15)
 #undef AVGPOOL_DIVIDING_BY
-        for (; channel <= depth - 8; channel += 8) {
-          uint16 buf[8];
-          for (int i = 0; i < 8; i++) {
-            buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
+          for (; channel <= tranche_depth - 8; channel += 8) {
+            uint16 buf[8];
+            for (int i = 0; i < 8; i++) {
+              buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
+            }
+            uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));
+            buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max));
+            buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min));
+            vst1_u8(output_ptr + channel, buf8);
           }
-          uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));
-          buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max));
-          buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min));
-          vst1_u8(output_ptr + channel, buf8);
-        }
 #endif
-        for (; channel < depth; ++channel) {
-          uint16 a = (acc[channel] + filter_count / 2) / filter_count;
-          a = std::max<uint16>(a, params.quantized_activation_min);
-          a = std::min<uint16>(a, params.quantized_activation_max);
-          output_ptr[channel] = static_cast<uint8>(a);
+          for (; channel < tranche_depth; ++channel) {
+            uint16 a = (acc[channel] + filter_count / 2) / filter_count;
+            a = std::max<uint16>(a, params.quantized_activation_min);
+            a = std::min<uint16>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<uint8>(a);
+          }
         }
       }
     }
@@ -3878,6 +3971,14 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
                     const uint8* input_data, const RuntimeShape& output_shape,
                     uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("MaxPool/8bit");
+
+  // Here, and in other pooling ops, in order to maintain locality of reference,
+  // to minimize some recalculations, and to load into NEON vector registers, we
+  // use an inner loop down the depth. Since depths can be large and hence we
+  // would need arbitrarily large temporary storage, we divide the work up into
+  // depth tranches just within the batch loop.
+  static constexpr int kPoolingAccTrancheSize = 256;
+
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -3890,77 +3991,85 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   const int output_width = output_shape.Dims(2);
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin =
-            (out_x * stride_width) - params.padding_values.width;
-        const int in_y_origin =
-            (out_y * stride_height) - params.padding_values.height;
-        const int filter_x_start = std::max(0, -in_x_origin);
-        const int filter_x_end =
-            std::min(params.filter_width, input_width - in_x_origin);
-        const int filter_y_start = std::max(0, -in_y_origin);
-        const int filter_y_end =
-            std::min(params.filter_height, input_height - in_y_origin);
-        // 2560 is required by MobileNetV2 with depth multiplier 2.
-        static constexpr int kAccBufferMaxSize = 4096;
-        TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
-        uint8 acc[kAccBufferMaxSize];
-        memset(acc, 0, depth * sizeof(acc[0]));
-        const uint8* input_ptr =
-            input_data +
-            depth * (in_x_origin +
-                     input_width * (in_y_origin + input_height * batch));
-        for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-          const uint8* input_row_ptr =
-              input_ptr + depth * (fy * input_width + filter_x_start);
-          for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-            int channel = 0;
-#ifdef USE_NEON
-            for (; channel <= depth - 16; channel += 16) {
-              uint8x16_t acc_reg = vld1q_u8(acc + channel);
-              uint8x16_t input_reg = vld1q_u8(input_row_ptr);
-              input_row_ptr += 16;
-              acc_reg = vmaxq_u8(acc_reg, input_reg);
-              vst1q_u8(acc + channel, acc_reg);
-            }
 
-            for (; channel <= depth - 8; channel += 8) {
-              uint8x8_t acc_reg = vld1_u8(acc + channel);
-              uint8x8_t input_reg = vld1_u8(input_row_ptr);
-              input_row_ptr += 8;
-              acc_reg = vmax_u8(acc_reg, input_reg);
-              vst1_u8(acc + channel, acc_reg);
-            }
+  uint8 acc[kPoolingAccTrancheSize];
+  for (int batch = 0; batch < batches; ++batch) {
+    // We proceed through the depth in tranches (see comment above). The
+    // depth_base is the depth at the beginning of the tranche. The
+    // tranche_depth is the depth dimension of the tranche.
+    for (int depth_base = 0; depth_base < depth;
+         depth_base += kPoolingAccTrancheSize) {
+      const int tranche_depth =
+          std::min(depth - depth_base, kPoolingAccTrancheSize);
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
+          const int filter_x_start = std::max(0, -in_x_origin);
+          const int filter_x_end =
+              std::min(params.filter_width, input_width - in_x_origin);
+          const int filter_y_start = std::max(0, -in_y_origin);
+          const int filter_y_end =
+              std::min(params.filter_height, input_height - in_y_origin);
+          memset(acc, 0, tranche_depth * sizeof(acc[0]));
+          const uint8* input_ptr =
+              input_data + depth_base +
+              depth * (in_x_origin +
+                       input_width * (in_y_origin + input_height * batch));
+          for (int fy = filter_y_start; fy < filter_y_end; fy++) {
+            const uint8* input_row_ptr =
+                input_ptr + depth * (fy * input_width + filter_x_start);
+            for (int fx = filter_x_start; fx < filter_x_end; fx++) {
+              const uint8* input_channel_ptr = input_row_ptr;
+              int channel = 0;
+#ifdef USE_NEON
+              for (; channel <= tranche_depth - 16; channel += 16) {
+                uint8x16_t acc_reg = vld1q_u8(acc + channel);
+                uint8x16_t input_reg = vld1q_u8(input_channel_ptr);
+                input_channel_ptr += 16;
+                acc_reg = vmaxq_u8(acc_reg, input_reg);
+                vst1q_u8(acc + channel, acc_reg);
+              }
+
+              for (; channel <= tranche_depth - 8; channel += 8) {
+                uint8x8_t acc_reg = vld1_u8(acc + channel);
+                uint8x8_t input_reg = vld1_u8(input_channel_ptr);
+                input_channel_ptr += 8;
+                acc_reg = vmax_u8(acc_reg, input_reg);
+                vst1_u8(acc + channel, acc_reg);
+              }
 #endif
-            for (; channel < depth; ++channel) {
-              acc[channel] = std::max(acc[channel], *input_row_ptr++);
+              for (; channel < tranche_depth; ++channel) {
+                acc[channel] = std::max(acc[channel], *input_channel_ptr++);
+              }
+              input_row_ptr += depth;
             }
           }
-        }
-        uint8* output_ptr =
-            output_data + Offset(output_shape, batch, out_y, out_x, 0);
-        int channel = 0;
+          uint8* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                   out_x, depth_base);
+          int channel = 0;
 #ifdef USE_NEON
-        for (; channel <= depth - 16; channel += 16) {
-          uint8x16_t a = vld1q_u8(acc + channel);
-          a = vminq_u8(a, vdupq_n_u8(params.quantized_activation_max));
-          a = vmaxq_u8(a, vdupq_n_u8(params.quantized_activation_min));
-          vst1q_u8(output_ptr + channel, a);
-        }
-        for (; channel <= depth - 8; channel += 8) {
-          uint8x8_t a = vld1_u8(acc + channel);
-          a = vmin_u8(a, vdup_n_u8(params.quantized_activation_max));
-          a = vmax_u8(a, vdup_n_u8(params.quantized_activation_min));
-          vst1_u8(output_ptr + channel, a);
-        }
+          for (; channel <= tranche_depth - 16; channel += 16) {
+            uint8x16_t a = vld1q_u8(acc + channel);
+            a = vminq_u8(a, vdupq_n_u8(params.quantized_activation_max));
+            a = vmaxq_u8(a, vdupq_n_u8(params.quantized_activation_min));
+            vst1q_u8(output_ptr + channel, a);
+          }
+          for (; channel <= tranche_depth - 8; channel += 8) {
+            uint8x8_t a = vld1_u8(acc + channel);
+            a = vmin_u8(a, vdup_n_u8(params.quantized_activation_max));
+            a = vmax_u8(a, vdup_n_u8(params.quantized_activation_min));
+            vst1_u8(output_ptr + channel, a);
+          }
 #endif
-        for (; channel < depth; ++channel) {
-          uint8 a = acc[channel];
-          a = std::max<uint8>(a, params.quantized_activation_min);
-          a = std::min<uint8>(a, params.quantized_activation_max);
-          output_ptr[channel] = static_cast<uint8>(a);
+          for (; channel < tranche_depth; ++channel) {
+            uint8 a = acc[channel];
+            a = std::max<uint8>(a, params.quantized_activation_min);
+            a = std::min<uint8>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<uint8>(a);
+          }
         }
       }
     }

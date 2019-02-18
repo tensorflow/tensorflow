@@ -331,16 +331,16 @@ class HloEvaluator : public DfsHloVisitorWithDefault {
   std::vector<const Literal*> arg_literals_;
 
   // Max loop iterations to execute with no maximum if negative.
-  int64 max_loop_iterations_;
+  int64 max_loop_iterations_ = 0;
 
   // Module-level seed handle.
-  uint64 seed_;
+  uint64 seed_ = 0;
   // RNG engine.
   std::minstd_rand0 engine_;
 
   // DynamicDimensionInference is used to evaluate GetDimensionSize, which
   // returns the dynamic dimension size of its operand.
-  DynamicDimensionInference* dynamic_dimension_inference_;
+  DynamicDimensionInference* dynamic_dimension_inference_ = nullptr;
 
   // Optional handler for custom_call ops.
   std::function<StatusOr<Literal>(HloInstruction* custom_call,

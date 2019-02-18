@@ -33,11 +33,11 @@ TfLiteStatus NodeInfoDelegatePrepare(TfLiteContext* context,
 }  // namespace
 
 TfLiteDelegate CreateNodeInfoDelegate(NodeInfoDelegateParams* params) {
-  return {.data_ = params,
-          .Prepare = NodeInfoDelegatePrepare,
-          .CopyFromBufferHandle = nullptr,
-          .CopyToBufferHandle = nullptr,
-          .FreeBufferHandle = nullptr};
+  return {/*data_ */ params,
+          /* Prepare */ NodeInfoDelegatePrepare,
+          /* CopyFromBufferHandle*/ nullptr,
+          /* CopyToBufferHandle*/ nullptr,
+          /* FreeBufferHandle*/ nullptr};
 }
 
 TfLiteStatus NodeInfoDelegateObserver::OnDelegatePrepareCalled(

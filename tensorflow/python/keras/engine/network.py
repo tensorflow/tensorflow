@@ -44,10 +44,10 @@ from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.keras.utils.io_utils import ask_to_proceed_with_overwrite
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import data_structures
-from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 
@@ -152,7 +152,7 @@ class Network(base_layer.Layer):
   # empty lists shouldn't cause issues; adding or removing them will not break
   # checkpoints, but may cause "all Python objects matched" assertions to fail
   # (in which case less strict assertions may be substituted if necessary).
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _base_init(self, name=None):
     # The following are implemented as property functions:
     # self.trainable_weights
@@ -206,10 +206,10 @@ class Network(base_layer.Layer):
     self._outbound_nodes = []
     self._inbound_nodes = []
 
-    self._checkpointable_saver = (
-        checkpointable_utils.saver_with_op_caching(self))
+    self._trackable_saver = (
+        trackable_utils.saver_with_op_caching(self))
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
     self._call_convention = (base_layer_utils
                              .CallConvention.EXPLICIT_INPUTS_ARGUMENT)
@@ -238,6 +238,9 @@ class Network(base_layer.Layer):
     self._compute_output_and_mask_jointly = True
     self._is_graph_network = True
     self._dynamic = False
+    # `_expects_training_arg` is True since the `training` argument is always
+    # present in the signature of the `call` method of a graph network.
+    self._expects_training_arg = True
 
     self._input_layers = []
     self._output_layers = []
@@ -306,7 +309,7 @@ class Network(base_layer.Layer):
     for layer in self._output_layers:
       self.output_names.append(layer.name)
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _init_subclassed_network(self, name=None, dynamic=False):
     self._base_init(name=name)
     self._is_graph_network = False
@@ -367,20 +370,20 @@ class Network(base_layer.Layer):
       return base_layer_utils.CallConvention.POSITIONAL_ARGUMENTS_ARE_INPUTS
 
   def _track_layers(self, layers):
-    """Add Checkpointable dependencies on a list of Layers."""
+    """Add Trackable dependencies on a list of Layers."""
     weight_layer_index = 0
     for layer_index, layer in enumerate(layers):
       if layer.weights:
         # Keep a separate index for layers which have weights. This allows users
         # to insert Layers without weights anywhere in the network without
         # breaking checkpoints.
-        self._track_checkpointable(
+        self._track_trackable(
             layer, name='layer_with_weights-%d' % weight_layer_index,
             overwrite=True)
         weight_layer_index += 1
       # Even if it doesn't have weights, we should still track everything in
-      # case it has/will have Checkpointable dependencies.
-      self._track_checkpointable(
+      # case it has/will have Trackable dependencies.
+      self._track_trackable(
           layer, name='layer-%d' % layer_index, overwrite=True)
 
   def __setattr__(self, name, value):
@@ -390,18 +393,18 @@ class Network(base_layer.Layer):
 
     if all(
         isinstance(v, (base_layer.Layer,
-                       data_structures.CheckpointableDataStructure)) or
-        checkpointable_layer_utils.has_weights(v) for v in nest.flatten(value)):
+                       data_structures.TrackableDataStructure)) or
+        trackable_layer_utils.has_weights(v) for v in nest.flatten(value)):
       try:
         self._is_graph_network
       except AttributeError:
         raise RuntimeError('It looks like you are subclassing `Model` and you '
                            'forgot to call `super(YourClass, self).__init__()`.'
                            ' Always start with this line.')
-    # Keep track of checkpointable objects,
+    # Keep track of trackable objects,
     # for the needs of `self.save/save_weights`.
     value = data_structures.sticky_attribute_assignment(
-        checkpointable=self, value=value, name=name)
+        trackable=self, value=value, name=name)
     super(Network, self).__setattr__(name, value)
 
     # Keep track of metric instance created in subclassed model/layer.
@@ -478,7 +481,7 @@ class Network(base_layer.Layer):
 
   @property
   def layers(self):
-    return checkpointable_layer_utils.filter_empty_layer_containers(
+    return trackable_layer_utils.filter_empty_layer_containers(
         self._layers)
 
   def get_layer(self, name=None, index=None):
@@ -528,7 +531,12 @@ class Network(base_layer.Layer):
   @property
   def _unfiltered_losses(self):
     losses = []
-    if context.executing_eagerly():
+
+    # If any eager losses are present, we assume the model to be part of an
+    # eager training loop (either a custom one or the one used when
+    # `run_eagerly=True`), and so we always return just the eager losses in that
+    # case.
+    if self._eager_losses:
       losses.extend(self._eager_losses)
     else:
       losses.extend(self._losses)
@@ -539,7 +547,7 @@ class Network(base_layer.Layer):
         losses += layer.losses
     return losses
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def _clear_losses(self):
     """Used every step in eager to reset losses."""
     self._eager_losses = []
@@ -679,14 +687,14 @@ class Network(base_layer.Layer):
 
   @property
   def trainable_weights(self):
-    return checkpointable_layer_utils.gather_trainable_weights(
+    return trackable_layer_utils.gather_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._trainable_weights)
 
   @property
   def non_trainable_weights(self):
-    return checkpointable_layer_utils.gather_non_trainable_weights(
+    return trackable_layer_utils.gather_non_trainable_weights(
         trainable=self.trainable,
         sub_layers=self._layers,
         extra_variables=self._non_trainable_weights + self._trainable_weights)
@@ -1394,7 +1402,7 @@ class Network(base_layer.Layer):
         session = backend.get_session()
       optimizer = getattr(self, 'optimizer', None)
       if (optimizer
-          and not isinstance(optimizer, checkpointable.Checkpointable)):
+          and not isinstance(optimizer, trackable.Trackable)):
         logging.warning(
             ('This model was compiled with a Keras optimizer (%s) but is being '
              'saved in TensorFlow format with `save_weights`. The model\'s '
@@ -1402,7 +1410,7 @@ class Network(base_layer.Layer):
              'the TensorFlow format the optimizer\'s state will not be '
              'saved.\n\nConsider using a TensorFlow optimizer from `tf.train`.')
             % (optimizer,))
-      self._checkpointable_saver.save(filepath, session=session)
+      self._trackable_saver.save(filepath, session=session)
       # Record this checkpoint so it's visible from tf.train.latest_checkpoint.
       checkpoint_management.update_checkpoint_state_internal(
           save_dir=os.path.dirname(filepath),
@@ -1461,7 +1469,7 @@ class Network(base_layer.Layer):
         # The checkpoint is not readable in TensorFlow format. Try HDF5.
         save_format = 'h5'
     if save_format == 'tf':
-      status = self._checkpointable_saver.restore(filepath)
+      status = self._trackable_saver.restore(filepath)
       if by_name:
         raise NotImplementedError(
             'Weights may only be loaded based on topology into Models when '
@@ -1471,7 +1479,7 @@ class Network(base_layer.Layer):
         session = backend.get_session()
         # Restore existing variables (if any) immediately, and set up a
         # streaming restore for any variables created in the future.
-        checkpointable_utils.streaming_restore(status=status, session=session)
+        trackable_utils.streaming_restore(status=status, session=session)
       status.assert_nontrivial_match()
       return status
     if h5py is None:

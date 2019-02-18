@@ -17,6 +17,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "compute_gradient"
+    argspec: "args=[\'f\', \'x\', \'delta\'], varargs=None, keywords=None, defaults=[\'0.001\'], "
+  }
+  member_method {
     name: "create_local_cluster"
     argspec: "args=[\'num_workers\', \'num_ps\', \'protocol\', \'worker_config\', \'ps_config\'], varargs=None, keywords=None, defaults=[\'grpc\', \'None\', \'None\'], "
   }

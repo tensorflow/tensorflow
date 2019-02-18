@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/logistic.h"
 #include "tensorflow/lite/kernels/internal/reference/integer_ops/softmax.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/tanh.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -119,7 +120,7 @@ TfLiteStatus TanhPrepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   TF_LITE_ENSURE_EQ(context, input->type, output->type);
 
-  if (input->type == kTfLiteUInt8) {
+  if (input->type == kTfLiteUInt8 || input->type == kTfLiteInt8) {
     static constexpr int kInputIntegerBits = 4;
 
     const double input_real_multiplier =
@@ -453,6 +454,16 @@ TfLiteStatus TanhEval(TfLiteContext* context, TfLiteNode* node) {
             params, GetTensorShape(input), GetTensorData<uint8_t>(input),
             GetTensorShape(output), GetTensorData<uint8_t>(output));
       }
+      return kTfLiteOk;
+    } break;
+    case kTfLiteInt8: {
+      const auto input_shape = GetTensorShape(input);
+      const auto output_shape = GetTensorShape(output);
+      const int size = MatchingFlatSize(input_shape, output_shape);
+      reference_integer_ops::Tanh(
+          input->params.zero_point, data->input_range_radius,
+          data->input_multiplier, data->input_left_shift, size,
+          GetTensorData<int8_t>(input), GetTensorData<int8_t>(output));
       return kTfLiteOk;
     } break;
     default:

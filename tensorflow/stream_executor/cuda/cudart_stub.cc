@@ -21,19 +21,19 @@ limitations under the License.
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 
 namespace {
-void *GetDsoHandle() {
-  static auto handle = [] {
-    void *result = nullptr;
-    using DsoLoader = stream_executor::internal::DsoLoader;
-    DsoLoader::GetLibcudartDsoHandle(&result).IgnoreError();
-    return result;
+void* GetDsoHandle() {
+  static auto handle = []() -> void* {
+    auto handle_or =
+        stream_executor::internal::DsoLoader::GetCudaRuntimeDsoHandle();
+    if (!handle_or.ok()) return nullptr;
+    return handle_or.ValueOrDie();
   }();
   return handle;
 }
 
 template <typename T>
-T LoadSymbol(const char *symbol_name) {
-  void *symbol = nullptr;
+T LoadSymbol(const char* symbol_name) {
+  void* symbol = nullptr;
   auto env = stream_executor::port::Env::Default();
   env->GetSymbolFromLibrary(GetDsoHandle(), symbol_name, &symbol).IgnoreError();
   return reinterpret_cast<T>(symbol);
@@ -41,28 +41,28 @@ T LoadSymbol(const char *symbol_name) {
 cudaError_t GetSymbolNotFoundError() {
   return cudaErrorSharedObjectSymbolNotFound;
 }
-const char *GetSymbolNotFoundStrError() {
+const char* GetSymbolNotFoundStrError() {
   return "cudaErrorSharedObjectSymbolNotFound";
 }
 }  // namespace
 
 // Code below is auto-generated.
 extern "C" {
-cudaError_t CUDART_CB cudaFree(void *devPtr) {
-  using FuncPtr = cudaError_t (*)(void *devPtr);
+cudaError_t CUDART_CB cudaFree(void* devPtr) {
+  using FuncPtr = cudaError_t (*)(void* devPtr);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaFree");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(devPtr);
 }
 
-cudaError_t CUDART_CB cudaGetDevice(int *device) {
-  using FuncPtr = cudaError_t (*)(int *device);
+cudaError_t CUDART_CB cudaGetDevice(int* device) {
+  using FuncPtr = cudaError_t (*)(int* device);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetDevice");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(device);
 }
 
-cudaError_t CUDART_CB cudaGetDeviceProperties(cudaDeviceProp *prop,
+cudaError_t CUDART_CB cudaGetDeviceProperties(cudaDeviceProp* prop,
                                               int device) {
   using FuncPtr = cudaError_t (*)(cudaDeviceProp * prop, int device);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetDeviceProperties");
@@ -70,8 +70,8 @@ cudaError_t CUDART_CB cudaGetDeviceProperties(cudaDeviceProp *prop,
   return func_ptr(prop, device);
 }
 
-const char *CUDART_CB cudaGetErrorString(cudaError_t error) {
-  using FuncPtr = const char *(*)(cudaError_t error);
+const char* CUDART_CB cudaGetErrorString(cudaError_t error) {
+  using FuncPtr = const char* (*)(cudaError_t error);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetErrorString");
   if (!func_ptr) return GetSymbolNotFoundStrError();
   return func_ptr(error);
@@ -86,27 +86,27 @@ cudaError_t CUDART_CB cudaSetDevice(int device) {
 
 cudaError_t CUDART_CB cudaStreamAddCallback(cudaStream_t stream,
                                             cudaStreamCallback_t callback,
-                                            void *userData,
+                                            void* userData,
                                             unsigned int flags) {
   using FuncPtr =
       cudaError_t (*)(cudaStream_t stream, cudaStreamCallback_t callback,
-                      void *userData, unsigned int flags);
+                      void* userData, unsigned int flags);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaStreamAddCallback");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(stream, callback, userData, flags);
 }
 
-cudaError_t CUDART_CB cudaGetDeviceCount(int *count) {
-  using FuncPtr = cudaError_t (*)(int *count);
+cudaError_t CUDART_CB cudaGetDeviceCount(int* count) {
+  using FuncPtr = cudaError_t (*)(int* count);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaGetDeviceCount");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(count);
 }
 
 cudaError_t CUDART_CB cudaPointerGetAttributes(
-    struct cudaPointerAttributes *attributes, const void *ptr) {
+    struct cudaPointerAttributes* attributes, const void* ptr) {
   using FuncPtr = cudaError_t (*)(struct cudaPointerAttributes * attributes,
-                                  const void *ptr);
+                                  const void* ptr);
   static auto func_ptr = LoadSymbol<FuncPtr>("cudaPointerGetAttributes");
   if (!func_ptr) return GetSymbolNotFoundError();
   return func_ptr(attributes, ptr);

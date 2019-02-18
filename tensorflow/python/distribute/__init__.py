@@ -20,9 +20,11 @@ from __future__ import print_function
 
 # pylint: disable=unused-import
 from tensorflow.python.distribute import cluster_resolver
+from tensorflow.python.distribute import cross_device_ops
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python import pywrap_tensorflow
 if not pywrap_tensorflow.IsBuiltWithROCm():
     from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.distribute import one_device_strategy
 # pylint: enable=unused-import

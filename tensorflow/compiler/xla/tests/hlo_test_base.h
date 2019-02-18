@@ -173,6 +173,11 @@ class HloTestBase : public ::testing::Test {
   Literal ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                              absl::Span<Literal* const> arguments);
 
+  // Executes the given module on multiple replicas.
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
+      std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+      int64 num_replicas);
+
   // Executes the given hlo module on two backends and compares results.
   //
   // 'arguments': the input of the hlo module.

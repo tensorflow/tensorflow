@@ -15,10 +15,10 @@ limitations under the License.
 
 syntax = "proto3";
 
-import "tensorflow/compiler/xla/xla_data.proto";
-import "tensorflow/compiler/xla/service/hlo.proto";
-
 package xla;
+
+import "tensorflow/compiler/xla/service/hlo.proto";
+import "tensorflow/compiler/xla/xla_data.proto";
 
 // Options for the HLO insert-reduce-precision-operations pass.
 message HloReducePrecisionOptions {
@@ -72,8 +72,7 @@ message DebugOptions {
   // Path to dump HLO graphs to.
   string xla_hlo_graph_path = 4;
 
-  // Dump HLO graphs as TensorFlow GraphDefs.
-  bool xla_hlo_dump_as_graphdef = 5;
+  reserved 5;  // Was xla_hlo_dump_as_graphdef
 
   // HLO modules matching this regex will be dumped to LOG(INFO). Set to ".*" to
   // dump *all* HLO modules.
@@ -171,9 +170,7 @@ message DebugOptions {
   // HLO graph.
   bool xla_hlo_graph_sharding_color = 92;
 
-  // Prefix the name scopes of the TF graph exports with "devX" device
-  // assignments, if available.
-  bool xla_hlo_tfgraph_device_scopes = 93;
+  reserved 93;  // Was xla_hlo_tfgraph_device_scopes
 
   // If true, the GPU backend is free to use cudnn for HLO batch normalization
   // ops.
@@ -234,7 +231,23 @@ message DebugOptions {
   // versions of DynamicSlice and DynamicUpdateSlice. Only used for testing.
   bool xla_allow_scalar_index_dynamic_ops = 107;
 
-  // Next id: 108
+  enum StepMarkerLocation {
+    // Generate step mark at each iteration of top level while loop, which
+    // is assumed to be a training loop. This is the default.
+    STEP_MARK_AT_ENTRY = 0;
+    // Generate step mark at program entry. This handles the case where each
+    // step are done by one or multiple programs execution. Only the first
+    // program will be tagged for generating step mark at program entry.
+    STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP = 1;
+    // No step mark.
+    STEP_MARK_NONE = 2;
+  }
+  // Option to emit a target-specific marker to indicate the start of a training
+  // step. The location of the marker (if any) is determined by the option
+  // value.
+  StepMarkerLocation xla_step_marker_location = 108;
+
+  // Next id: 109
 
   // Extra options to pass to the compilation backend (e.g. LLVM); specific
   // interpretation of these values is left to the backend.
@@ -306,8 +319,7 @@ message TransferToInfeedRequest {
   DeviceHandle device_handle = 3;
 }
 
-message TransferToInfeedResponse {
-}
+message TransferToInfeedResponse {}
 
 message TransferFromOutfeedRequest {
   // This optional field directs the service to return the literal in this
@@ -326,8 +338,7 @@ message ResetDeviceRequest {
   DeviceHandle device_handle = 1;
 }
 
-message ResetDeviceResponse {
-}
+message ResetDeviceResponse {}
 
 message ComputationGraphStatsRequest {
   HloModuleProto computation = 1;
@@ -350,8 +361,7 @@ message UnregisterRequest {
   repeated GlobalDataHandle data = 1;
 }
 
-message UnregisterResponse {
-}
+message UnregisterResponse {}
 
 message CompileRequest {
   // The graph to be compiled.

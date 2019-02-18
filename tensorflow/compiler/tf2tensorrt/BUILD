@@ -160,6 +160,7 @@ tf_custom_op_py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:platform",
         "//tensorflow/python:resources",
@@ -170,13 +171,11 @@ tf_cuda_library(
     name = "trt_resources",
     srcs = [
         "utils/trt_int8_calibrator.cc",
-        "utils/trt_resource_manager.cc",
         "utils/trt_resources.cc",
     ],
     hdrs = [
         "utils/trt_int8_calibrator.h",
         "utils/trt_lru_cache.h",
-        "utils/trt_resource_manager.h",
         "utils/trt_resources.h",
     ],
     deps = [
@@ -265,7 +264,6 @@ tf_cuda_library(
         "//tensorflow/core:framework_lite",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:graph",
-        "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:devices",
@@ -351,6 +349,7 @@ cc_library(
         "segment/segment.h",
         "segment/union_find.h",
     ],
+    copts = tf_copts(),
     deps = [
         "//tensorflow/core:graph",
         "//tensorflow/core:lib_proto_parsing",
@@ -360,11 +359,12 @@ cc_library(
     ],
 )
 
-tf_cc_test(
+tf_cuda_cc_test(
     name = "segment_test",
     size = "small",
     srcs = ["segment/segment_test.cc"],
     tags = [
+        "no_cuda_on_cpu_tap",
         "no_windows",
         "nomac",
     ],
@@ -430,7 +430,7 @@ cc_library(
     copts = tf_copts(),
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
     ],
 )
 
@@ -439,7 +439,7 @@ cc_library(
     srcs = ["utils/test_utils.cc"],
     hdrs = ["utils/test_utils.h"],
     deps = [
-        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_proto_parsing",
         "@com_googlesource_code_re2//:re2",
     ],
 )

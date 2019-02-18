@@ -247,6 +247,10 @@ Layout CreateDefaultLayoutForRank(int64 rank) {
       }
       dimensions_in_layout[dim] = true;
     }
+  } else {
+    if (layout.tiles_size() != 0) {
+      return InvalidArgument("Only dense layouts can be tiled.");
+    }
   }
 
   return Status::OK();
