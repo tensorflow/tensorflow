@@ -24,13 +24,9 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
-// Whether 'instr' is a fusible operation
-// Don't fuse get-tuple-element on GPU: We can, but it's slower than not
-// fusing.  We never generate kernels for unfused GTEs.  Instead, if an
-// unfused GTE is an input to a kernel (including a fusion kernel), we
-// compute the address of the GTE at the top of the kernel.  Often we know the
-// address of the GTE result statically, so we can do this without chasing any
-// pointers.
+// Whether 'instr' can occur inside fusions, i.e. whether it is a candidate
+// for being fused. Note that further restrictions apply, e.g. Scatter must
+// be the root of an input fusion.
 bool IsFusible(const HloInstruction& instr);
 
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
