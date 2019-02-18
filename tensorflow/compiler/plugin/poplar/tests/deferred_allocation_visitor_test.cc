@@ -13,15 +13,15 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/entry_visitor.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitors/entry_visitor.h"
 
-#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
-#include "tensorflow/compiler/plugin/poplar/driver/forward_allocation.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
-#include "tensorflow/compiler/plugin/poplar/driver/sharding_pass.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/scheduler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/sharding_pass.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"

@@ -19,11 +19,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_ANNOTATIONS_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_ANNOTATIONS_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/inplace_util.h"
-#include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"

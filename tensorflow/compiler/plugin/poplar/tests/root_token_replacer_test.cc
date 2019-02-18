@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/root_token_replacer.h"
-#include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/root_token_replacer.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 

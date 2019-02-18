@@ -30,7 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module_config.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/executor.h"
-#include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 
 #include <poplar/Engine.hpp>
 

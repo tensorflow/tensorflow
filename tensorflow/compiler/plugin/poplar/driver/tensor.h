@@ -1,8 +1,8 @@
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TENSOR_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_TENSOR_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/allocation_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/allocation_finder.h"
 
 #include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -64,6 +64,11 @@ StatusOr<poplar::Tensor> AddNormOffsetTensor(
     const unsigned feature_dimension,
     std::vector<const HloInstruction*> forward_path,
     const TensorMap& tensor_map);
+
+// Returns true if the given tensor source has a special layout allocation
+// target.
+bool HasTensorAllocationTarget(const TensorSource& src,
+                               const CompilerResources& resources);
 
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,
                                    const TensorSource& src,

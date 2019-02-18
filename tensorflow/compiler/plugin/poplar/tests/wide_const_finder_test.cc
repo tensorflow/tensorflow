@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/wide_const_finder.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/wide_const_finder.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"

@@ -13,8 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/find_all_users.h"
-#include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/find_all_users.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 

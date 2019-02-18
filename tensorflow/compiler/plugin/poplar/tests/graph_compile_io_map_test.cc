@@ -15,8 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/executable.h"
-#include "tensorflow/compiler/plugin/poplar/driver/input_output_aliasing_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/platform.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"

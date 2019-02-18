@@ -19,11 +19,11 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
-#include "tensorflow/compiler/plugin/poplar/driver/conversions.h"
-#include "tensorflow/compiler/plugin/poplar/driver/custom_ops/custom_ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/matcher_predicates.h"
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
-#include "tensorflow/compiler/plugin/poplar/driver/util.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/custom_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/conversions.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/matcher_predicates.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/util.h"
 #include "tensorflow/compiler/plugin/poplar/kernels/custom_kernels_util.h"
 
 #include "tensorflow/compiler/xla/layout_util.h"
@@ -611,6 +611,12 @@ static StatusOr<poplar::Tensor> AddElementwiseBinary(
                       ReversePathTransform(graph, other_side, forward_path));
 
   return graph.clone(other_side, debug_name);
+}
+
+bool HasTensorAllocationTarget(const TensorSource& src,
+                               const CompilerResources& resources) {
+  auto& tensor_allocation_map = resources.annotations.tensor_allocation_map;
+  return tensor_allocation_map.find(src) != tensor_allocation_map.end();
 }
 
 StatusOr<poplar::Tensor> AddTensor(poplar::Graph& graph,

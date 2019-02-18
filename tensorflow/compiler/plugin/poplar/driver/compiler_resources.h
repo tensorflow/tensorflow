@@ -20,10 +20,10 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_COMPILER_RESOURCES_H_
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
-#include "tensorflow/compiler/plugin/poplar/driver/conv_graph_caching.h"
-#include "tensorflow/compiler/plugin/poplar/driver/convolution_classifier.h"
-#include "tensorflow/compiler/plugin/poplar/driver/norm_graph_caching.h"
-#include "tensorflow/compiler/plugin/poplar/driver/visitor_subcomputation.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/conv_graph_caching.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/norm_graph_caching.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/convolution_classifier.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitors/visitor_subcomputation.h"
 
 #include <poplar/OptionFlags.hpp>
 #include <poplin/Convolution.hpp>
@@ -34,7 +34,8 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-using ComputationMap = std::map<const HloComputation*, SubComputationVisitor>;
+using ComputationMap =
+    std::map<const HloComputation*, std::shared_ptr<SubComputationVisitor>>;
 
 // This structure contains additional information required to lower the graph
 // from an XLA graph to a poplar graph.

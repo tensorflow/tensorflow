@@ -13,7 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/compiler/plugin/poplar/driver/scheduler.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/scheduler.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 

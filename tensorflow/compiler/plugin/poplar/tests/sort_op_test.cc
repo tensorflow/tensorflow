@@ -8,7 +8,7 @@
 #include <popops/codelets.hpp>
 #include <poputil/TileMapping.hpp>
 
-#include "tensorflow/compiler/plugin/poplar/driver/ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/ops.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 #include "tensorflow/compiler/xla/test.h"
 
