@@ -22,7 +22,6 @@ limitations under the License.
 #include <functional>
 #include <string>
 
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -33,6 +32,7 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/util/work_sharder.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -410,8 +410,8 @@ class CropAndResizeGradImageOp : public AsyncOpKernel {
       const Tensor& boxes = context->input(1);
       const Tensor& box_index = context->input(2);
       const bool status = functor::CropAndResizeBackpropImage<Device, T>()(
-                    context, grads.tensor<float, 4>(), boxes.tensor<float, 2>(),
-                    box_index.tensor<int32, 1>(), output->tensor<T, 4>(), method_);
+          context, grads.tensor<float, 4>(), boxes.tensor<float, 2>(),
+          box_index.tensor<int32, 1>(), output->tensor<T, 4>(), method_);
 
       if (!status) {
         context->SetStatus(errors::Internal(
@@ -452,7 +452,8 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
     // Parallelize the loop using Eigen thread pool.
     // Assign ranges of boxes into different threads.
     // Split two methods' code to avoid branch mis-prediction.
-    auto CropAndResizeBackImgPerBoxBilinear = [&](int start_box, int limit_box) {
+    auto CropAndResizeBackImgPerBoxBilinear = [&](int start_box,
+                                                  int limit_box) {
       for (int b = start_box; b < limit_box; ++b) {
         const float y1 = boxes(b, 0);
         const float x1 = boxes(b, 1);
@@ -569,19 +570,19 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
         (method_name == "bilinear"
              ? depth * (Eigen::TensorOpCost::AddCost<float>() * 4 +
                         Eigen::TensorOpCost::MulCost<float>() * 6 +
-                        Eigen::TensorOpCost::CastCost<T, float>() * 4)
-               + Eigen::TensorOpCost::AddCost<float>() * 4
+                        Eigen::TensorOpCost::CastCost<T, float>() * 4) +
+                   Eigen::TensorOpCost::AddCost<float>() * 4
              : depth * (Eigen::TensorOpCost::AddCost<float>() +
                         Eigen::TensorOpCost::CastCost<T, float>()));
     const double cost_per_box = crop_height * crop_width * cost_per_pixel;
 
     const DeviceBase::CpuWorkerThreads& worker_threads =
         *(context->device()->tensorflow_cpu_worker_threads());
-    method_name == "bilinear" ?
-    Shard(worker_threads.num_threads, worker_threads.workers, num_boxes,
-          cost_per_box, CropAndResizeBackImgPerBoxBilinear)
-    : Shard(worker_threads.num_threads, worker_threads.workers, num_boxes,
-          cost_per_box, CropAndResizeBackImgPerBoxNearest);
+    method_name == "bilinear"
+        ? Shard(worker_threads.num_threads, worker_threads.workers, num_boxes,
+                cost_per_box, CropAndResizeBackImgPerBoxBilinear)
+        : Shard(worker_threads.num_threads, worker_threads.workers, num_boxes,
+                cost_per_box, CropAndResizeBackImgPerBoxNearest);
 
     return true;
   }
