@@ -48,6 +48,12 @@ void InplaceFinder::RouteFinder(HloInstruction* inst,
       }
       break;
     }
+    case HloOpcode::kAddDependency: {
+      if (inst->operand(0) != current_route.back()) {
+        return;
+      }
+      break;
+    }
     case HloOpcode::kFusion:
       if (IsPopOpsFusion(inst, "conv_scaled_inplace")) {
         // This is always acceptable on a variable update inplace route
@@ -137,6 +143,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
       for (auto& inst : r.second) {
         switch (inst->opcode()) {
           case HloOpcode::kAdd:
+          case HloOpcode::kAddDependency:
           case HloOpcode::kFusion:
           case HloOpcode::kDynamicUpdateSlice:
           case HloOpcode::kGetTupleElement:
@@ -161,6 +168,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
       }
 
       switch (inst->opcode()) {
+        case HloOpcode::kAddDependency:
         case HloOpcode::kBitcast:
         case HloOpcode::kBroadcast:
         case HloOpcode::kConcatenate:
