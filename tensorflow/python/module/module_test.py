@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 
 from absl.testing import parameterized
@@ -135,6 +136,34 @@ class TestModuleNaming(test.TestCase):
 
     self.assertEqual("", get_name_scope())
 
+  def test_get_attr_doesnt_enter_name_scope(self):
+    scope_names = []
+
+    class GetAttrModule(module.Module):
+
+      def __getattr__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttrModule, self).__getattr__(name)
+
+    mod = GetAttrModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
+
+  def test_get_attribute_doesnt_enter_name_scope(self):
+    scope_names = []
+
+    class GetAttributeModule(module.Module):
+
+      def __getattribute__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttributeModule, self).__getattribute__(name)
+
+    mod = GetAttributeModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
+
 
 class VariableNamingTest(test.TestCase):
 
@@ -224,6 +253,21 @@ class ForwardMethodsTest(test.TestCase):
                      b"module_with_function_annotated_call/")
 
 
+class AbcTest(test.TestCase):
+
+  def testAbstract(self):
+    msg = "Can't instantiate .* abstract methods"
+    with self.assertRaisesRegexp(TypeError, msg):
+      AbstractModule()  # pylint: disable=abstract-class-instantiated
+
+  def testConcrete(self):
+    mod = ConcreteModule()
+    x, scope_name = mod(2.)
+    self.assertEqual(x, 4.)
+    self.assertEqual(scope_name, "concrete_module/")
+    self.assertEqual(get_name_scope(), "")
+
+
 def get_name_scope():
   with ops.name_scope("x") as ns:
     return ns[:-2]
@@ -253,6 +297,20 @@ class RecursiveModule(module.Module):
     if depth > 1:
       self.child = RecursiveModule(depth - 1, trainable=trainable)
     self.w = variables.Variable(1.0, trainable=trainable, name="mushroom")
+
+
+@six.add_metaclass(abc.ABCMeta)
+class AbstractModule(module.Module):
+
+  @abc.abstractmethod
+  def __call__(self, x):
+    pass
+
+
+class ConcreteModule(AbstractModule):
+
+  def __call__(self, x):
+    return x ** 2, get_name_scope()
 
 
 class TreeModule(module.Module):

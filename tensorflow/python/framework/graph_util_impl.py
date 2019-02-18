@@ -197,7 +197,7 @@ def extract_sub_graph(graph_def, dest_nodes):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.remove_training_nodes")
+    instructions="Use tf.compat.v1.graph_util.tensor_shape_from_node_def_name")
 @tf_export(v1=["graph_util.tensor_shape_from_node_def_name"])
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""
@@ -248,15 +248,6 @@ def convert_variables_to_constants(sess,
   found_variables = {}
   variable_names = []
   variable_dict_names = []
-  identity_ops_input_map = {}
-
-  def is_found_variable(input_tensor_name):
-    # Determines if the `input_tensor_name` is in `found_variables` or is an
-    # Identity op with an input that is in `found_variables`.
-    return ((input_tensor_name in found_variables) or
-            (input_tensor_name in identity_ops_input_map and
-             identity_ops_input_map[input_tensor_name] in found_variables))
-
   for node in inference_graph.node:
     if node.op in ["Variable", "VariableV2", "VarHandleOp"]:
       variable_name = node.name
@@ -270,9 +261,6 @@ def convert_variables_to_constants(sess,
         variable_names.append(variable_name + "/Read/ReadVariableOp:0")
       else:
         variable_names.append(variable_name + ":0")
-    elif node.op == "Identity":
-      # Creates a map of Identity node names to the input names.
-      identity_ops_input_map[node.name] = node.input[0].split(":")[0]
   if variable_names:
     returned_variables = sess.run(variable_names)
   else:
@@ -295,15 +283,11 @@ def convert_variables_to_constants(sess,
               tensor=tensor_util.make_tensor_proto(
                   data, dtype=dtype.type, shape=data.shape)))
       how_many_converted += 1
-    elif (input_node.op == "ReadVariableOp" and
-          is_found_variable(input_node.input[0])):
+    elif input_node.op == "ReadVariableOp" and (
+        input_node.input[0] in found_variables):
       # The preceding branch converts all VarHandleOps of ResourceVariables to
       # constants, so we need to convert the associated ReadVariableOps to
       # Identity ops.
-      #
-      # Handles the following cases:
-      #   Variable --> ReadVariableOp
-      #   Variable --> Identity --> ReadVariableOp
       output_node.op = "Identity"
       output_node.name = input_node.name
       output_node.input.extend([input_node.input[0]])

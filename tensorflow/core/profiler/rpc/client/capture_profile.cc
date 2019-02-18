@@ -39,7 +39,8 @@ constexpr uint64 kMaxEvents = 1000000;
 string GetCurrentTimeStampAsString() {
   char s[128];
   std::time_t t = std::time(nullptr);
-  DCHECK_NE(std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t)), 0);
+  auto result = std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t));
+  DCHECK_NE(result, 0);
   return s;
 }
 

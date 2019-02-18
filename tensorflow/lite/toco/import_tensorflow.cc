@@ -2472,7 +2472,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Prod", ConvertReduceOperator<TensorFlowProdOperator>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
-      {"Rank", ConvertSimpleOperator<RankOperator, 1, 1>},
+      {"Rank", ConvertSimpleOperator<TensorFlowRankOperator, 1, 1>},
       {"RealDiv", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"Relu", ConvertSimpleOperator<ReluOperator, 1, 1>},
       {"Relu6", ConvertSimpleOperator<Relu6Operator, 1, 1>},
@@ -2514,6 +2514,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
       {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
+      {"Where", ConvertSimpleOperator<WhereOperator, 1, 1>},
   });
 }
 

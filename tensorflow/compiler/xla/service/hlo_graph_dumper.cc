@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -1451,9 +1450,6 @@ string SaveGraph(const string& graph,
     case GraphRendererInterface::DOT_GRAPH:
       file_extension = ".dot";
       break;
-    case GraphRendererInterface::TF_GRAPHDEF:
-      file_extension = ".pbtxt";
-      break;
   }
   string path = JoinPath(dest_path, StrCat("hlo_graph_", output_num++, "."));
   auto status = Status::OK();
@@ -1491,25 +1487,27 @@ string ExportGraph(const string& graph,
 
 }  // namespace
 
+string HloComputationToDotGraph(const HloComputation& computation,
+                                const DotGraphOptions& options) {
+  DebugOptions default_debug_options;
+  return HloDotDumper(&computation, options.label,
+                      options.debug_options ? *options.debug_options
+                                            : default_debug_options,
+                      options.show_backend_config, options.profile,
+                      NodeFilter())
+      .Dump();
+}
+
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,
                  bool show_backend_config) {
   GraphRendererInterface::GraphKind graph_kind;
-  string graph;
-  if (debug_options.xla_hlo_dump_as_graphdef()) {
-    HloTfGraphBuilder builder(debug_options);
-    TF_CHECK_OK(builder.AddComputation(computation));
-    CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
-                                                          &graph));
-    graph_kind = GraphRendererInterface::TF_GRAPHDEF;
-  } else {
-    graph =
-        HloDotDumper(&computation, label, debug_options, show_backend_config,
-                     hlo_execution_profile, NodeFilter())
-            .Dump();
-    graph_kind = GraphRendererInterface::DOT_GRAPH;
-  }
+  string graph =
+      HloDotDumper(&computation, label, debug_options, show_backend_config,
+                   hlo_execution_profile, NodeFilter())
+          .Dump();
+  graph_kind = GraphRendererInterface::DOT_GRAPH;
 
   string graph_url = ExportGraph(graph, graph_kind, debug_options);
   LOG(INFO) << "computation " << computation.name() << " [" << label

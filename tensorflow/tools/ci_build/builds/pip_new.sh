@@ -430,6 +430,10 @@ create_activate_virtualenv() {
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
     die "FAILED: Unable to activate virtualenv in ${VIRTUALENV_DIR}"
+
+  # Update .tf_configure.bazelrc with venv python path for bazel test.
+  PYTHON_BIN_PATH="$(which python)"
+  yes "" | ./configure
 }
 
 install_tensorflow_pip() {
@@ -441,17 +445,6 @@ install_tensorflow_pip() {
 
   # Set path to pip.
   PIP_BIN_PATH="$(which pip${PYTHON_VER_CFG})"
-
-  # Store the original values for the global vars.
-  PYTHON_BIN_PATH_TMP=${PYTHON_BIN_PATH}
-  PIP_BIN_PATH_TMP=${PIP_BIN_PATH}
-
-  # If in virtualenv, use default python and pip set up for the venv.
-  IN_VENV=$(python -c 'import sys; print("1" if hasattr(sys, "real_prefix") else "0")')
-  if [[ $IN_VENV == "1" ]]; then
-    PYTHON_BIN_PATH=$(which python)
-    PIP_BIN_PATH=$(which pip)
-  fi
 
   # Print python and pip bin paths
   echo "PYTHON_BIN_PATH to be used to install the .whl: ${PYTHON_BIN_PATH}"
@@ -488,16 +481,6 @@ install_tensorflow_pip() {
   #   ImportError: cannot import name py31compat
   ${PIP_BIN_PATH} install --upgrade setuptools==39.1.0 || \
     die "Error: setuptools install, upgrade FAILED"
-
-  # Set python and pip bin paths to original.
-  if [[ $IN_VENV == "1" ]]; then
-    PYTHON_BIN_PATH=${PYTHON_BIN_PATH_TMP}
-    PIP_BIN_PATH=${PIP_BIN_PATH_TMP}
-  fi
-
-  # Print the outgoing python and pip bin paths.
-  echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH}"
-  echo "PIP_BIN_PATH: ${PIP_BIN_PATH}"
 }
 
 run_test_with_bazel() {
@@ -510,10 +493,10 @@ run_test_with_bazel() {
   # PIP tests should have a "different" path. Different than the one we place
   # virtualenv, because we are deleting and recreating it here.
   PIP_TEST_PREFIX=bazel_pip
-  PIP_TEST_ROOT=$(pwd)/${PIP_TEST_PREFIX}
-  sudo rm -rf $PIP_TEST_ROOT
-  mkdir -p $PIP_TEST_ROOT
-  ln -s $(pwd)/tensorflow ${PIP_TEST_ROOT}/tensorflow
+  TEST_ROOT=$(pwd)/${PIP_TEST_PREFIX}
+  sudo rm -rf $TEST_ROOT
+  mkdir -p $TEST_ROOT
+  ln -s $(pwd)/tensorflow ${TEST_ROOT}/tensorflow
 
   if [[ "${IS_OSS_SERIAL}" == "1" ]]; then
     remove_test_filter_tag -no_oss
@@ -552,8 +535,17 @@ run_test_with_bazel() {
     BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
   fi
 
+  TEST_TARGETS_LN=""
+  for TARGET in ${BAZEL_TEST_TARGETS[@]}; do
+    TARGET_RE="$(echo ${TARGET} | sed -e 's/\/\//\/${TEST_ROOT}\//g')"
+    TEST_TARGETS_LN+="${TARGET_RE} "
+  done
+  echo "Test targets (symlink): ${TEST_TARGETS_LN}"
+
   # Run the test.
-  bazel test --build_tests_only ${BAZEL_BUILD_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -- ${BAZEL_TEST_TARGETS}
+  bazel test --build_tests_only ${BAZEL_BUILD_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- ${TEST_TARGETS_LN}
+
+  unlink ${TEST_ROOT}/tensorflow
 }
 
 run_all_tests() {

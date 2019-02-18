@@ -54,12 +54,18 @@ TEST_COPTS = RELEASE_COPTS + [
     "-Wno-shadow",
 ]
 
+# Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
+DEFAULT_TAGS = [
+    "apple",
+    "manual",
+]
+
 objc_library(
     name = "TensorFlowLite",
     srcs = SOURCES,
     hdrs = API_HEADERS,
     copts = RELEASE_COPTS,
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
     deps = [
         "//tensorflow/lite/experimental/c:c_api",
     ],
@@ -70,8 +76,7 @@ ios_unit_test(
     name = "TensorFlowLiteTests",
     size = "small",
     minimum_os_version = MINIMUM_OS_VERSION,
-    tags = [
-        "manual",
+    tags = DEFAULT_TAGS + [
         # These sanitizer tests are not supported by iOS build toolchain (b/74292221).
         # Disabled these for iOS test targets.
         "noasan",
@@ -97,7 +102,7 @@ objc_library(
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
     ],
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
     deps = [
         ":TensorFlowLite",
     ],

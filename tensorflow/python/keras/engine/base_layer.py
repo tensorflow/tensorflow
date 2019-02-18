@@ -46,8 +46,8 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -57,7 +57,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.Checkpointable):
+class Layer(trackable.Trackable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -110,7 +110,7 @@ class Layer(checkpointable.Checkpointable):
       constraints on inputs that can be accepted by the layer.
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
     # These properties should be set by the user via keyword arguments.
@@ -272,7 +272,7 @@ class Layer(checkpointable.Checkpointable):
         marked as non-trainable. `trainable` defaults to `True` unless
         `synchronization` is set to `ON_READ`.
       constraint: constraint instance (callable).
-      partitioner: Partitioner to be passed to the `Checkpointable` API.
+      partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
@@ -345,9 +345,9 @@ class Layer(checkpointable.Checkpointable):
         name=name,
         shape=shape,
         # TODO(allenl): a `make_variable` equivalent should be added as a
-        # `Checkpointable` method.
+        # `Trackable` method.
         getter=getter or base_layer_utils.make_variable,
-        # Manage errors in Layer rather than Checkpointable.
+        # Manage errors in Layer rather than Trackable.
         overwrite=True,
         initializer=initializer,
         dtype=dtype,
@@ -561,6 +561,16 @@ class Layer(checkpointable.Checkpointable):
           # Build layer if applicable (if the `build` method has been
           # overridden).
           self._maybe_build(inputs)
+          # Explicitly pass the learning phase placeholder to `call` if
+          # the `training` argument was left unspecified by the user.
+          # This behavior is restricted to the managed Keras FuncGraph.
+          learning_phase_passed_by_framework = False
+          if (self._expects_training_arg and
+              not base_layer_utils.training_arg_passed_to_call(
+                  tf_inspect.getfullargspec(self.call), args, kwargs) and
+              getattr(graph, 'name', None) == 'keras_graph'):
+            learning_phase_passed_by_framework = True
+            kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
               outputs = self.call(inputs, *args, **kwargs)
@@ -590,6 +600,8 @@ class Layer(checkpointable.Checkpointable):
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
           if base_layer_utils.have_all_keras_metadata(inputs):
+            if learning_phase_passed_by_framework:
+              kwargs.pop('training')
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
           self._handle_activity_regularization(inputs, outputs)
@@ -684,7 +696,12 @@ class Layer(checkpointable.Checkpointable):
       A list of tensors.
     """
     collected_losses = []
-    if context.executing_eagerly():
+
+    # If any eager losses are present, we assume the model to be part of an
+    # eager training loop (either a custom one or the one used when
+    # `run_eagerly=True`), and so we always return just the eager losses in that
+    # case.
+    if self._eager_losses:
       collected_losses.extend(self._eager_losses)
     else:
       collected_losses.extend(self._losses)
@@ -715,6 +732,7 @@ class Layer(checkpointable.Checkpointable):
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
+        Other types of input are ignored.
       inputs: Ignored when executing eagerly. If anything other than None is
         passed, it signals the losses are conditional on some of the layer's
         inputs, and thus they should only be run where these inputs are
@@ -740,10 +758,13 @@ class Layer(checkpointable.Checkpointable):
         self._callable_losses.append(
             functools.partial(_tag_unconditional, loss))
       else:
-        if context.executing_eagerly():
-          self._eager_losses.append(_tag_unconditional(loss))
-        else:
+        if not tensor_util.is_tensor(loss):
+          # Ignoring constant values as this does not affect the gradients.
+          return
+        if tf_utils.is_symbolic_tensor(loss):
           self._losses.append(_tag_unconditional(loss))
+        else:
+          self._eager_losses.append(_tag_unconditional(loss))
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -1617,7 +1638,7 @@ class Layer(checkpointable.Checkpointable):
 
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
-        checkpointable_layer_utils.has_weights(value)):
+        trackable_layer_utils.has_weights(value)):
       # Initialize `_layers` here in case `__init__` has not yet been called.
       if not hasattr(self, '_layers'):
         self._layers = []
@@ -1654,7 +1675,7 @@ class Layer(checkpointable.Checkpointable):
     return []
 
   # This is a hack so that the is_layer (within
-  # training/checkpointable/layer_utils.py) check doesn't get the weights attr.
+  # training/trackable/layer_utils.py) check doesn't get the weights attr.
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
@@ -1820,6 +1841,9 @@ class TensorFlowOpLayer(Layer):
         name=name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
+    # Layer uses original op unless it is called on new inputs.
+    # This means `built` is not set in `__call__`.
+    self.built = True
 
   def call(self, inputs):
     if context.executing_eagerly():

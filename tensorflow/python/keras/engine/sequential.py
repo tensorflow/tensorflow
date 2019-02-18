@@ -28,7 +28,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
@@ -93,7 +93,7 @@ class Sequential(training.Model):
   ```
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, layers=None, name=None):
     super(Sequential, self).__init__(name=name)
     self.supports_masking = True
@@ -112,7 +112,7 @@ class Sequential(training.Model):
     # Historically, `sequential.layers` only returns layers that were added
     # via `add`, and omits the auto-generated `InputLayer` that comes at the
     # bottom of the stack.
-    # `CheckpointableBase` manages the `_layers` attributes and does filtering
+    # `Trackable` manages the `_layers` attributes and does filtering
     # over it.
     layers = super(Sequential, self).layers
     if layers and isinstance(layers[0], input_layer.InputLayer):
@@ -123,7 +123,7 @@ class Sequential(training.Model):
   def dynamic(self):
     return any(layer.dynamic for layer in self.layers)
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
 
@@ -193,7 +193,7 @@ class Sequential(training.Model):
 
     self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def pop(self):
     """Removes the last layer in the model.
 

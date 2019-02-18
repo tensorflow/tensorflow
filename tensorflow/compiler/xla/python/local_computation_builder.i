@@ -234,6 +234,15 @@ tensorflow::ImportNumpy();
   }
 }
 
+%typemap(out) StatusOr<string> {
+  if ($1.ok()) {
+    $result = PyString_FromString($1.ConsumeValueOrDie().c_str());
+  } else {
+    PyErr_SetString(PyExc_RuntimeError, $1.status().ToString().c_str());
+    SWIG_fail;
+  }
+}
+
 %typemap(out) Status {
   if (!$1.ok()) {
     PyErr_SetString(
@@ -1036,6 +1045,8 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::Computation::GetProgramShape;
 %unignore xla::swig::Computation::GetReturnValueShape;
 %unignore xla::swig::Computation::GetSerializedProto;
+%unignore xla::swig::Computation::GetHloText;
+%unignore xla::swig::Computation::GetHloDotGraph;
 %unignore xla::swig::LocalOp;
 %unignore xla::swig::ComputationBuilder;
 %unignore xla::swig::ComputationBuilder::ComputationBuilder;

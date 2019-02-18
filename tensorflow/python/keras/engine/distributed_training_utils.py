@@ -897,3 +897,22 @@ def _generate_cache_key(mode):
 def distributed_scope(strategy, learning_phase):
   with strategy.scope(), K.learning_phase_scope(learning_phase):
     yield
+
+
+def filter_callbacks(callbacks_list):
+  """Filter Callbacks based on the worker context when running multi-worker.
+
+  Arguments:
+    callbacks_list: A list of `Callback` instances.
+
+  Returns:
+    The list of `Callback` instances that should be run on this worker.
+  """
+  worker_context = dc_context.get_current_worker_context()
+  if callbacks_list is None or worker_context.is_chief:
+    return callbacks_list
+
+  # Some Callbacks should only run on the chief worker.
+  return [
+      callback for callback in callbacks_list if not callback._chief_worker_only
+  ]  # pylint: disable=protected-access

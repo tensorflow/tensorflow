@@ -11016,6 +11016,58 @@ func MaxPoolWithArgmax(scope *Scope, input tf.Output, ksize []int64, strides []i
 	return op.Output(0), op.Output(1)
 }
 
+// Identity transformation that models performance.
+//
+// Identity transformation that models performance.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//
+//
+func ModelDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ModelDataset",
+		Input: []tf.Input{
+			input_dataset,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Fast Fourier transform.
+//
+// Computes the 1-dimensional discrete Fourier transform over the inner-most
+// dimension of `input`.
+//
+// Arguments:
+//	input: A complex tensor.
+//
+// Returns A complex tensor of the same shape as `input`. The inner-most
+//   dimension of `input` is replaced with its 1D Fourier transform.
+//
+// @compatibility(numpy)
+// Equivalent to np.fft.fft
+// @end_compatibility
+func FFT(scope *Scope, input tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "FFT",
+		Input: []tf.Input{
+			input,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // MaxPoolAttr is an optional argument to MaxPool.
 type MaxPoolAttr func(optionalAttr)
 
@@ -14829,6 +14881,51 @@ func ReciprocalGrad(scope *Scope, y tf.Output, dy tf.Output) (z tf.Output) {
 		Input: []tf.Input{
 			y, dy,
 		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// EuclideanNormAttr is an optional argument to EuclideanNorm.
+type EuclideanNormAttr func(optionalAttr)
+
+// EuclideanNormKeepDims sets the optional keep_dims attribute to value.
+//
+// value: If true, retain reduced dimensions with length 1.
+// If not specified, defaults to false
+func EuclideanNormKeepDims(value bool) EuclideanNormAttr {
+	return func(m optionalAttr) {
+		m["keep_dims"] = value
+	}
+}
+
+// Computes the euclidean norm of elements across dimensions of a tensor.
+//
+// Reduces `input` along the dimensions given in `axis`. Unless
+// `keep_dims` is true, the rank of the tensor is reduced by 1 for each entry in
+// `axis`. If `keep_dims` is true, the reduced dimensions are
+// retained with length 1.
+//
+// Arguments:
+//	input: The tensor to reduce.
+//	axis: The dimensions to reduce. Must be in the range
+// `[-rank(input), rank(input))`.
+//
+// Returns The reduced tensor.
+func EuclideanNorm(scope *Scope, input tf.Output, axis tf.Output, optional ...EuclideanNormAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "EuclideanNorm",
+		Input: []tf.Input{
+			input, axis,
+		},
+		Attrs: attrs,
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -19174,6 +19271,14 @@ func TPUReplicateMetadataHostComputeCore(value []string) TPUReplicateMetadataAtt
 func TPUReplicateMetadataPaddingMap(value []string) TPUReplicateMetadataAttr {
 	return func(m optionalAttr) {
 		m["padding_map"] = value
+	}
+}
+
+// TPUReplicateMetadataStepMarkerLocation sets the optional step_marker_location attribute to value.
+// If not specified, defaults to "STEP_MARK_AT_ENTRY"
+func TPUReplicateMetadataStepMarkerLocation(value string) TPUReplicateMetadataAttr {
+	return func(m optionalAttr) {
+		m["step_marker_location"] = value
 	}
 }
 
@@ -38614,58 +38719,6 @@ func IteratorGetNextAsOptional(scope *Scope, iterator tf.Output, output_types []
 		Type: "IteratorGetNextAsOptional",
 		Input: []tf.Input{
 			iterator,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Fast Fourier transform.
-//
-// Computes the 1-dimensional discrete Fourier transform over the inner-most
-// dimension of `input`.
-//
-// Arguments:
-//	input: A complex tensor.
-//
-// Returns A complex tensor of the same shape as `input`. The inner-most
-//   dimension of `input` is replaced with its 1D Fourier transform.
-//
-// @compatibility(numpy)
-// Equivalent to np.fft.fft
-// @end_compatibility
-func FFT(scope *Scope, input tf.Output) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "FFT",
-		Input: []tf.Input{
-			input,
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Identity transformation that models performance.
-//
-// Identity transformation that models performance.
-//
-// Arguments:
-//	input_dataset: A variant tensor representing the input dataset.
-//
-//
-func ModelDataset(scope *Scope, input_dataset tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
-	opspec := tf.OpSpec{
-		Type: "ModelDataset",
-		Input: []tf.Input{
-			input_dataset,
 		},
 		Attrs: attrs,
 	}

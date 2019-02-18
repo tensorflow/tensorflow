@@ -85,6 +85,26 @@ def NumpyArrayBool(*args, **kwargs):
   return np.array(*args, dtype=np.bool, **kwargs)
 
 
+class ComputationPrinting(unittest.TestCase):
+
+  def ExampleComputation(self):
+    builder = xla_client.ComputationBuilder("acomputation")
+    p0 = builder.ParameterFromNumpy(np.float32(0))
+    p1 = builder.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder.Mul(p0, p1)
+    return builder.Build()
+
+  def testComputationToHloText(self):
+    computation = self.ExampleComputation()
+    hlo_text = computation.GetHloText()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+
+  def testComputationToHloGraph(self):
+    computation = self.ExampleComputation()
+    hlo_dot_graph = computation.GetHloDotGraph()
+    self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+
 class ComputationsWithConstantsTest(ComputationTest):
   """Tests focusing on Constant ops."""
 

@@ -2675,11 +2675,11 @@ StatusOr<bool> AlgebraicSimplifierVisitor::TrySimplifyScalarSlice(
         int64 start = slice->slice_starts(i);
         int64 low = padding_config.dimensions(i).edge_padding_low();
         int64 data = pad->operand(0)->shape().dimensions(i);
-        if (start >= low && start < low + data) {
-          return false;
+        if (start < low || start >= low + data) {
+          return true;
         }
       }
-      return true;
+      return false;
     }();
 
     if (in_padding) {

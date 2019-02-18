@@ -38,10 +38,6 @@ from six import PY3
 
 from google.protobuf import text_format as _text_format
 from google.protobuf.message import DecodeError
-from tensorflow.core.framework import graph_pb2 as _graph_pb2
-from tensorflow.core.protobuf import config_pb2 as _config_pb2
-from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
-from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
 from tensorflow.lite.python import lite_constants as constants
 from tensorflow.lite.python.convert import build_toco_convert_protos  # pylint: disable=unused-import
 from tensorflow.lite.python.convert import ConverterError  # pylint: disable=unused-import
@@ -58,12 +54,15 @@ from tensorflow.lite.python.interpreter import Interpreter  # pylint: disable=un
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs  # pylint: disable=unused-import
 from tensorflow.lite.python.op_hint import OpHint  # pylint: disable=unused-import
 from tensorflow.lite.python.optimize import calibrator as _calibrator
+from tensorflow.core.framework import graph_pb2 as _graph_pb2
+from tensorflow.core.protobuf import rewriter_config_pb2 as _rewriter_config_pb2
+from tensorflow.core.protobuf import config_pb2 as _config_pb2
+from tensorflow.core.protobuf import meta_graph_pb2 as _meta_graph_pb2
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
 from tensorflow.python.framework import graph_util as _tf_graph_util
 from tensorflow.python.framework import ops as _ops
 from tensorflow.python.framework.errors_impl import NotFoundError as _NotFoundError
-from tensorflow.python.framework.errors_impl import OpError as _OpError
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
 from tensorflow.python.grappler import tf_optimizer as _tf_optimizer
 from tensorflow.python.lib.io import file_io as _file_io
@@ -72,6 +71,35 @@ from tensorflow.python.saved_model import tag_constants as _tag_constants
 from tensorflow.python.training.saver import export_meta_graph as _export_meta_graph
 from tensorflow.python.util import deprecation as _deprecation
 from tensorflow.python.util.tf_export import tf_export as _tf_export
+
+
+def _run_graph_optimizations(graph_def, input_arrays, output_arrays):
+  """Apply standard TensorFlow optimizations to the graph_def.
+
+  Args:
+    graph_def: Frozen GraphDef to be optimized.
+    input_arrays: List of arrays that are considered inputs of the graph.
+    output_arrays: List of arrays that are considered outputs of the graph.
+
+  Returns:
+    A new, optimized GraphDef.
+  """
+  meta_graph = _export_meta_graph(graph_def=graph_def)
+
+  # We need to add a collection called 'train_op' so that grappler
+  # knows what the outputs are.
+  fetch_collection = _meta_graph_pb2.CollectionDef()
+  for array in input_arrays + output_arrays:
+    fetch_collection.node_list.value.append(array.name)
+  meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
+
+  config = _config_pb2.ConfigProto()
+  rewrite_options = config.graph_options.rewrite_options
+  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.ON
+  # Avoid remapping as it creates ops like _FusedConv2D, which are not
+  # supported by TF Lite.
+  rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
+  return _tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
 @_tf_export("lite.Optimize")
@@ -283,7 +311,7 @@ class TFLiteConverter(object):
     Returns:
       TFLiteConverter class.
     """
-    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
+    graph_def = _freeze_graph(sess, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   @classmethod
@@ -456,13 +484,14 @@ class TFLiteConverter(object):
       output_tensors = keras_model.outputs
     _set_tensor_shapes(input_tensors, input_shapes)
 
-    graph_def = _freeze_graph(sess, input_tensors, output_tensors)
+    graph_def = _freeze_graph(sess, output_tensors)
     return cls(graph_def, input_tensors, output_tensors)
 
   def __setattr__(self, name, value):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use set_converter_mode instead." % name)
+                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    " instead." % name)
       if value:
         # Use OPTIMIZE_FOR_SIZE for post training for now.
         self.optimizations = [Optimize.OPTIMIZE_FOR_SIZE]
@@ -474,7 +503,8 @@ class TFLiteConverter(object):
   def __getattribute__(self, name):
     if name == "post_training_quantize":
       warnings.warn("Property %s is deprecated, "
-                    "please use get_converter_mode instead." % name)
+                    "please use optimizations=[Optimize.OPTIMIZE_FOR_SIZE]"
+                    " instead." % name)
       return Optimize.OPTIMIZE_FOR_SIZE in set(self.optimizations)
     return object.__getattribute__(self, name)
 
@@ -558,26 +588,26 @@ class TFLiteConverter(object):
         "dump_graphviz_video": self.dump_graphviz_video
     }
 
-    # Run a Grappler pass if it is possible.
-    graph_def = self._graph_def
-    if self.inference_type != constants.QUANTIZED_UINT8:
+    optimized_graph = None
+    if self.inference_type == constants.QUANTIZED_UINT8:
+      optimized_graph = self._graph_def
+    else:
       try:
-        graph_def = _run_graph_optimizations(
+        optimized_graph = _run_graph_optimizations(
             self._graph_def, self._input_tensors, self._output_tensors)
-      except (_OpError, ValueError):
-        print("Warning: Grappler optimization pass failed. "
-              "If this behavior is unexpected, please file a bug.")
+      except Exception:
+        optimized_graph = self._graph_def
 
     # Converts model.
     if self._has_valid_tensors():
       result = _toco_convert_impl(
-          input_data=graph_def,
+          input_data=optimized_graph,
           input_tensors=self._input_tensors,
           output_tensors=self._output_tensors,
           **converter_kwargs)
     else:
       result = _toco_convert_graph_def(
-          input_data=graph_def,
+          input_data=optimized_graph,
           input_arrays_with_shape=self._input_arrays_with_shape,
           output_arrays=self._output_arrays,
           **converter_kwargs)
@@ -682,35 +712,6 @@ class TocoConverter(object):
                                                  input_shapes, output_arrays)
 
 
-def _run_graph_optimizations(graph_def, input_arrays, output_arrays):
-  """Apply standard TensorFlow optimizations to the graph_def.
-
-  Args:
-    graph_def: Frozen GraphDef to be optimized.
-    input_arrays: List of arrays that are considered inputs of the graph.
-    output_arrays: List of arrays that are considered outputs of the graph.
-
-  Returns:
-    A new, optimized GraphDef.
-  """
-  meta_graph = _export_meta_graph(graph_def=graph_def)
-
-  # We need to add a collection called 'train_op' so that grappler
-  # knows what the outputs are.
-  fetch_collection = _meta_graph_pb2.CollectionDef()
-  for array in input_arrays + output_arrays:
-    fetch_collection.node_list.value.append(array.name)
-  meta_graph.collection_def["train_op"].CopyFrom(fetch_collection)
-
-  config = _config_pb2.ConfigProto()
-  rewrite_options = config.graph_options.rewrite_options
-  rewrite_options.layout_optimizer = _rewriter_config_pb2.RewriterConfig.OFF
-  # Avoid remapping as it creates ops like _FusedConv2D, which are not
-  # supported by TF Lite.
-  rewrite_options.remapping = _rewriter_config_pb2.RewriterConfig.OFF
-  return _tf_optimizer.OptimizeGraph(config, meta_graph)
-
-
 def _is_frozen_graph(sess):
   """Determines if the graph is frozen.
 
@@ -729,28 +730,22 @@ def _is_frozen_graph(sess):
   return True
 
 
-def _freeze_graph(sess, input_tensors, output_tensors):
+def _freeze_graph(sess, output_tensors):
   """Returns a frozen GraphDef.
 
-  Runs a Grappler pass and freezes a graph with Variables in it. Otherwise the
-  existing GraphDef is returned. The Grappler pass is only run on models that
-  are frozen in order to inline the functions in the graph.
+  Freezes a graph with Variables in it. Otherwise the existing GraphDef is
+  returned.
 
   Args:
     sess: TensorFlow Session.
-      input_tensors: List of input tensors.
     output_tensors: List of output tensors (only .name is used from this).
 
   Returns:
     Frozen GraphDef.
   """
-  # Runs a Grappler pass in order to inline any functions in the graph.
-  graph_def = _run_graph_optimizations(sess.graph_def, input_tensors,
-                                       output_tensors)
-
   if not _is_frozen_graph(sess):
     output_arrays = [_tensor_name(tensor) for tensor in output_tensors]
     return _tf_graph_util.convert_variables_to_constants(
-        sess, graph_def, output_arrays)
+        sess, sess.graph_def, output_arrays)
   else:
     return sess.graph_def

@@ -956,6 +956,44 @@ class TrainingTest(keras_parameterized.TestCase):
         callbacks=[val_counter])
     self.assertEqual(val_counter.val_runs, expected_runs)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_add_loss_correctness(self):
+    if testing_utils.should_run_eagerly():
+      self.skipTest('b/124303407')
+
+    class Bias(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.bias = self.add_variable('bias', (1,), initializer='zeros')
+
+      def call(self, inputs):
+        return inputs + self.bias
+
+    inputs = keras.Input(shape=(1,))
+    outputs = Bias()(inputs)
+    model = keras.Model(inputs, outputs)
+    targets = keras.Input(shape=(1,))
+
+    model.add_loss(
+        math_ops.reduce_mean(
+            keras.losses.mean_absolute_error(targets, outputs)))
+
+    # If we want to use the loss class instance as shown below, we will need to
+    # add graph scope as the reduction logic involves some eager mode checks.
+    with keras.backend.get_graph().as_default():
+      model.add_loss(keras.losses.MeanAbsoluteError()(targets, outputs))
+
+    model.compile(
+        keras.optimizer_v2.gradient_descent.SGD(0.033333),
+        loss=keras.losses.MeanAbsoluteError(),
+        target_tensors=[targets],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    x = np.array([[0.], [1.], [2.]])
+    y = np.array([[0.5], [2.], [3.5]])
+    history = model.fit(x, y, batch_size=3, epochs=5)
+    self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8], 1e-3)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
@@ -2260,6 +2298,67 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.evaluate(x_test, y_test, batch_size=5)
     self.assertEqual(self.evaluate(acc_obj.count), 10)
 
+  @keras_parameterized.run_with_all_model_types(exclude_models=['sequential'])
+  @keras_parameterized.run_all_keras_modes
+  def test_metrics_valid_compile_input_formats(self):
+    inp_1 = keras.layers.Input(shape=(1,), name='input_1')
+    inp_2 = keras.layers.Input(shape=(1,), name='input_2')
+    x = keras.layers.Dense(3, kernel_initializer='ones', trainable=False)
+    out_1 = keras.layers.Dense(
+        1, kernel_initializer='ones', name='output_1', trainable=False)
+    out_2 = keras.layers.Dense(
+        1, kernel_initializer='ones', name='output_2', trainable=False)
+
+    branch_a = [inp_1, x, out_1]
+    branch_b = [inp_2, x, out_2]
+    model = testing_utils.get_multi_io_model(branch_a, branch_b)
+
+    # list of metrics.
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        metrics=[keras.metrics.MeanSquaredError()],
+        weighted_metrics=[keras.metrics.MeanSquaredError()],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    # list of list of metrics.
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        metrics=[
+            keras.metrics.MeanSquaredError(),
+            [keras.metrics.MeanSquaredError(),
+             keras.metrics.Accuracy()]
+        ],
+        weighted_metrics=[
+            keras.metrics.MeanSquaredError(),
+            [keras.metrics.MeanSquaredError(),
+             keras.metrics.Accuracy()]
+        ],
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    # dict of metrics.
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        metrics={
+            'output_1':
+                keras.metrics.MeanSquaredError(),
+            'output_2': [
+                keras.metrics.MeanSquaredError(),
+                keras.metrics.Accuracy()
+            ],
+        },
+        weighted_metrics={
+            'output_1':
+                keras.metrics.MeanSquaredError(),
+            'output_2': [
+                keras.metrics.MeanSquaredError(),
+                keras.metrics.Accuracy()
+            ],
+        },
+        run_eagerly=testing_utils.should_run_eagerly())
+
   @keras_parameterized.run_all_keras_modes
   def test_invalid_metrics(self):
     num_classes = 5
@@ -2276,6 +2375,17 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
           loss='categorical_crossentropy',
           metrics=metrics_module.CategoricalAccuracy(),
           run_eagerly=testing_utils.should_run_eagerly())
+
+    inp = keras.layers.Input(shape=(1,))
+    x = keras.layers.Dense(3, activation='relu')(inp)
+    out_1 = keras.layers.Dense(1, activation='sigmoid', name='output_1')(x)
+    out_2 = keras.layers.Dense(1, activation='sigmoid', name='output_2')(x)
+    model = keras.models.Model(inp, [out_1, out_2])
+    with self.assertRaisesRegex(
+        ValueError, 'When passing a list of lists as `metrics`, '
+        'it should have one entry per model output. '
+        'The model has 2 outputs, but you passed metrics='):
+      model.compile('rmsprop', loss='mse', metrics=[['mse']])
 
   @keras_parameterized.run_all_keras_modes
   def test_metrics_masking(self):

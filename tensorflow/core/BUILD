@@ -128,7 +128,6 @@ load(
     "tf_additional_libdevice_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
-    "tf_additional_proto_compiler_hdrs",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
@@ -229,7 +228,7 @@ CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 # ones with individual proto_library targets.
 ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
-    "protobuf/checkpointable_object_graph.proto",
+    "protobuf/trackable_object_graph.proto",
     "protobuf/control_flow.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",
@@ -418,9 +417,8 @@ cc_library(
     name = "platform_protobuf",
     srcs = tf_platform_hdrs([
         "protobuf.h",
-    ]) + tf_platform_srcs([
-        "protobuf.cc",
     ]) + [
+        "platform/protobuf.cc",
         "platform/protobuf_util.cc",
         "lib/core/status.h",
     ],
@@ -664,7 +662,7 @@ cc_library(
     name = "lib_proto_compiler",
     hdrs = [
         "platform/protobuf_compiler.h",
-    ] + tf_additional_proto_compiler_hdrs(),
+    ],
     copts = tf_copts(),
     deps = tf_lib_proto_compiler_deps() + [
         ":lib_proto_parsing",
@@ -1049,13 +1047,13 @@ cc_library(
         "platform/default/integral_types.h",
         "platform/default/logging.h",
         "platform/default/mutex.h",
-        "platform/default/protobuf.h",
         "platform/default/thread_annotations.h",
         "platform/dynamic_annotations.h",
         "platform/macros.h",
         "platform/mutex.h",
         "platform/platform.h",
         "platform/prefetch.h",
+        "platform/protobuf.h",
         "platform/thread_annotations.h",
         "platform/types.h",
         "platform/cpu_info.h",
@@ -2317,6 +2315,7 @@ cc_library(
             "platform/**/logging.cc",
             "platform/**/human_readable_json.cc",
             "platform/abi.cc",
+            "platform/protobuf.cc",
         ],
     ) + tf_additional_lib_srcs(
         exclude = [
@@ -3030,6 +3029,8 @@ tf_cuda_library(
         "common_runtime/collective_param_resolver_local.cc",
         "common_runtime/collective_rma_local.cc",
         "common_runtime/collective_util.cc",
+        "common_runtime/colocation_graph.cc",
+        "common_runtime/colocation_graph.h",
         "common_runtime/constant_folding.cc",
         "common_runtime/copy_tensor.cc",
         "common_runtime/costmodel_manager.cc",

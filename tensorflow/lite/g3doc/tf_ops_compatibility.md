@@ -725,6 +725,17 @@ Options {
 }
 ```
 
+**RANK**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 0-D int32 Tensor representing the rank of input
+}
+```
+
 **RELU**
 
 ```
@@ -1009,6 +1020,22 @@ Inputs {
 }
 Outputs {
   0-N: tensors of unpacked tensor.
+}
+```
+
+**WHERE**
+
+```
+Inputs {
+  0: A tensor of type bool.
+  1: A tensor which may have the same shape as condition. If condition is rank
+     1, x may have higher rank, but its first dimension must match the size of
+     condition.
+  2: A tensor with the same shape and type as x.
+}
+Outputs {
+  0: A tensor with the same type and shape as x, y if they are non-None, or
+     a tensor with shape (num_true, dim_size(condition)).
 }
 ```
 

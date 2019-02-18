@@ -113,6 +113,7 @@ TfLiteRegistration* Register_NOT_EQUAL();
 TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
+TfLiteRegistration* Register_RANK();
 TfLiteRegistration* Register_POW();
 TfLiteRegistration* Register_FAKE_QUANT();
 TfLiteRegistration* Register_PACK();
@@ -134,6 +135,7 @@ TfLiteRegistration* Register_UNIQUE();
 TfLiteRegistration* Register_REVERSE_V2();
 TfLiteRegistration* Register_ADD_N();
 TfLiteRegistration* Register_GATHER_ND();
+TfLiteRegistration* Register_WHERE();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -207,7 +209,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
              /* min_version */ 1,
-             /* max_version */ 3);
+             /* max_version */ 4);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
@@ -336,6 +338,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
+  AddBuiltin(BuiltinOperator_RANK, Register_RANK());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
   AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
   AddBuiltin(BuiltinOperator_PACK, Register_PACK(),
@@ -359,6 +362,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2());
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND());
+  AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

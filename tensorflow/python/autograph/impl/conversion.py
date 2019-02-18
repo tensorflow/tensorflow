@@ -53,6 +53,7 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
@@ -219,7 +220,8 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
                 compiler.ast_to_source(node))
   if logging.has_verbosity(4):
     for n in node:
-      logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o, gast.dump(n))
+      logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,
+                  pretty_printer.fmt(n, color=False))
 
   if program_ctx.options.recursive:
     while True:

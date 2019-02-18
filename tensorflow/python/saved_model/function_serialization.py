@@ -49,7 +49,7 @@ def serialize_concrete_function(concrete_function, node_ids, coder):
         "captures tensor %s which is unsupported or not reachable from root. "
         "One reason could be that a stateful object or a variable that the "
         "function depends on is not assigned to an attribute of the serialized "
-        "checkpointable object "
+        "trackable object "
         "(see SaveTest.test_captures_unreachable_variable)."
         % (concrete_function.name, capture))
   concrete_function_proto = saved_object_graph_pb2.SavedConcreteFunction()

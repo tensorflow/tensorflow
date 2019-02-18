@@ -62,7 +62,7 @@ class VariableHolder(object):
       return self._fn(*args, **kwargs)
 
 
-# TODO(allenl): make this checkpointable
+# TODO(allenl): make this trackable
 class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
 

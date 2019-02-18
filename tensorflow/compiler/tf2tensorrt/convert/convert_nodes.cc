@@ -3883,8 +3883,12 @@ tensorflow::Status ConvertGraphDefToEngine(
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
   builder->setGpuAllocator(allocator);
   if (precision_mode == TrtPrecisionMode::FP16) {
-    builder->setHalf2Mode(true);
+    builder->setFp16Mode(true);
   } else if (precision_mode == TrtPrecisionMode::INT8) {
+    // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
+    // use them in situations where they are faster than INT8 or where INT8 is
+    // not supported for a given layer.
+    builder->setFp16Mode(true);
     builder->setInt8Mode(true);
     if (use_calibration) {
       builder->setInt8Calibrator(calibrator);

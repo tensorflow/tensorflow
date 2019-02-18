@@ -148,6 +148,9 @@ Status MetaOptimizer::InitializeOptimizers(
   if (!cfg_.disable_model_pruning()) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
+  if (cfg_.implementation_selector() == RewriterConfig::ON) {
+    optimizers->push_back(MakeUnique<ImplementationSelector>());
+  }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
         MakeUnique<FunctionOptimizer>(cfg_.function_optimization()));
@@ -241,18 +244,10 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
         pre_initialized_optimizers.end()) {
       continue;
     }
-    // Initialize the ImplementationSelector here instead of
-    // CustomizeOptimizer registry, due the static link issue in TensorRT for
-    // double registry.
-    // TODO(laigd): Remove this hack and change it back to use the registry once
-    // the duplicate static import issue is fixed.
-    std::unique_ptr<CustomGraphOptimizer> custom_optimizer;
-    if (optimizer_config.name() == "ImplementationSelector") {
-      custom_optimizer.reset(new ImplementationSelector());
-    } else {
-      custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
-          optimizer_config.name());
-    }
+
+    auto custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
+        optimizer_config.name());
+
     if (custom_optimizer) {
       VLOG(2) << "Registered custom configurable graph optimizer: "
               << optimizer_config.name();

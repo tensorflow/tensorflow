@@ -810,6 +810,9 @@ def split_compile_and_replicate(computation,
       serialized_padding_maps.append(padding_map.SerializeToString())
     metadata_kwargs["padding_map"] = serialized_padding_maps
 
+  metadata_kwargs["step_marker_location"] = getattr(
+      computation, "step_marker_location", "STEP_MARK_AT_ENTRY")
+
   graph = ops.get_default_graph()
 
   # Fan-in: Builds a TPUReplicatedInput node for each input.

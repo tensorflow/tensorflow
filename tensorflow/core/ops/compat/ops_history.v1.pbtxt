@@ -22607,6 +22607,66 @@ op {
   }
 }
 op {
+  name: "EuclideanNorm"
+  input_arg {
+    name: "input"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "reduction_indices"
+    type_attr: "Tidx"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "T"
+  }
+  attr {
+    name: "keep_dims"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+        type: DT_INT32
+        type: DT_UINT8
+        type: DT_INT16
+        type: DT_INT8
+        type: DT_COMPLEX64
+        type: DT_INT64
+        type: DT_QINT8
+        type: DT_QUINT8
+        type: DT_QINT32
+        type: DT_BFLOAT16
+        type: DT_UINT16
+        type: DT_COMPLEX128
+        type: DT_HALF
+        type: DT_UINT32
+        type: DT_UINT64
+      }
+    }
+  }
+  attr {
+    name: "Tidx"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+}
+op {
   name: "Exit"
   input_arg {
     name: "data"
@@ -79869,6 +79929,118 @@ op {
   is_stateful: true
 }
 op {
+  name: "TPUReplicate"
+  input_arg {
+    name: "inputs"
+    type_list_attr: "Tinputs"
+  }
+  input_arg {
+    name: "broadcast_inputs"
+    type_list_attr: "Tbroadcast_inputs"
+  }
+  input_arg {
+    name: "variables"
+    type: DT_RESOURCE
+    number_attr: "NumVariables"
+  }
+  input_arg {
+    name: "guaranteed_constants"
+    type_list_attr: "Tguaranteed_constants"
+  }
+  output_arg {
+    name: "outputs"
+    type_list_attr: "output_types"
+  }
+  attr {
+    name: "computation"
+    type: "func"
+  }
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+    minimum: 1
+  }
+  attr {
+    name: "num_cores_per_replica"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "topology"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "use_tpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "device_assignment"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "host_compute_core"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "Tinputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "Tbroadcast_inputs"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "NumVariables"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "Tguaranteed_constants"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "output_types"
+    type: "list(type)"
+    has_minimum: true
+  }
+  attr {
+    name: "padding_map"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
+    }
+  }
+  is_stateful: true
+}
+op {
   name: "TPUReplicateMetadata"
   attr {
     name: "num_replicas"
@@ -79926,6 +80098,74 @@ op {
     default_value {
       list {
       }
+    }
+  }
+}
+op {
+  name: "TPUReplicateMetadata"
+  attr {
+    name: "num_replicas"
+    type: "int"
+    has_minimum: true
+  }
+  attr {
+    name: "num_cores_per_replica"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
+  attr {
+    name: "topology"
+    type: "string"
+    default_value {
+      s: ""
+    }
+  }
+  attr {
+    name: "use_tpu"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
+  attr {
+    name: "device_assignment"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "computation_shape"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "host_compute_core"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "padding_map"
+    type: "list(string)"
+    default_value {
+      list {
+      }
+    }
+  }
+  attr {
+    name: "step_marker_location"
+    type: "string"
+    default_value {
+      s: "STEP_MARK_AT_ENTRY"
     }
   }
 }

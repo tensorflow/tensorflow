@@ -15,12 +15,18 @@ SWIFT_COPTS = [
     "-wmo",
 ]
 
+# Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
+DEFAULT_TAGS = [
+    "apple",
+    "manual",
+]
+
 swift_library(
     name = "TensorFlowLite",
     srcs = glob(["Sources/*.swift"]),
     copts = SWIFT_COPTS,
     module_name = "TensorFlowLite",
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
     deps = [
         "//tensorflow/lite/experimental/c:c_api",
     ],
@@ -30,8 +36,7 @@ ios_unit_test(
     name = "TensorFlowLiteTests",
     size = "small",
     minimum_os_version = MINIMUM_OS_VERSION,
-    tags = [
-        "manual",
+    tags = DEFAULT_TAGS + [
         # DISABLED: Following sanitizer tests are not supported by iOS test targets.
         "noasan",
         "nomsan",
@@ -45,7 +50,7 @@ swift_library(
     testonly = 1,
     srcs = glob(["Tests/*.swift"]),
     copts = SWIFT_COPTS,
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
     deps = [
         ":TensorFlowLite",
         ":TestResources",
@@ -59,7 +64,7 @@ objc_library(
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
     ],
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
 )
 
 ios_application(
@@ -76,7 +81,7 @@ ios_application(
     sdk_frameworks = [
         "CoreGraphics",
     ],
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
     deps = [":TensorFlowLiteAppLib"],
 )
 
@@ -84,7 +89,7 @@ swift_library(
     name = "TensorFlowLiteAppLib",
     srcs = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/*.swift"]),
     module_name = "TensorFlowLiteAppLib",
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
     deps = [
         ":TensorFlowLite",
         ":TensorFlowLiteAppResources",
@@ -96,6 +101,6 @@ objc_library(
     storyboards = glob([
         "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/*.storyboard",
     ]),
-    tags = ["manual"],
+    tags = DEFAULT_TAGS,
     deps = [":TestResources"],
 )
