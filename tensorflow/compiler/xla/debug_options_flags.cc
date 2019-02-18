@@ -128,11 +128,6 @@ static void AllocateFlags() {
       tensorflow::Flag(
           "xla_hlo_graph_path", flag_values->mutable_xla_hlo_graph_path(),
           "With xla_generate_hlo_graph, dump the graphs into this path."),
-      tensorflow::Flag(
-          "xla_hlo_dump_as_graphdef",
-          bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_graphdef),
-          flag_values->xla_hlo_dump_as_graphdef(),
-          "Dump HLO graphs as TensorFlow GraphDefs."),
       tensorflow::Flag("xla_hlo_dump_as_html",
                        bool_setter_for(&DebugOptions::set_xla_hlo_dump_as_html),
                        flag_values->xla_hlo_dump_as_html(),
@@ -144,13 +139,6 @@ static void AllocateFlags() {
           flag_values->xla_hlo_graph_sharding_color(),
           "Assign colors based on sharding assignments when generating the "
           "HLO graphs."),
-      tensorflow::Flag(
-          "xla_hlo_tfgraph_device_scopes",
-          bool_setter_for(&DebugOptions::set_xla_hlo_tfgraph_device_scopes),
-          flag_values->xla_hlo_tfgraph_device_scopes(),
-          "When generating TensorFlow HLO graphs, if the HLO instructions "
-          "are assigned to a specific device, prefix the name scope with "
-          "\"devX\" with X being the device ordinal."),
       tensorflow::Flag(
           "xla_log_hlo_text", flag_values->mutable_xla_log_hlo_text(),
           "HLO modules matching this regex will be dumped to LOG(INFO)."),

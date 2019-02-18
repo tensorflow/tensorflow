@@ -43,7 +43,6 @@ class GraphRendererInterface {
  public:
   enum GraphKind {
     DOT_GRAPH,
-    TF_GRAPHDEF,
   };
 
   virtual ~GraphRendererInterface() = default;
