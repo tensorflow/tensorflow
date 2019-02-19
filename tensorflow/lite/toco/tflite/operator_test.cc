@@ -820,6 +820,10 @@ TEST_F(OperatorTest, VersioningSpaceToBatchNDTest) {
   SimpleVersioningTest<SpaceToBatchNDOperator>();
 }
 
+TEST_F(OperatorTest, VersioningLogSoftmaxTest) {
+  SimpleVersioningTest<LogSoftmaxOperator>();
+}
+
 TEST_F(OperatorTest, VersioningPackTest) {
   SimpleVersioningTest<PackOperator>();
 }
