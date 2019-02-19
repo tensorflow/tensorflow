@@ -102,7 +102,8 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      absl::make_unique<XlaDeviceAllocator>();
+      absl::make_unique<XlaDeviceAllocator>(
+          backend->stream_executors()[device_ordinal]);
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
   return alloc_ptr;
