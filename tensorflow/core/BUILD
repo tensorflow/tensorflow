@@ -920,7 +920,6 @@ tf_cuda_library(
         "util/util.h",
         "util/work_sharder.h",
     ] + select({
-        "//tensorflow:windows": [],
         "//conditions:default": [
             "util/memmapped_file_system.h",
             "util/memmapped_file_system_writer.h",
@@ -2519,7 +2518,6 @@ FRAMEWORK_INTERNAL_PRIVATE_HEADERS = [
         "util/version_info.cc",
     ],
 ) + select({
-    "//tensorflow:windows": [],
     "//conditions:default": [
         "util/memmapped_file_system.h",
         "util/memmapped_file_system_writer.h",
@@ -2621,7 +2619,6 @@ tf_cuda_library(
             "util/env_var.cc",
         ],
     ) + select({
-        "//tensorflow:windows": [],
         "//conditions:default": [
             "util/memmapped_file_system.cc",
             "util/memmapped_file_system_writer.cc",
