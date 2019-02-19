@@ -21,6 +21,7 @@
 
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
 #include "llvm/ADT/DenseMap.h"
 using namespace mlir;
@@ -200,15 +201,9 @@ void GreedyPatternRewriteDriver::simplifyFunction() {
 
     // Check to see if any operands to the instruction is constant and whether
     // the operation knows how to constant fold itself.
-    operandConstants.clear();
-    for (auto *operand : op->getOperands()) {
-      Attribute operandCst;
-      if (auto *operandOp = operand->getDefiningInst()) {
-        if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
-          operandCst = operandConstantOp->getValue();
-      }
-      operandConstants.push_back(operandCst);
-    }
+    operandConstants.assign(op->getNumOperands(), Attribute());
+    for (unsigned i = 0, e = op->getNumOperands(); i != e; ++i)
+      matchPattern(op->getOperand(i), m_Constant(&operandConstants[i]));
 
     // If this is a commutative binary operation with a constant on the left
     // side move it to the right side.

@@ -60,6 +60,27 @@ struct attr_value_binder {
   }
 };
 
+/// The matcher that matches a constant foldable operation that has no operands
+/// and produces a single result.
+struct constant_op_binder {
+  Attribute *bind_value;
+
+  /// Creates a matcher instance that binds the constant attribute value to
+  /// bind_value if match succeeds.
+  constant_op_binder(Attribute *bind_value) : bind_value(bind_value) {}
+
+  bool match(Instruction *op) {
+    if (op->getNumOperands() > 0 || op->getNumResults() != 1)
+      return false;
+    SmallVector<Attribute, 1> foldedAttr;
+    if (!op->constantFold(/*operands=*/llvm::None, foldedAttr)) {
+      *bind_value = foldedAttr.front();
+      return true;
+    }
+    return false;
+  }
+};
+
 /// The matcher that matches a constant scalar / vector splat / tensor splat
 /// integer operation and binds the constant integer value.
 struct constant_int_op_binder {
@@ -69,18 +90,18 @@ struct constant_int_op_binder {
   constant_int_op_binder(IntegerAttr::ValueType *bv) : bind_value(bv) {}
 
   bool match(Instruction *op) {
-    if (auto constOp = op->dyn_cast<ConstantOp>()) {
-      auto type = constOp->getResult()->getType();
-      auto attr = constOp->getAttr("value");
+    Attribute attr;
+    if (!constant_op_binder(&attr).match(op))
+      return false;
+    auto type = op->getResult(0)->getType();
 
-      if (type.isa<IntegerType>()) {
-        return attr_value_binder<IntegerAttr>(bind_value).match(attr);
-      }
-      if (type.isa<VectorOrTensorType>()) {
-        if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
-          return attr_value_binder<IntegerAttr>(bind_value)
-              .match(splatAttr.getValue());
-        }
+    if (type.isa<IntegerType>()) {
+      return attr_value_binder<IntegerAttr>(bind_value).match(attr);
+    }
+    if (type.isa<VectorOrTensorType>()) {
+      if (auto splatAttr = attr.dyn_cast<SplatElementsAttr>()) {
+        return attr_value_binder<IntegerAttr>(bind_value)
+            .match(splatAttr.getValue());
       }
     }
     return false;
@@ -118,11 +139,17 @@ inline detail::op_matcher<ConstantIndexOp> m_ConstantIndex() {
   return detail::op_matcher<ConstantIndexOp>();
 }
 
-/// Matches a ConstantOp holding a scalar/vector/tensor integer (splat) and
+/// Matches a constant holding a scalar/vector/tensor integer (splat) and
 /// writes the integer value to bind_value.
 inline detail::constant_int_op_binder
 m_ConstantInt(IntegerAttr::ValueType *bind_value) {
   return detail::constant_int_op_binder(bind_value);
+}
+
+/// Matches a value from a constant foldable operation and writes the value to
+/// bind_value.
+inline detail::constant_op_binder m_Constant(Attribute *bind_value) {
+  return detail::constant_op_binder(bind_value);
 }
 
 /// Matches a constant scalar / vector splat / tensor splat integer one.

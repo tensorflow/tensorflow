@@ -21,6 +21,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/StandardOps/StandardOps.h"
@@ -825,11 +826,9 @@ struct AffineForLoopBoundFolder : public RewritePattern {
       SmallVector<Attribute, 8> operandConstants;
       auto boundOperands = lower ? forOp->getLowerBoundOperands()
                                  : forOp->getUpperBoundOperands();
-      for (const auto *operand : boundOperands) {
+      for (auto *operand : boundOperands) {
         Attribute operandCst;
-        if (auto *operandOp = operand->getDefiningInst())
-          if (auto operandConstantOp = operandOp->dyn_cast<ConstantOp>())
-            operandCst = operandConstantOp->getValue();
+        matchPattern(operand, m_Constant(&operandCst));
         operandConstants.push_back(operandCst);
       }
 
