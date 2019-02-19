@@ -5066,6 +5066,7 @@ cc_library(
         ":string_format_op",
         ":string_join_op",
         ":string_length_op",
+        ":string_lower_op",
         ":string_split_op",
         ":string_strip_op",
         ":string_to_hash_bucket_op",
@@ -5201,6 +5202,12 @@ tf_cc_test(
 tf_kernel_library(
     name = "string_strip_op",
     prefix = "string_strip_op",
+    deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "string_lower_op",
+    prefix = "string_lower_op",
     deps = STRING_DEPS,
 )
 
