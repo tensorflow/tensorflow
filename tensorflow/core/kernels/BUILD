@@ -4924,6 +4924,7 @@ cc_library(
         ":string_split_op",
         ":string_strip_op",
         ":string_to_hash_bucket_op",
+        ":string_upper_op",
         ":substr_op",
         ":unicode_ops",
         ":unicode_script_op",
@@ -5062,6 +5063,12 @@ tf_kernel_library(
 tf_kernel_library(
     name = "string_lower_op",
     prefix = "string_lower_op",
+    deps = STRING_DEPS,
+)
+
+tf_kernel_library(
+    name = "string_upper_op",
+    prefix = "string_upper_op",
     deps = STRING_DEPS,
 )
 
