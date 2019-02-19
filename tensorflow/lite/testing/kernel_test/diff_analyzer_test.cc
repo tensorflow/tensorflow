@@ -19,6 +19,7 @@ limitations under the License.
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/lite/testing/kernel_test/util.h"
 
 namespace tflite {
 namespace testing {
@@ -27,11 +28,11 @@ namespace {
 
 TEST(DiffAnalyzerTest, ZeroDiff) {
   DiffAnalyzer diff_analyzer;
-  string filename = "third_party/tensorflow/lite/testdata/test_input.csv";
+  string filename = "tensorflow/lite/testdata/test_input.csv";
   ASSERT_EQ(diff_analyzer.ReadFiles(filename, filename), kTfLiteOk);
 
   string output_file =
-      tensorflow::io::JoinPath(FLAGS_test_tmpdir + "diff_report.csv");
+      tensorflow::io::JoinPath(TmpDir() + "diff_report.csv");
   ASSERT_EQ(diff_analyzer.WriteReport(output_file), kTfLiteOk);
 
   std::string content;

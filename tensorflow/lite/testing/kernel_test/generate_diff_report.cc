@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/lite/testing/kernel_test/diff_analyzer.h"
 
 int main(int argc, char** argv) {
-  string base, test, output;
+  std::string base, test, output;
   std::vector<tensorflow::Flag> flag_list = {
       tensorflow::Flag("base", &base, "Path to the base serialized tensor."),
       tensorflow::Flag("test", &test, "Path to the test serialized tensor."),

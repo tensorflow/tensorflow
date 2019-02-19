@@ -90,6 +90,7 @@ tf_cc_test(
         "no_oss",
     ],
     deps = [
+        ":util",
         ":input_generator",
         "@com_google_googletest//:gtest_main",
     ],
@@ -117,6 +118,7 @@ tf_cc_test(
         "no_oss",
     ],
     deps = [
+        ":util",
         ":diff_analyzer",
         "//tensorflow/core:lib",
         "@com_google_googletest//:gtest_main",
