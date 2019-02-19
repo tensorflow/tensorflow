@@ -23,11 +23,11 @@ import tempfile
 
 from google.protobuf import text_format
 
-from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column_v2 as sfc
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.keras.layers import recurrent
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables

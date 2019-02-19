@@ -25,9 +25,7 @@ from __future__ import print_function
 import collections
 
 
-from tensorflow.python.feature_column import feature_column as fc_old
-from tensorflow.python.feature_column import feature_column_lib as fc
-from tensorflow.python.feature_column import feature_column_v2 as fc_v2
+from tensorflow.python.feature_column import feature_column_v2 as fc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
@@ -35,11 +33,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 
 
-class SequenceFeatures(fc_v2._BaseFeaturesLayer):
+@keras_export('keras.experimental.SequenceFeatures')
+class SequenceFeatures(fc._BaseFeaturesLayer):
   """A layer for sequence input.
 
     All `feature_columns` must be sequence dense columns with the same
@@ -61,10 +62,10 @@ class SequenceFeatures(fc_v2._BaseFeaturesLayer):
     watches = sequence_categorical_column_with_identity(
         'watches', num_buckets=1000)
     watches_embedding = embedding_column(watches, dimension=10)
-    columns = [rating, watches]
+    columns = [rating, watches_embedding]
 
-    features = tf.parse_example(..., features=make_parse_example_spec(columns))
     sequence_input_layer = SequenceFeatures(columns)
+    features = tf.parse_example(..., features=make_parse_example_spec(columns))
     sequence_input, sequence_length = sequence_input_layer(features)
     sequence_length_mask = tf.sequence_mask(sequence_length)
 
@@ -99,7 +100,7 @@ class SequenceFeatures(fc_v2._BaseFeaturesLayer):
         feature_columns=feature_columns,
         trainable=trainable,
         name=name,
-        expected_column_type=fc_v2.SequenceDenseColumn,
+        expected_column_type=fc.SequenceDenseColumn,
         **kwargs)
 
   def _target_shape(self, input_shape, total_elements):
@@ -139,8 +140,8 @@ class SequenceFeatures(fc_v2._BaseFeaturesLayer):
         sequence_lengths.append(sequence_length)
 
     # Check and process sequence lengths.
-    fc_v2._verify_static_batch_size_equality(sequence_lengths,
-                                             self._feature_columns)
+    fc._verify_static_batch_size_equality(sequence_lengths,
+                                          self._feature_columns)
     sequence_length = _assert_all_equal_and_return(sequence_lengths)
 
     return self._verify_and_concat_tensors(output_tensors), sequence_length
@@ -195,6 +196,7 @@ def concatenate_context_input(context_input, sequence_input):
   return array_ops.concat([sequence_input, tiled_context_input], 2)
 
 
+@tf_export('feature_column.sequence_categorical_column_with_identity')
 def sequence_categorical_column_with_identity(
     key, num_buckets, default_value=None):
   """Returns a feature column that represents sequences of integers.
@@ -243,6 +245,7 @@ def sequence_categorical_column_with_identity(
           default_value=default_value))
 
 
+@tf_export('feature_column.sequence_categorical_column_with_hash_bucket')
 def sequence_categorical_column_with_hash_bucket(
     key, hash_bucket_size, dtype=dtypes.string):
   """A sequence of categorical terms where ids are set by hashing.
@@ -288,6 +291,7 @@ def sequence_categorical_column_with_hash_bucket(
           dtype=dtype))
 
 
+@tf_export('feature_column.sequence_categorical_column_with_vocabulary_file')
 def sequence_categorical_column_with_vocabulary_file(
     key, vocabulary_file, vocabulary_size=None, num_oov_buckets=0,
     default_value=None, dtype=dtypes.string):
@@ -352,6 +356,7 @@ def sequence_categorical_column_with_vocabulary_file(
           dtype=dtype))
 
 
+@tf_export('feature_column.sequence_categorical_column_with_vocabulary_list')
 def sequence_categorical_column_with_vocabulary_list(
     key, vocabulary_list, dtype=None, default_value=-1, num_oov_buckets=0):
   """A sequence of categorical terms where ids use an in-memory list.
@@ -413,6 +418,7 @@ def sequence_categorical_column_with_vocabulary_list(
           num_oov_buckets=num_oov_buckets))
 
 
+@tf_export('feature_column.sequence_numeric_column')
 def sequence_numeric_column(
     key,
     shape=(1,),
@@ -459,7 +465,7 @@ def sequence_numeric_column(
     ValueError: if any dimension in shape is not a positive integer.
     ValueError: if `dtype` is not convertible to `tf.float32`.
   """
-  shape = fc_v2._check_shape(shape=shape, key=key)
+  shape = fc._check_shape(shape=shape, key=key)
   if not (dtype.is_integer or dtype.is_floating):
     raise ValueError('dtype must be convertible to float. '
                      'dtype: {}, key: {}'.format(dtype, key))
@@ -558,7 +564,7 @@ class SequenceNumericColumn(
       num_elements = self.variable_shape.num_elements()
     else:
       num_elements = 1
-    seq_length = fc_old._sequence_length_from_sparse_tensor(
+    seq_length = fc._sequence_length_from_sparse_tensor(
         sp_tensor, num_elements=num_elements)
 
     return fc.SequenceDenseColumn.TensorSequenceLengthPair(
