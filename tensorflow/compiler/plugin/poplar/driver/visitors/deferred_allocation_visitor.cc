@@ -90,11 +90,6 @@ Status DeferredAllocationVisitor::AllocateInput(const HloInstruction* inst,
   return Status::OK();
 }
 
-StatusOr<poplar::Tensor> DeferredAllocationVisitor::PostProcessInfeedAllocation(
-    const HloInstruction*, int64, poplar::Tensor tensor) {
-  return tensor;
-}
-
 Status DeferredAllocationVisitor::HandleGetTupleElement(HloInstruction* inst) {
   VLOG(1) << "Processing " << inst->name();
   // Go through all the shapes for inst, don't allocate any tensors which are
@@ -132,6 +127,45 @@ Status DeferredAllocationVisitor::HandleGetTupleElement(HloInstruction* inst) {
   } else {
     return FullVisitor::HandleGetTupleElement(inst);
   }
+}
+
+Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
+  HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(inst);
+  // We allow the same infeed queue to be dequeued multiple times, however
+  // we don't support multiple infeed queues in the same program.
+  if (absl::c_any_of(resources_.annotations.infeed_infos,
+                     [&](const HloInfeedInstruction* inst) {
+                       return inst->infeed_config() != infeed->infeed_config();
+                     })) {
+    LOG(FATAL) << "Currently multiple infeed queues in the same program are "
+                  "not supported.";
+  }
+  std::vector<Shape> shapes = FlattenedXlaShape(infeed->infeed_shape());
+  for (int64 i = 0; i < shapes.size(); i++) {
+    if (!DeferAllocation(inst, i)) {
+      TF_RETURN_IF_ERROR(AllocateInput(inst, i, shapes[i]));
+    } else {
+      VLOG(1) << "Deferring allocation of " << inst->name() << " sub tensor "
+              << i << ".";
+    }
+  }
+
+  resources_.annotations.infeed_infos.insert(infeed);
+
+  return Status::OK();
+}
+
+StatusOr<poplar::Tensor> DeferredAllocationVisitor::PostProcessInfeedAllocation(
+    const HloInstruction* inst, int64 flat_tuple_index, poplar::Tensor tensor) {
+  poplar::Graph& graph = GetGraph(resources_, inst);
+  if (!UseSyntheticData()) {
+    auto fifo = graph.addHostToDeviceFIFO(
+        GetInfeedCopyHandle(inst->name(), flat_tuple_index),
+        tensor.elementType(), tensor.numElements());
+
+    sequence.add(poplar::program::Copy(fifo, tensor, false));
+  }
+  return tensor;
 }
 
 bool DeferredAllocationVisitor::DeferAllocation(const HloInstruction* inst,

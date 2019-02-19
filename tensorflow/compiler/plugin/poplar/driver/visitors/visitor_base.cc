@@ -557,7 +557,15 @@ Status BaseVisitor::HandleGetDimensionSize(HloInstruction* inst) {
 }
 
 Status BaseVisitor::HandleAddDependency(HloInstruction* inst) {
-  return Unimplemented(inst);
+  VLOG(1) << "Processing " << inst->name();
+  TF_ASSIGN_OR_RETURN(
+      ArgVectors inputs,
+      GetInplaceOutputTensors(tensor_map, resources_, inst, sequence));
+  CHECK_EQ(inputs.size(), 1);
+  CHECK_EQ(inputs[0].size(), CountShapes(inst->operand(0)->shape()));
+  for (int64 idx = 0; idx < inputs[0].size(); idx++) {
+    TF_CHECK_OK(AddOutputTensor(tensor_map, inst, idx, inputs[0][idx]));
+  }
 }
 
 Status BaseVisitor::HandleReplicaId(HloInstruction* inst) {

@@ -19,7 +19,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITORS_VISITOR_SUBCOMPUTATION_H_
 #define TENSORFLOW_COMPILER_PLUGIN_POPLAR_DRIVER_VISITORS_VISITOR_SUBCOMPUTATION_H_
 
-#include "tensorflow/compiler/plugin/poplar/driver/visitors/visitor_full.h"
+#include "tensorflow/compiler/plugin/poplar/driver/visitors/deferred_allocation_visitor.h"
 
 #include "absl/container/flat_hash_map.h"
 
@@ -34,7 +34,7 @@ namespace poplarplugin {
 
 using TensorInputDescription = absl::flat_hash_map<int64, std::vector<bool>>;
 
-class SubComputationVisitor : public FullVisitor {
+class SubComputationVisitor : public DeferredAllocationVisitor {
  public:
   SubComputationVisitor(CompilerResources& res, const ArgVectors& inputs,
                         bool inplace_inputs = false,
@@ -51,6 +51,13 @@ class SubComputationVisitor : public FullVisitor {
   bool InputIsAllocated(int64 param, unsigned int index) const;
 
   bool InputIsUsed(int64 param, unsigned int index) const;
+
+  bool InputHasAllocationTarget(int64 param, unsigned int index) const;
+
+ protected:
+  StatusOr<poplar::Tensor> PostProcessParameterAllocation(
+      const HloInstruction* inst, int64 flat_tuple_index,
+      poplar::Tensor tensor) override;
 
  private:
   bool InputIsUsedInThisSubComputation(HloParameterInstruction* inst,
@@ -71,6 +78,8 @@ class SubComputationVisitor : public FullVisitor {
   // Allocated tensors for inputs which are used by this or dependent
   // subcomputations.
   TensorInputDescription allocated_tensors_;
+  // Allocated tensors which have an allocation target;
+  TensorInputDescription has_allocation_target_;
 };
 
 }  // namespace poplarplugin

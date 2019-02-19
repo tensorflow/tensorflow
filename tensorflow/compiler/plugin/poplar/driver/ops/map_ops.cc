@@ -175,6 +175,7 @@ StatusOr<poplar::program::Program> CreateParallelMap(CompilerResources& res,
                                                      const HloInstruction* inst,
                                                      const xla::Shape& output,
                                                      TensorMap& tensor_map) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::program::Sequence seq;
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
                       GetInplaceOutputTensors(tensor_map, res, inst, seq));
@@ -199,6 +200,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
                                                 const HloInstruction* inst,
                                                 const xla::Shape& output,
                                                 TensorMap& tensor_map) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Graph& graph = GetGraph(res, inst);
 
   int64 op_count(inst->operand_count());
@@ -277,6 +279,7 @@ StatusOr<poplar::program::Program> CreateFusionOp(CompilerResources& res,
                                                   const HloInstruction* inst,
                                                   const xla::Shape& output,
                                                   TensorMap& tensor_map) {
+  VLOG(1) << "Processing " << inst->name();
   HloComputation* comp = inst->fused_instructions_computation();
   poplar::program::Sequence seq;
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
@@ -302,6 +305,7 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
                                                  const HloInstruction* inst,
                                                  const xla::Shape& output,
                                                  TensorMap& tensor_map) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence main_seq;
@@ -320,8 +324,8 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
                                             true, {cond.get()}));
 
   unsigned int param_count = inputs[0].size();
-
-  const ArgVector& body_inputs = inputs[0];
+  const ArgVector& inplace_inputs = inputs[0];
+  const ArgVector& body_inputs = body->inputs()[0];
   const ArgVector& body_outputs = body->outputs();
   const ArgVector& cond_inputs = cond->inputs()[0];
   const ArgVector& cond_outputs = cond->outputs();
@@ -339,7 +343,15 @@ StatusOr<poplar::program::Program> CreateWhileOp(CompilerResources& res,
     return xla::FailedPrecondition("Invalid number of condition outputs.");
   }
 
-  // Condition
+  // Even though while loop is inplace, some of the while loop inputs might
+  // allocate their inputs as they have allocation targets. In these cases make
+  // sure to copy the values of the tensors.
+  for (unsigned int i = 0; i < param_count; i++) {
+    if (body->InputHasAllocationTarget(0, i)) {
+      main_seq.add(poplar::program::Copy(inplace_inputs[i], body_inputs[i]));
+    }
+  }
+
   // Before executing the condition, copy inputs which are required by
   // the condition to cond_inputs.
   poplar::program::Sequence cond_seq;
@@ -374,6 +386,7 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
                                                   const HloInstruction* inst,
                                                   const xla::Shape& output,
                                                   TensorMap& tensor_map) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence main_seq;
@@ -392,7 +405,8 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
 
   unsigned int param_count = inputs[0].size();
 
-  const ArgVector& body_inputs = inputs[0];
+  const ArgVector& inplace_inputs = inputs[0];
+  const ArgVector& body_inputs = body->inputs()[0];
   const ArgVector& body_outputs = body->outputs();
 
   if (body_inputs.size() != param_count) {
@@ -400,6 +414,15 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
   }
   if (body_outputs.size() != param_count) {
     return xla::FailedPrecondition("Invalid number of body outputs");
+  }
+
+  // Even though repeat loop is inplace, some of the repeat loop inputs might
+  // allocate their inputs as they have allocation targets. In these cases make
+  // sure to copy the values of the tensors.
+  for (unsigned int i = 0; i < param_count; i++) {
+    if (body->InputHasAllocationTarget(0, i)) {
+      main_seq.add(poplar::program::Copy(inplace_inputs[i], body_inputs[i]));
+    }
   }
 
   // Body
@@ -424,6 +447,7 @@ StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
                                               const HloInstruction* inst,
                                               const xla::Shape& output,
                                               TensorMap& tensor_map) {
+  VLOG(1) << "Processing " << inst->name();
   poplar::Graph& graph = GetGraph(res, inst);
 
   poplar::program::Sequence seq;

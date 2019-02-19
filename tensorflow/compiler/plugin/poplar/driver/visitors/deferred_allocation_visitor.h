@@ -41,6 +41,8 @@ class DeferredAllocationVisitor : public FullVisitor {
   // * Otherwise it behaves like a GTE.
   Status HandleGetTupleElement(HloInstruction* inst) override;
 
+  Status HandleInfeed(HloInstruction* inst) override;
+
  protected:
   // Allocates the input and calls the post processing function - this function
   // should be called by HandleParameter and HandleInfeed. If it's allocating a

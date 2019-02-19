@@ -136,6 +136,7 @@ std::unique_ptr<HloInstructionDescription> GetHloInstructionDescription(
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     // These ops are implemented as inplace ops on operand 0 as well.
+    case HloOpcode::kAddDependency:
     case HloOpcode::kBitcast:
     case HloOpcode::kBroadcast:
     case HloOpcode::kDynamicUpdateSlice:
