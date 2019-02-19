@@ -1301,14 +1301,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        print('Invalid compute capability: ' % compute_capability)
+        print('Invalid compute capability: %s' % compute_capability)
         all_valid = False
       else:
         ver = float(m.group(0))
         if ver < 3.5:
           print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
-                'or higher. Please re-specify the list of compute capabilities,'
-                ' excluding all those versions that are less than 3.5')
+                'and higher. Please re-specify the list of compute '
+                'capabilities excluding version %s.' % ver)
           all_valid = False
 
     if all_valid:
