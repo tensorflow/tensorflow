@@ -179,12 +179,12 @@ bool PackedValuesNotEqual(T a, T b) {
 
 template <>
 bool PackedValuesNotEqual(float a, float b) {
-  return reinterpret_cast<int32&>(a) != reinterpret_cast<int32&>(b);
+  return reinterpret_cast<int32_t&>(a) != reinterpret_cast<int32_t&>(b);
 }
 
 template <>
 bool PackedValuesNotEqual(double a, double b) {
-  return reinterpret_cast<int64&>(a) != reinterpret_cast<int64&>(b);
+  return reinterpret_cast<int64_t&>(a) != reinterpret_cast<int64_t&>(b);
 }
 
 float QuantizedTypeMinAsFloat(DataType data_type) {
