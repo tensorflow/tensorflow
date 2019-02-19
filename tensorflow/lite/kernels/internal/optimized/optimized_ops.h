@@ -841,24 +841,21 @@ inline void FullyConnected(
 }
 
 #ifdef USE_NEON
-inline void FullyConnectedAsGEMV(
+inline void FullyConnectedAsGEMVWorkerImpl(
     const RuntimeShape& input_shape, const uint8* input_data,
     int32 input_offset, const RuntimeShape& filter_shape,
     const uint8* filter_data, int32 filter_offset,
     const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int row_start, int row_end) {
   gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMV/8bit");
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   const int output_dim_count = output_shape.DimensionsCount();
-  const int filter_dim_count = filter_shape.DimensionsCount();
   TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
-  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
-                                      output_shape, output_dim_count - 1);
   static constexpr int kPeel = 4;
   const bool shift_left = (output_shift > 0);
   for (int k = 0; k < input_size; k += 64) {
@@ -867,10 +864,11 @@ inline void FullyConnectedAsGEMV(
   for (int k = 0; k < kPeel * input_size; k += 64) {
     optimized_ops_preload_l1_stream(filter_data + k);
   }
-  TFLITE_DCHECK_GE(output_size, kPeel);
 
-  for (int out = 0; out < output_size; out += kPeel) {
-    out = std::min(out, output_size - kPeel);
+  TFLITE_DCHECK_GE(row_end - row_start, kPeel);
+
+  for (int out = row_start; out < row_end; out += kPeel) {
+    out = std::min(out, row_end - kPeel);
     int32x4_t acc0 = vdupq_n_s32(0);
     int32x4_t acc1 = acc0;
     int32x4_t acc2 = acc0;
@@ -1059,6 +1057,110 @@ inline void FullyConnectedAsGEMV(
     vst1_lane_u8(output_data + out + 3, res8, 3);
   }
 }
+
+struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
+  FullyConnectedAsGEMVWorkerTask(const RuntimeShape& input_shape,
+                                 const uint8* input_data, int32 input_offset,
+                                 const RuntimeShape& filter_shape,
+                                 const uint8* filter_data, int32 filter_offset,
+                                 const RuntimeShape& bias_shape,
+                                 const int32* bias_data, int32 output_offset,
+                                 int32 output_multiplier, int output_shift,
+                                 int32 output_activation_min,
+                                 int32 output_activation_max,
+                                 const RuntimeShape& output_shape,
+                                 uint8* output_data, int row_start, int row_end)
+      : input_shape_(input_shape),
+        input_data_(input_data),
+        input_offset_(input_offset),
+        filter_shape_(filter_shape),
+        filter_data_(filter_data),
+        filter_offset_(filter_offset),
+        bias_shape_(bias_shape),
+        bias_data_(bias_data),
+        output_offset_(output_offset),
+        output_multiplier_(output_multiplier),
+        output_shift_(output_shift),
+        output_activation_min_(output_activation_min),
+        output_activation_max_(output_activation_max),
+        output_shape_(output_shape),
+        output_data_(output_data),
+        row_start_(row_start),
+        row_end_(row_end) {}
+
+  void Run() override {
+    FullyConnectedAsGEMVWorkerImpl(
+        input_shape_, input_data_, input_offset_, filter_shape_, filter_data_,
+        filter_offset_, bias_shape_, bias_data_, output_offset_,
+        output_multiplier_, output_shift_, output_activation_min_,
+        output_activation_max_, output_shape_, output_data_, row_start_,
+        row_end_);
+  }
+
+  const RuntimeShape& input_shape_;
+  const uint8* input_data_;
+  int32 input_offset_;
+  const RuntimeShape& filter_shape_;
+  const uint8* filter_data_;
+  int32 filter_offset_;
+  const RuntimeShape& bias_shape_;
+  const int32* bias_data_;
+  int32 output_offset_;
+  int32 output_multiplier_;
+  int output_shift_;
+  int32 output_activation_min_;
+  int32 output_activation_max_;
+  const RuntimeShape& output_shape_;
+  uint8* output_data_;
+  gemmlowp::GemmContext* gemm_context_;
+  int row_start_;
+  int row_end_;
+};
+
+inline void FullyConnectedAsGEMV(
+    const RuntimeShape& input_shape, const uint8* input_data,
+    int32 input_offset, const RuntimeShape& filter_shape,
+    const uint8* filter_data, int32 filter_offset,
+    const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext* gemm_context) {
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_rows = output_shape.Dims(output_dim_count - 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  static constexpr int kKernelRows = 4;
+  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+      gemm_context->max_num_threads(), output_rows, batches, input_size);
+  if (thread_count == 1) {
+    // Single-thread case: do the computation on the current thread, don't
+    // use a threadpool
+    FullyConnectedAsGEMVWorkerImpl(
+        input_shape, input_data, input_offset, filter_shape, filter_data,
+        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
+        output_shift, output_activation_min, output_activation_max,
+        output_shape, output_data, 0, output_rows);
+    return;
+  }
+
+  // Multi-threaded case: use the gemmlowp context's threadpool.
+  TFLITE_DCHECK_GT(thread_count, 1);
+  std::vector<gemmlowp::Task*> tasks(thread_count);
+  const int kRowsPerWorker =
+      gemmlowp::RoundUp<kKernelRows>(output_rows / thread_count);
+  int row_start = 0;
+  for (int i = 0; i < thread_count; ++i) {
+    int row_end = std::min(output_rows, row_start + kRowsPerWorker);
+    tasks[i] = new FullyConnectedAsGEMVWorkerTask(
+        input_shape, input_data, input_offset, filter_shape, filter_data,
+        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
+        output_shift, output_activation_min, output_activation_max,
+        output_shape, output_data, row_start, row_end);
+    row_start = row_end;
+  }
+  TFLITE_DCHECK_EQ(row_start, output_rows);
+  gemm_context->workers_pool()->Execute(tasks);
+}
 #endif  // USE_NEON
 
 struct GemmlowpOutputPipeline {
@@ -1122,7 +1224,7 @@ inline void FullyConnected(
           input_shape, input_data, input_offset, filter_shape, filter_data,
           filter_offset, bias_shape, bias_data, output_offset,
           output_multiplier, output_shift, output_activation_min,
-          output_activation_max, output_shape, output_data);
+          output_activation_max, output_shape, output_data, gemm_context);
     }
   }
 #endif  // USE_NEON
@@ -2157,7 +2259,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
         *gemm_input_shape, gemm_input_data, input_offset, fc_filter_shape,
         filter_data, filter_offset, bias_shape, bias_data, output_offset,
         output_multiplier, output_shift, output_activation_min,
-        output_activation_max, output_shape, output_data);
+        output_activation_max, output_shape, output_data, gemm_context);
   }
 #endif
 
