@@ -14,9 +14,9 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/toco/tflite/operator.h"
 
-#include "flatbuffers/flexbuffers.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "flatbuffers/flexbuffers.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
 
@@ -312,13 +312,13 @@ TEST_F(OperatorTest, VersioningMaxTest) {
   Model uint8_model;
   Array& uint8_array = uint8_model.GetOrCreateArray(max_op.inputs[0]);
   uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &max_op};
+  OperatorSignature uint8_signature = {.op = &max_op, .model = &uint8_model};
   EXPECT_EQ(op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
   Array& int8_array = int8_model.GetOrCreateArray(max_op.inputs[0]);
   int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &max_op};
+  OperatorSignature int8_signature = {.op = &max_op, .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
@@ -331,13 +331,13 @@ TEST_F(OperatorTest, VersioningMinTest) {
   Model uint8_model;
   Array& uint8_array = uint8_model.GetOrCreateArray(min_op.inputs[0]);
   uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &min_op};
+  OperatorSignature uint8_signature = {.op = &min_op, .model = &uint8_model};
   EXPECT_EQ(op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
   Array& int8_array = int8_model.GetOrCreateArray(min_op.inputs[0]);
   int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &min_op};
+  OperatorSignature int8_signature = {.op = &min_op, .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
@@ -593,13 +593,13 @@ TEST_F(OperatorTest, VersioningRelu6Test) {
   Model uint8_model;
   Array& uint8_array = uint8_model.GetOrCreateArray(relu6_op.inputs[0]);
   uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &relu6_op};
+  OperatorSignature uint8_signature = {.op = &relu6_op, .model = &uint8_model};
   EXPECT_EQ(op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
   Array& int8_array = int8_model.GetOrCreateArray(relu6_op.inputs[0]);
   int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &relu6_op};
+  OperatorSignature int8_signature = {.op = &relu6_op, .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
@@ -630,14 +630,14 @@ TEST_F(OperatorTest, VersioningLogisticTest) {
   Model uint8_model;
   Array& uint8_array = uint8_model.GetOrCreateArray(logistic_op.inputs[0]);
   uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model,
-                                       .op = &logistic_op};
+  OperatorSignature uint8_signature = {.op = &logistic_op,
+                                       .model = &uint8_model};
   EXPECT_EQ(op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
   Array& int8_array = int8_model.GetOrCreateArray(logistic_op.inputs[0]);
   int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &logistic_op};
+  OperatorSignature int8_signature = {.op = &logistic_op, .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
@@ -782,13 +782,13 @@ void SimpleVersioningTest() {
   Model uint8_model;
   Array& uint8_array = uint8_model.GetOrCreateArray(op.inputs[0]);
   uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &op};
+  OperatorSignature uint8_signature = {.op = &op, .model = &uint8_model};
   EXPECT_EQ(base_op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
   Array& int8_array = int8_model.GetOrCreateArray(op.inputs[0]);
   int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &op};
+  OperatorSignature int8_signature = {.op = &op, .model = &int8_model};
   EXPECT_EQ(base_op->GetVersion(int8_signature), 2);
 }
 
@@ -865,13 +865,13 @@ TEST_F(OperatorTest, VersioningSelectTest) {
   Model uint8_model;
   Array& uint8_array = uint8_model.GetOrCreateArray(select_op.inputs[0]);
   uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model, .op = &select_op};
+  OperatorSignature uint8_signature = {.op = &select_op, .model = &uint8_model};
   EXPECT_EQ(op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
   Array& int8_array = int8_model.GetOrCreateArray(select_op.inputs[0]);
   int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model, .op = &select_op};
+  OperatorSignature int8_signature = {.op = &select_op, .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
@@ -893,8 +893,8 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   Array& output_uint8_array =
       uint8_model.GetOrCreateArray(fully_connected_op.outputs[0]);
   output_uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.model = &uint8_model,
-                                       .op = &fully_connected_op};
+  OperatorSignature uint8_signature = {.op = &fully_connected_op,
+                                       .model = &uint8_model};
   EXPECT_EQ(op->GetVersion(uint8_signature), 1);
 
   Model int8_model;
@@ -907,8 +907,8 @@ TEST_F(OperatorTest, VersioningFullyConnectedTest) {
   Array& output_int8_array =
       int8_model.GetOrCreateArray(fully_connected_op.outputs[0]);
   output_int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.model = &int8_model,
-                                      .op = &fully_connected_op};
+  OperatorSignature int8_signature = {.op = &fully_connected_op,
+                                      .model = &int8_model};
   EXPECT_EQ(op->GetVersion(int8_signature), 4);
 }
 
