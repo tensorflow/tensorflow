@@ -192,7 +192,7 @@ def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
                                       name=name)
 
 
-@tf_export("string_split")
+@tf_export(v1=["string_split"])
 def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=invalid-name
   """Split elements of `source` based on `delimiter` into a `SparseTensor`.
 
