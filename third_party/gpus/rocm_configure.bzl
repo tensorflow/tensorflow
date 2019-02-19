@@ -250,8 +250,8 @@ def _hipcc_env(repository_ctx):
         "HIPCC_COMPILE_FLAGS_APPEND",
     ]:
         if name in repository_ctx.os.environ:
-            hipcc_env = hipcc_env + " " + name + "=\"" + \
-                        repository_ctx.os.environ[name].strip() + "\";"
+            hipcc_env = (hipcc_env + " " + name + "=\"" +
+                         repository_ctx.os.environ[name].strip() + "\";")
     return hipcc_env.strip()
 
 def _crosstool_verbose(repository_ctx):
