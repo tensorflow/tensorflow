@@ -72,6 +72,9 @@ public:
   // Returns the `index`-th result's name.
   StringRef getResultName(int index) const;
 
+  // Returns true if this operation has a variadic result.
+  bool hasVariadicResult() const;
+
   // Op attribute interators.
   using attribute_iterator = const NamedAttribute *;
   attribute_iterator attribute_begin() const;
@@ -123,8 +126,8 @@ public:
   StringRef getSummary() const;
 
 private:
-  // Populates the operands and attributes.
-  void populateOperandsAndAttributes();
+  // Populates the vectors containing operands, attributes, and results.
+  void populateOpStructure();
 
   // The name of the op split around '_'.
   SmallVector<StringRef, 2> splittedDefName;
@@ -134,6 +137,9 @@ private:
 
   // The attributes of the op.
   SmallVector<NamedAttribute, 4> attributes;
+
+  // The results of the op.
+  SmallVector<Value, 4> results;
 
   // The start of native attributes, which are specified when creating the op
   // as a part of the op's definition.

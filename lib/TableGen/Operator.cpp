@@ -35,7 +35,7 @@ using llvm::Record;
 
 tblgen::Operator::Operator(const llvm::Record &def) : def(def) {
   SplitString(def.getName(), splittedDefName, "_");
-  populateOperandsAndAttributes();
+  populateOpStructure();
 }
 
 const SmallVectorImpl<StringRef> &tblgen::Operator::getSplitDefName() const {
@@ -63,13 +63,15 @@ int tblgen::Operator::getNumResults() const {
 }
 
 tblgen::Type tblgen::Operator::getResultType(int index) const {
-  DagInit *results = def.getValueAsDag("results");
-  return Type(cast<DefInit>(results->getArg(index)));
+  return results[index].type;
 }
 
 StringRef tblgen::Operator::getResultName(int index) const {
-  DagInit *results = def.getValueAsDag("results");
-  return results->getArgNameStr(index);
+  return results[index].name;
+}
+
+bool tblgen::Operator::hasVariadicResult() const {
+  return !results.empty() && results.back().type.isVariadic();
 }
 
 int tblgen::Operator::getNumNativeAttributes() const {
@@ -127,7 +129,7 @@ auto tblgen::Operator::getArg(int index) -> Argument {
   return {&attributes[index - nativeAttrStart]};
 }
 
-void tblgen::Operator::populateOperandsAndAttributes() {
+void tblgen::Operator::populateOpStructure() {
   auto &recordKeeper = def.getRecords();
   auto attrClass = recordKeeper.getClass("Attr");
   auto derivedAttrClass = recordKeeper.getClass("DerivedAttr");
@@ -144,7 +146,7 @@ void tblgen::Operator::populateOperandsAndAttributes() {
     auto argDefInit = dyn_cast<DefInit>(arg);
     if (!argDefInit)
       PrintFatalError(def.getLoc(),
-                      Twine("undefined type for argument ") + Twine(i));
+                      Twine("undefined type for argument #") + Twine(i));
     Record *argDef = argDefInit->getDef();
     if (argDef->isSubClassOf(attrClass))
       break;
@@ -191,10 +193,35 @@ void tblgen::Operator::populateOperandsAndAttributes() {
     }
   }
 
+  // Verify that only the last operand can be variadic.
   for (int i = 0, e = operands.size() - 1; i < e; ++i) {
     if (operands[i].type.isVariadic())
       PrintFatalError(def.getLoc(),
                       "only the last operand allowed to be variadic");
+  }
+
+  auto *resultsDag = def.getValueAsDag("results");
+  auto *outsOp = dyn_cast<DefInit>(resultsDag->getOperator());
+  if (!outsOp || outsOp->getDef()->getName() != "outs") {
+    PrintFatalError(def.getLoc(), "'results' must have 'outs' directive");
+  }
+
+  // Handle results.
+  for (unsigned i = 0, e = resultsDag->getNumArgs(); i < e; ++i) {
+    auto name = resultsDag->getArgNameStr(i);
+    auto *resultDef = dyn_cast<DefInit>(resultsDag->getArg(i));
+    if (!resultDef) {
+      PrintFatalError(def.getLoc(),
+                      Twine("undefined type for result #") + Twine(i));
+    }
+    results.push_back({name, Type(resultDef)});
+  }
+
+  // Verify that only the last result can be variadic.
+  for (int i = 0, e = results.size() - 1; i < e; ++i) {
+    if (results[i].type.isVariadic())
+      PrintFatalError(def.getLoc(),
+                      "only the last result allowed to be variadic");
   }
 }
 

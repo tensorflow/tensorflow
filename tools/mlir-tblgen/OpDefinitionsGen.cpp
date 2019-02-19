@@ -247,7 +247,8 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   // Emit parameters for all return types
   if (!isAllSameType) {
     for (unsigned i = 0; i != numResults; ++i)
-      os << ", Type returnType" << i;
+      os << (op.getResultType(i).isVariadic() ? ", ArrayRef<Type> " : ", Type ")
+         << "returnType" << i;
   }
 
   // Emit parameters for all operands
@@ -270,23 +271,36 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
 
   // Push all result types to the result
   if (numResults > 0) {
-    OUT(4) << "result->addTypes({";
     if (!isAllSameType) {
-      os << "returnType0";
-      for (unsigned i = 1; i != numResults; ++i)
-        os << ", returnType" << i;
+      bool hasVariadicResult = op.hasVariadicResult();
+      int numNonVariadicResults =
+          numResults - static_cast<int>(hasVariadicResult);
+
+      if (numNonVariadicResults > 0) {
+        OUT(4) << "result->addTypes({returnType0";
+        for (int i = 1; i < numNonVariadicResults; ++i) {
+          os << ", resultType" << i;
+        }
+        os << "});\n";
+      }
+
+      if (hasVariadicResult) {
+        OUT(4) << formatv("result->addTypes(returnType{0});\n", numResults - 1);
+      }
     } else {
+      OUT(4) << "result->addTypes({";
       auto resultType = formatv("{0}->getType()", getArgumentName(op, 0)).str();
       os << resultType;
       for (unsigned i = 1; i != numResults; ++i)
         os << resultType;
+      os << "});\n\n";
     }
-    os << "});\n\n";
   }
 
   // Push all operands to the result
   bool hasVariadicOperand = op.hasVariadicOperand();
-  int numNonVariadicOperands = numOperands - int(hasVariadicOperand);
+  int numNonVariadicOperands =
+      numOperands - static_cast<int>(hasVariadicOperand);
   if (numNonVariadicOperands > 0) {
     OUT(4) << "result->addOperands({" << getArgumentName(op, 0);
     for (int i = 1; i < numNonVariadicOperands; ++i) {
@@ -316,6 +330,8 @@ void OpEmitter::emitBuilder() {
   }
 
   auto numResults = op.getNumResults();
+  bool hasVariadicResult = op.hasVariadicResult();
+  int numNonVariadicResults = numResults - int(hasVariadicResult);
 
   auto numOperands = op.getNumOperands();
   bool hasVariadicOperand = op.hasVariadicOperand();
@@ -345,7 +361,8 @@ void OpEmitter::emitBuilder() {
             "ArrayRef<NamedAttribute> attributes) {\n";
 
   // Result types
-  OUT(4) << "assert(resultTypes.size() == " << numResults
+  OUT(4) << "assert(resultTypes.size()" << (hasVariadicResult ? " >= " : " == ")
+         << numNonVariadicResults
          << "u && \"mismatched number of return types\");\n"
          << "    result->addTypes(resultTypes);\n";
 
@@ -369,7 +386,7 @@ void OpEmitter::emitBuilder() {
 
   // 3. Deduced result types
 
-  if (op.hasTrait("SameOperandsAndResultType"))
+  if (!op.hasVariadicResult() && op.hasTrait("SameOperandsAndResultType"))
     emitStandaloneParamBuilder(/*isAllSameType=*/true);
 }
 
@@ -501,18 +518,27 @@ void OpEmitter::emitVerifier() {
 
 void OpEmitter::emitTraits() {
   auto numResults = op.getNumResults();
+  bool hasVariadicResult = op.hasVariadicResult();
 
   // Add return size trait.
-  switch (numResults) {
-  case 0:
-    os << ", OpTrait::ZeroResult";
-    break;
-  case 1:
-    os << ", OpTrait::OneResult";
-    break;
-  default:
-    os << ", OpTrait::NResults<" << numResults << ">::Impl";
-    break;
+  os << ", OpTrait::";
+  if (hasVariadicResult) {
+    if (numResults == 1)
+      os << "VariadicResults";
+    else
+      os << "AtLeastNResults<" << (numResults - 1) << ">::Impl";
+  } else {
+    switch (numResults) {
+    case 0:
+      os << "ZeroResult";
+      break;
+    case 1:
+      os << "OneResult";
+      break;
+    default:
+      os << "NResults<" << numResults << ">::Impl";
+      break;
+    }
   }
 
   // Add variadic size trait and normal op traits.
