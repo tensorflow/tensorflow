@@ -8,7 +8,7 @@ def tflite_micro_cc_test(
         defines = [],
         copts = [],
         nocopts = "",
-        linkopts = [],
+        linkopts = ["-lm"],
         deps = [],
         tags = [],
         visibility = None):
