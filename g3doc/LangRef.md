@@ -1460,7 +1460,7 @@ Example:
 // A view memref that is a dynamic sized slice along an already dynamic
 // sized base memref with the slice size being half the base memref's
 // dynamic size and with an offset of %0
-#map_c = (i,j)[s0, s1] -> (i + s0, j) size (4, s1)
+#map_c = (i, j)[s0, s1]->(i + s0, j) size(4, s1)
 %s1 = "divi"(%n1, 2) : (i32, i32) -> i32
 %C = view memref<16x?xf32, #map_a, hbm> -> memref<4x?xf32, #map_c, hbm>
           (%s1) [%0, %n1] %A : memref<16x?xf32, #map_a, hbm>
@@ -1543,20 +1543,22 @@ dealloc %A : memref<128 x f32, #layout, hbm>
 Syntax:
 
 ``` {.ebnf}
-operation ::= `dma_start` ssa-use`[`ssa-use-list`]`,
-               ssa-use`[`ssa-use-list`]`, ssa-use,
-               ssa-use`[`ssa-use-list`]`
-              `:` memref-type, memref-type, memref-type
+operation ::= `dma_start` ssa-use`[`ssa-use-list`]` `,`
+               ssa-use`[`ssa-use-list`]` `,` ssa-use `,`
+               ssa-use`[`ssa-use-list`]` (`,` ssa-use, ssa-use)?
+              `:` memref-type `,` memref-type `,` memref-type
 ```
 
 Starts a non-blocking DMA operation that transfers data from a source memref to
 a destination memref. The operands include the source and destination memref's
 each followed by its indices, size of the data transfer in terms of the number
-of elements (of the elemental type of the memref), and a tag memref with its
-indices. The tag location is used by a dma_wait operation to check for
-completion. The indices of the source memref, destination memref, and the tag
-memref have the same restrictions as any load/store instruction in a affine
-context (whenever DMA operations appear in an affine context). See
+of elements (of the elemental type of the memref), a tag memref with its
+indices, and optionally two additional arguments corresponding to the stride (in
+terms of number of elements) and the number of elements to transfer per stride.
+The tag location is used by a dma_wait operation to check for completion. The
+indices of the source memref, destination memref, and the tag memref have the same
+restrictions as any load/store instruction in a affine context (whenever DMA
+operations appear in an affine context). See
 [restrictions on dimensions and symbols](Dialects/Affine.md#restrictions-on-dimensions-and-symbols)
 in affine contexts. This allows powerful static analysis and transformations in
 the presence of such DMAs including rescheduling, pipelining / overlap with
@@ -1585,7 +1587,7 @@ dma_start %src[%i, %j], %dst[%k, %l], %size, %tag[%idx] :
 Syntax:
 
 ```
-operation ::= `dma_wait` ssa-use`[`ssa-use-list`]`, ssa-use `:` memref-type
+operation ::= `dma_wait` ssa-use`[`ssa-use-list`]` `,` ssa-use `:` memref-type
 ```
 
 Blocks until the completion of a DMA operation associated with the tag element

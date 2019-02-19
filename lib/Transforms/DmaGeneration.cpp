@@ -63,9 +63,15 @@ static llvm::cl::opt<bool> clSkipNonUnitStrideLoop(
 
 namespace {
 
-/// Generates DMAs for memref's living in 'slowMemorySpace' into newly created
-/// buffers in 'fastMemorySpace', and replaces memory operations to the former
-/// by the latter. Only load op's handled for now.
+/// Replaces all loads and stores on memref's living in 'slowMemorySpace' by
+/// introducing DMA operations (strided DMA if necessary) to transfer data into
+/// `fastMemorySpace` and rewriting the original load's/store's to instead
+/// load/store from the allocated fast memory buffers. Additional options
+/// specify the identifier corresponding to the fast memory space and the amount
+/// of fast memory space available. The pass traverses through the nesting
+/// structure, recursing to inner levels if necessary to determine at what depth
+/// DMA transfers need to be placed so that the allocated buffers fit within the
+/// memory capacity provided.
 // TODO(bondhugula): We currently can't generate DMAs correctly when stores are
 // strided. Check for strided stores.
 struct DmaGeneration : public FunctionPass {
