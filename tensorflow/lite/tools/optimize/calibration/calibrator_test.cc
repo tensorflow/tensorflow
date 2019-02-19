@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/tools/optimize/calibrator.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 
 namespace {
 tensorflow::string* g_test_model_file = nullptr;

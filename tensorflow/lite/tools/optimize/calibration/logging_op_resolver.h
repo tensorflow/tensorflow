@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/mutable_op_resolver.h"
 #include "tensorflow/lite/op_resolver.h"
-#include "tensorflow/lite/tools/optimize/calibration_common.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 
 namespace tflite {
 namespace optimize {

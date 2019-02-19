@@ -19,7 +19,7 @@ limitations under the License.
 
 #include "tensorflow/lite/context.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/tools/optimize/calibration_logger.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
 
 namespace tflite {
 namespace optimize {

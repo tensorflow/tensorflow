@@ -20,7 +20,7 @@ limitations under the License.
 #include "flatbuffers/flatbuffers.h"  // TF:flatbuffers
 #include "tensorflow/lite/core/api/op_resolver.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/tools/optimize/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
 
 namespace tflite {
 namespace optimize {
