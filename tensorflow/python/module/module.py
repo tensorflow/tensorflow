@@ -49,10 +49,6 @@ class ModuleMetaclass(abc.ABCMeta):
         continue
 
       elif tf_inspect.isfunction(value):
-        if getattr(value, NO_MODULE_NAME_SCOPE, False):
-          # The function has been annotated to say that no autoscoping should
-          # be applied, so do not patch it.
-          continue
         clsdict[key] = with_name_scope(value)
 
       elif isinstance(value, property):
@@ -141,6 +137,11 @@ def wrap_with_name_scope_no_exception(unbound_method):
 
 def with_name_scope(unbound_method):
   """Patches the given method so it enters the modules name scope."""
+  if getattr(unbound_method, NO_MODULE_NAME_SCOPE, False):
+    # The function has been annotated to say that no autoscoping should be
+    # applied, so do not patch it.
+    return unbound_method
+
   if isinstance(unbound_method, def_function.Function):
     # Autograph cannot convert functions that have try/catch.
     unbound_method._decorate(wrap_with_name_scope_no_exception)  # pylint: disable=protected-access
