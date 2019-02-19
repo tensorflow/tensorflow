@@ -537,7 +537,7 @@ run_test_with_bazel() {
 
   TEST_TARGETS_LN=""
   for TARGET in ${BAZEL_TEST_TARGETS[@]}; do
-    TARGET_RE="$(echo ${TARGET} | sed -e 's/\/\//\/${TEST_ROOT}\//g')"
+    TARGET_RE=$(echo ${TARGET} | sed -e "s/\/\//\/\/${TEST_ROOT}\//g")
     TEST_TARGETS_LN+="${TARGET_RE} "
   done
   echo "Test targets (symlink): ${TEST_TARGETS_LN}"
