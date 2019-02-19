@@ -1435,7 +1435,7 @@ cc_library(
 # This includes implementations of all kernels built into TensorFlow.
 cc_library(
     name = "all_kernels_impl",
-    visibility = ["//visibility:private"],
+    visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
