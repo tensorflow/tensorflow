@@ -110,10 +110,9 @@ class EdscTest(unittest.TestCase):
       i, j = list(map(E.Expr, [E.Bindable() for _ in range(2)]))
       stmt = E.Block([E.Stmt(i + j), E.Stmt(i - j)])
       str = stmt.__str__()
-      self.assertIn("stmt_list {", str)
+      self.assertIn("^bb:", str)
       self.assertIn(" = ($1 + $2)", str)
       self.assertIn(" = ($1 - $2)", str)
-      self.assertIn("}", str)
 
   def testMLIRScalarTypes(self):
     module = E.MLIRModule()
@@ -199,7 +198,7 @@ class EdscTest(unittest.TestCase):
           ]),
           E.Return()
       ])
-      emitter.emit(loop)
+      emitter.emit_inplace(loop)
       # str = f.__str__()
       # print(str)
       module.compile()
@@ -231,7 +230,7 @@ class EdscTest(unittest.TestCase):
           E.For(ivs, lbs, ubs, steps, [output.store(ivs, input.load(ivs))]),
           E.Return()
       ])
-      emitter.emit(loop)
+      emitter.emit_inplace(loop)
 
       # print(f) # uncomment to see the emitted IR
       str = f.__str__()

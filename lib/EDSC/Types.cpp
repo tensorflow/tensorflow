@@ -26,6 +26,7 @@
 #include "llvm/ADT/StringSwitch.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/raw_ostream.h"
+#include <memory>
 
 using llvm::errs;
 using llvm::Twine;
@@ -37,6 +38,15 @@ using namespace mlir::edsc::detail;
 namespace mlir {
 namespace edsc {
 namespace detail {
+
+template <typename T> ArrayRef<T> copyIntoExprAllocator(ArrayRef<T> elements) {
+  if (elements.empty()) {
+    return {};
+  }
+  auto storage = Expr::globalAllocator()->Allocate<T>(elements.size());
+  std::uninitialized_copy(elements.begin(), elements.end(), storage);
+  return llvm::makeArrayRef(storage, elements.size());
+}
 
 struct ExprStorage {
   // Note: this structure is similar to OperationState, but stores lists in a
@@ -51,32 +61,9 @@ struct ExprStorage {
   ExprStorage(ExprKind kind, ArrayRef<Type> results, ArrayRef<Expr> children,
               ArrayRef<NamedAttribute> attrs, unsigned exprId = Expr::newId())
       : kind(kind), id(exprId) {
-    if (!children.empty()) {
-      auto exprStorage =
-          Expr::globalAllocator()->Allocate<Expr>(children.size());
-      std::uninitialized_copy(children.begin(), children.end(), exprStorage);
-      operands = llvm::makeArrayRef(exprStorage, children.size());
-    } else {
-      operands = ArrayRef<Expr>();
-    }
-
-    if (!results.empty()) {
-      auto typeStorage =
-          Expr::globalAllocator()->Allocate<Type>(results.size());
-      std::uninitialized_copy(results.begin(), results.end(), typeStorage);
-      resultTypes = llvm::makeArrayRef(typeStorage, results.size());
-    } else {
-      resultTypes = ArrayRef<Type>();
-    }
-
-    if (!attrs.empty()) {
-      auto attrStorage =
-          Expr::globalAllocator()->Allocate<NamedAttribute>(attrs.size());
-      std::uninitialized_copy(attrs.begin(), attrs.end(), attrStorage);
-      attributes = llvm::makeArrayRef(attrStorage, attrs.size());
-    } else {
-      attributes = ArrayRef<NamedAttribute>();
-    }
+    operands = copyIntoExprAllocator(children);
+    resultTypes = copyIntoExprAllocator(results);
+    attributes = copyIntoExprAllocator(attrs);
   }
 };
 
@@ -86,6 +73,19 @@ struct StmtStorage {
   Bindable lhs;
   Expr rhs;
   ArrayRef<Stmt> enclosedStmts;
+};
+
+struct StmtBlockStorage {
+  StmtBlockStorage(ArrayRef<Bindable> args, ArrayRef<Type> argTypes,
+                   ArrayRef<Stmt> stmts) {
+    arguments = copyIntoExprAllocator(args);
+    argumentTypes = copyIntoExprAllocator(argTypes);
+    statements = copyIntoExprAllocator(stmts);
+  }
+
+  ArrayRef<Bindable> arguments;
+  ArrayRef<Type> argumentTypes;
+  ArrayRef<Stmt> statements;
 };
 
 } // namespace detail
@@ -186,16 +186,6 @@ Expr mlir::edsc::alloc(llvm::ArrayRef<Expr> sizes, Type memrefType) {
   return VariadicExpr(ExprKind::Alloc, sizes, memrefType);
 }
 
-Stmt mlir::edsc::StmtList(ArrayRef<Stmt> stmts) {
-  return Stmt(StmtBlockLikeExpr(ExprKind::StmtList, {}), stmts);
-}
-
-edsc_stmt_t StmtList(edsc_stmt_list_t enclosedStmts) {
-  llvm::SmallVector<Stmt, 8> stmts;
-  fillStmts(enclosedStmts, &stmts);
-  return Stmt(mlir::edsc::StmtList(stmts));
-}
-
 Expr mlir::edsc::dealloc(Expr memref) {
   return UnaryExpr(ExprKind::Dealloc, memref);
 }
@@ -243,6 +233,19 @@ edsc_stmt_t ForNest(edsc_expr_list_t ivs, edsc_expr_list_t lbs,
   fillStmts(enclosedStmts, &stmts);
   return Stmt(For(makeExprs(ivs), makeExprs(lbs), makeExprs(ubs),
                   makeExprs(steps), stmts));
+}
+
+StmtBlock mlir::edsc::block(ArrayRef<Bindable> args, ArrayRef<Type> argTypes,
+                            ArrayRef<Stmt> stmts) {
+  assert(args.size() == argTypes.size() &&
+         "mismatching number of arguments and argument types");
+  return StmtBlock(args, argTypes, stmts);
+}
+
+edsc_block_t Block(edsc_stmt_list_t enclosedStmts) {
+  llvm::SmallVector<Stmt, 8> stmts;
+  fillStmts(enclosedStmts, &stmts);
+  return StmtBlock(stmts);
 }
 
 Expr mlir::edsc::load(Expr m, ArrayRef<Expr> indices) {
@@ -539,14 +542,6 @@ void mlir::edsc::Stmt::print(raw_ostream &os, Twine indent) const {
       }
       os << indent << "}";
       return;
-    case ExprKind::StmtList:
-      os << indent << "stmt_list {";
-      for (auto &s : getEnclosedStmts()) {
-        os << "\n";
-        s.print(os, indent + "  ");
-      }
-      os << "\n" << indent << "}";
-      return;
     default: {
       // TODO(ntv): print more statement cases.
       os << "TODO";
@@ -570,6 +565,48 @@ llvm::raw_ostream &mlir::edsc::operator<<(llvm::raw_ostream &os,
                                           const Stmt &stmt) {
   stmt.print(os);
   return os;
+}
+
+mlir::edsc::StmtBlock::StmtBlock(llvm::ArrayRef<Stmt> stmts)
+    : StmtBlock({}, {}, stmts) {}
+
+mlir::edsc::StmtBlock::StmtBlock(llvm::ArrayRef<Bindable> args,
+                                 llvm::ArrayRef<Type> argTypes,
+                                 llvm::ArrayRef<Stmt> stmts) {
+  storage = Expr::globalAllocator()->Allocate<detail::StmtBlockStorage>();
+  new (storage) detail::StmtBlockStorage(args, argTypes, stmts);
+}
+
+ArrayRef<mlir::edsc::Bindable> mlir::edsc::StmtBlock::getArguments() const {
+  return storage->arguments;
+}
+
+ArrayRef<Type> mlir::edsc::StmtBlock::getArgumentTypes() const {
+  return storage->argumentTypes;
+}
+
+ArrayRef<mlir::edsc::Stmt> mlir::edsc::StmtBlock::getBody() const {
+  return storage->statements;
+}
+
+void mlir::edsc::StmtBlock::print(llvm::raw_ostream &os, Twine indent) const {
+  os << indent << "^bb";
+  if (!getArgumentTypes().empty())
+    os << '(';
+  interleaveComma(getArguments(), os);
+  if (!getArgumentTypes().empty())
+    os << ')';
+  os << ":\n";
+
+  for (auto stmt : getBody())
+    stmt.print(os, indent + "  ");
+}
+
+std::string mlir::edsc::StmtBlock::str() const {
+  std::string result;
+  llvm::raw_string_ostream os(result);
+  print(os, "");
+  return result;
 }
 
 Indexed mlir::edsc::Indexed::operator()(llvm::ArrayRef<Expr> indices) {

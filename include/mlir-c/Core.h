@@ -42,6 +42,8 @@ typedef void *edsc_mlir_emitter_t;
 typedef void *edsc_expr_t;
 /// Opaque C type for mlir::edsc::Stmt.
 typedef void *edsc_stmt_t;
+/// Opaque C type for mlir::edsc::Block.
+typedef void *edsc_block_t;
 
 /// Simple C lists for non-owning mlir Opaque C types.
 /// Recommended usage is construction from the `data()` and `size()` of a scoped
@@ -214,11 +216,9 @@ edsc_expr_t Select(edsc_expr_t cond, edsc_expr_t lhs, edsc_expr_t rhs);
 /// Returns an opaque statement for an mlir::ReturnOp.
 edsc_stmt_t Return(edsc_expr_list_t values);
 
-/// Returns a single opaque statement that acts as an mlir block. At the moment
-/// this is pure syntactic sugar to allow lists of mlir::edsc::Stmt to be
-/// specified and emitted. In particular, block arguments are not currently
-/// supported.
-edsc_stmt_t StmtList(edsc_stmt_list_t enclosedStmts);
+/// Returns an opaque expression for an mlir::edsc::StmtBlock containing the
+/// given list of statements.  Block arguments are not currently supported.
+edsc_block_t Block(edsc_stmt_list_t enclosedStmts);
 
 /// Returns an opaque statement for an mlir::ForInst with `enclosedStmts` nested
 /// below it.

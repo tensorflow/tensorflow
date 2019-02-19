@@ -44,6 +44,22 @@ char LowerEDSCTestPass::passID = 0;
 #include "mlir/EDSC/reference-impl.inc"
 
 PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
+  if (f->getName().strref() == "blocks") {
+    using namespace edsc::op;
+
+    FuncBuilder builder(f);
+    edsc::ScopedEDSCContext context;
+    edsc::Expr arg1, arg2, arg3, arg4;
+    auto type = builder.getIntegerType(32);
+
+    auto b1 =
+        edsc::block({arg1, arg2}, {type, type}, {arg1 + arg2, edsc::Return()});
+    auto b2 =
+        edsc::block({arg3, arg4}, {type, type}, {arg3 - arg4, edsc::Return()});
+
+    edsc::MLIREmitter(&builder, f->getLoc()).emitBlock(b1).emitBlock(b2);
+  }
+
   // Inject a EDSC-constructed `for` loop with bounds coming from function
   // arguments.
   if (f->getName().strref() == "dynamic_for_func_args") {

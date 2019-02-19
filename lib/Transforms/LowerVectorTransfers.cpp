@@ -322,7 +322,7 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   auto &ubs = accessInfo.upperBoundsExprs;
   auto &steps = accessInfo.stepExprs;
   Expr scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
-  Stmt block = edsc::StmtList({
+  auto block = edsc::block({
     tmpAlloc = alloc(tmpMemRefType),
     vectorView = vector_type_cast(Expr(tmpAlloc), vectorMemRefType),
     For(ivs, lbs, ubs, steps, {
@@ -335,7 +335,7 @@ template <> void VectorTransferRewriter<VectorTransferReadOp>::rewrite() {
   // clang-format on
 
   // Emit the MLIR.
-  emitter.emitStmt(block);
+  emitter.emitStmts(block.getBody());
 
   // Finalize rewriting.
   transfer->replaceAllUsesWith(emitter.getValue(vectorValue));
@@ -377,7 +377,7 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
   auto &ubs = accessInfo.upperBoundsExprs;
   auto &steps = accessInfo.stepExprs;
   Expr scalarValue, tmpAlloc, tmpDealloc, vectorView;
-  Stmt block(edsc::StmtList({
+  auto block = edsc::block({
     tmpAlloc = alloc(tmpMemRefType),
     vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
     store(vectorValue, vectorView, MutableArrayRef<Expr>{zero}),
@@ -385,11 +385,11 @@ template <> void VectorTransferRewriter<VectorTransferWriteOp>::rewrite() {
       scalarValue = load(tmpAlloc, accessInfo.tmpAccessExprs),
       store(scalarValue, scalarMemRef, accessInfo.clippedScalarAccessExprs),
     }),
-    tmpDealloc = dealloc(tmpAlloc)}));
+    tmpDealloc = dealloc(tmpAlloc)});
   // clang-format on
 
   // Emit the MLIR.
-  emitter.emitStmt(block);
+  emitter.emitStmts(block.getBody());
 
   // Finalize rewriting.
   transfer->erase();

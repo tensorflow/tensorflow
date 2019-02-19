@@ -42,6 +42,7 @@ namespace detail {
 
 struct ExprStorage;
 struct StmtStorage;
+struct StmtBlockStorage;
 
 } // namespace detail
 
@@ -106,8 +107,7 @@ enum class ExprKind {
   Return,
   LAST_VARIADIC_EXPR = Return,
   FIRST_STMT_BLOCK_LIKE_EXPR = 600,
-  StmtList = FIRST_STMT_BLOCK_LIKE_EXPR,
-  For,
+  For = FIRST_STMT_BLOCK_LIKE_EXPR,
   LAST_STMT_BLOCK_LIKE_EXPR = For,
   LAST_NON_BINDABLE_EXPR = LAST_STMT_BLOCK_LIKE_EXPR,
 };
@@ -282,17 +282,11 @@ protected:
 ///
 /// ```mlir
 ///    Stmt scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
-///    Stmt block = StmtList({
-///      tmpAlloc = alloc(tmpMemRefType),
-///      vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
-///      For(ivs, lbs, ubs, steps, {
-///        scalarValue = load(scalarMemRef,
-///        accessInfo.clippedScalarAccessExprs), store(scalarValue, tmpAlloc,
-///        accessInfo.tmpAccessExprs),
-///      }),
-///      vectorValue = load(vectorView, zero),
-///      tmpDealloc = dealloc(tmpAlloc.getLHS())});
-///    emitter.emitStmt(block);
+///    tmpAlloc = alloc(tmpMemRefType);
+///    vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
+///    vectorValue = load(vectorView, zero),
+///    tmpDealloc = dealloc(tmpAlloc)});
+///    emitter.emitStmts({tmpAlloc, vectorView, vectorValue, tmpDealloc});
 /// ```
 ///
 /// A Stmt can be declared with either:
@@ -307,10 +301,9 @@ protected:
 /// Only ExprKind::StmtBlockLikeExpr have `enclosedStmts`, these comprise:
 /// 1. `For`-loops for which the `lhs` binds to the induction variable, `rhs`
 ///   binds to an Expr of kind `ExprKind::For` with lower-bound, upper-bound and
-///   step respectively;
-/// 2. `StmtList` with an Expr of kind `ExprKind::StmtList` and which has no
-/// `rhs` but
-///   only `enclosingStmts`.
+///   step respectively.
+// TODO(zinenko): this StmtBlockLikeExpr should be retired in favor of Expr
+// that can have a list of Blocks they contain, similarly to the core MLIR
 struct Stmt {
   using ImplType = detail::StmtStorage;
   friend class Expr;
@@ -344,6 +337,52 @@ struct Stmt {
   llvm::ArrayRef<Stmt> getEnclosedStmts() const;
 
 protected:
+  ImplType *storage;
+};
+
+/// StmtBlock is a an addressable list of statements.
+///
+/// This enables writing complex generators such as:
+///
+/// ```mlir
+///    Stmt scalarValue, vectorValue, tmpAlloc, tmpDealloc, vectorView;
+///    Stmt block = Block({
+///      tmpAlloc = alloc(tmpMemRefType),
+///      vectorView = vector_type_cast(tmpAlloc, vectorMemRefType),
+///      For(ivs, lbs, ubs, steps, {
+///        scalarValue = load(scalarMemRef,
+///        accessInfo.clippedScalarAccessExprs), store(scalarValue, tmpAlloc,
+///        accessInfo.tmpAccessExprs),
+///      }),
+///      vectorValue = load(vectorView, zero),
+///      tmpDealloc = dealloc(tmpAlloc.getLHS())});
+///    emitter.emitBlock(block);
+/// ```
+struct StmtBlock {
+public:
+  using ImplType = detail::StmtBlockStorage;
+
+  StmtBlock() : storage(nullptr) {}
+  explicit StmtBlock(ImplType *st) : storage(st) {}
+  explicit StmtBlock(edsc_block_t st)
+      : storage(reinterpret_cast<ImplType *>(st)) {}
+  StmtBlock(const StmtBlock &other) = default;
+  StmtBlock(llvm::ArrayRef<Stmt> stmts = {});
+  StmtBlock(llvm::ArrayRef<Bindable> args, llvm::ArrayRef<Type> argTypes,
+            llvm::ArrayRef<Stmt> stmts = {});
+
+  llvm::ArrayRef<Bindable> getArguments() const;
+  llvm::ArrayRef<Type> getArgumentTypes() const;
+  llvm::ArrayRef<Stmt> getBody() const;
+
+  void print(llvm::raw_ostream &os, Twine indent) const;
+  std::string str() const;
+
+  operator edsc_block_t() { return edsc_block_t{storage}; }
+
+  ImplType *getStoragePtr() const { return storage; }
+
+private:
   ImplType *storage;
 };
 
@@ -453,6 +492,10 @@ inline ::llvm::hash_code hash_value(Expr arg) {
   return ::llvm::hash_value(arg.storage);
 }
 
+inline ::llvm::hash_code hash_value(StmtBlock arg) {
+  return ::llvm::hash_value(arg.getStoragePtr());
+}
+
 raw_ostream &operator<<(raw_ostream &os, const Expr &expr);
 raw_ostream &operator<<(raw_ostream &os, const Stmt &stmt);
 
@@ -475,6 +518,26 @@ template <> struct DenseMapInfo<mlir::edsc::Expr> {
     return mlir::edsc::hash_value(val);
   }
   static bool isEqual(mlir::edsc::Expr LHS, mlir::edsc::Expr RHS) {
+    return LHS.getStoragePtr() == RHS.getStoragePtr();
+  }
+};
+
+// StmtBlock hash just like pointers
+template <> struct DenseMapInfo<mlir::edsc::StmtBlock> {
+  static mlir::edsc::StmtBlock getEmptyKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getEmptyKey();
+    return mlir::edsc::StmtBlock(
+        static_cast<mlir::edsc::StmtBlock::ImplType *>(pointer));
+  }
+  static mlir::edsc::StmtBlock getTombstoneKey() {
+    auto pointer = llvm::DenseMapInfo<void *>::getTombstoneKey();
+    return mlir::edsc::StmtBlock(
+        static_cast<mlir::edsc::StmtBlock::ImplType *>(pointer));
+  }
+  static unsigned getHashValue(mlir::edsc::StmtBlock val) {
+    return mlir::edsc::hash_value(val);
+  }
+  static bool isEqual(mlir::edsc::StmtBlock LHS, mlir::edsc::StmtBlock RHS) {
     return LHS.getStoragePtr() == RHS.getStoragePtr();
   }
 };
@@ -516,13 +579,18 @@ Expr select(Expr cond, Expr lhs, Expr rhs);
 Expr vector_type_cast(Expr memrefExpr, Type memrefType);
 
 Stmt Return(ArrayRef<Expr> values = {});
-Stmt StmtList(llvm::ArrayRef<Stmt> stmts);
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
          llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(llvm::ArrayRef<Expr> indices, llvm::ArrayRef<Expr> lbs,
          llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Expr> steps,
          llvm::ArrayRef<Stmt> enclosedStmts);
+
+StmtBlock block(llvm::ArrayRef<Bindable> args, llvm::ArrayRef<Type> argTypes,
+                llvm::ArrayRef<Stmt> stmts);
+inline StmtBlock block(llvm::ArrayRef<Stmt> stmts) {
+  return block({}, {}, stmts);
+}
 
 /// This helper class exists purely for sugaring purposes and allows writing
 /// expressions such as:

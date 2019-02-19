@@ -137,6 +137,8 @@ static void printDefininingStatement(llvm::raw_ostream &os, const Value &v) {
   }
   if (auto forInst = getForInductionVarOwner(&v)) {
     forInst->getInstruction()->print(os);
+  } else if (auto *bbArg = dyn_cast<BlockArgument>(&v)) {
+    os << "block_argument";
   } else {
     os << "unknown_ssa_value";
   }
@@ -155,8 +157,9 @@ MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
                                       *v));
   auto it = ssaBindings.insert(std::make_pair(e, v));
   if (!it.second) {
-    printDefininingStatement(
-        llvm::errs() << "\nRebinding " << e << " @" << e.getStoragePtr(), *v);
+    printDefininingStatement(llvm::errs() << "\nRebinding " << e << " @"
+                                          << e.getStoragePtr() << " ",
+                             *v);
     llvm_unreachable("Double binding!");
   }
   return *this;
@@ -381,23 +384,19 @@ mlir::edsc::MLIREmitter::emitExprs(ArrayRef<Expr> exprs) {
 void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   auto *block = builder->getBlock();
   auto ip = builder->getInsertionPoint();
-  // Blocks are just a containing abstraction, they do not emit their RHS.
-  if (stmt.getRHS().getKind() != ExprKind::StmtList) {
-    auto *val = emitExpr(stmt.getRHS());
-    if (!val) {
-      assert((stmt.getRHS().getKind() == ExprKind::Dealloc ||
-              stmt.getRHS().getKind() == ExprKind::Store ||
-              stmt.getRHS().getKind() == ExprKind::Return) &&
-             "dealloc, store or return expected as the only 0-result ops");
-      return;
-    }
-    // Force create a bindable from stmt.lhs and bind it.
-    bind(Bindable(stmt.getLHS()), val);
-    if (stmt.getRHS().getKind() == ExprKind::For) {
-      // Step into the loop.
-      builder->setInsertionPointToStart(
-          getForInductionVarOwner(val)->getBody());
-    }
+  auto *val = emitExpr(stmt.getRHS());
+  if (!val) {
+    assert((stmt.getRHS().getKind() == ExprKind::Dealloc ||
+            stmt.getRHS().getKind() == ExprKind::Store ||
+            stmt.getRHS().getKind() == ExprKind::Return) &&
+           "dealloc, store or return expected as the only 0-result ops");
+    return;
+  }
+  // Force create a bindable from stmt.lhs and bind it.
+  bind(Bindable(stmt.getLHS()), val);
+  if (stmt.getRHS().getKind() == ExprKind::For) {
+    // Step into the loop.
+    builder->setInsertionPointToStart(getForInductionVarOwner(val)->getBody());
   }
   emitStmts(stmt.getEnclosedStmts());
   builder->setInsertionPoint(block, ip);
@@ -407,6 +406,35 @@ void mlir::edsc::MLIREmitter::emitStmts(ArrayRef<Stmt> stmts) {
   for (auto &stmt : stmts) {
     emitStmt(stmt);
   }
+}
+
+mlir::edsc::MLIREmitter &
+mlir::edsc::MLIREmitter::emitBlock(const StmtBlock &block) {
+  // If we have already emitted this block, do nothing.
+  if (blockBindings.count(block) != 0)
+    return *this;
+
+  // Otherwise, save the current insertion point.
+  auto previousBlock = builder->getInsertionBlock();
+  auto previousInstr = builder->getInsertionPoint();
+
+  // Create a new IR block and emit the enclosed statements in that block.  Bind
+  // the block argument expressions to the arguments of the emitted IR block.
+  auto irBlock = builder->createBlock();
+  blockBindings.insert({block, irBlock});
+  for (const auto &kvp :
+       llvm::zip(block.getArguments(), block.getArgumentTypes())) {
+    Bindable expr = std::get<0>(kvp);
+    assert(expr.getKind() == ExprKind::Unbound &&
+           "cannot use bound expressions as block arguments");
+    Type type = std::get<1>(kvp);
+    bind(expr, irBlock->addArgument(type));
+  }
+  emitStmts(block.getBody());
+
+  // And finally restore the original insertion point.
+  builder->setInsertionPoint(previousBlock, previousInstr);
+  return *this;
 }
 
 static bool isDynamicSize(int size) { return size < 0; }

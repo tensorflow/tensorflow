@@ -5,6 +5,19 @@
 // CHECK-DAG: #[[diffmap:.*]] = (d0, d1) -> (d0 - d1)
 // CHECK-DAG: #[[addmap:.*]] = (d0, d1) -> (d0 + d1)
 
+// This function will be detected by the test pass that will insert
+// EDSC-constructed blocks with arguments.
+// CHECK-LABEL: @blocks
+func @blocks() {
+  return
+//CHECK:      ^bb1(%0: i32, %1: i32):	// no predecessors
+//CHECK-NEXT:   %2 = addi %0, %1 : i32
+//CHECK-NEXT:   return
+//CHECK:      ^bb2(%3: i32, %4: i32):	// no predecessors
+//CHECK-NEXT:   %5 = subi %3, %4 : i32
+//CHECK-NEXT:   return
+}
+
 // This function will be detected by the test pass that will insert an
 // EDSC-constructed empty `for` loop that corresponds to
 //   for %arg0 to %arg1 step 2

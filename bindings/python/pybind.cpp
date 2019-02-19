@@ -66,6 +66,7 @@ namespace py = pybind11;
 struct PythonBindable;
 struct PythonExpr;
 struct PythonStmt;
+struct PythonBlock;
 
 struct PythonFunction {
   PythonFunction() : function{nullptr} {}
@@ -198,6 +199,19 @@ struct PythonStmt {
   edsc_stmt_t stmt;
 };
 
+struct PythonBlock {
+  PythonBlock() : blk{nullptr} {}
+  PythonBlock(const edsc_block_t &other) : blk{other} {}
+  PythonBlock(const PythonBlock &other) = default;
+  operator edsc_block_t() { return blk; }
+  std::string str() {
+    assert(blk && "unexpected empty block");
+    return StmtBlock(blk).str();
+  }
+
+  edsc_block_t blk;
+};
+
 struct PythonIndexed : public edsc_indexed_t {
   PythonIndexed() : edsc_indexed_t{makeIndexed(PythonBindable())} {}
   PythonIndexed(PythonExpr e) : edsc_indexed_t{makeIndexed(e)} {}
@@ -229,6 +243,8 @@ struct MLIRFunctionEmitter {
     return bindMemRefView(boundMemRef.base);
   }
   void emit(PythonStmt stmt);
+  void emitBlock(PythonBlock block);
+  void emitBlockBody(PythonBlock block);
 
 private:
   mlir::Function *currentFunction;
@@ -334,6 +350,14 @@ void MLIRFunctionEmitter::emit(PythonStmt stmt) {
   emitter.emitStmt(Stmt(stmt));
 }
 
+void MLIRFunctionEmitter::emitBlock(PythonBlock block) {
+  emitter.emitBlock(StmtBlock(block));
+}
+
+void MLIRFunctionEmitter::emitBlockBody(PythonBlock block) {
+  emitter.emitStmts(StmtBlock(block).getBody());
+}
+
 PYBIND11_MODULE(pybind, m) {
   m.doc() =
       "Python bindings for MLIR Embedded Domain-Specific Components (EDSCs)";
@@ -345,7 +369,7 @@ PYBIND11_MODULE(pybind, m) {
 
   m.def("Block", [](const py::list &stmts) {
     SmallVector<edsc_stmt_t, 8> owning;
-    return PythonStmt(::StmtList(makeCStmts(owning, stmts)));
+    return PythonBlock(::Block(makeCStmts(owning, stmts)));
   });
   m.def("For", [](const py::list &ivs, const py::list &lbs, const py::list &ubs,
                   const py::list &steps, const py::list &stmts) {
@@ -406,6 +430,11 @@ PYBIND11_MODULE(pybind, m) {
                              "Wrapping class for mlir::Function.")
       .def(py::init<PythonFunction>())
       .def("__str__", &PythonFunction::str);
+
+  py::class_<PythonBlock>(m, "StmtBlock",
+                          "Wrapping class for mlir::edsc::StmtBlock")
+      .def(py::init<PythonBlock>())
+      .def("__str__", &PythonBlock::str);
 
   py::class_<PythonType>(m, "Type", "Wrapping class for mlir::Type.")
       .def(py::init<PythonType>())
@@ -506,7 +535,12 @@ PYBIND11_MODULE(pybind, m) {
            "support load and store operations")
       .def("emit", &MLIRFunctionEmitter::emit,
            "Emits the MLIR for the EDSC expressions and statements in the "
-           "current function body.");
+           "current function body.")
+      .def("emit", &MLIRFunctionEmitter::emitBlock,
+           "Emits the MLIR for the EDSC statements into a new block")
+      .def("emit_inplace", &MLIRFunctionEmitter::emitBlockBody,
+           "Emits the MLIR for the EDSC statements contained in a EDSC block "
+           "into the current function body without creating a new block");
 
   py::class_<PythonExpr>(m, "Expr", "Wrapping class for mlir::edsc::Expr")
       .def(py::init<PythonBindable>())

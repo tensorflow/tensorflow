@@ -32,7 +32,7 @@ class EdscTest(unittest.TestCase):
                 [output.store([i, *ivs, j], input.load([j, *ivs, i]))]),
           E.Return()
       ])
-      emitter.emit(loop)
+      emitter.emit_inplace(loop)
 
       # print(f) # uncomment to see the emitted IR
       str = f.__str__()

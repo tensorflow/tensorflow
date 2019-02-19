@@ -56,6 +56,7 @@ namespace edsc {
 ///     FuncBuilder.
 struct MLIREmitter {
   using BindingMap = llvm::DenseMap<Expr, Value *>;
+  using BlockMap = llvm::DenseMap<StmtBlock, Block *>;
 
   MLIREmitter(FuncBuilder *builder, Location location);
 
@@ -102,6 +103,10 @@ struct MLIREmitter {
   /// Prerequisites: all the Bindables have been bound.
   void emitStmt(const Stmt &stmt);
   void emitStmts(llvm::ArrayRef<Stmt> stmts);
+
+  /// Inserts a new IR block using the builder and emits the body of `block`
+  /// into it.
+  MLIREmitter &emitBlock(const StmtBlock &block);
 
   /// Returns the Value* bound to expr.
   /// Prerequisite: it must exist.
@@ -170,6 +175,7 @@ private:
   FuncBuilder *builder;
   Location location;
   BindingMap ssaBindings;
+  BlockMap blockBindings;
   // These are so ubiquitous that we make them bound and available to all.
   Expr zeroIndex, oneIndex;
 };
