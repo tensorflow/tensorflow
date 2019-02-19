@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/tools/hlo_matcher.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 
@@ -53,26 +54,23 @@ class TestMatcher : public HloMatcher {
 };
 
 TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
-  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  std::string hlo = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
-  auto i2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
-  auto i3 =
-      builder.AddInstruction(HloInstruction::CreateParameter(2, shape, "in3"));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
-  auto add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, add1, i3));
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  p2 = f32[10,10] parameter(2)
+  add1 = f32[10,10] add(p0, p1)
+  add2 = f32[10,10] add(add1, p2)
+  ROOT root = (f32[10,10]) tuple(add2)
+ }
+)";
 
-  builder.AddInstruction(HloInstruction::CreateTuple({add2}));
-
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
 
   // clang-format off
   std::vector<HloMatcherPattern> patterns = {
@@ -90,33 +88,31 @@ TEST_F(HloMatcherTest, MatchTestSimpleReplacementTwice) {
   };
   // clang-format on
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(hlo_module);
   TestMatcher matcher(patterns, annotations, false);
 
-  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
   ASSERT_EQ(2, matcher.replace_count);
   EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
 }
 
 TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
-  Shape shape = ShapeUtil::MakeShape(F32, {10, 10});
+  std::string hlo = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape, "in1"));
-  auto i2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape, "in2"));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i1));
-  auto add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape, HloOpcode::kAdd, i1, i2));
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  add1 = f32[10,10] add(p0, p0)
+  add2 = f32[10,10] add(p0, p1)
+  ROOT root = (f32[10,10], f32[10,10]) tuple(add1, add2)
+ }
+)";
 
-  builder.AddInstruction(HloInstruction::CreateTuple({add1, add2}));
-
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
 
   // clang-format off
   std::vector<HloMatcherPattern> patterns = {
@@ -134,48 +130,33 @@ TEST_F(HloMatcherTest, MatchTestExplicitInputs) {
   };
   // clang-format on
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(hlo_module);
   TestMatcher matcher(patterns, annotations, false);
 
-  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
   ASSERT_EQ(1, matcher.replace_count);
   EXPECT_EQ(5, hlo_module->entry_computation()->instruction_count());
 }
 
 TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
-  Shape shape2 = ShapeUtil::MakeShape(F32, {10});
+  std::string hlo = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 =
-      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 =
-      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, i2));
-  auto add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, add1, b1));
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  p2 = f32[10] parameter(2)
+  b1 = f32[10,10] broadcast(p2), dimensions={1}
+  add1 = f32[10,10] add(p0, p1), metadata={op_type="Add" op_name="long/add1"}
+  add2 = f32[10,10] add(add1, b1), metadata={op_type="Add" op_name="long/add2"}
+  ROOT root = (f32[10,10]) tuple(add2)
+ }
+)";
 
-  builder.AddInstruction(HloInstruction::CreateTuple({add2}));
-
-  OpMetadata add1_md;
-  add1_md.set_op_type("Add");
-  add1_md.set_op_name("long/add1");
-  add1->set_metadata(add1_md);
-
-  OpMetadata add2_md;
-  add2_md.set_op_type("Add");
-  add2_md.set_op_name("long/add2");
-  add2->set_metadata(add2_md);
-
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
 
   // clang-format off
   std::vector<HloMatcherPattern> patterns = {
@@ -205,9 +186,9 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
   };
   // clang-format on
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(hlo_module);
   TestMatcher matcher(patterns, annotations, false);
-  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
 
   ASSERT_EQ(2, matcher.replace_count);
   EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
@@ -221,39 +202,27 @@ TEST_F(HloMatcherTest, MatchTestTwoPatterns) {
 }
 
 TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
-  Shape shape2 = ShapeUtil::MakeShape(F32, {10});
+  std::string hlo = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 =
-      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 =
-      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
-  auto sub1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, b1));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  p2 = f32[10] parameter(2)
+  b1 = f32[10,10] broadcast(p2), dimensions={1},
+       metadata={op_type="Broadcast" op_name="long/bc"},
+       sharding={maximal device=1}
+  sub1 = f32[10,10] subtract(p0, b1)
+  add1 = f32[10,10] add(p1, b1)
+  sub2 = f32[10,10] subtract(add1, sub1)
+  ROOT root = (f32[10,10]) tuple(sub2)
+ }
+)";
 
-  auto sub2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
-
-  builder.AddInstruction(HloInstruction::CreateTuple({sub2}));
-
-  OpMetadata md;
-  md.set_op_type("Broadcast");
-  md.set_op_name("long/bc");
-  b1->set_metadata(md);
-
-  b1->set_device_sharding(1);
-
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
 
   // clang-format off
   std::vector<HloMatcherPattern> patterns = {
@@ -272,10 +241,10 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
   };
   // clang-format on
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(hlo_module);
   TestMatcher matcher(patterns, annotations, false);
 
-  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
   ASSERT_EQ(1, matcher.replace_count);
   EXPECT_EQ(8, hlo_module->entry_computation()->instruction_count());
 
@@ -289,32 +258,25 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoining) {
 }
 
 TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
-  Shape shape2 = ShapeUtil::MakeShape(F32, {10});
+  std::string hlo = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 =
-      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 =
-      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, b1));
-  auto add2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  p2 = f32[10] parameter(2)
+  b1 = f32[10,10] broadcast(p2), dimensions={1}
+  add1 = f32[10,10] add(p0, b1)
+  add2 = f32[10,10] add(p1, b1)
+  sub1 = f32[10,10] subtract(add1, add2)
+  ROOT root = (f32[10,10]) tuple(sub1)
+ }
+)";
 
-  auto sub1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, add2));
-
-  builder.AddInstruction(HloInstruction::CreateTuple({sub1}));
-
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
 
   // clang-format off
   std::vector<HloMatcherPattern> patterns = {
@@ -333,41 +295,34 @@ TEST_F(HloMatcherTest, MatchTestGraphWithPathsJoiningOnMultipleMatchNode) {
   };
   // clang-format on
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(hlo_module);
   TestMatcher matcher(patterns, annotations, false);
 
-  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
   EXPECT_EQ(2, matcher.replace_count);
   EXPECT_EQ(7, hlo_module->entry_computation()->instruction_count());
 }
 
 TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {10, 10});
-  Shape shape2 = ShapeUtil::MakeShape(F32, {10});
+  std::string hlo = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 =
-      builder.AddInstruction(HloInstruction::CreateParameter(1, shape1, "in2"));
-  auto i3 =
-      builder.AddInstruction(HloInstruction::CreateParameter(2, shape2, "in3"));
-  auto b1 =
-      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i3, {1}));
-  auto sub1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, b1));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i2, b1));
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  p2 = f32[10] parameter(2)
+  b1 = f32[10,10] broadcast(p2), dimensions={1}
+  sub1 = f32[10,10] subtract(p0, p1)
+  add1 = f32[10,10] add(p1, b1)
+  sub2 = f32[10,10] subtract(add1, sub1)
+  ROOT root = (f32[10,10]) tuple(sub2)
+ }
+)";
 
-  auto sub2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
-
-  builder.AddInstruction(HloInstruction::CreateTuple({sub2}));
-
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
 
   // clang-format off
   std::vector<HloMatcherPattern> patterns = {
@@ -387,38 +342,34 @@ TEST_F(HloMatcherTest, MatchTestGraphWithMatchedByNonRemovedNodes) {
   };
   // clang-format on
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(hlo_module);
   TestMatcher matcher(patterns, annotations, false);
 
-  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
   ASSERT_EQ(1, matcher.replace_count);
   EXPECT_EQ(2, matcher.match_count[0]);
   EXPECT_EQ(7, hlo_module->entry_computation()->instruction_count());
 }
 
 TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
-  Shape shape1 = ShapeUtil::MakeShape(F32, {10});
+  std::string hlo = R"(
+HloModule top
 
-  auto builder = HloComputation::Builder(TestName());
-  auto i1 =
-      builder.AddInstruction(HloInstruction::CreateParameter(0, shape1, "in1"));
-  auto i2 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::One(F32)));
-  auto bc =
-      builder.AddInstruction(HloInstruction::CreateBroadcast(shape1, i2, {}));
-  auto sub1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, i1, bc));
-  auto add1 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kAdd, i1, bc));
-  auto sub2 = builder.AddInstruction(
-      HloInstruction::CreateBinary(shape1, HloOpcode::kSubtract, add1, sub1));
+ENTRY c1 {
+  p0 = f32[10] parameter(0)
+  p1 = f32[] constant(1.0)
+  b1 = f32[10] broadcast(p1), dimensions={0}
+  sub1 = f32[10,10] subtract(p0, b1)
+  add1 = f32[10,10] add(p0, b1)
+  sub2 = f32[10,10] subtract(add1, sub1)
+  ROOT root = (f32[10,10]) tuple(sub2)
+ }
+)";
 
-  builder.AddInstruction(HloInstruction::CreateTuple({sub2}));
-
-  auto computation = builder.Build();
-
-  auto hlo_module = CreateNewVerifiedModule();
-  hlo_module->AddEntryComputation(std::move(computation));
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
 
   // clang-format off
   std::vector<HloMatcherPattern> patterns = {
@@ -437,10 +388,10 @@ TEST_F(HloMatcherTest, OutlineWithInstructionsNotRemoved) {
   };
   // clang-format on
 
-  CompilerAnnotations annotations(hlo_module.get());
+  CompilerAnnotations annotations(hlo_module);
   TestMatcher matcher(patterns, annotations, false);
 
-  EXPECT_TRUE(matcher.Run(hlo_module.get()).ValueOrDie());
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
   ASSERT_EQ(1, matcher.replace_count);
   EXPECT_EQ(7, hlo_module->entry_computation()->instruction_count());
 
