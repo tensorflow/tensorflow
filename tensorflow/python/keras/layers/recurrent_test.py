@@ -1162,6 +1162,30 @@ class RNNTest(keras_parameterized.TestCase):
       result_1[5, 3:] = 0
       self.assertAllClose(result_1, result_2)
 
+  def test_unroll_single_step(self):
+    """Even if the time dimension is only one, we should be able to unroll."""
+    cell = keras.layers.SimpleRNNCell(5)
+    x = keras.Input((1, 5))
+    layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
+    y = layer(x)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    np_x = np.ones((6, 1, 5))
+    result = model.predict(np_x)
+    self.assertEqual((6, 1, 5), result.shape)
+
+  def test_unroll_zero_step(self):
+    """If the time dimension is None, we should fail to unroll."""
+    cell = keras.layers.SimpleRNNCell(5)
+    x = keras.Input((None, 5))
+    layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
+    with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
+      layer(x)
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
