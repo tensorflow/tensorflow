@@ -3789,6 +3789,10 @@ tf_module {
     argspec: "args=[\'input\', \'unit\', \'name\'], varargs=None, keywords=None, defaults=[\'BYTE\', \'None\'], "
   }
   member_method {
+    name: "StringLower"
+    argspec: "args=[\'input\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "StringSplit"
     argspec: "args=[\'input\', \'delimiter\', \'skip_empty\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'None\'], "
   }
@@ -3815,6 +3819,10 @@ tf_module {
   member_method {
     name: "StringToNumber"
     argspec: "args=[\'string_tensor\', \'out_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\", \'None\'], "
+  }
+  member_method {
+    name: "StringUpper"
+    argspec: "args=[\'input\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Sub"
