@@ -174,6 +174,22 @@ TEST(FloatActivationsOpTest, Tanh) {
                              })));
 }
 
+TEST(FloatActivationsOpTest, Elu) {
+  FloatActivationsOpModel m(BuiltinOperator_ELU,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 0, -0.9975212, 2, 4,    //
+                                 3, -0.86466473, 10, 1,  //
+                             })));
+}
+
+
 TEST(QuantizedActivationsOpTest, Relu6Uint8) {
   const float kMin = -1;
   const float kMax = 127.f / 128.f;

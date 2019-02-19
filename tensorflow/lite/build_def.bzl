@@ -243,6 +243,7 @@ def generated_test_models():
         "div",
         "equal",
         "exp",
+        "elu",
         "expand_dims",
         "fill",
         "floor",

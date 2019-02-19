@@ -119,6 +119,7 @@ Here is a list of TensorFlow operations that are usually removed from the graph:
 *   [tf.nn.bias_add](https://www.tensorflow.org/api_docs/python/tf/nn/bias_add)
 *   [tf.nn.fused_batch_norm](https://www.tensorflow.org/api_docs/python/tf/nn/fused_batch_norm)
 *   [tf.nn.relu](https://www.tensorflow.org/api_docs/python/tf/nn/relu)
+*   [tf.nn.elu](https://www.tensorflow.org/api_docs/python/tf/nn/elu)
 *   [tf.nn.relu6](https://www.tensorflow.org/api_docs/python/tf/nn/relu6)
 
 Note that many of those operations don't have TensorFlow Lite equivalents and
@@ -744,6 +745,17 @@ Inputs {
 }
 Outputs {
   0: a tensor equivalent to max(0, input)
+}
+```
+
+**ELU**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to exp(features) - 1 if input < 0, input otherwise
 }
 ```
 

@@ -2356,6 +2356,16 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
   }
 }
 
+inline void Elu(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Elu (not fused)");
+
+  const auto input = MapAsVector(input_data, input_shape);
+  auto output = MapAsVector(output_data, output_shape);
+  output = input.cwiseMax(0.0f);
+}
+
+
 inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
                                              int32* output_inv_sqrt,
                                              int* output_shift) {

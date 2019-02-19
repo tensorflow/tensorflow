@@ -126,6 +126,7 @@ TfLiteRegistration* Register_ZEROS_LIKE();
 TfLiteRegistration* Register_FLOOR_MOD();
 TfLiteRegistration* Register_RANGE();
 TfLiteRegistration* Register_LEAKY_RELU();
+TfLiteRegistration* Register_ELU();
 TfLiteRegistration* Register_SQUARED_DIFFERENCE();
 TfLiteRegistration* Register_FILL();
 TfLiteRegistration* Register_MIRROR_PAD();
@@ -275,6 +276,7 @@ BuiltinRefOpResolver::BuiltinRefOpResolver() {
   AddBuiltin(BuiltinOperator_FLOOR_MOD, Register_FLOOR_MOD());
   AddBuiltin(BuiltinOperator_RANGE, Register_RANGE());
   AddBuiltin(BuiltinOperator_LEAKY_RELU, Register_LEAKY_RELU());
+  AddBuiltin(BuiltinOperator_ELU, Register_ELU());
   AddBuiltin(BuiltinOperator_SQUARED_DIFFERENCE, Register_SQUARED_DIFFERENCE());
   AddBuiltin(BuiltinOperator_FILL, Register_FILL());
   AddBuiltin(BuiltinOperator_MIRROR_PAD, Register_MIRROR_PAD());

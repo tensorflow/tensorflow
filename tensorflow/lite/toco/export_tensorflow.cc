@@ -806,6 +806,17 @@ void ConvertTanhOperator(const TanhOperator& src_op,
   (*tanh_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertEluOperator(const Model& model, const EluOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* elu_op = tensorflow_graph->add_node();
+  elu_op->set_op("Elu");
+  elu_op->set_name(src_op.outputs[0]);
+  *elu_op->add_input() = src_op.inputs[0];
+  (*elu_op->mutable_attr())["T"].set_type(
+      GetTensorFlowDataType(model, src_op.outputs[0]));
+}
+
+
 void ConvertSoftmaxOperator(const Model& model, const SoftmaxOperator& src_op,
                             GraphDef* tensorflow_graph) {
   string softmax_input;
@@ -2132,6 +2143,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
                             tensorflow_graph);
   } else if (src_op.type == OperatorType::kTanh) {
     ConvertTanhOperator(static_cast<const TanhOperator&>(src_op),
+                        tensorflow_graph);
+  } else if (src_op.type == OperatorType::kElu) {
+    ConvertEluOperator(model, static_cast<const EluOperator&>(src_op),
                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kL2Normalization) {
     ConvertL2NormalizationOperator(

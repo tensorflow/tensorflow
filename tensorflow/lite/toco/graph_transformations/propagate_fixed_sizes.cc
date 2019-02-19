@@ -2095,6 +2095,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kLogicalOr:
     case OperatorType::kZerosLike:
     case OperatorType::kReverseV2:
+    case OperatorType::kElu:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:

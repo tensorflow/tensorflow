@@ -40,6 +40,7 @@ bool IsElementwiseOperator(OperatorType optype) {
     case OperatorType::kTanh:
     case OperatorType::kSqrt:
     case OperatorType::kSquare:
+    case OperatorType::kElu:
       return true;
     default:
       return false;

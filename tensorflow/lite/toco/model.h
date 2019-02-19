@@ -51,6 +51,7 @@ enum class OperatorType : uint8 {
   kSpaceToDepth,
   kDequantize,
   kDiv,
+  kElu,
   kExp,
   kExpandDims,
   kFill,
@@ -747,6 +748,17 @@ struct LeakyReluOperator : Operator {
   LeakyReluOperator() : Operator(OperatorType::kLeakyRelu) {}
 
   float alpha = 0.2f;  // 0.2 matches the default value for the TF op attribute.
+};
+
+// Element-wise Elu operator:
+//  f(x) = exp(x) - 1  for x =< 0, f(x) = x for x > 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Elu
+struct EluOperator : Operator {
+  EluOperator() : Operator(OperatorType::kElu) {}
 };
 
 // Element-wise Logistic operator:

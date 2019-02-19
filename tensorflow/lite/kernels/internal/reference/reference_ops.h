@@ -457,6 +457,17 @@ inline void LeakyRelu(const tflite::LeakyReluParams& params,
   }
 }
 
+inline void Elu(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const float val = input_data[i];
+    const float clamped = val > 0 ? val : (std::exp(val) -1);
+    output_data[i] = clamped;
+  }
+}
+
+
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const float* input_data,
