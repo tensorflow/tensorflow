@@ -120,6 +120,8 @@ class XlaLocalBackend(Backend):
   def __init__(self, platform=None):
     platform = platform or _get_default_platform_name()
     self.client = c_api.LocalClient.Get(_maybe_encode_string(platform))
+    self._delete_buffer = c_api.DeleteLocalShapedBuffer
+    self._delete_executable = c_api.DeleteLocalExecutable
 
   def device_count(self):
     return self.client.DeviceCount()
@@ -128,7 +130,7 @@ class XlaLocalBackend(Backend):
     return c_api.LocalShapedBuffer.FromLiteral(pyval, None, self.client, device)
 
   def delete_buffer(self, c_buffer):
-    c_api.DeleteLocalShapedBuffer(c_buffer)
+    self._delete_buffer(c_buffer)
 
   def destructure_tuple(self, c_buffer):
     result = c_buffer.DestructureTuple()
@@ -139,8 +141,7 @@ class XlaLocalBackend(Backend):
     return c_computation.Compile(argument_shapes, compile_options, self.client)
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.LocalExecutable)
-    c_api.DeleteLocalExecutable(executable)
+    self._delete_executable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -156,6 +157,8 @@ class XrtBackend(Backend):
 
   def __init__(self, target):
     self.target = target
+    self._delete_buffer = xrt_api.DeleteXrtAllocation
+    self._delete_executable = xrt_api.DeleteXrtExecutable
 
   def device_count(self):
     return 1  # Multidevice execution not implemented.
@@ -168,7 +171,7 @@ class XrtBackend(Backend):
                                              _maybe_encode_string(self.target))
 
   def delete_buffer(self, c_buffer):
-    xrt_api.DeleteXrtAllocation(c_buffer)
+    self._delete_buffer(c_buffer)
 
   def destructure_tuple(self, c_buffer):
     result = xrt_api.DestructureXrtAllocationTuple(
@@ -182,8 +185,7 @@ class XrtBackend(Backend):
         _maybe_encode_string(self.target))
 
   def delete_executable(self, executable):
-    assert isinstance(executable, xrt_api.XrtExecutable)
-    xrt_api.DeleteXrtExecutable(executable)
+    self._delete_executable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -675,6 +677,7 @@ class Computation(object):
     self._c_computation = c_computation
     # The backend argument is deprecated. Pass a backend to Compile() instead.
     self._backend = backend
+    self._delete_computation = c_api.DeleteComputation
 
   @property
   def computation(self):
@@ -761,10 +764,8 @@ class Computation(object):
     return _wrap_shape(self._c_computation.GetReturnValueShape())
 
   def __del__(self):
-    # Python may have freed c_api first.
-    if c_api and self._c_computation:
-      assert isinstance(self._c_computation, c_api.Computation)
-      c_api.DeleteComputation(self._c_computation)
+    if self._c_computation:
+      self._delete_computation(self._c_computation)
 
 
 class Executable(object):
