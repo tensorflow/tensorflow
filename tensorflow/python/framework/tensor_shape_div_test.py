@@ -40,8 +40,8 @@ class DimensionDivTest(test_util.TensorFlowTestCase):
     """Without from __future__ import division, __rdiv__ is used."""
     if six.PY2:  # Old division exists only in Python 2
       two = tensor_shape.Dimension(2)
-      message = (r"unsupported operand type\(s\) for \/: "
-                 r"'int' and 'Dimension', please use \/\/ instead")
+      message = (r"unsupported operand type\(s\) for /: "
+                 r"'int' and 'Dimension', please use // instead")
       with self.assertRaisesRegexp(TypeError, message):
         _ = 6 / two
 
