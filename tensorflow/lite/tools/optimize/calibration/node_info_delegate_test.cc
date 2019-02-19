@@ -21,7 +21,7 @@ limitations under the License.
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
-#include "tensorflow/lite/tools/optimize/node_info_delegate.h"
+#include "tensorflow/lite/tools/optimize/calibration/node_info_delegate.h"
 #include "tensorflow/lite/tools/optimize/test_util.h"
 
 namespace {

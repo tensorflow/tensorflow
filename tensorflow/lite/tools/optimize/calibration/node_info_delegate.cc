@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/node_info_delegate.h"
+#include "tensorflow/lite/tools/optimize/calibration/node_info_delegate.h"
 
 namespace tflite {
 namespace optimize {

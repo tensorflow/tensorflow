@@ -12,7 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include "tensorflow/lite/tools/optimize/calibrator.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 
 #include <fstream>
 #include <memory>
@@ -30,11 +30,11 @@ limitations under the License.
 #include "tensorflow/lite/op_resolver.h"
 #include "tensorflow/lite/schema/schema_generated.h"
 #include "tensorflow/lite/string_util.h"
-#include "tensorflow/lite/tools/optimize/calibration_common.h"
-#include "tensorflow/lite/tools/optimize/calibration_logger.h"
-#include "tensorflow/lite/tools/optimize/calibration_reader.h"
-#include "tensorflow/lite/tools/optimize/logging_op_resolver.h"
-#include "tensorflow/lite/tools/optimize/node_info_delegate.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_logger.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/logging_op_resolver.h"
+#include "tensorflow/lite/tools/optimize/calibration/node_info_delegate.h"
 
 namespace tflite {
 namespace optimize {

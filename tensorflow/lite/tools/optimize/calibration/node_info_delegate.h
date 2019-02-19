@@ -18,7 +18,7 @@ limitations under the License.
 #include <unordered_map>
 
 #include "tensorflow/lite/context.h"
-#include "tensorflow/lite/tools/optimize/calibration_common.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_common.h"
 
 namespace tflite {
 namespace optimize {
