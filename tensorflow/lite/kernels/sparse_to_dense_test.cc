@@ -13,8 +13,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
 #include <gtest/gtest.h>
+#include <cstdarg>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -62,8 +62,8 @@ class SparseToDenseOpModel : public SingleOpModel {
   int output_;
 };
 
-TEST(SparseToDenseOpModelTest, ZeroDimensionTest) {
-  SparseToDenseOpModel<float> m({1}, {1}, {1}, 0, TensorType_INT32,
+TEST(SparseToDenseOpModelTest, ValueZeroDimIndicesZeroDimTest) {
+  SparseToDenseOpModel<float> m({}, {1}, {}, 0, TensorType_INT32,
                                 TensorType_FLOAT32);
   m.PopulateTensor<int32_t>(m.indices(), {3});
   m.PopulateTensor<int32_t>(m.output_shape(), {5});
@@ -72,6 +72,32 @@ TEST(SparseToDenseOpModelTest, ZeroDimensionTest) {
 
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 7, 0}));
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({5}));
+}
+
+TEST(SparseToDenseOpModelTest, ValueZeroDimIndicesOneDimTest) {
+  SparseToDenseOpModel<float> m({2}, {1}, {}, 0, TensorType_INT32,
+                                TensorType_FLOAT32);
+  m.PopulateTensor<int32_t>(m.indices(), {3, 4});
+  m.PopulateTensor<int32_t>(m.output_shape(), {5});
+  m.PopulateTensor<float>(m.values(), {9});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 9, 9}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({5}));
+}
+
+TEST(SparseToDenseOpModelTest, ValueZeroDimIndicesTwoDimTest) {
+  SparseToDenseOpModel<float> m({3, 3}, {3}, {}, 0, TensorType_INT32,
+                                TensorType_FLOAT32);
+  m.PopulateTensor<int32_t>(m.indices(), {0, 0, 0, 1, 2, 1, 2, 0, 1});
+  m.PopulateTensor<int32_t>(m.output_shape(), {3, 3, 3});
+  m.PopulateTensor<float>(m.values(), {3});
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray({3, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+                                0, 0, 3, 0, 0, 3, 0, 0, 0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({3, 3, 3}));
 }
 
 TEST(SparseToDenseOpModelTest, OneDimensionTest) {

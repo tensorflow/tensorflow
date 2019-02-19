@@ -4399,44 +4399,48 @@ void SelectTrueCoords(const RuntimeShape& input_condition_shape,
   }
 }
 
-// For easy implementation, the indices is always a vector of size-4 vectors.
 template <typename T, typename TI>
-inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
-                          const T* values, T default_value,
+inline void SparseToDense(const TI* indices, const int num_indices,
+                          const int true_dim, const T* values, T default_value,
                           bool value_is_scalar,
                           const RuntimeShape& unextended_output_shape,
                           T* output_data) {
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
-  const RuntimeShape output_shape =
-      RuntimeShape::ExtendedShape(4, unextended_output_shape);
-  const int value_count = indices.size();
 
   // First fill the output_data with default value.
-  const int num_elements = output_shape.FlatSize();
+  const int num_elements = unextended_output_shape.FlatSize();
   for (int i = 0; i < num_elements; ++i) {
     output_data[i] = default_value;
   }
 
   // Special handle for value is scalar case to avoid checking the boolean
   // condition within the loop every time.
+  int indices_i = 0;
+  int dim_mul = 1;
   if (value_is_scalar) {
-    for (int i = 0; i < value_count; ++i) {
-      const std::vector<TI>& index = indices[i];
-      TFLITE_DCHECK_EQ(index.size(), 4);
+    for (int i = 0; i < num_indices; ++i) {
       const T value = *values;  // just use the first value.
-      output_data[Offset(output_shape, index[0], index[1], index[2],
-                         index[3])] = value;
+      indices_i = 0;
+      dim_mul = 1;
+      for (int j = true_dim - 1; j >= 0; --j) {
+        indices_i += indices[i * true_dim + j] * dim_mul;
+        dim_mul *= unextended_output_shape.Dims(j);
+      }
+      output_data[indices_i] = value;
     }
     return;
   }
 
   // Go through the values and indices to fill the sparse values.
-  for (int i = 0; i < value_count; ++i) {
-    const std::vector<TI>& index = indices[i];
-    TFLITE_DCHECK_EQ(index.size(), 4);
+  for (int i = 0; i < num_indices; ++i) {
     const T value = values[i];
-    output_data[Offset(output_shape, index[0], index[1], index[2], index[3])] =
-        value;
+    indices_i = 0;
+    dim_mul = 1;
+    for (int j = true_dim - 1; j >= 0; --j) {
+      indices_i += indices[i * true_dim + j] * dim_mul;
+      dim_mul *= unextended_output_shape.Dims(j);
+    }
+    output_data[indices_i] = value;
   }
 }
 

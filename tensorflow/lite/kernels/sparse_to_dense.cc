@@ -59,7 +59,7 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
   switch (NumDimensions(indices)) {
     case 0:
     case 1: {
-      if (NumDimensions(values) == 0) {
+      if (NumDimensions(values) != 0) {
         TF_LITE_ENSURE_EQ(context, NumElements(indices), NumElements(values));
       }
       TF_LITE_ENSURE_EQ(context, NumElements(output_shape), 1);
@@ -68,7 +68,7 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
     case 2: {
       TF_LITE_ENSURE_EQ(context, SizeOfDimension(indices, 1),
                         NumElements(output_shape));
-      if (NumDimensions(values) == 0)
+      if (NumDimensions(values) != 0)
         TF_LITE_ENSURE_EQ(context, SizeOfDimension(indices, 0),
                           NumElements(values));
       break;
@@ -82,22 +82,16 @@ TfLiteStatus CheckDimensionsMatch(TfLiteContext* context,
   return kTfLiteOk;
 }
 
-// Convert indices into a vector of 4-d vectors.
-// TODO(renjieliu): Revisit here to improve the performance, since multiple
-// allocations of std::vectors will be quite slow on phones.
 template <typename T>
 TfLiteStatus GetIndicesVector(TfLiteContext* context,
                               const TfLiteTensor* indices,
-                              const int num_indices,
-                              std::vector<std::vector<T>>* indices_vector) {
-  // Note because TfLite will reverse the dimensions, so pad zeros upfront.
+                              const int num_indices, T* indices_vector) {
   switch (NumDimensions(indices)) {
     case 0:
     case 1: {
       const auto indices_data = GetTensorData<T>(indices);
       for (int i = 0; i < num_indices; ++i) {
-        std::vector<T> index({0, 0, 0, indices_data[i]});
-        indices_vector->push_back(index);
+        indices_vector[i] = indices_data[i];
       }
       break;
     }
@@ -105,18 +99,10 @@ TfLiteStatus GetIndicesVector(TfLiteContext* context,
       const int true_dimensions = SizeOfDimension(indices, 1);
       TF_LITE_ENSURE(context, true_dimensions <= kMaxDimensions);
       for (int i = 0; i < num_indices; ++i) {
-        std::vector<T> index;
-        index.reserve(kMaxDimensions);
-        // Fill the index with 1 up to kMaxDimensions - true_dimensions to
-        // satisfy the needs for 4-dimension index.
-        for (int j = 0; j < kMaxDimensions - true_dimensions; ++j) {
-          index.push_back(0);
-        }
         for (int j = 0; j < true_dimensions; ++j) {
-          index.push_back(GetTensorData<T>(indices)[i * true_dimensions + j]);
+          indices_vector[i * true_dimensions + j] =
+              GetTensorData<T>(indices)[i * true_dimensions + j];
         }
-
-        indices_vector->push_back(index);
       }
       break;
     }
@@ -202,17 +188,20 @@ TfLiteStatus SparseToDenseImpl(TfLiteContext* context, TfLiteNode* node) {
                       ResizeOutputShape(context, output_shape, output));
   }
 
-  const int num_indices = SizeOfDimension(indices, 0);
+  const int num_indices =
+      NumDimensions(indices) == 0 ? 1 : SizeOfDimension(indices, 0);
+  const int true_dim =
+      NumDimensions(indices) == 2 ? SizeOfDimension(indices, 1) : 1;
   const bool value_is_scalar = NumDimensions(values) == 0;
-  std::vector<std::vector<TI>> indices_vector;
-  indices_vector.reserve(num_indices);
+  TI* indices_vector = (TI*)malloc(num_indices * true_dim * sizeof(TI));
   TF_LITE_ENSURE_OK(context, GetIndicesVector<TI>(context, indices, num_indices,
-                                                  &indices_vector));
-  reference_ops::SparseToDense(indices_vector, GetTensorData<T>(values),
-                               *GetTensorData<T>(default_value),
-                               value_is_scalar, GetTensorShape(output),
-                               GetTensorData<T>(output));
+                                                  indices_vector));
+  reference_ops::SparseToDense(
+      indices_vector, num_indices, true_dim, GetTensorData<T>(values),
+      *GetTensorData<T>(default_value), value_is_scalar, GetTensorShape(output),
+      GetTensorData<T>(output));
 
+  free(indices_vector);
   return kTfLiteOk;
 }
 
