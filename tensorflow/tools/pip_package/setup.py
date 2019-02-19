@@ -48,7 +48,7 @@ DOCLINES = __doc__.split('\n')
 _VERSION = '1.12.0'
 
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.1.6',
+    'absl-py >= 0.7.0',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
     'google_pasta >= 0.1.1',
