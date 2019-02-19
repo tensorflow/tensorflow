@@ -148,7 +148,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (!cfg_.disable_model_pruning()) {
     optimizers->push_back(MakeUnique<ModelPruner>());
   }
-  if (cfg_.implementation_selector() == RewriterConfig::ON) {
+  if (cfg_.implementation_selector() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<ImplementationSelector>());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {

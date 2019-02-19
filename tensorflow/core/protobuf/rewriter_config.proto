@@ -79,7 +79,7 @@ message RewriterConfig {
   // Force small ops onto the CPU (default is ON).
   Toggle pin_to_host_optimization = 18;
   // Enable the swap of kernel implementations based on the device placement
-  // (default is OFF).
+  // (default is ON).
   Toggle implementation_selector = 22;
   // Disable the entire meta optimizer (off by default).
   bool disable_meta_optimizer = 19;
