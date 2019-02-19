@@ -4,4 +4,8 @@ tf_module {
     name: "experimental_connect_to_host"
     argspec: "args=[\'remote_host\', \'job_name\'], varargs=None, keywords=None, defaults=[\'None\', \'worker\'], "
   }
+  member_method {
+    name: "experimental_run_functions_eagerly"
+    argspec: "args=[\'run_eagerly\'], varargs=None, keywords=None, defaults=None"
+  }
 }

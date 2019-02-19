@@ -210,6 +210,29 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     self._cached_shape_as_list = None
 
 
+RUN_FUNCTIONS_EAGERLY = False
+
+
+@tf_export("config.experimental_run_functions_eagerly")
+def run_functions_eagerly(run_eagerly):
+  """Enables / disables eager execution of `tf.function`s.
+
+  After calling `tf.config.experimental_run_functions_eagerly(True)` all
+  invocations of tf.function will run eagerly instead of running through a graph
+  function.
+
+  This can be useful for debugging or profiling.
+
+  Similarly, calling `tf.config.experimental_run_functions_eagerly(False)` will
+  revert the behavior of all functions to graph functions.
+
+  Args:
+    run_eagerly: Boolean. Whether to run functions eagerly.
+  """
+  global RUN_FUNCTIONS_EAGERLY
+  RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
+
+
 class FunctionDeleter(object):
 
   def __init__(self, func_graph):
@@ -382,6 +405,8 @@ class Function(object):
         self._python_function, self._input_signature)
 
   def __call__(self, *args, **kwds):
+    if RUN_FUNCTIONS_EAGERLY:
+      return self._python_function(*args, **kwds)
     """Calls the graph function."""
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
