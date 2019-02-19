@@ -1847,8 +1847,8 @@ def conv2d_transpose(
   """The transpose of `conv2d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv2d` rather than an actual
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `conv2d` rather than an actual
   deconvolution.
 
   Args:
@@ -1984,9 +1984,9 @@ def atrous_conv2d_transpose(value,
   """The transpose of `atrous_conv2d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `atrous_conv2d` rather than an actual
-  deconvolution.
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `atrous_conv2d` rather than an
+  actual deconvolution.
 
   Args:
     value: A 4-D `Tensor` of type `float`. It needs to be in the default `NHWC`
@@ -2176,8 +2176,8 @@ def conv3d_transpose(
   """The transpose of `conv3d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv3d` rather than an actual
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `conv3d` rather than an actual
   deconvolution.
 
   Args:
@@ -4158,8 +4158,8 @@ def conv1d_transpose(
   """The transpose of `conv1d`.
 
   This operation is sometimes called "deconvolution" after [Deconvolutional
-  Networks](http://www.matthewzeiler.com/pubs/cvpr2010/cvpr2010.pdf), but is
-  actually the transpose (gradient) of `conv1d` rather than an actual
+  Networks](https://www.matthewzeiler.com/mattzeiler/deconvolutionalnetworks.pdf),
+  but is really the transpose (gradient) of `conv1d` rather than an actual
   deconvolution.
 
   Args:
