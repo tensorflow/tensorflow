@@ -81,6 +81,7 @@ GrapplerTest::GrapplerTest() {
   cfg->set_debug_stripper(RewriterConfig::OFF);
   cfg->set_dependency_optimization(RewriterConfig::OFF);
   cfg->set_function_optimization(RewriterConfig::OFF);
+  cfg->set_implementation_selector(RewriterConfig::OFF);
   cfg->set_layout_optimizer(RewriterConfig::OFF);
   cfg->set_loop_optimization(RewriterConfig::OFF);
   cfg->set_pin_to_host_optimization(RewriterConfig::OFF);
