@@ -218,11 +218,14 @@ HloInstructionProto HloTriangularSolveInstruction::ToProto() const {
 
 std::vector<string> HloTriangularSolveInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {StrCat("left_side=", triangular_solve_options_.left_side()),
-          StrCat("lower=", triangular_solve_options_.lower()),
-          StrCat("unit_diagonal=", triangular_solve_options_.unit_diagonal()),
-          StrCat("transpose_a=", TriangularSolveOptions_Transpose_Name(
-                                     triangular_solve_options_.transpose_a()))};
+  return {
+      StrCat("left_side=",
+             triangular_solve_options_.left_side() ? "true" : "false"),
+      StrCat("lower=", triangular_solve_options_.lower() ? "true" : "false"),
+      StrCat("unit_diagonal=",
+             triangular_solve_options_.unit_diagonal() ? "true" : "false"),
+      StrCat("transpose_a=", TriangularSolveOptions_Transpose_Name(
+                                 triangular_solve_options_.transpose_a()))};
 }
 
 bool HloTriangularSolveInstruction::IdenticalSlowPath(
