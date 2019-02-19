@@ -23,10 +23,12 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Builders.h"
+#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/STLExtras.h"
 
 #include "llvm/ADT/STLExtras.h"
@@ -174,15 +176,20 @@ Expr::build(FuncBuilder &b,
   return llvm::to_vector<4>(inst->getResults());
 }
 
+// Create a binary expression between the two arguments emitting `IOp` if
+// arguments are integers or vectors/tensors thereof, `FOp` if arguments are
+// floating-point or vectors/tensors thereof, and `AffineApplyOp` with an
+// expression produced by `affCombiner` if arguments are of the index type.
+// Die on unsupported types.
+template <typename IOp, typename FOp>
 static Expr createBinaryExpr(
-    Expr lhs, Expr rhs, StringRef intOpName, StringRef floatOpName,
+    Expr lhs, Expr rhs,
     std::function<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
   assert(lhs.getResultTypes().size() == 1 && rhs.getResultTypes().size() == 1 &&
          "only single-result exprs are supported in operators");
   auto thisType = lhs.getResultTypes().front();
   auto thatType = rhs.getResultTypes().front();
   assert(thisType == thatType && "cannot mix types in operators");
-  StringRef opName;
   if (thisType.isIndex()) {
     MLIRContext *context = thisType.getContext();
     auto d0 = getAffineDimExpr(0, context);
@@ -194,32 +201,30 @@ static Expr createBinaryExpr(
     return VariadicExpr("affine.apply", {lhs, rhs}, {IndexType::get(context)},
                         {namedAttr});
   } else if (thisType.isa<IntegerType>()) {
-    opName = intOpName;
+    return BinaryExpr::make<IOp>(thisType, lhs, rhs);
   } else if (thisType.isa<FloatType>()) {
-    opName = floatOpName;
+    return BinaryExpr::make<FOp>(thisType, lhs, rhs);
   } else if (auto aggregateType = thisType.dyn_cast<VectorOrTensorType>()) {
     if (aggregateType.getElementType().isa<IntegerType>())
-      opName = intOpName;
+      return BinaryExpr::make<IOp>(thisType, lhs, rhs);
     else if (aggregateType.getElementType().isa<FloatType>())
-      opName = floatOpName;
+      return BinaryExpr::make<FOp>(thisType, lhs, rhs);
   }
-  if (!opName.empty())
-    return BinaryExpr(opName, thisType, lhs, rhs);
 
   llvm_unreachable("failed to create an Expr");
 }
 
 Expr mlir::edsc::op::operator+(Expr lhs, Expr rhs) {
-  return createBinaryExpr(lhs, rhs, "addi", "addf",
-                          [](AffineExpr d0, AffineExpr d1) { return d0 + d1; });
+  return createBinaryExpr<AddIOp, AddFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 + d1; });
 }
 Expr mlir::edsc::op::operator-(Expr lhs, Expr rhs) {
-  return createBinaryExpr(lhs, rhs, "subi", "subf",
-                          [](AffineExpr d0, AffineExpr d1) { return d0 - d1; });
+  return createBinaryExpr<SubIOp, SubFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 - d1; });
 }
 Expr mlir::edsc::op::operator*(Expr lhs, Expr rhs) {
-  return createBinaryExpr(lhs, rhs, "muli", "mulf",
-                          [](AffineExpr d0, AffineExpr d1) { return d0 * d1; });
+  return createBinaryExpr<MulIOp, MulFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 * d1; });
 }
 
 static Expr createComparisonExpr(CmpIPredicate predicate, Expr lhs, Expr rhs) {
@@ -234,11 +239,11 @@ static Expr createComparisonExpr(CmpIPredicate predicate, Expr lhs, Expr rhs) {
   MLIRContext *context = lhsType.getContext();
   auto attr = IntegerAttr::get(IndexType::get(context),
                                static_cast<int64_t>(predicate));
-  auto attrId = Identifier::get("predicate", context);
+  auto attrId = Identifier::get(CmpIOp::getPredicateAttrName(), context);
   auto namedAttr = NamedAttribute{attrId, attr};
 
-  return BinaryExpr("cmpi", IntegerType::get(1, context), lhs, rhs,
-                    {namedAttr});
+  return BinaryExpr::make<CmpIOp>(IntegerType::get(1, context), lhs, rhs,
+                                  {namedAttr});
 }
 
 Expr mlir::edsc::op::operator==(Expr lhs, Expr rhs) {
@@ -268,7 +273,7 @@ Expr mlir::edsc::op::operator&&(Expr lhs, Expr rhs) {
   auto thatType = rhs.getResultTypes().front();
   assert(thisType.isInteger(1) && thatType.isInteger(1) &&
          "logical And expects i1");
-  return BinaryExpr("muli", thisType, lhs, rhs);
+  return BinaryExpr::make<MulIOp>(thisType, lhs, rhs);
 }
 Expr mlir::edsc::op::operator||(Expr lhs, Expr rhs) {
   // There is not support for bitwise operations, so we emulate logical 'or'
@@ -321,10 +326,12 @@ static void fillStmts(edsc_stmt_list_t enclosedStmts,
 }
 
 Expr mlir::edsc::alloc(llvm::ArrayRef<Expr> sizes, Type memrefType) {
-  return VariadicExpr("alloc", sizes, memrefType);
+  return VariadicExpr::make<AllocOp>(sizes, memrefType);
 }
 
-Expr mlir::edsc::dealloc(Expr memref) { return UnaryExpr("dealloc", memref); }
+Expr mlir::edsc::dealloc(Expr memref) {
+  return UnaryExpr::make<DeallocOp>(memref);
+}
 
 Stmt mlir::edsc::For(Expr lb, Expr ub, Expr step, ArrayRef<Stmt> stmts) {
   assert(lb.getResultTypes().size() == 1 && "expected single-result bounds");
@@ -394,7 +401,7 @@ Expr mlir::edsc::load(Expr m, ArrayRef<Expr> indices) {
   SmallVector<Expr, 8> exprs;
   exprs.push_back(m);
   exprs.append(indices.begin(), indices.end());
-  return VariadicExpr("load", exprs, {type.getElementType()});
+  return VariadicExpr::make<LoadOp>(exprs, {type.getElementType()});
 }
 
 edsc_expr_t Load(edsc_indexed_t indexed, edsc_expr_list_t indices) {
@@ -409,7 +416,7 @@ Expr mlir::edsc::store(Expr val, Expr m, ArrayRef<Expr> indices) {
   exprs.push_back(val);
   exprs.push_back(m);
   exprs.append(indices.begin(), indices.end());
-  return VariadicExpr("store", exprs);
+  return VariadicExpr::make<StoreOp>(exprs);
 }
 
 edsc_stmt_t Store(edsc_expr_t value, edsc_indexed_t indexed,
@@ -421,7 +428,7 @@ edsc_stmt_t Store(edsc_expr_t value, edsc_indexed_t indexed,
 }
 
 Expr mlir::edsc::select(Expr cond, Expr lhs, Expr rhs) {
-  return TernaryExpr("select", cond, lhs, rhs);
+  return TernaryExpr::make<SelectOp>(cond, lhs, rhs);
 }
 
 edsc_expr_t Select(edsc_expr_t cond, edsc_expr_t lhs, edsc_expr_t rhs) {
@@ -429,11 +436,11 @@ edsc_expr_t Select(edsc_expr_t cond, edsc_expr_t lhs, edsc_expr_t rhs) {
 }
 
 Expr mlir::edsc::vector_type_cast(Expr memrefExpr, Type memrefType) {
-  return VariadicExpr("vector_type_cast", {memrefExpr}, {memrefType});
+  return VariadicExpr::make<VectorTypeCastOp>({memrefExpr}, {memrefType});
 }
 
 Stmt mlir::edsc::Return(ArrayRef<Expr> values) {
-  return VariadicExpr("return", values);
+  return VariadicExpr::make<ReturnOp>(values);
 }
 
 edsc_stmt_t Return(edsc_expr_list_t values) {
@@ -565,24 +572,18 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
 
   // Handle known binary ops with pretty infix forms.
   if (auto binExpr = this->dyn_cast<BinaryExpr>()) {
-    StringRef name = getName();
     StringRef infix;
-    if (name == AddIOp::getOperationName() ||
-        name == AddFOp::getOperationName())
+    if (binExpr.is_op<AddIOp>() || binExpr.is_op<AddFOp>())
       infix = "+";
-    else if (name == SubIOp::getOperationName() ||
-             name == SubFOp::getOperationName())
+    else if (binExpr.is_op<SubIOp>() || binExpr.is_op<SubFOp>())
       infix = "-";
-    else if (name == MulIOp::getOperationName() ||
-             name == MulFOp::getOperationName())
+    else if (binExpr.is_op<MulIOp>() || binExpr.is_op<MulFOp>())
       infix = binExpr.getResultTypes().front().isInteger(1) ? "&&" : "*";
-    else if (name == DivIUOp::getOperationName() ||
-             name == DivISOp::getOperationName())
+    else if (binExpr.is_op<DivISOp>() || binExpr.is_op<DivIUOp>())
       infix = "/";
-    else if (name == RemIUOp::getOperationName() ||
-             name == RemISOp::getOperationName())
+    else if (binExpr.is_op<RemISOp>() || binExpr.is_op<RemIUOp>())
       infix = "%";
-    else if (name == CmpIOp::getOperationName())
+    else if (binExpr.is_op<CmpIOp>())
       infix = getCmpIPredicateInfix(*this);
 
     if (!infix.empty()) {
@@ -593,21 +594,20 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
 
   // Handle known variadic ops with pretty forms.
   if (auto narExpr = this->dyn_cast<VariadicExpr>()) {
-    StringRef name = getName();
-    if (name == LoadOp::getOperationName()) {
-      os << name << '(' << getChildExpressions().front() << '[';
+    if (narExpr.is_op<LoadOp>()) {
+      os << narExpr.getName() << '(' << getChildExpressions().front() << '[';
       interleaveComma(getChildExpressions().drop_front(), os);
       os << "])";
       return;
     }
-    if (name == StoreOp::getOperationName()) {
-      os << name << '(' << getChildExpressions().front() << ", "
+    if (narExpr.is_op<StoreOp>()) {
+      os << narExpr.getName() << '(' << getChildExpressions().front() << ", "
          << getChildExpressions()[1] << '[';
       interleaveComma(getChildExpressions().drop_front(2), os);
       os << "])";
       return;
     }
-    if (name == AffineApplyOp::getOperationName()) {
+    if (narExpr.is_op<AffineApplyOp>()) {
       os << '(';
       printAffineApply(os, *this);
       os << ')';
@@ -672,8 +672,7 @@ edsc_expr_t makeBindable(mlir_type_t type) {
 mlir::edsc::UnaryExpr::UnaryExpr(StringRef name, Expr expr)
     : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  new (storage)
-      detail::ExprStorage(ExprKind::FIRST_UNARY_EXPR, name, {}, {expr}, {});
+  new (storage) detail::ExprStorage(ExprKind::Unary, name, {}, {expr}, {});
 }
 Expr mlir::edsc::UnaryExpr::getExpr() const {
   return static_cast<ImplType *>(storage)->operands.front();
@@ -683,8 +682,8 @@ mlir::edsc::BinaryExpr::BinaryExpr(StringRef name, Type result, Expr lhs,
                                    Expr rhs, ArrayRef<NamedAttribute> attrs)
     : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  new (storage) detail::ExprStorage(ExprKind::FIRST_BINARY_EXPR, name, {result},
-                                    {lhs, rhs}, attrs);
+  new (storage)
+      detail::ExprStorage(ExprKind::Binary, name, {result}, {lhs, rhs}, attrs);
 }
 Expr mlir::edsc::BinaryExpr::getLHS() const {
   return static_cast<ImplType *>(storage)->operands.front();
@@ -700,7 +699,7 @@ mlir::edsc::TernaryExpr::TernaryExpr(StringRef name, Expr cond, Expr lhs,
   assert(lhs.getResultTypes().size() == 1 && "expected single-result expr");
   assert(rhs.getResultTypes().size() == 1 && "expected single-result expr");
   new (storage)
-      detail::ExprStorage(ExprKind::FIRST_TERNARY_EXPR, name,
+      detail::ExprStorage(ExprKind::Ternary, name,
                           {lhs.getResultTypes().front()}, {cond, lhs, rhs}, {});
 }
 Expr mlir::edsc::TernaryExpr::getCond() const {
@@ -718,8 +717,8 @@ mlir::edsc::VariadicExpr::VariadicExpr(StringRef name, ArrayRef<Expr> exprs,
                                        ArrayRef<NamedAttribute> attrs)
     : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
-  new (storage) detail::ExprStorage(ExprKind::FIRST_VARIADIC_EXPR, name, types,
-                                    exprs, attrs);
+  new (storage)
+      detail::ExprStorage(ExprKind::Variadic, name, types, exprs, attrs);
 }
 ArrayRef<Expr> mlir::edsc::VariadicExpr::getExprs() const {
   return static_cast<ImplType *>(storage)->operands;

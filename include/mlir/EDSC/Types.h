@@ -73,15 +73,10 @@ enum class ExprKind {
   Unbound = FIRST_BINDABLE_EXPR,
   LAST_BINDABLE_EXPR = Unbound,
   FIRST_NON_BINDABLE_EXPR = 200,
-  FIRST_UNARY_EXPR = FIRST_NON_BINDABLE_EXPR,
-  LAST_UNARY_EXPR = FIRST_UNARY_EXPR,
-  FIRST_BINARY_EXPR = 300,
-  LAST_BINARY_EXPR = FIRST_BINARY_EXPR,
-  FIRST_TERNARY_EXPR = 400,
-  IfThenElse,
-  LAST_TERNARY_EXPR = IfThenElse,
-  FIRST_VARIADIC_EXPR = 500,
-  LAST_VARIADIC_EXPR = FIRST_VARIADIC_EXPR,
+  Unary = FIRST_NON_BINDABLE_EXPR,
+  Binary,
+  Ternary,
+  Variadic,
   FIRST_STMT_BLOCK_LIKE_EXPR = 600,
   For = FIRST_STMT_BLOCK_LIKE_EXPR,
   LAST_STMT_BLOCK_LIKE_EXPR = For,
@@ -148,10 +143,17 @@ public:
 
   Expr(const Expr &other) = default;
   Expr &operator=(const Expr &other) = default;
+  Expr(StringRef name, Type resultType, ArrayRef<Expr> operands,
+       ArrayRef<NamedAttribute> atts = {});
 
   template <typename U> bool isa() const;
   template <typename U> U dyn_cast() const;
   template <typename U> U cast() const;
+
+  /// Returns `true` if this expression builds the MLIR operation specified as
+  /// the template argument.  Unlike `isa`, this does not imply we can cast
+  /// this Expr to the given type.
+  template <typename U> bool is_op() const;
 
   /// Returns the classification for this type.
   ExprKind getKind() const;
@@ -209,6 +211,10 @@ struct UnaryExpr : public Expr {
   UnaryExpr(StringRef name, Expr expr);
   Expr getExpr() const;
 
+  template <typename T> static UnaryExpr make(Expr expr) {
+    return UnaryExpr(T::getOperationName(), expr);
+  }
+
 protected:
   UnaryExpr(Expr::ImplType *ptr) : Expr(ptr) {
     assert(!ptr || isa<UnaryExpr>() && "expected UnaryExpr");
@@ -221,6 +227,12 @@ struct BinaryExpr : public Expr {
              ArrayRef<NamedAttribute> attrs = {});
   Expr getLHS() const;
   Expr getRHS() const;
+
+  template <typename T>
+  static BinaryExpr make(Type result, Expr lhs, Expr rhs,
+                         ArrayRef<NamedAttribute> attrs = {}) {
+    return BinaryExpr(T::getOperationName(), result, lhs, rhs, attrs);
+  }
 
 protected:
   BinaryExpr(Expr::ImplType *ptr) : Expr(ptr) {
@@ -235,6 +247,10 @@ struct TernaryExpr : public Expr {
   Expr getLHS() const;
   Expr getRHS() const;
 
+  template <typename T> static TernaryExpr make(Expr cond, Expr lhs, Expr rhs) {
+    return TernaryExpr(T::getOperationName(), cond, lhs, rhs);
+  }
+
 protected:
   TernaryExpr(Expr::ImplType *ptr) : Expr(ptr) {
     assert(!ptr || isa<TernaryExpr>() && "expected TernaryExpr");
@@ -248,6 +264,13 @@ struct VariadicExpr : public Expr {
                ArrayRef<NamedAttribute> attrs = {});
   llvm::ArrayRef<Expr> getExprs() const;
   llvm::ArrayRef<Type> getTypes() const;
+
+  template <typename T>
+  static VariadicExpr make(llvm::ArrayRef<Expr> exprs,
+                           llvm::ArrayRef<Type> types = {},
+                           llvm::ArrayRef<NamedAttribute> attrs = {}) {
+    return VariadicExpr(T::getOperationName(), exprs, types, attrs);
+  }
 
 protected:
   VariadicExpr(Expr::ImplType *ptr) : Expr(ptr) {
@@ -446,20 +469,16 @@ template <typename U> bool Expr::isa() const {
            kind <= ExprKind::LAST_BINDABLE_EXPR;
   }
   if (std::is_same<U, UnaryExpr>::value) {
-    return kind >= ExprKind::FIRST_UNARY_EXPR &&
-           kind <= ExprKind::LAST_UNARY_EXPR;
+    return kind == ExprKind::Unary;
   }
   if (std::is_same<U, BinaryExpr>::value) {
-    return kind >= ExprKind::FIRST_BINARY_EXPR &&
-           kind <= ExprKind::LAST_BINARY_EXPR;
+    return kind == ExprKind::Binary;
   }
   if (std::is_same<U, TernaryExpr>::value) {
-    return kind >= ExprKind::FIRST_TERNARY_EXPR &&
-           kind <= ExprKind::LAST_TERNARY_EXPR;
+    return kind == ExprKind::Ternary;
   }
   if (std::is_same<U, VariadicExpr>::value) {
-    return kind >= ExprKind::FIRST_VARIADIC_EXPR &&
-           kind <= ExprKind::LAST_VARIADIC_EXPR;
+    return kind == ExprKind::Variadic;
   }
   if (std::is_same<U, StmtBlockLikeExpr>::value) {
     return kind >= ExprKind::FIRST_STMT_BLOCK_LIKE_EXPR &&
@@ -477,6 +496,10 @@ template <typename U> U Expr::dyn_cast() const {
 template <typename U> U Expr::cast() const {
   assert(isa<U>());
   return U(storage);
+}
+
+template <typename U> bool Expr::is_op() const {
+  return U::getOperationName() == getName();
 }
 
 /// Make Expr hashable.

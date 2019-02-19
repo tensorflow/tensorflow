@@ -270,9 +270,9 @@ void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   auto ip = builder->getInsertionPoint();
   auto *val = emitExpr(stmt.getRHS());
   if (!val) {
-    assert((stmt.getRHS().getName() == DeallocOp::getOperationName() ||
-            stmt.getRHS().getName() == StoreOp::getOperationName() ||
-            stmt.getRHS().getName() == ReturnOp::getOperationName()) &&
+    assert((stmt.getRHS().is_op<DeallocOp>() ||
+            stmt.getRHS().is_op<StoreOp>() ||
+            stmt.getRHS().is_op<ReturnOp>()) &&
            "dealloc, store or return expected as the only 0-result ops");
     return;
   }
