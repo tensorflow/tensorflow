@@ -34,6 +34,13 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 from tensorflow.compiler.xla.service import hlo_pb2
 
+# Import the XRT backend, if available.
+try:
+  # pylint: disable=g-import-not-at-top
+  from tensorflow.compiler.xla.python import pywrap_xrt as xrt_api
+except ImportError:
+  xrt_api = None
+
 
 # Most functions are snake_case for consistency with other modules, whereas
 # method names of ComputationBuilder and Computation are CamelCase for
@@ -83,7 +90,8 @@ class Backend(object):
     """Destructures a tuple buffer into a sequence of buffers."""
 
   @abc.abstractmethod
-  def compile(self, computation, argument_shapes, compile_options):
+  def compile(self, computation, argument_shapes, result_shape,
+              compile_options):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
@@ -126,7 +134,8 @@ class XlaLocalBackend(Backend):
     result = c_buffer.DestructureTuple()
     return [result.Release(i) for i in xrange(result.size())]
 
-  def compile(self, c_computation, argument_shapes, compile_options):
+  def compile(self, c_computation, argument_shapes, result_shape,
+              compile_options):
     return c_computation.Compile(argument_shapes, compile_options, self.client)
 
   def delete_executable(self, executable):
@@ -155,24 +164,26 @@ class XrtBackend(Backend):
     if device != 0:
       raise NotImplementedError(
           'Multi-replica execution is not yet supported via the XRT backend.')
-    return c_api.XrtAllocation.FromLiteral(pyval,
-                                           _maybe_encode_string(self.target))
+    return xrt_api.XrtAllocation.FromLiteral(pyval,
+                                             _maybe_encode_string(self.target))
 
   def delete_buffer(self, c_buffer):
-    c_api.DeleteXrtAllocation(c_buffer)
+    xrt_api.DeleteXrtAllocation(c_buffer)
 
   def destructure_tuple(self, c_buffer):
-    result = c_api.DestructureXrtAllocationTuple(
+    result = xrt_api.DestructureXrtAllocationTuple(
         c_buffer, _maybe_encode_string(self.target))
     return [result.Release(i) for i in xrange(result.size())]
 
-  def compile(self, c_computation, argument_shapes, compile_options):
-    return c_computation.CompileForXrt(argument_shapes,
-                                       _maybe_encode_string(self.target))
+  def compile(self, c_computation, argument_shapes, result_shape,
+              compile_options):
+    return xrt_api.XrtExecutable.CompileForXrt(
+        c_computation.GetSerializedProto(), argument_shapes, result_shape,
+        _maybe_encode_string(self.target))
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.XrtExecutable)
-    c_api.DeleteXrtExecutable(executable)
+    assert isinstance(executable, xrt_api.XrtExecutable)
+    xrt_api.DeleteXrtExecutable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -726,7 +737,8 @@ class Computation(object):
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    c = backend.compile(self.computation, argument_shapes, compile_options)
+    c = backend.compile(self.computation, argument_shapes, result_shape,
+                        compile_options)
     return Executable(c, backend=backend)
 
   def CompileWithExampleArguments(self,
