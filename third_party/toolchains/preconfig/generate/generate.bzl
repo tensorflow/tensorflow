@@ -27,6 +27,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, 
 
     if cuda_version != None:
         base = "@cuda%s-cudnn%s-ubuntu14.04//image" % (cuda_version, cudnn_version)
+
         # The cuda toolchain currently contains its own C++ toolchain definition,
         # so we do not fetch local_config_cc.
         config_repos = [
@@ -42,7 +43,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, 
             "TF_CUDNN_VERSION": cudnn_version,
             "TF_CUDA_VERSION": cuda_version,
             "CUDNN_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
-            "TF_NEED_TENSORRT" : "1",
+            "TF_NEED_TENSORRT": "1",
             "TF_TENSORRT_VERSION": tensorrt_version,
             "TENSORRT_INSTALL_PATH": "/usr/lib/x86_64-linux-gnu",
             "GCC_HOST_COMPILER_PATH": compiler if compiler != "clang" else "",
