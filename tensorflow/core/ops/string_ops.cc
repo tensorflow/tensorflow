@@ -211,6 +211,11 @@ REGISTER_OP("StringLower")
     .Output("output: string")
     .SetShapeFn(shape_inference::UnchangedShape);
 
+REGISTER_OP("StringUpper")
+    .Input("input: string")
+    .Output("output: string")
+    .SetShapeFn(shape_inference::UnchangedShape);
+
 REGISTER_OP("StringStrip")
     .Input("input: string")
     .Output("output: string")
