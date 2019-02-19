@@ -1,7 +1,7 @@
 syntax = "proto3";
 package tensorflow;
 
-import "tensorflow/contrib/tpu/profiler/tpu_profiler.proto";
+import "tensorflow/core/profiler/profiler_service.proto";
 
 message NewProfileSessionRequest {
   ProfileRequest request = 1;
@@ -58,10 +58,10 @@ message ProfileSessionDataResponse {
   bytes output = 3;
 }
 ////////////////////////////////////////////////////////////////////////////////
-// TPUProfileAnalysis service provide entry point for profiling TPU and for
+// ProfileAnalysis service provide entry point for profiling TPU and for
 // serving profiled data to Tensorboard through GRPC
 ////////////////////////////////////////////////////////////////////////////////
-service TPUProfileAnalysis {
+service ProfileAnalysis {
   // Starts a profiling session, blocks until it completes.
   // TPUProfileAnalysis service delegate this to TPUProfiler service.
   // Populate the profiled data in repository, then return status to caller.
