@@ -1192,8 +1192,8 @@ REGISTER_OP("GatherNd")
       if (c->Value(r_dim) > c->Rank(params)) {
         return errors::InvalidArgument(
             "indices.shape[-1] must be <= params.rank, but saw indices shape: ",
-            c->DebugString(indices),
-            " and params shape: ", c->DebugString(params));
+            c->DebugString(indices), " and params shape: ",
+            c->DebugString(params));
       }
 
       // Remove r_dim from indices to get output.
@@ -1489,12 +1489,12 @@ REGISTER_OP("ReverseSequence")
       // Validate batch_dim and seq_dim against input.
       const int32 input_rank = c->Rank(input);
       if (batch_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "batch_dim must be < input rank: ", batch_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("batch_dim must be < input rank: ",
+                                       batch_dim, " vs. ", input_rank);
       }
       if (seq_dim >= input_rank) {
-        return errors::InvalidArgument(
-            "seq_dim must be < input rank: ", seq_dim, " vs. ", input_rank);
+        return errors::InvalidArgument("seq_dim must be < input rank: ",
+                                       seq_dim, " vs. ", input_rank);
       }
 
       DimensionHandle batch_dim_dim = c->Dim(input, batch_dim);
@@ -2784,6 +2784,36 @@ REGISTER_OP("QuantizeV2")
       return Status::OK();
     });
 
+#ifdef INTEL_MKL
+REGISTER_OP("_MklQuantizeV2")
+    .Input("input: float")
+    .Input("min_range: float")
+    .Input("max_range: float")
+    .Input("mkl_input: uint8")
+    .Input("mkl_min_range: uint8")
+    .Input("mkl_max_range: uint8")
+    .Output("output: T")
+    .Output("output_min: float")
+    .Output("output_max: float")
+    .Output("mkl_output: uint8")
+    .Output("mkl_output_min: uint8")
+    .Output("mkl_output_max: uint8")
+    .Attr("T: quantizedtype")
+    .Attr("mode: {'MIN_COMBINED', 'MIN_FIRST', 'SCALED'} = 'SCALED'")
+    .Attr(
+        "round_mode: {'HALF_AWAY_FROM_ZERO', 'HALF_TO_EVEN'} = "
+        "'HALF_TO_EVEN'")
+    .SetShapeFn([](InferenceContext* c) {
+      TF_RETURN_IF_ERROR(shape_inference::UnchangedShape(c));
+      ShapeHandle unused;
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      c->set_output(1, c->Scalar());
+      c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+#endif
+
 REGISTER_OP("Dequantize")
     .Input("input: T")
     .Input("min_range: float")
@@ -2900,9 +2930,8 @@ Status ScatterNdShapeHelper(InferenceContext* c, ShapeHandle indices_shape,
       Status s = c->Merge(prefix_indices, prefix_updates, &unused);
       if (!s.ok()) {
         return errors::InvalidArgument(
-            "The outer ", outer_dims,
-            " dimensions of indices.shape=", c->DebugString(indices_shape),
-            " must match the outer ", outer_dims,
+            "The outer ", outer_dims, " dimensions of indices.shape=",
+            c->DebugString(indices_shape), " must match the outer ", outer_dims,
             " dimensions of updates.shape=", c->DebugString(updates_shape),
             ": ", s.error_message());
       }

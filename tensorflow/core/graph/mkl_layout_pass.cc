@@ -312,6 +312,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         "QuantizedConv2DWithBiasSumAndReluAndRequantize";
     csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize =
         "QuantizedConv2DWithBiasSignedSumAndReluAndRequantize";
+    csinfo_.quantize_v2 = "QuantizeV2";
     csinfo_.relu = "Relu";
     csinfo_.relu_grad = "ReluGrad";
     csinfo_.relu6 = "Relu6";
@@ -491,6 +492,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
          mkl_op_registry::GetMklOpName(
              csinfo_.quant_conv2d_with_bias_signed_sum_and_relu_and_requantize),
          CopyAttrsQuantizedConv2D, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.quantize_v2,
+                      mkl_op_registry::GetMklOpName(csinfo_.quantize_v2),
+                      CopyAttrsQuantizeV2, QuantizeOpRewrite});
     rinfo_.push_back({csinfo_.relu, mkl_op_registry::GetMklOpName(csinfo_.relu),
                       CopyAttrsDataType, AlwaysRewrite});
     rinfo_.push_back({csinfo_.relu_grad,
@@ -736,6 +740,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string quantized_conv2d_with_bias_sum_and_relu;
     string quantized_conv2d_with_bias_sum_and_relu_and_requantize;
     string quant_conv2d_with_bias_signed_sum_and_relu_and_requantize;
+    string quantize_v2;
     string relu;
     string relu_grad;
     string relu6;
@@ -1276,6 +1281,31 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     return false;
   }
 
+  static bool QuantizeOpRewrite(const Node* n) {
+    DCHECK(n);
+    Node* filter_node = nullptr;
+    n->input_node(0, &filter_node);
+    string mode_string;
+    string round_mode_string;
+    GetNodeAttr(n->def(), "mode", &mode_string);
+    GetNodeAttr(n->def(), "round_mode", &round_mode_string);
+    if (mode_string != "SCALED" || round_mode_string != "HALF_TO_EVEN") {
+      VLOG(1) << "QuantizeOpRewrite: Mode is not SCALED and/or"
+              << "rounding mode is not HALF_TO_EVEN"
+              << "This case is not optimized by Intel MKL, thus using Eigen op"
+              << "for Quantize op ";
+      return false;
+    }
+    if (filter_node->IsConstant()) {
+      VLOG(1) << "QuantizeOpRewrite: Trying to quantize a node which "
+              << "could possibly be a filter"
+              << "This case is not supported by the kernel, thus using Eigen op"
+              << "for Quantize op ";
+
+      return false;
+    }
+    return true;
+  }
   static bool MaxpoolGradRewrite(const Node* n) {
     CHECK_NOTNULL(n);
     bool do_rewrite = false;
@@ -1519,6 +1549,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                        bool change_format = false);
   static void CopyAttrsQuantizedConcat(const Node* orig_node, NodeBuilder* nb,
                                        bool change_format = false);
+  static void CopyAttrsQuantizeV2(const Node* orig_node, NodeBuilder* nb,
+                                  bool change_format = false);
   static void CopyAttrsReshape(const Node* orig_node, NodeBuilder* nb,
                                bool change_format = false);
   static void CopyAttrsRequantize(const Node* orig_node, NodeBuilder* nb,
@@ -1860,6 +1892,7 @@ Status MklLayoutRewritePass::SetUpInputs(
   // Avoid workspace check for QuantizedConv2D and the fused
   // Ops as they don't have attribute: "T".
   std::vector<string> quant_ops{
+      "QuantizeV2",
       "QuantizedConv2D",
       "QuantizedConv2DWithBias",
       "QuantizedConv2DAndRelu",
@@ -2061,6 +2094,23 @@ void MklLayoutRewritePass::CopyAttrsConvCheckConstFilter(const Node* orig_node,
   CopyFormatAttrsConv(orig_node, nb, strides, dilations, change_format);
 }
 
+void MklLayoutRewritePass::CopyAttrsQuantizeV2(const Node* orig_node,
+                                               NodeBuilder* nb,
+                                               bool change_format) {
+  DataType T;
+  string mode;
+  string round_mode;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "mode", &mode));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "round_mode", &round_mode));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("mode", mode);
+  nb->Attr("round_mode", round_mode);
+}
 void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
                                          bool change_format) {
   DataType T;
