@@ -2044,7 +2044,7 @@ def atrous_conv2d_transpose(value,
           output_shape_.get_shape()))
  
     if isinstance(output_shape, tuple):
-      raise ValueError("output_shape cannot be of type tuple")
+      output_shape = list(output_shape)
 
     if isinstance(output_shape, (list, np.ndarray)):
       # output_shape's shape should be == [4] if reached this point.
