@@ -25,6 +25,7 @@ TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 TfLiteRegistration* Register_IF();
+TfLiteRegistration* Register_WHILE();
 
 }  // namespace custom
 
@@ -374,6 +375,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
 
   // WARNING: Control flow ops are experimental and subject to change.
   AddCustom("Experimental_If", tflite::ops::custom::Register_IF());
+  AddCustom("Experimental_While", tflite::ops::custom::Register_WHILE());
 }
 
 }  // namespace builtin
