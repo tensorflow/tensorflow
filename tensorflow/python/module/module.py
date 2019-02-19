@@ -148,7 +148,7 @@ def with_name_scope(unbound_method):
                                        wrap_with_name_scope(unbound_method))
 
 
-@tf_export("Module", "experimental.Module")
+@tf_export("Module")
 class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
   """Base neural network module class.
 
