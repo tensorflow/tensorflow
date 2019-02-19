@@ -777,7 +777,7 @@ class Layer(trackable.Trackable):
         already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
         y_pred))`. If aggregation='mean', the given metric tensor will be
         sample-wise reduced using `mean` function. eg, `model.add_metric(
-        tf.reduce_mean(outputs), name='output_mean', aggregation='mean')`.
+        tf.reduce_sum(outputs), name='output_mean', aggregation='mean')`.
       name: String metric name.
 
     Raises:
@@ -788,8 +788,25 @@ class Layer(trackable.Trackable):
           'We currently support only `mean` sample-wise metric aggregation. '
           'You provided aggregation=`%s`' % aggregation)
 
-    if tf_utils.is_symbolic_tensor(value):
-      self._symbolic_add_metric(value, aggregation, name)
+    is_symbolic = tf_utils.is_symbolic_tensor(value)
+    if name is None and (not is_symbolic or not hasattr(value, '_metric_obj')):
+      # Eg. `self.add_metric(math_ops.reduce_sum(x), aggregation='mean')`
+      # In eager mode, we use metric name to lookup a metric. Without a name,
+      # a new Mean metric wrapper will be created on every model/layer call.
+      # So, we raise an error when no name is provided.
+      # We will do the same for symbolic mode for consistency although a name
+      # will be generated if no name is provided.
+
+      # We will not raise this error in the foll use case for the sake of
+      # consistency as name in provided in the metric constructor.
+      # model.add_metric(metrics.Mean(name='my_metric')(outputs))
+      raise ValueError('Please provide a name for your metric like '
+                       '`self.add_metric(tf.reduce_sum(inputs), '
+                       'name=\'mean_activation\', aggregation=\'mean\')`')
+
+    if is_symbolic:
+      with backend.get_graph().as_default():
+        self._symbolic_add_metric(value, aggregation, name)
     else:
       self._eager_add_metric(value, aggregation, name)
 
@@ -1311,9 +1328,10 @@ class Layer(trackable.Trackable):
       match(value)  # Update the metric state.
       return
     else:
-      if aggregation is None:
-        raise ValueError('We do not support adding an aggregated metric tensor '
-                         'in `call` in eager execution.')
+      # Aggregation will always be set in this use case. If not we will raise
+      # error on model/layer call in graph function mode when model/layer is
+      # created.
+      assert aggregation is not None
       metric_obj, _ = base_layer_utils.create_mean_metric(value, name)
       self._metrics.append(metric_obj)
 
@@ -1332,10 +1350,20 @@ class Layer(trackable.Trackable):
         else:
           raise ValueError(
               'We currently do not support reusing a metric instance.')
-      else:
+      elif hasattr(value, '_metric_obj'):
         # We track the instance using the metadata on the result tensor.
         result_tensor = value
         metric_obj = result_tensor._metric_obj
+      else:
+        raise ValueError(
+            'We do not support adding an aggregated metric result tensor that '
+            'is not the output of a `tf.keras.metrics.Metric` metric instance. '
+            'Without having access to the metric instance we cannot reset the '
+            'state of a metric after every epoch during training. You can '
+            'create a `tf.keras.metrics.Metric` instance and pass the result '
+            'here or pass an un-aggregated result with `aggregation` parameter '
+            'set as `mean`. For example: `self.add_metric(tf.reduce_sum(inputs)'
+            ', name=\'mean_activation\', aggregation=\'mean\')`')
     else:
       # If a non-aggregated tensor is given as input (ie. `aggregation` is
       # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
