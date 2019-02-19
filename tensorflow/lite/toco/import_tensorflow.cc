@@ -1349,7 +1349,7 @@ tensorflow::Status ConvertUnsupportedOperator(
   }
 
   // Parse outputs. Name them after the node's name, plus an ordinal suffix.
-  // Note that some outputs are to be multipled by a named attribute.
+  // Note that some outputs are to be multiplied by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
     GetOutputNamesFromNodeDef(node, *op_def, op);
@@ -1483,7 +1483,7 @@ tensorflow::Status ConvertPlaceholderOperator(
   if (node.attr().count("shape")) {
     const auto& shape = GetShapeAttr(node, "shape");
     auto num_dims = shape.dim_size();
-    // TODO(b/62716978): This logic needs to be revisted.  During dims
+    // TODO(b/62716978): This logic needs to be revisited.  During dims
     // refactoring it is an interim fix.
     if (num_dims > 0 && !HasWildcardDimension(shape)) {
       auto& dst_array_dims = *array.mutable_shape()->mutable_dims();
