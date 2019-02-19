@@ -1048,8 +1048,18 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   void MarkAsResult(PyObject* gradient) const final { Py_INCREF(gradient); }
 
   PyObject* Zeros(const PyTapeTensor& tensor) const final {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_shape = tensor.GetShape();
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_dtype = tensor.GetDType();
+    if (PyErr_Occurred()) {
+      Py_DECREF(py_shape);
+      return nullptr;
+    }
     PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
     PyObject* result = PyEval_CallObject(zeros_fn_, arg_list);
     Py_DECREF(arg_list);
@@ -1059,6 +1069,9 @@ class PyVSpace : public tensorflow::eager::VSpace<PyObject, PyBackwardFunction,
   }
 
   PyObject* Ones(const PyTapeTensor& tensor) const final {
+    if (PyErr_Occurred()) {
+      return nullptr;
+    }
     PyObject* py_shape = tensor.GetShape();
     PyObject* py_dtype = tensor.GetDType();
     PyObject* arg_list = Py_BuildValue("OO", py_shape, py_dtype);
@@ -2123,6 +2136,9 @@ PyObject* RecordGradient(PyObject* op_name, PyObject* inputs, PyObject* attrs,
         PyBackwardFunction* function =
             new PyBackwardFunction([op_name, attrs, num_inputs, op_inputs,
                                     op_outputs](PyObject* output_grads) {
+              if (PyErr_Occurred()) {
+                return static_cast<PyObject*>(nullptr);
+              }
               tensorflow::Safe_PyObjectPtr callback_args(
                   Py_BuildValue("OOOOOO", op_name, attrs, num_inputs, op_inputs,
                                 op_outputs, output_grads));
