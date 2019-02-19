@@ -772,7 +772,7 @@ TEST(FloatActivationsOpTest, LogSoftmax) {
                               })));
 }
 
-TEST(QuantizedActivationsOpTest, LogSoftmax) {
+TEST(QuantizedActivationsOpTest, LogSoftmaxUint8) {
   const float kLogSoftmaxQuantizedTolerance = 16 / 256.0;
   QuantizedActivationsOpModel m(
       BuiltinOperator_LOG_SOFTMAX,
@@ -792,6 +792,30 @@ TEST(QuantizedActivationsOpTest, LogSoftmax) {
                   kLogSoftmaxQuantizedTolerance)));
   EXPECT_THAT(m.GetOutput<uint8_t>(),
               ElementsAreArray({189, 93, 221, 253, 142, 63, 255, 111}));
+}
+
+TEST(QuantizedActivationsOpTest, LogSoftmaxInt8) {
+  const float kLogSoftmaxQuantizedTolerance = 0.06355;
+  QuantizedActivationsOpModel m(
+      BuiltinOperator_LOG_SOFTMAX,
+      /*input=*/{TensorType_INT8, {2, 4}, -10, 10},
+      /*output=*/{TensorType_INT8, {}, 0, 0, 16. / 256, 127});
+  m.SetInput<int8_t>({
+      0, -6, 2, 4,   //
+      3, -2, 10, 1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetDequantizedOutput<int8_t>(),
+              ElementsAreArray(ArrayFloatNear(
+                  {
+                      -4.14297, -10.14297, -2.14297, -.142971,    //
+                      -7.00104, -12.00104, -.00104087, -9.00104,  //
+                  },
+                  kLogSoftmaxQuantizedTolerance)));
+  EXPECT_THAT(m.GetOutput<int8_t>(), ElementsAreArray({
+                                         61, -36, 93, 125,   //
+                                         15, -65, 127, -16,  //
+                                     }));
 }
 
 // A base class of PRelu op model. It provides the constructor for
