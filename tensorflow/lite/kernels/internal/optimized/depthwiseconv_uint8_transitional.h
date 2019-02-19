@@ -504,8 +504,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
     const int stride_val = function_params->stride;
     const int four_over_stride = function_params->four_over_stride;
 
-    const int workspace_width_micro_repeats =
-        function_params->workspace_width_micro_repeats;
     const int output_width_overall_micro_repeats =
         function_params->output_width_overall_micro_repeats;
     const int block_height = function_params->outbound_block_height;
@@ -548,9 +546,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
             const int output_width = i_width == output_width_micro_repeats
                                          ? residual_width
                                          : four_over_stride;
-            const bool no_right_block = i_width == output_width_micro_repeats &&
-                                        output_width_overall_micro_repeats ==
-                                            workspace_width_micro_repeats;
+            const bool no_right_block = (output_width - 1) * stride_val < 2;
             TFLITE_DCHECK_LE(output_width * stride_val, 4);
             const int8* input_data =
                 scratch_data + width_micro_stride * i_width;
