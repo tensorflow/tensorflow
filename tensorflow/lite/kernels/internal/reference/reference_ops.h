@@ -3234,6 +3234,43 @@ inline void Gather(const tflite::GatherParams& op_params,
   }
 }
 
+template <typename ParamsT, typename IndicesT = int32>
+inline void GatherNd(const RuntimeShape& params_shape,
+                     const ParamsT* params_data,
+                     const RuntimeShape& indices_shape,
+                     const IndicesT* indices_data,
+                     const RuntimeShape& output_shape, ParamsT* output_data) {
+  gemmlowp::ScopedProfilingLabel label("GatherNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int indices_dims = indices_shape.DimensionsCount();
+  const int indices_nd = indices_shape.Dims(indices_dims - 1);
+  const int params_dims = params_shape.DimensionsCount();
+  for (int i = 0; i < indices_dims - 1; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = indices_nd; i < params_dims; ++i) {
+    slice_size *= params_shape.Dims(i);
+  }
+
+  int remain_flat_size = params_shape.FlatSize();
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  for (int i = 0; i < n_slices; ++i) {
+    int from_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      from_pos += indices_data[i * indices_nd + j] * dims_to_count[j];
+    }
+    std::memcpy(output_data + i * slice_size, params_data + from_pos,
+                sizeof(ParamsT) * slice_size);
+  }
+}
+
 template <typename T>
 inline void ResizeBilinear(const tflite::ResizeBilinearParams& op_params,
                            const RuntimeShape& unextended_input_shape,
@@ -4546,6 +4583,34 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
     const T* input_data = input_condition_data[i] ? input_x_data : input_y_data;
     memcpy(output_data + offset, input_data + offset, inner_size * sizeof(T));
     offset += inner_size;
+  }
+}
+
+template <typename D, typename T>
+void SelectTrueCoords(const RuntimeShape& input_condition_shape,
+                      const D* input_condition_data, T* output_data) {
+  const size_t size = input_condition_shape.FlatSize();
+  const size_t cond_rank = input_condition_shape.DimensionsCount();
+
+  std::vector<int> dims_to_count(cond_rank, 0);
+  int cur_flat_size = size;
+  for (int i = 0; i < cond_rank; ++i) {
+    dims_to_count[i] = cur_flat_size / input_condition_shape.Dims(i);
+    cur_flat_size = dims_to_count[i];
+  }
+
+  int output_index = 0;
+  for (int i = 0; i < size; ++i) {
+    if (input_condition_data[i]) {
+      // Insert the coordinate of the current item (row major) into output.
+      int flat_index = i;
+      for (int j = 0; j < cond_rank; ++j) {
+        int coord_j = flat_index / dims_to_count[j];
+        output_data[output_index * cond_rank + j] = coord_j;
+        flat_index %= dims_to_count[j];
+      }
+      output_index++;
+    }
   }
 }
 

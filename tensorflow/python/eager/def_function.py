@@ -31,7 +31,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
@@ -96,7 +96,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         shape and `validate_shape` is `True`.
       RuntimeError: If called outside of a function definition.
     """
-    if context.executing_eagerly():
+    if not ops.inside_function():
       # If we've been init_scope()d out of the function definition nothing to do
       # here; we can't really do the capturing or conditional logic.
       resource_variable_ops.ResourceVariable.__init__(
@@ -113,8 +113,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
@@ -156,8 +156,14 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       if self._in_graph_mode:
         with ops.init_scope():
           outer_graph = ops.get_default_graph()
+        func_graph = ops.get_default_graph()
+        function_placeholders = (
+            func_graph.inputs + func_graph.internal_captures)
+        placeholder_ops = set(
+            [tensor.op for tensor in function_placeholders])
         lifted_initializer = lift_to_graph.lift_to_graph(
-            initial_value, outer_graph)[initial_value]
+            [initial_value], outer_graph,
+            disallowed_placeholders=placeholder_ops)[initial_value]
         with ops.init_scope():
           self._initial_value = lifted_initializer
           with ops.name_scope("IsInitialized"):
@@ -491,7 +497,7 @@ class Function(object):
             # Ignore variables which are already initialized at trace time.
             continue
         v.assign(lift_to_graph.lift_to_graph(
-            init, ops.get_default_graph())[init])
+            [init], ops.get_default_graph())[init])
 
     with ops.init_scope():
       return initialize_variables.get_concrete_function()()
@@ -532,7 +538,7 @@ class Function(object):
     def initialize_variables():
       for v, init in initializer_map.items():
         v.assign(lift_to_graph.lift_to_graph(
-            init, ops.get_default_graph())[init])
+            [init], ops.get_default_graph())[init])
 
     return initialize_variables.get_concrete_function()
 
@@ -855,8 +861,8 @@ def function(func=None,
   def f(x): return tf.add(x, 1.)
   ```
 
-  When an `input_signature` is specified, the callable will only accept `Tensor`
-  (or NumPy `ndarray`) objects as arguments.
+  When an `input_signature` is specified, the callable will convert the inputs
+  to the specified TensorSpecs.
 
   _Tracing and staging_
 

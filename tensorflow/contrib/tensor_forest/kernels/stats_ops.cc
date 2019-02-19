@@ -307,7 +307,7 @@ class ProcessInputOp : public OpKernel {
     // from a digits run on local desktop.  Heuristics might be necessary
     // if it really matters that much.
     const int64 costPerUpdate = 1000;
-    auto update = [this, &target, &leaf_ids_tensor, &num_targets, &data_set,
+    auto update = [&target, &leaf_ids_tensor, &num_targets, &data_set,
                    fertile_stats_resource, &locks, &set_lock, &ready_to_split,
                    num_data](int64 start, int64 end) {
       CHECK(start <= end);
@@ -317,7 +317,7 @@ class ProcessInputOp : public OpKernel {
                   static_cast<int32>(end), &ready_to_split);
     };
 
-    auto update_collated = [this, &target, &num_targets, fertile_stats_resource,
+    auto update_collated = [&target, &num_targets, fertile_stats_resource,
                             tree_resource, &leaf_examples, &set_lock,
                             &ready_to_split, &data_set,
                             num_leaves](int64 start, int64 end) {

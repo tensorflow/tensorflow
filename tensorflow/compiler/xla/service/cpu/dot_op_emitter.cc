@@ -963,8 +963,8 @@ Status EmitBatchDotOperation(
   KernelSupportLibrary ksl(b);
 
   return ksl.ForWithStatus(
-      "bdot", /*start=*/0, /*end=*/batch_count, /*step=*/1,
-      [&](llvm::Value* indvar) {
+      llvm_ir::IrName(&dot, "bdot"), /*start=*/0, /*end=*/batch_count,
+      /*step=*/1, [&](llvm::Value* indvar) {
         DotDimensionNumbers adjusted_dim_numbers = dot.dot_dimension_numbers();
         adjusted_dim_numbers.clear_lhs_batch_dimensions();
         adjusted_dim_numbers.clear_rhs_batch_dimensions();

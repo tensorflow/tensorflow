@@ -351,14 +351,27 @@ void EagerContext::AddKernelToCache(Fprint128 cache_key,
   gtl::InsertOrUpdate(&kernel_cache_, cache_key, kernel);
 }
 
-bool EagerContext::ShouldStoreMetadata() {
+bool EagerContext::ShouldStoreGraphs() {
   mutex_lock ml(metadata_mu_);
-  return should_store_metadata_.load() || metadata_listener_ != nullptr;
+  return should_store_graphs_.load() || metadata_listener_ != nullptr;
 }
 
-void EagerContext::SetShouldStoreMetadata(bool value) {
+bool EagerContext::ShouldStoreStepStats() {
   mutex_lock ml(metadata_mu_);
-  should_store_metadata_.store(value);
+  return should_store_step_stats_.load() || metadata_listener_ != nullptr;
+}
+
+void EagerContext::SetShouldStoreGraphs(bool value) {
+  mutex_lock ml(metadata_mu_);
+  should_store_graphs_.store(value);
+  if (!value || metadata_listener_ != nullptr) {
+    run_metadata_.Clear();
+  }
+}
+
+void EagerContext::SetShouldStoreStepStats(bool value) {
+  mutex_lock ml(metadata_mu_);
+  should_store_step_stats_.store(value);
   if (!value || metadata_listener_ != nullptr) {
     run_metadata_.Clear();
   }

@@ -50,7 +50,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -1095,8 +1095,8 @@ class _RNNCellWrapperV1(RNNCell):
   def __init__(self, cell):
     super(_RNNCellWrapperV1, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.Checkpointable):
-      self._track_checkpointable(self._cell, name="cell")
+    if isinstance(cell, trackable.Trackable):
+      self._track_trackable(self._cell, name="cell")
 
   def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
     """Calls the wrapped cell and performs the wrapping logic.
@@ -1611,8 +1611,8 @@ class DeviceWrapper(RNNCell):
     """
     super(DeviceWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.Checkpointable):
-      self._track_checkpointable(self._cell, name="cell")
+    if isinstance(cell, trackable.Trackable):
+      self._track_trackable(self._cell, name="cell")
     self._device = device
 
   @property
@@ -1678,11 +1678,11 @@ class MultiRNNCell(RNNCell):
 
     self._cells = cells
     for cell_number, cell in enumerate(self._cells):
-      # Add Checkpointable dependencies on these cells so their variables get
+      # Add Trackable dependencies on these cells so their variables get
       # saved with this object when using object-based saving.
-      if isinstance(cell, checkpointable.Checkpointable):
-        # TODO(allenl): Track down non-Checkpointable callers.
-        self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
+      if isinstance(cell, trackable.Trackable):
+        # TODO(allenl): Track down non-Trackable callers.
+        self._track_trackable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):

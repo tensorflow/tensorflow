@@ -134,4 +134,31 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
   });
 }
 
+XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim) {
+  XlaBuilder* builder = input.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
+    ShapeUtil::AppendMajorDimension(1, &index_shape);
+    std::vector<XlaOp> to_concat;
+    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    to_concat.reserve(input_shape.rank());
+    for (int64 i = 0; i < input_shape.rank(); ++i) {
+      if (i == dim) {
+        to_concat.push_back(Reshape(index, index_shape.dimensions()));
+      } else {
+        to_concat.push_back(Iota(builder, index_shape, i));
+      }
+    }
+    XlaOp gather_indices = ConcatInDim(builder, to_concat, input_shape.rank());
+    std::vector<int64> slice_sizes(input_shape.rank(), 1);
+    GatherDimensionNumbers gather_dnums;
+    gather_dnums.set_index_vector_dim(input_shape.rank());
+    for (int64 i = 0; i < input_shape.rank(); ++i) {
+      gather_dnums.add_collapsed_slice_dims(i);
+      gather_dnums.add_start_index_map(i);
+    }
+    return Gather(input, gather_indices, gather_dnums, slice_sizes);
+  });
+}
+
 }  // namespace xla

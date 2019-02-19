@@ -55,3 +55,12 @@ def tpu_shard_context(number_of_shards):
 
 def get_tpu_context():
   return _current_tpu_context
+
+
+# Decorator function for tpu computation func that was passed to tpu.rewrite()
+# if there is an embedded training loop in this func, trace tools will generate
+# step markers for each iteration.
+def on_device_training_loop(func):
+  # Value for this attribute is from xla.DebugOptions.StepMarkerLocation.
+  setattr(func, "step_marker_location", "STEP_MARK_AT_TOP_LEVEL_WHILE_LOOP")
+  return func

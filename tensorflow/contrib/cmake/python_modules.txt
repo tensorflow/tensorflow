@@ -72,7 +72,7 @@ tensorflow/python/tools
 tensorflow/python/tools/api
 tensorflow/python/tools/api/generator
 tensorflow/python/training
-tensorflow/python/training/checkpointable
+tensorflow/python/training/tracking
 tensorflow/python/user_ops
 tensorflow/python/util
 tensorflow/python/util/protobuf

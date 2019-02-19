@@ -25,6 +25,8 @@ limitations under the License.
 %rename("%s") TFE_ContextHasFunction;
 %rename("%s") TFE_ContextEnableRunMetadata;
 %rename("%s") TFE_ContextDisableRunMetadata;
+%rename("%s") TFE_ContextEnableGraphCollection;
+%rename("%s") TFE_ContextDisableGraphCollection;
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
@@ -34,10 +36,12 @@ limitations under the License.
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
 %rename("%s") TFE_NewProfiler;
+%rename("%s") TFE_ProfilerIsOk;
 %rename("%s") TFE_DeleteProfiler;
 %rename("%s") TFE_ProfilerSerializeToString;
-%rename("%s") TFE_NewProfilerServerOptions;
-%rename("%s") TFE_ProfilerServerOptionsSetEagerContext;
+%rename("%s") TFE_NewProfilerContext;
+%rename("%s") TFE_ProfilerContextSetEagerContext;
+%rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;

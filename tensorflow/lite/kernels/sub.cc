@@ -12,10 +12,12 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <limits>
 #include "tensorflow/lite/c/builtin_op_data.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/add.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/kernel_util.h"
@@ -68,21 +70,39 @@ void Free(TfLiteContext* context, void* buffer) {
   delete reinterpret_cast<OpData*>(buffer);
 }
 
-TfLiteStatus PrepareUint8SubOp(TfLiteContext* context,
-                               const TfLiteTensor* input_1,
-                               const TfLiteTensor* input_2,
-                               TfLiteTensor* output, TfLiteSubParams* params,
-                               OpData* op_params, int op_sign) {
+TfLiteStatus Prepare8BitSubOp(TfLiteContext* context,
+                              const TfLiteTensor* input_1,
+                              const TfLiteTensor* input_2, TfLiteTensor* output,
+                              TfLiteSubParams* params, OpData* op_params,
+                              int op_sign) {
+  TF_LITE_ENSURE(context,
+                 output->type == kTfLiteUInt8 || output->type == kTfLiteInt8);
   const auto& input1_quantization_params = input_1->params;
   const auto& input2_quantization_params = input_2->params;
   const auto& output_quantization_params = output->params;
+  int32_t integer_type_min = 0;
+  int32_t integer_type_max = 0;
+  if (output->type == kTfLiteUInt8) {
+    integer_type_min = std::numeric_limits<uint8_t>::min();
+    integer_type_max = std::numeric_limits<uint8_t>::max();
+  } else {
+    // output->type == kTfLiteInt8
+    integer_type_min = std::numeric_limits<int8_t>::min();
+    integer_type_max = std::numeric_limits<int8_t>::max();
+  }
 
-  TF_LITE_ENSURE(context, input1_quantization_params.zero_point >= 0);
-  TF_LITE_ENSURE(context, input1_quantization_params.zero_point <= 255);
-  TF_LITE_ENSURE(context, input2_quantization_params.zero_point >= 0);
-  TF_LITE_ENSURE(context, input2_quantization_params.zero_point <= 255);
-  TF_LITE_ENSURE(context, output_quantization_params.zero_point >= 0);
-  TF_LITE_ENSURE(context, output_quantization_params.zero_point <= 255);
+  TF_LITE_ENSURE(context,
+                 input1_quantization_params.zero_point >= integer_type_min);
+  TF_LITE_ENSURE(context,
+                 input1_quantization_params.zero_point <= integer_type_max);
+  TF_LITE_ENSURE(context,
+                 input2_quantization_params.zero_point >= integer_type_min);
+  TF_LITE_ENSURE(context,
+                 input2_quantization_params.zero_point <= integer_type_max);
+  TF_LITE_ENSURE(context,
+                 output_quantization_params.zero_point >= integer_type_min);
+  TF_LITE_ENSURE(context,
+                 output_quantization_params.zero_point <= integer_type_max);
 
   op_params->input1_offset = -input1_quantization_params.zero_point;
   op_params->input2_offset = -input2_quantization_params.zero_point;
@@ -109,10 +129,15 @@ TfLiteStatus PrepareUint8SubOp(TfLiteContext* context,
   tflite::QuantizeMultiplierSmallerThanOneExp(real_output_multiplier,
                                               &op_params->output_multiplier,
                                               &op_params->output_shift);
-
-  CalculateActivationRangeUint8(params->activation, output,
-                                &op_params->output_activation_min,
-                                &op_params->output_activation_max);
+  if (output->type == kTfLiteUInt8) {
+    CalculateActivationRangeUint8(params->activation, output,
+                                  &op_params->output_activation_min,
+                                  &op_params->output_activation_max);
+  } else {
+    CalculateActivationRangeInt8(params->activation, output,
+                                 &op_params->output_activation_min,
+                                 &op_params->output_activation_max);
+  }
   return kTfLiteOk;
 }
 
@@ -186,9 +211,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
     output_size = TfLiteIntArrayCopy(input1->dims);
   }
 
-  if (output->type == kTfLiteUInt8) {
-    TF_LITE_ENSURE_OK(context, PrepareUint8SubOp(context, input1, input2,
-                                                 output, params, data, -1));
+  if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8) {
+    TF_LITE_ENSURE_OK(context, Prepare8BitSubOp(context, input1, input2, output,
+                                                params, data, -1));
   } else if (output->type == kTfLiteInt16) {
     TF_LITE_ENSURE_OK(context, PrepareInt16SubOp(context, input1, input2,
                                                  output, params, data));
@@ -271,9 +296,15 @@ void EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                GetTensorData<data_type>(input1), GetTensorShape(input2), \
                GetTensorData<data_type>(input2), GetTensorShape(output), \
                GetTensorData<data_type>(output))
-  if (output->type == kTfLiteUInt8) {
     // NOTE: We are using the add kernels. This is possible as the second values
     // multiplier is negated before being passed down.
+  if (output->type == kTfLiteInt8) {
+    if (need_broadcast) {
+      TF_LITE_SUB(reference_integer_ops, BroadcastAdd4DSlow, int8_t);
+    } else {
+      TF_LITE_SUB(reference_integer_ops, Add, int8_t);
+    }
+  } else if (output->type == kTfLiteUInt8) {
     if (kernel_type == kReference) {
       if (need_broadcast) {
         TF_LITE_SUB(reference_ops, BroadcastAdd4DSlow, uint8_t);
@@ -319,7 +350,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   if (output->type == kTfLiteFloat32 || output->type == kTfLiteInt32) {
     EvalSub<kernel_type>(context, node, params, data, input1, input2, output);
-  } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt16) {
+  } else if (output->type == kTfLiteUInt8 || output->type == kTfLiteInt8 ||
+             output->type == kTfLiteInt16) {
     EvalQuantized<kernel_type>(context, node, params, data, input1, input2,
                                output);
   } else {

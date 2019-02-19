@@ -2606,8 +2606,49 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
     RunValidationAndConversion(
         node_def, error::UNIMPLEMENTED,
-        "StridedSlice can't modify batch dim, at my_strided_slice");
+        "TensorRT does not allow modifications to the batch dimension, at "
+        "my_strided_slice");
   }
+  {
+    // Dynamic batch size without end_mask, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "TensorRT does not allow modifications to the batch dimension, at "
+        "my_strided_slice");
+  }
+  {
+    // Dynamic batch size but using end_mask, ok.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef(/*begin_mask=*/0,
+                                                 /*end_mask=*/1);
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {0, 1, 2, 2});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
+    RunValidationAndConversion(node_def);
+  }
+// TRT 5.1+ supports strides
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  {
+    // Negative strides, should fail.
+    Reset();
+    NodeDef node_def = get_strided_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 1, 1, -1});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Negative or zero stride values are not "
+                               "supported for StridedSlice, at "
+                               "my_strided_slice");
+  }
+#else
   {
     // Stride is not 1, should fail.
     Reset();
@@ -2615,37 +2656,12 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestTensor("input", {1, 2, 3});
     AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
     AddTestWeights<int32>("end", {4}, {1, 1, 2, 3});
-    AddTestWeights<int32>("strides", {4}, {1, 2, -1, 3});
+    AddTestWeights<int32>("strides", {4}, {1, 2, 1, 3});
     RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
-                               "StridedSlice is only implemented for stride of "
-                               "1, at my_strided_slice");
+                               "Strides other than 1 are not supported with "
+                               "this version of TRT, at my_strided_slice");
   }
-  {
-    // Begin out of bounds, should fail.
-    Reset();
-    NodeDef node_def = get_strided_slice_nodedef();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("begin", {4}, {1, 2, 3, 4});
-    AddTestWeights<int32>("end", {4}, {0, 1, 2, 3});
-    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "begin value of 2 for StridedSlice is invalid, must be in the range "
-        "[-dim_size(i), dim_size(i)], at my_strided_slice");
-  }
-  {
-    // End out of bounds, should fail.
-    Reset();
-    NodeDef node_def = get_strided_slice_nodedef();
-    AddTestTensor("input", {1, 2, 3});
-    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
-    AddTestWeights<int32>("end", {4}, {1, 2, 3, 4});
-    AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "end value of 2 for StridedSlice is invalid, must be in the range "
-        "[-dim_size(i), dim_size(i)], at my_strided_slice");
-  }
+#endif
   {
     // Size of sliced dim is negative, should fail.
     Reset();
@@ -2654,19 +2670,20 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     AddTestWeights<int32>("begin", {4}, {0, 0, 2, 0});
     AddTestWeights<int32>("end", {4}, {1, 1, 0, 3});
     AddTestWeights<int32>("strides", {4}, {1, 1, 1, 1});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "New size of sliced dimension is negative, at my_strided_slice");
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "\"size\" cannot be negative or zero for "
+                               "StridedSlice, at my_strided_slice");
   }
 
   struct TestParams {
     std::vector<int> input_dims;
-    std::vector<int> expected_output_dims;
     std::vector<int> begin;
     std::vector<int> end;
+    std::vector<int> strides;
     int begin_mask;
     int end_mask;
-    std::vector<int> expected_output;
+    std::vector<int> expected_output_dims;
+    std::vector<float> expected_output;
   };
 
   auto get_mask = [](const std::vector<int>& mask) {
@@ -2677,105 +2694,159 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
     return result;
   };
 
+  // Same input is used for all tests.
+  const std::vector<float> ok_input = {1, 2, 3, 4, 5, 6};
+
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  const int kStridedSliceOKCases = 23;
+#else
+  const int kStridedSliceOKCases = 19;
+#endif
   // Ok.
-  const int kStridedSliceOKCases = 18;
   TestParams ok_params[kStridedSliceOKCases] = {
-      // 2D Crop.
-      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
-                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 1, 2},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 0, 0}),
-                 /*expected_output=*/{1, 2}},
-      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
-                 /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 0, 0, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 1, 1}),
-                 /*expected_output=*/{5, 6}},
-      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 2},
-                 /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 1, 2, 3},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 0, 0}),
-                 /*expected_output=*/{5, 6}},
-      // 2D Crop, with transpose.
-      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 2, 1},
-                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 2, 1},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 0, 0}),
-                 /*expected_output=*/{1, 2}},
-      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 2, 1},
-                 /*begin=*/{0, 1, 1, 0}, /*end=*/{0, 2, 3, 1},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 0, 0}),
-                 /*expected_output=*/{5, 6}},
-      TestParams{/*input_dims=*/{2, 1, 3}, /*expected_output_dims=*/{1, 1, 2},
-                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 1, 2},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 0, 0}),
-                 /*expected_output=*/{1, 2}},
-      TestParams{/*input_dims=*/{2, 1, 3}, /*expected_output_dims=*/{1, 1, 2},
-                 /*begin=*/{0, 1, 0, 1}, /*end=*/{0, 2, 1, 3},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 0, 0}),
-                 /*expected_output=*/{5, 6}},
-      // 2D Crop, with reshape.
-      TestParams{/*input_dims=*/{2, 3}, /*expected_output_dims=*/{1, 2},
-                 /*begin=*/{0, 0, 0}, /*end=*/{0, 1, 2},
-                 /*begin_mask=*/get_mask({0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 0}),
-                 /*expected_output=*/{1, 2}},
-      TestParams{/*input_dims=*/{2, 3}, /*expected_output_dims=*/{1, 2},
-                 /*begin=*/{0, 1, 1}, /*end=*/{0, 0, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 1}),
-                 /*expected_output=*/{5, 6}},
-      // 1D Crop.
-      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 2, 2},
-                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 0, 2},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 1, 0}),
-                 /*expected_output=*/{1, 2, 4, 5}},
-      TestParams{/*input_dims=*/{1, 2, 3}, /*expected_output_dims=*/{1, 1, 3},
-                 /*begin=*/{0, 0, 1, 0}, /*end=*/{0, 0, 0, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 1, 1}),
-                 /*expected_output=*/{4, 5, 6}},
-      // 1D Crop, with transpose.
-      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 3, 1},
-                 /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 0, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 1, 1}),
-                 /*expected_output=*/{1, 2, 3}},
-      TestParams{/*input_dims=*/{2, 3, 1}, /*expected_output_dims=*/{1, 3, 1},
-                 /*begin=*/{0, 1, 0, 0}, /*end=*/{0, 0, 0, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 1, 1}),
-                 /*expected_output=*/{4, 5, 6}},
-      // 1D Crop, with reshape.
-      TestParams{/*input_dims=*/{6}, /*expected_output_dims=*/{3},
-                 /*begin=*/{0, 0}, /*end=*/{0, 3},
-                 /*begin_mask=*/get_mask({0, 0}), /*end_mask=*/get_mask({1, 0}),
-                 /*expected_output=*/{1, 2, 3}},
-      TestParams{/*input_dims=*/{1, 6}, /*expected_output_dims=*/{1, 3},
-                 /*begin=*/{0, 0, 2}, /*end=*/{0, 0, 5},
-                 /*begin_mask=*/get_mask({0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 1, 0}),
-                 /*expected_output=*/{3, 4, 5}},
-      TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{3, 1},
-                 /*begin=*/{0, 2, 0}, /*end=*/{0, 5, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 1}),
-                 /*expected_output=*/{3, 4, 5}},
-      // Negative axis.
-      TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{3, 1},
-                 /*begin=*/{0, -6, 0}, /*end=*/{0, -3, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 1}),
-                 /*expected_output=*/{1, 2, 3}},
-      TestParams{/*input_dims=*/{6, 1}, /*expected_output_dims=*/{5, 1},
-                 /*begin=*/{0, 0, 0}, /*end=*/{0, -1, 0},
-                 /*begin_mask=*/get_mask({0, 0, 0}),
-                 /*end_mask=*/get_mask({1, 0, 1}),
-                 /*expected_output=*/{1, 2, 3, 4, 5}},
+    // 2D Crop.
+    TestParams{/*input_dims=*/{1, 2, 3}, /*begin=*/{0, 0, 0, 0},
+               /*end=*/{0, 0, 1, 2}, /*strides=*/{1, 1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0, 0}),
+               /*end_mask=*/get_mask({1, 1, 0, 0}),
+               /*expected_output_dims=*/{1, 1, 2}, /*expected_output=*/{1, 2}},
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 0, 0, 0}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 1, 1, 1}), /*expected_output_dims=*/{1, 1, 2},
+        /*expected_output=*/{5, 6}},
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 1, 1}, /*end=*/{0, 1, 2, 3}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 1, 0, 0}), /*expected_output_dims=*/{1, 1, 2},
+        /*expected_output=*/{5, 6}},
+    // 2D Crop, with transpose.
+    TestParams{
+        /*input_dims=*/{2, 3, 1},
+        /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 2, 1}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 0, 0, 0}), /*expected_output_dims=*/{1, 2, 1},
+        /*expected_output=*/{1, 2}},
+    TestParams{
+        /*input_dims=*/{2, 3, 1},
+        /*begin=*/{0, 1, 1, 0}, /*end=*/{0, 2, 3, 1}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 0, 0, 0}), /*expected_output_dims=*/{1, 2, 1},
+        /*expected_output=*/{5, 6}},
+    TestParams{
+        /*input_dims=*/{2, 1, 3},
+        /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 1, 2}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 0, 0, 0}), /*expected_output_dims=*/{1, 1, 2},
+        /*expected_output=*/{1, 2}},
+    TestParams{
+        /*input_dims=*/{2, 1, 3},
+        /*begin=*/{0, 1, 0, 1}, /*end=*/{0, 2, 1, 3}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 0, 0, 0}), /*expected_output_dims=*/{1, 1, 2},
+        /*expected_output=*/{5, 6}},
+    // 2D Crop, with reshape.
+    TestParams{/*input_dims=*/{2, 3},
+               /*begin=*/{0, 0, 0}, /*end=*/{0, 1, 2}, /*strides=*/{1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0}),
+               /*end_mask=*/get_mask({1, 0, 0}),
+               /*expected_output_dims=*/{1, 2},
+               /*expected_output=*/{1, 2}},
+    TestParams{/*input_dims=*/{2, 3},
+               /*begin=*/{0, 1, 1}, /*end=*/{0, 0, 0}, /*strides=*/{1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0}),
+               /*end_mask=*/get_mask({1, 1, 1}),
+               /*expected_output_dims=*/{1, 2},
+               /*expected_output=*/{5, 6}},
+    // 1D Crop.
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 0, 0, 2}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 1, 1, 0}), /*expected_output_dims=*/{1, 2, 2},
+        /*expected_output=*/{1, 2, 4, 5}},
+    TestParams{
+        /*input_dims=*/{1, 2, 3},
+        /*begin=*/{0, 0, 1, 0}, /*end=*/{0, 0, 0, 0}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 1, 1, 1}), /*expected_output_dims=*/{1, 1, 3},
+        /*expected_output=*/{4, 5, 6}},
+    // 1D Crop, with transpose.
+    TestParams{
+        /*input_dims=*/{2, 3, 1},
+        /*begin=*/{0, 0, 0, 0}, /*end=*/{0, 1, 0, 0}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 0, 1, 1}), /*expected_output_dims=*/{1, 3, 1},
+        /*expected_output=*/{1, 2, 3}},
+    TestParams{
+        /*input_dims=*/{2, 3, 1},
+        /*begin=*/{0, 1, 0, 0}, /*end=*/{0, 0, 0, 0}, /*strides=*/{1, 1, 1, 1},
+        /*begin_mask=*/get_mask({0, 0, 0, 0}),
+        /*end_mask=*/get_mask({1, 1, 1, 1}), /*expected_output_dims=*/{1, 3, 1},
+        /*expected_output=*/{4, 5, 6}},
+    // 1D Crop, with reshape.
+    TestParams{/*input_dims=*/{6},
+               /*begin=*/{0, 0}, /*end=*/{0, 3}, /*strides=*/{1, 1},
+               /*begin_mask=*/get_mask({0, 0}), /*end_mask=*/get_mask({1, 0}),
+               /*expected_output_dims=*/{3},
+               /*expected_output=*/{1, 2, 3}},
+    TestParams{/*input_dims=*/{1, 6},
+               /*begin=*/{0, 0, 2}, /*end=*/{0, 0, 5}, /*strides=*/{1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0}),
+               /*end_mask=*/get_mask({1, 1, 0}),
+               /*expected_output_dims=*/{1, 3},
+               /*expected_output=*/{3, 4, 5}},
+    TestParams{/*input_dims=*/{6, 1},
+               /*begin=*/{0, 2, 0}, /*end=*/{0, 5, 0}, /*strides=*/{1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0}),
+               /*end_mask=*/get_mask({1, 0, 1}),
+               /*expected_output_dims=*/{3, 1},
+               /*expected_output=*/{3, 4, 5}},
+    // Negative axis.
+    TestParams{/*input_dims=*/{6, 1},
+               /*begin=*/{0, -6, 0}, /*end=*/{0, -3, 0}, /*strides=*/{1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0}),
+               /*end_mask=*/get_mask({1, 0, 1}),
+               /*expected_output_dims=*/{3, 1},
+               /*expected_output=*/{1, 2, 3}},
+    TestParams{/*input_dims=*/{6, 1},
+               /*begin=*/{0, 0, 0}, /*end=*/{0, -1, 0}, /*strides=*/{1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0}),
+               /*end_mask=*/get_mask({1, 0, 1}),
+               /*expected_output_dims=*/{5, 1},
+               /*expected_output=*/{1, 2, 3, 4, 5}},
+    // Clamp out of bounds begin and end.
+    TestParams{/*input_dims=*/{1, 2, 3}, /*begin=*/{0, 0, -9999, -9},
+               /*end=*/{0, 1, 1000, 4}, /*strides=*/{1, 1, 1, 1},
+               /*begin_mask=*/get_mask({0, 0, 0, 0}),
+               /*end_mask=*/get_mask({1, 0, 0, 0}),
+               /*expected_output_dims=*/{1, 2, 3},
+               /*expected_output=*/{1, 2, 3, 4, 5, 6}},
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+    // Strides
+    TestParams{/*input_dims=*/{6},
+               /*begin=*/{0, 0}, /*end=*/{0, 5}, /*strides=*/{1, 2},
+               /*begin_mask=*/get_mask({0, 0}), /*end_mask=*/get_mask({1, 0}),
+               /*expected_output_dims=*/{3},
+               /*expected_output=*/{1, 3, 5}},
+    TestParams{/*input_dims=*/{6},
+               /*begin=*/{0, 0}, /*end=*/{0, 6}, /*strides=*/{1, 2},
+               /*begin_mask=*/get_mask({0, 0}), /*end_mask=*/get_mask({1, 0}),
+               /*expected_output_dims=*/{3},
+               /*expected_output=*/{1, 3, 5}},
+    TestParams{/*input_dims=*/{6},
+               /*begin=*/{0, 1}, /*end=*/{0, 6}, /*strides=*/{1, 2},
+               /*begin_mask=*/get_mask({0, 0}), /*end_mask=*/get_mask({1, 0}),
+               /*expected_output_dims=*/{3},
+               /*expected_output=*/{2, 4, 6}},
+    TestParams{/*input_dims=*/{6},
+               /*begin=*/{0, 2}, /*end=*/{0, 6}, /*strides=*/{1, 3},
+               /*begin_mask=*/get_mask({0, 0}), /*end_mask=*/get_mask({1, 0}),
+               /*expected_output_dims=*/{2},
+               /*expected_output=*/{3, 6}},
+#endif
   };
 
   for (int i = 0; i < kStridedSliceOKCases; i++) {
@@ -2788,19 +2859,163 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
                           ok_params[i].begin);
     AddTestWeights<int32>("end", {static_cast<int>(ok_params[i].end.size())},
                           ok_params[i].end);
-    std::vector<int> strides(ok_params[i].input_dims.size(), 1);
-    AddTestWeights<int32>("strides", {static_cast<int>(strides.size())},
-                          strides);
+    AddTestWeights<int32>("strides",
+                          {static_cast<int>(ok_params[i].strides.size())},
+                          ok_params[i].strides);
     RunValidationAndConversion(node_def);
 
     TRT_TensorOrWeights output;
     TF_EXPECT_OK(GetTensorOrWeights("my_strided_slice", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
 
-    const DataVec input_data{
-        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    const DataVec input_data{{"input", test::AsTensor<float>(ok_input)}};
     DataVec output_data{
         {"my_strided_slice",
          ConstructTensor<float>(ok_params[i].expected_output.size())}};
+    BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
+                ElementsAreArray(ok_params[i].expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertSlice) {
+  // Get nodedef for Slice layer.
+  auto get_slice_nodedef = []() -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);
+    auto size = ops::Placeholder(s.WithOpName("size"), DT_INT32);
+    auto slice = ops::Slice(s.WithOpName("my_slice"), input, begin, size);
+    return slice.operation.node()->def();
+  };
+
+  {
+    // Begin is below bounds, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, -1, 0});
+    AddTestWeights<int32>("size", {4}, {1, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" for dimension 2 in Slice is out of range, at my_slice");
+  }
+  {
+    // Begin is above bounds, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 3, 0});
+    AddTestWeights<int32>("size", {4}, {1, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" for dimension 2 in Slice is out of range, at my_slice");
+  }
+  {
+    // Size is below bounds, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {1, 1, 2, -2});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" + \"size\" for dimension 3 in Slice is out of range, at "
+        "my_slice");
+  }
+  {
+    // Size is above bounds, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {1, 1, 3, 3});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "\"begin\" + \"size\" for dimension 2 in Slice is out of range, at "
+        "my_slice");
+  }
+  {
+    // Modify batch dim, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3});
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {0, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "TensorRT does not allow modifications to the batch dimension, at "
+        "my_slice");
+  }
+  {
+    // Dynamic batch size with size[0] not -1, should fail.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {1, 1, 2, 3});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "TensorRT does not allow modifications to the batch dimension, at "
+        "my_slice");
+  }
+  {
+    // Dynamic batch size but using size[0] of -1, ok.
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", {1, 2, 3}, /*batch_size=*/-1);
+    AddTestWeights<int32>("begin", {4}, {0, 0, 0, 0});
+    AddTestWeights<int32>("size", {4}, {-1, 1, 2, 2});
+    RunValidationAndConversion(node_def);
+  }
+
+  struct TestParams {
+    std::vector<int> input_dims;
+    std::vector<int> begin;
+    std::vector<int> size;
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_output;
+  };
+
+  // Ok.
+  const int kSliceOKCases = 5;
+  TestParams ok_params[kSliceOKCases] = {
+      TestParams{{1, 2, 3},
+                 {0, 0, 0, 0},
+                 {-1, -1, -1, -1},
+                 {1, 2, 3},
+                 {1, 2, 3, 4, 5, 6}},
+      TestParams{
+          {1, 2, 3}, {0, 0, 0, 0}, {1, 1, 2, 3}, {1, 2, 3}, {1, 2, 3, 4, 5, 6}},
+      TestParams{
+          {1, 2, 3}, {0, 0, 0, 0}, {1, -1, 2, 2}, {1, 2, 2}, {1, 2, 4, 5}},
+      TestParams{{6}, {0, 1}, {1, 5}, {5}, {2, 3, 4, 5, 6}},
+      TestParams{{6}, {0, 1}, {-1, 3}, {3}, {2, 3, 4}},
+  };
+
+  for (int i = 0; i < kSliceOKCases; i++) {
+    Reset();
+    NodeDef node_def = get_slice_nodedef();
+    AddTestTensor("input", ok_params[i].input_dims);
+    AddTestWeights<int32>("begin",
+                          {static_cast<int>(ok_params[i].begin.size())},
+                          ok_params[i].begin);
+    AddTestWeights<int32>("size", {static_cast<int>(ok_params[i].size.size())},
+                          ok_params[i].size);
+    RunValidationAndConversion(node_def);
+
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_slice", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    const DataVec input_data{
+        {"input", test::AsTensor<float>({1, 2, 3, 4, 5, 6})}};
+    DataVec output_data{{"my_slice", ConstructTensor<float>(
+                                         ok_params[i].expected_output.size())}};
     BuildAndRun(input_data, &output_data);
     EXPECT_THAT(GetSpanForData<float>(output_data[0]),
                 ElementsAreArray(ok_params[i].expected_output));
@@ -3127,6 +3342,126 @@ TEST_F(OpConverterTest, ConvertTopK) {
                   ElementsAre(4, 2, 1, 2));
     }
   }
+}
+
+template <DataType dtype>
+void TestConvertGather(OpConverterTest* test) {
+  typedef typename EnumToDataType<dtype>::Type CType;
+
+  // Get the NodeDef for GatherV2.
+  Scope s = Scope::NewRootScope();
+  auto params = ops::Placeholder(s.WithOpName("params"), dtype);
+  auto indices = ops::Placeholder(s.WithOpName("indices"), DT_INT32);
+  auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
+  auto gather = ops::GatherV2(s.WithOpName("my_gather"), params, indices, axis);
+  const NodeDef& node_def = gather.operation.node()->def();
+
+  struct TestParams {
+    std::vector<int> params_dims;
+    std::vector<int> indices_dims;
+    std::vector<int> indices;
+    int axis;
+    std::vector<int> expected_output_dims;
+    std::vector<int> expected_output;
+  };
+
+  // Input is the same {1, 2, 3, 4, 5, 6} for all cases.
+  const int kGatherOKCases = 5;
+  TestParams ok_params[kGatherOKCases] = {
+      // Vector indices (output is rank(params)).
+      TestParams{{1, 2, 3}, {1}, {0}, 3, {1, 2, 1}, {1, 4}},
+      TestParams{{1, 2, 3}, {1}, {1}, 3, {1, 2, 1}, {2, 5}},
+      TestParams{{1, 2, 3}, {1}, {2}, -1, {1, 2, 1}, {3, 6}},
+      TestParams{{1, 2, 3}, {3}, {2, 0, 1}, 3, {1, 2, 3}, {3, 1, 2, 6, 4, 5}},
+      // Higher rank indices (output is rank(params) + rank(indices) - 1).
+      TestParams{{1, 2, 3}, {1, 1}, {0}, 2, {1, 1, 1, 3}, {1, 2, 3}},
+  };
+
+  // Ok.
+  for (int i = 0; i < kGatherOKCases; i++) {
+    test->Reset();
+    test->AddTestTensor("params", ok_params[i].params_dims, 1,
+                        TfDataTypeToTrt(dtype));
+    test->AddTestTensor("indices", ok_params[i].indices_dims, 1,
+                        nvinfer1::DataType::kINT32);
+    test->AddTestWeights<int32>("axis", {1}, {ok_params[i].axis});
+    test->RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(test->GetTensorOrWeights("my_gather", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray(ok_params[i].expected_output_dims,
+                             output.tensor()->getDimensions());
+
+    // Create input in CType and convert expected output to CType.
+    std::vector<CType> inputs = {CType(1), CType(2), CType(3),
+                                 CType(4), CType(5), CType(6)};
+    std::vector<CType> converted_expected_output(
+        ok_params[i].expected_output.begin(),
+        ok_params[i].expected_output.end());
+
+    const DataVec input_data{
+        {"params", test::AsTensor<CType>(inputs)},
+        {"indices", test::AsTensor<int32>(ok_params[i].indices)}};
+    DataVec output_data{
+        {"my_gather",
+         ConstructTensor<CType>(ok_params[i].expected_output.size())}};
+    test->BuildAndRun(input_data, &output_data);
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(converted_expected_output));
+  }
+}
+
+TEST_F(OpConverterTest, ConvertGather) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_gather", "GatherV2", {});
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "GatherV2 got 0 inputs but expected 3, at my_gather");
+  }
+
+  // Get the NodeDef for GatherV2.
+  Scope s = Scope::NewRootScope();
+  auto params = ops::Placeholder(s.WithOpName("params"), DT_FLOAT);
+  auto indices = ops::Placeholder(s.WithOpName("indices"), DT_INT32);
+  auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
+  auto gather = ops::GatherV2(s.WithOpName("my_gather"), params, indices, axis);
+  const NodeDef& node_def = gather.operation.node()->def();
+  {
+    // Axis is a tensor, should fail.
+    Reset();
+    AddTestTensor("params", {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestTensor("axis", {1});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"axis\" for GatherV2 must be a constant, at my_gather");
+  }
+  {
+    // Axis is out of bounds, should fail.
+    Reset();
+    AddTestTensor("params", {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestWeights<int32>("axis", {1}, {4});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Axis value of 4 is out of bounds, must be in "
+                               "range [-4, 4), at my_gather");
+  }
+  {
+    // Axis is batch dimension, should fail.
+    Reset();
+    AddTestTensor("params", {1, 2, 3});
+    AddTestTensor("indices", {2});
+    AddTestWeights<int32>("axis", {1}, {0});
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "TensorRT does not allow manipulation of the "
+                               "batch dimension, at my_gather");
+  }
+
+  Reset();
+  TestConvertGather<DT_FLOAT>(this);
+  TestConvertGather<DT_HALF>(this);
+  TestConvertGather<DT_INT32>(this);
 }
 
 }  // namespace convert

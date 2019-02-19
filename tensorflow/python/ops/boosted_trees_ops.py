@@ -43,7 +43,7 @@ from tensorflow.python.ops.gen_boosted_trees_ops import is_boosted_trees_quantil
 # pylint: enable=unused-import
 
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 
 class PruningMode(object):
