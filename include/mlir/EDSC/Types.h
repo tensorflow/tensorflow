@@ -25,6 +25,7 @@
 #define MLIR_LIB_EDSC_TYPES_H_
 
 #include "mlir-c/Core.h"
+#include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/Types.h"
 #include "mlir/Support/LLVM.h"
 
@@ -36,6 +37,7 @@
 namespace mlir {
 
 class MLIRContext;
+class FuncBuilder;
 
 namespace edsc {
 namespace detail {
@@ -72,40 +74,14 @@ enum class ExprKind {
   LAST_BINDABLE_EXPR = Unbound,
   FIRST_NON_BINDABLE_EXPR = 200,
   FIRST_UNARY_EXPR = FIRST_NON_BINDABLE_EXPR,
-  Dealloc = FIRST_UNARY_EXPR,
-  Negate,
-  LAST_UNARY_EXPR = Negate,
+  LAST_UNARY_EXPR = FIRST_UNARY_EXPR,
   FIRST_BINARY_EXPR = 300,
-  Add = FIRST_BINARY_EXPR,
-  Sub,
-  Mul,
-  Div,
-  AddEQ,
-  SubEQ,
-  MulEQ,
-  DivEQ,
-  GE,
-  GT,
-  LE,
-  LT,
-  EQ,
-  NE,
-  And,
-  Or,
-  LAST_BINARY_EXPR = Or,
+  LAST_BINARY_EXPR = FIRST_BINARY_EXPR,
   FIRST_TERNARY_EXPR = 400,
-  Select = FIRST_TERNARY_EXPR,
   IfThenElse,
   LAST_TERNARY_EXPR = IfThenElse,
   FIRST_VARIADIC_EXPR = 500,
-  Alloc = FIRST_VARIADIC_EXPR, // Variadic because takes multiple dynamic shape
-                               // values.
-  Load,
-  Store,
-  VectorTypeCast, // Variadic because takes a type and anything taking a type
-                  // is variadic for now.
-  Return,
-  LAST_VARIADIC_EXPR = Return,
+  LAST_VARIADIC_EXPR = FIRST_VARIADIC_EXPR,
   FIRST_STMT_BLOCK_LIKE_EXPR = 600,
   For = FIRST_STMT_BLOCK_LIKE_EXPR,
   LAST_STMT_BLOCK_LIKE_EXPR = For,
@@ -164,7 +140,7 @@ public:
     return allocator;
   }
 
-  Expr();
+  explicit Expr(Type type);
   /* implicit */ Expr(ImplType *storage) : storage(storage) {}
   explicit Expr(edsc_expr_t expr)
       : storage(reinterpret_cast<ImplType *>(expr)) {}
@@ -180,6 +156,20 @@ public:
   /// Returns the classification for this type.
   ExprKind getKind() const;
   unsigned getId() const;
+  StringRef getName() const;
+
+  /// Returns the types of the values this expression produces.
+  ArrayRef<Type> getResultTypes() const;
+
+  /// Returns the list of expressions used as arguments of this expression.
+  ArrayRef<Expr> getChildExpressions() const;
+
+  /// Returns the list of attributes of this expression.
+  ArrayRef<NamedAttribute> getAttributes() const;
+
+  /// Build the IR corresponding to this expression.
+  SmallVector<Value *, 4>
+  build(FuncBuilder &b, const llvm::DenseMap<Expr, Value *> &ssaBindings) const;
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -216,7 +206,7 @@ private:
 struct UnaryExpr : public Expr {
   friend class Expr;
 
-  UnaryExpr(ExprKind kind, Expr expr);
+  UnaryExpr(StringRef name, Expr expr);
   Expr getExpr() const;
 
 protected:
@@ -227,7 +217,8 @@ protected:
 
 struct BinaryExpr : public Expr {
   friend class Expr;
-  BinaryExpr(ExprKind kind, Expr lhs, Expr rhs);
+  BinaryExpr(StringRef name, Type result, Expr lhs, Expr rhs,
+             ArrayRef<NamedAttribute> attrs = {});
   Expr getLHS() const;
   Expr getRHS() const;
 
@@ -239,7 +230,7 @@ protected:
 
 struct TernaryExpr : public Expr {
   friend class Expr;
-  TernaryExpr(ExprKind kind, Expr cond, Expr lhs, Expr rhs);
+  TernaryExpr(StringRef name, Expr cond, Expr lhs, Expr rhs);
   Expr getCond() const;
   Expr getLHS() const;
   Expr getRHS() const;
@@ -252,8 +243,9 @@ protected:
 
 struct VariadicExpr : public Expr {
   friend class Expr;
-  VariadicExpr(ExprKind kind, llvm::ArrayRef<Expr> exprs,
-               llvm::ArrayRef<Type> types = {});
+  VariadicExpr(StringRef name, llvm::ArrayRef<Expr> exprs,
+               llvm::ArrayRef<Type> types = {},
+               ArrayRef<NamedAttribute> attrs = {});
   llvm::ArrayRef<Expr> getExprs() const;
   llvm::ArrayRef<Type> getTypes() const;
 
@@ -554,7 +546,7 @@ namespace edsc {
 /// `llvm::SmallVector<Expr, 8> dims(n);` directly because a single
 /// `Expr` will be default constructed and copied everywhere in the vector.
 /// Hilarity ensues when trying to bind `Expr` multiple times.
-llvm::SmallVector<Expr, 8> makeNewExprs(unsigned n);
+llvm::SmallVector<Expr, 8> makeNewExprs(unsigned n, Type type);
 template <typename IterTy>
 llvm::SmallVector<Expr, 8> copyExprs(IterTy begin, IterTy end) {
   return llvm::SmallVector<Expr, 8>(begin, end);

@@ -110,6 +110,9 @@ struct PythonMLIRModule {
     return ::makeMemRefType(mlir_context_t{&mlirContext}, elemType,
                             int64_list_t{sizes.data(), sizes.size()});
   }
+  PythonType makeIndexType() {
+    return ::makeIndexType(mlir_context_t{&mlirContext});
+  }
   PythonFunction makeFunction(const std::string &name,
                               std::vector<PythonType> &inputTypes,
                               std::vector<PythonType> &outputTypes) {
@@ -177,7 +180,8 @@ struct PythonExpr {
 };
 
 struct PythonBindable : public PythonExpr {
-  PythonBindable() : PythonExpr(edsc_expr_t{makeBindable()}) {}
+  explicit PythonBindable(const PythonType &type)
+      : PythonExpr(edsc_expr_t{makeBindable(type.type)}) {}
   PythonBindable(PythonExpr expr) : PythonExpr(expr) {
     assert(Expr(expr).isa<Bindable>() && "Expected Bindable");
   }
@@ -213,7 +217,6 @@ struct PythonBlock {
 };
 
 struct PythonIndexed : public edsc_indexed_t {
-  PythonIndexed() : edsc_indexed_t{makeIndexed(PythonBindable())} {}
   PythonIndexed(PythonExpr e) : edsc_indexed_t{makeIndexed(e)} {}
   PythonIndexed(PythonBindable b) : edsc_indexed_t{makeIndexed(b)} {}
   operator PythonExpr() { return PythonExpr(base); }
@@ -475,6 +478,8 @@ PYBIND11_MODULE(pybind, m) {
       .def("make_memref_type", &PythonMLIRModule::makeMemRefType,
            "Returns an mlir::MemRefType of an elemental scalar. -1 is used to "
            "denote symbolic dimensions in the resulting memref shape.")
+      .def("make_index_type", &PythonMLIRModule::makeIndexType,
+           "Returns an mlir::IndexType")
       .def("compile", &PythonMLIRModule::compile,
            "Compiles the mlir::Module to LLVMIR a creates new opaque "
            "ExecutionEngine backed by the ORC JIT.")
@@ -576,7 +581,7 @@ PYBIND11_MODULE(pybind, m) {
       m, "Bindable",
       "Wrapping class for mlir::edsc::Bindable.\nA Bindable is a special Expr "
       "that can be bound manually to specific MLIR SSA Values.")
-      .def(py::init<>())
+      .def(py::init<PythonType>())
       .def("__str__", &PythonBindable::str);
 
   py::class_<PythonStmt>(m, "Stmt", "Wrapping class for mlir::edsc::Stmt.")
@@ -588,7 +593,6 @@ PYBIND11_MODULE(pybind, m) {
       m, "Indexed",
       "Wrapping class for mlir::edsc::Indexed.\nAn Indexed is a wrapper class "
       "that support load and store operations.")
-      .def(py::init<>(), R"DOC(Build from fresh Bindable)DOC")
       .def(py::init<PythonExpr>(), R"DOC(Build from existing Expr)DOC")
       .def(py::init<PythonBindable>(), R"DOC(Build from existing Bindable)DOC")
       .def(

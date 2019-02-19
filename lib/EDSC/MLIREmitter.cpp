@@ -145,7 +145,8 @@ static void printDefininingStatement(llvm::raw_ostream &os, const Value &v) {
 }
 
 mlir::edsc::MLIREmitter::MLIREmitter(FuncBuilder *builder, Location location)
-    : builder(builder), location(location) {
+    : builder(builder), location(location), zeroIndex(builder->getIndexType()),
+      oneIndex(builder->getIndexType()) {
   // Build the ubiquitous zero and one at the top of the function.
   bindConstant<ConstantIndexOp>(Bindable(zeroIndex), 0);
   bindConstant<ConstantIndexOp>(Bindable(oneIndex), 1);
@@ -166,140 +167,23 @@ MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
 }
 
 Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
+  // It is still necessary in case we try to emit a bindable directly
+  // FIXME: make sure isa<Bindable> works and use it below to delegate emission
+  // to Expr::build and remove this, now duplicate, check.
   auto it = ssaBindings.find(e);
   if (it != ssaBindings.end()) {
     return it->second;
   }
 
-  // Skip bindables, they must have been found already.
   Value *res = nullptr;
-  if (auto un = e.dyn_cast<UnaryExpr>()) {
-    if (un.getKind() == ExprKind::Dealloc) {
-      builder->create<DeallocOp>(location, emitExpr(un.getExpr()));
-      return nullptr;
-    } else if (un.getKind() == ExprKind::Negate) {
-      auto ctrue = builder->create<mlir::ConstantIntOp>(location, 1,
-                                                        builder->getI1Type());
-      // TODO(dvytin): worth binding constant in ssaBindings in the future?
-      // TODO(dvytin): no need to cast getExpr() to I1?
-      auto val = emitExpr(un.getExpr());
-      assert(val->getType().isInteger(1) &&
-             "Logical Negate expects i1 operand");
-      return sub(builder, location, ctrue, val);
-    }
-  } else if (auto bin = e.dyn_cast<BinaryExpr>()) {
-    auto lhs = bin.getLHS();
-    auto rhs = bin.getRHS();
-    auto *a = emitExpr(lhs);
-    auto *b = emitExpr(rhs);
-    if (!a || !b) {
-      return nullptr;
-    }
-    if (bin.getKind() == ExprKind::Add) {
-      res = add(builder, location, a, b);
-    } else if (bin.getKind() == ExprKind::Sub) {
-      res = sub(builder, location, a, b);
-    } else if (bin.getKind() == ExprKind::Mul) {
-      res = mul(builder, location, a, b);
-    } else if (bin.getKind() == ExprKind::And) {
-      // Operands should both be i1
-      assert(a->getType().isInteger(1) && "Logical And expects i1 LHS");
-      assert(b->getType().isInteger(1) && "Logical And expects i1 RHS");
-      res = mul(builder, location, a, b);
-    } else if (bin.getKind() == ExprKind::Or) {
-      assert(a->getType().isInteger(1) && "Logical Or expects i1 LHS");
-      assert(b->getType().isInteger(1) && "Logical Or expects i1 RHS");
-      // a || b = not (not a && not b)
-      using edsc::op::operator!;
-      using edsc::op::operator&&;
-      res = emitExpr(!(!lhs && !rhs));
-    } // TODO(ntv): signed vs unsiged ??
-      // TODO(ntv): integer vs not ??
-      // TODO(ntv): float cmp
-    else if (bin.getKind() == ExprKind::EQ) {
-      res = builder->create<CmpIOp>(location, mlir::CmpIPredicate::EQ, a, b);
-    } else if (bin.getKind() == ExprKind::NE) {
-      res = builder->create<CmpIOp>(location, mlir::CmpIPredicate::NE, a, b);
-    } else if (bin.getKind() == ExprKind::LT) {
-      res = builder->create<CmpIOp>(location, mlir::CmpIPredicate::SLT, a, b);
-    } else if (bin.getKind() == ExprKind::LE) {
-      res = builder->create<CmpIOp>(location, mlir::CmpIPredicate::SLE, a, b);
-    } else if (bin.getKind() == ExprKind::GT) {
-      res = builder->create<CmpIOp>(location, mlir::CmpIPredicate::SGT, a, b);
-    } else if (bin.getKind() == ExprKind::GE) {
-      res = builder->create<CmpIOp>(location, mlir::CmpIPredicate::SGE, a, b);
-    }
-
-    // TODO(ntv): do we want this?
-    //   if (res && ((a->type().is_uint() && !b->type().is_uint()) ||
-    //               (!a->type().is_uint() && b->type().is_uint()))) {
-    //     std::stringstream ss;
-    //     ss << "a: " << *a << "\t b: " << *b;
-    //     res->getDefiningOperation()->emitWarning(
-    //         "Mixing signed and unsigned integers: " + ss.str());
-    //   }
-    // }
-  }
-
-  if (auto ter = e.dyn_cast<TernaryExpr>()) {
-    if (ter.getKind() == ExprKind::Select) {
-      auto *cond = emitExpr(ter.getCond());
-      auto *lhs = emitExpr(ter.getLHS());
-      auto *rhs = emitExpr(ter.getRHS());
-      if (!cond || !rhs || !lhs) {
-        return nullptr;
-      }
-      res = builder->create<SelectOp>(location, cond, lhs, rhs)->getResult();
-    }
-  }
-
-  if (auto nar = e.dyn_cast<VariadicExpr>()) {
-    if (nar.getKind() == ExprKind::Alloc) {
-      auto exprs = emitExprs(nar.getExprs());
-      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
-        return nullptr;
-      }
-      auto types = nar.getTypes();
-      assert(types.size() == 1 && "Expected 1 type");
-      res =
-          builder->create<AllocOp>(location, types[0].cast<MemRefType>(), exprs)
-              ->getResult();
-    } else if (nar.getKind() == ExprKind::Load) {
-      auto exprs = emitExprs(nar.getExprs());
-      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
-        return nullptr;
-      }
-      assert(!exprs.empty() && "Load requires >= 1 exprs");
-      assert(nar.getTypes().empty() && "Load expects no type");
-      SmallVector<Value *, 8> vals(exprs.begin() + 1, exprs.end());
-      res = builder->create<LoadOp>(location, exprs[0], vals)->getResult();
-    } else if (nar.getKind() == ExprKind::Store) {
-      auto exprs = emitExprs(nar.getExprs());
-      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
-        return nullptr;
-      }
-      assert(exprs.size() >= 2 && "Store requires >= 2 exprs");
-      assert(nar.getTypes().empty() && "Store expects no type");
-      SmallVector<Value *, 8> vals(exprs.begin() + 2, exprs.end());
-      builder->create<StoreOp>(location, exprs[0], exprs[1], vals);
-      return nullptr;
-    } else if (nar.getKind() == ExprKind::VectorTypeCast) {
-      auto exprs = emitExprs(nar.getExprs());
-      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
-        return nullptr;
-      }
-      assert(exprs.size() == 1 && "Expected 1 expr");
-      auto types = nar.getTypes();
-      assert(types.size() == 1 && "Expected 1 type");
-      res = builder
-                ->create<VectorTypeCastOp>(location, exprs[0],
-                                           types[0].cast<MemRefType>())
-                ->getResult();
-    } else if (nar.getKind() == ExprKind::Return) {
-      auto exprs = emitExprs(nar.getExprs());
-      builder->create<ReturnOp>(location, exprs);
-      return nullptr; // no Value* produced and this is fine.
-    }
+  bool expectedEmpty = false;
+  if (e.isa<UnaryExpr>() || e.isa<BinaryExpr>() || e.isa<TernaryExpr>() ||
+      e.isa<VariadicExpr>()) {
+    auto results = e.build(*builder, ssaBindings);
+    assert(results.size() <= 1 && "2+-result exprs are not supported");
+    expectedEmpty = results.empty();
+    if (!results.empty())
+      res = results.front();
   }
 
   if (auto expr = e.dyn_cast<StmtBlockLikeExpr>()) {
@@ -349,7 +233,7 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
     }
   }
 
-  if (!res) {
+  if (!res && !expectedEmpty) {
     // If we hit here it must mean that the Bindables have not all been bound
     // properly. Because EDSCs are currently dynamically typed, it becomes a
     // runtime error.
@@ -386,9 +270,9 @@ void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   auto ip = builder->getInsertionPoint();
   auto *val = emitExpr(stmt.getRHS());
   if (!val) {
-    assert((stmt.getRHS().getKind() == ExprKind::Dealloc ||
-            stmt.getRHS().getKind() == ExprKind::Store ||
-            stmt.getRHS().getKind() == ExprKind::Return) &&
+    assert((stmt.getRHS().getName() == DeallocOp::getOperationName() ||
+            stmt.getRHS().getName() == StoreOp::getOperationName() ||
+            stmt.getRHS().getName() == ReturnOp::getOperationName()) &&
            "dealloc, store or return expected as the only 0-result ops");
     return;
   }
@@ -491,7 +375,7 @@ mlir::edsc::MLIREmitter::makeBoundFunctionArguments(mlir::Function *function) {
   for (unsigned pos = 0, npos = function->getNumArguments(); pos < npos;
        ++pos) {
     auto *arg = function->getArgument(pos);
-    Expr b;
+    Expr b(arg->getType());
     bind(Bindable(b), arg);
     res.push_back(Expr(b));
   }
@@ -502,7 +386,8 @@ SmallVector<edsc::Expr, 8>
 mlir::edsc::MLIREmitter::makeBoundMemRefShape(Value *memRef) {
   assert(memRef->getType().isa<MemRefType>() && "Expected a MemRef value");
   MemRefType memRefType = memRef->getType().cast<MemRefType>();
-  auto memRefSizes = edsc::makeNewExprs(memRefType.getShape().size());
+  auto memRefSizes =
+      edsc::makeNewExprs(memRefType.getShape().size(), builder->getIndexType());
   auto memrefSizeValues = getMemRefSizes(getBuilder(), getLocation(), memRef);
   assert(memrefSizeValues.size() == memRefSizes.size());
   bindZipRange(llvm::zip(memRefSizes, memrefSizeValues));
@@ -517,7 +402,7 @@ mlir::edsc::MLIREmitter::makeBoundMemRefView(Value *memRef) {
 
   SmallVector<edsc::Expr, 8> lbs;
   lbs.reserve(rank);
-  Expr zero;
+  Expr zero(builder->getIndexType());
   bindConstant<mlir::ConstantIndexOp>(Bindable(zero), 0);
   for (unsigned i = 0; i < rank; ++i) {
     lbs.push_back(zero);
@@ -527,7 +412,7 @@ mlir::edsc::MLIREmitter::makeBoundMemRefView(Value *memRef) {
 
   SmallVector<edsc::Expr, 8> steps;
   lbs.reserve(rank);
-  Expr one;
+  Expr one(builder->getIndexType());
   bindConstant<mlir::ConstantIndexOp>(Bindable(one), 1);
   for (unsigned i = 0; i < rank; ++i) {
     steps.push_back(one);
@@ -545,7 +430,7 @@ mlir::edsc::MLIREmitter::makeBoundMemRefView(Expr boundMemRef) {
 
 edsc_expr_t bindConstantBF16(edsc_mlir_emitter_t emitter, double value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Expr b;
+  Expr b(e->getBuilder()->getBF16Type());
   e->bindConstant<mlir::ConstantFloatOp>(Bindable(b), mlir::APFloat(value),
                                          e->getBuilder()->getBF16Type());
   return b;
@@ -553,7 +438,7 @@ edsc_expr_t bindConstantBF16(edsc_mlir_emitter_t emitter, double value) {
 
 edsc_expr_t bindConstantF16(edsc_mlir_emitter_t emitter, float value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Expr b;
+  Expr b(e->getBuilder()->getBF16Type());
   bool unused;
   mlir::APFloat val(value);
   val.convert(e->getBuilder()->getF16Type().getFloatSemantics(),
@@ -565,7 +450,7 @@ edsc_expr_t bindConstantF16(edsc_mlir_emitter_t emitter, float value) {
 
 edsc_expr_t bindConstantF32(edsc_mlir_emitter_t emitter, float value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Expr b;
+  Expr b(e->getBuilder()->getF32Type());
   e->bindConstant<mlir::ConstantFloatOp>(Bindable(b), mlir::APFloat(value),
                                          e->getBuilder()->getF32Type());
   return b;
@@ -573,7 +458,7 @@ edsc_expr_t bindConstantF32(edsc_mlir_emitter_t emitter, float value) {
 
 edsc_expr_t bindConstantF64(edsc_mlir_emitter_t emitter, double value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Expr b;
+  Expr b(e->getBuilder()->getF64Type());
   e->bindConstant<mlir::ConstantFloatOp>(Bindable(b), mlir::APFloat(value),
                                          e->getBuilder()->getF64Type());
   return b;
@@ -582,7 +467,7 @@ edsc_expr_t bindConstantF64(edsc_mlir_emitter_t emitter, double value) {
 edsc_expr_t bindConstantInt(edsc_mlir_emitter_t emitter, int64_t value,
                             unsigned bitwidth) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Expr b;
+  Expr b(e->getBuilder()->getIntegerType(bitwidth));
   e->bindConstant<mlir::ConstantIntOp>(
       b, value, e->getBuilder()->getIntegerType(bitwidth));
   return b;
@@ -590,7 +475,7 @@ edsc_expr_t bindConstantInt(edsc_mlir_emitter_t emitter, int64_t value,
 
 edsc_expr_t bindConstantIndex(edsc_mlir_emitter_t emitter, int64_t value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
-  Expr b;
+  Expr b(e->getBuilder()->getIndexType());
   e->bindConstant<mlir::ConstantIndexOp>(Bindable(b), value);
   return b;
 }
@@ -618,7 +503,7 @@ edsc_expr_t bindFunctionArgument(edsc_mlir_emitter_t emitter,
   auto *f = reinterpret_cast<mlir::Function *>(function);
   assert(pos < f->getNumArguments());
   auto *arg = *(f->getArguments().begin() + pos);
-  Expr b;
+  Expr b(arg->getType());
   e->bind(Bindable(b), arg);
   return Expr(b);
 }
@@ -630,7 +515,7 @@ void bindFunctionArguments(edsc_mlir_emitter_t emitter, mlir_func_t function,
   assert(result->n == f->getNumArguments());
   for (unsigned pos = 0; pos < result->n; ++pos) {
     auto *arg = *(f->getArguments().begin() + pos);
-    Expr b;
+    Expr b(arg->getType());
     e->bind(Bindable(b), arg);
     result->exprs[pos] = Expr(b);
   }
@@ -670,9 +555,9 @@ void bindMemRefView(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
   assert(resultUbs->n == rank && "Unexpected memref binding results count");
   assert(resultSteps->n == rank && "Unexpected memref binding results count");
   auto bindables = e->makeBoundMemRefShape(v);
-  Expr zero;
+  Expr zero(e->getBuilder()->getIndexType());
   e->bindConstant<mlir::ConstantIndexOp>(zero, 0);
-  Expr one;
+  Expr one(e->getBuilder()->getIndexType());
   e->bindConstant<mlir::ConstantIndexOp>(one, 1);
   for (unsigned i = 0; i < rank; ++i) {
     resultLbs->exprs[i] = zero;

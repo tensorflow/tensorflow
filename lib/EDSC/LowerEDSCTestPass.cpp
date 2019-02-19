@@ -44,13 +44,14 @@ char LowerEDSCTestPass::passID = 0;
 #include "mlir/EDSC/reference-impl.inc"
 
 PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
+  // Inject a EDSC-constructed list of blocks.
   if (f->getName().strref() == "blocks") {
     using namespace edsc::op;
 
     FuncBuilder builder(f);
     edsc::ScopedEDSCContext context;
-    edsc::Expr arg1, arg2, arg3, arg4;
     auto type = builder.getIntegerType(32);
+    edsc::Expr arg1(type), arg2(type), arg3(type), arg4(type);
 
     auto b1 =
         edsc::block({arg1, arg2}, {type, type}, {arg1 + arg2, edsc::Return()});
@@ -73,8 +74,9 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
              "dynamic_for expected index arguments");
     }
 
+    Type index = IndexType::get(f->getContext());
     edsc::ScopedEDSCContext context;
-    edsc::Expr lb, ub, step;
+    edsc::Expr lb(index), ub(index), step(index);
     auto loop = edsc::For(lb, ub, step, {});
     edsc::MLIREmitter(&builder, f->getLoc())
         .bind(edsc::Bindable(lb), f->getArgument(0))
@@ -83,6 +85,7 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
         .emitStmt(loop);
     return success();
   }
+
   // Inject a EDSC-constructed `for` loop with non-constant bounds that are
   // obtained from AffineApplyOp (also constructed using EDSC operator
   // overloads).
@@ -97,8 +100,9 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
              "dynamic_for expected index arguments");
     }
 
+    Type index = IndexType::get(f->getContext());
     edsc::ScopedEDSCContext context;
-    edsc::Expr lb1, lb2, ub1, ub2, step;
+    edsc::Expr lb1(index), lb2(index), ub1(index), ub2(index), step(index);
     using namespace edsc::op;
     auto lb = lb1 - lb2;
     auto ub = ub1 + ub2;

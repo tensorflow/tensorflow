@@ -24,7 +24,10 @@ class EdscTest(unittest.TestCase):
       emitter = E.MLIRFunctionEmitter(f)
       input, output = list(map(E.Indexed, emitter.bind_function_arguments()))
       lbs, ubs, steps = emitter.bind_indexed_view(input)
-      i, *ivs, j = list(map(E.Expr, [E.Bindable() for _ in range(len(shape))]))
+      i, *ivs, j = list(
+          map(E.Expr,
+              [E.Bindable(module.make_index_type()) for _ in range(len(shape))
+              ]))
 
       # n-D type and rank agnostic copy-transpose-first-last (where n >= 2).
       loop = E.Block([

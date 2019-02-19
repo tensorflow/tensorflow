@@ -10,21 +10,30 @@ import google_mlir.bindings.python.pybind as E
 
 class EdscTest(unittest.TestCase):
 
+  def setUp(self):
+    self.module = E.MLIRModule()
+    self.boolType = self.module.make_scalar_type("i", 1)
+    self.i32Type = self.module.make_scalar_type("i", 32)
+    self.f32Type = self.module.make_scalar_type("f32")
+    self.indexType = self.module.make_index_type()
+
   def testBindables(self):
     with E.ContextManager():
-      i = E.Expr(E.Bindable())
+      i = E.Expr(E.Bindable(self.i32Type))
       self.assertIn("$1", i.__str__())
 
   def testOneExpr(self):
     with E.ContextManager():
-      i, lb, ub = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
+      i, lb, ub = list(
+          map(E.Expr, [E.Bindable(self.i32Type) for _ in range(3)]))
       expr = E.Mul(i, E.Add(lb, ub))
       str = expr.__str__()
       self.assertIn("($1 * ($2 + $3))", str)
 
   def testOneLoop(self):
     with E.ContextManager():
-      i, lb, ub, step = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
+      i, lb, ub, step = list(
+          map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
       loop = E.For(i, lb, ub, step, [E.Stmt(E.Add(lb, ub))])
       str = loop.__str__()
       self.assertIn("for($1 = $2 to $3 step $4) {", str)
@@ -32,7 +41,8 @@ class EdscTest(unittest.TestCase):
 
   def testTwoLoops(self):
     with E.ContextManager():
-      i, lb, ub, step = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
+      i, lb, ub, step = list(
+          map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
       loop = E.For(i, lb, ub, step, [E.For(i, lb, ub, step, [E.Stmt(i)])])
       str = loop.__str__()
       self.assertIn("for($1 = $2 to $3 step $4) {", str)
@@ -41,11 +51,12 @@ class EdscTest(unittest.TestCase):
 
   def testNestedLoops(self):
     with E.ContextManager():
-      i, lb, ub, step = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
-      ivs = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
-      lbs = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
-      ubs = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
-      steps = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
+      i, lb, ub, step = list(
+          map(E.Expr, [E.Bindable(self.i32Type) for _ in range(4)]))
+      ivs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
+      lbs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
+      ubs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
+      steps = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
       loop = E.For(ivs, lbs, ubs, steps, [
           E.For(i, lb, ub, step, [E.Stmt(ub * step - lb)]),
       ])
@@ -59,20 +70,23 @@ class EdscTest(unittest.TestCase):
 
   def testIndexed(self):
     with E.ContextManager():
-      i, j, k = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
-      A, B, C = list(map(E.Indexed, [E.Bindable() for _ in range(3)]))
+      i, j, k = list(
+          map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
+      memrefType = self.module.make_memref_type(self.f32Type, [42, 42])
+      A, B, C = list(map(E.Indexed, [E.Bindable(memrefType) for _ in range(3)]))
       stmt = C.store([i, j], A.load([i, k]) * B.load([k, j]))
       str = stmt.__str__()
       self.assertIn(" = store(", str)
 
   def testMatmul(self):
     with E.ContextManager():
-      ivs = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
-      lbs = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
-      ubs = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
-      steps = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
+      ivs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
+      lbs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
+      ubs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
+      steps = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
       i, j, k = ivs[0], ivs[1], ivs[2]
-      A, B, C = list(map(E.Indexed, [E.Bindable() for _ in range(3)]))
+      memrefType = self.module.make_memref_type(self.f32Type, [42, 42])
+      A, B, C = list(map(E.Indexed, [E.Bindable(memrefType) for _ in range(3)]))
       loop = E.For(
           ivs, lbs, ubs, steps,
           [C.store([i, j],
@@ -85,29 +99,36 @@ class EdscTest(unittest.TestCase):
 
   def testArithmetic(self):
     with E.ContextManager():
-      i, j, k, l = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
+      i, j, k, l = list(
+          map(E.Expr, [E.Bindable(self.f32Type) for _ in range(4)]))
       stmt = i + j * k - l
       str = stmt.__str__()
       self.assertIn("(($1 + ($2 * $3)) - $4)", str)
 
   def testBoolean(self):
     with E.ContextManager():
-      i, j, k, l = list(map(E.Expr, [E.Bindable() for _ in range(4)]))
+      i, j, k, l = list(
+          map(E.Expr, [E.Bindable(self.i32Type) for _ in range(4)]))
       stmt1 = (i < j) & (j >= k)
       stmt2 = ~(stmt1 | (k == l))
       str = stmt2.__str__()
-      self.assertIn("~((($1 < $2) && ($2 >= $3)) || ($3 == $4))", str)
+      # Note that "a | b" is currently implemented as ~(~a && ~b) and "~a" is
+      # currently implemented as "constant 1 - a", which leads to this
+      # expression.
+      self.assertIn(
+          "(constant({value: 1}) - (constant({value: 1}) - ((constant({value: 1}) - (($1 < $2) && ($2 >= $3))) && (constant({value: 1}) - ($3 == $4)))))",
+          str)
 
   def testSelect(self):
     with E.ContextManager():
-      i, j, k = list(map(E.Expr, [E.Bindable() for _ in range(3)]))
+      i, j, k = list(map(E.Expr, [E.Bindable(self.i32Type) for _ in range(3)]))
       stmt = E.Select(i > j, i, j)
       str = stmt.__str__()
       self.assertIn("select(($1 > $2), $1, $2)", str)
 
   def testBlock(self):
     with E.ContextManager():
-      i, j = list(map(E.Expr, [E.Bindable() for _ in range(2)]))
+      i, j = list(map(E.Expr, [E.Bindable(self.f32Type) for _ in range(2)]))
       stmt = E.Block([E.Stmt(i + j), E.Stmt(i - j)])
       str = stmt.__str__()
       self.assertIn("^bb:", str)
@@ -175,16 +196,14 @@ class EdscTest(unittest.TestCase):
       self.assertIn("constant 123 : index", str)
 
   def testMLIRBooleanEmission(self):
-    module = E.MLIRModule()
-    t = module.make_scalar_type("i", 1)
-    m = module.make_memref_type(t, [10]) # i1 tensor
-    f = module.make_function("mkbooltensor", [m, m], [])
+    m = self.module.make_memref_type(self.boolType, [10])  # i1 tensor
+    f = self.module.make_function("mkbooltensor", [m, m], [])
     with E.ContextManager():
       emitter = E.MLIRFunctionEmitter(f)
       input, output = list(map(E.Indexed, emitter.bind_function_arguments()))
-      i = E.Expr(E.Bindable())
-      j = E.Expr(E.Bindable())
-      k = E.Expr(E.Bindable())
+      i = E.Expr(E.Bindable(self.indexType))
+      j = E.Expr(E.Bindable(self.indexType))
+      k = E.Expr(E.Bindable(self.indexType))
       idxs = [i, j, k]
       zero = emitter.bind_constant_index(0)
       one = emitter.bind_constant_index(1)
@@ -201,17 +220,13 @@ class EdscTest(unittest.TestCase):
       emitter.emit_inplace(loop)
       # str = f.__str__()
       # print(str)
-      module.compile()
-      self.assertNotEqual(module.get_engine_address(), 0)
+      self.module.compile()
+      self.assertNotEqual(self.module.get_engine_address(), 0)
 
-  # TODO(ntv): support symbolic For bounds with EDSCs
   def testMLIREmission(self):
     shape = [3, 4, 5]
-    module = E.MLIRModule()
-    index = module.make_scalar_type("index")
-    t = module.make_scalar_type("f32")
-    m = module.make_memref_type(t, shape)
-    f = module.make_function("copy", [m, m], [])
+    m = self.module.make_memref_type(self.f32Type, shape)
+    f = self.module.make_function("copy", [m, m], [])
 
     with E.ContextManager():
       emitter = E.MLIRFunctionEmitter(f)
@@ -220,7 +235,8 @@ class EdscTest(unittest.TestCase):
       input, output = list(map(E.Indexed, emitter.bind_function_arguments()))
       M, N, O = emitter.bind_indexed_shape(input)
 
-      ivs = list(map(E.Expr, [E.Bindable() for _ in range(len(shape))]))
+      ivs = list(
+          map(E.Expr, [E.Bindable(self.indexType) for _ in range(len(shape))]))
       lbs = [zero, zero, zero]
       ubs = [M, N, O]
       steps = [one, one, one]
@@ -237,8 +253,9 @@ class EdscTest(unittest.TestCase):
       self.assertIn("""store %0, %arg1[%i0, %i1, %i2] : memref<3x4x5xf32>""",
                     str)
 
-      module.compile()
-      self.assertNotEqual(module.get_engine_address(), 0)
+      self.module.compile()
+      self.assertNotEqual(self.module.get_engine_address(), 0)
+
 
 if __name__ == "__main__":
   unittest.main()

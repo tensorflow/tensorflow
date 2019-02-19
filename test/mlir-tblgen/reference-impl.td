@@ -11,7 +11,7 @@ def X_AddOp : Op<"x.add">,
     // TODO: extract referenceImplementation to Op.
     // TODO: shrink the reference implementation
   code referenceImplementation = [{
-    auto ivs = makeNewExprs(view_A.rank());
+    auto ivs = makeNewExprs(view_A.rank(), builder.getIndexType());
     // TODO(jpienaar@): automate the positional/named extraction. Need to be a
     // bit careful about things memref (from which a "view" can be extracted)
     // and the rest (see ReferenceImplGen.cpp).

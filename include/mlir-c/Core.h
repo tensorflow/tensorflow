@@ -106,6 +106,9 @@ mlir_type_t makeMemRefType(mlir_context_t context, mlir_type_t elemType,
 mlir_type_t makeFunctionType(mlir_context_t context, mlir_type_list_t inputs,
                              mlir_type_list_t outputs);
 
+/// Returns an `mlir::IndexType`.
+mlir_type_t makeIndexType(mlir_context_t context);
+
 /// Returns the arity of `function`.
 unsigned getFunctionArity(mlir_func_t function);
 
@@ -189,7 +192,7 @@ void bindMemRefView(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
                     edsc_expr_list_t *resultSteps);
 
 /// Returns an opaque expression for an mlir::edsc::Expr.
-edsc_expr_t makeBindable();
+edsc_expr_t makeBindable(mlir_type_t type);
 
 /// Returns an opaque expression for an mlir::edsc::Stmt.
 edsc_stmt_t makeStmt(edsc_expr_t e);
