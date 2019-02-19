@@ -22,20 +22,21 @@ import os
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.contrib.feature_column.python.feature_column import sequence_feature_column_v2 as sfc
-from tensorflow.python.feature_column import feature_column_lib as fc
-from tensorflow.python.feature_column.feature_column_v2_test import _TestStateManager
+from tensorflow.python.feature_column import feature_column_v2 as fc
+from tensorflow.python.feature_column import feature_column_v2_test as fc_test
+from tensorflow.python.feature_column import sequence_feature_column as sfc
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.training import monitored_session
 
 
 class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
@@ -82,6 +83,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[1., 2., 17., 18., 19.], [3., 4., 11., 12., 13.]]],
        'expected_sequence_length': [2, 2]},
       )
+  @test_util.run_in_graph_and_eager_modes
   def test_embedding_column(
       self, sparse_input_args_a, sparse_input_args_b, expected_input_layer,
       expected_sequence_length):
@@ -128,18 +130,19 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     input_layer, sequence_length = sequence_input_layer({
         'aaa': sparse_input_a, 'bbb': sparse_input_b,})
 
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+    self.evaluate(variables_lib.global_variables_initializer())
+    weights = sequence_input_layer.weights
     self.assertCountEqual(
         ('sequence_features/aaa_embedding/embedding_weights:0',
          'sequence_features/bbb_embedding/embedding_weights:0'),
-        tuple([v.name for v in global_vars]))
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(embedding_values_a, global_vars[0].eval(session=sess))
-      self.assertAllEqual(embedding_values_b, global_vars[1].eval(session=sess))
-      self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+        tuple([v.name for v in weights]))
+    self.assertAllEqual(embedding_values_a, self.evaluate(weights[0]))
+    self.assertAllEqual(embedding_values_b, self.evaluate(weights[1]))
+    self.assertAllEqual(expected_input_layer, self.evaluate(input_layer))
+    self.assertAllEqual(
+        expected_sequence_length, self.evaluate(sequence_length))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_embedding_column_with_non_sequence_categorical(self):
     """Tests that error is raised for non-sequence embedding column."""
     vocabulary_size = 3
@@ -162,70 +165,75 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
       sequence_input_layer = sfc.SequenceFeatures([embedding_column_a])
       _, _ = sequence_input_layer({'aaa': sparse_input})
 
+  @test_util.run_in_graph_and_eager_modes
   def test_shared_embedding_column(self):
-    vocabulary_size = 3
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [1]
-        # example 1, ids [2, 0]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(1, 2, 0),
-        dense_shape=(2, 2))
+    with ops.Graph().as_default():
+      vocabulary_size = 3
+      sparse_input_a = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 0, 1),
+          dense_shape=(2, 2))
+      sparse_input_b = sparse_tensor.SparseTensorValue(
+          # example 0, ids [1]
+          # example 1, ids [2, 0]
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(1, 2, 0),
+          dense_shape=(2, 2))
 
-    embedding_dimension = 2
-    embedding_values = (
-        (1., 2.),  # id 0
-        (3., 4.),  # id 1
-        (5., 6.)  # id 2
-    )
+      embedding_dimension = 2
+      embedding_values = (
+          (1., 2.),  # id 0
+          (3., 4.),  # id 1
+          (5., 6.)  # id 2
+      )
 
-    def _get_initializer(embedding_dimension, embedding_values):
+      def _get_initializer(embedding_dimension, embedding_values):
 
-      def _initializer(shape, dtype, partition_info):
-        self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
-        self.assertEqual(dtypes.float32, dtype)
-        self.assertIsNone(partition_info)
-        return embedding_values
+        def _initializer(shape, dtype, partition_info):
+          self.assertAllEqual((vocabulary_size, embedding_dimension), shape)
+          self.assertEqual(dtypes.float32, dtype)
+          self.assertIsNone(partition_info)
+          return embedding_values
 
-      return _initializer
+        return _initializer
 
-    expected_input_layer = [
-        # example 0, ids_a [2], ids_b [1]
-        [[5., 6., 3., 4.], [0., 0., 0., 0.]],
-        # example 1, ids_a [0, 1], ids_b [2, 0]
-        [[1., 2., 5., 6.], [3., 4., 1., 2.]],
-    ]
-    expected_sequence_length = [1, 2]
+      expected_input_layer = [
+          # example 0, ids_a [2], ids_b [1]
+          [[5., 6., 3., 4.], [0., 0., 0., 0.]],
+          # example 1, ids_a [0, 1], ids_b [2, 0]
+          [[1., 2., 5., 6.], [3., 4., 1., 2.]],
+      ]
+      expected_sequence_length = [1, 2]
 
-    categorical_column_a = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
-    categorical_column_b = sfc.sequence_categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    # Test that columns are reordered alphabetically.
-    shared_embedding_columns = fc.shared_embedding_columns_v2(
-        [categorical_column_b, categorical_column_a],
-        dimension=embedding_dimension,
-        initializer=_get_initializer(embedding_dimension, embedding_values))
+      categorical_column_a = sfc.sequence_categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
+      categorical_column_b = sfc.sequence_categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      # Test that columns are reordered alphabetically.
+      shared_embedding_columns = fc.shared_embedding_columns_v2(
+          [categorical_column_b, categorical_column_a],
+          dimension=embedding_dimension,
+          initializer=_get_initializer(embedding_dimension, embedding_values))
 
-    sequence_input_layer = sfc.SequenceFeatures(shared_embedding_columns)
-    input_layer, sequence_length = sequence_input_layer({
-        'aaa': sparse_input_a, 'bbb': sparse_input_b})
+      sequence_input_layer = sfc.SequenceFeatures(shared_embedding_columns)
+      input_layer, sequence_length = sequence_input_layer({
+          'aaa': sparse_input_a, 'bbb': sparse_input_b})
 
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
-    self.assertCountEqual(
-        ('aaa_bbb_shared_embedding:0',),
-        tuple([v.name for v in global_vars]))
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(embedding_values, global_vars[0].eval(session=sess))
-      self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+      global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+      self.assertCountEqual(
+          ('aaa_bbb_shared_embedding:0',),
+          tuple([v.name for v in global_vars]))
+      with fc_test._initialized_session() as sess:
+        self.assertAllEqual(embedding_values,
+                            global_vars[0].eval(session=sess))
+        self.assertAllEqual(expected_input_layer,
+                            input_layer.eval(session=sess))
+        self.assertAllEqual(
+            expected_sequence_length, sequence_length.eval(session=sess))
 
+  @test_util.run_deprecated_v1
   def test_shared_embedding_column_with_non_sequence_categorical(self):
     """Tests that error is raised for non-sequence shared embedding column."""
     vocabulary_size = 3
@@ -299,6 +307,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[2., 0., 0., 0., 1.], [0., 1., 0., 1., 0.]]],
        'expected_sequence_length': [2, 2]},
       )
+  @test_util.run_in_graph_and_eager_modes
   def test_indicator_column(
       self, sparse_input_args_a, sparse_input_args_b, expected_input_layer,
       expected_sequence_length):
@@ -320,11 +329,11 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     input_layer, sequence_length = sequence_input_layer({
         'aaa': sparse_input_a, 'bbb': sparse_input_b})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+    self.assertAllEqual(expected_input_layer, self.evaluate(input_layer))
+    self.assertAllEqual(
+        expected_sequence_length, self.evaluate(sequence_length))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_indicator_column_with_non_sequence_categorical(self):
     """Tests that error is raised for non-sequence categorical column."""
     vocabulary_size = 3
@@ -370,6 +379,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[3.], [0.], [8.], [0.]]],
        'expected_sequence_length': [2, 2]},
       )
+  @test_util.run_in_graph_and_eager_modes
   def test_numeric_column(
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
     sparse_input = sparse_tensor.SparseTensorValue(**sparse_input_args)
@@ -379,10 +389,9 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     sequence_input_layer = sfc.SequenceFeatures([numeric_column])
     input_layer, sequence_length = sequence_input_layer({'aaa': sparse_input})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+    self.assertAllEqual(expected_input_layer, self.evaluate(input_layer))
+    self.assertAllEqual(
+        expected_sequence_length, self.evaluate(sequence_length))
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -413,6 +422,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            [[10., 11., 12., 13.], [0., 0., 0., 0.]]],
        'expected_sequence_length': [2, 1]},
       )
+  @test_util.run_in_graph_and_eager_modes
   def test_numeric_column_multi_dim(
       self, sparse_input_args, expected_input_layer, expected_sequence_length):
     """Tests SequenceFeatures for multi-dimensional numeric_column."""
@@ -423,11 +433,11 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     sequence_input_layer = sfc.SequenceFeatures([numeric_column])
     input_layer, sequence_length = sequence_input_layer({'aaa': sparse_input})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(expected_input_layer, input_layer.eval(session=sess))
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+    self.assertAllEqual(expected_input_layer, self.evaluate(input_layer))
+    self.assertAllEqual(
+        expected_sequence_length, self.evaluate(sequence_length))
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sequence_length_not_equal(self):
     """Tests that an error is raised when sequence lengths are not equal."""
     # Input a with sequence_length = [2, 1]
@@ -445,16 +455,12 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
 
     sequence_input_layer = sfc.SequenceFeatures(
         [numeric_column_a, numeric_column_b])
-    _, sequence_length = sequence_input_layer({
-        'aaa': sparse_input_a, 'bbb': sparse_input_b})
 
-    with monitored_session.MonitoredSession() as sess:
-      with self.assertRaisesRegexp(
-          errors.InvalidArgumentError,
-          r'\[Condition x == y did not hold element-wise:\] '
-          r'\[x \(sequence_features/aaa/sequence_length:0\) = \] \[2 1\] '
-          r'\[y \(sequence_features/bbb/sequence_length:0\) = \] \[1 1\]'):
-        sess.run(sequence_length)
+    with self.assertRaisesRegexp(
+        errors.InvalidArgumentError, r'Condition x == y did not hold.*'):
+      _, sequence_length = sequence_input_layer({
+          'aaa': sparse_input_a, 'bbb': sparse_input_b})
+      self.evaluate(sequence_length)
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -471,12 +477,13 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            # example 0, values [[0., 1., 2., 3.]], [[4., 5., 6., 7.]]
            # example 1, [[10., 11., 12., 13.], []]
            'indices': ((0, 0, 0), (0, 0, 1), (0, 0, 2), (0, 0, 3),
-                       (0, 1, 0), (0, 1, 1), (0, 1, 2), (0, 1, 2),
+                       (0, 1, 0), (0, 1, 1), (0, 1, 2), (0, 1, 3),
                        (1, 0, 0), (1, 0, 1), (1, 0, 2), (1, 0, 3)),
            'values': (0., 1., 2., 3., 4., 5., 6., 7., 10., 11., 12., 13.),
            'dense_shape': (2, 2, 4)},
        'expected_shape': [2, 2, 4]},
       )
+  @test_util.run_in_graph_and_eager_modes
   def test_static_shape_from_tensors_numeric(
       self, sparse_input_args, expected_shape):
     """Tests that we return a known static shape when we have one."""
@@ -511,6 +518,7 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
            'dense_shape': (4, 2, 2)},
        'expected_shape': [4, 2, 3]}
       )
+  @test_util.run_in_graph_and_eager_modes
   def test_static_shape_from_tensors_indicator(
       self, sparse_input_args, expected_shape):
     """Tests that we return a known static shape when we have one."""
@@ -524,43 +532,44 @@ class SequenceFeaturesTest(test.TestCase, parameterized.TestCase):
     shape = input_layer.get_shape()
     self.assertEqual(shape, expected_shape)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_compute_output_shape(self):
     price1 = sfc.sequence_numeric_column('price1', shape=2)
     price2 = sfc.sequence_numeric_column('price2')
-    with ops.Graph().as_default():
-      features = {
-          'price1': sparse_tensor.SparseTensor(
-              indices=[[0, 0, 0], [0, 0, 1],
-                       [0, 1, 0], [0, 1, 1],
-                       [1, 0, 0], [1, 0, 1],
-                       [2, 0, 0], [2, 0, 1],
-                       [3, 0, 0], [3, 0, 1]],
-              values=[0., 1., 10., 11., 100., 101., 200., 201., 300., 301.],
-              dense_shape=(4, 3, 2)),
-          'price2': sparse_tensor.SparseTensor(
-              indices=[[0, 0],
-                       [0, 1],
-                       [1, 0],
-                       [2, 0],
-                       [3, 0]],
-              values=[10., 11., 20., 30., 40.],
-              dense_shape=(4, 3))}
-      sequence_features = sfc.SequenceFeatures([price1, price2])
-      seq_input, seq_len = sequence_features(features)
-      self.assertEqual(
-          sequence_features.compute_output_shape((None, None)),
-          (None, None, 3))
-      self.evaluate(variables_lib.global_variables_initializer())
-      self.evaluate(lookup_ops.tables_initializer())
+    features = {
+        'price1': sparse_tensor.SparseTensor(
+            indices=[[0, 0, 0], [0, 0, 1],
+                     [0, 1, 0], [0, 1, 1],
+                     [1, 0, 0], [1, 0, 1],
+                     [2, 0, 0], [2, 0, 1],
+                     [3, 0, 0], [3, 0, 1]],
+            values=[0., 1., 10., 11., 100., 101., 200., 201., 300., 301.],
+            dense_shape=(4, 3, 2)),
+        'price2': sparse_tensor.SparseTensor(
+            indices=[[0, 0],
+                     [0, 1],
+                     [1, 0],
+                     [2, 0],
+                     [3, 0]],
+            values=[10., 11., 20., 30., 40.],
+            dense_shape=(4, 3))}
+    sequence_features = sfc.SequenceFeatures([price1, price2])
+    seq_input, seq_len = sequence_features(features)
+    self.assertEqual(
+        sequence_features.compute_output_shape((None, None)),
+        (None, None, 3))
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
 
-      self.assertAllClose([[[0., 1., 10.], [10., 11., 11.], [0., 0., 0.]],
-                           [[100., 101., 20.], [0., 0., 0.], [0., 0., 0.]],
-                           [[200., 201., 30.], [0., 0., 0.], [0., 0., 0.]],
-                           [[300., 301., 40.], [0., 0., 0.], [0., 0., 0.]]],
-                          self.evaluate(seq_input))
-      self.assertAllClose([2, 1, 1, 1], self.evaluate(seq_len))
+    self.assertAllClose([[[0., 1., 10.], [10., 11., 11.], [0., 0., 0.]],
+                         [[100., 101., 20.], [0., 0., 0.], [0., 0., 0.]],
+                         [[200., 201., 30.], [0., 0., 0.], [0., 0., 0.]],
+                         [[300., 301., 40.], [0., 0., 0.], [0., 0., 0.]]],
+                        self.evaluate(seq_input))
+    self.assertAllClose([2, 1, 1, 1], self.evaluate(seq_len))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
   """Tests the utility fn concatenate_context_input."""
 
@@ -575,9 +584,8 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
         [[0, 1, 0, 1, 2, 3, 4], [2, 3, 0, 1, 2, 3, 4], [4, 5, 0, 1, 2, 3, 4]],
         [[6, 7, 5, 6, 7, 8, 9], [8, 9, 5, 6, 7, 8, 9], [10, 11, 5, 6, 7, 8, 9]]
     ], dtype=np.float32)
-    with monitored_session.MonitoredSession() as sess:
-      output = sess.run(input_layer)
-      self.assertAllEqual(expected, output)
+    output = self.evaluate(input_layer)
+    self.assertAllEqual(expected, output)
 
   @parameterized.named_parameters(
       {'testcase_name': 'rank_lt_3',
@@ -624,6 +632,7 @@ class ConcatenateContextInputTest(test.TestCase, parameterized.TestCase):
       sfc.concatenate_context_input(context_input, seq_input)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class DenseFeaturesTest(test.TestCase):
   """Tests DenseFeatures with sequence feature columns."""
 
@@ -693,10 +702,11 @@ def _get_sequence_dense_tensor(column, features):
 
 
 def _get_sequence_dense_tensor_state(column, features):
-  state_manager = _TestStateManager()
+  state_manager = fc._StateManagerImpl(Layer(), trainable=True)
   column.create_state(state_manager)
-  return column.get_sequence_dense_tensor(
+  dense_tensor, lengths = column.get_sequence_dense_tensor(
       fc.FeatureTransformationCache(features), state_manager)
+  return dense_tensor, lengths, state_manager
 
 
 def _get_sparse_tensors(column, features):
@@ -704,6 +714,7 @@ def _get_sparse_tensors(column, features):
       fc.FeatureTransformationCache(features), None)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SequenceCategoricalColumnWithIdentityTest(
     test.TestCase, parameterized.TestCase):
 
@@ -735,11 +746,11 @@ class SequenceCategoricalColumnWithIdentityTest(
     id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
-    with monitored_session.MonitoredSession() as sess:
-      _assert_sparse_tensor_value(
-          self, expected, id_weight_pair.id_tensor.eval(session=sess))
+    _assert_sparse_tensor_value(
+        self, expected, self.evaluate(id_weight_pair.id_tensor))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SequenceCategoricalColumnWithHashBucketTest(
     test.TestCase, parameterized.TestCase):
 
@@ -774,11 +785,11 @@ class SequenceCategoricalColumnWithHashBucketTest(
     id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
-    with monitored_session.MonitoredSession() as sess:
-      _assert_sparse_tensor_indices_shape(
-          self, expected, id_weight_pair.id_tensor.eval(session=sess))
+    _assert_sparse_tensor_indices_shape(
+        self, expected, self.evaluate(id_weight_pair.id_tensor))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SequenceCategoricalColumnWithVocabularyFileTest(
     test.TestCase, parameterized.TestCase):
 
@@ -827,37 +838,40 @@ class SequenceCategoricalColumnWithVocabularyFileTest(
     id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
-    with monitored_session.MonitoredSession() as sess:
-      _assert_sparse_tensor_value(
-          self, expected, id_weight_pair.id_tensor.eval(session=sess))
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+    _assert_sparse_tensor_value(
+        self, expected, self.evaluate(id_weight_pair.id_tensor))
 
   def test_get_sparse_tensors_dynamic_zero_length(self):
     """Tests _get_sparse_tensors with a dynamic sequence length."""
-    inputs = sparse_tensor.SparseTensorValue(
-        indices=np.zeros((0, 2)), values=[], dense_shape=(2, 0))
-    expected = sparse_tensor.SparseTensorValue(
-        indices=np.zeros((0, 3)),
-        values=np.array((), dtype=np.int64),
-        dense_shape=(2, 0, 1))
-    column = sfc.sequence_categorical_column_with_vocabulary_file(
-        key='aaa',
-        vocabulary_file=self._wire_vocabulary_file_name,
-        vocabulary_size=self._wire_vocabulary_size)
-    input_placeholder_shape = list(inputs.dense_shape)
-    # Make second dimension (sequence length) dynamic.
-    input_placeholder_shape[1] = None
-    input_placeholder = array_ops.sparse_placeholder(
-        dtypes.string, shape=input_placeholder_shape)
-    id_weight_pair = _get_sparse_tensors(column, {'aaa': input_placeholder})
+    with ops.Graph().as_default():
+      inputs = sparse_tensor.SparseTensorValue(
+          indices=np.zeros((0, 2)), values=[], dense_shape=(2, 0))
+      expected = sparse_tensor.SparseTensorValue(
+          indices=np.zeros((0, 3)),
+          values=np.array((), dtype=np.int64),
+          dense_shape=(2, 0, 1))
+      column = sfc.sequence_categorical_column_with_vocabulary_file(
+          key='aaa',
+          vocabulary_file=self._wire_vocabulary_file_name,
+          vocabulary_size=self._wire_vocabulary_size)
+      input_placeholder_shape = list(inputs.dense_shape)
+      # Make second dimension (sequence length) dynamic.
+      input_placeholder_shape[1] = None
+      input_placeholder = array_ops.sparse_placeholder(
+          dtypes.string, shape=input_placeholder_shape)
+      id_weight_pair = _get_sparse_tensors(column, {'aaa': input_placeholder})
 
-    self.assertIsNone(id_weight_pair.weight_tensor)
-    with monitored_session.MonitoredSession() as sess:
-      result = id_weight_pair.id_tensor.eval(
-          session=sess, feed_dict={input_placeholder: inputs})
-      _assert_sparse_tensor_value(
-          self, expected, result)
+      self.assertIsNone(id_weight_pair.weight_tensor)
+      with fc_test._initialized_session() as sess:
+        result = id_weight_pair.id_tensor.eval(
+            session=sess, feed_dict={input_placeholder: inputs})
+        _assert_sparse_tensor_value(
+            self, expected, result)
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SequenceCategoricalColumnWithVocabularyListTest(
     test.TestCase, parameterized.TestCase):
 
@@ -891,11 +905,13 @@ class SequenceCategoricalColumnWithVocabularyListTest(
     id_weight_pair = _get_sparse_tensors(column, {'aaa': inputs})
 
     self.assertIsNone(id_weight_pair.weight_tensor)
-    with monitored_session.MonitoredSession() as sess:
-      _assert_sparse_tensor_value(
-          self, expected, id_weight_pair.id_tensor.eval(session=sess))
+    self.evaluate(variables_lib.global_variables_initializer())
+    self.evaluate(lookup_ops.tables_initializer())
+    _assert_sparse_tensor_value(
+        self, expected, self.evaluate(id_weight_pair.id_tensor))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SequenceEmbeddingColumnTest(
     test.TestCase, parameterized.TestCase):
 
@@ -959,15 +975,15 @@ class SequenceEmbeddingColumnTest(
         categorical_column, dimension=embedding_dimension,
         initializer=_initializer)
 
-    embedding_lookup, _ = _get_sequence_dense_tensor_state(
+    embedding_lookup, _, state_manager = _get_sequence_dense_tensor_state(
         embedding_column, {'aaa': inputs})
 
-    global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
+    variables = state_manager._layer.weights
+    self.evaluate(variables_lib.global_variables_initializer())
     self.assertCountEqual(
-        ('embedding_weights:0',), tuple([v.name for v in global_vars]))
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(embedding_values, global_vars[0].eval(session=sess))
-      self.assertAllEqual(expected, embedding_lookup.eval(session=sess))
+        ('embedding_weights:0',), tuple([v.name for v in variables]))
+    self.assertAllEqual(embedding_values, self.evaluate(variables[0]))
+    self.assertAllEqual(expected, self.evaluate(embedding_lookup))
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -996,13 +1012,12 @@ class SequenceEmbeddingColumnTest(
     embedding_column = fc.embedding_column(
         categorical_column, dimension=2)
 
-    _, sequence_length = _get_sequence_dense_tensor_state(
+    _, sequence_length, _ = _get_sequence_dense_tensor_state(
         embedding_column, {'aaa': inputs})
 
-    with monitored_session.MonitoredSession() as sess:
-      sequence_length = sess.run(sequence_length)
-      self.assertAllEqual(expected_sequence_length, sequence_length)
-      self.assertEqual(np.int64, sequence_length.dtype)
+    sequence_length = self.evaluate(sequence_length)
+    self.assertAllEqual(expected_sequence_length, sequence_length)
+    self.assertEqual(np.int64, sequence_length.dtype)
 
   def test_sequence_length_with_empty_rows(self):
     """Tests _sequence_length when some examples do not have ids."""
@@ -1024,16 +1039,16 @@ class SequenceEmbeddingColumnTest(
     embedding_column = fc.embedding_column(
         categorical_column, dimension=2)
 
-    _, sequence_length = _get_sequence_dense_tensor_state(
+    _, sequence_length, _ = _get_sequence_dense_tensor_state(
         embedding_column, {'aaa': sparse_input})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+    self.assertAllEqual(
+        expected_sequence_length, self.evaluate(sequence_length))
 
 
 class SequenceSharedEmbeddingColumnTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_get_sequence_dense_tensor(self):
     vocabulary_size = 3
     embedding_dimension = 2
@@ -1102,100 +1117,102 @@ class SequenceSharedEmbeddingColumnTest(test.TestCase):
     embedding_lookup_b = _get_sequence_dense_tensor(
         shared_embedding_columns[1], {'bbb': sparse_input_b})[0]
 
+    self.evaluate(variables_lib.global_variables_initializer())
     global_vars = ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES)
     self.assertItemsEqual(('aaa_bbb_shared_embedding:0',),
                           tuple([v.name for v in global_vars]))
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(embedding_values, global_vars[0].eval(session=sess))
-      self.assertAllEqual(
-          expected_lookups_a, embedding_lookup_a.eval(session=sess))
-      self.assertAllEqual(
-          expected_lookups_b, embedding_lookup_b.eval(session=sess))
+    self.assertAllEqual(embedding_values, self.evaluate(global_vars[0]))
+    self.assertAllEqual(
+        expected_lookups_a, self.evaluate(embedding_lookup_a))
+    self.assertAllEqual(expected_lookups_b, self.evaluate(embedding_lookup_b))
 
   def test_sequence_length(self):
-    vocabulary_size = 3
+    with ops.Graph().as_default():
+      vocabulary_size = 3
 
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids [0, 1]
-        indices=((0, 0), (1, 0), (1, 1)),
-        values=(2, 0, 1),
-        dense_shape=(2, 2))
-    expected_sequence_length_a = [1, 2]
-    categorical_column_a = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
+      sparse_input_a = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids [0, 1]
+          indices=((0, 0), (1, 0), (1, 1)),
+          values=(2, 0, 1),
+          dense_shape=(2, 2))
+      expected_sequence_length_a = [1, 2]
+      categorical_column_a = sfc.sequence_categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
 
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [0, 2]
-        # example 1, ids [1]
-        indices=((0, 0), (0, 1), (1, 0)),
-        values=(0, 2, 1),
-        dense_shape=(2, 2))
-    expected_sequence_length_b = [2, 1]
-    categorical_column_b = sfc.sequence_categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
-    shared_embedding_columns = fc.shared_embedding_columns_v2(
-        [categorical_column_a, categorical_column_b], dimension=2)
+      sparse_input_b = sparse_tensor.SparseTensorValue(
+          # example 0, ids [0, 2]
+          # example 1, ids [1]
+          indices=((0, 0), (0, 1), (1, 0)),
+          values=(0, 2, 1),
+          dense_shape=(2, 2))
+      expected_sequence_length_b = [2, 1]
+      categorical_column_b = sfc.sequence_categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
+      shared_embedding_columns = fc.shared_embedding_columns_v2(
+          [categorical_column_a, categorical_column_b], dimension=2)
 
-    sequence_length_a = _get_sequence_dense_tensor(
-        shared_embedding_columns[0], {'aaa': sparse_input_a})[1]
-    sequence_length_b = _get_sequence_dense_tensor(
-        shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
+      sequence_length_a = _get_sequence_dense_tensor(
+          shared_embedding_columns[0], {'aaa': sparse_input_a})[1]
+      sequence_length_b = _get_sequence_dense_tensor(
+          shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
 
-    with monitored_session.MonitoredSession() as sess:
-      sequence_length_a = sess.run(sequence_length_a)
-      self.assertAllEqual(expected_sequence_length_a, sequence_length_a)
-      self.assertEqual(np.int64, sequence_length_a.dtype)
-      sequence_length_b = sess.run(sequence_length_b)
-      self.assertAllEqual(expected_sequence_length_b, sequence_length_b)
-      self.assertEqual(np.int64, sequence_length_b.dtype)
+      with fc_test._initialized_session() as sess:
+        sequence_length_a = sess.run(sequence_length_a)
+        self.assertAllEqual(expected_sequence_length_a, sequence_length_a)
+        self.assertEqual(np.int64, sequence_length_a.dtype)
+        sequence_length_b = sess.run(sequence_length_b)
+        self.assertAllEqual(expected_sequence_length_b, sequence_length_b)
+        self.assertEqual(np.int64, sequence_length_b.dtype)
 
   def test_sequence_length_with_empty_rows(self):
     """Tests _sequence_length when some examples do not have ids."""
-    vocabulary_size = 3
-    sparse_input_a = sparse_tensor.SparseTensorValue(
-        # example 0, ids []
-        # example 1, ids [2]
-        # example 2, ids [0, 1]
-        # example 3, ids []
-        # example 4, ids [1]
-        # example 5, ids []
-        indices=((1, 0), (2, 0), (2, 1), (4, 0)),
-        values=(2, 0, 1, 1),
-        dense_shape=(6, 2))
-    expected_sequence_length_a = [0, 1, 2, 0, 1, 0]
-    categorical_column_a = sfc.sequence_categorical_column_with_identity(
-        key='aaa', num_buckets=vocabulary_size)
+    with ops.Graph().as_default():
+      vocabulary_size = 3
+      sparse_input_a = sparse_tensor.SparseTensorValue(
+          # example 0, ids []
+          # example 1, ids [2]
+          # example 2, ids [0, 1]
+          # example 3, ids []
+          # example 4, ids [1]
+          # example 5, ids []
+          indices=((1, 0), (2, 0), (2, 1), (4, 0)),
+          values=(2, 0, 1, 1),
+          dense_shape=(6, 2))
+      expected_sequence_length_a = [0, 1, 2, 0, 1, 0]
+      categorical_column_a = sfc.sequence_categorical_column_with_identity(
+          key='aaa', num_buckets=vocabulary_size)
 
-    sparse_input_b = sparse_tensor.SparseTensorValue(
-        # example 0, ids [2]
-        # example 1, ids []
-        # example 2, ids []
-        # example 3, ids []
-        # example 4, ids [1]
-        # example 5, ids [0, 1]
-        indices=((0, 0), (4, 0), (5, 0), (5, 1)),
-        values=(2, 1, 0, 1),
-        dense_shape=(6, 2))
-    expected_sequence_length_b = [1, 0, 0, 0, 1, 2]
-    categorical_column_b = sfc.sequence_categorical_column_with_identity(
-        key='bbb', num_buckets=vocabulary_size)
+      sparse_input_b = sparse_tensor.SparseTensorValue(
+          # example 0, ids [2]
+          # example 1, ids []
+          # example 2, ids []
+          # example 3, ids []
+          # example 4, ids [1]
+          # example 5, ids [0, 1]
+          indices=((0, 0), (4, 0), (5, 0), (5, 1)),
+          values=(2, 1, 0, 1),
+          dense_shape=(6, 2))
+      expected_sequence_length_b = [1, 0, 0, 0, 1, 2]
+      categorical_column_b = sfc.sequence_categorical_column_with_identity(
+          key='bbb', num_buckets=vocabulary_size)
 
-    shared_embedding_columns = fc.shared_embedding_columns_v2(
-        [categorical_column_a, categorical_column_b], dimension=2)
+      shared_embedding_columns = fc.shared_embedding_columns_v2(
+          [categorical_column_a, categorical_column_b], dimension=2)
 
-    sequence_length_a = _get_sequence_dense_tensor(
-        shared_embedding_columns[0], {'aaa': sparse_input_a})[1]
-    sequence_length_b = _get_sequence_dense_tensor(
-        shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
+      sequence_length_a = _get_sequence_dense_tensor(
+          shared_embedding_columns[0], {'aaa': sparse_input_a})[1]
+      sequence_length_b = _get_sequence_dense_tensor(
+          shared_embedding_columns[1], {'bbb': sparse_input_b})[1]
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length_a, sequence_length_a.eval(session=sess))
-      self.assertAllEqual(
-          expected_sequence_length_b, sequence_length_b.eval(session=sess))
+      with fc_test._initialized_session() as sess:
+        self.assertAllEqual(
+            expected_sequence_length_a, sequence_length_a.eval(session=sess))
+        self.assertAllEqual(
+            expected_sequence_length_b, sequence_length_b.eval(session=sess))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.named_parameters(
@@ -1248,8 +1265,7 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
     indicator_tensor, _ = _get_sequence_dense_tensor(
         indicator_column, {'aaa': inputs})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(expected, indicator_tensor.eval(session=sess))
+    self.assertAllEqual(expected, self.evaluate(indicator_tensor))
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -1280,10 +1296,9 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
     _, sequence_length = _get_sequence_dense_tensor(
         indicator_column, {'aaa': inputs})
 
-    with monitored_session.MonitoredSession() as sess:
-      sequence_length = sess.run(sequence_length)
-      self.assertAllEqual(expected_sequence_length, sequence_length)
-      self.assertEqual(np.int64, sequence_length.dtype)
+    sequence_length = self.evaluate(sequence_length)
+    self.assertAllEqual(expected_sequence_length, sequence_length)
+    self.assertEqual(np.int64, sequence_length.dtype)
 
   def test_sequence_length_with_empty_rows(self):
     """Tests _sequence_length when some examples do not have ids."""
@@ -1307,11 +1322,11 @@ class SequenceIndicatorColumnTest(test.TestCase, parameterized.TestCase):
     _, sequence_length = _get_sequence_dense_tensor(
         indicator_column, {'aaa': sparse_input})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+    self.assertAllEqual(
+        expected_sequence_length, self.evaluate(sequence_length))
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
 
   def test_defaults(self):
@@ -1372,8 +1387,7 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
 
     dense_tensor, _ = _get_sequence_dense_tensor(
         numeric_column, {'aaa': inputs})
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(expected, dense_tensor.eval(session=sess))
+    self.assertAllEqual(expected, self.evaluate(dense_tensor))
 
   def test_get_sequence_dense_tensor_with_normalizer_fn(self):
 
@@ -1406,9 +1420,8 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
     dense_tensor, _ = _get_sequence_dense_tensor(
         numeric_column, {'aaa': sparse_input})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_dense_tensor, dense_tensor.eval(session=sess))
+    self.assertAllEqual(
+        expected_dense_tensor, self.evaluate(dense_tensor))
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -1444,9 +1457,8 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
     dense_tensor, _ = _get_sequence_dense_tensor(
         numeric_column, {'aaa': sparse_input})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_dense_tensor, dense_tensor.eval(session=sess))
+    self.assertAllEqual(
+        expected_dense_tensor, self.evaluate(dense_tensor))
 
   @parameterized.named_parameters(
       {'testcase_name': '2D',
@@ -1493,10 +1505,9 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
     _, sequence_length = _get_sequence_dense_tensor(
         numeric_column, {'aaa': inputs})
 
-    with monitored_session.MonitoredSession() as sess:
-      sequence_length = sess.run(sequence_length)
-      self.assertAllEqual(expected_sequence_length, sequence_length)
-      self.assertEqual(np.int64, sequence_length.dtype)
+    sequence_length = self.evaluate(sequence_length)
+    self.assertAllEqual(expected_sequence_length, sequence_length)
+    self.assertEqual(np.int64, sequence_length.dtype)
 
   def test_sequence_length_with_empty_rows(self):
     """Tests _sequence_length when some examples do not have ids."""
@@ -1516,9 +1527,8 @@ class SequenceNumericColumnTest(test.TestCase, parameterized.TestCase):
     _, sequence_length = _get_sequence_dense_tensor(
         numeric_column, {'aaa': sparse_input})
 
-    with monitored_session.MonitoredSession() as sess:
-      self.assertAllEqual(
-          expected_sequence_length, sequence_length.eval(session=sess))
+    self.assertAllEqual(
+        expected_sequence_length, self.evaluate(sequence_length))
 
 
 if __name__ == '__main__':
