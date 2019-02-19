@@ -790,6 +790,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nn.conv2d_transpose",
         "tf.test.compute_gradient":
             "tf.compat.v1.test.compute_gradient",
+        "tf.string_split":
+            "tf.compat.v1.string_split",
     }
     # pylint: enable=line-too-long
 
