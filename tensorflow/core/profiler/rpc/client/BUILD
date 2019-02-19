@@ -14,11 +14,11 @@ tf_cuda_library(
     deps = [
         "//tensorflow:grpc++",
         "//tensorflow/contrib/tpu/profiler:dump_tpu_profile",
-        "//tensorflow/contrib/tpu/profiler:tpu_profiler_analysis_proto_cc",
-        "//tensorflow/contrib/tpu/profiler:tpu_profiler_proto_cc",
         "//tensorflow/core:framework_internal",
+        "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
         "//tensorflow/core/platform/cloud:gcs_file_system",
+        "//tensorflow/core/profiler:protos_all_cc",
     ],
 )

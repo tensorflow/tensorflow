@@ -146,6 +146,7 @@ load(
     "tf_protos_grappler",
     "tf_protos_grappler_impl",
     "tf_pyclif_proto_library",
+    "tf_grpc_service_all",
 )
 load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
@@ -435,6 +436,17 @@ cc_library(
         "//tensorflow/core/platform/default/build_config:protobuf",
         "@protobuf_archive//:protobuf",
     ],
+)
+
+cc_library(
+    name = "grpc_services",
+    srcs = [],
+    hdrs = [
+        "platform/grpc_services.h",
+    ],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = tf_grpc_service_all(),
 )
 
 cc_library(
