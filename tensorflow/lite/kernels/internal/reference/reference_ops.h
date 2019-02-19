@@ -1902,11 +1902,17 @@ void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
   const int outputs_count = params.num_split;
 
   int outer_size = 1;
-  for (int i = 0; i < params.axis; i++) {
+  int axis = params.axis;
+  if (axis < 0) {
+    axis += dimensions;
+  }
+  TFLITE_DCHECK_GE(axis, 0);
+  TFLITE_DCHECK_LT(axis, dimensions);
+  for (int i = 0; i < axis; ++i) {
     outer_size *= input_shape.Dims(i);
   }
   int copy_size = 1;
-  for (int i = params.axis + 1; i < dimensions; i++) {
+  for (int i = axis + 1; i < dimensions; ++i) {
     copy_size *= input_shape.Dims(i);
   }
   TFLITE_DCHECK_EQ(output_shape.FlatSize(), copy_size * outer_size);
