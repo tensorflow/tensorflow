@@ -514,3 +514,55 @@ func @load_store_same_memref(%arg0: memref<256x1024xf32>) {
   }
   return
 }
+
+// ----
+
+// This a 3-d loop nest tiled by 4 x 4 x 4. Under %i, %j, %k, the size of a
+// tile of arg0, arg1, and arg2 accessed is 4 KB (each), i.e., 12 KB in total.
+// With fast mem capacity set to 16 KB, the DMAs if placed under %k will fit.
+// However, the region of arg2 accessed is invariant w.r.t the %k loop unlike
+// %arg0 and %arg1. So, its DMA can be hoisted one level up and placed under
+// %j, while the DMAs for arg0 and arg1 appear right under the %k loop.
+
+#map0 = (d0) -> (d0)
+#map1 = (d0) -> (d0 + 4)
+// FAST-MEM-16KB-LABEL: func @simple_matmul
+func @simple_matmul(%arg0: memref<8x8xvector<64xf32>>, %arg1: memref<8x8xvector<64xf32>>, %arg2: memref<8x8xvector<64xf32>>) -> memref<8x8xvector<64xf32>> {
+  for %i = 0 to 8 step 4 {
+    for %j = 0 to 8 step 4 {
+      for %k = 0 to 8 step 4 {
+        for %ii = #map0(%i) to #map1(%i) {
+          for %jj = #map0(%j) to #map1(%j) {
+            for %kk = #map0(%k) to #map1(%k) {
+              %5 = load %arg0[%ii, %kk] : memref<8x8xvector<64xf32>>
+              %6 = load %arg1[%kk, %jj] : memref<8x8xvector<64xf32>>
+              %7 = load %arg2[%ii, %jj] : memref<8x8xvector<64xf32>>
+              %8 = mulf %5, %6 : vector<64xf32>
+              %9 = addf %7, %8 : vector<64xf32>
+              store %9, %arg2[%ii, %jj] : memref<8x8xvector<64xf32>>
+            }
+          }
+        }
+      }
+    }
+  }
+  return %arg2 : memref<8x8xvector<64xf32>>
+}
+// FAST-MEM-16KB: for %i0 = 0 to 8 step 4 {
+// FAST-MEM-16KB:   for %i1 = 0 to 8 step 4 {
+// FAST-MEM-16KB:     dma_start %arg2
+// FAST-MEM-16KB:     dma_wait
+// FAST-MEM-16KB:     for %i2 = 0 to 8 step 4 {
+// FAST-MEM-16KB:       dma_start %arg0
+// FAST-MEM-16KB:       dma_wait
+// FAST-MEM-16KB:       dma_start %arg1
+// FAST-MEM-16KB:       dma_wait
+// FAST-MEM-16KB:       for %i3 = #map2(%i0) to #map3(%i0) {
+// FAST-MEM-16KB-NEXT:    for %i4 = #map2(%i1) to #map3(%i1) {
+// FAST-MEM-16KB-NEXT:      for %i5 = #map2(%i2) to #map3(%i2) {
+// FAST-MEM-16KB:           }
+// FAST-MEM-16KB:         }
+// FAST-MEM-16KB:       }
+// FAST-MEM-16KB:     }
+// FAST-MEM-16KB:     dma_start %2[%c0, %c0], %arg2
+// FAST-MEM-16KB:     dma_wait

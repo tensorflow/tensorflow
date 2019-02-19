@@ -291,11 +291,11 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   }
 
   const FlatAffineConstraints *cst = region.getConstraints();
-  // 'outerIVs' holds the values that this memory region is symbolic/paramteric
-  // on; this would correspond to loop IVs surrounding the level at which the
-  // DMA generation is being done.
-  SmallVector<Value *, 8> outerIVs;
-  cst->getIdValues(rank, cst->getNumIds(), &outerIVs);
+  // 'regionSymbols' hold values that this memory region is symbolic/paramteric
+  // on; these typically include loop IVs surrounding the level at which the DMA
+  // generation is being done or other valid symbols in MLIR.
+  SmallVector<Value *, 8> regionSymbols;
+  cst->getIdValues(rank, cst->getNumIds(), &regionSymbols);
 
   // Construct the index expressions for the fast memory buffer. The index
   // expression for a particular dimension of the fast buffer is obtained by
@@ -331,7 +331,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
       // corresponding dimension on the memory region (stored in 'offset').
       auto map = top.getAffineMap(
           cst->getNumDimIds() + cst->getNumSymbolIds() - rank, 0, offset, {});
-      memIndices.push_back(b->create<AffineApplyOp>(loc, map, outerIVs));
+      memIndices.push_back(b->create<AffineApplyOp>(loc, map, regionSymbols));
     }
     // The fast buffer is DMAed into at location zero; addressing is relative.
     bufIndices.push_back(zeroIndex);
@@ -377,7 +377,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   SmallVector<StrideInfo, 4> strideInfos;
   getMultiLevelStrides(region, fastBufferShape, &strideInfos);
 
-  // TODO(bondhugula): use all stride level once DmaStartOp is extended for
+  // TODO(bondhugula): use all stride levels once DmaStartOp is extended for
   // multi-level strides.
   if (strideInfos.size() > 1) {
     LLVM_DEBUG(llvm::dbgs() << "Only up to one level of stride supported\n");
@@ -437,13 +437,14 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   SmallVector<AffineExpr, 4> remapExprs;
   remapExprs.reserve(rank);
   for (unsigned i = 0; i < rank; i++) {
-    // The starting operands of indexRemap will be outerIVs (the loops
-    // surrounding the depth at which this DMA is being done); then those
-    // corresponding to the memref's original indices follow.
-    auto dimExpr = b->getAffineDimExpr(outerIVs.size() + i);
+    // The starting operands of indexRemap will be regionSymbols (the symbols on
+    // which the memref region is parametric); then those corresponding to
+    // the memref's original indices follow.
+    auto dimExpr = b->getAffineDimExpr(regionSymbols.size() + i);
     remapExprs.push_back(dimExpr - offsets[i]);
   }
-  auto indexRemap = b->getAffineMap(outerIVs.size() + rank, 0, remapExprs, {});
+  auto indexRemap =
+      b->getAffineMap(regionSymbols.size() + rank, 0, remapExprs, {});
 
   // Record the begin since it may be invalidated by memref replacement.
   Block::iterator prev;
@@ -454,7 +455,7 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
   // *Only* those uses within the range [begin, end) of 'block' are replaced.
   replaceAllMemRefUsesWith(memref, fastMemRef,
                            /*extraIndices=*/{}, indexRemap,
-                           /*extraOperands=*/outerIVs,
+                           /*extraOperands=*/regionSymbols,
                            /*domInstFilter=*/&*begin,
                            /*postDomInstFilter=*/&*postDomFilter);
 
@@ -544,6 +545,44 @@ bool DmaGeneration::runOnBlock(Block *block) {
   return true;
 }
 
+/// Given a memref region, determine the lowest depth at which transfers can be
+/// placed for it, and return the corresponding block, start and end positions
+/// in the block for placing incoming (read) and outgoing (write) DMAs
+/// respectively. The lowest depth depends on whether the region being accessed
+/// is invariant with respect to one or more immediately surrounding loops.
+static void findHighestBlockForPlacement(
+    const MemRefRegion &region, const Block &block,
+    const Block::iterator &begin, const Block::iterator &end,
+    Block **dmaPlacementBlock, Block::iterator *dmaPlacementReadStart,
+    Block::iterator *dmaPlacementWriteStart) {
+  const auto *cst = region.getConstraints();
+  SmallVector<Value *, 4> symbols;
+  cst->getIdValues(cst->getNumDimIds(), cst->getNumDimAndSymbolIds(), &symbols);
+
+  SmallVector<OpPointer<AffineForOp>, 4> enclosingFors;
+  getLoopIVs(*block.begin(), &enclosingFors);
+  // Walk up loop parents till we find an IV on which this region is
+  // symbolic/variant.
+  auto it = enclosingFors.rbegin();
+  for (auto e = enclosingFors.rend(); it != e; ++it) {
+    // TODO(bondhugula): also need to be checking this for regions symbols that
+    // aren't loop IVs, whether we are within their resp. defs' dominance scope.
+    if (llvm::is_contained(symbols, (*it)->getInductionVar()))
+      break;
+  }
+
+  if (it != enclosingFors.rbegin()) {
+    auto lastInvariantIV = *std::prev(it);
+    *dmaPlacementReadStart = Block::iterator(lastInvariantIV->getInstruction());
+    *dmaPlacementWriteStart = std::next(*dmaPlacementReadStart);
+    *dmaPlacementBlock = lastInvariantIV->getInstruction()->getBlock();
+  } else {
+    *dmaPlacementReadStart = *const_cast<Block::iterator *>(&begin);
+    *dmaPlacementWriteStart = *const_cast<Block::iterator *>(&end);
+    *dmaPlacementBlock = const_cast<Block *>(&block);
+  }
+}
+
 /// Generates DMAs for a contiguous sequence of instructions in `block` in the
 /// iterator range [begin, end). Returns the total size of the DMA buffers used.
 //  Since we generate alloc's and dealloc's for all DMA buffers (before and
@@ -561,6 +600,8 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   // DMAs will be generated for this depth, i.e., symbolic in all loops
   // surrounding the region of this block.
   unsigned dmaDepth = getNestingDepth(*begin);
+
+  LLVM_DEBUG(llvm::dbgs() << "Generating DMAs at depth " << dmaDepth << "\n");
 
   readRegions.clear();
   writeRegions.clear();
@@ -663,13 +704,25 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
       [&](const SmallMapVector<Value *, std::unique_ptr<MemRefRegion>, 4>
               &regions) {
         for (const auto &regionEntry : regions) {
+          // For each region, hoist DMA transfer past all invariant 'for's.
+          Block::iterator dmaPlacementReadStart, dmaPlacementWriteStart;
+          Block *dmaPlacementBlock;
+          findHighestBlockForPlacement(
+              *regionEntry.second, *block, begin, end, &dmaPlacementBlock,
+              &dmaPlacementReadStart, &dmaPlacementWriteStart);
+
           uint64_t sizeInBytes;
           Block::iterator nBegin, nEnd;
-          bool iRet = generateDma(*regionEntry.second, block, begin, end,
+          bool iRet = generateDma(*regionEntry.second, dmaPlacementBlock,
+                                  dmaPlacementReadStart, dmaPlacementWriteStart,
                                   &sizeInBytes, &nBegin, &nEnd);
           if (iRet) {
-            begin = nBegin;
-            end = nEnd;
+            // dmaPlacmentStart/End (or begin/end) may be invalidated; use
+            // nBegin, nEnd to reset.
+            if (dmaPlacementBlock == block) {
+              begin = nBegin;
+              end = nEnd;
+            }
             totalDmaBuffersSizeInBytes += sizeInBytes;
           }
           ret = ret & iRet;
