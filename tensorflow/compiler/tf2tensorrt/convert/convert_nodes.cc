@@ -3120,7 +3120,7 @@ tensorflow::Status ConvertRsqrt(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap() {
+const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap() {
   static auto* const m =
       new std::unordered_map<string, nvinfer1::UnaryOperation>({
         {"Neg", nvinfer1::UnaryOperation::kNEG},
