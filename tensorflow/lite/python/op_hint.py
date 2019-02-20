@@ -1132,8 +1132,7 @@ def _get_correct_mapping(original_index, nodes):
   # Special handle for the index is -1 case.
   # If it is -1, return the last index.
   if original_index == -1:
-    node_indices = nodes.keys()
-    node_indices.sort()
+    node_indices = sorted(nodes.keys())
     return node_indices[-1]
   else:
     return original_index
