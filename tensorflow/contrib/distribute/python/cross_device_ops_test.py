@@ -23,6 +23,7 @@ import itertools
 from absl.testing import parameterized
 import numpy as np
 
+from tensorflow.contrib.distribute.python import collective_all_reduce_strategy
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
 from tensorflow.contrib.distribute.python import multi_worker_test_base
@@ -429,6 +430,9 @@ class MultiWorkerCrossDeviceOpsTest(multi_worker_test_base.MultiWorkerTestBase,
       self._testReductionAndBroadcast(cross_device_ops, distribution)
 
 
+NUM_WORKERS = 3
+
+
 class MultiWorkerCollectiveAllReduceTest(
     multi_worker_test_base.MultiWorkerTestBase, parameterized.TestCase):
 
@@ -436,9 +440,9 @@ class MultiWorkerCollectiveAllReduceTest(
 
   @classmethod
   def setUpClass(cls):
-    """Create a local cluster with 2 workers."""
+    """Create a local cluster with 3 workers."""
     cls._cluster_spec = multi_worker_test_base.create_in_process_cluster(
-        num_workers=3, num_ps=0)
+        num_workers=NUM_WORKERS, num_ps=0)
 
   def setUp(self):
     super(MultiWorkerCollectiveAllReduceTest, self).setUp()
@@ -446,7 +450,12 @@ class MultiWorkerCollectiveAllReduceTest(
     # collective key base for different tests.
     MultiWorkerCollectiveAllReduceTest.collective_key_base += 100000
 
-  def _get_test_objects(self, task_type, task_id, num_gpus=0, local_mode=False):
+  def _get_test_objects(self,
+                        task_type,
+                        task_id,
+                        num_gpus=0,
+                        use_strategy_object=False,
+                        local_mode=False):
     collective_keys = cross_device_utils.CollectiveKeys(
         group_key_start=10 * num_gpus +
         MultiWorkerCollectiveAllReduceTest.collective_key_base,
@@ -455,16 +464,24 @@ class MultiWorkerCollectiveAllReduceTest(
         instance_key_with_id_start=num_gpus * 10000 +
         MultiWorkerCollectiveAllReduceTest.collective_key_base)
     if local_mode:
-      collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-          1, num_gpus, collective_keys=collective_keys)
       if num_gpus:
         devices = ["/device:GPU:%d" % i for i in range(num_gpus)]
       else:
         devices = ["/device:CPU:0"]
-      return collective_all_reduce_ops, devices, ""
+
+      if use_strategy_object:
+        # Still using contrib CollectiveAllReduceStrategy because we can specify
+        # num_gpus in its constructor.
+        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+            num_gpus_per_worker=num_gpus)
+        strategy.extended._collective_keys = collective_keys
+        strategy.extended._cross_device_ops._collective_keys = collective_keys
+        return strategy, devices, ""
+      else:
+        collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
+            1, num_gpus, collective_keys=collective_keys)
+        return collective_all_reduce_ops, devices, ""
     else:
-      collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
-          3, num_gpus, collective_keys=collective_keys)
       if num_gpus:
         devices = [
             "/job:%s/task:%d/device:GPU:%d" % (task_type, task_id, i)
@@ -472,8 +489,23 @@ class MultiWorkerCollectiveAllReduceTest(
         ]
       else:
         devices = ["/job:%s/task:%d" % (task_type, task_id)]
-      return (collective_all_reduce_ops, devices,
-              "grpc://" + self._cluster_spec[task_type][task_id])
+
+      if use_strategy_object:
+        strategy = collective_all_reduce_strategy.CollectiveAllReduceStrategy(
+            num_gpus_per_worker=num_gpus)
+        strategy.configure(
+            cluster_spec=self._cluster_spec,
+            task_type=task_type,
+            task_id=task_id)
+        strategy.extended._collective_keys = collective_keys
+        strategy.extended._cross_device_ops._collective_keys = collective_keys
+        return (strategy, devices,
+                "grpc://" + self._cluster_spec[task_type][task_id])
+      else:
+        collective_all_reduce_ops = cross_device_ops_lib.CollectiveAllReduce(
+            NUM_WORKERS, num_gpus, collective_keys=collective_keys)
+        return (collective_all_reduce_ops, devices,
+                "grpc://" + self._cluster_spec[task_type][task_id])
 
   def _assert_values_equal(self, left, right, sess):
     if isinstance(left, list):
@@ -493,9 +525,18 @@ class MultiWorkerCollectiveAllReduceTest(
       for l, r in zip(left_values, right_values):
         self.assertEqual(l, r)
 
-  def _test_reduction(self, task_type, task_id, num_gpus, local_mode=False):
+  def _test_reduction(self,
+                      task_type,
+                      task_id,
+                      num_gpus,
+                      use_strategy_object=False,
+                      local_mode=False):
     collective_all_reduce, devices, master_target = self._get_test_objects(
-        task_type, task_id, num_gpus, local_mode=local_mode)
+        task_type,
+        task_id,
+        num_gpus,
+        use_strategy_object=use_strategy_object,
+        local_mode=local_mode)
     if local_mode:
       num_workers = 1
       worker_device = None
@@ -503,6 +544,27 @@ class MultiWorkerCollectiveAllReduceTest(
       num_workers = len(self._cluster_spec.get("chief", [])) + len(
           self._cluster_spec.get("worker", []))
       worker_device = "/job:%s/task:%d" % (task_type, task_id)
+
+    def _reduce(test_object, reduce_op, per_replica, destinations):
+      if use_strategy_object:
+        with test_object.scope():
+          # Mimic the behavior that distribution strategy usually strips the
+          # wrapper if there is only one value.
+          if len(per_replica.values) == 1:
+            per_replica = per_replica.values[0]
+          return test_object.extended.reduce_to(reduce_op, per_replica,
+                                                destinations)
+      else:
+        return test_object.reduce(reduce_op, per_replica, destinations)
+
+    def _batch_reduce(test_object, reduce_op, value_destination_pairs):
+      if use_strategy_object:
+        with test_object.scope():
+          return test_object.extended.batch_reduce_to(reduce_op,
+                                                      value_destination_pairs)
+      else:
+        return test_object.batch_reduce(reduce_op, value_destination_pairs)
+
     with ops.Graph().as_default(), \
          ops.device(worker_device), \
          self.cached_session(target=master_target) as sess:
@@ -527,26 +589,30 @@ class MultiWorkerCollectiveAllReduceTest(
       # test reduce()
       for destinations in all_destinations:
         self._assert_values_equal(
-            collective_all_reduce.reduce(
+            _reduce(
+                collective_all_reduce,
                 reduce_util.ReduceOp.MEAN,
                 per_replica,
-                destinations=destinations),
-            _fake_mirrored(mean, destinations), sess)
+                destinations=destinations), _fake_mirrored(mean, destinations),
+            sess)
         self._assert_values_equal(
-            collective_all_reduce.reduce(
+            _reduce(
+                collective_all_reduce,
                 reduce_util.ReduceOp.MEAN,
                 per_replica_2,
-                destinations=destinations),
-            _fake_mirrored(mean_2, destinations), sess)
+                destinations=destinations), _fake_mirrored(
+                    mean_2, destinations), sess)
         self._assert_values_equal(
-            collective_all_reduce.reduce(
+            _reduce(
+                collective_all_reduce,
                 reduce_util.ReduceOp.SUM,
                 per_replica,
                 destinations=destinations),
             _fake_mirrored(mean * len(devices) * num_workers, destinations),
             sess)
         self._assert_values_equal(
-            collective_all_reduce.reduce(
+            _reduce(
+                collective_all_reduce,
                 reduce_util.ReduceOp.SUM,
                 per_replica_2,
                 destinations=destinations),
@@ -556,17 +622,13 @@ class MultiWorkerCollectiveAllReduceTest(
       # test batch_reduce()
       for d1, d2 in itertools.product(all_destinations, all_destinations):
         self._assert_values_equal(
-            collective_all_reduce.batch_reduce(reduce_util.ReduceOp.MEAN,
-                                               [(per_replica, d1),
-                                                (per_replica_2, d2)]),
-            [
-                _fake_mirrored(mean, d1),
-                _fake_mirrored(mean_2, d2)
-            ], sess)
+            _batch_reduce(collective_all_reduce, reduce_util.ReduceOp.MEAN,
+                          [(per_replica, d1), (per_replica_2, d2)]),
+            [_fake_mirrored(mean, d1),
+             _fake_mirrored(mean_2, d2)], sess)
         self._assert_values_equal(
-            collective_all_reduce.batch_reduce(reduce_util.ReduceOp.SUM,
-                                               [(per_replica, d1),
-                                                (per_replica_2, d2)]),
+            _batch_reduce(collective_all_reduce, reduce_util.ReduceOp.SUM,
+                          [(per_replica, d1), (per_replica_2, d2)]),
             [
                 _fake_mirrored(mean * len(devices) * num_workers, d1),
                 _fake_mirrored(mean_2 * len(devices) * num_workers, d2)
@@ -575,18 +637,36 @@ class MultiWorkerCollectiveAllReduceTest(
     return True
 
   @combinations.generate(
-      combinations.combine(mode=["graph"], num_gpus=[0, 1, 2], required_gpus=1))
-  def testReductionDistributed(self, num_gpus):
+      combinations.combine(
+          mode=["graph"],
+          num_gpus=[0, 1, 2],
+          required_gpus=1,
+          use_strategy_object=[True, False]))
+  def testReductionDistributed(self, num_gpus, use_strategy_object):
     if context.num_gpus() < num_gpus:
       return
-    self._run_between_graph_clients(self._test_reduction, self._cluster_spec,
-                                    num_gpus)
+    self._run_between_graph_clients(
+        self._test_reduction,
+        self._cluster_spec,
+        num_gpus,
+        use_strategy_object=use_strategy_object)
 
   # Collective ops doesn't support strategy with one device.
-  def testReductionLocal(self, num_gpus=2):
+  @combinations.generate(
+      combinations.combine(
+          mode=["graph"],
+          num_gpus=[2],
+          required_gpus=2,
+          use_strategy_object=[True, False]))
+  def testReductionLocal(self, num_gpus, use_strategy_object):
     if context.num_gpus() < num_gpus:
       return
-    self._test_reduction(None, None, num_gpus, local_mode=True)
+    self._test_reduction(
+        None,
+        None,
+        num_gpus,
+        use_strategy_object=use_strategy_object,
+        local_mode=True)
 
 
 if __name__ == "__main__":
