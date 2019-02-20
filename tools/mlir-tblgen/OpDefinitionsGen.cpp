@@ -21,6 +21,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/TableGen/GenInfo.h"
+#include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Operator.h"
 #include "llvm/ADT/StringExtras.h"
 #include "llvm/Support/FormatVariadic.h"
@@ -509,6 +510,17 @@ void OpEmitter::emitVerifier() {
     ++opIndex;
   }
 
+  for (auto &trait : op.getTraits()) {
+    if (auto t = dyn_cast<tblgen::PredOpTrait>(&trait)) {
+      OUT(4) << "if (!"
+             << formatv(t->getPredTemplate().c_str(),
+                        "(*this->getInstruction())")
+             << ")\n";
+      OUT(6) << "return emitOpError(\"failed to verify that "
+             << t->getDescription() << "\");\n";
+    }
+  }
+
   if (hasCustomVerify)
     OUT(4) << codeInit->getValue() << "\n";
   else
@@ -541,11 +553,12 @@ void OpEmitter::emitTraits() {
     }
   }
 
-  // Add variadic size trait and normal op traits.
-  for (StringRef trait : def.getValueAsListOfStrings("traits")) {
-    os << ", OpTrait::" << trait;
+  for (const auto &trait : op.getTraits()) {
+    if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&trait))
+      os << ", OpTrait::" << opTrait->getTrait();
   }
 
+  // Add variadic size trait and normal op traits.
   auto numOperands = op.getNumOperands();
   bool hasVariadicOperand = op.hasVariadicOperand();
 

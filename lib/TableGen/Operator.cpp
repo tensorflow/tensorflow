@@ -20,6 +20,7 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/TableGen/Operator.h"
+#include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Predicate.h"
 #include "mlir/TableGen/Type.h"
 #include "llvm/ADT/StringExtras.h"
@@ -63,11 +64,13 @@ int tblgen::Operator::getNumResults() const {
 }
 
 tblgen::Type tblgen::Operator::getResultType(int index) const {
-  return results[index].type;
+  DagInit *results = def.getValueAsDag("results");
+  return Type(cast<DefInit>(results->getArg(index)));
 }
 
 StringRef tblgen::Operator::getResultName(int index) const {
-  return results[index].name;
+  DagInit *results = def.getValueAsDag("results");
+  return results->getArgNameStr(index);
 }
 
 bool tblgen::Operator::hasVariadicResult() const {
@@ -96,10 +99,23 @@ StringRef tblgen::Operator::getArgName(int index) const {
 }
 
 bool tblgen::Operator::hasTrait(StringRef trait) const {
-  auto traits = def.getValueAsListOfStrings("traits");
-  if (std::find(traits.begin(), traits.end(), trait) != traits.end())
-    return true;
+  for (auto t : getTraits()) {
+    if (auto opTrait = dyn_cast<tblgen::NativeOpTrait>(&t))
+      if (opTrait->getTrait() == trait)
+        return true;
+  }
   return false;
+}
+
+auto tblgen::Operator::trait_begin() const -> const_trait_iterator {
+  return traits.begin();
+}
+auto tblgen::Operator::trait_end() const -> const_trait_iterator {
+  return traits.end();
+}
+auto tblgen::Operator::getTraits() const
+    -> llvm::iterator_range<const_trait_iterator> {
+  return {trait_begin(), trait_end()};
 }
 
 auto tblgen::Operator::attribute_begin() const -> attribute_iterator {
@@ -223,6 +239,13 @@ void tblgen::Operator::populateOpStructure() {
       PrintFatalError(def.getLoc(),
                       "only the last result allowed to be variadic");
   }
+
+  auto traitListInit = def.getValueAsListInit("traits");
+  if (!traitListInit)
+    return;
+  traits.reserve(traitListInit->size());
+  for (auto traitInit : *traitListInit)
+    traits.push_back(OpTrait::create(traitInit));
 }
 
 ArrayRef<llvm::SMLoc> tblgen::Operator::getLoc() const { return def.getLoc(); }

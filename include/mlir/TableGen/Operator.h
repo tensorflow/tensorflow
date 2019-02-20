@@ -25,6 +25,7 @@
 #include "mlir/Support/LLVM.h"
 #include "mlir/TableGen/Argument.h"
 #include "mlir/TableGen/Attribute.h"
+#include "mlir/TableGen/OpTrait.h"
 #include "mlir/TableGen/Type.h"
 #include "llvm/ADT/PointerUnion.h"
 #include "llvm/ADT/SmallVector.h"
@@ -97,8 +98,6 @@ public:
   llvm::iterator_range<operand_iterator> getOperands();
 
   int getNumOperands() const { return operands.size(); }
-
-  // Op operand accessors.
   Value &getOperand(int index) { return operands[index]; }
   const Value &getOperand(int index) const { return operands[index]; }
 
@@ -117,6 +116,12 @@ public:
   // requiring the raw MLIR trait here.
   bool hasTrait(llvm::StringRef trait) const;
 
+  // Trait.
+  using const_trait_iterator = const OpTrait *;
+  const_trait_iterator trait_begin() const;
+  const_trait_iterator trait_end() const;
+  llvm::iterator_range<const_trait_iterator> getTraits() const;
+
   ArrayRef<llvm::SMLoc> getLoc() const;
 
   // Query functions for the documentation of the operator.
@@ -126,7 +131,7 @@ public:
   StringRef getSummary() const;
 
 private:
-  // Populates the vectors containing operands, attributes, and results.
+  // Populates the vectors containing operands, attributes, results and traits.
   void populateOpStructure();
 
   // The name of the op split around '_'.
@@ -140,6 +145,9 @@ private:
 
   // The results of the op.
   SmallVector<Value, 4> results;
+
+  // The traits of the op.
+  SmallVector<OpTrait, 4> traits;
 
   // The start of native attributes, which are specified when creating the op
   // as a part of the op's definition.

@@ -364,24 +364,33 @@ class ConstF32Attr<string val> : ConstantAttr<F32Attr, val>;
 // Op Traits
 //===----------------------------------------------------------------------===//
 
-// OpTrait represents a trait regarding an op. It corresponds to the MLIR C++
-// OpTrait mechanism. The purpose to wrap around C++ symbol string with this
-// class is to make traits specified for ops in TableGen less alien and more
+// OpTrait represents a trait regarding an op.
+class OpTrait;
+
+// NativeOpTrait corresponds to the MLIR C++ OpTrait mechanism. The
+// purpose to wrap around C++ symbol string with this class is to make
+// traits specified for ops in TableGen less alien and more
 // integrated.
-class OpTrait<string prop> {
+class NativeOpTrait<string prop> : OpTrait {
   string trait = prop;
 }
 
+// Specify a trait by way of a predicate on the operation.
+class PredOpTrait<string d, Pred p> : OpTrait {
+  string desc = d;
+  Pred pred = p;
+}
+
 // op supports operand broadcast behavior
-def Broadcastable    : OpTrait<"BroadcastableTwoOperandsOneResult">;
+def Broadcastable    : NativeOpTrait<"BroadcastableTwoOperandsOneResult">;
 // X op Y == Y op X
-def Commutative      : OpTrait<"IsCommutative">;
+def Commutative      : NativeOpTrait<"IsCommutative">;
 // op has no side effect
-def NoSideEffect     : OpTrait<"HasNoSideEffect">;
+def NoSideEffect     : NativeOpTrait<"HasNoSideEffect">;
 // op has the same operand and result type
-def SameValueType    : OpTrait<"SameOperandsAndResultType">;
+def SameValueType    : NativeOpTrait<"SameOperandsAndResultType">;
 // op is a terminator
-def Terminator       : OpTrait<"IsTerminator">;
+def Terminator       : NativeOpTrait<"IsTerminator">;
 
 //===----------------------------------------------------------------------===//
 // Ops
@@ -457,9 +466,7 @@ class Op<string mnemonic, list<OpTrait> props = []> {
   bit hasFolder = 0b0;
 
   // Op traits.
-  list<string> traits = !foldl(
-      // Collect all OpTrait's internal strings into a list
-      []<string>, props, prev, cur, !listconcat(prev, [cur.trait]));
+  list<OpTrait> traits = props;
 }
 
 // The arguments of an op.
