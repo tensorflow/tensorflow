@@ -20,10 +20,10 @@ from __future__ import print_function
 
 import json
 
-from tensorflow.contrib.tpu.python.tpu import tpu_config as tpu_config_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.estimator import run_config as run_config_lib
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import tpu_config as tpu_config_lib
 
 
 def _set_tf_config_env_variable(tf_config):

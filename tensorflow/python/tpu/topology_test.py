@@ -19,9 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tpu.python.tpu import topology
-
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import topology
 
 
 class TopologyTest(test.TestCase):

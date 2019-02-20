@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.contrib.tpu.python.tpu import datasets
 from tensorflow.core.protobuf import cluster_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
@@ -31,6 +30,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.lib.io import python_io
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import datasets
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
 
