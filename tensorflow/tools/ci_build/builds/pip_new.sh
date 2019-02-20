@@ -240,6 +240,9 @@ if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
 fi
 echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
+PYTHON_BIN_PATH_INIT=${PYTHON_BIN_PATH}
+PIP_BIN_PATH="$(which pip${PYTHON_VER_CFG})"
+PIP_BIN_PATH_INIT=${PIP_BIN_PATH}
 
 # PIP packages
 INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
@@ -425,7 +428,7 @@ create_activate_virtualenv() {
   # Use the virtualenv from the default python version (i.e., python-virtualenv)
   # to create the virtualenv directory for testing. Use the -p flag to specify
   # the python version inside the to-be-created virtualenv directory.
-  ${PYTHON_BIN_PATH} -m virtualenv -p ${PYTHON_BIN_PATH} ${VIRTUALENV_FLAGS} ${VIRTUALENV_DIR} || \
+  ${PYTHON_BIN_PATH_INIT} -m virtualenv -p ${PYTHON_BIN_PATH_INIT} ${VIRTUALENV_FLAGS} ${VIRTUALENV_DIR} || \
     die "FAILED: Unable to create virtualenv"
 
   source "${VIRTUALENV_DIR}/bin/activate" || \
