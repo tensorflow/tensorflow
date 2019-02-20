@@ -474,7 +474,6 @@ Status DependencyOptimizer::TransitiveReduction() {
   // the control edges to remove. We sort them in reverse order by input slot,
   // such that when we swap them out so we don't clobber the
   // node(target).input() repeated field.
-  typedef std::pair<int, int> InputSlotAndSource;
   absl::flat_hash_map<int, absl::flat_hash_set<int>> control_edges_to_remove;
   for (int source = 0; source < num_nodes; ++source) {
     int highest_control_target = -1;
