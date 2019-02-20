@@ -174,6 +174,29 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
   bool changed_ = false;
 };
 
+std::unique_ptr<HloInstruction> EstimateMean(
+    HloInstruction* operand, int64 feature_index,
+    const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+        add_instruction) {
+  // The first element of the operand (for each feature) is used as a suitable
+  // estimate of the mean.
+  int64 rank = operand->shape().rank();
+  std::vector<int64> start_indices(rank, 0);
+  std::vector<int64> strides(rank, 1);
+  std::vector<int64> limit_indices;
+  limit_indices.reserve(rank);
+  int64 num_features = operand->shape().dimensions(feature_index);
+  for (int64 i = 0; i < rank; ++i) {
+    limit_indices.push_back(i == feature_index ? num_features : 1);
+  }
+  auto shape_elmt_type = operand->shape().element_type();
+  Shape slice_shape = ShapeUtil::MakeShape(shape_elmt_type, limit_indices);
+  Shape feature_shape = ShapeUtil::MakeShape(shape_elmt_type, {num_features});
+  auto sample_unsqueezed = add_instruction(HloInstruction::CreateSlice(
+      slice_shape, operand, start_indices, limit_indices, strides));
+  return HloInstruction::CreateReshape(feature_shape, sample_unsqueezed);
+}
+
 }  // namespace
 
 bool BatchNormExpanderVisitor::Run(HloComputation* computation,
@@ -247,32 +270,51 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   HloComputation* add_reduce_computation =
       GetOrCreateScalarAddComputation(ptype);
 
-  // Sum[X].
-  auto sum = add(HloInstruction::CreateReduce(feature_shape, operand, zero,
-                                              dimensions_without_feature,
-                                              add_reduce_computation));
+  // X_shift, used to improve numerical stability of the variance calculation.
+  auto operand_shift = add(EstimateMean(operand, feature_index, add));
+
+  auto operand_shift_broadcasted = add(HloInstruction::CreateBroadcast(
+      operand_shape, operand_shift, {feature_index}));
+
+  // X - X_shift.
+  auto operand_shifted = add_binary(operand_shape, HloOpcode::kSubtract,
+                                    operand, operand_shift_broadcasted);
+
+  // Sum[X - X_shift].
+  auto shifted_sum = add(HloInstruction::CreateReduce(
+      feature_shape, operand_shifted, zero, dimensions_without_feature,
+      add_reduce_computation));
+
+  // E[X - X_shift].
+  auto shifted_mean = add(Mean(elements_per_feature, shifted_sum, add));
 
   // E[X].
-  auto mean = add(Mean(elements_per_feature, sum, add));
+  auto mean =
+      add_binary(feature_shape, HloOpcode::kAdd, shifted_mean, operand_shift);
 
   auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
 
-  // X - E[X].
-  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
-                                       operand, mean_broadcasted);
+  // (X - X_shift)^2.
+  auto operand_shifted_squared = add_binary(operand_shape, HloOpcode::kMultiply,
+                                            operand_shifted, operand_shifted);
 
-  // (X - E[X])^2.
-  auto omm_square = add_binary(operand_shape, HloOpcode::kMultiply,
-                               operand_minus_mean, operand_minus_mean);
-
-  // Sum[(X - E[X])^2].
-  auto omm_square_sum = add(HloInstruction::CreateReduce(
-      feature_shape, omm_square, zero, dimensions_without_feature,
+  // Sum[(X - X_shift)^2].
+  auto shifted_squared_sum = add(HloInstruction::CreateReduce(
+      feature_shape, operand_shifted_squared, zero, dimensions_without_feature,
       add_reduce_computation));
 
+  // E[(X - X_shift)^2].
+  auto shifted_square_mean =
+      add(Mean(elements_per_feature, shifted_squared_sum, add));
+
+  // E^2[X - X_shift].
+  auto shifted_mean_square = add_binary(feature_shape, HloOpcode::kMultiply,
+                                        shifted_mean, shifted_mean);
+
   // Var[X].
-  auto var = add(Mean(elements_per_feature, omm_square_sum, add));
+  auto var = add_binary(feature_shape, HloOpcode::kSubtract,
+                        shifted_square_mean, shifted_mean_square);
 
   auto var_broadcasted =
       add(HloInstruction::CreateBroadcast(operand_shape, var, {feature_index}));
@@ -283,6 +325,10 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
 
   // 1 / Sqrt[Var[X] + epsilon].
   auto rsqrt_var_add_epsilon = add(Rsqrt(var_add_epsilon, add));
+
+  // X - E[X].
+  auto operand_minus_mean = add_binary(operand_shape, HloOpcode::kSubtract,
+                                       operand, mean_broadcasted);
 
   // (X - E[X]) / Sqrt[Var[X] + epsilon].
   auto normalized = add_binary(operand_shape, HloOpcode::kMultiply,
