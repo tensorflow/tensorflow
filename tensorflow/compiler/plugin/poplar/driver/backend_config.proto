@@ -15,11 +15,17 @@ message PoplarBackendConfig {
     int64 feature_group_count = 3;
     int64 batch_group_count = 4;
 
-    // Repeats
-    bool is_repeat_loop = 5;
-    int64 repeat_count = 6;
   };
 
-  FusionConfig fusion_config = 1;
+  // Instruction config for a Call repeat instruction
+  message RepeatConfig {
+    bool is_repeat_loop = 1;
+    int64 repeat_count = 2;
+  }
+
+  oneof Config {
+    FusionConfig fusion_config = 1;
+    RepeatConfig repeat_config = 2;
+  }
 
 };

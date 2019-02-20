@@ -62,6 +62,8 @@ void FindAllUsers::FindUsers(HloInstruction* tgt, const InstructionList& stack,
           path.push_back(user);
           switch (user->opcode()) {
             case HloOpcode::kCall: {
+              // This also handles repeat loops which are represented as a Call
+              // operation.
               HloComputation* comp = user->to_apply();
               HloInstruction* param = comp->parameter_instruction(op_index);
 
@@ -73,13 +75,6 @@ void FindAllUsers::FindUsers(HloInstruction* tgt, const InstructionList& stack,
             case HloOpcode::kFusion: {
               if (IsPopOpsFusion(user)) {
                 paths.insert(path);
-              } else if (IsRepeatLoop(user)) {
-                HloComputation* comp = user->fused_instructions_computation();
-                HloInstruction* param = comp->parameter_instruction(op_index);
-
-                InstructionList new_stack(stack);
-                new_stack.push_back(user);
-                FindUsers(param, new_stack, index);
               }
               break;
             }

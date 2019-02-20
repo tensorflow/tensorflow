@@ -72,8 +72,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Ge) {
@@ -114,8 +114,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 1000);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 1000);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Gt) {
@@ -156,8 +156,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 1000);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 1000);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_Le) {
@@ -198,8 +198,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 900);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 900);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalS32_NonConstInit) {
@@ -309,8 +309,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 5);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 5);
 }
 
 TEST_F(WhileLoopToRepeatSimplifyTest, SingleConditionalHoistTheConstant) {
@@ -351,8 +351,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 
   // Check the constant got hoisted out to input tuple.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
@@ -405,8 +405,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 0);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 0);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
@@ -459,8 +459,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
@@ -515,8 +515,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
@@ -579,8 +579,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
@@ -765,8 +765,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 
   // Check the constant got hoisted out.
   HloInstruction* repeat_inst = module->entry_computation()->root_instruction();
@@ -828,8 +828,8 @@ ENTRY entry {
   auto* root = module.get()->entry_computation()->root_instruction();
   TF_ASSERT_OK_AND_ASSIGN(PoplarBackendConfig cfg,
                           root->backend_config<PoplarBackendConfig>());
-  ASSERT_TRUE(cfg.fusion_config().is_repeat_loop());
-  ASSERT_EQ(cfg.fusion_config().repeat_count(), 10);
+  ASSERT_TRUE(cfg.repeat_config().is_repeat_loop());
+  ASSERT_EQ(cfg.repeat_config().repeat_count(), 10);
 }
 
 }  // namespace

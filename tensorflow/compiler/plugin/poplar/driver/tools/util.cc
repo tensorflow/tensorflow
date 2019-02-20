@@ -146,11 +146,11 @@ bool IsPopOpsFusion(const xla::HloInstruction* inst,
 }
 
 bool IsRepeatLoop(const xla::HloInstruction* inst) {
-  if (inst->opcode() == HloOpcode::kFusion) {
+  if (inst->opcode() == HloOpcode::kCall) {
     auto statusor = inst->backend_config<PoplarBackendConfig>();
     if (statusor.ok()) {
       PoplarBackendConfig cfg = statusor.ValueOrDie();
-      return cfg.fusion_config().is_repeat_loop();
+      return cfg.repeat_config().is_repeat_loop();
     }
   }
   return false;

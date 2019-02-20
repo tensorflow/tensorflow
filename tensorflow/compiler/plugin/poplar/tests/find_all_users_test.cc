@@ -553,7 +553,7 @@ ENTRY in {
   constant.4 = s32[] constant(10)
   p0 = f16[4] parameter(0)
   in = (s32[], f16[4], f16[4]) tuple(s32[] constant.4, f16[4] p0, f16[4] p0)
-  r0 = (s32[], f16[4], f16[4]) fusion((s32[], f16[4], f16[4]) in), kind=kCustom, calls=body, backend_config="{\"fusionConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
+  r0 = (s32[], f16[4], f16[4]) call((s32[], f16[4], f16[4]) in), to_apply=body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
   e1 = f16[4] get-tuple-element(r0), index=1
   e2 = f16[4] get-tuple-element(r0), index=2
   s0 = f16[4] sine(e1)
@@ -574,8 +574,7 @@ ENTRY in {
   auto* s0 = comp->GetInstructionWithName("s0");
   auto* s1 = comp->GetInstructionWithName("s1");
 
-  auto* r_comp =
-      comp->GetInstructionWithName("r0")->fused_instructions_computation();
+  auto* r_comp = comp->GetInstructionWithName("r0")->to_apply();
   auto* r_s0 = r_comp->GetInstructionWithName("s0");
 
   FindAllUsers finder;

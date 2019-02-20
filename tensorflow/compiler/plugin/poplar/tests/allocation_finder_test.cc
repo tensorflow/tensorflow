@@ -809,9 +809,8 @@ TEST_F(AllocationFinderTest, FindRepeatTensorAllocations) {
   EXPECT_EQ(annotations.tensor_allocation_map.size(), 4);
 
   // Get the dot and tuple instruction from the new repeat body.
-  const HloComputation* repeat_body = hlo_module->entry_computation()
-                                          ->root_instruction()
-                                          ->fused_instructions_computation();
+  const HloComputation* repeat_body =
+      hlo_module->entry_computation()->root_instruction()->to_apply();
   const HloInstruction* body_param = repeat_body->parameter_instruction(0);
   const HloInstruction* dot_inst = repeat_body->root_instruction()->operand(1);
 
@@ -2485,8 +2484,8 @@ ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
   %constant.5 = f32[] constant(0)
   %arg0.1 = f32[1,1,2,2]{3,2,1,0} parameter(0)
   %tuple.6.clone = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) tuple(s32[] %constant.7, f32[] %constant.5, f32[1,1,2,2]{3,2,1,0} %arg0.1)
-  %fusion = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) fusion((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %tuple.6.clone), kind=kCustom, calls=%_body, backend_config="{\"fusionConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
-  ROOT %get-tuple-element.45 = f32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %fusion), index=1
+  %call = (s32[], f32[], f32[1,1,2,2]{3,2,1,0}) call((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %tuple.6.clone), to_apply=%_body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
+  ROOT %get-tuple-element.45 = f32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]{3,2,1,0}) %call), index=1
 }
 
 )";
@@ -2499,7 +2498,7 @@ ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
   const auto* root = module0->entry_computation()->root_instruction();
   const auto* repeat_loop = root->operand(0);
   const auto* ip_weights = repeat_loop->operand(0)->operand(2);
-  const auto* repeat_body = repeat_loop->fused_instructions_computation();
+  const auto* repeat_body = repeat_loop->to_apply();
   const auto* repeat_root = repeat_body->root_instruction();
   const auto* reduce = repeat_root->operand(1);
   const auto* convolution = reduce->operand(0);
@@ -2558,8 +2557,8 @@ ENTRY %top () -> f32[] {
   %constant.7 = s32[] constant(100)
   %constant.4 = f32[] constant(0)
   %tuple.5.clone = (s32[], f32[]) tuple(s32[] %constant.7, f32[] %constant.4)
-  %fusion = (s32[], f32[]) fusion((s32[], f32[]) %tuple.5.clone), kind=kCustom, calls=%_body, backend_config="{\"fusionConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
-  ROOT %get-tuple-element.41 = f32[] get-tuple-element((s32[], f32[]) %fusion), index=1
+  %call = (s32[], f32[]) call((s32[], f32[]) %tuple.5.clone), to_apply=%_body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
+  ROOT %get-tuple-element.41 = f32[] get-tuple-element((s32[], f32[]) %call), index=1
 }
 
 )";
@@ -2571,7 +2570,7 @@ ENTRY %top () -> f32[] {
 
   const auto* root = module0->entry_computation()->root_instruction();
   const auto* repeat_loop = root->operand(0);
-  const auto* repeat_body = repeat_loop->fused_instructions_computation();
+  const auto* repeat_body = repeat_loop->to_apply();
   const auto* repeat_root = repeat_body->root_instruction();
   const auto* reduce = repeat_root->operand(1);
   const auto* convolution = reduce->operand(0);

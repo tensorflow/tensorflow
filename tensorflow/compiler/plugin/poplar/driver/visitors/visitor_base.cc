@@ -292,9 +292,6 @@ Status BaseVisitor::HandleFusion(HloInstruction* inst) {
       return xla::FailedPrecondition("Unrecognized special call op %s: %s",
                                      inst->name().c_str(), name.c_str());
     }
-  } else if (IsRepeatLoop(inst)) {
-    TF_ASSIGN_OR_RETURN(prog, CreateRepeatOp(resources_, inst,
-                                             GetOutputShape(inst), tensor_map));
   } else {
     TF_ASSIGN_OR_RETURN(prog, CreateFusionOp(resources_, inst,
                                              GetOutputShape(inst), tensor_map));
