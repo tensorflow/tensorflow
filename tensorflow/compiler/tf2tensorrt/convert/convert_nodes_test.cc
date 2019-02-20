@@ -60,6 +60,7 @@ namespace convert {
 using absl::StrCat;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::NanSensitiveFloatNear;
 
 // TODO(laigd): put this into some test utils file.
 void ExpectStatus(Status status, error::Code code = error::OK,
@@ -3472,6 +3473,174 @@ TEST_F(OpConverterTest, ConvertGather) {
   TestConvertGather<DT_FLOAT>(this);
   TestConvertGather<DT_HALF>(this);
   TestConvertGather<DT_INT32>(this);
+}
+
+TEST_F(OpConverterTest, ConvertUnary) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_unary", "Neg", {});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Neg got 0 inputs but expected 1, at my_unary");
+  }
+  {
+    // Input is weights, should fail.
+    Reset();
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto neg = ops::Neg(s.WithOpName("my_unary"), input);
+    const NodeDef& node_def = neg.operation.node()->def();
+    AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"x\" for Neg must be a tensor, at my_unary");
+  }
+
+  // Get nodedef for unary layer.
+  auto get_unary_nodedef = [](string op_name) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    if (op_name == "Abs") {
+      auto unary = ops::Abs(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Acos") {
+      auto unary = ops::Acos(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Acosh") {
+      auto unary = ops::Acosh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Asin") {
+      auto unary = ops::Asin(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Asinh") {
+      auto unary = ops::Asinh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Atan") {
+      auto unary = ops::Atan(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Atanh") {
+      auto unary = ops::Atanh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Ceil") {
+      auto unary = ops::Ceil(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Cos") {
+      auto unary = ops::Cos(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Cosh") {
+      auto unary = ops::Cosh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Exp") {
+      auto unary = ops::Exp(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Floor") {
+      auto unary = ops::Floor(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Log") {
+      auto unary = ops::Log(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Neg") {
+      auto unary = ops::Neg(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Reciprocal") {
+      auto unary = ops::Reciprocal(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Rsqrt") {
+      auto unary = ops::Rsqrt(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Sin") {
+      auto unary = ops::Sin(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Sinh") {
+      auto unary = ops::Sinh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Sqrt") {
+      auto unary = ops::Sqrt(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Tan") {
+      auto unary = ops::Tan(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    }
+    EXPECT_TRUE(false);
+    return NodeDef();
+  };
+  // Get expected output for unary layer.
+  auto get_unary_output = [](string op_name, float input) -> float {
+    if (op_name == "Abs") {
+      return std::abs(input);
+    } else if (op_name == "Acos") {
+      return std::acos(input);
+    } else if (op_name == "Acosh") {
+      return std::acosh(input);
+    } else if (op_name == "Asin") {
+      return std::asin(input);
+    } else if (op_name == "Asinh") {
+      return std::asinh(input);
+    } else if (op_name == "Atan") {
+      return std::atan(input);
+    } else if (op_name == "Atanh") {
+      return std::atanh(input);
+    } else if (op_name == "Ceil") {
+      return std::ceil(input);
+    } else if (op_name == "Cos") {
+      return std::cos(input);
+    } else if (op_name == "Cosh") {
+      return std::cosh(input);
+    } else if (op_name == "Exp") {
+      return std::exp(input);
+    } else if (op_name == "Floor") {
+      return std::floor(input);
+    } else if (op_name == "Log") {
+      return std::log(input);
+    } else if (op_name == "Neg") {
+      return -input;
+    } else if (op_name == "Reciprocal") {
+      return 1.0 / input;
+    } else if (op_name == "Rsqrt") {
+      return 1.0 / std::sqrt(input);
+    } else if (op_name == "Sin") {
+      return std::sin(input);
+    } else if (op_name == "Sinh") {
+      return std::sinh(input);
+    } else if (op_name == "Sqrt") {
+      return std::sqrt(input);
+    } else if (op_name == "Tan") {
+      return std::tan(input);
+    }
+    EXPECT_TRUE(false);
+    return 0;
+  };
+
+  // Get list of ops to test.
+  std::vector<string> ops_to_test;
+  // Add all ops supported by ConvertUnary.
+  auto* map = UnaryOperationMap();
+  ops_to_test.reserve(map->size());
+  for (auto& pair : *map) {
+    ops_to_test.push_back(pair.first);
+  }
+  // Add other unary ops to test.
+  ops_to_test.push_back("Rsqrt");
+  // Ok.
+  for (string op_name : ops_to_test) {
+    Reset();
+    NodeDef node_def = get_unary_nodedef(op_name);
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+
+    const std::vector<float> input = {-0.9f, 0.6f, 0.0f, -3.5f, 100.0f, 2.9f};
+    const DataVec input_data{{"input", test::AsTensor<float>(input)}};
+    DataVec output_data{{"my_unary", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    for (int i = 0; i < input.size(); ++i) {
+      const float expected_output = get_unary_output(op_name, input[i]);
+      EXPECT_THAT(GetSpanForData<float>(output_data[0])[i],
+                  NanSensitiveFloatNear(expected_output, 0.0001));
+    }
+  }
 }
 
 }  // namespace convert
