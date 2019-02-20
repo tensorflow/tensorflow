@@ -321,6 +321,8 @@ renames = {
     'tf.lbeta': 'tf.math.lbeta',
     'tf.lgamma': 'tf.math.lgamma',
     'tf.lin_space': 'tf.linspace',
+    'tf.lite.toco_convert': 'tf.compat.v1.lite.toco_convert',
+    'tf.lite.TocoConverter': 'tf.compat.v1.lite.TocoConverter',
     'tf.local_variables': 'tf.compat.v1.local_variables',
     'tf.local_variables_initializer': 'tf.compat.v1.local_variables_initializer',
     'tf.log': 'tf.math.log',
