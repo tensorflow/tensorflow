@@ -76,6 +76,12 @@ static llvm::cl::opt<bool>
                        llvm::cl::desc("Print the generic op form"),
                        llvm::cl::init(false), llvm::cl::Hidden);
 
+static llvm::cl::opt<bool> printInternalAttributes(
+    "mlir-print-internal-attributes",
+    llvm::cl::desc(
+        "Print internal function and instruction attributes (':' prefix)."),
+    llvm::cl::init(false));
+
 namespace {
 class ModuleState {
 public:
@@ -1019,7 +1025,7 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
     auto attrName = attr.first.strref();
     // Never print attributes that start with a colon.  These are internal
     // attributes that represent location or other internal metadata.
-    if (attrName.startswith(":"))
+    if (!printInternalAttributes && attrName.startswith(":"))
       return;
 
     // If the caller has requested that this attribute be ignored, then drop it.
