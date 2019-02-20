@@ -37,9 +37,19 @@ from tensorflow.python.keras.layers.recurrent import *
 from tensorflow.python.keras.layers.wrappers import *
 from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 
+# TODO(b/124791387): replace mapping with layer attribute.
+_V2_CONVERSION_TABLE = {
+    # BatchNormalization Layer
+    'BatchNormalizationV1': 'BatchNormalization',
+    'BatchNormalizationV2': 'BatchNormalization',
+}
+
 
 def serialize(layer):
-  return {'class_name': layer.__class__.__name__, 'config': layer.get_config()}
+  layer_class_name = layer.__class__.__name__
+  if layer_class_name in _V2_CONVERSION_TABLE:
+    layer_class_name = _V2_CONVERSION_TABLE[layer_class_name]
+  return {'class_name': layer_class_name, 'config': layer.get_config()}
 
 
 def deserialize(config, custom_objects=None):
