@@ -335,7 +335,7 @@ def self_adjoint_eigvals(tensor, name=None):
   """Computes the eigenvalues of one or more self-adjoint matrices.
 
   Note: If your program backpropagates through this function, you should replace
-  it with a call to tf.linalg.eigvalsh (possibly ignoring the second output) to
+  it with a call to tf.linalg.eigh (possibly ignoring the second output) to
   avoid computing the eigen decomposition twice. This is because the
   eigenvectors are used to compute the gradient w.r.t. the eigenvalues. See
   _SelfAdjointEigV2Grad in linalg_grad.py.
