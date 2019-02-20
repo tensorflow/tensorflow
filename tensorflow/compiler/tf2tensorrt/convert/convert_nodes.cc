@@ -1415,7 +1415,6 @@ tensorflow::Status AllowDataTypes(
       for (auto dtype : allowed_dtypes) {
         ss << tensorflow::DataTypeString(dtype) << ", ";
       }
-      string allowed_dtypes_string = "";
       return tensorflow::errors::Unimplemented(
           "Datatype ", tensorflow::DataTypeString(op_dtype),
           " is not supported for ", node_def.op(), ", must be one of [",
