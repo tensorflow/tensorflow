@@ -44,6 +44,7 @@ string GetOptimizationAlgorithmName(OptimizationAlgorithm alg) {
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "*** Not set ***";
   }
+  return "*** Not set ***";
 }
 
 string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
@@ -71,6 +72,7 @@ string GetOptimizationAlgorithmFriendlyName(OptimizationAlgorithm alg) {
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return "unknown (not specified)";
   }
+  return "unknown (not specified)";
 }
 
 // Returns the number of optimization parameter vectors used by the optimization
@@ -111,6 +113,7 @@ Status GetBaseAuxiliaryParameterCount(OptimizationAlgorithm alg, int* count) {
     case OptimizationAlgorithm::PARAMETERS_NOT_SET:
       return errors::InvalidArgument("No optimization algorithm specified");
   }
+  return errors::InvalidArgument("No optimization algorithm specified");
 }
 
 Status GetGradientAccumulationSupport(OptimizationAlgorithm alg,
