@@ -3955,6 +3955,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
+        "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
         "//third_party/py/numpy",
