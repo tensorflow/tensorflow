@@ -431,7 +431,7 @@ class OpArgIterator {
     return old_value;
   }
 
-  reference operator*() { return (*list_)[i_]; }
+  reference operator*() const { return (*list_)[i_]; }
   pointer operator->() { return &(*list_)[i_]; }
 
   const_reference operator*() const { return (*list_)[i_]; }
