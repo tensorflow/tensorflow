@@ -386,16 +386,13 @@ def tf_binary_additional_srcs():
         ],
     )
 
-def _linux_kernel_dso_name(kernel_build_target):
-    """Given a build target, construct the dso name for linux."""
-    parts = kernel_build_target.split(":")
-    return "%s:libtfkernel_%s.so" % (parts[0], parts[1])
-
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
 # kernel linking.
-def tf_binary_dynamic_kernel_dsos(kernels):
+def tf_binary_dynamic_kernel_dsos():
     return if_dynamic_kernels(
-        extra_deps = [_linux_kernel_dso_name(k) for k in kernels],
+        extra_deps = [
+            "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
+        ],
         otherwise = [],
     )
 
@@ -419,9 +416,9 @@ def tf_cc_shared_object(
     native.cc_binary(
         name = name,
         srcs = srcs + framework_so,
-        deps = deps + tf_binary_dynamic_kernel_deps(kernels),
+        deps = deps,
         linkshared = 1,
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        data = data + tf_binary_dynamic_kernel_dsos(),
         linkopts = linkopts + _rpath_linkopts(name) + select({
             clean_dep("//tensorflow:darwin"): [
                 "-Wl,-install_name,@rpath/" + name.split("/")[-1],
@@ -452,6 +449,11 @@ def tf_cc_binary(
         copts = tf_copts(),
         kernels = [],
         **kwargs):
+    if kernels:
+        added_data_deps = tf_binary_dynamic_kernel_dsos()
+    else:
+        added_data_deps = []
+
     native.cc_binary(
         name = name,
         copts = copts,
@@ -461,7 +463,7 @@ def tf_cc_binary(
                 clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        data = depset(data + added_data_deps),
         linkopts = linkopts + _rpath_linkopts(name),
         **kwargs
     )
@@ -809,7 +811,7 @@ def tf_cc_test(
                 clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        data = data + tf_binary_dynamic_kernel_dsos(),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this
@@ -931,7 +933,7 @@ def tf_cuda_only_cc_test(
         args = args,
         copts = _cuda_copts() + rocm_copts() + tf_copts(),
         features = if_cuda(["-use_header_modules"]),
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        data = data + tf_binary_dynamic_kernel_dsos(),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_cuda_is_configured([
             clean_dep("//tensorflow/core:cuda"),
             clean_dep("//tensorflow/core:gpu_lib"),
@@ -1010,7 +1012,7 @@ def tf_cc_test_mkl(
                 ],
             }) + _rpath_linkopts(src_to_test_name(src)),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
-            data = data + tf_binary_dynamic_kernel_dsos(kernels),
+            data = data + tf_binary_dynamic_kernel_dsos(),
             exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
             linkstatic = linkstatic,
             tags = tags,
@@ -1064,7 +1066,7 @@ def tf_java_test(
     native.java_test(
         name = name,
         srcs = srcs,
-        deps = deps + tf_binary_additional_srcs() + tf_binary_dynamic_kernel_dsos(kernels) + tf_binary_dynamic_kernel_deps(kernels),
+        deps = deps + tf_binary_additional_srcs() + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
         *args,
         **kwargs
     )
@@ -1784,7 +1786,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
         data = data + select({
             "//conditions:default": [],
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
-        }) + tf_binary_dynamic_kernel_dsos(kernels),
+        }) + tf_binary_dynamic_kernel_dsos(),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         **kwargs
     )
