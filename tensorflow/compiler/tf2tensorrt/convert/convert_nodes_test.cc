@@ -3639,7 +3639,7 @@ TEST_F(OpConverterTest, ConvertUnary) {
     const DataVec input_data{{"input", test::AsTensor<float>(input)}};
     DataVec output_data{{"my_unary", ConstructTensor<float>(6)}};
     BuildAndRun(input_data, &output_data);
-    for (int i = 0; i < input.size(); i++) {
+    for (int i = 0; i < input.size(); ++i) {
       const float expected_output = get_unary_output(op_name, input[i]);
       EXPECT_THAT(GetSpanForData<float>(output_data[0])[i],
                   NanSensitiveFloatNear(expected_output, 0.0001));
