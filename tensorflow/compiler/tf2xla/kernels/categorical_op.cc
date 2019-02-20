@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
@@ -112,9 +113,12 @@ class CategoricalOp : public XlaOpKernel {
                                     xla::PrimitiveType type,
                                     XlaOpKernelContext* ctx) {
     xla::XlaBuilder* builder = ctx->builder();
-    auto uniforms =
-        xla::RngUniform(XlaHelpers::Zero(builder, input_type(0)),
-                        XlaHelpers::One(builder, input_type(0)), uniform_shape);
+    // We want a number in (0, 1) rather than [0, 1) or (0, 1]:
+    // * log(-log(0)) is ∞.
+    // * log(-log(1)) is -∞.
+    auto uniforms = xla::RngUniform(
+        xla::MinPositiveNormalValue(builder, type),
+        xla::One(builder, uniform_shape.element_type()), uniform_shape);
     return xla::Log(-xla::Log(uniforms));
   }
 
@@ -143,9 +147,13 @@ class StatelessCategoricalOp : public CategoricalOp {
     if (uniform_shape.element_type() == xla::BF16) {
       uniform_shape.set_element_type(xla::F32);
     }
+    // We want a number in (0, 1) rather than [0, 1) or (0, 1]:
+    // * log(-log(0)) is ∞.
+    // * log(-log(1)) is -∞.
     auto uniforms = xla::StatelessRngUniform(
-        {seed0, seed1}, uniform_shape, XlaHelpers::Zero(builder, DT_FLOAT),
-        XlaHelpers::One(builder, DT_FLOAT));
+        {seed0, seed1}, uniform_shape,
+        xla::MinPositiveNormalValue(builder, uniform_shape.element_type()),
+        xla::One(builder, uniform_shape.element_type()));
     return xla::ConvertElementType(xla::Log(-xla::Log(uniforms)), type);
   }
 
