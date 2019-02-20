@@ -124,7 +124,7 @@ class DeviceAssignment(object):
     """
     return self._core_assignment
 
-  def _coordinates(self, replica, logical_core):
+  def coordinates(self, replica, logical_core):
     """Returns the physical topology coordinates of a logical core."""
     return tuple(self.core_assignment[replica, logical_core, :])
 
@@ -150,17 +150,17 @@ class DeviceAssignment(object):
 
   def tpu_ordinal(self, replica=0, logical_core=0):
     """Returns the ordinal of the TPU device assigned to a logical core."""
-    coordinates = self._coordinates(replica, logical_core)
+    coordinates = self.coordinates(replica, logical_core)
     return self._topology.tpu_device_ordinal_at_coordinates(coordinates)
 
   def host_device(self, replica=0, logical_core=0, job=None):
     """Returns the CPU device attached to a logical core."""
-    coordinates = self._coordinates(replica, logical_core)
+    coordinates = self.coordinates(replica, logical_core)
     return self._topology.cpu_device_name_at_coordinates(coordinates, job=job)
 
   def tpu_device(self, replica=0, logical_core=0, job=None):
     """Returns the name of the TPU device assigned to a logical core."""
-    coordinates = self._coordinates(replica, logical_core)
+    coordinates = self.coordinates(replica, logical_core)
     return self._topology.tpu_device_name_at_coordinates(coordinates, job=job)
 
 

@@ -608,6 +608,12 @@ def _wrap_shape(shape_info):
     return Shape.array_shape(dtype, dims)
 
 
+def _wrap_program_shape(shape_info):
+  arg_shapes, result_shape = shape_info
+  return ProgramShape([_wrap_shape(arg) for arg in arg_shapes],
+                      _wrap_shape(result_shape))
+
+
 def require_numpy_array_layout(value):
   if isinstance(value, tuple):
     return tuple(require_numpy_array_layout(x) for x in value)
@@ -756,9 +762,7 @@ class Computation(object):
         backend=backend)
 
   def GetProgramShape(self):
-    (arg_shapes, result_shape) = self._c_computation.GetProgramShape()
-    return ProgramShape([_wrap_shape(arg) for arg in arg_shapes],
-                        _wrap_shape(result_shape))
+    return _wrap_program_shape(self._c_computation.GetProgramShape())
 
   def GetReturnValueShape(self):
     return _wrap_shape(self._c_computation.GetReturnValueShape())
