@@ -123,9 +123,9 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
     FuncBuilder builder(&f->getBlocks().front(),
                         f->getBlocks().front().begin());
     assert(f->getNumArguments() == 4 && "max_min_for expected 4 arguments");
-    for (const auto *arg : f->getArguments())
-      assert(arg->getType().isIndex() &&
-             "max_min_for expected index arguments");
+    assert(std::all_of(f->args_begin(), f->args_end(),
+                       [](const Value *s) { return s->getType().isIndex(); }) &&
+           "max_min_for expected index arguments");
 
     edsc::ScopedEDSCContext context;
     edsc::Expr lb1(f->getArgument(0)->getType());

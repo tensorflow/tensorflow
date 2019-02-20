@@ -85,6 +85,7 @@ MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
 static void checkAffineProvenance(ArrayRef<Value *> values) {
   for (Value *v : values) {
     auto *def = v->getDefiningInst();
+    (void)def;
     // There may be no defining instruction if the value is a function
     // argument.  We accept such values.
     assert((!def || def->isa<ConstantIndexOp>() || def->isa<AffineApplyOp>() ||
