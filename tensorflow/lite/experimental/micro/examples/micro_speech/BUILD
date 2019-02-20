@@ -317,6 +317,10 @@ cc_binary(
     srcs = [
         "main.cc",
     ],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":audio_provider",
         ":feature_provider",
@@ -335,6 +339,10 @@ cc_binary(
     srcs = [
         "main.cc",
     ],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":audio_provider_mock",
         ":feature_provider",
