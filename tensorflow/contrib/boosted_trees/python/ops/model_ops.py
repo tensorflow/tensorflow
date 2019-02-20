@@ -33,7 +33,7 @@ from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensem
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 ops.NotDifferentiable("TreeEnsembleVariable")
 ops.NotDifferentiable("TreeEnsembleSerialize")

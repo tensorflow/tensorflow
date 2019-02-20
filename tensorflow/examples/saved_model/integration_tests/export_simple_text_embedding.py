@@ -18,14 +18,30 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
+import tempfile
 from absl import app
 from absl import flags
 
 import tensorflow as tf
 
+# TODO(vbardiovsky): remove these when symbols are public.
+from tensorflow.python.ops import lookup_ops
+from tensorflow.python.training.tracking import tracking
+
 FLAGS = flags.FLAGS
 
 flags.DEFINE_string("export_dir", None, "Directory to export SavedModel.")
+
+
+def write_vocabulary_file(vocabulary):
+  """Write temporary vocab file for module construction."""
+  tmpdir = tempfile.mkdtemp()
+  vocabulary_file = os.path.join(tmpdir, "tokens.txt")
+  with tf.io.gfile.GFile(vocabulary_file, "w") as f:
+    for entry in vocabulary:
+      f.write(entry + "\n")
+  return vocabulary_file
 
 
 class TextEmbeddingModel(tf.train.Checkpoint):
@@ -35,10 +51,20 @@ class TextEmbeddingModel(tf.train.Checkpoint):
   sentence embedding.
   """
 
-  def __init__(self, emb_dim, buckets):
+  def __init__(self, vocabulary, emb_dim, oov_buckets):
     super(TextEmbeddingModel, self).__init__()
-    self._buckets = buckets
-    self._embeddings = tf.Variable(tf.random.uniform(shape=[buckets, emb_dim]))
+    self._oov_buckets = oov_buckets
+    self._vocabulary_file = tracking.TrackableAsset(
+        write_vocabulary_file(vocabulary))
+    self._total_size = len(vocabulary) + oov_buckets
+    self._table = lookup_ops.index_table_from_file(
+        vocabulary_file=self._vocabulary_file,
+        num_oov_buckets=self._oov_buckets,
+        hasher_spec=lookup_ops.FastHashSpec)
+    self.embeddings = tf.Variable(
+        tf.random.uniform(shape=[self._total_size, emb_dim]))
+    self.variables = [self.embeddings]
+    self.trainable_variables = self.variables
 
   def _tokenize(self, sentences):
     # Perform a minimalistic text preprocessing by removing punctuation and
@@ -52,19 +78,16 @@ class TextEmbeddingModel(tf.train.Checkpoint):
     sparse_tokens, _ = tf.sparse.fill_empty_rows(sparse_tokens, tf.constant(""))
     # Deal with a corner case: all sentences are empty.
     sparse_tokens = tf.sparse.reset_shape(sparse_tokens)
+    sparse_token_ids = self._table.lookup(sparse_tokens.values)
 
-    return (sparse_tokens.indices, self._words_to_indices(sparse_tokens.values),
-            sparse_tokens.dense_shape)
-
-  def _words_to_indices(self, words):
-    return tf.strings.to_hash_bucket(words, self._buckets)
+    return (sparse_tokens.indices, sparse_token_ids, sparse_tokens.dense_shape)
 
   @tf.function(input_signature=[tf.TensorSpec([None], tf.dtypes.string)])
   def __call__(self, sentences):
     token_ids, token_values, token_dense_shape = self._tokenize(sentences)
 
     return tf.nn.safe_embedding_lookup_sparse(
-        embedding_weights=self._embeddings,
+        embedding_weights=self.embeddings,
         sparse_ids=tf.SparseTensor(token_ids, token_values, token_dense_shape),
         sparse_weights=None,
         combiner="sqrtn")
@@ -73,7 +96,8 @@ class TextEmbeddingModel(tf.train.Checkpoint):
 def main(argv):
   del argv
 
-  module = TextEmbeddingModel(emb_dim=10, buckets=100)
+  vocabulary = ["cat", "is", "on", "the", "mat"]
+  module = TextEmbeddingModel(vocabulary=vocabulary, emb_dim=10, oov_buckets=10)
   tf.saved_model.save(module, FLAGS.export_dir)
 
 

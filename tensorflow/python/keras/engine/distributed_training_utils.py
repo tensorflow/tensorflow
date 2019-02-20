@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import control_flow_ops
@@ -563,6 +564,11 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
+  # Expand 1-dimensional inputs.
+  # TODO(b/124535720): Remove once this standarize data logic is shared with
+  # main flow.
+  inputs, targets = nest.map_structure(training_utils.standardize_single_array,
+                                       (inputs, targets))
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
@@ -805,22 +811,31 @@ def _make_eager_execution_function(model, mode):
   # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
   # the global one.
   strategy = model._distribution_strategy
-  with K.get_graph().as_default(), strategy.scope():
-    # Create train ops on each of the devices when we call
-    # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs) = strategy.extended.call_for_each_replica(
-        _per_device_function, args=(get_distributed_model(model, mode),))
+  global_graph = K.get_graph()
 
-    # Unwrap all the per device values returned from `call_for_each_replica`.
-    # Unwrapping per device values gives you a list of values that can be
-    # used to construct a new train function that is composed of inptus/outputs
-    # on all the devices over which the model is distributed.
-    (all_inputs, all_outputs, _, _) = unwrap_values(
-        strategy,
-        grouped_inputs,
-        grouped_outputs,
-        with_loss_tensor=(mode != ModeKeys.PREDICT))
+  with global_graph.as_default(), strategy.scope():
+    # First we gather the relevant portions of the model across all replicas.
+    # `K._scratch_graph(global_graph)` signals to Keras that it should not
+    # lift to a separate graph when creating the per-replica functions.
+    with K._scratch_graph(global_graph):
+      # Create train ops on each of the devices when we call
+      # `_per_device_fit_function`.
+      grouped = strategy.extended.call_for_each_replica(
+          _per_device_function, args=(get_distributed_model(model, mode),))
+      grouped_inputs, grouped_outputs = grouped
 
+      # Unwrap all the per device values returned from `call_for_each_replica`.
+      # Unwrapping per device values gives you a list of values that can be
+      # used to construct a new train function that is composed of
+      # inputs/outputs on all the devices over which the model is distributed.
+      (all_inputs, all_outputs, _, _) = unwrap_values(
+          strategy,
+          grouped_inputs,
+          grouped_outputs,
+          with_loss_tensor=(mode != ModeKeys.PREDICT))
+
+    # Finally, a joint Keras function is created; this one will be created in
+    # a separate FuncGraph.
     return K.function(
         all_inputs,
         all_outputs,
@@ -888,3 +903,22 @@ def _generate_cache_key(mode):
 def distributed_scope(strategy, learning_phase):
   with strategy.scope(), K.learning_phase_scope(learning_phase):
     yield
+
+
+def filter_callbacks(callbacks_list):
+  """Filter Callbacks based on the worker context when running multi-worker.
+
+  Arguments:
+    callbacks_list: A list of `Callback` instances.
+
+  Returns:
+    The list of `Callback` instances that should be run on this worker.
+  """
+  worker_context = dc_context.get_current_worker_context()
+  if callbacks_list is None or worker_context.is_chief:
+    return callbacks_list
+
+  # Some Callbacks should only run on the chief worker.
+  return [
+      callback for callback in callbacks_list if not callback._chief_worker_only
+  ]  # pylint: disable=protected-access

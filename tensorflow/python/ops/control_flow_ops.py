@@ -3443,6 +3443,12 @@ def while_loop(cond,
         if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
           packed = True
           loop_vars = (loop_vars,)
+
+      def convert(x):
+        if isinstance(x, tensor_array_ops.TensorArray):
+          return x
+        return ops.convert_to_tensor(x)
+      loop_vars = nest.map_structure(convert, loop_vars)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:

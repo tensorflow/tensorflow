@@ -254,6 +254,7 @@ Status InitializeSession(int num_threads, const string& graph,
   tensorflow::ConfigProto& config = options.config;
   if (num_threads > 0) {
     config.set_intra_op_parallelism_threads(num_threads);
+    config.set_inter_op_parallelism_threads(num_threads);
   }
   LOG(INFO) << "Got config, " << config.device_count_size() << " devices";
 

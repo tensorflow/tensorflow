@@ -26,8 +26,8 @@ from tensorflow.python.eager import function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import util as checkpointable_util
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.deprecation import deprecated
@@ -232,7 +232,7 @@ def _skip_common_stack_elements(stacktrace, base_case):
   return stacktrace[-1:]
 
 
-class Template(checkpointable.Checkpointable):
+class Template(trackable.Trackable):
   """Wrap a function to aid in variable sharing.
 
   Templates are functions that create variables the first time they are called
@@ -306,8 +306,8 @@ class Template(checkpointable.Checkpointable):
         result = self._func(*args, **kwargs)
       else:
         # The first time we run, restore variables if necessary (via
-        # Checkpointable).
-        with checkpointable_util.capture_dependencies(template=self):
+        # Trackable).
+        with trackable_util.capture_dependencies(template=self):
           result = self._func(*args, **kwargs)
 
       if self._variables_created:
@@ -577,8 +577,8 @@ class EagerTemplate(Template):
         result = self._func(*args, **kwargs)
       else:
         # The first time we run, restore variables if necessary (via
-        # Checkpointable).
-        with checkpointable_util.capture_dependencies(template=self):
+        # Trackable).
+        with trackable_util.capture_dependencies(template=self):
           result = self._func(*args, **kwargs)
 
       if self._variables_created:

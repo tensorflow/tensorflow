@@ -25,6 +25,7 @@ TfLiteRegistration* Register_AUDIO_SPECTROGRAM();
 TfLiteRegistration* Register_MFCC();
 TfLiteRegistration* Register_DETECTION_POSTPROCESS();
 TfLiteRegistration* Register_IF();
+TfLiteRegistration* Register_WHILE();
 
 }  // namespace custom
 
@@ -113,6 +114,7 @@ TfLiteRegistration* Register_NOT_EQUAL();
 TfLiteRegistration* Register_SQRT();
 TfLiteRegistration* Register_RSQRT();
 TfLiteRegistration* Register_SHAPE();
+TfLiteRegistration* Register_RANK();
 TfLiteRegistration* Register_POW();
 TfLiteRegistration* Register_FAKE_QUANT();
 TfLiteRegistration* Register_PACK();
@@ -134,6 +136,7 @@ TfLiteRegistration* Register_UNIQUE();
 TfLiteRegistration* Register_REVERSE_V2();
 TfLiteRegistration* Register_ADD_N();
 TfLiteRegistration* Register_GATHER_ND();
+TfLiteRegistration* Register_WHERE();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -168,7 +171,8 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_RELU_N1_TO_1, Register_RELU_N1_TO_1());
   AddBuiltin(BuiltinOperator_RELU6, Register_RELU6(), /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_TANH, Register_TANH());
+  AddBuiltin(BuiltinOperator_TANH, Register_TANH(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_LOGISTIC, Register_LOGISTIC(),
              /* min_version */ 1,
              /* max_version */ 2);
@@ -206,7 +210,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
              Register_EMBEDDING_LOOKUP_SPARSE());
   AddBuiltin(BuiltinOperator_FULLY_CONNECTED, Register_FULLY_CONNECTED(),
              /* min_version */ 1,
-             /* max_version */ 3);
+             /* max_version */ 4);
   AddBuiltin(BuiltinOperator_LSH_PROJECTION, Register_LSH_PROJECTION());
   AddBuiltin(BuiltinOperator_HASHTABLE_LOOKUP, Register_HASHTABLE_LOOKUP());
   AddBuiltin(BuiltinOperator_SOFTMAX, Register_SOFTMAX(),
@@ -234,8 +238,10 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_LSTM,
              Register_UNIDIRECTIONAL_SEQUENCE_LSTM(), /* min_version */ 1,
              /* max_version */ 2);
-  AddBuiltin(BuiltinOperator_PAD, Register_PAD());
-  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2());
+  AddBuiltin(BuiltinOperator_PAD, Register_PAD(), /* min_version */ 1,
+             /* max_version */ 2);
+  AddBuiltin(BuiltinOperator_PADV2, Register_PADV2(), /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_RESHAPE, Register_RESHAPE());
   AddBuiltin(BuiltinOperator_RESIZE_BILINEAR, Register_RESIZE_BILINEAR(),
              /* min_version */ 1,
@@ -256,7 +262,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_MEAN, Register_MEAN());
   AddBuiltin(BuiltinOperator_DIV, Register_DIV());
-  AddBuiltin(BuiltinOperator_SUB, Register_SUB());
+  AddBuiltin(BuiltinOperator_SUB, Register_SUB(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_SPLIT, Register_SPLIT(), /* min_version */ 1,
              /* max_version */ 3);
   AddBuiltin(BuiltinOperator_SPLIT_V, Register_SPLIT_V());
@@ -269,7 +277,9 @@ BuiltinOpResolver::BuiltinOpResolver() {
              /* min_version */ 1,
              /* max_version */ 2);
   AddBuiltin(BuiltinOperator_LOG, Register_LOG());
-  AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX());
+  AddBuiltin(BuiltinOperator_LOG_SOFTMAX, Register_LOG_SOFTMAX(),
+             /* min_version */ 1,
+             /* max_version */ 2);
   AddBuiltin(BuiltinOperator_CAST, Register_CAST());
   AddBuiltin(BuiltinOperator_DEQUANTIZE, Register_DEQUANTIZE(),
              /* min_version */ 1,
@@ -331,6 +341,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_SQRT, Register_SQRT());
   AddBuiltin(BuiltinOperator_RSQRT, Register_RSQRT());
   AddBuiltin(BuiltinOperator_SHAPE, Register_SHAPE());
+  AddBuiltin(BuiltinOperator_RANK, Register_RANK());
   AddBuiltin(BuiltinOperator_POW, Register_POW());
   AddBuiltin(BuiltinOperator_FAKE_QUANT, Register_FAKE_QUANT(), 1, 2);
   AddBuiltin(BuiltinOperator_PACK, Register_PACK(),
@@ -354,6 +365,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_REVERSE_V2, Register_REVERSE_V2());
   AddBuiltin(BuiltinOperator_ADD_N, Register_ADD_N());
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND());
+  AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.
@@ -365,6 +377,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
 
   // WARNING: Control flow ops are experimental and subject to change.
   AddCustom("Experimental_If", tflite::ops::custom::Register_IF());
+  AddCustom("Experimental_While", tflite::ops::custom::Register_WHILE());
 }
 
 }  // namespace builtin

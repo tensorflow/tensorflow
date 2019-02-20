@@ -246,7 +246,7 @@ class DatasetIterator(InputIteratorImpl):
     """
     assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
-      dataset = _split_dataset_batch(dataset, split_batch_by)
+      dataset = batching._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
 
     iterators = []
     for i, worker in enumerate(input_workers.worker_devices):
@@ -255,6 +255,7 @@ class DatasetIterator(InputIteratorImpl):
         cloned_dataset = dataset
         if not context.executing_eagerly():
           cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
         iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
                                                 worker_devices)
         iterators.append(iterator)
@@ -352,7 +353,8 @@ def _get_batched_dataset(d):
 
   if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
     return d
-  elif isinstance(d, dataset_ops.PrefetchDataset):
+  elif isinstance(d, (dataset_ops.PrefetchDataset,
+                      dataset_ops._OptionsDataset)):
     return _get_batched_dataset(d._input_dataset)
 
   raise ValueError(
@@ -403,24 +405,6 @@ def _get_dataset_attributes(dataset):
     prefetch_buffer = dataset._dataset._buffer_size
 
   return batch_size, drop_remainder, prefetch_buffer
-
-
-def _split_dataset_batch(dataset, split_batch_by):
-  """Divide a batch-ed dataset's batches into smaller batches."""
-  batch_size, drop_remainder, prefetch_buffer = (
-      _get_dataset_attributes(dataset))
-
-  if batch_size % split_batch_by:
-    raise ValueError(
-        "Batch size %s cannot be sharded evenly across replicas %s" % (
-            batch_size, split_batch_by))
-  new_batch_size = batch_size // split_batch_by
-
-  dataset = dataset.apply(batching.unbatch())
-  dataset = dataset.batch(new_batch_size, drop_remainder=drop_remainder)
-  if prefetch_buffer is not None:
-    dataset = dataset.prefetch(prefetch_buffer)
-  return dataset
 
 
 class MultiStepContext(object):

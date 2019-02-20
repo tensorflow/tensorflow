@@ -17,8 +17,8 @@ limitations under the License.
  * micro_speech_test.cc */
 
 #include "tensorflow/lite/c/c_api_internal.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/tiny_conv_model_data.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_features_generator.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/tiny_conv_simple_features_model_data.h"
 #include "tensorflow/lite/experimental/micro/kernels/all_ops_resolver.h"
 #include "tensorflow/lite/experimental/micro/micro_error_reporter.h"
 #include "tensorflow/lite/experimental/micro/micro_interpreter.h"
@@ -32,20 +32,36 @@ uint8_t g_unknown_score = 0;
 uint8_t g_yes_score = 0;
 uint8_t g_no_score = 0;
 
+namespace {
+
+TfLiteStatus GenerateSimpleFeatures_1sec(tflite::ErrorReporter* error_reporter,
+                                         const int16_t* input,
+                                         uint8_t* output) {
+  int i;
+  for (i = 0; i < 49; i++) {
+    GenerateSimpleFeatures(error_reporter, input + i * 320, 480, 43,
+                           output + i * 43);
+  }
+  return kTfLiteOk;
+}
+
+}  // namespace
+
 TF_LITE_MICRO_TESTS_BEGIN
 
-TF_LITE_MICRO_TEST(TestPreprocessor) {
+TF_LITE_MICRO_TEST(TestSimpleFeaturesGenerator) {
   tflite::MicroErrorReporter micro_error_reporter;
   tflite::ErrorReporter* error_reporter = &micro_error_reporter;
 
   uint8_t preprocessed_data[43 * 49];
-  TfLiteStatus preprocess_1sec_status =
-      Preprocess_1sec(error_reporter, captured_data, preprocessed_data);
-  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, preprocess_1sec_status);
+  TfLiteStatus generate_1sec_status = GenerateSimpleFeatures_1sec(
+      error_reporter, captured_data, preprocessed_data);
+  TF_LITE_MICRO_EXPECT_EQ(kTfLiteOk, generate_1sec_status);
 
   // Map the model into a usable data structure. This doesn't involve any
   // copying or parsing, it's a very lightweight operation.
-  const tflite::Model* model = ::tflite::GetModel(g_tiny_conv_model_data);
+  const tflite::Model* model =
+      ::tflite::GetModel(g_tiny_conv_simple_features_model_data);
   if (model->version() != TFLITE_SCHEMA_VERSION) {
     error_reporter->Report(
         "Model provided is schema version %d not equal "

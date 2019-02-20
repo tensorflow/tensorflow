@@ -170,7 +170,7 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/training/checkpointable:data_structures",
+        "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
@@ -582,6 +582,11 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    tags = [
+        "manual",  # b/124471597
+        "notap",  # b/124471597
+    ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -607,7 +612,10 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_rocm",
+        "no_windows_gpu",
+    ],
 )
 
 tf_py_test(
@@ -778,6 +786,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -791,6 +800,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
+    tags = ["no_rocm"],
 )
 
 tf_py_test(
@@ -1181,6 +1191,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    tags = ["no_rocm"],
 )
 
 tf_py_test(

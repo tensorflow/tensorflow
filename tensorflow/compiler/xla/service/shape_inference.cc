@@ -836,7 +836,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(larger_shape));
     }
     if (small_is_dynamic != large_is_dynamic) {
-      if ((small_dimension_size == 1 && !small_is_dynamic) ||
+      if (small_dimension_size == large_dimension_size ||
+          (small_dimension_size == 1 && !small_is_dynamic) ||
           (large_dimension_size == 1 && !large_is_dynamic)) {
         // Do nothing. It's OK when the size-1 dimension is not static.
       } else {

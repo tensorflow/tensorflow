@@ -199,6 +199,20 @@ class TfMakeDecoratorTest(test.TestCase):
     decorator = getattr(decorated, '_tf_decorator')
     self.assertEqual('test decorator doc', decorator.decorator_doc)
 
+  def testUpdatesDictWithMissingEntries(self):
+    test_function.foobar = True
+    decorated = tf_decorator.make_decorator(test_function, test_wrapper)
+    self.assertTrue(decorated.foobar)
+    del test_function.foobar
+
+  def testUpdatesDict_doesNotOverridePresentEntries(self):
+    test_function.foobar = True
+    test_wrapper.foobar = False
+    decorated = tf_decorator.make_decorator(test_function, test_wrapper)
+    self.assertFalse(decorated.foobar)
+    del test_function.foobar
+    del test_wrapper.foobar
+
   def testSetsTFDecoratorArgSpec(self):
     argspec = tf_inspect.ArgSpec(
         args=['a', 'b', 'c'],

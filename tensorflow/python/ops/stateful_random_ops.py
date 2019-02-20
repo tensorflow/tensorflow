@@ -27,7 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.checkpointable import \
+from tensorflow.python.training.tracking import \
 tracking
 from tensorflow.python.util.tf_export import tf_export
 
@@ -144,7 +144,7 @@ def _shape_tensor(shape):
 
 
 @tf_export("random.experimental.Generator")
-class Generator(tracking.AutoCheckpointable):
+class Generator(tracking.AutoTrackable):
   """Random-number generator.
 
   It uses Variable to manage its internal state.

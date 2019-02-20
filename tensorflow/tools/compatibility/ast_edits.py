@@ -286,7 +286,7 @@ class _PastaEditVisitor(ast.NodeVisitor):
     arg_warnings = self._get_applicable_dict("function_arg_warnings",
                                              full_name, name)
 
-    for (kwarg, arg), (level, warning) in arg_warnings.items():
+    for (kwarg, arg), (level, warning) in sorted(arg_warnings.items()):
       present, _ = get_arg_value(node, kwarg, arg)
       if present:
         warned = True

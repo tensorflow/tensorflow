@@ -17,7 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <cmath>
+
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -166,6 +170,55 @@ bool HasTPUAttributes(const NodeDef& node) {
     }
   }
   return false;
+}
+
+template <typename T>
+bool PackedValuesNotEqual(T a, T b) {
+  return a != b;
+}
+
+template <>
+bool PackedValuesNotEqual(float a, float b) {
+  return reinterpret_cast<int32_t&>(a) != reinterpret_cast<int32_t&>(b);
+}
+
+template <>
+bool PackedValuesNotEqual(double a, double b) {
+  return reinterpret_cast<int64_t&>(a) != reinterpret_cast<int64_t&>(b);
+}
+
+float QuantizedTypeMinAsFloat(DataType data_type) {
+  switch (data_type) {
+    case DT_QINT8:
+      return Eigen::NumTraits<qint8>::lowest();
+    case DT_QUINT8:
+      return Eigen::NumTraits<quint8>::lowest();
+    case DT_QINT16:
+      return Eigen::NumTraits<qint16>::lowest();
+    case DT_QUINT16:
+      return Eigen::NumTraits<quint16>::lowest();
+    case DT_QINT32:
+      return Eigen::NumTraits<qint32>::lowest();
+    default:
+      return 0.0f;
+  }
+}
+
+float QuantizedTypeMaxAsFloat(DataType data_type) {
+  switch (data_type) {
+    case DT_QINT8:
+      return Eigen::NumTraits<qint8>::highest();
+    case DT_QUINT8:
+      return Eigen::NumTraits<quint8>::highest();
+    case DT_QINT16:
+      return Eigen::NumTraits<qint16>::highest();
+    case DT_QUINT16:
+      return Eigen::NumTraits<quint16>::highest();
+    case DT_QINT32:
+      return Eigen::NumTraits<qint32>::highest();
+    default:
+      return 0.0f;
+  }
 }
 
 }  // namespace
@@ -928,6 +981,11 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
       SET_TENSOR_VAL_CASE(DT_UINT16, int32, int);
       SET_TENSOR_VAL_CASE(DT_INT8, int32, int);
       SET_TENSOR_VAL_CASE(DT_UINT8, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QINT32, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QINT16, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QUINT16, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QINT8, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QUINT8, int32, int);
       SET_TENSOR_VAL_CASE(DT_BOOL, bool, bool);
     default:
       return errors::InvalidArgument("Unsupported type: ", type);
@@ -1018,7 +1076,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     int64 last_index = 0;                                                 \
     for (int64 i = 0; i < tensor->NumElements(); ++i) {                   \
       TYPE cur = *val_ptr++;                                              \
-      if (cur != last) {                                                  \
+      if (PackedValuesNotEqual(cur, last)) {                              \
         last = cur;                                                       \
         last_index = i;                                                   \
       }                                                                   \
@@ -1068,6 +1126,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     t->set_dtype(tensor->dtype());
     tensor->shape().AsProto(t->mutable_tensor_shape());
   } else {
+    // DT_HALF, DT_BFLOAT16, DT_QINT32, DT_QINT16, DT_QUINT16, DT_QINT8,
+    // DT_QUINT8
     tensor->AsProtoTensorContent(t);
     encoded_size = t->tensor_content().size();
   }
@@ -1516,6 +1576,11 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
     IS_ONES_CASE(DT_INT16);
     IS_ONES_CASE(DT_INT32);
     IS_ONES_CASE(DT_INT64);
+    IS_ONES_CASE(DT_QINT32);
+    IS_ONES_CASE(DT_QINT16);
+    IS_ONES_CASE(DT_QUINT16);
+    IS_ONES_CASE(DT_QINT8);
+    IS_ONES_CASE(DT_QUINT8);
     default:
       VLOG(1) << "Unsupported type " << DataTypeString(dtype);
       return false;
@@ -1550,6 +1615,11 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
     IS_ZEROS_CASE(DT_INT16);
     IS_ZEROS_CASE(DT_INT32);
     IS_ZEROS_CASE(DT_INT64);
+    IS_ZEROS_CASE(DT_QINT32);
+    IS_ZEROS_CASE(DT_QINT16);
+    IS_ZEROS_CASE(DT_QUINT16);
+    IS_ZEROS_CASE(DT_QINT8);
+    IS_ZEROS_CASE(DT_QUINT8);
     default:
       VLOG(1) << "Unsupported type " << DataTypeString(dtype);
       return false;
@@ -2559,6 +2629,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
   *success = false;
   const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
+  const bool is_quantized_matmul = IsQuantizedMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
   const bool is_sub = IsSub(*node);
   const bool is_any_div = IsAnyDiv(*node);
@@ -2653,6 +2724,10 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         if (!replace_op_status.ok()) {
           return replace_op_status;
         } else if (replace_succeed) {
+          if (is_quantized_matmul) {
+            TF_RETURN_IF_ERROR(
+                AddQuantizedMatMulMinMaxOutConstNodes(node, optimized_graph));
+          }
           *success = true;
           return Status::OK();
         }
@@ -3218,6 +3293,65 @@ bool ConstantFolding::MergeConcat(const GraphProperties& properties,
   (*parent->mutable_attr())["N"].set_i(NumNonControlInputs(*parent) - 1);
 
   return true;
+}
+
+Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
+    NodeDef* node, GraphDef* optimized_graph) {
+  auto add_quantized_out = [this, node, optimized_graph](
+                               const string& out_const_name, int index) {
+    NodeDef* out_node = optimized_graph->add_node();
+    Tensor value(DT_FLOAT, TensorShape({}));
+    const bool is_min = index == 1;
+    const DataType type_attr = node->attr().at("dtype").type();
+
+    value.flat<float>()(0) = is_min ? QuantizedTypeMinAsFloat(type_attr)
+                                    : QuantizedTypeMaxAsFloat(type_attr);
+    TF_RETURN_IF_ERROR(
+        CreateNodeDef(out_const_name, TensorValue(&value), out_node));
+    node_map_->AddNode(out_const_name, out_node);
+    out_node->set_device(node->device());
+
+    // Copy all inputs from node.
+    out_node->mutable_input()->CopyFrom(node->input());
+    for (const string& input : out_node->input()) {
+      node_map_->AddOutput(NodeName(input), out_const_name);
+    }
+
+    // Update output nodes consuming node:index to new const node.
+    string old_input = absl::StrCat(node->name(), ":", index);
+    int old_node_count = 0;
+    auto outputs = node_map_->GetOutputs(node->name());
+    for (const auto& output : outputs) {
+      for (int i = 0; i < output->input_size(); ++i) {
+        if (output->input(i) == old_input) {
+          output->set_input(i, out_const_name);
+          node_map_->AddOutput(out_const_name, output->name());
+        } else if (NodeName(output->input(i)) == node->name()) {
+          ++old_node_count;
+        }
+      }
+      if (old_node_count == 0) {
+        node_map_->RemoveOutput(node->name(), output->name());
+      }
+    }
+
+    return Status::OK();
+  };
+  const string min_out_const_name =
+      OptimizedNodeName(*node, "-quantized_matmul_min_out");
+  const string max_out_const_name =
+      OptimizedNodeName(*node, "-quantized_matmul_max_out");
+  if (node_map_->GetNode(min_out_const_name) == nullptr &&
+      node_map_->GetNode(max_out_const_name) == nullptr) {
+    TF_RETURN_IF_ERROR(add_quantized_out(min_out_const_name, 1));
+    TF_RETURN_IF_ERROR(add_quantized_out(max_out_const_name, 2));
+  } else {
+    return errors::Internal(absl::Substitute(
+        "Can't create Const for QuantizedMatMul min_out/max_out of "
+        "node '$0' because of node name conflict",
+        node->name()));
+  }
+  return Status::OK();
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,

@@ -199,14 +199,6 @@ bool VerifySubGraphConsistency(const Model& model, const SubGraph& subgraph,
       variable_tensors, output_tensors;
   for (int i = 0; i < subgraph.tensors()->Length(); ++i) {
     const auto* tensor = subgraph.tensors()->Get(i);
-    bool is_constant_tensor = false;
-    if (model.buffers() && tensor->buffer() > 0 &&
-        tensor->buffer() < model.buffers()->size()) {
-      auto* buffer = model.buffers()->Get(tensor->buffer());
-      if (buffer && buffer->data()) {
-        is_constant_tensor = true;
-      }
-    }
     if (IsConstantTensor(*tensor, model)) {
       constant_tensors.insert(i);
     } else if (tensor->is_variable()) {

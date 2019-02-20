@@ -116,6 +116,9 @@ def _make_tensor_into_per_replica(input_tensor):
 def _normalize_value_destination_pairs(value_destination_pairs):
   """Converts each tensor into a PerReplica object in the input list."""
   result = []
+
+  value_destination_pairs = list(value_destination_pairs)
+
   if not isinstance(value_destination_pairs, (list, tuple)):
     raise ValueError("`value_destination_pairs` should be a list or tuple")
   for pair in value_destination_pairs:

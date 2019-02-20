@@ -850,6 +850,15 @@ REGISTER_OP("Sum")
     .Attr("Tidx: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::ReductionShape);
 
+REGISTER_OP("EuclideanNorm")
+    .Input("input: T")
+    .Input("reduction_indices: Tidx")
+    .Output("output: T")
+    .Attr("keep_dims: bool = false")
+    .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ReductionShape);
+
 REGISTER_OP("Mean")
     .Input("input: T")
     .Input("reduction_indices: Tidx")

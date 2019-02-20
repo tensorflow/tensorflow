@@ -27,7 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import util as checkpointable_util
+from tensorflow.python.training.tracking import util as trackable_util
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -88,8 +88,8 @@ class TimeDistributedTest(test.TestCase):
     model.get_config()
 
     # check whether the model variables are present in the
-    # checkpointable list of objects
-    checkpointed_objects = set(checkpointable_util.list_objects(model))
+    # trackable list of objects
+    checkpointed_objects = set(trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
@@ -303,8 +303,8 @@ class BidirectionalTest(test.TestCase):
         model.fit(x, y, epochs=1, batch_size=1)
 
         # check whether the model variables are present in the
-        # checkpointable list of objects
-        checkpointed_objects = set(checkpointable_util.list_objects(model))
+        # trackable list of objects
+        checkpointed_objects = set(trackable_util.list_objects(model))
         for v in model.variables:
           self.assertIn(v, checkpointed_objects)
 
@@ -558,10 +558,15 @@ class BidirectionalTest(test.TestCase):
       assert len(layer.losses) == 4
       assert len(layer.get_losses_for(None)) == 4
       assert not layer.get_losses_for(x)
+
+      # Create a random tensor that is not conditional on the inputs.
+      with keras.backend.get_graph().as_default():
+        const_tensor = constant_op.constant(1)
+
       layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.forward_layer.add_loss(1, inputs=None)
+      layer.forward_layer.add_loss(const_tensor, inputs=None)
       layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.backward_layer.add_loss(1, inputs=None)
+      layer.backward_layer.add_loss(const_tensor, inputs=None)
       assert len(layer.losses) == 8
       assert len(layer.get_losses_for(None)) == 6
       assert len(layer.get_losses_for(x)) == 2

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resource_manager.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -90,7 +89,7 @@ TrtCandidateSelector::TrtCandidateSelector(
 Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // TODO(laigd): move this set to TrtNodeValidator where it should belong.
   // LINT.IfChange
-  static const std::set<string> candidate_ops = {
+  static const auto* candidate_ops = new std::set<string>{
       "Abs",
       "Add",
       "AvgPool",
@@ -106,6 +105,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "ExpandDims",
       "FusedBatchNorm",
       "FusedBatchNormV2",
+      "GatherV2",
       "Identity",
       "LeakyRelu",
       "Log",
@@ -128,6 +128,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "Rsqrt",
       "Rsqrt",
       "Sigmoid",
+      "Slice",
       "Snapshot",
       "Softmax",
       "Sqrt",
@@ -141,9 +142,9 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
       "Transpose",
   };
   bool is_supported_op_type =
-      (candidate_ops.count(node->type_string()) ||
+      (candidate_ops->count(node->type_string()) ||
        PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
-  static const std::set<string> quantize_ops = {
+  static const auto* quantize_ops = new std::set<string>{
       "QuantizeAndDequantizeV2",
       "QuantizeAndDequantizeV3",
       "FakeQuantWithMinMaxVars",
@@ -153,7 +154,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
   // these ops to the relevant tensors. This happens regardless of the value of
   // use_calibration.
   if (precision_mode_ == TrtPrecisionMode::INT8 &&
-      quantize_ops.count(node->type_string())) {
+      quantize_ops->count(node->type_string())) {
     is_supported_op_type = true;
   }
   // LINT.ThenChange(//tensorflow/compiler/tf2tensorrt/convert/convert_nodes.cc)
@@ -189,55 +190,6 @@ tensorflow::Status BuildNodeMap(
 }
 
 }  // namespace
-
-// Function to get calibration from ResourceMgr and put them into nodedef.
-tensorflow::Status ConvertCalibGraphToInferGraph(
-    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* infer_graph,
-    bool is_dyn_op) {
-  LOG(INFO) << "Starting Calib Conversion";
-  *infer_graph = graph_def;
-  auto trt_rm = TRTResourceManager::instance();
-  auto calib_rm = trt_rm->getManager("TRTCalibration");
-  int num_nodes = infer_graph->node_size();
-  if (!is_dyn_op) {
-    LOG(WARNING) << "Construction of static int8 engine is not implemented "
-                    "yet!. Dynamic engine will be constructed";
-  }
-  for (int i = 0; i < num_nodes; ++i) {
-    auto n = infer_graph->mutable_node(i);
-    if (n->op() == "TRTEngineOp") {
-      VLOG(1) << "Processing " << n->name();
-      const string& container_name = n->attr().at("segment_funcdef_name").s();
-      TRTCalibrationResource* cres = nullptr;
-      auto status = calib_rm->Lookup(container_name, "Calibrator", &cres);
-      if (!status.ok()) {
-        LOG(ERROR) << "Could not get Calibration information. Did you run with "
-                      "calibration data?";
-        return tensorflow::errors::FailedPrecondition(
-            "Need to run graph with calibration data first!");
-      }
-      tensorflow::core::ScopedUnref calib_sc(cres);
-      if (cres->calibrator_) {
-        cres->calibrator_->waitAndSetDone();
-        cres->thr_->join();
-        const auto& calibration_table =
-            cres->calibrator_->getCalibrationTableAsString();
-        if (calibration_table.empty()) {
-          LOG(ERROR) << "Calibration table is empty";
-          return tensorflow::errors::Unknown(
-              "Calibration table is missing. This shouldn't have happened!");
-        }
-        n->mutable_attr()->at("calibration_data").set_s(calibration_table);
-      } else {
-        LOG(ERROR) << "Can't get TRTCalibrator from resource manager!";
-        return tensorflow::errors::Unknown(
-            "Can't get TRTCalibrator from resource manager!");
-      }
-      TF_RETURN_IF_ERROR(calib_rm->Cleanup(container_name));
-    }
-  }
-  return tensorflow::Status::OK();
-}
 
 tensorflow::Status ConvertGraphDefToTensorRT(
     const tensorflow::GraphDef& graph_def,

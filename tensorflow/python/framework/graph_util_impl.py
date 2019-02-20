@@ -197,7 +197,7 @@ def extract_sub_graph(graph_def, dest_nodes):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.remove_training_nodes")
+    instructions="Use tf.compat.v1.graph_util.tensor_shape_from_node_def_name")
 @tf_export(v1=["graph_util.tensor_shape_from_node_def_name"])
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""

@@ -286,6 +286,7 @@ class EmbeddingConfig(object):
     self._optimization_parameters = _get_tpu_embedding_optimization_parameters(
         self._embedding_config_spec)
     self._mode_to_tpu_embedding_dict = {}
+    self.dummy_table_variables = None
 
   def has_embedding_tables(self):
     return bool(self._table_to_config_dict)

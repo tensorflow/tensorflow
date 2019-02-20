@@ -1092,11 +1092,14 @@ tensorflow::Status ConvertBatchMatMulOperator(
     Model* model) {
   TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
 
-  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
-  CHECK(!HasAttr(node, "adj_a") || (GetBoolAttr(node, "adj_a") == false));
-  CHECK(!HasAttr(node, "adj_b") || (GetBoolAttr(node, "adj_b") == false));
-
   auto* batch_matmul = new BatchMatMulOperator;
+  // https://www.tensorflow.org/versions/r0.12/api_docs/python/math_ops/matrix_math_functions
+  if (HasAttr(node, "adj_x")) {
+    batch_matmul->adj_x = GetBoolAttr(node, "adj_x");
+  }
+  if (HasAttr(node, "adj_y")) {
+    batch_matmul->adj_y = GetBoolAttr(node, "adj_y");
+  }
   batch_matmul->inputs = {node.input(0), node.input(1)};
   batch_matmul->outputs = {node.name()};
 
@@ -1346,7 +1349,7 @@ tensorflow::Status ConvertUnsupportedOperator(
   }
 
   // Parse outputs. Name them after the node's name, plus an ordinal suffix.
-  // Note that some outputs are to be multipled by a named attribute.
+  // Note that some outputs are to be multiplied by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
     GetOutputNamesFromNodeDef(node, *op_def, op);
@@ -1480,7 +1483,7 @@ tensorflow::Status ConvertPlaceholderOperator(
   if (node.attr().count("shape")) {
     const auto& shape = GetShapeAttr(node, "shape");
     auto num_dims = shape.dim_size();
-    // TODO(b/62716978): This logic needs to be revisted.  During dims
+    // TODO(b/62716978): This logic needs to be revisited.  During dims
     // refactoring it is an interim fix.
     if (num_dims > 0 && !HasWildcardDimension(shape)) {
       auto& dst_array_dims = *array.mutable_shape()->mutable_dims();
@@ -2469,7 +2472,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Prod", ConvertReduceOperator<TensorFlowProdOperator>},
       {"RandomUniform", ConvertRandomUniform},
       {"Range", ConvertRangeOperator},
-      {"Rank", ConvertSimpleOperator<RankOperator, 1, 1>},
+      {"Rank", ConvertSimpleOperator<TensorFlowRankOperator, 1, 1>},
       {"RealDiv", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"Relu", ConvertSimpleOperator<ReluOperator, 1, 1>},
       {"Relu6", ConvertSimpleOperator<Relu6Operator, 1, 1>},
@@ -2511,6 +2514,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"UnidirectionalSequenceRnn", ConvertUnidirectionalSequenceRnn},
       {"MirrorPad", ConvertMirrorPadOperator},
       {"Unique", ConvertSimpleOperator<UniqueOperator, 1, 2>},
+      {"Where", ConvertSimpleOperator<WhereOperator, 1, 1>},
   });
 }
 
