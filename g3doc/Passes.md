@@ -149,9 +149,8 @@ nests.
 
 ## Loop unroll (`-loop-unroll`) {#loop-unroll}
 
-This pass implements unrolling for loops ('for' instructions). It is able to
-perform unrolling for loops with arbitrary bounds, and generate a cleanup loop
-when necessary.
+This pass implements loop unrolling. It is able to unroll loops with arbitrary
+bounds, and generate a cleanup loop when necessary.
 
 ## Loop unroll and jam (`-loop-unroll-jam`) {#loop-unroll-jam}
 
@@ -163,11 +162,11 @@ imperfect loop nests.
 Performs fusion of loop nests using a slicing-based approach. The fused loop
 nests, when possible, are rewritten to access significantly smaller local
 buffers instead of the original memref's, and the latter are often
-either completely optimized or contracted. This transformation leads to enhanced
-locality and lower memory footprint through the elimination or contraction of
-temporaries / intermediate memref's. These benefits are sometimes achieved at
-the expense of redundant computation through a cost model that evaluates
-available choices such as the depth at which a source slice should be
+either completely optimized away or contracted. This transformation leads to
+enhanced locality and lower memory footprint through the elimination or
+contraction of temporaries / intermediate memref's. These benefits are sometimes
+achieved at the expense of redundant computation through a cost model that
+evaluates available choices such as the depth at which a source slice should be
 materialized in the designation slice.
 
 ## Memref bound checking (`-memref-bound-check`) {#memref-bound-check}
@@ -186,8 +185,8 @@ test/Transforms/memref-bound-check.mlir:19:13: error: 'load' op memref out of lo
 
 ## Memref dataflow optimization (`-memref-dataflow-opt`) {#memref-dataflow-opt}
 
-Performs store to load forwarding for memref's to eliminate memory accesses and
-potentially the entire memref if all its accesses are forwarded.
+This pass performs store to load forwarding for memref's to eliminate memory
+accesses and potentially the entire memref if all its accesses are forwarded.
 
 Input
 
@@ -232,8 +231,8 @@ func @store_load_affine_apply() -> memref<10x10xf32> {
 
 ## Memref dependence analysis (`-memref-dependence-check`) {#memref-dependence-check}
 
-Performs dependence analysis to determine dependences between pairs of memory
-operations (load's and store's) on memref's. Dependence analysis exploits
+This pass performs dependence analysis to determine dependences between pairs of
+memory operations (load's and store's) on memref's. Dependence analysis exploits
 polyhedral information available (affine maps, expressions, and affine.apply
 operations) to precisely represent dependences using affine constraints, while
 also computing dependence vectors from them, where each component of the
@@ -247,18 +246,13 @@ test/Transforms/memref-dataflow-opt.mlir:232:7: note: dependence from 2 to 1 at 
 
 ## Pipeline data transfer (`-pipeline-data-transfer`) {#pipeline-data-transfer}
 
-Performs a transformation to overlap non-blocking DMA operations in a loop with
-computations through double buffering and advancing dma_start operations with
-respect to other operations. 
+This pass performs a transformation to overlap non-blocking DMA operations in a
+loop with computations through double buffering. This is achieved by advancing
+dma_start operations with respect to other operations.
+
+Input
 
 ```mlir
-#map1 = () -> (8)
-#map2 = () -> (128)
-#map3 = () -> (512)
-#map4 = (d0) -> (d0 * 64)
-#map5 = (d0, d1) -> ((d0 * 2048 + d1 * 256) floordiv 32)
-#map6 = () -> (4)
-func @loop_nest_dma() {
   %0 = alloc() : memref<256xf32>
   %1 = alloc() : memref<32xf32, 1>
   %2 = alloc() : memref<1xf32>
@@ -271,15 +265,15 @@ func @loop_nest_dma() {
     %4 = "compute"(%3) : (f32) -> f32
     store %4, %1[%i0] : memref<32xf32, 1>
   }
-  return
-}
 ```
+
+Output
 
 ```mlir
 #map2 = (d0) -> (d0 mod 2)
 #map3 = (d0) -> (d0 - 1)
-#map4 = (d0) -> (d0 - ((d0 - 1) floordiv 2) * 2 - 1)
-func @loop_nest_dma() {
+#map4 = (d0) -> ((d0 - 1) mod 2)
+
   %c128 = constant 128 : index
   %c0 = constant 0 : index
   %c7 = constant 7 : index
@@ -306,6 +300,4 @@ func @loop_nest_dma() {
   store %11, %1[%c1, %c7] : memref<2x32xf32, 1>
   dealloc %2 : memref<2x1xf32>
   dealloc %1 : memref<2x32xf32, 1>
-  return
-}
 ```

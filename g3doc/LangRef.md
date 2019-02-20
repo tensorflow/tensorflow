@@ -64,10 +64,10 @@ func @mul(%A: tensor<100x?xf32>, %B: tensor<?x50xf32>) -> (tensor<100x50xf32>) {
   %n = dim %A, 1 : tensor<100x?xf32>
 
   // Allocate addressable "buffers" and copy tensors %A and %B into them.
-  %A_m = alloc memref<100x?xf32>(%n)
+  %A_m = alloc(%n) : memref<100x?xf32>
   tensor_store %A to %A_m : memref<100x?xf32>
 
-  %B_m = alloc memref<?x50xf32>(%n)
+  %B_m = alloc(%n) : memref<?x50xf32>
   tensor_store %B to %B_m : memref<?x50xf32>
 
   // Call function @multiply passing memrefs as arguments,
@@ -96,7 +96,7 @@ func @multiply(%A: memref<100x?xf32>, %B: memref<?x50xf32>)
   %n = dim %A, 1 : memref<100x?xf32>
 
   // Allocate memory for the multiplication result.
-  %C = alloc memref<100x50xf32>()
+  %C = alloc() : memref<100x50xf32>
 
   // Multiplication loop nest.
   for  %i = 0 to 100 {
@@ -370,11 +370,11 @@ Examples:
 
 // Use an affine mapping definition in an alloc instruction, binding the
 // SSA value %N to the symbol s0.
-%a = alloc memref<4x4xf32, #affine_map42> () [%N]
+%a = alloc()[%N] : memref<4x4xf32, #affine_map42>
 
 // Same thing with an inline affine mapping definition.
-%b = alloc memref<4x4xf32, (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2))
-                                           size (10, s0)> () [%N]
+%b = alloc()[%N] : memref<4x4xf32, (d0, d1)[s0] -> (d0, d0 + d1 + floordiv(s0,2))
+                                           size (10, s0)>
 ```
 
 ### Semi-affine maps {#semi-affine-maps}
@@ -1415,7 +1415,7 @@ Example:
 ```mlir {.mlir}
 // Allocate base memref with dynamic 16x?xf32.
 #lmapD = (i, j)[S0] -> (i, j) size (16, S0)
-%D = alloc <16x?xf32, #lmapD, hbm>(%N)[%N]
+%D = alloc(%N)[%N] <16x?xf32, #lmapD, hbm>
 
 // Create memref which reshapes from 16x?xf32 to 16x4x?xf32.
 #imapDR = (i, j, k)[S0] -> (i, j * S0 + k) size (16, 4 * S0)
