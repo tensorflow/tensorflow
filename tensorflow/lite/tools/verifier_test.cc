@@ -446,6 +446,21 @@ TEST(VerifyModel, OutputIsAVariable) {
             builder.GetErrorString());
 }
 
+TEST(VerifyModel, OpWithOptionalTensor) {
+  TfLiteFlatbufferModelBuilder builder({}, {"test"});
+  builder.AddOperator({kOptionalTensor, 0, 1}, {2}, BuiltinOperator_CUSTOM,
+                      "test");
+  builder.AddTensor({2, 3}, TensorType_UINT8, {1, 2, 3, 4, 5, 6}, "input");
+  builder.AddTensor(
+      {2}, TensorType_STRING,
+      {2, 0, 0, 0, 16, 0, 0, 0, 17, 0, 0, 0, 19, 0, 0, 0, 'A', 'B', 'C'},
+      "data");
+  builder.AddTensor({2, 3}, TensorType_INT32, {}, "output");
+  builder.FinishModel({0, 1}, {2});
+  ASSERT_TRUE(builder.Verify());
+  EXPECT_EQ("", builder.GetErrorString());
+}
+
 // TODO(yichengfan): make up malicious files to test with.
 
 }  // namespace tflite
