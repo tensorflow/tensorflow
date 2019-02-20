@@ -11,7 +11,6 @@ cc_library(
     hdrs = ["dump_tpu_profile.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":trace_events_proto_cc",
         ":trace_events_to_json",
         "//tensorflow/core:framework",
         "//tensorflow/core:grpc_services",
@@ -41,20 +40,13 @@ tf_cc_binary(
     ],
 )
 
-tf_proto_library(
-    name = "trace_events_proto",
-    srcs = ["trace_events.proto"],
-    cc_api_version = 2,
-    visibility = ["//visibility:public"],
-)
-
 cc_library(
     name = "trace_events_to_json",
     srcs = ["trace_events_to_json.cc"],
     hdrs = ["trace_events_to_json.h"],
     deps = [
-        ":trace_events_proto_cc",
         "//tensorflow/core:lib",
+        "//tensorflow/core/profiler:protos_all_cc",
         "@jsoncpp_git//:jsoncpp",
     ],
 )
@@ -67,6 +59,7 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core/profiler:protos_all_cc",
         "@jsoncpp_git//:jsoncpp",
     ],
 )

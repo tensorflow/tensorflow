@@ -18,12 +18,12 @@ limitations under the License.
 #include <string.h>
 #include "tensorflow/c/eager/c_api_test_util.h"
 #include "tensorflow/cc/profiler/profiler.h"
-#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 
 using tensorflow::string;
 
@@ -73,7 +73,7 @@ void ExecuteWithProfiling(bool async) {
   TFE_ProfilerSerializeToString(ctx, profiler, profiler_result, status);
   TFE_DeleteProfiler(profiler);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  tensorflow::tpu::Trace profile_proto;
+  profiler::Trace profile_proto;
   EXPECT_TRUE(profile_proto.ParseFromString(
       {reinterpret_cast<const char*>(profiler_result->data),
        profiler_result->length}));

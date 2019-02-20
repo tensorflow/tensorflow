@@ -17,13 +17,14 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 
 namespace tensorflow {
 namespace tpu {
 namespace {
 
 string ConvertTextFormattedTraceToJson(const string& trace_str) {
-  Trace trace;
+  profiler::Trace trace;
   ::tensorflow::protobuf::TextFormat::ParseFromString(trace_str, &trace);
   return TraceEventsToJson(trace);
 }

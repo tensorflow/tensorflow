@@ -1,6 +1,6 @@
 syntax = "proto3";
 
-package tensorflow.tpu;
+package tensorflow.profiler;
 
 // A 'Trace' contains metadata for the individual traces of a system.
 message Trace {
