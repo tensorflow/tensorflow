@@ -238,6 +238,10 @@ class XlaBuilder {
   // See also set_die_immediately_on_error().
   Status first_error() const { return first_error_; }
 
+  // Returns the current status of the builder, complete with the stack trace
+  // information.
+  Status GetCurrentStatus() const;
+
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
