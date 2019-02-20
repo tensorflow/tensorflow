@@ -27,6 +27,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
+from tensorflow.python.keras.utils import mode_keys
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
@@ -35,9 +36,8 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import model_utils
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
-from tensorflow.python.training import mode_keys
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import graph_view
+from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -300,10 +300,10 @@ def _export_mode(
         # not counting optimizer objects. Optimizer objects are ignored because
         # if the model has not trained, the slot variables will not have been
         # created yet.
-        # TODO(b/113179535): Replace with checkpointable equivalence.
+        # TODO(b/113179535): Replace with trackable equivalence.
         _assert_same_non_optimizer_objects(model, model_graph, clone, g)
 
-        # TODO(b/113178242): Use value transfer for checkpointable objects.
+        # TODO(b/113178242): Use value transfer for trackable objects.
         clone.load_weights(checkpoint_path)
 
         # Add graph and variables to SavedModel.
@@ -361,14 +361,14 @@ def _create_signature_def_map(model, mode):
 
 
 def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph):  # pylint: disable=unused-argument
-  """Asserts model and clone contain the same checkpointable objects."""
+  """Asserts model and clone contain the same trackable objects."""
 
   # TODO(fchollet, kathywu): make sure this works in eager mode.
   return True
 
 
 @keras_export('keras.experimental.load_from_saved_model')
-def load_from_saved_model(saved_model_path):
+def load_from_saved_model(saved_model_path, custom_objects=None):
   """Loads a keras.Model from a SavedModel created by keras export().
 
   This function reinstantiates model state by:
@@ -397,6 +397,9 @@ def load_from_saved_model(saved_model_path):
 
   Args:
     saved_model_path: a string specifying the path to an existing SavedModel.
+    custom_objects: Optional dictionary mapping names
+        (strings) to custom classes or functions to be
+        considered during deserialization.
 
   Returns:
     a keras.Model instance.
@@ -407,7 +410,7 @@ def load_from_saved_model(saved_model_path):
       compat.as_bytes(constants.ASSETS_DIRECTORY),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_JSON))
   model_json = file_io.read_file_to_string(model_json_filepath)
-  model = model_from_json(model_json)
+  model = model_from_json(model_json, custom_objects=custom_objects)
 
   # restore model weights
   checkpoint_prefix = os.path.join(

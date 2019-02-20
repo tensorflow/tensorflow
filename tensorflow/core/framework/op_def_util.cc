@@ -114,6 +114,8 @@ Status ValidateAttrValue(const AttrValue& attr_value,
         length = attr_value.list().shape_size();
       } else if (attr.type() == "list(tensor)") {
         length = attr_value.list().tensor_size();
+      } else if (attr.type() == "list(func)") {
+        length = attr_value.list().func_size();
       }
       if (length < attr.minimum()) {
         return errors::InvalidArgument(

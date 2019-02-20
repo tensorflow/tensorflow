@@ -837,6 +837,10 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 
 /* static */ void* GpuDriver::DeviceAllocate(GpuContext* context,
                                              uint64 bytes) {
+  if (bytes == 0) {
+    return nullptr;
+  }
+
   ScopedActivateContext activated{context};
   CUdeviceptr result = 0;
   CUresult res = tensorflow::wrap::cuMemAlloc(&result, bytes);

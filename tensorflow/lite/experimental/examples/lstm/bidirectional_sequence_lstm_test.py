@@ -20,7 +20,7 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.tflite_lstm import TFLiteLSTMCell
+from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.python.framework import test_util

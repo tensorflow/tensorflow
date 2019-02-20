@@ -312,6 +312,11 @@ class CudaSolver {
   Status Gesvd(signed char jobu, signed char jobvt, int m, int n, Scalar* dev_A,
                int lda, Scalar* dev_S, Scalar* dev_U, int ldu, Scalar* dev_VT,
                int ldvt, int* dev_lapack_info) TF_MUST_USE_RESULT;
+  template <typename Scalar>
+  Status GesvdjBatched(cusolverEigMode_t jobz, int m, int n, Scalar* dev_A,
+                       int lda, Scalar* dev_S, Scalar* dev_U, int ldu,
+                       Scalar* dev_V, int ldv, int* dev_lapack_info,
+                       int batch_size);
 
  private:
   OpKernelContext* context_;  // not owned.

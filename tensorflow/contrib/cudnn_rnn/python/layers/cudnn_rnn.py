@@ -518,8 +518,8 @@ class _CudnnRNN(base_layer.Layer):
         direction=self.direction,
         scope=vs.get_variable_scope(),
         name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
-    self._saveable._add_checkpointable_dependencies(  # pylint: disable=protected-access
-        checkpointable=self, dtype=self._plain_dtype)
+    self._saveable._add_trackable_dependencies(  # pylint: disable=protected-access
+        trackable=self, dtype=self._plain_dtype)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 

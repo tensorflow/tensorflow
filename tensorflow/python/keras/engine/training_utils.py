@@ -525,7 +525,7 @@ def collect_per_output_metric_info(metrics,
   """Maps metric names and functions to model outputs.
 
   Arguments:
-      metrics: a list or dict of metric functions.
+      metrics: a list or a list of lists or a dict of metric functions.
       output_names: a list of the names (strings) of model outputs.
       output_shapes: a list of the shapes (strings) of model outputs.
       loss_fns: a list of the loss functions corresponding to the model outputs.
@@ -551,20 +551,30 @@ def collect_per_output_metric_info(metrics,
   """
   if not metrics:
     return [{} for _ in output_names]
+
   if isinstance(metrics, list):
-    # we then apply all metrics to all outputs.
-    if len(output_names) > 1:
-      nested_metrics = []
-      for _ in output_names:
-        nested_metrics.append([metrics_module.clone_metric(m) for m in metrics])
+    any_sub_list = any(isinstance(m, list) for m in metrics)
+    if any_sub_list:
+      if len(metrics) != len(output_names):
+        raise ValueError('When passing a list of lists as `metrics`, '
+                         'it should have one entry per model output. '
+                         'The model has ' + str(len(output_names)) +
+                         ' outputs, but you passed metrics=' + str(metrics))
+      # User has provided a list of len = len(outputs).
+      nested_metrics = [generic_utils.to_list(m) for m in metrics]
     else:
-      nested_metrics = [metrics]
+      # If it is a single list we then apply all metrics to all outputs.
+      if len(output_names) > 1:
+        nested_metrics = []
+        for _ in output_names:
+          nested_metrics.append(
+              [metrics_module.clone_metric(m) for m in metrics])
+      else:
+        nested_metrics = [metrics]
   elif isinstance(metrics, dict):
     nested_metrics = []
     for name in output_names:
-      output_metrics = metrics.get(name, [])
-      if not isinstance(output_metrics, list):
-        output_metrics = [output_metrics]
+      output_metrics = generic_utils.to_list(metrics.get(name, []))
       nested_metrics.append(output_metrics)
   else:
     raise TypeError('Type of `metrics` argument not understood. '
@@ -1107,6 +1117,95 @@ def prepare_sample_weights(output_names, sample_weight_mode,
   return sample_weights, sample_weight_modes
 
 
+def prepare_loss_functions(loss, output_names):
+  """Converts loss to a list of loss functions.
+
+  Arguments:
+      loss: String (name of objective function), objective function or
+        `tf.losses.Loss` instance. See `tf.losses`. If the model has multiple
+        outputs, you can use a different loss on each output by passing a
+        dictionary or a list of losses. The loss value that will be minimized by
+        the model will then be the sum of all individual losses.
+      output_names: List of model output names.
+
+  Returns:
+      A list of loss objective functions.
+
+  Raises:
+      ValueError: If loss is a dict with keys not in model output names,
+          or if loss is a list with len not equal to model outputs.
+  """
+  if isinstance(loss, collections.Mapping):
+    for name in loss:
+      if name not in output_names:
+        raise ValueError('Unknown entry in loss dictionary: {}. Only expected '
+                         'following keys: {}'.format(name, output_names))
+    loss_functions = []
+    for name in output_names:
+      if name not in loss:
+        logging.warning(
+            'Output {0} missing from loss dictionary. We assume '
+            'this was done on purpose. The fit and evaluate APIs will not be '
+            'expecting any data to be passed to {0}.'.format(name))
+      loss_functions.append(get_loss_function(loss.get(name, None)))
+  elif isinstance(loss, six.string_types):
+    loss_functions = [get_loss_function(loss) for _ in output_names]
+  elif isinstance(loss, collections.Sequence):
+    if len(loss) != len(output_names):
+      raise ValueError('When passing a list as loss, it should have one entry '
+                       'per model outputs. The model has {} outputs, but you '
+                       'passed loss={}'.format(len(output_names), loss))
+    loss_functions = nest.map_structure(get_loss_function, loss)
+  else:
+    loss_functions = [get_loss_function(loss) for _ in range(len(output_names))]
+
+  return loss_functions
+
+
+def prepare_loss_weights(output_names, loss_weights=None):
+  """Converts loss weights to a list of loss weights.
+
+  Arguments:
+      output_names: List of model output names.
+      loss_weights: Optional list or dictionary specifying scalar coefficients
+        (Python floats) to weight the loss contributions of different model
+        outputs. The loss value that will be minimized by the model will then be
+        the *weighted sum* of all individual losses, weighted by the
+          `loss_weights` coefficients. If a list, it is expected to have a 1:1
+            mapping to the model's outputs. If a dict, it is expected to map
+            output names (strings) to scalar coefficients.
+
+  Returns:
+      A list of loss weights of python floats.
+
+  Raises:
+      ValueError: If loss weight is a dict with key not in model output names,
+          or if loss is a list with len not equal to model outputs.
+  """
+  if loss_weights is None:
+    weights_list = [1.] * len(output_names)
+  elif isinstance(loss_weights, dict):
+    for name in loss_weights:
+      if name not in output_names:
+        raise ValueError('Unknown entry in loss_weights dictionary: {}. '
+                         'Only expected the following keys: {}'.format(
+                             name, output_names))
+    weights_list = [loss_weights.get(name, 1.) for name in output_names]
+  elif isinstance(loss_weights, list):
+    if len(loss_weights) != len(output_names):
+      raise ValueError('When passing a list as loss_weights, '
+                       'it should have one entry per model output. '
+                       'The model has ' + str(len(output_names)) +
+                       ' outputs, but you passed loss_weights=' +
+                       str(loss_weights))
+    weights_list = loss_weights
+  else:
+    raise TypeError('Could not interpret loss_weights argument: ' +
+                    str(loss_weights) + ' - expected a list of dicts.')
+
+  return weights_list
+
+
 # TODO(rohanj): This is a hack to get around not depending on feature_column and
 # create a cyclical dependency. Figure out a cleaner solution
 def is_feature_layer(layer):
@@ -1270,7 +1369,7 @@ def get_iterator(dataset):
 def initialize_iterator(iterator):
   init_op = iterator.initializer
   if not context.executing_eagerly():
-    K.get_session().run(init_op)
+    K.get_session((init_op,)).run(init_op)
 
 
 def extract_tensors_from_dataset(dataset):

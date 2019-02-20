@@ -260,9 +260,12 @@ class ControlFlowTransformer(converter.Base):
     assignments = []
     for s in undefined_symbols:
       template = '''
-        var = ag__.UNDEFINED
+        var = ag__.Undefined(symbol_name)
       '''
-      assignments += templates.replace(template, var=s)
+      assignments += templates.replace(
+          template,
+          var=s,
+          symbol_name=gast.Str(s.ssf()))
     return assignments
 
   def _get_loop_state(self, node):

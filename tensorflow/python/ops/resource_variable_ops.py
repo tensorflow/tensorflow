@@ -43,7 +43,7 @@ from tensorflow.python.ops import variables
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_resource_variable_ops import *
 # pylint: enable=wildcard-import
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util.deprecation import deprecated
 
@@ -505,8 +505,8 @@ class ResourceVariable(variables.VariableV1):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
@@ -1684,7 +1684,7 @@ def copy_to_graph_uninitialized(var):
       constraint=var._constraint,
       dtype=var.dtype,
       name=var._shared_name)
-  new_variable._maybe_initialize_checkpointable()
+  new_variable._maybe_initialize_trackable()
   # pylint: enable=protected-access
   return new_variable
 

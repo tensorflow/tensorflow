@@ -533,6 +533,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'filename\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "Case"
+    argspec: "args=[\'branch_index\', \'input\', \'Tout\', \'branches\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "Cast"
     argspec: "args=[\'x\', \'DstT\', \'Truncate\'], varargs=None, keywords=None, defaults=None"
   }
@@ -566,6 +570,10 @@ tf_module {
   }
   member_method {
     name: "CollectiveBcastSend"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "CollectiveGather"
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -971,6 +979,10 @@ tf_module {
   member_method {
     name: "Erfc"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "EuclideanNorm"
+    argspec: "args=[\'input\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Exit"
@@ -2645,7 +2657,15 @@ tf_module {
     argspec: "args=[\'input\', \'input_min\', \'input_max\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "RequantizationRangePerChannel"
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'clip_value_max\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "Requantize"
+    argspec: "args=[\'input\', \'input_min\', \'input_max\', \'requested_output_min\', \'requested_output_max\', \'out_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RequantizePerChannel"
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'requested_output_min\', \'requested_output_max\', \'out_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
@@ -3773,6 +3793,10 @@ tf_module {
     argspec: "args=[\'tensor\', \'indices\', \'element_shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "TensorListScatterIntoExistingList"
+    argspec: "args=[\'input_handle\', \'tensor\', \'indices\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "TensorListScatterV2"
     argspec: "args=[\'tensor\', \'indices\', \'element_shape\', \'num_elements\'], varargs=None, keywords=None, defaults=None"
   }
@@ -3851,6 +3875,10 @@ tf_module {
   member_method {
     name: "Transpose"
     argspec: "args=[\'x\', \'perm\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TridiagonalSolve"
+    argspec: "args=[\'diagonals\', \'rhs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "TruncateDiv"

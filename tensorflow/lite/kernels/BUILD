@@ -180,6 +180,7 @@ cc_library(
         "floor_mod.cc",
         "fully_connected.cc",
         "gather.cc",
+        "gather_nd.cc",
         "hashtable_lookup.cc",
         "if.cc",
         "l2norm.cc",
@@ -198,6 +199,7 @@ cc_library(
         "pooling.cc",
         "pow.cc",
         "range.cc",
+        "rank.cc",
         "reduce.cc",
         "reshape.cc",
         "resize_bilinear.cc",
@@ -225,6 +227,7 @@ cc_library(
         "unidirectional_sequence_rnn.cc",
         "unique.cc",
         "unpack.cc",
+        "where.cc",
         "while.cc",
         "zeros_like.cc",
     ],
@@ -717,6 +720,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gather_nd_test",
+    size = "small",
+    srcs = ["gather_nd_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "topk_v2_test",
     size = "small",
     srcs = ["topk_v2_test.cc"],
@@ -1083,6 +1099,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "rank_test",
+    size = "small",
+    srcs = ["rank_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "pow_test",
     size = "small",
     srcs = ["pow_test.cc"],
@@ -1150,6 +1179,19 @@ tf_cc_test(
     name = "floor_div_test",
     size = "small",
     srcs = ["floor_div_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "where_test",
+    size = "small",
+    srcs = ["where_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:builtin_op_data",

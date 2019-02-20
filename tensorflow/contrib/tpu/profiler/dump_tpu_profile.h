@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
 #define TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
 
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/grpc_services.h"
 
 namespace tensorflow {
 namespace tpu {

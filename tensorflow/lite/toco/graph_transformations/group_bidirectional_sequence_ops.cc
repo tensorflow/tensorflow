@@ -68,7 +68,7 @@ bool FindUnidirectionalSequenceOp(const Model& model, const Operator& output_op,
 
   while (op_it->type == operator_type) {
     sequence_ops->push(op_it);
-    // Check the first input of the unidirectional squence lstm op.
+    // Check the first input of the unidirectional sequence lstm op.
     op_it = GetOpWithOutput(model, op_it->inputs[0]);
     if (op_it == nullptr) {
       return false;
@@ -340,7 +340,7 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
   *modified = false;
   // Bidirectional sequence lstm will generate two separate unidirectional
   // sequence lstm ops, for static bidirectional sequence lstm, there will be
-  // a concatenation op at very end; for dynamic bidirectional squence lstm,
+  // a concatenation op at very end; for dynamic bidirectional sequence lstm,
   // it is not guaranteed, but currently we do not support that.
   auto op_it = model->operators.begin() + op_index;
   Operator* final_concat_op = op_it->get();
@@ -421,7 +421,7 @@ void RemoveUnidirectionalSequenceOps(std::stack<Operator*> uni_sequence_ops,
   *modified = false;
   // Bidirectional sequence rnn will generate two separate unidirectional
   // sequence rnn ops, for static bidirectional sequence rnn, there will be
-  // a concatenation op at very end; for dynamic bidirectional squence rnn,
+  // a concatenation op at very end; for dynamic bidirectional sequence rnn,
   // it is not guaranteed, but currently we do not support that.
   auto op_it = model->operators.begin() + op_index;
   Operator* final_concat_op = op_it->get();

@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -32,6 +33,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -279,6 +281,70 @@ class BaseLayerTest(keras_parameterized.TestCase):
     keras.backend.set_learning_phase(0)
     self.assertEqual(get_learning_phase_value(), 0)
 
+  # Cannot be enabled with `run_eagerly=True`, see b/123904578
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_layer_can_return_variable(self):
+
+    class ComputeSum(keras.layers.Layer):
+
+      def __init__(self):
+        super(ComputeSum, self).__init__()
+        self.total = variables.Variable(
+            initial_value=array_ops.zeros((1, 1)), trainable=False)
+        if not context.executing_eagerly():
+          keras.backend.get_session().run(self.total.initializer)
+
+      def call(self, inputs):
+        self.total.assign_add(inputs)
+        return self.total
+
+    inputs = keras.Input(shape=(1,))
+    model = keras.Model(inputs, ComputeSum()(inputs))
+    model.predict(np.ones((1, 1)))
+
+  def _get_layer_with_training_arg(self):
+
+    class TrainingLayer(keras.layers.Layer):
+      """A layer with a `training` argument in a defuned `call`."""
+
+      @def_function.function
+      def call(self, inputs, training=None):
+        if training is None:
+          training = keras.backend.learning_phase()
+        return tf_utils.smart_cond(training,
+                                   lambda: array_ops.ones_like(inputs),
+                                   lambda: array_ops.zeros_like(inputs))
+
+    return TrainingLayer()
+
+  @keras_parameterized.run_with_all_model_types
+  # b/124459427: can't test with `run_eagerly=True` for now.
+  @test_util.run_in_graph_and_eager_modes
+  def test_training_arg_in_defun(self):
+    layer = self._get_layer_with_training_arg()
+    model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
+    model.compile(rmsprop.RMSprop(0.),
+                  loss='mae')
+    history = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
+    self.assertEqual(history.history['loss'][0], 1.)
+    loss = model.evaluate(np.zeros((1, 1)), np.zeros((1, 1)))
+    self.assertEqual(loss, 0.)
+
+    # Test that the argument injection performed in `call` is not active
+    # when the argument is passed explicitly.
+    layer = self._get_layer_with_training_arg()
+    inputs = keras.Input(shape=(1,))
+    # Pass `training` by name
+    outputs = layer(inputs, training=False)
+    model = keras.Model(inputs, outputs)
+    model.compile(rmsprop.RMSprop(0.),
+                  loss='mae')
+    history = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
+    self.assertEqual(history.history['loss'][0], 0.)
+
+
+class SymbolicSupportTest(test.TestCase):
+
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.
     x = keras.Input((3,))
@@ -368,27 +434,6 @@ class BaseLayerTest(keras_parameterized.TestCase):
       last_entry = tb[-1]
       function_name = last_entry[2]
       self.assertEqual(function_name, 'easily_identifiable_name')
-
-  # Cannot be enabled with `run_eagerly=True`, see b/123904578
-  @test_util.run_all_in_graph_and_eager_modes
-  def test_layer_can_return_variable(self):
-
-    class ComputeSum(keras.layers.Layer):
-
-      def __init__(self):
-        super(ComputeSum, self).__init__()
-        self.total = variables.Variable(
-            initial_value=array_ops.zeros((1, 1)), trainable=False)
-        if not context.executing_eagerly():
-          keras.backend.get_session().run(self.total.initializer)
-
-      def call(self, inputs):
-        self.total.assign_add(inputs)
-        return self.total
-
-    inputs = keras.Input(shape=(1,))
-    model = keras.Model(inputs, ComputeSum()(inputs))
-    model.predict(np.ones((1, 1)))
 
 
 @test_util.run_all_in_graph_and_eager_modes

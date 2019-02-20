@@ -7,7 +7,6 @@ load("//third_party:nccl/nccl_configure.bzl", "nccl_configure")
 load("//third_party/mkl:build_defs.bzl", "mkl_repository")
 load("//third_party/git:git_configure.bzl", "git_configure")
 load("//third_party/py:python_configure.bzl", "python_configure")
-
 load("//third_party/sycl:sycl_configure.bzl", "sycl_configure")
 load("//third_party/systemlibs:syslibs_configure.bzl", "syslibs_configure")
 load("//third_party/toolchains/remote:configure.bzl", "remote_execution_configure")
@@ -186,15 +185,15 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
 
     tf_http_archive(
         name = "com_github_googlecloudplatform_google_cloud_cpp",
-        sha256 = "886bcba3616d5f362838a2d86ae0198dd3670a84a84c82291cda6c30e14779fc",
-        strip_prefix = "google-cloud-cpp-0.5.0",
+        sha256 = "8e3a302d37f232dec041bf3f3916ca3fa5689216d42112898a4e36581f2f4ce5",
+        strip_prefix = "google-cloud-cpp-0.6.1",
         system_build_file = clean_dep("//third_party/systemlibs:google_cloud_cpp.BUILD"),
         system_link_files = {
             "//third_party/systemlibs:google_cloud_cpp.google.cloud.bigtable.BUILD": "google/cloud/bigtable/BUILD",
         },
         urls = [
-            "https://mirror.bazel.build/github.com/GoogleCloudPlatform/google-cloud-cpp/archive/v0.5.0.tar.gz",
-            "https://github.com/GoogleCloudPlatform/google-cloud-cpp/archive/v0.5.0.tar.gz",
+            "https://mirror.bazel.build/github.com/googleapis/google-cloud-cpp/archive/v0.6.1.tar.gz",
+            "https://github.com/googleapis/google-cloud-cpp/archive/v0.6.1.tar.gz",
         ],
     )
 
@@ -478,12 +477,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "grpc",
-        sha256 = "c1960c2d96914431bcaec97179f025868e6d641b7ae9b13d2cf94b161139bd67",
-        strip_prefix = "grpc-c61d3e8308df248a13e94e9eebc674d6481e9ca4",
+        sha256 = "dd88f70334f60ca673d461b4fe645a65618dd75e288f5b0620e4d5ef13153904",
+        strip_prefix = "grpc-3dacd1afc451803fbbc4d01c53cbaf026aa9d06b",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         urls = [
-            "https://mirror.bazel.build/github.com/grpc/grpc/archive/c61d3e8308df248a13e94e9eebc674d6481e9ca4.tar.gz",
-            "https://github.com/grpc/grpc/archive/c61d3e8308df248a13e94e9eebc674d6481e9ca4.tar.gz",
+            "https://mirror.bazel.build/github.com/grpc/grpc/archive/3dacd1afc451803fbbc4d01c53cbaf026aa9d06b.tar.gz",
+            "https://github.com/grpc/grpc/archive/3dacd1afc451803fbbc4d01c53cbaf026aa9d06b.tar.gz",
         ],
     )
 

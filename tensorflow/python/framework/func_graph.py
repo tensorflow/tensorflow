@@ -164,6 +164,7 @@ class FuncGraph(ops.Graph):
     self.name = name
     self.inputs = []
     self.outputs = []
+    self.control_outputs = []
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
@@ -545,12 +546,19 @@ def func_graph_from_py_func(name,
         convert_structure_to_signature(func_args, arg_names),
         convert_structure_to_signature(func_kwargs))
 
+    flat_func_args = nest.flatten(func_args)
+    flat_func_kwargs = nest.flatten(func_kwargs)
+    # Temporarily set inputs to allow graph building code to inspect
+    # them. Reassigned below.
+    func_graph.inputs = [arg for arg in flat_func_args + flat_func_kwargs
+                         if isinstance(arg, ops.Tensor)]
+
     # Note: `nest.flatten` sorts by keys, as does `_deterministic_dict_values`.
     # Variables to help check whether mutation happens in calling the function
     # Copy the recursive list, tuple and map structure, but not base objects
-    func_args_before = nest.pack_sequence_as(func_args, nest.flatten(func_args))
+    func_args_before = nest.pack_sequence_as(func_args, flat_func_args)
     func_kwargs_before = nest.pack_sequence_as(
-        func_kwargs, nest.flatten(func_kwargs))
+        func_kwargs, flat_func_kwargs)
 
     def convert(x):
       """Converts a function output to a Tensor."""
@@ -596,7 +604,7 @@ def func_graph_from_py_func(name,
                   strip_decorators=(def_function.function,),
                   optional_features=autograph_options,
                   force_conversion=True,
-              ), *args, **kwargs)
+              ), args, kwargs)
 
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
@@ -641,6 +649,8 @@ def func_graph_from_py_func(name,
         func_graph.capture(x)
         for x in flatten(func_graph.structured_outputs)
         if x is not None)
+    if add_control_dependencies:
+      func_graph.control_outputs.extend(a.ops_which_must_run)
 
     func_graph.variables = variables
 

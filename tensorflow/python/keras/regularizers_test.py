@@ -67,6 +67,7 @@ class KerasRegularizersTest(test.TestCase, parameterized.TestCase):
   @parameterized.named_parameters([
       ('l1', keras.regularizers.l1()),
       ('l2', keras.regularizers.l2()),
+      ('l2_zero', keras.regularizers.l2(0.)),
   ])
   @test_util.deprecated_graph_mode_only
   def test_activity_regularization(self, regularizer):

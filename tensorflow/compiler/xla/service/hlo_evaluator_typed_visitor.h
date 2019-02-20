@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
 #include <cmath>
+#include <type_traits>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -893,9 +894,29 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleShiftRightLogical<ElementwiseT>(shrl);
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  // Special case for integral type due to MSVC's std::isnan being unable to
+  // handle integral type.
+  template <typename NativeT,
+            typename std::enable_if<!is_complex_t<NativeT>::value &&
+                                    std::is_integral<NativeT>::value>::type* =
+                nullptr>
+  Status HandleClamp(HloInstruction* clamp) {
+    std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
+        clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
+          return static_cast<ElementwiseT>(
+              std::min(high, std::max(value, low)));
+        };
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[clamp],
+        ElementwiseTernaryOp(clamp,
+                             std::move(ConvertTernaryFunction(clamp_op))));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<!is_complex_t<NativeT>::value &&
+                                    !std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
@@ -903,7 +924,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             return static_cast<ElementwiseT>(NAN);
           }
           return static_cast<ElementwiseT>(
-              std::fmin(high, std::fmax(value, low)));
+              std::min<NativeT>(high, std::max<NativeT>(value, low)));
         };
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[clamp],
@@ -2670,12 +2691,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         const Literal& high =
             parent_->GetEvaluatedLiteralFor(random->operand(1));
 
-        std::uniform_real_distribution<NativeT> generator(
-            low.Get<NativeT>({}), high.Get<NativeT>({}));
-
+        // std::uniform_real_distribution(a, b) can sometimes return a value
+        // equal to b.  Unclear if this is a spec bug or an implementation bug
+        // or WAI [0] [1] [2].  Anyway for our purposes we want a half-open
+        // interval, so we have to re-sample if we get `b` out.
+        //
+        // [0] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63176
+        // [1] https://bugs.llvm.org/show_bug.cgi?id=18767
+        // [2] http://open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#2524
+        auto low_val = low.Get<NativeT>({});
+        auto high_val = high.Get<NativeT>({});
+        std::uniform_real_distribution<NativeT> generator(low_val, high_val);
         TF_RETURN_IF_ERROR(
             result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
-              return generator(parent_->engine_);
+              while (true) {
+                NativeT v = generator(parent_->engine_);
+                if (v != high_val) {
+                  return v;
+                }
+              }
             }));
         break;
       }

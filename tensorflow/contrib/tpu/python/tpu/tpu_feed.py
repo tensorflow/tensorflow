@@ -37,6 +37,86 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.util import nest
 
 
+def partition_or_replicate_on_host(tensor, dims):
+  """Partitions or replicates the input tensor.
+
+    The ops inside this function are placed on the host side.
+
+  Args:
+    tensor: The input tensor which will be partioned or replicated.
+    dims: A list of integer describes how to partition the input tensor.
+
+  Returns:
+    An iterator of `Tensor`s or a list of partioned tensors.
+  """
+  if dims is None:
+    return itertools.repeat(tensor)
+  dims = np.array(dims)
+  output = [tensor]
+  shape_list = np.array(tensor.shape.as_list())
+  quotients, remainders = np.divmod(shape_list, dims)
+  for axis, (quotient, remainder, dim, original_size) in enumerate(
+      zip(quotients, remainders, dims, shape_list)):
+    if dim <= 1:
+      continue
+    if remainder > 0:
+      # For each dimension, when it cannot be evenly partitioned, XLA assumes
+      # tensors are partitioned in a greedy manner by using
+      # ceil_ratio(size/dim) first. E.g. 2D tensor with shape (5, 14) and dims
+      # are (2, 4). Since 5 % 2 = 1 and 14 % 4 = 2, [5, 14] =>
+      # [[(3, 4), (3, 4), (2, 4), (2, 2)],
+      # [(2, 4), (2, 4), (2, 4), (2, 2)]]
+      ceil_ratio = quotient + 1
+      num_full_slots, left_over = np.divmod(original_size, ceil_ratio)
+      num_or_size_splits = [ceil_ratio] * num_full_slots + [left_over]
+      if len(num_or_size_splits) < dim:
+        num_or_size_splits += [0] * (dim - len(num_or_size_splits))
+      new_output = []
+      for x in output:
+        new_output.append(
+            array_ops.split(
+                x, num_or_size_splits=num_or_size_splits, axis=axis))
+      output = new_output
+    else:
+      output = [array_ops.split(x, dim, axis=axis) for x in output]
+    output = nest.flatten(output)
+  return output
+
+
+def _tag_sharding_attribute_for_dequeued_tensor(tensor, dims):
+  """Tags appropriate XLA sharding attribute to the dequeued tensor.
+
+  Args:
+    tensor: The dequeued tensor on TPU.
+    dims: A list of integer describes how the tensor is partitioned.
+
+  Returns:
+    The same tensor with the xla_sharding attribute.
+  """
+  if dims is None:
+    return xla_sharding.replicate(tensor)
+  elif np.prod(dims) == 1:
+    return xla_sharding.assign_device(tensor, 0)
+  else:
+    tile_assignment = np.arange(np.prod(dims)).reshape(dims)
+    return xla_sharding.tile(tensor=tensor, tile_assignment=tile_assignment)
+
+
+def tag_sharding_attribute_for_dequeued_tensors(dequeues, dims):
+  """Tags appropriate XLA sharding attribute to the dequeued tensors.
+
+  Args:
+    dequeues: A list of dequeued tensors on TPU.
+    dims: A list of integer describes how the tensor is partitioned.
+
+  Returns:
+    The same dequeues with appropriate xla_sharding attribute.
+  """
+  nest.assert_shallow_structure(dequeues, dims)
+  return nest.map_structure_up_to(
+      dequeues, _tag_sharding_attribute_for_dequeued_tensor, dequeues, dims)
+
+
 class InfeedQueue(object):
   """A helper object to build a device infeed queue.
 
@@ -706,7 +786,7 @@ class _PartitionedInfeedQueue(InfeedQueue):
     with ops.device(tpu.core(tpu_device)):
       values = tpu_ops.infeed_dequeue_tuple(
           dtypes=self._tuple_types, shapes=sharded_shapes, name=full_name)
-    return self._tag_sharding_attribute_for_dequeued_tensors(
+    return tag_sharding_attribute_for_dequeued_tensors(
         values, self._input_partition_dims)
 
   def generate_enqueue_ops(self, per_host_sharded_inputs):
@@ -758,8 +838,9 @@ class _PartitionedInfeedQueue(InfeedQueue):
       inputs_part_dims_flat = nest.flatten_up_to(flattened_inputs,
                                                  self._input_partition_dims)
       inputs_parted_iters = [
-          iter(self._partition_or_replicate_on_host(x, dims)) for x, dims in
-          zip(per_host_sharded_inputs[replica_index], inputs_part_dims_flat)
+          iter(self._check_dims_and_partition_or_replicate_on_host(x, dims))
+          for x, dims in zip(per_host_sharded_inputs[replica_index],
+                             inputs_part_dims_flat)
       ]
 
       for logical_core in xrange(self._device_assignment.num_cores_per_replica):
@@ -789,14 +870,19 @@ class _PartitionedInfeedQueue(InfeedQueue):
 
     Args:
       tensor: Input tensor for partitioning.
-      dims: 1-D np.array of the list of integer describes how to partition the
-        input tensor.
+      dims: A list of integer describes how to partition the input tensor.
 
     Raises:
       ValueError: If the tensor can't be partitioned by dims or the
         num_cores_per_replica doesn't match the number of
         partitions(dims.prod()).
     """
+    # No partitioning specified, so don't perform further checks.
+    if dims is None:
+      return
+
+    dims = np.array(dims)
+
     if (dims < 1).any():
       raise ValueError("All input partition dims must be >= 1.")
 
@@ -817,82 +903,17 @@ class _PartitionedInfeedQueue(InfeedQueue):
 
     tensor.shape.assert_is_fully_defined()
 
-  def _partition_or_replicate_on_host(self, tensor, dims):
-    """Partitions or replicates the input tensor.
+  def _check_dims_and_partition_or_replicate_on_host(self, tensor, dims):
+    """Checks dims and partitions or replicates the input tensor.
 
       The ops inside this function are placed on the host side.
 
     Args:
       tensor: The input tensor which will be partioned or replicated.
       dims: A list of integer describes how to partition the input tensor.
+
     Returns:
       An iterator of `Tensor`s or a list of partioned tensors.
     """
-    if dims is None:
-      return itertools.repeat(tensor)
-    dims = np.array(dims)
     self._check_input_partition_dims(tensor, dims)
-    output = [tensor]
-    shape_list = np.array(tensor.shape.as_list())
-    quotients, remainders = np.divmod(shape_list, dims)
-    for axis, (quotient, remainder, dim, original_size) in enumerate(
-        zip(quotients, remainders, dims, shape_list)):
-      if dim <= 1:
-        continue
-      if remainder > 0:
-        # For each dimension, when it cannot be evenly partitioned, XLA assumes
-        # tensors are partitioned in a greedy manner by using
-        # ceil_ratio(size/dim) first. E.g. 2D tensor with shape (5, 14) and dims
-        # are (2, 4). Since 5 % 2 = 1 and 14 % 4 = 2, [5, 14] =>
-        # [[(3, 4), (3, 4), (2, 4), (2, 2)],
-        # [(2, 4), (2, 4), (2, 4), (2, 2)]]
-        ceil_ratio = quotient + 1
-        num_full_slots, left_over = np.divmod(original_size, ceil_ratio)
-        num_or_size_splits = [ceil_ratio] * num_full_slots + [left_over]
-        if len(num_or_size_splits) < dim:
-          num_or_size_splits += [0] * (dim - len(num_or_size_splits))
-        new_output = []
-        for x in output:
-          new_output.append(
-              array_ops.split(
-                  x, num_or_size_splits=num_or_size_splits, axis=axis))
-        output = new_output
-      else:
-        output = [array_ops.split(x, dim, axis=axis) for x in output]
-      output = nest.flatten(output)
-    return output
-
-  def _tag_sharding_attribute_for_dequeued_tensor(self, tensor, dims):
-    """Tags appropriate XLA sharding attribute to the dequeued tensor.
-
-    Args:
-      tensor: The dequeued tensor on TPU.
-      dims: A list of integer describes how the tensor is partitioned.
-
-    Returns:
-      The same tensor with the xla_sharding attribute.
-    """
-    if dims is None:
-      return xla_sharding.replicate(tensor)
-    elif np.prod(dims) == 1:
-      return xla_sharding.assign_device(tensor, 0)
-    else:
-      tile_assignment = np.arange(np.prod(dims)).reshape(dims)
-      return xla_sharding.tile(
-          tensor=tensor,
-          tile_assignment=tile_assignment)
-
-  def _tag_sharding_attribute_for_dequeued_tensors(self, dequeues, dims):
-    """Tags appropriate XLA sharding attribute to the dequeued tensors.
-
-    Args:
-      dequeues: A list of dequeued tensors on TPU.
-      dims: A list of integer describes how the tensor is partitioned.
-
-    Returns:
-      The same dequeues with appropriate xla_sharding attribute.
-    """
-    nest.assert_shallow_structure(dequeues, dims)
-    return nest.map_structure_up_to(
-        dequeues, self._tag_sharding_attribute_for_dequeued_tensor, dequeues,
-        dims)
+    return partition_or_replicate_on_host(tensor, dims)

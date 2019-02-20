@@ -334,6 +334,9 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+} TfLiteRankParams;
+
+typedef struct {
   // Parameters supported by version 1:
   float min;
   float max;

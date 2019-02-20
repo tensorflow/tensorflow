@@ -65,6 +65,19 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 
 )"
 },
+// parameter replication
+{
+"ParamReplication",
+R"(HloModule param_replication_module
+
+ENTRY %param_replication (a: f32[], b: (f32[2,4], (f32[2,4]))) -> (f32[], (f32[2,4], (f32[2,4]))) {
+  %a = f32[] parameter(0), parameter_replication={true}
+  %b = (f32[2,4]{1,0}, (f32[2,4]{1,0})) parameter(1), parameter_replication={false,true}
+  ROOT %tuple = (f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0}))) tuple(f32[] %a, (f32[2,4]{1,0}, (f32[2,4]{1,0})) %b)
+}
+
+)"
+},
 // pred constant
 {
 "ConstantPred",
@@ -1143,6 +1156,24 @@ ENTRY Sort {
   values.1 = u32[1024,16]{0,1} parameter(2)
   values.2 = f32[1024,16]{0,1} parameter(3)
   ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}, to_apply=compare
+}
+
+)"
+},
+// Sort (Key) is_stable=true
+{
+"SortKeyStable",
+R"(HloModule sort
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
+ENTRY Sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
 }
 
 )"
@@ -2690,6 +2721,17 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
   ASSERT_FALSE(result.status().ok());
   EXPECT_THAT(result.status().error_message(),
               ::testing::HasSubstr("parameter number must be >= 0"));
+}
+
+TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
+  const string hlo_string =
+      "par0 = (f32[3,5], f32[]) parameter(0), "
+      "parameter_replication={true,false,true}";
+  auto result = ParseHloString(hlo_string);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("parameter has 2 leaf buffers, but "
+                                   "parameter_replication has 3 elements"));
 }
 
 }  // namespace

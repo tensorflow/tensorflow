@@ -109,28 +109,25 @@ class Metric(Layer):
   Example subclass implementation:
 
   ```
-  class BinaryTruePositives(Metric):
-    def __init__(self, name='binary_true_positives', dtype=None):
-      super(BinaryTruePositives, self).__init__(name=name, dtype=dtype)
-      self.true_positives = self.add_weight(
-          'true_positives', initializer=init_ops.zeros_initializer)
+  class BinaryTruePositives(tf.keras.metrics.Metric):
+
+    def __init__(self, name='binary_true_positives'):
+      super(BinaryTruePositives, self).__init__(name=name)
+      self.true_positives = self.add_weight(name='tp', initializer='zeros')
 
     def update_state(self, y_true, y_pred, sample_weight=None):
-      y_true = math_ops.cast(y_true, dtypes.bool)
-      y_pred = math_ops.cast(y_pred, dtypes.bool)
-      y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-          y_pred, y_true, sample_weight)
+      y_true = tf.cast(y_true, tf.bool)
+      y_pred = tf.cast(y_pred, tf.bool)
 
-      values = math_ops.logical_and(
-          math_ops.equal(y_true, True), math_ops.equal(y_pred, True))
-      values = math_ops.cast(values, self._dtype)
+      values = tf.logical_and(tf.equal(y_true, True), tf.equal(y_pred, True))
+      values = tf.cast(values, self.dtype)
       if sample_weight is not None:
-        sample_weight = math_ops.cast(sample_weight, self._dtype)
-        values = math_ops.multiply(values, sample_weight)
-      self.true_positives.assign_add(math_ops.reduce_sum(values))
+        sample_weight = tf.cast(sample_weight, self.dtype)
+        values = tf.multiply(values, sample_weight)
+      return self.true_positives.assign_add(tf.reduce_sum(values))
 
     def result(self):
-      return array_ops.identity(self.true_positives)
+      return tf.identity(self.true_positives)
   ```
   """
 

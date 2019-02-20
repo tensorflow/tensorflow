@@ -584,7 +584,7 @@ class ToSingleElementOp : public AsyncOpKernel {
       // NOTE(jsimsa): We must destroy the iterator before calling `done()`, to
       // avoid destruction races.
       IteratorBase* raw_iterator = iterator.release();
-      auto cleanup = gtl::MakeCleanup([ctx, raw_iterator, done] {
+      auto cleanup = gtl::MakeCleanup([raw_iterator, done] {
         delete raw_iterator;
         done();
       });

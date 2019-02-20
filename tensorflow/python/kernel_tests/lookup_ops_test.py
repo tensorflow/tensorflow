@@ -38,7 +38,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import saver
 from tensorflow.python.training import server_lib
-from tensorflow.python.training.checkpointable import util as checkpointable
+from tensorflow.python.training.tracking import util as trackable
 
 
 class HashTableTest(test.TestCase):
@@ -1691,7 +1691,7 @@ class MutableHashTableOpTest(test.TestCase):
     table = lookup_ops.MutableHashTable(
         dtypes.string, dtypes.int64, default_val, name="t1", checkpoint=True)
 
-    checkpoint = checkpointable.Checkpoint(table=table, v0=v0, v1=v1)
+    checkpoint = trackable.Checkpoint(table=table, v0=v0, v1=v1)
     self.evaluate([v0.initializer, v1.initializer])
 
     # Check that the parameter nodes have been initialized.
@@ -1716,7 +1716,7 @@ class MutableHashTableOpTest(test.TestCase):
             constant_op.constant([12, 24], dtypes.int64)))
     self.assertAllEqual(2, self.evaluate(table.size()))
 
-    checkpoint = checkpointable.Checkpoint(table=table, v0=v0, v1=v1)
+    checkpoint = trackable.Checkpoint(table=table, v0=v0, v1=v1)
 
     # Restore the saved values in the parameter nodes.
     checkpoint.restore(save_path).run_restore_ops()
@@ -2512,7 +2512,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
         checkpoint=True,
         initial_num_buckets=32)
 
-    save_checkpoint = checkpointable.Checkpoint(table=save_table)
+    save_checkpoint = trackable.Checkpoint(table=save_table)
 
     self.assertAllEqual(0, self.evaluate(save_table.size()))
     self.evaluate(save_table.insert(keys, values))
@@ -2538,7 +2538,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     self.assertAllEqual(2, self.evaluate(load_table.size()))
     self.assertAllEqual(64, len(self.evaluate(load_table.export()[0])))
 
-    restore_checkpoint = checkpointable.Checkpoint(table=load_table)
+    restore_checkpoint = trackable.Checkpoint(table=load_table)
 
     # Restore the saved values in the parameter nodes.
     restore_checkpoint.restore(save_path).run_restore_ops()
