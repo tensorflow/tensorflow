@@ -281,6 +281,10 @@ cc_library(
 cc_test(
     name = "quantization_util_test",
     srcs = ["quantization_util_test.cc"],
+    linkopts = select({
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lm"],
+    }),
     deps = [
         ":quantization_util",
         "@com_google_googletest//:gtest",
