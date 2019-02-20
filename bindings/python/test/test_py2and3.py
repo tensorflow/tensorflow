@@ -69,6 +69,17 @@ class EdscTest(unittest.TestCase):
       self.assertIn("for($1 = $2 to $3 step 42) {", str)
       self.assertIn("= (($3 * 42) + $2 * -1);", str)
 
+  def testMaxMinLoop(self):
+    with E.ContextManager():
+      i = E.Expr(E.Bindable(self.indexType))
+      step = E.Expr(E.Bindable(self.indexType))
+      lbs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
+      ubs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
+      loop = E.MaxMinFor(i, lbs, ubs, step, [])
+      s = str(loop)
+      self.assertIn("for($1 = max($3, $4, $5, $6) to min($7, $8, $9) step $2)",
+                    s)
+
   def testIndexed(self):
     with E.ContextManager():
       i, j, k = list(

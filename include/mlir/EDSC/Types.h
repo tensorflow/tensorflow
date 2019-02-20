@@ -183,6 +183,9 @@ public:
   /// For debugging purposes.
   const void *getStoragePtr() const { return storage; }
 
+  /// Explicit conversion to bool.  Useful in conjunction with dyn_cast.
+  explicit operator bool() const { return storage != nullptr; }
+
   friend ::llvm::hash_code hash_value(Expr arg);
 
 protected:
@@ -285,7 +288,18 @@ struct StmtBlockLikeExpr : public Expr {
   friend class Expr;
   StmtBlockLikeExpr(ExprKind kind, llvm::ArrayRef<Expr> exprs,
                     llvm::ArrayRef<Type> types = {});
+
+  /// Get the list of subexpressions.
+  /// StmtBlockLikeExprs can contain multiple groups of subexpressions separated
+  /// by null expressions and the result of this call will include them.
   llvm::ArrayRef<Expr> getExprs() const;
+
+  /// Get the list of subexpression groups.
+  /// StmtBlockLikeExprs can contain multiple groups of subexpressions separated
+  /// by null expressions.  This will identify those groups and return a list
+  /// of lists of subexpressions split around null expressions.  Two null
+  /// expressions in a row identify an empty group.
+  SmallVector<llvm::ArrayRef<Expr>, 4> getExprGroups() const;
 
 protected:
   StmtBlockLikeExpr(Expr::ImplType *ptr) : Expr(ptr) {
@@ -604,6 +618,13 @@ Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
 Stmt For(llvm::ArrayRef<Expr> indices, llvm::ArrayRef<Expr> lbs,
          llvm::ArrayRef<Expr> ubs, llvm::ArrayRef<Expr> steps,
          llvm::ArrayRef<Stmt> enclosedStmts);
+
+/// Define a 'for' loop from with multi-valued bounds.
+///
+///    for max(lbs...) to min(ubs...) {}
+///
+Stmt MaxMinFor(const Bindable &idx, ArrayRef<Expr> lbs, ArrayRef<Expr> ubs,
+               Expr step, ArrayRef<Stmt> enclosedStmts);
 
 StmtBlock block(llvm::ArrayRef<Bindable> args, llvm::ArrayRef<Type> argTypes,
                 llvm::ArrayRef<Stmt> stmts);

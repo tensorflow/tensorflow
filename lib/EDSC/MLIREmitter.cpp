@@ -82,6 +82,38 @@ MLIREmitter &mlir::edsc::MLIREmitter::bind(Bindable e, Value *v) {
   return *this;
 }
 
+static void checkAffineProvenance(ArrayRef<Value *> values) {
+  for (Value *v : values) {
+    auto *def = v->getDefiningInst();
+    // There may be no defining instruction if the value is a function
+    // argument.  We accept such values.
+    assert((!def || def->isa<ConstantIndexOp>() || def->isa<AffineApplyOp>() ||
+            def->isa<AffineForOp>() || def->isa<DimOp>()) &&
+           "loop bound expression must have affine provenance");
+  }
+}
+
+static OpPointer<AffineForOp> emitStaticFor(FuncBuilder &builder, Location loc,
+                                            ArrayRef<Value *> lbs,
+                                            ArrayRef<Value *> ubs,
+                                            uint64_t step) {
+  if (lbs.size() != 1 || ubs.size() != 1)
+    return OpPointer<AffineForOp>();
+
+  auto *lbDef = lbs.front()->getDefiningInst();
+  auto *ubDef = ubs.front()->getDefiningInst();
+  if (!lbDef || !ubDef)
+    return OpPointer<AffineForOp>();
+
+  auto lbConst = lbDef->dyn_cast<ConstantIndexOp>();
+  auto ubConst = ubDef->dyn_cast<ConstantIndexOp>();
+  if (!lbConst || !ubConst)
+    return OpPointer<AffineForOp>();
+
+  return builder.create<AffineForOp>(loc, lbConst->getValue(),
+                                     ubConst->getValue(), step);
+}
+
 Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
   // It is still necessary in case we try to emit a bindable directly
   // FIXME: make sure isa<Bindable> works and use it below to delegate emission
@@ -104,48 +136,37 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
 
   if (auto expr = e.dyn_cast<StmtBlockLikeExpr>()) {
     if (expr.getKind() == ExprKind::For) {
-      auto exprs = emitExprs(expr.getExprs());
-      if (llvm::any_of(exprs, [](Value *v) { return !v; })) {
-        return nullptr;
-      }
-      assert(exprs.size() == 3 && "Expected 3 exprs");
-      auto *lb = exprs[0];
-      auto *ub = exprs[1];
+      auto exprGroups = expr.getExprGroups();
+      assert(exprGroups.size() == 3 && "expected 3 expr groups in `for`");
+      assert(!exprGroups[0].empty() && "expected at least one lower bound");
+      assert(!exprGroups[1].empty() && "expected at least one upper bound");
+      assert(exprGroups[2].size() == 1 &&
+             "the third group (step) must have one element");
 
-      // There may be no defining instruction if the value is a function
-      // argument.  We accept such values.
-      auto *lbDef = lb->getDefiningInst();
-      (void)lbDef;
-      assert((!lbDef || lbDef->isa<ConstantIndexOp>() ||
-              lbDef->isa<AffineApplyOp>() || lbDef->isa<AffineForOp>() ||
-              lbDef->isa<DimOp>()) &&
-             "lower bound expression does not have affine provenance");
-      auto *ubDef = ub->getDefiningInst();
-      (void)ubDef;
-      assert((!ubDef || ubDef->isa<ConstantIndexOp>() ||
-              ubDef->isa<AffineApplyOp>() || ubDef->isa<AffineForOp>() ||
-              ubDef->isa<DimOp>()) &&
-             "upper bound expression does not have affine provenance");
+      auto lbs = emitExprs(exprGroups[0]);
+      auto ubs = emitExprs(exprGroups[1]);
+      auto stepExpr = emitExpr(exprGroups[2][0]);
+
+      if (llvm::any_of(lbs, [](Value *v) { return !v; }) ||
+          llvm::any_of(ubs, [](Value *v) { return !v; }) || !stepExpr)
+        return nullptr;
+
+      checkAffineProvenance(lbs);
+      checkAffineProvenance(ubs);
 
       // Step must be a static constant.
       auto step =
-          exprs[2]->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
+          stepExpr->getDefiningInst()->cast<ConstantIndexOp>()->getValue();
 
       // Special case with more concise emitted code for static bounds.
-      OpPointer<AffineForOp> forOp;
-      if (lbDef && ubDef)
-        if (auto lbConst = lbDef->dyn_cast<ConstantIndexOp>())
-          if (auto ubConst = ubDef->dyn_cast<ConstantIndexOp>())
-            forOp = builder->create<AffineForOp>(location, lbConst->getValue(),
-                                                 ubConst->getValue(), step);
+      OpPointer<AffineForOp> forOp =
+          emitStaticFor(*builder, location, lbs, ubs, step);
 
       // General case.
-      if (!forOp) {
-        auto map = builder->getDimIdentityMap();
-        forOp =
-            builder->create<AffineForOp>(location, llvm::makeArrayRef(lb), map,
-                                         llvm::makeArrayRef(ub), map, step);
-      }
+      if (!forOp)
+        forOp = builder->create<AffineForOp>(
+            location, lbs, builder->getMultiDimIdentityMap(lbs.size()), ubs,
+            builder->getMultiDimIdentityMap(ubs.size()), step);
       forOp->createBody();
       res = forOp->getInductionVar();
     }

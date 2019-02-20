@@ -118,6 +118,33 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
 
     return success();
   }
+  if (f->getName().strref() == "max_min_for") {
+    assert(!f->getBlocks().empty() && "max_min_for should not be empty");
+    FuncBuilder builder(&f->getBlocks().front(),
+                        f->getBlocks().front().begin());
+    assert(f->getNumArguments() == 4 && "max_min_for expected 4 arguments");
+    for (const auto *arg : f->getArguments())
+      assert(arg->getType().isIndex() &&
+             "max_min_for expected index arguments");
+
+    edsc::ScopedEDSCContext context;
+    edsc::Expr lb1(f->getArgument(0)->getType());
+    edsc::Expr lb2(f->getArgument(1)->getType());
+    edsc::Expr ub1(f->getArgument(2)->getType());
+    edsc::Expr ub2(f->getArgument(3)->getType());
+    edsc::Expr iv(builder.getIndexType());
+    edsc::Expr step = edsc::constantInteger(builder.getIndexType(), 1);
+    auto loop =
+        edsc::MaxMinFor(edsc::Bindable(iv), {lb1, lb2}, {ub1, ub2}, step, {});
+    edsc::MLIREmitter(&builder, f->getLoc())
+        .bind(edsc::Bindable(lb1), f->getArgument(0))
+        .bind(edsc::Bindable(lb2), f->getArgument(1))
+        .bind(edsc::Bindable(ub1), f->getArgument(2))
+        .bind(edsc::Bindable(ub2), f->getArgument(3))
+        .emitStmt(loop);
+
+    return success();
+  }
 
   // Inject an EDSC-constructed computation that assigns Stmt and uses the LHS.
   if (f->getName().strref().contains("assignments")) {

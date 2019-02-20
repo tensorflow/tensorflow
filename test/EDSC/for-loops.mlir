@@ -6,6 +6,7 @@
 // CHECK-DAG: #[[addmap:.*]] = (d0, d1) -> (d0 + d1)
 // CHECK-DAG: #[[prodconstmap:.*]] = (d0, d1) -> (d0 * 3)
 // CHECK-DAG: #[[addconstmap:.*]] = (d0, d1) -> (d1 + 3)
+// CHECK-DAG: #[[id2dmap:.*]] = (d0, d1) -> (d0, d1)
 
 // This function will be detected by the test pass that will insert
 // EDSC-constructed blocks with arguments.
@@ -68,5 +69,16 @@ func @assignments_1(%arg0: memref<4xf32>, %arg1: memref<4xf32>, %arg2: memref<4x
 // CHECK:   %[[tmp:.*]] = mulf %[[a]], %[[b]] : f32
 // CHECK:   store %[[tmp]], %arg2[%[[iv]]] : memref<?xf32>
 func @assignments_2(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: memref<?xf32>) {
+  return
+}
+
+// This function will be detected by the test pass that will insert an
+// EDSC-constructed empty `for` loop with max/min bounds that correspond to
+//   for max(%arg0, %arg1) to (%arg2, %arg3) step 1
+// before the `return` instruction.
+//
+// CHECK-LABEL: func @max_min_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
+// CHECK:  for %i0 = max #[[id2dmap]](%arg0, %arg1) to min #[[id2dmap]](%arg2, %arg3) {
+func @max_min_for(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : index) {
   return
 }

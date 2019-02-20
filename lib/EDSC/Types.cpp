@@ -359,7 +359,14 @@ Stmt mlir::edsc::For(Expr lb, Expr ub, Expr step, ArrayRef<Stmt> stmts) {
 
 Stmt mlir::edsc::For(const Bindable &idx, Expr lb, Expr ub, Expr step,
                      ArrayRef<Stmt> stmts) {
-  return Stmt(idx, StmtBlockLikeExpr(ExprKind::For, {lb, ub, step}), stmts);
+  assert(lb);
+  assert(ub);
+  assert(step);
+  // Use a null expression as a sentinel between lower and upper bound
+  // expressions in the list of children.
+  return Stmt(
+      idx, StmtBlockLikeExpr(ExprKind::For, {lb, nullptr, ub, nullptr, step}),
+      stmts);
 }
 
 Stmt mlir::edsc::For(ArrayRef<Expr> indices, ArrayRef<Expr> lbs,
@@ -380,6 +387,24 @@ Stmt mlir::edsc::For(ArrayRef<Expr> indices, ArrayRef<Expr> lbs,
   return curStmt;
 }
 
+Stmt mlir::edsc::MaxMinFor(const Bindable &idx, ArrayRef<Expr> lbs,
+                           ArrayRef<Expr> ubs, Expr step,
+                           ArrayRef<Stmt> enclosedStmts) {
+  assert(!lbs.empty() && "'for' loop must have lower bounds");
+  assert(!ubs.empty() && "'for' loop must have upper bounds");
+
+  // Use a null expression as a sentinel between lower and upper bound
+  // expressions in the list of children.
+  SmallVector<Expr, 8> exprs;
+  exprs.insert(exprs.end(), lbs.begin(), lbs.end());
+  exprs.push_back(nullptr);
+  exprs.insert(exprs.end(), ubs.begin(), ubs.end());
+  exprs.push_back(nullptr);
+  exprs.push_back(step);
+
+  return Stmt(idx, StmtBlockLikeExpr(ExprKind::For, exprs), enclosedStmts);
+}
+
 edsc_stmt_t For(edsc_expr_t iv, edsc_expr_t lb, edsc_expr_t ub,
                 edsc_expr_t step, edsc_stmt_list_t enclosedStmts) {
   llvm::SmallVector<Stmt, 8> stmts;
@@ -395,6 +420,15 @@ edsc_stmt_t ForNest(edsc_expr_list_t ivs, edsc_expr_list_t lbs,
   fillStmts(enclosedStmts, &stmts);
   return Stmt(For(makeExprs(ivs), makeExprs(lbs), makeExprs(ubs),
                   makeExprs(steps), stmts));
+}
+
+edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_expr_list_t lbs,
+                      edsc_expr_list_t ubs, edsc_expr_t step,
+                      edsc_stmt_list_t enclosedStmts) {
+  llvm::SmallVector<Stmt, 8> stmts;
+  fillStmts(enclosedStmts, &stmts);
+  return Stmt(MaxMinFor(Expr(iv).cast<Bindable>(), makeExprs(lbs),
+                        makeExprs(ubs), Expr(step), stmts));
 }
 
 StmtBlock mlir::edsc::block(ArrayRef<Bindable> args, ArrayRef<Type> argTypes,
@@ -669,14 +703,26 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
     os << ')';
     return;
   } else if (auto stmtLikeExpr = this->dyn_cast<StmtBlockLikeExpr>()) {
-    auto exprs = stmtLikeExpr.getExprs();
     switch (stmtLikeExpr.getKind()) {
     // We only print the lb, ub and step here, which are the StmtBlockLike
     // part of the `for` StmtBlockLikeExpr.
-    case ExprKind::For:
-      assert(exprs.size() == 3 && "For StmtBlockLikeExpr expected 3 exprs");
-      os << exprs[0] << " to " << exprs[1] << " step " << exprs[2];
+    case ExprKind::For: {
+      auto exprGroups = stmtLikeExpr.getExprGroups();
+      assert(exprGroups.size() == 3 &&
+             "For StmtBlockLikeExpr expected 3 groups");
+      assert(exprGroups[2].size() == 1 && "expected 1 expr for loop step");
+      if (exprGroups[0].size() == 1 && exprGroups[1].size() == 1) {
+        os << exprGroups[0][0] << " to " << exprGroups[1][0] << " step "
+           << exprGroups[2][0];
+      } else {
+        os << "max(";
+        interleaveComma(exprGroups[0], os);
+        os << ") to min(";
+        interleaveComma(exprGroups[1], os);
+        os << ") step " << exprGroups[2][0];
+      }
       return;
+    }
     default: {
       os << "unknown_stmt";
     }
@@ -771,6 +817,20 @@ mlir::edsc::StmtBlockLikeExpr::StmtBlockLikeExpr(ExprKind kind,
 }
 ArrayRef<Expr> mlir::edsc::StmtBlockLikeExpr::getExprs() const {
   return static_cast<ImplType *>(storage)->operands;
+}
+SmallVector<ArrayRef<Expr>, 4>
+mlir::edsc::StmtBlockLikeExpr::getExprGroups() const {
+  SmallVector<ArrayRef<Expr>, 4> groups;
+  ArrayRef<Expr> exprs = getExprs();
+  int start = 0;
+  for (int i = 0, e = exprs.size(); i < e; ++i) {
+    if (!exprs[i]) {
+      groups.push_back(exprs.slice(start, i - start));
+      start = i + 1;
+    }
+  }
+  groups.push_back(exprs.slice(start, exprs.size() - start));
+  return groups;
 }
 
 mlir::edsc::Stmt::Stmt(const Bindable &lhs, const Expr &rhs,

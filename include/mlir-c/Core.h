@@ -227,16 +227,23 @@ edsc_stmt_t Return(edsc_expr_list_t values);
 /// given list of statements.  Block arguments are not currently supported.
 edsc_block_t Block(edsc_stmt_list_t enclosedStmts);
 
-/// Returns an opaque statement for an mlir::ForInst with `enclosedStmts` nested
-/// below it.
+/// Returns an opaque statement for an mlir::AffineForOp with `enclosedStmts`
+/// nested below it.
 edsc_stmt_t For(edsc_expr_t iv, edsc_expr_t lb, edsc_expr_t ub,
                 edsc_expr_t step, edsc_stmt_list_t enclosedStmts);
 
-/// Returns an opaque statement for a perfectly nested set of mlir::ForInst with
-/// `enclosedStmts` nested below it.
+/// Returns an opaque statement for a perfectly nested set of mlir::AffineForOp
+/// with `enclosedStmts` nested below it.
 edsc_stmt_t ForNest(edsc_expr_list_t iv, edsc_expr_list_t lb,
                     edsc_expr_list_t ub, edsc_expr_list_t step,
                     edsc_stmt_list_t enclosedStmts);
+
+/// Returns an opaque statement for an mlir::AffineForOp with the lower bound
+/// `max(lbs)` and the upper bound `min(ubs)`, and with `enclosedStmts` nested
+/// below it.
+edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_expr_list_t lbs,
+                      edsc_expr_list_t ubs, edsc_expr_t step,
+                      edsc_stmt_list_t enclosedStmts);
 
 /// Returns an opaque expression for the corresponding Binary operation.
 edsc_expr_t Add(edsc_expr_t e1, edsc_expr_t e2);

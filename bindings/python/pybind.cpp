@@ -391,6 +391,15 @@ PYBIND11_MODULE(pybind, m) {
     SmallVector<edsc_stmt_t, 8> owning;
     return PythonStmt(::For(iv, lb, ub, step, makeCStmts(owning, stmts)));
   });
+  m.def("MaxMinFor", [](PythonExpr iv, const py::list &lbs, const py::list &ubs,
+                        PythonExpr step, const py::list &stmts) {
+    SmallVector<edsc_expr_t, 8> owningLBs;
+    SmallVector<edsc_expr_t, 8> owningUBs;
+    SmallVector<edsc_stmt_t, 8> owningStmts;
+    return PythonStmt(::MaxMinFor(iv, makeCExprs(owningLBs, lbs),
+                                  makeCExprs(owningUBs, ubs), step,
+                                  makeCStmts(owningStmts, stmts)));
+  });
   m.def("Select", [](PythonExpr cond, PythonExpr e1, PythonExpr e2) {
     return PythonExpr(::Select(cond, e1, e2));
   });
