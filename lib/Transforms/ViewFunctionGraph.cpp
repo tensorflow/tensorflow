@@ -17,7 +17,7 @@
 
 #include "mlir/Transforms/ViewFunctionGraph.h"
 #include "mlir/IR/FunctionGraphTraits.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 
 using namespace mlir;
 

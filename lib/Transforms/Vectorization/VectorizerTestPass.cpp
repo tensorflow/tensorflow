@@ -27,7 +27,7 @@
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"
 #include "mlir/Transforms/Passes.h"

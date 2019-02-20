@@ -1,4 +1,4 @@
-//===- Pass.cpp - Pass infrastructure implementation ----------------------===//
+//===- PassRegistry.cpp - Pass Registration Utilities ---------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,42 +14,15 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
-//
-// This file implements common pass infrastructure.
-//
-//===----------------------------------------------------------------------===//
 
-#include "mlir/Pass.h"
-#include "mlir/IR/Function.h"
-#include "mlir/IR/Module.h"
-#include "mlir/Support/PassNameParser.h"
+#include "mlir/Pass/PassRegistry.h"
+#include "mlir/Pass/Pass.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/ManagedStatic.h"
+
 using namespace mlir;
 
-/// Out of line virtual method to ensure vtables and metadata are emitted to a
-/// single .o file.
-void Pass::anchor() {}
-
-/// Out of line virtual method to ensure vtables and metadata are emitted to a
-/// single .o file.
-void ModulePass::anchor() {}
-
-/// Function passes walk a module and look at each function with their
-/// corresponding hooks and terminates upon error encountered.
-PassResult FunctionPass::runOnModule(Module *m) {
-  for (auto &fn : *m) {
-    // All function passes ignore external functions.
-    if (fn.empty())
-      continue;
-
-    if (runOnFunction(&fn))
-      return failure();
-  }
-  return success();
-}
-
-// TODO: The pass registry and pass name parsing should be moved out.
+/// Static mapping of all of the registered passes.
 static llvm::ManagedStatic<llvm::DenseMap<const void *, PassInfo>> passRegistry;
 
 void mlir::registerPass(StringRef arg, StringRef description,

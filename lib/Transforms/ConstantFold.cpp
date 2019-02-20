@@ -18,7 +18,7 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/Function.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"
 

@@ -23,7 +23,7 @@
 #define MLIR_TRANSFORMS_DIALECTCONVERSION_H_
 
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
 
 namespace mlir {

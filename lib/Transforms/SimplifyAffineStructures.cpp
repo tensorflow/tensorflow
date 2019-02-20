@@ -23,7 +23,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
 
 #define DEBUG_TYPE "simplify-affine-structure"

@@ -1,4 +1,4 @@
-//===- Pass.h - Base classes for compiler passes ----------------*- C++ -*-===//
+//===- PassRegistry.h - Pass Registration Utilities -------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -14,84 +14,23 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 // =============================================================================
+//
+// This file contains utilities for registering information about compiler
+// passes.
+//
+//===----------------------------------------------------------------------===//
 
-#ifndef MLIR_PASS_H
-#define MLIR_PASS_H
+#ifndef MLIR_PASS_PASSREGISTRY_H_
+#define MLIR_PASS_PASSREGISTRY_H_
 
 #include "mlir/Support/LLVM.h"
 #include "llvm/ADT/StringRef.h"
+#include "llvm/Support/CommandLine.h"
 #include "llvm/Support/Compiler.h"
 #include <functional>
 
 namespace mlir {
-class Function;
-class Module;
-
-// Values that can be used by to signal success/failure. This can be implicitly
-// converted to/from boolean values, with false representing success and true
-// failure.
-struct LLVM_NODISCARD PassResult {
-  enum ResultEnum { Success, Failure } value;
-  PassResult(ResultEnum v) : value(v) {}
-  operator bool() const { return value == Failure; }
-};
-
-class PassInfo;
-
-class Pass {
-public:
-  explicit Pass(const void *passID) : passID(passID) {}
-  virtual ~Pass() = default;
-  virtual PassResult runOnModule(Module *m) = 0;
-
-  /// Returns the unique identifier that corresponds to this pass.
-  const void *getPassID() const { return passID; }
-
-  static PassResult success() { return PassResult::Success; }
-  static PassResult failure() { return PassResult::Failure; }
-
-  /// Returns the pass info for the specified pass class or null if unknown.
-  static const PassInfo *lookupPassInfo(const void *passID);
-
-  /// Returns the pass info for this pass.
-  const PassInfo *lookupPassInfo() const { return lookupPassInfo(passID); }
-
-private:
-  /// Out of line virtual method to ensure vtables and metadata are emitted to a
-  /// single .o file.
-  virtual void anchor();
-
-  /// Unique identifier for pass.
-  const void *const passID;
-};
-
-class ModulePass : public Pass {
-public:
-  explicit ModulePass(const void *passID) : Pass(passID) {}
-
-  virtual PassResult runOnModule(Module *m) override = 0;
-
-private:
-  /// Out of line virtual method to ensure vtables and metadata are emitted to a
-  /// single .o file.
-  virtual void anchor();
-};
-
-/// FunctionPass's are run on every function in a module, and multiple functions
-/// may be optimized concurrently by different instances of the function pass.
-/// By subclassing this, your pass promises only to look at the function psased
-/// in to it, it isn't allowed to inspect or modify other functions in the
-/// module.
-class FunctionPass : public Pass {
-public:
-  explicit FunctionPass(const void *passID) : Pass(passID) {}
-
-  /// Implement this function to be run on every function in the module.
-  virtual PassResult runOnFunction(Function *fn) = 0;
-
-  // Iterates over all functions in a module, halting upon failure.
-  virtual PassResult runOnModule(Module *m) override;
-};
+class Pass;
 
 using PassAllocatorFunction = std::function<Pass *()>;
 
@@ -152,6 +91,14 @@ template <typename ConcretePass> struct PassRegistration {
                  [&]() { return new ConcretePass(); });
   }
 };
+
+/// Adds command line option for each registered pass.
+struct PassNameParser : public llvm::cl::parser<const PassInfo *> {
+  PassNameParser(llvm::cl::Option &opt);
+
+  void printOptionInfo(const llvm::cl::Option &O,
+                       size_t GlobalWidth) const override;
+};
 } // end namespace mlir
 
-#endif // MLIR_PASS_H
+#endif // MLIR_PASS_PASSREGISTRY_H_

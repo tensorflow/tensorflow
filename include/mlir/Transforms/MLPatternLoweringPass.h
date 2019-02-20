@@ -24,7 +24,7 @@
 #define MLIR_TRANSFORMS_MLPATTERNLOWERINGPASS_H
 
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include <type_traits>
 
 namespace mlir {

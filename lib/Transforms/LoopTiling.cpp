@@ -24,7 +24,7 @@
 #include "mlir/Analysis/LoopAnalysis.h"
 #include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/LoopUtils.h"
 #include "mlir/Transforms/Passes.h"
 #include "mlir/Transforms/Utils.h"

@@ -23,7 +23,7 @@
 #include "mlir/IR/Module.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Types.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/Support/raw_ostream.h"
 

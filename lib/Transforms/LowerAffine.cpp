@@ -26,7 +26,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/Passes.h"

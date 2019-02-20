@@ -22,7 +22,7 @@
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Target/LLVMIR.h"
 #include "mlir/Transforms/Passes.h"
 

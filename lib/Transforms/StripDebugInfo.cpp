@@ -17,7 +17,7 @@
 
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Instruction.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Transforms/Passes.h"
 
 using namespace mlir;

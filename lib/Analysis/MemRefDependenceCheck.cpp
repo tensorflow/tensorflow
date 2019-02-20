@@ -25,7 +25,7 @@
 #include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
-#include "mlir/Pass.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/Support/Debug.h"
 
