@@ -477,12 +477,12 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
     # WARNING: make sure ncteisen@ and vpai@ are cc-ed on any CL to change the below rule
     tf_http_archive(
         name = "grpc",
-        sha256 = "dd88f70334f60ca673d461b4fe645a65618dd75e288f5b0620e4d5ef13153904",
-        strip_prefix = "grpc-3dacd1afc451803fbbc4d01c53cbaf026aa9d06b",
+        sha256 = "fb56c4a03b9eef675ba70e9bf19a25c31f5d06e8d4f36907441eede678b51e47",
+        strip_prefix = "grpc-69b2d570428623d2d9097ec9e21b3e0a02268ab9",
         system_build_file = clean_dep("//third_party/systemlibs:grpc.BUILD"),
         urls = [
-            "https://mirror.bazel.build/github.com/grpc/grpc/archive/3dacd1afc451803fbbc4d01c53cbaf026aa9d06b.tar.gz",
-            "https://github.com/grpc/grpc/archive/3dacd1afc451803fbbc4d01c53cbaf026aa9d06b.tar.gz",
+            "https://mirror.bazel.build/github.com/grpc/grpc/archive/69b2d570428623d2d9097ec9e21b3e0a02268ab9.tar.gz",
+            "https://github.com/grpc/grpc/archive/69b2d570428623d2d9097ec9e21b3e0a02268ab9.tar.gz",
         ],
     )
 
