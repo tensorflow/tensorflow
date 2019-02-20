@@ -501,8 +501,8 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
     const auto& array = model->GetArray(input);
     if (array.data_type == ArrayDataType::kFloat) {
       if (!array.minmax && !array.buffer) {
-        LOG(ERROR) << "Can't quantize input array " << input
-                   << " because it lacks min/max info";
+        LOG(WARNING) << "Can't quantize input array " << input
+                     << " because it lacks min/max info";
         return ::tensorflow::Status::OK();
       }
       const auto* other_op = GetOpWithOutput(*model, input);
