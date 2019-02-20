@@ -110,7 +110,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* input_to_input_weights =
       GetOptionalInputTensor(context, node, kInputToInputWeightsTensor);
-  if (input_to_input_weights) {
+  if (input_to_input_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[0], n_cell);
     TF_LITE_ENSURE_EQ(context, input_to_input_weights->dims->data[1], n_input);
@@ -130,7 +130,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* recurrent_to_input_weights =
       GetOptionalInputTensor(context, node, kRecurrentToInputWeightsTensor);
-  if (recurrent_to_input_weights) {
+  if (recurrent_to_input_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, recurrent_to_input_weights->dims->data[0],
                       n_cell);
@@ -164,21 +164,21 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* cell_to_input_weights =
       GetOptionalInputTensor(context, node, kCellToInputWeightsTensor);
-  if (cell_to_input_weights) {
+  if (cell_to_input_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_input_weights->dims->data[0], n_cell);
   }
 
   const TfLiteTensor* cell_to_forget_weights =
       GetOptionalInputTensor(context, node, kCellToForgetWeightsTensor);
-  if (cell_to_forget_weights) {
+  if (cell_to_forget_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_forget_weights->dims->data[0], n_cell);
   }
 
   const TfLiteTensor* cell_to_output_weights =
       GetOptionalInputTensor(context, node, kCellToOutputWeightsTensor);
-  if (cell_to_output_weights) {
+  if (cell_to_output_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, cell_to_output_weights->dims->data[0], n_cell);
   }
@@ -220,7 +220,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* projection_weights =
       GetOptionalInputTensor(context, node, kProjectionWeightsTensor);
-  if (projection_weights) {
+  if (projection_weights != nullptr) {
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->size, 2);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[0], n_output);
     TF_LITE_ENSURE_EQ(context, projection_weights->dims->data[1], n_cell);
@@ -228,7 +228,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 
   const TfLiteTensor* projection_bias =
       GetOptionalInputTensor(context, node, kProjectionBiasTensor);
-  if (projection_bias) {
+  if (projection_bias != nullptr) {
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->size, 1);
     TF_LITE_ENSURE_EQ(context, projection_bias->dims->data[0], n_output);
   }
@@ -306,7 +306,8 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // The weights are of consistent type, so it suffices to check one.
   // TODO(mirkov): create a utility/macro for this check, so all Ops can use it.
-  const bool is_hybrid_op = (input_to_output_weights->type == kTfLiteUInt8 &&
+  const bool is_hybrid_op = ((input_to_output_weights->type == kTfLiteUInt8 ||
+                              input_to_output_weights->type == kTfLiteInt8) &&
                              input->type == kTfLiteFloat32);
 
   TfLiteIntArrayFree(node->temporaries);
@@ -344,7 +345,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kInputQuantized;
     TfLiteTensor* input_quantized =
         GetTemporary(context, node, kInputQuantized);
-    input_quantized->type = kTfLiteUInt8;
+    input_quantized->type = input_to_output_weights->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(input_quantized->dims, input->dims)) {
       TfLiteIntArray* input_quantized_size = TfLiteIntArrayCopy(input->dims);
@@ -355,7 +356,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kOutputStateQuantized;
     TfLiteTensor* activation_state_quantized =
         GetTemporary(context, node, kOutputStateQuantized);
-    activation_state_quantized->type = kTfLiteUInt8;
+    activation_state_quantized->type = input_to_output_weights->type;
     activation_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(activation_state_quantized->dims,
                              activation_state->dims)) {
@@ -369,7 +370,7 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
         *scratch_tensor_index + kCellStateQuantized;
     TfLiteTensor* cell_state_quantized =
         GetTemporary(context, node, kCellStateQuantized);
-    cell_state_quantized->type = kTfLiteUInt8;
+    cell_state_quantized->type = input_to_output_weights->type;
     cell_state_quantized->allocation_type = kTfLiteArenaRw;
     if (!TfLiteIntArrayEqual(cell_state_quantized->dims, cell_state->dims)) {
       TfLiteIntArray* cell_state_quantized_size =
@@ -502,6 +503,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           recurrent_to_input_weights, recurrent_to_forget_weights,
           recurrent_to_cell_weights, recurrent_to_output_weights,
           cell_to_input_weights, cell_to_forget_weights, cell_to_output_weights,
+          /*input_layer_norm_coefficients=*/nullptr,
+          /*forget_layer_norm_coefficients=*/nullptr,
+          /*cell_layer_norm_coefficients=*/nullptr,
+          /*output_layer_norm_coefficients=*/nullptr,
           /*aux_input=*/nullptr,
           /*aux_input_to_input_weights=*/nullptr,
           /*aux_input_to_forget_weights=*/nullptr,
@@ -512,7 +517,8 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           /*output_offset=*/0, scratch_buffer, activation_state, cell_state,
           output);
     }
-    case kTfLiteUInt8: {
+    case kTfLiteUInt8:
+    case kTfLiteInt8: {
       TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/1);
       TfLiteTensor* activation_state_quantized =
           GetTemporary(context, node, /*index=*/2);
@@ -529,6 +535,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
           recurrent_to_input_weights, recurrent_to_forget_weights,
           recurrent_to_cell_weights, recurrent_to_output_weights,
           cell_to_input_weights, cell_to_forget_weights, cell_to_output_weights,
+          /*input_layer_norm_coefficients=*/nullptr,
+          /*forget_layer_norm_coefficients=*/nullptr,
+          /*cell_layer_norm_coefficients=*/nullptr,
+          /*output_layer_norm_coefficients=*/nullptr,
           /*aux_input=*/nullptr,
           /*aux_input_to_input_weights=*/nullptr,
           /*aux_input_to_forget_weights=*/nullptr,

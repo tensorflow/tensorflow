@@ -78,8 +78,8 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(new Iterator(
-          Iterator::Params{this, strings::StrCat(prefix, "::Window")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::Window")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -96,6 +96,15 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
     string DebugString() const override {
       return strings::StrCat("WindowDatasetOp(", window_size_, window_shift_,
                              window_stride_, drop_remainder_, ")::Dataset");
+    }
+
+    int64 Cardinality() const override {
+      int64 n = input_->Cardinality();
+      if (n == kInfiniteCardinality || n == kUnknownCardinality) {
+        return n;
+      }
+      return n / window_shift_ +
+             (n % window_shift_ == 0 || drop_remainder_ ? 0 : 1);
     }
 
    protected:
@@ -155,6 +164,7 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
               Status status =
                   input_impl_->GetNext(ctx, &element, end_of_sequence);
               if (!*end_of_sequence) {
+                RecordBufferEnqueue(ctx, element);
                 buffer_.emplace_back(std::move(element), status);
               } else {
                 input_impl_.reset();
@@ -192,8 +202,14 @@ class WindowDatasetOp : public UnaryDatasetOpKernel {
                 input_impl_.reset();
               }
             }
+            for (size_t i = 0; i < buffer_.size(); ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.clear();
           } else {
+            for (size_t i = 0; i < window_shift; ++i) {
+              RecordBufferDequeue(ctx, buffer_.at(i).result);
+            }
             buffer_.erase(buffer_.begin(), buffer_.begin() + window_shift);
           }
         }

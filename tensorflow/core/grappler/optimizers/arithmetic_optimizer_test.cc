@@ -14,15 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/grappler/optimizers/arithmetic_optimizer.h"
+#include "tensorflow/cc/ops/math_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
-#include "tensorflow/core/grappler/optimizers/constant_folding.h"
+#include "tensorflow/core/grappler/optimizers/arithmetic_optimizer_test_utils.h"
 #include "tensorflow/core/grappler/optimizers/model_pruner.h"
 #include "tensorflow/core/grappler/utils.h"
-#include "tensorflow/core/grappler/utils/grappler_test.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
@@ -90,211 +90,6 @@ void VerifyGraphsMatch(const GraphDef& original_graph,
   }
 }
 }  // namespace
-
-class ArithmeticOptimizerTest : public GrapplerTest {
- protected:
-  // Optimize a graph using ArithmeticOptimizer and prune all the nodes that no
-  // longer have any output consumers.
-  void OptimizeAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
-                        GraphDef* output) {
-    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
-    item->graph.Swap(output);
-    output->Clear();
-    TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
-  }
-
-  // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
-  void OptimizeTwice(ArithmeticOptimizer* optimizer, GrapplerItem* item,
-                     GraphDef* output) {
-    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
-    item->graph.Swap(output);
-    output->Clear();
-    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
-  }
-
-  // Run ArithmeticOptimizer twice to make sure the rewrite is idempotent.
-  // Optionally run a constant folding pass before pruning.
-  void OptimizeTwiceAndPrune(ArithmeticOptimizer* optimizer, GrapplerItem* item,
-                             GraphDef* output, bool const_folding = false) {
-    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
-
-    item->graph.Swap(output);
-    output->Clear();
-    TF_EXPECT_OK(optimizer->Optimize(nullptr, *item, output));
-
-    if (const_folding) {
-      item->graph.Swap(output);
-      output->Clear();
-      TF_EXPECT_OK(ConstantFolding(/*cpu_device=*/nullptr)
-                       .Optimize(nullptr, *item, output));
-    }
-
-    item->graph.Swap(output);
-    output->Clear();
-    TF_EXPECT_OK(ModelPruner().Optimize(nullptr, *item, output));
-  }
-
-  // TODO(ezhulenev): Make private. After migration to stages each test
-  // should explicitly enable required optimization for tests isolation
-  void DisableAllStages(ArithmeticOptimizer* optimizer) {
-    ArithmeticOptimizer::ArithmeticOptimizerOptions options;
-    options.dedup_computations = false;
-    options.combine_add_to_addn = false;
-    options.convert_sqrt_div_to_rsqrt_mul = false;
-    options.convert_pow = false;
-    options.convert_log1p = false;
-    options.optimize_max_or_min_of_monotonic = false;
-    options.fold_conjugate_into_transpose = false;
-    options.fold_multiply_into_conv = false;
-    options.fold_transpose_into_matmul = false;
-    options.hoist_common_factor_out_of_aggregation = false;
-    options.hoist_cwise_unary_chains = false;
-    options.minimize_broadcasts = false;
-    options.remove_identity_transpose = false;
-    options.remove_involution = false;
-    options.remove_idempotent = false;
-    options.remove_redundant_bitcast = false;
-    options.remove_redundant_cast = false;
-    options.remove_redundant_reshape = false;
-    options.remove_negation = false;
-    options.remove_logical_not = false;
-    options.reorder_cast_like_and_value_preserving = false;
-    options.replace_mul_with_square = false;
-    options.simplify_aggregation = false;
-    options.unary_ops_composition = false;
-    optimizer->options_ = options;
-  }
-
-  void DisableAddToAddNCombining(ArithmeticOptimizer* optimizer) {
-    optimizer->options_.combine_add_to_addn = false;
-  }
-
-  void EnableOnlyAddToAddNCombining(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.combine_add_to_addn = true;
-  }
-
-  void EnableOnlyFoldConjugateIntoTranspose(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.fold_conjugate_into_transpose = true;
-  }
-
-  void EnableOnlyFoldMultipleIntoConv(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.fold_multiply_into_conv = true;
-  }
-
-  void EnableOnlyFoldTransposeIntoMatMul(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.fold_transpose_into_matmul = true;
-  }
-
-  void EnableOnlyHoistCommonFactor(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.hoist_common_factor_out_of_aggregation = true;
-  }
-
-  void EnableOnlyMinimizeBroadcasts(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.minimize_broadcasts = true;
-  }
-
-  void EnableOnlyRemoveIdentityTranspose(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_identity_transpose = true;
-  }
-
-  void EnableOnlyRemoveInvolution(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_involution = true;
-  }
-
-  void EnableOnlyRemoveRedundantBitcast(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_redundant_bitcast = true;
-  }
-
-  void EnableOnlyRemoveRedundantCast(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_redundant_cast = true;
-  }
-
-  void EnableOnlyRemoveRedundantReshape(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_redundant_reshape = true;
-  }
-
-  void EnableOnlyRemoveNegation(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_negation = true;
-  }
-
-  void EnableOnlyReorderCastAndTranspose(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.reorder_cast_like_and_value_preserving = true;
-  }
-
-  void EnableOnlyReplaceMulWithSquare(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.replace_mul_with_square = true;
-  }
-
-  void EnableOnlyHoistCWiseUnaryChains(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.hoist_cwise_unary_chains = true;
-  }
-
-  void EnableOnlySqrtDivToRsqrtMul(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.convert_sqrt_div_to_rsqrt_mul = true;
-  }
-
-  void EnableOnlyConvertPow(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.convert_pow = true;
-  }
-
-  void EnableOnlyRemoveIdempotent(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_idempotent = true;
-  }
-
-  void EnableOnlyRemoveLogicalNot(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_logical_not = true;
-  }
-
-  void EnableOnlySimplifyAggregation(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.simplify_aggregation = true;
-  }
-
-  void EnableOnlyLog1p(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.convert_log1p = true;
-  }
-
-  void EnableOnlyOptimizeMaxOrMinOfMonotonic(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.optimize_max_or_min_of_monotonic = true;
-  }
-
-  void EnableOnlyExpm1(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.convert_expm1 = true;
-  }
-
-  void EnableOnlyUnaryOpsComposition(ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.unary_ops_composition = true;
-  }
-
-  void EnableOnlyRemoveStackStridedSliceSameAxis(
-      ArithmeticOptimizer* optimizer) {
-    DisableAllStages(optimizer);
-    optimizer->options_.remove_stack_strided_slice_same_axis = true;
-  }
-};
 
 TEST_F(ArithmeticOptimizerTest, NoOp) {
   // This trivial graph is so basic there's nothing to optimize.
@@ -3490,6 +3285,35 @@ TEST_F(ArithmeticOptimizerTest,
 }
 
 TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWiseDoNotChangeFetchNodeReduction) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), {2, 3}, {1, 2});
+  Output reshape = ops::Reshape(s.WithOpName("reshape"), x, {-1});
+  Output y = ops::Neg(s.WithOpName("y"), reshape);
+  Output z = ops::Max(s.WithOpName("z"), y, {0});
+
+  GrapplerItem item;
+  item.fetch = {"z"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Should be a NoOp since we are not allowed to change the output of fetch
+  // nodes.
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<int>(tensors[0], tensors_expected[0]);
+  test::ExpectTensorEqual<int>(tensors[0], Tensor(-2));
+}
+
+TEST_F(ArithmeticOptimizerTest,
        OptimizeMaxOrMinOfMonotonicElementWiseNonIncreasing) {
   tensorflow::Scope s = tensorflow::Scope::NewRootScope();
   auto x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
@@ -3524,6 +3348,75 @@ TEST_F(ArithmeticOptimizerTest,
     } else if (node.name() == "reduce_max") {
       EXPECT_EQ("Min", node.op());
       EXPECT_EQ(2, node.input_size());
+      EXPECT_EQ("x", node.input(0));
+      ++required_node_count;
+    }
+  }
+  EXPECT_EQ(2, required_node_count);
+}
+
+TEST_F(ArithmeticOptimizerTest,
+       OptimizeMaxOrMinOfMonotonicElementWiseNonIncreasingDoNotChangeMaxPool) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 1.5f, {3, 3, 3, 1});
+  Output neg = ops::Neg(s.WithOpName("neg"), x);
+  Output max_pool = ops::MaxPool(s.WithOpName("max_pool"), neg, {1, 2, 2, 1},
+                                 {1, 2, 2, 1}, "VALID");
+
+  GrapplerItem item;
+  item.fetch = {"max_pool"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  ASSERT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeTwice(&optimizer, &item, &output);
+
+  // Should be a NoOp
+  VerifyGraphsMatch(item.graph, output, __LINE__);
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  ASSERT_EQ(1, tensors.size());
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+}
+
+TEST_F(ArithmeticOptimizerTest, OptimizeMaxOrMinOfMonotonicElementWiseMaxPool) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  auto x = ops::Const(s.WithOpName("x"), 1.5f, {3, 3, 3, 1});
+  Output sqrt = ops::Sqrt(s.WithOpName("sqrt"), x);
+  Output max_pool = ops::MaxPool(s.WithOpName("max_pool"), sqrt, {1, 2, 2, 1},
+                                 {1, 2, 2, 1}, "VALID");
+  Output final_out = ops::Identity(s.WithOpName("final_out"), max_pool);
+
+  GrapplerItem item;
+  item.fetch = {"final_out"};
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlyOptimizeMaxOrMinOfMonotonic(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+
+  test::ExpectTensorNear<float>(tensors_expected[0], tensors[0], 1e-6);
+  EXPECT_EQ(item.graph.node_size(), output.node_size());
+  // Check if the inputs are switched
+  int required_node_count = 0;
+  for (int i = 0; i < output.node_size(); ++i) {
+    const NodeDef& node = output.node(i);
+    if (node.name() == "sqrt") {
+      EXPECT_EQ("Sqrt", node.op());
+      EXPECT_EQ(1, node.input_size());
+      EXPECT_EQ("max_pool", node.input(0));
+      ++required_node_count;
+    } else if (node.name() == "max_pool") {
+      EXPECT_EQ("MaxPool", node.op());
+      EXPECT_EQ(1, node.input_size());
       EXPECT_EQ("x", node.input(0));
       ++required_node_count;
     }
@@ -3791,6 +3684,32 @@ TEST_F(ArithmeticOptimizerTest, RemoveStackStridedSliceSameAxis) {
   // stacked[:, 2:, :] == expand_dims(c, 1).
   test::ExpectTensorEqual<float>(tensors_expected[fExpandedC],
                                  tensors[fCSlice2ToOut]);
+}
+
+TEST_F(ArithmeticOptimizerTest, SimplifyAggregationBFloat16) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output x = ops::Const(s.WithOpName("x"), {1.0f, 2.0f}, {1, 2});
+  Output cast = ops::Cast(s.WithOpName("cast"), x, DT_BFLOAT16);
+  Output add = ops::AddN(s.WithOpName("add"), {cast, cast});
+  Output id = ops::Identity(s.WithOpName("id"), add);
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  item.fetch = {"id"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
+  EXPECT_EQ(1, tensors_expected.size());
+
+  GraphDef output;
+  ArithmeticOptimizer optimizer;
+  EnableOnlySimplifyAggregation(&optimizer);
+  OptimizeAndPrune(&optimizer, &item, &output);
+
+  // Extra node created for multiplier.
+  EXPECT_EQ(5, output.node_size());
+
+  auto tensors = EvaluateNodes(output, item.fetch);
+  EXPECT_EQ(1, tensors.size());
+  test::ExpectTensorEqual<bfloat16>(tensors_expected[0], tensors[0]);
 }
 
 }  // namespace grappler

@@ -71,9 +71,11 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleDot(const HloInstruction* dot) override;
   Status HandleConvolution(const HloInstruction* convolution) override;
   Status HandleFft(const HloInstruction* fft) override;
-  Status HandleCrossReplicaSum(const HloInstruction* crs) override;
+  Status HandleTriangularSolve(const HloInstruction* hlo) override;
+  Status HandleAllReduce(const HloInstruction* crs) override;
   Status HandleAllToAll(const HloInstruction* hlo) override;
   Status HandleCollectivePermute(const HloInstruction* hlo) override;
+  Status HandleReplicaId(const HloInstruction* hlo) override;
   Status HandleInfeed(const HloInstruction* infeed) override;
   Status HandleOutfeed(const HloInstruction* outfeed) override;
   Status HandleRng(const HloInstruction* random) override;
@@ -101,6 +103,7 @@ class HloCostAnalysis : public ConstDfsHloVisitor {
   Status HandleBroadcast(const HloInstruction* broadcast) override;
   Status HandlePad(const HloInstruction* pad) override;
   Status HandleReshape(const HloInstruction* reshape) override;
+  Status HandleAddDependency(const HloInstruction* add_dependency) override;
   Status HandleAfterAll(const HloInstruction* token) override;
   Status HandleTranspose(const HloInstruction* transpose) override;
   Status HandleWhile(const HloInstruction* xla_while) override;

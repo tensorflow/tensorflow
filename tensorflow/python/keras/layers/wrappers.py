@@ -23,17 +23,18 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.Wrapper')
+@keras_export('keras.layers.Wrapper')
 class Wrapper(Layer):
   """Abstract wrapper base class.
 
@@ -45,6 +46,7 @@ class Wrapper(Layer):
       layer: The layer to be wrapped.
   """
 
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
@@ -112,7 +114,7 @@ class Wrapper(Layer):
     return cls(layer, **config)
 
 
-@tf_export('keras.layers.TimeDistributed')
+@keras_export('keras.layers.TimeDistributed')
 class TimeDistributed(Wrapper):
   """This wrapper allows to apply a layer to every temporal slice of an input.
 
@@ -168,7 +170,7 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
-    self._track_checkpointable(layer, name='layer')
+    self._track_trackable(layer, name='layer')
 
   def _get_shape_tuple(self, init_tuple, tensor, start_idx, int_shape=None):
     """Finds non-specific dimensions in the static shapes.
@@ -204,8 +206,12 @@ class TimeDistributed(Wrapper):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    assert len(input_shape) >= 3
-    self.input_spec = InputSpec(shape=input_shape)
+    if len(input_shape) < 3:
+      raise ValueError(
+          '`TimeDistributed` Layer should be passed an `input_shape ` '
+          'with at least 3 dimensions, received: ' + str(input_shape))
+    # Don't enforce the batch or time dimension.
+    self.input_spec = InputSpec(shape=[None, None] + input_shape[2:])
     child_input_shape = [input_shape[0]] + input_shape[2:]
     if not self.layer.built:
       # The base layer class calls a conversion function on the input shape to
@@ -351,7 +357,7 @@ class TimeDistributed(Wrapper):
     return output_mask
 
 
-@tf_export('keras.layers.Bidirectional')
+@keras_export('keras.layers.Bidirectional')
 class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
@@ -380,6 +386,7 @@ class Bidirectional(Wrapper):
   ```
   """
 
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
@@ -412,8 +419,8 @@ class Bidirectional(Wrapper):
     self._num_constants = None
     super(Bidirectional, self).__init__(layer, **kwargs)
     self.input_spec = layer.input_spec
-    self._track_checkpointable(self.forward_layer, name='forward_layer')
-    self._track_checkpointable(self.backward_layer, name='backward_layer')
+    self._track_trackable(self.forward_layer, name='forward_layer')
+    self._track_trackable(self.backward_layer, name='backward_layer')
 
   @property
   def trainable(self):

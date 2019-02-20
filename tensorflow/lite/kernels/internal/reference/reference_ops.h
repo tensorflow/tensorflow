@@ -36,68 +36,6 @@ limitations under the License.
 
 namespace tflite {
 
-// TODO(b/77858996): Add these to gemmlowp.
-template <typename IntegerType>
-IntegerType SaturatingAddNonGemmlowp(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
-  return a;
-}
-
-template <>
-inline std::int32_t SaturatingAddNonGemmlowp(std::int32_t a, std::int32_t b) {
-  std::int64_t a64 = a;
-  std::int64_t b64 = b;
-  std::int64_t sum = a64 + b64;
-  return static_cast<std::int32_t>(std::min(
-      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
-      std::max(
-          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-          sum)));
-}
-
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingAddNonGemmlowp(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingAddNonGemmlowp(a.raw(), b.raw()));
-}
-
-template <typename IntegerType>
-IntegerType SaturatingSub(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
-  return a;
-}
-
-template <>
-inline std::int16_t SaturatingSub(std::int16_t a, std::int16_t b) {
-  std::int32_t a32 = a;
-  std::int32_t b32 = b;
-  std::int32_t diff = a32 - b32;
-  return static_cast<std::int16_t>(std::min(32767, std::max(-32768, diff)));
-}
-
-template <>
-inline std::int32_t SaturatingSub(std::int32_t a, std::int32_t b) {
-  std::int64_t a64 = a;
-  std::int64_t b64 = b;
-  std::int64_t diff = a64 - b64;
-  return static_cast<std::int32_t>(std::min(
-      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
-      std::max(
-          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-          diff)));
-}
-
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingSub(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingSub(a.raw(), b.raw()));
-}
-// End section to be moved to gemmlowp.
-
 namespace reference_ops {
 
 // Return true for broadcast case, false otherwise.
@@ -190,59 +128,6 @@ inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
     params->broadcast_category = BroadcastableOpCategory::kGenericBroadcast;
   }
   return true;
-}
-
-template <typename T>
-int CountLeadingZeros(T integer_input) {
-  static_assert(std::is_unsigned<T>::value,
-                "Only unsigned integer types handled.");
-  if (integer_input == 0) {
-    return std::numeric_limits<T>::digits;
-  }
-  const T one_in_leading_positive = static_cast<T>(1)
-                                    << (std::numeric_limits<T>::digits - 1);
-  int leading_zeros = 0;
-  while (integer_input < one_in_leading_positive) {
-    integer_input <<= 1;
-    ++leading_zeros;
-  }
-  return leading_zeros;
-}
-
-template <typename IntegerType>
-IntegerType SaturatingRoundingMultiplyByPOTParam(IntegerType x, int exponent) {
-  if (exponent == 0) {
-    return x;
-  }
-  using ScalarIntegerType =
-      typename gemmlowp::FixedPointRawTypeTraits<IntegerType>::ScalarRawType;
-  const IntegerType min =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::min());
-  const IntegerType max =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::max());
-  const int ScalarIntegerTypeBits = 8 * sizeof(ScalarIntegerType);
-
-  const std::int32_t threshold =
-      ((1 << (ScalarIntegerTypeBits - 1 - exponent)) - 1);
-  const IntegerType positive_mask =
-      gemmlowp::MaskIfGreaterThan(x, gemmlowp::Dup<IntegerType>(threshold));
-  const IntegerType negative_mask =
-      gemmlowp::MaskIfLessThan(x, gemmlowp::Dup<IntegerType>(-threshold));
-
-  IntegerType result = gemmlowp::ShiftLeft(x, exponent);
-  result = gemmlowp::SelectUsingMask(positive_mask, max, result);
-  result = gemmlowp::SelectUsingMask(negative_mask, min, result);
-  return result;
-}
-
-// If we want to leave IntegerBits fixed, then multiplication
-// by a power of two has to be saturating/rounding, not exact anymore.
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits>
-SaturatingRoundingMultiplyByPOTParam(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
@@ -543,16 +428,17 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
-                  const RuntimeShape& input_shape, const uint8* input_data,
-                  const RuntimeShape& output_shape, uint8* output_data) {
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  const uint8 max_value = params.quantized_activation_max;
-  const uint8 min_value = params.quantized_activation_min;
+  const T max_value = params.quantized_activation_max;
+  const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
-    const uint8 val = input_data[i];
-    const uint8 clamped =
+    const T val = input_data[i];
+    const T clamped =
         val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
   }
@@ -702,6 +588,22 @@ inline void Add(const ArithmeticParams& params,
   }
 }
 
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 T* const* input_data, T* output_data) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t size = input_shape.FlatSize();
+  for (int i = 0; i < size; ++i) {
+    T x = 0;
+    for (int j = 0; j < num_inputs; ++j) {
+      x += input_data[j][i];
+    }
+    output_data[i] = x;
+  }
+}
+
 // Element-wise add that can often be used for inner loop of broadcast add as
 // well as the non-broadcast add.
 inline void AddElementwise(int size, const ArithmeticParams& params,
@@ -720,6 +622,40 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
     const int32 scaled_input1_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input1_val, params.input1_multiplier, params.input1_shift);
+    const int32 scaled_input2_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input2_val, params.input2_multiplier, params.input2_shift);
+    const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+    const int32 raw_output =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            raw_sum, params.output_multiplier, params.output_shift) +
+        params.output_offset;
+    const int32 clamped_output =
+        std::min(params.quantized_activation_max,
+                 std::max(params.quantized_activation_min, raw_output));
+    output_data[i] = static_cast<uint8>(clamped_output);
+  }
+}
+
+// Scalar-broadcast add that can be used for inner loop of more general
+// broadcast add, so that, for example, scalar-broadcast with batch will still
+// be fast.
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               uint8 input1_data, const uint8* input2_data,
+                               uint8* output_data) {
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+
+  const int32 input1_val = params.input1_offset + input1_data;
+  const int32 shifted_input1_val = input1_val * (1 << params.left_shift);
+  const int32 scaled_input1_val =
+      MultiplyByQuantizedMultiplierSmallerThanOneExp(
+          shifted_input1_val, params.input1_multiplier, params.input1_shift);
+  for (int i = 0; i < size; ++i) {
+    const int32 input2_val = params.input2_offset + input2_data[i];
+    const int32 shifted_input2_val = input2_val * (1 << params.left_shift);
     const int32 scaled_input2_val =
         MultiplyByQuantizedMultiplierSmallerThanOneExp(
             shifted_input2_val, params.input2_multiplier, params.input2_shift);
@@ -975,26 +911,63 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   uint8* output_data_ptr = output_data;
   const uint8* input1_data_ptr = input1_data;
   const uint8* input2_data_reset = input2_data;
+  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
+  // between input shapes. y3 for input 1 is always broadcast, and so the
+  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
+  // Put another way,
+  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
+  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
   int y0 = params.broadcast_shape[0];
   int y1 = params.broadcast_shape[1];
   int y2 = params.broadcast_shape[2];
   int y3 = params.broadcast_shape[3];
   int y4 = params.broadcast_shape[4];
-  for (int i0 = 0; i0 < y0; ++i0) {
-    const uint8* input2_data_ptr;
-    for (int i1 = 0; i1 < y1; ++i1) {
-      input2_data_ptr = input2_data_reset;
-      for (int i2 = 0; i2 < y2; ++i2) {
-        for (int i3 = 0; i3 < y3; ++i3) {
-          AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                         output_data_ptr);
-          input2_data_ptr += y4;
-          output_data_ptr += y4;
+  if (y4 > 1) {
+    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
+    // dimension.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          // We have broadcast y4 of input1 data y3 times, and now move on.
+          input1_data_ptr += y4;
         }
-        input1_data_ptr += y4;
       }
+      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
+      input2_data_reset = input2_data_ptr;
     }
-    input2_data_reset = input2_data_ptr;
+  } else {
+    // Special case of y4 == 1, in which the innermost loop is a single element
+    // and can be combined with the next (y3) as an inner broadcast.
+    //
+    // Note that this handles the case of pure scalar broadcast when
+    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
+    // broadcast with batch (as y2 > 1).
+    //
+    // NOTE The process is the same as the above general case except simplified
+    // for y4 == 1 and the loop over y3 is contained within the
+    // AddScalarBroadcast function.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          input1_data_ptr += 1;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
   }
 }
 
@@ -1591,6 +1564,7 @@ inline void SubWithActivation(const ArithmeticParams& params,
                               const int32* input2_data,
                               const RuntimeShape& output_shape,
                               int32* output_data) {
+  gemmlowp::ScopedProfilingLabel label("SubWithActivation");
   const int flat_size =
       MatchingFlatSize(input1_shape, input2_shape, input2_shape);
   for (int i = 0; i < flat_size; ++i) {
@@ -1616,12 +1590,61 @@ inline void SubWithActivation(const ArithmeticParams& params,
   }
 }
 
+inline void Sub16(const ArithmeticParams& params,
+                  const RuntimeShape& input1_shape, const int16_t* input1_data,
+                  const RuntimeShape& input2_shape, const int16_t* input2_data,
+                  const RuntimeShape& output_shape, int16_t* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Sub/Int16");
+  const int input1_shift = params.input1_shift;
+  const int flat_size =
+      MatchingFlatSize(output_shape, input1_shape, input2_shape);
+  const int16 output_activation_min = params.quantized_activation_min;
+  const int16 output_activation_max = params.quantized_activation_max;
+
+  TFLITE_DCHECK(input1_shift == 0 || params.input2_shift == 0);
+  TFLITE_DCHECK_LE(input1_shift, 0);
+  TFLITE_DCHECK_LE(params.input2_shift, 0);
+  const int16* not_shift_input = input1_shift == 0 ? input1_data : input2_data;
+  const int16* shift_input = input1_shift == 0 ? input2_data : input1_data;
+  const int input_right_shift =
+      input1_shift == 0 ? -params.input2_shift : -input1_shift;
+
+  if (input1_shift == 0) {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(input_ready_scaled, scaled_input);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
+  } else {
+    // F0 uses 0 integer bits, range [-1, 1].
+    using F0 = gemmlowp::FixedPoint<std::int16_t, 0>;
+    for (int i = 0; i < flat_size; ++i) {
+      F0 input_ready_scaled = F0::FromRaw(not_shift_input[i]);
+      F0 scaled_input = F0::FromRaw(
+          gemmlowp::RoundingDivideByPOT(shift_input[i], input_right_shift));
+      F0 result = SaturatingSub(scaled_input, input_ready_scaled);
+      const int16 raw_output = result.raw();
+      const int16 clamped_output = std::min(
+          output_activation_max, std::max(output_activation_min, raw_output));
+      output_data[i] = clamped_output;
+    }
+  }
+}
+
 template <typename Scalar>
 inline void Concatenation(const ConcatenationParams& params,
                           const RuntimeShape* const* input_shapes,
                           const Scalar* const* input_data,
                           const RuntimeShape& output_shape,
                           Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Concatenation");
   int axis = params.axis;
   int inputs_count = params.inputs_count;
   const int concat_dimensions = output_shape.DimensionsCount();
@@ -1669,6 +1692,7 @@ inline void ConcatenationWithScaling(const ConcatenationParams& params,
                                      const uint8* const* input_data,
                                      const RuntimeShape& output_shape,
                                      uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ConcatenationWithScaling/Uint8");
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
   const float* input_scale = params.input_scale;
@@ -1730,6 +1754,7 @@ template <typename Scalar>
 void Pack(const PackParams& params, const RuntimeShape* const* input_shapes,
           const Scalar* const* input_data, const RuntimeShape& output_shape,
           Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Pack");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   int inputs_count = params.inputs_count;
@@ -1757,15 +1782,22 @@ template <typename Scalar>
 void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
             const Scalar* input_data, const RuntimeShape& output_shape,
             Scalar* const* output_datas) {
+  gemmlowp::ScopedProfilingLabel label("Unpack");
   const int dimensions = input_shape.DimensionsCount();
   const int outputs_count = params.num_split;
 
   int outer_size = 1;
-  for (int i = 0; i < params.axis; i++) {
+  int axis = params.axis;
+  if (axis < 0) {
+    axis += dimensions;
+  }
+  TFLITE_DCHECK_GE(axis, 0);
+  TFLITE_DCHECK_LT(axis, dimensions);
+  for (int i = 0; i < axis; ++i) {
     outer_size *= input_shape.Dims(i);
   }
   int copy_size = 1;
-  for (int i = params.axis + 1; i < dimensions; i++) {
+  for (int i = axis + 1; i < dimensions; ++i) {
     copy_size *= input_shape.Dims(i);
   }
   TFLITE_DCHECK_EQ(output_shape.FlatSize(), copy_size * outer_size);
@@ -1784,6 +1816,7 @@ void PackWithScaling(const PackParams& params,
                      const RuntimeShape* const* input_shapes,
                      const uint8* const* input_data,
                      const RuntimeShape& output_shape, uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("PackWithScaling");
   const int dimensions = output_shape.DimensionsCount();
   int axis = params.axis;
   const int32* input_zeropoint = params.input_zeropoint;
@@ -1833,6 +1866,7 @@ void DepthConcatenation(const ConcatenationParams& params,
                         const RuntimeShape* const* input_shapes,
                         const Scalar* const* input_data,
                         const RuntimeShape& output_shape, Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("DepthConcatenation");
   auto params_copy = params;
   params_copy.axis = 3;
   Concatenation(params_copy, input_shapes, input_data, output_shape,
@@ -2234,6 +2268,7 @@ template <typename Scalar>
 void Split(const SplitParams& params, const RuntimeShape& input_shape,
            const Scalar* input_data, const RuntimeShape* const* output_shapes,
            Scalar* const* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Split");
   const int concat_dimensions = input_shape.DimensionsCount();
   int axis = params.axis < 0 ? params.axis + concat_dimensions : params.axis;
   int outputs_count = params.num_split;
@@ -2602,124 +2637,10 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-// Although currently the name of this function says that it cannot handle
-// values less than 1, in practice it can handle as low as 1/x_max, where
-// x_max is the largest representable input.  In other words, the output range
-// is symmetric.
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1_impl(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-  // The reason for accumulating the result with an extra bit of headroom is
-  // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
-  // recip_denom will otherwise introduce an error.
-  static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
-
-  const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1488522236, std::log(2.0));
-  const FixedPoint0 sqrt_sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1805811301, std::sqrt(std::sqrt(0.5)));
-  const FixedPoint0 sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1518500250, std::sqrt(0.5));
-  const FixedPoint0 one_quarter =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(FixedPoint0, 536870912, 1.0 / 4.0);
-
-  const FixedPoint0 alpha_n = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 117049297, 11.0 / 240.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_d = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 127690142, 1.0 / 20.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_i = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1057819769,
-      2.0 / std::sqrt(std::sqrt(2.0)) - std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_f = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 638450708, 1.0 / 4.0 * std::sqrt(std::sqrt(2.0)));
-
-  const FixedPointAccum shifted_quarter =
-      gemmlowp::Rescale<kAccumIntegerBits>(one_quarter);
-
-  // Reinterpret the input value as Q0.31, because we will figure out the
-  // required shift "ourselves" instead of using, say, Rescale.
-  FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
-  // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
-  FixedPoint0 r_a_tmp =
-      SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
-  const int32 r_a_raw =
-      SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
-  // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
-  // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
-  //                   InputIntegerBits - z_b_headroom - 0.25);
-  const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  // z_b is treated like z_a, but premultiplying by sqrt(0.5).
-  FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
-  const int32 r_b_raw =
-      SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
-  const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
-  const FixedPointAccum z_pow_2_adj = FixedPointAccum::FromRaw(
-      std::max(z_a_pow_2_adj.raw(), z_b_pow_2_adj.raw()));
-
-  const FixedPoint0 p = gemmlowp::RoundingHalfSum(r, sqrt_sqrt_half);
-  FixedPoint0 q = r - sqrt_sqrt_half;
-  q = q + q;
-
-  const FixedPoint0 common_sq = q * q;
-  const FixedPoint0 num = q * r + q * common_sq * alpha_n;
-  const FixedPoint0 denom_minus_one_0 =
-      p * (alpha_i + q + alpha_d * common_sq) + alpha_f * q;
-  const FixedPoint0 recip_denom =
-      one_over_one_plus_x_for_x_in_0_1(denom_minus_one_0);
-
-  const FixedPointAccum num_scaled = gemmlowp::Rescale<kAccumIntegerBits>(num);
-  return gemmlowp::Rescale<OutputIntegerBits>(z_pow_2_adj * log_2 +
-                                              num_scaled * recip_denom);
-}
-
-// Minimum output bits to accommodate log of maximum input range.  It actually
-// does not matter if one considers, say, [-64,64] or [-64,64).
-//
-// For example, run this through Octave:
-// [0:127; ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
-constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90
-             ? 7
-             : input_bits > 44
-                   ? 6
-                   : input_bits > 21
-                         ? 5
-                         : input_bits > 10
-                               ? 4
-                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
-}
-
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  static_assert(
-      OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
-  return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
-                                                     InputIntegerBits>(
-      input_val);
-}
-
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("LogSoftmax/8bit");
   const int32 input_multiplier = params.input_multiplier;
   const int32 input_left_shift = params.input_left_shift;
   const int32 reverse_scaling_divisor = params.reverse_scaling_divisor;
@@ -2985,6 +2906,7 @@ inline void Tanh(const TanhParams& params, const RuntimeShape& input_shape,
 inline void Dequantize(const tflite::DequantizationParams& op_params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Dequantize");
   int32 zero_point = op_params.zero_point;
   double scale = op_params.scale;
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -2999,6 +2921,7 @@ inline void Dequantize(const tflite::DequantizationParams& op_params,
 inline void FakeQuant(const tflite::FakeQuantParams& op_params,
                       const RuntimeShape& input_shape, const float* input_data,
                       const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("FakeQuant");
   float rmin = op_params.minmax.min;
   float rmax = op_params.minmax.max;
   int num_bits = op_params.num_bits;
@@ -3040,11 +2963,22 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+
+  for (int i = 0; i < flat_size; i++) {
+    int offset = i;
+    output_data[offset] = std::ceil(input_data[offset]);
+  }
+}
+
 template <typename T, typename CoordsT = int32>
 inline void Gather(const tflite::GatherParams& op_params,
                    const RuntimeShape& input_shape, const T* input_data,
                    const RuntimeShape& coords_shape, const CoordsT* coords_data,
                    const RuntimeShape& output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Gather");
   int axis = op_params.axis;
   if (axis < 0) {
     axis += input_shape.DimensionsCount();
@@ -3073,6 +3007,43 @@ inline void Gather(const tflite::GatherParams& op_params,
           input_data + (outer * axis_size + coords_data[i]) * inner_size,
           sizeof(T) * inner_size);
     }
+  }
+}
+
+template <typename ParamsT, typename IndicesT = int32>
+inline void GatherNd(const RuntimeShape& params_shape,
+                     const ParamsT* params_data,
+                     const RuntimeShape& indices_shape,
+                     const IndicesT* indices_data,
+                     const RuntimeShape& output_shape, ParamsT* output_data) {
+  gemmlowp::ScopedProfilingLabel label("GatherNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int indices_dims = indices_shape.DimensionsCount();
+  const int indices_nd = indices_shape.Dims(indices_dims - 1);
+  const int params_dims = params_shape.DimensionsCount();
+  for (int i = 0; i < indices_dims - 1; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = indices_nd; i < params_dims; ++i) {
+    slice_size *= params_shape.Dims(i);
+  }
+
+  int remain_flat_size = params_shape.FlatSize();
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  for (int i = 0; i < n_slices; ++i) {
+    int from_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      from_pos += indices_data[i * indices_nd + j] * dims_to_count[j];
+    }
+    std::memcpy(output_data + i * slice_size, params_data + from_pos,
+                sizeof(ParamsT) * slice_size);
   }
 }
 
@@ -3148,6 +3119,7 @@ inline void SpaceToBatchND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* paddings_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("SpaceToBatchND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -3205,6 +3177,7 @@ inline void BatchToSpaceND(
     const RuntimeShape& unextended_input2_shape, const int32* block_shape_data,
     const RuntimeShape& unextended_input3_shape, const int32* crops_data,
     const RuntimeShape& unextended_output_shape, T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("BatchToSpaceND");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input1_shape =
@@ -3478,6 +3451,7 @@ inline void Slice(const tflite::SliceParams& op_params,
 template <typename T>
 inline void Exp(const T* input_data, const size_t num_elements,
                 T* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Exp");
   for (size_t idx = 0; idx < num_elements; ++idx) {
     output_data[idx] = exp(input_data[idx]);
   }
@@ -3608,6 +3582,7 @@ inline bool Mean(const T* input_data, const int* input_dims,
                  const int* output_dims, const int output_num_dims,
                  const int* axis, const int num_axis_dimensions, bool keep_dims,
                  int* temp_index, int* resolved_axis, U* temp_sum) {
+  gemmlowp::ScopedProfilingLabel label("Mean");
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -3661,10 +3636,12 @@ inline void Mean(const tflite::MeanParams& op_params,
                  const RuntimeShape& unextended_input_shape,
                  const T* input_data,
                  const RuntimeShape& unextended_output_shape, T* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Mean");
+  gemmlowp::ScopedProfilingLabel label("Mean4D");
 
-  TFLITE_DCHECK_LE(unextended_input_shape.DimensionsCount(), 4);
-  TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
   const RuntimeShape input_shape =
       RuntimeShape::ExtendedShape(4, unextended_input_shape);
   const RuntimeShape output_shape =
@@ -3678,8 +3655,6 @@ inline void Mean(const tflite::MeanParams& op_params,
   const int input_height = input_shape.Dims(1);
   const int input_width = input_shape.Dims(2);
 
-  // The current implementation only supports simultaneous reduction over
-  // width and height.
   TFLITE_DCHECK_EQ(op_params.axis_count, 2);
   TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
                 (op_params.axis[0] == 2 && op_params.axis[1] == 1));
@@ -3700,6 +3675,65 @@ inline void Mean(const tflite::MeanParams& op_params,
   }
 }
 
+inline void Mean(const tflite::MeanParams& op_params,
+                 const RuntimeShape& unextended_input_shape,
+                 const uint8_t* input_data, int32 input_zero_point,
+                 float input_scale, const RuntimeShape& unextended_output_shape,
+                 uint8_t* output_data, int32 output_zero_point,
+                 float output_scale) {
+  gemmlowp::ScopedProfilingLabel label("Mean4D/Uint8");
+
+  // Current implementation only supports dimension equals 4 and simultaneous
+  // reduction over width and height.
+  TFLITE_CHECK_EQ(unextended_input_shape.DimensionsCount(), 4);
+  TFLITE_CHECK_LE(unextended_output_shape.DimensionsCount(), 4);
+  const RuntimeShape input_shape =
+      RuntimeShape::ExtendedShape(4, unextended_input_shape);
+  const RuntimeShape output_shape =
+      RuntimeShape::ExtendedShape(4, unextended_output_shape);
+  const int output_batch = output_shape.Dims(0);
+  const int output_height = output_shape.Dims(1);
+  const int output_width = output_shape.Dims(2);
+  const int output_depth = output_shape.Dims(3);
+  const int input_height = input_shape.Dims(1);
+  const int input_width = input_shape.Dims(2);
+  const float num_elements_in_axis = input_width * input_height;
+
+  TFLITE_DCHECK_EQ(op_params.axis_count, 2);
+  TFLITE_DCHECK((op_params.axis[0] == 1 && op_params.axis[1] == 2) ||
+                (op_params.axis[0] == 2 && op_params.axis[1] == 1));
+  TFLITE_DCHECK_EQ(output_height, 1);
+  TFLITE_DCHECK_EQ(output_width, 1);
+
+  const bool ordinary_mean =
+      (input_zero_point == output_zero_point && input_scale == output_scale);
+  float scale, bias;
+  if (!ordinary_mean) {
+    scale = input_scale / output_scale;
+    bias = -input_zero_point * scale + 0.5;
+  }
+  for (int out_b = 0; out_b < output_batch; ++out_b) {
+    for (int out_d = 0; out_d < output_depth; ++out_d) {
+      float temp_value = 0;
+      for (int in_h = 0; in_h < input_height; ++in_h) {
+        for (int in_w = 0; in_w < input_width; ++in_w) {
+          temp_value +=
+              input_data[Offset(input_shape, out_b, in_h, in_w, out_d)];
+        }
+      }
+      temp_value = temp_value / num_elements_in_axis;
+      if (ordinary_mean) {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value));
+      } else {
+        output_data[Offset(output_shape, out_b, 0, 0, out_d)] =
+            static_cast<uint8_t>(round(temp_value * scale + bias)) +
+            output_zero_point;
+      }
+    }
+  }
+}
+
 // Computes the mean of elements across dimensions given in axis.
 // It does so in two stages, first calculates the sum of elements along the axis
 // then divides it by the number of element in axis for quantized values.
@@ -3713,6 +3747,8 @@ inline bool QuantizedMeanOrSum(const T* input_data, int32 input_zero_point,
                                const int num_axis_dimensions, bool keep_dims,
                                int* temp_index, int* resolved_axis, U* temp_sum,
                                bool compute_sum) {
+  gemmlowp::ScopedProfilingLabel label(compute_sum ? "Sum/Uint8"
+                                                   : "Mean/Uint8");
   // Reset output data.
   size_t num_outputs = 1;
   for (int idx = 0; idx < output_num_dims; ++idx) {
@@ -3828,6 +3864,7 @@ void MaximumMinimumBroadcast4DSlow(const RuntimeShape& unextended_input1_shape,
                                    const T* input2_data,
                                    const RuntimeShape& unextended_output_shape,
                                    T* output_data, Op op) {
+  gemmlowp::ScopedProfilingLabel label("MaximumMinimumBroadcast4DSlow");
   TFLITE_DCHECK_LE(unextended_input1_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_input2_shape.DimensionsCount(), 4);
   TFLITE_DCHECK_LE(unextended_output_shape.DimensionsCount(), 4);
@@ -3859,11 +3896,9 @@ template <typename T1, typename T2, typename T3, typename Cmp>
 void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
                const T3* input2_data, const RuntimeShape& output_shape,
                T2* output_data, const Cmp& cmp) {
-  // For ArgMax, the number of output dimensions = (number of input dimensions -
-  // 1). For the sake of simplicity, the output dimensions are equal to the
-  // input dimensions here. We enforce the constraint that the axis dimension
-  // must always be 1.
-  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount(),
+  gemmlowp::ScopedProfilingLabel label("ArgMinMax");
+  TFLITE_DCHECK_GT(input1_shape.DimensionsCount(), 0);
+  TFLITE_DCHECK_EQ(input1_shape.DimensionsCount() - 1,
                    output_shape.DimensionsCount());
 
   int axis = input2_data[0];
@@ -3872,7 +3907,6 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   }
 
   const int axis_size = input1_shape.Dims(axis);
-  TFLITE_DCHECK_EQ(output_shape.Dims(axis), 1);
 
   int outer_size = 1;
   for (int i = 0; i < axis; ++i) {
@@ -3883,7 +3917,7 @@ void ArgMinMax(const RuntimeShape& input1_shape, const T1* input1_data,
   int inner_size = 1;
   const int dims_count = input1_shape.DimensionsCount();
   for (int i = axis + 1; i < dims_count; ++i) {
-    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i));
+    TFLITE_DCHECK_EQ(input1_shape.Dims(i), output_shape.Dims(i - 1));
     inner_size *= input1_shape.Dims(i);
   }
 
@@ -4328,6 +4362,34 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
   }
 }
 
+template <typename D, typename T>
+void SelectTrueCoords(const RuntimeShape& input_condition_shape,
+                      const D* input_condition_data, T* output_data) {
+  const size_t size = input_condition_shape.FlatSize();
+  const size_t cond_rank = input_condition_shape.DimensionsCount();
+
+  std::vector<int> dims_to_count(cond_rank, 0);
+  int cur_flat_size = size;
+  for (int i = 0; i < cond_rank; ++i) {
+    dims_to_count[i] = cur_flat_size / input_condition_shape.Dims(i);
+    cur_flat_size = dims_to_count[i];
+  }
+
+  int output_index = 0;
+  for (int i = 0; i < size; ++i) {
+    if (input_condition_data[i]) {
+      // Insert the coordinate of the current item (row major) into output.
+      int flat_index = i;
+      for (int j = 0; j < cond_rank; ++j) {
+        int coord_j = flat_index / dims_to_count[j];
+        output_data[output_index * cond_rank + j] = coord_j;
+        flat_index %= dims_to_count[j];
+      }
+      output_index++;
+    }
+  }
+}
+
 // For easy implementation, the indices is always a vector of size-4 vectors.
 template <typename T, typename TI>
 inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
@@ -4609,6 +4671,43 @@ inline void BroadcastPrelu4DSlow(const PreluParams& params,
           }
         }
       }
+    }
+  }
+}
+
+template <typename T>
+void Fill(const RuntimeShape& value_shape, const T* value_data,
+          const RuntimeShape& output_shape, T* output_data) {
+  TFLITE_DCHECK_EQ(value_shape.DimensionsCount(), 0);
+  const int flat_size = output_shape.FlatSize();
+  for (int i = 0; i < flat_size; ++i) {
+    output_data[i] = *value_data;
+  }
+}
+
+template <typename Scalar>
+void Reverse(int axis, const RuntimeShape& input_shape,
+             const Scalar* input_data, const RuntimeShape& output_shape,
+             Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Reverse");
+
+  int outer_size = 1;
+  for (int i = 0; i < axis; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int copy_size = 1;
+  for (int i = axis + 1; i < input_shape.DimensionsCount(); ++i) {
+    copy_size *= input_shape.Dims(i);
+  }
+
+  const int dims_at_axis = input_shape.Dims(axis);
+  for (int i = 0; i < outer_size; ++i) {
+    for (int j = 0; j < dims_at_axis; ++j) {
+      const int start_pos = (i * dims_at_axis + j) * copy_size;
+      Scalar* output_ptr = output_data + start_pos;
+      int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
+      memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
     }
   }
 }

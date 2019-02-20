@@ -63,6 +63,7 @@ TEST(IntArray, CanCompileStructs) {
   TfLiteTransposeParams transpose_params;
   TfLiteReducerParams reducer_params;
   TfLiteSplitParams split_params;
+  TfLiteSplitVParams split_v_params;
   TfLiteSqueezeParams squeeze_params;
   TfLiteStridedSliceParams strided_slice_params;
   TfLiteArgMaxParams arg_max_params;
@@ -70,6 +71,7 @@ TEST(IntArray, CanCompileStructs) {
   TfLiteTransposeConvParams transpose_conv_params;
   TfLiteSparseToDenseParams sparse_to_dense_params;
   TfLiteShapeParams shape_params;
+  TfLiteRankParams rank_params;
   TfLiteFakeQuantParams fake_quant_params;
   TfLitePackParams pack_params;
   TfLiteOneHotParams one_hot_params;

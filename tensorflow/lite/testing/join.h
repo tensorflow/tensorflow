@@ -16,6 +16,7 @@ limitations under the License.
 #define TENSORFLOW_LITE_TESTING_JOIN_H_
 
 #include <cstdlib>
+#include <iomanip>
 #include <sstream>
 
 #include "tensorflow/lite/string.h"
@@ -23,9 +24,9 @@ limitations under the License.
 namespace tflite {
 namespace testing {
 
-// Join a list of data separated by delimiter.
+// Join a list of data with default precision separated by delimiter.
 template <typename T>
-string Join(T* data, size_t len, const string& delimiter) {
+string JoinDefault(T* data, size_t len, const string& delimiter) {
   if (len == 0 || data == nullptr) {
     return "";
   }
@@ -33,6 +34,20 @@ string Join(T* data, size_t len, const string& delimiter) {
   result << data[0];
   for (int i = 1; i < len; i++) {
     result << delimiter << data[i];
+  }
+  return result.str();
+}
+
+// Join a list of data with fixed precision separated by delimiter.
+template <typename T>
+string Join(T* data, size_t len, const string& delimiter) {
+  if (len == 0 || data == nullptr) {
+    return "";
+  }
+  std::stringstream result;
+  result << std::setprecision(9) << data[0];
+  for (int i = 1; i < len; i++) {
+    result << std::setprecision(9) << delimiter << data[i];
   }
   return result.str();
 }

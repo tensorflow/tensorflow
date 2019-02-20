@@ -19,10 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.autograph.utils import tensor_list as tl
-from tensorflow.python.client.session import Session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework.constant_op import constant
 from tensorflow.python.ops import list_ops
 from tensorflow.python.ops import tensor_array_ops
@@ -34,6 +34,7 @@ class TensorListTest(test.TestCase):
   def _shape(self, shape_tuple):
     return constant(shape_tuple, dtypes.int32)
 
+  @test_util.run_v1_only("b/117943489")
   def test_dynamic_list_append(self):
     l = []
     l = tl.dynamic_list_append(l, 1)
@@ -42,19 +43,16 @@ class TensorListTest(test.TestCase):
     l = list_ops.empty_tensor_list(self._shape(()), dtypes.int32)
     l = tl.dynamic_list_append(l, 1)
     s = list_ops.tensor_list_stack(l, element_dtype=dtypes.int32)
-    with self.cached_session() as sess:
-      self.assertAllEqual(self.evaluate(s), [1])
+    self.assertAllEqual(s, [1])
 
     l = tensor_array_ops.TensorArray(dtypes.int32, size=0, dynamic_size=True)
     l = tl.dynamic_list_append(l, 1)
     s = l.stack()
-    with self.cached_session() as sess:
-      self.assertAllEqual(self.evaluate(s), [1])
+    self.assertAllEqual(s, [1])
 
     l = tl.TensorList(self._shape(()), dtypes.int32)
     l = tl.dynamic_list_append(l, 1)
-    with self.cached_session() as sess:
-      self.assertAllEqual(sess.run(l[0]), 1)
+    self.assertAllEqual(l[0], 1)
 
   def test_list_append_python(self):
     with context.eager_mode():
@@ -80,6 +78,7 @@ class TensorListTest(test.TestCase):
       l[0] = ops.convert_to_tensor(b)
       self.assertEqual(l[0].numpy(), b.numpy())
 
+  @test_util.run_deprecated_v1
   def test_list_append_tf(self):
     a = constant(3.0)
     l = tl.TensorList(a.shape, a.dtype)
@@ -91,13 +90,12 @@ class TensorListTest(test.TestCase):
     c3 = l.count()
     a2 = l.pop()
     c4 = l.count()
-    with Session() as sess:
-      c1, c2, c3, c4, a, a2 = sess.run([c1, c2, c3, c4, a, a2])
-      self.assertEqual(c1, 1)
-      self.assertEqual(c2, 2)
-      self.assertEqual(c3, 1)
-      self.assertEqual(c4, 0)
-      self.assertEqual(a, a2)
+    c1, c2, c3, c4, a, a2 = self.evaluate([c1, c2, c3, c4, a, a2])
+    self.assertEqual(c1, 1)
+    self.assertEqual(c2, 2)
+    self.assertEqual(c3, 1)
+    self.assertEqual(c4, 0)
+    self.assertEqual(a, a2)
 
   def test_list_index_tf(self):
     a = constant(3.0)
@@ -107,10 +105,9 @@ class TensorListTest(test.TestCase):
     l0 = l[0]
     l[0] = b
     l1 = l[0]
-    with self.cached_session() as sess:
-      l0, l1, a, b = sess.run([l0, l1, a, b])
-      self.assertEqual(l0, a)
-      self.assertEqual(l1, b)
+    l0, l1, a, b = self.evaluate([l0, l1, a, b])
+    self.assertEqual(l0, a)
+    self.assertEqual(l1, b)
 
 
 if __name__ == '__main__':

@@ -138,7 +138,9 @@ def parameterized_truncated_normal(shape,
     return rnd
 
 
-@tf_export("random.truncated_normal", "truncated_normal")
+@tf_export("random.truncated_normal",
+           v1=["random.truncated_normal", "truncated_normal"])
+@deprecation.deprecated_endpoints("truncated_normal")
 def truncated_normal(shape,
                      mean=0.0,
                      stddev=1.0,
@@ -355,9 +357,9 @@ def multinomial(logits, num_samples, seed=None, name=None, output_dtype=None):
     return multinomial_categorical_impl(logits, num_samples, output_dtype, seed)
 
 
-@tf_export("random.categorical", v1=[])
+@tf_export("random.categorical")
 def categorical(logits, num_samples, dtype=None, seed=None, name=None):
-  """Draws samples from a multinomial distribution.
+  """Draws samples from a categorical distribution.
 
   Example:
 

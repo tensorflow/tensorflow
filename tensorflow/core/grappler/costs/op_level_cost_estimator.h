@@ -16,10 +16,6 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_GRAPPLER_COSTS_OP_LEVEL_COST_ESTIMATOR_H_
 #define TENSORFLOW_CORE_GRAPPLER_COSTS_OP_LEVEL_COST_ESTIMATOR_H_
 
-#include <functional>
-#include <map>
-#include <string>
-
 #include "tensorflow/core/grappler/costs/cost_estimator.h"
 #include "tensorflow/core/grappler/costs/op_context.h"
 #include "tensorflow/core/grappler/costs/op_performance_data.pb.h"
@@ -79,24 +75,23 @@ class OpLevelCostEstimator {
     int64 sy;         // Stride y.
     Padding padding;  // SAME or VALID.
   };
-  int64 CountConv2DOperations(const OpInfo& op_features,
+  int64 CountConv2DOperations(const OpInfo& op_info,
                               bool* found_unknown_shapes) const;
-  int64 CountConv2DOperations(const OpInfo& op_features,
+  int64 CountConv2DOperations(const OpInfo& op_info,
                               ConvolutionDimensions* conv_info,
                               bool* found_unknown_shapes) const;
-  int64 CountMatMulOperations(const OpInfo& op_features,
+  int64 CountMatMulOperations(const OpInfo& op_info,
                               bool* found_unknown_shapes) const;
-  int64 CountMatMulOperations(const OpInfo& op_features,
-                              MatMulDimensions* mat_mul,
+  int64 CountMatMulOperations(const OpInfo& op_info, MatMulDimensions* mat_mul,
                               bool* found_unknown_shapes) const;
-  int64 CountBatchMatMulOperations(const OpInfo& op_features,
+  int64 CountBatchMatMulOperations(const OpInfo& op_info,
                                    bool* found_unknown_shapes) const;
-  int64 CountConv2DBackpropInputOperations(const OpInfo& op_features,
-                                           ConvolutionDimensions* conv_info,
-                                           bool* found_unknown_shapes) const;
-  int64 CountConv2DBackpropFilterOperations(const OpInfo& op_features,
-                                            ConvolutionDimensions* conv_info,
-                                            bool* found_unknown_shapes) const;
+  int64 CountConv2DBackpropInputOperations(
+      const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
+      bool* found_unknown_shapes) const;
+  int64 CountConv2DBackpropFilterOperations(
+      const OpInfo& op_info, ConvolutionDimensions* returned_conv_dims,
+      bool* found_unknown_shapes) const;
 
   // Calculate the element count of an input/output tensor.
   int64 CalculateTensorElementCount(const OpInfo::TensorProperties& tensor,
@@ -108,17 +103,17 @@ class OpLevelCostEstimator {
 
   // Calculate the element count of the largest
   // input of specified TensorFlow op.
-  int64 CalculateLargestInputCount(const OpInfo& op_features,
+  int64 CalculateLargestInputCount(const OpInfo& op_info,
                                    bool* found_unknown_shapes) const;
 
   // Calculate the total size in bytes of the all
   // the inputs of specified TensorFlow op.
-  int64 CalculateInputSize(const OpInfo& op_features,
+  int64 CalculateInputSize(const OpInfo& op_info,
                            bool* found_unknown_shapes) const;
 
   // Calculate the total size in bytes of the all
   // the outputs of specified TensorFlow op.
-  int64 CalculateOutputSize(const OpInfo& op_features,
+  int64 CalculateOutputSize(const OpInfo& op_info,
                             bool* found_unknown_shapes) const;
 
   // This family of routines predicts the costs to
@@ -198,6 +193,7 @@ class OpLevelCostEstimator {
   // If true, assume compute and memory overlap; hence, the op cost is max of
   // compute_time and memory_time, insteaf of sum of those two.
   bool compute_memory_overlap_;
+  std::set<string> persistent_ops_;
 
  private:
   friend class OpLevelCostEstimatorTest;
@@ -205,4 +201,5 @@ class OpLevelCostEstimator {
 
 }  // end namespace grappler
 }  // end namespace tensorflow
+
 #endif  // TENSORFLOW_CORE_GRAPPLER_COSTS_OP_LEVEL_COST_ESTIMATOR_H_

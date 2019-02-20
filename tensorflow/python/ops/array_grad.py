@@ -802,6 +802,32 @@ def _ScatterNdGrad(op, grad):
   return [None, updates_grad, None]
 
 
+@ops.RegisterGradient("TensorScatterUpdate")
+def _TensorScatterUpdateGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.tensor_scatter_update(
+      array_ops.identity(grad), indices,
+      array_ops.zeros_like(op.inputs[2], dtype=grad.dtype))
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterAdd")
+def _TensorScatterAddGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, updates_grad]
+
+
+@ops.RegisterGradient("TensorScatterSub")
+def _TensorScatterSubGrad(op, grad):
+  indices = op.inputs[1]
+  updates_grad = array_ops.gather_nd(grad, indices)
+  tensor_grad = array_ops.identity(grad)
+  return [tensor_grad, None, -updates_grad]
+
+
 @ops.RegisterGradient("ScatterNdNonAliasingAdd")
 def _ScatterNdNonAliasingAddGrad(op, grad):
   indices = op.inputs[1]
@@ -813,16 +839,11 @@ def _ScatterNdNonAliasingAddGrad(op, grad):
 def _BroadcastToGrad(op, grad):
   input_value = op.inputs[0]
   broadcast_shape = op.inputs[1]
-  # Assign ids for each position in input_value.
   input_value_shape = array_ops.shape(input_value)
-  input_value_size = array_ops.size(input_value)
-  ids = array_ops.reshape(math_ops.range(input_value_size), input_value_shape)
-  broadcast_ids = array_ops.broadcast_to(ids, broadcast_shape)
-  # Group by ids and sum its gradients.
-  grad_flatten = array_ops.reshape(grad, [-1])
-  broadcast_ids_flatten = array_ops.reshape(broadcast_ids, [-1])
-  updates_grad_flatten = math_ops.unsorted_segment_sum(grad_flatten,
-                                                       broadcast_ids_flatten,
-                                                       input_value_size)
-  updates_grad = array_ops.reshape(updates_grad_flatten, input_value_shape)
+  _, reduction_axes = gen_array_ops.broadcast_gradient_args(broadcast_shape,
+                                                            input_value_shape)
+  updates_grad_reshaped = math_ops.reduce_sum(grad,
+                                              axis=reduction_axes,
+                                              keepdims=True)
+  updates_grad = array_ops.reshape(updates_grad_reshaped, input_value_shape)
   return [updates_grad, None]

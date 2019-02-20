@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <stdlib.h>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <map>

@@ -26,6 +26,10 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 #include "tensorflow/core/lib/random/simple_philox.h"
 
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+#include "tensorflow/core/kernels/eigen_contraction_kernel.h"
+#endif
+
 namespace tensorflow {
 namespace sdca {
 
@@ -306,7 +310,10 @@ Status Examples::SampleAdaptiveProbabilities(
 
 void Examples::RandomShuffle() {
   std::iota(sampled_index_.begin(), sampled_index_.end(), 0);
-  std::random_shuffle(sampled_index_.begin(), sampled_index_.end());
+
+  std::random_device rd;
+  std::mt19937 rng(rd());
+  std::shuffle(sampled_index_.begin(), sampled_index_.end(), rng);
 }
 
 // TODO(sibyl-Aix6ihai): Refactor/shorten this function.

@@ -220,6 +220,14 @@ TFE_TensorHandle* ConvertToEagerTensor(PyObject* value, PyObject* dtype) {
       return nullptr;
     }
   }
+  tensorflow::Safe_PyObjectPtr value_decrefer;
+  if (PyArray_IsScalar(value, Generic)) {
+    // Convert numpy scalars to numpy arrays.
+    value = PyArray_FromScalar(value, nullptr);
+    // The returned value needs to be DECREF'd, but the original value was
+    // created in python code, and doesn't need to be DECREF'd.
+    value_decrefer.reset(value);
+  }
   if (PyArray_Check(value)) {
     int desired_np_dtype = -1;
     if (desired_dtype >= 0) {
@@ -493,9 +501,7 @@ int EagerTensor_init(EagerTensor* self, PyObject* args, PyObject* kwds) {
 void EagerTensor_dealloc(EagerTensor* self) {
   // Clear weak references to self.
   // Needs to happen before any actual destruction.
-  if (self->weakreflist != nullptr) {
-    PyObject_ClearWeakRefs((PyObject*)self);
-  }
+  PyObject_ClearWeakRefs((PyObject*)self);
 
   TF_DeleteStatus(self->status);
   Py_DECREF(self->handle_data);
@@ -672,11 +678,29 @@ static PyObject* EagerTensor_device(EagerTensor* self) {
 #endif
 }
 
+// Getter `backing_device`.
+static PyObject* EagerTensor_backing_device(EagerTensor* self) {
+  const char* device =
+      TFE_TensorHandleBackingDeviceName(self->handle, self->status);
+  if (MaybeRaiseExceptionFromTFStatus(self->status, PyExc_ValueError)) {
+    // Cleanup self->status before returning.
+    TF_SetStatus(self->status, TF_OK, "");
+    return nullptr;
+  }
+#if PY_MAJOR_VERSION >= 3
+  return PyUnicode_FromString(device);
+#else
+  return PyBytes_FromString(device);
+#endif
+}
+
 static PyGetSetDef EagerTensor_getseters[] = {
     {const_cast<char*>("_id"), (getter)EagerTensor_getid, nullptr,
      const_cast<char*>("_id"), nullptr},
     {const_cast<char*>("device"), (getter)EagerTensor_device, nullptr,
      const_cast<char*>("device"), nullptr},
+    {const_cast<char*>("backing_device"), (getter)EagerTensor_backing_device,
+     nullptr, const_cast<char*>("backing_device"), nullptr},
     {const_cast<char*>("_handle_data"), (getter)EagerTensor_tensor_handle,
      (setter)EagerTensor_settensor_handle, const_cast<char*>("_tensor_handle"),
      nullptr},

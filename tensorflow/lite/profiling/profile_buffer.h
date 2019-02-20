@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdio>
 
 #include "tensorflow/lite/profiling/time.h"
 
@@ -78,6 +79,9 @@ class ProfileBuffer {
     }
     uint64_t timestamp = time::NowMicros();
     int index = current_index_ % event_buffer_.size();
+    if (current_index_ != 0 && index == 0) {
+      fprintf(stderr, "Warning: ProfileBuffer wrapping.\n");
+    }
     event_buffer_[index].tag = tag;
     event_buffer_[index].event_type = event_type;
     event_buffer_[index].event_metadata = event_metadata;
@@ -101,6 +105,7 @@ class ProfileBuffer {
     const uint32_t max_size = event_buffer_.size();
     if (current_index_ > (max_size + event_handle)) {
       // Ignore, buffer has already overflowed.
+      fprintf(stderr, "Warning: Dropping ProfileBuffer event.\n");
       return;
     }
 

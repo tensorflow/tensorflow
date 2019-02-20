@@ -30,4 +30,4 @@ def is_tensor(*args):
   Returns:
     True if any *args are TensorFlow types, False if none are.
   """
-  return any([tensor_util.is_tensor(a) for a in args])
+  return any(tensor_util.is_tensor(a) for a in args)

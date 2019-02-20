@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
@@ -28,7 +29,7 @@ from tensorflow.python.platform import test
 class BitcastTest(test.TestCase):
 
   def _testBitcast(self, x, datatype, shape):
-    with self.session(use_gpu=True):
+    with test_util.use_gpu():
       tf_ans = array_ops.bitcast(x, datatype)
       out = self.evaluate(tf_ans)
       buff_after = memoryview(out).tobytes()
@@ -59,6 +60,7 @@ class BitcastTest(test.TestCase):
     shape = [3, 4]
     self._testBitcast(x, dtypes.int64, shape)
 
+  @test_util.run_deprecated_v1
   def testErrors(self):
     x = np.zeros([1, 1], np.int8)
     datatype = dtypes.int32
@@ -71,6 +73,7 @@ class BitcastTest(test.TestCase):
     shape = [4]
     self._testBitcast(x, datatype, shape)
 
+  @test_util.run_deprecated_v1
   def testUnknown(self):
     x = array_ops.placeholder(dtypes.float32)
     datatype = dtypes.int8

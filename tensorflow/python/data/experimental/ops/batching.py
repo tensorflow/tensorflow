@@ -24,19 +24,22 @@ from tensorflow.python.data.experimental.ops import grouping
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import convert
 from tensorflow.python.data.util import nest
-from tensorflow.python.data.util import sparse
+from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_array_ops
-from tensorflow.python.ops import gen_dataset_ops
+from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -351,7 +354,6 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset):
     """See `unbatch()` for more details."""
-    super(_UnbatchDataset, self).__init__(input_dataset)
     flat_shapes = nest.flatten(input_dataset.output_shapes)
     if any(s.ndims == 0 for s in flat_shapes):
       raise ValueError("Cannot unbatch an input with scalar components.")
@@ -364,23 +366,19 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
                          "different batch sizes.")
     self._input_dataset = input_dataset
 
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.unbatch_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    self._structure = structure.convert_legacy_structure(
+        input_dataset.output_types,
+        nest.map_structure(lambda s: s[1:], input_dataset.output_shapes),
+        input_dataset.output_classes)
+
+    variant_tensor = ged_ops.experimental_unbatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         **dataset_ops.flat_structure(self))
+    super(_UnbatchDataset, self).__init__(input_dataset, variant_tensor)
 
   @property
-  def output_classes(self):
-    return self._input_dataset.output_classes
-
-  @property
-  def output_shapes(self):
-    return nest.map_structure(lambda s: s[1:],
-                              self._input_dataset.output_shapes)
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
+  def _element_structure(self):
+    return self._structure
 
 
 @tf_export("data.experimental.unbatch")
@@ -408,21 +406,19 @@ def unbatch():
 
   def _apply_fn(dataset):
     """Function from `Dataset` to `Dataset` that applies the transformation."""
-    if not sparse.any_sparse(dataset.output_classes):
-      return _UnbatchDataset(dataset)
-
     # NOTE(mrry): We must ensure that any SparseTensors in `dataset`
     # are normalized to the rank-1 dense representation, so that the
     # sparse-oblivious unbatching logic will slice them
     # appropriately. This leads to a somewhat inefficient re-encoding step
     # for all SparseTensor components.
-    # TODO(mrry): Consider optimizing this in future
-    # if it turns out to be a bottleneck.
+    # TODO(mrry): Consider optimizing this in future if it turns out to be
+    # a bottleneck.
     def normalize(arg, *rest):
+      # pylint: disable=protected-access
       if rest:
-        return sparse.serialize_many_sparse_tensors((arg,) + rest)
+        return dataset._element_structure._to_batched_tensor_list((arg,) + rest)
       else:
-        return sparse.serialize_many_sparse_tensors(arg)
+        return dataset._element_structure._to_batched_tensor_list(arg)
 
     normalized_dataset = dataset.map(normalize)
 
@@ -445,7 +441,6 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, batch_size, row_shape):
     """See `Dataset.dense_to_sparse_batch()` for more details."""
-    super(_DenseToSparseBatchDataset, self).__init__(input_dataset)
     if not isinstance(input_dataset.output_types, dtypes.DType):
       raise TypeError("DenseToSparseDataset requires an input whose elements "
                       "have a single component, whereas the input has %r." %
@@ -453,25 +448,21 @@ class _DenseToSparseBatchDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
     self._batch_size = batch_size
     self._row_shape = row_shape
+    self._structure = structure.SparseTensorStructure(
+        input_dataset.output_types,
+        tensor_shape.vector(None).concatenate(self._row_shape))
 
-  def _as_variant_tensor(self):
-    return gen_dataset_ops.dense_to_sparse_batch_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_dense_to_sparse_batch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._batch_size,
         row_shape=convert.partial_shape_to_tensor(self._row_shape),
         **dataset_ops.flat_structure(self))
+    super(_DenseToSparseBatchDataset, self).__init__(input_dataset,
+                                                     variant_tensor)
 
   @property
-  def output_classes(self):
-    return sparse_tensor.SparseTensor
-
-  @property
-  def output_shapes(self):
-    return tensor_shape.vector(None).concatenate(self._row_shape)
-
-  @property
-  def output_types(self):
-    return self._input_dataset.output_types
+  def _element_structure(self):
+    return self._structure
 
 
 class _RestructuredDataset(dataset_ops.UnaryDataset):
@@ -509,7 +500,6 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
       ValueError: If either `output_types` or `output_shapes` is not compatible
         with the structure of `dataset`.
     """
-    super(_RestructuredDataset, self).__init__(dataset)
     self._input_dataset = dataset
 
     if not allow_unsafe_cast:
@@ -522,13 +512,10 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
             "Dataset with output types %r cannot be restructured to have "
             "output types %r" % (dataset.output_types, output_types))
 
-    self._output_types = output_types
-
     if output_shapes is None:
       # Inherit shapes from the original `dataset`.
-      self._output_shapes = nest.pack_sequence_as(output_types,
-                                                  nest.flatten(
-                                                      dataset.output_shapes))
+      output_shapes = nest.pack_sequence_as(
+          output_types, nest.flatten(dataset.output_shapes))
     else:
       if not allow_unsafe_cast:
         # Validate that the shapes are compatible.
@@ -543,39 +530,36 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
                 "Dataset with output shapes %r cannot be restructured to have "
                 "incompatible output shapes %r" % (dataset.output_shapes,
                                                    output_shapes))
-      self._output_shapes = nest.map_structure_up_to(
+      output_shapes = nest.map_structure_up_to(
           output_types, tensor_shape.as_shape, output_shapes)
     if output_classes is None:
       # Inherit class types from the original `dataset`.
-      self._output_classes = nest.pack_sequence_as(output_types,
-                                                   nest.flatten(
-                                                       dataset.output_classes))
-    else:
-      self._output_classes = output_classes
+      output_classes = nest.pack_sequence_as(
+          output_types, nest.flatten(dataset.output_classes))
 
-  def _as_variant_tensor(self):
-    return self._input_dataset._as_variant_tensor()  # pylint: disable=protected-access
-
-  @property
-  def output_classes(self):
-    return self._output_classes
+    self._structure = structure.convert_legacy_structure(
+        output_types, output_shapes, output_classes)
+    variant_tensor = self._input_dataset._variant_tensor  # pylint: disable=protected-access
+    super(_RestructuredDataset, self).__init__(dataset, variant_tensor)
 
   @property
-  def output_types(self):
-    return self._output_types
-
-  @property
-  def output_shapes(self):
-    return self._output_shapes
+  def _element_structure(self):
+    return self._structure
 
 
-class _MapAndBatchDataset(dataset_ops.MapDataset):
+class _MapAndBatchDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over a batch of elements."""
 
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_calls,
-               drop_remainder):
+               drop_remainder, use_legacy_function=False):
     """See `Dataset.map()` for details."""
-    super(_MapAndBatchDataset, self).__init__(input_dataset, map_func)
+    self._input_dataset = input_dataset
+
+    self._map_func = dataset_ops.StructuredFunctionWrapper(
+        map_func,
+        "tf.data.experimental.map_and_batch()",
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
     self._batch_size_t = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
     self._num_parallel_calls_t = ops.convert_to_tensor(
@@ -583,36 +567,87 @@ class _MapAndBatchDataset(dataset_ops.MapDataset):
     self._drop_remainder_t = ops.convert_to_tensor(
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
 
-    self._batch_size = batch_size
-    self._drop_remainder = drop_remainder
-
-  def _as_variant_tensor(self):
-    # pylint: disable=protected-access
-    input_resource = self._input_dataset._as_variant_tensor()
-    return gen_dataset_ops.map_and_batch_dataset_v2(
-        input_resource,
-        self._map_func.captured_inputs,
-        f=self._map_func,
+    constant_drop_remainder = tensor_util.constant_value(self._drop_remainder_t)
+    if constant_drop_remainder:
+      # NOTE(mrry): `constant_drop_remainder` may be `None` (unknown statically)
+      # or `False` (explicitly retaining the remainder).
+      self._structure = self._map_func.output_structure._batch(  # pylint: disable=protected-access
+          tensor_util.constant_value(self._batch_size_t))
+    else:
+      self._structure = self._map_func.output_structure._batch(None)  # pylint: disable=protected-access
+    variant_tensor = ged_ops.experimental_map_and_batch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._map_func.function.captured_inputs,
+        f=self._map_func.function,
         batch_size=self._batch_size_t,
         num_parallel_calls=self._num_parallel_calls_t,
         drop_remainder=self._drop_remainder_t,
+        preserve_cardinality=True,
         **dataset_ops.flat_structure(self))
-    # pylint: enable=protected-access
+    super(_MapAndBatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  def _functions(self):
+    return [self._map_func]
 
   @property
-  def output_shapes(self):
-    dim = self._batch_size if self._drop_remainder else None
-    return nest.pack_sequence_as(self._output_shapes, [
-        tensor_shape.vector(dim).concatenate(s)
-        for s in nest.flatten(self._output_shapes)
-    ])
+  def _element_structure(self):
+    return self._structure
 
-  @property
-  def output_types(self):
-    return self._output_types
 
-  def _transformation_name(self):
-    return "tf.data.experimental.map_and_batch()"
+@deprecation.deprecated(None, "Use `tf.data.experimental.map_and_batch()")
+@tf_export(v1=["data.experimental.map_and_batch_with_legacy_function"])
+def map_and_batch_with_legacy_function(map_func,
+                                       batch_size,
+                                       num_parallel_batches=None,
+                                       drop_remainder=False,
+                                       num_parallel_calls=None):
+  """Fused implementation of `map` and `batch`.
+
+  NOTE: This is an escape hatch for existing uses of `map_and_batch` that do not
+  work with V2 functions. New uses are strongly discouraged and existing uses
+  should migrate to `map_and_batch` as this method will not be removed in V2.
+
+  Args:
+    map_func: A function mapping a nested structure of tensors to another
+      nested structure of tensors.
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements of this dataset to combine in a single batch.
+    num_parallel_batches: (Optional.) A `tf.int64` scalar `tf.Tensor`,
+      representing the number of batches to create in parallel. On one hand,
+      higher values can help mitigate the effect of stragglers. On the other
+      hand, higher values can increase contention if CPU is scarce.
+    drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+      whether the last batch should be dropped in case its size is smaller than
+      desired; the default behavior is not to drop the smaller batch.
+    num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+      representing the number of elements to process in parallel. If not
+      specified, `batch_size * num_parallel_batches` elements will be processed
+      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      the number of parallel calls is set dynamically based on available CPU.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+
+  Raises:
+    ValueError: If both `num_parallel_batches` and `num_parallel_calls` are
+      specified.
+  """
+
+  if num_parallel_batches is None and num_parallel_calls is None:
+    num_parallel_calls = batch_size
+  elif num_parallel_batches is not None and num_parallel_calls is None:
+    num_parallel_calls = batch_size * num_parallel_batches
+  elif num_parallel_batches is not None and num_parallel_calls is not None:
+    raise ValueError("The `num_parallel_batches` and `num_parallel_calls` "
+                     "arguments are mutually exclusive.")
+
+  def _apply_fn(dataset):
+    return _MapAndBatchDataset(dataset, map_func, batch_size,
+                               num_parallel_calls, drop_remainder,
+                               use_legacy_function=True)
+
+  return _apply_fn
 
 
 @tf_export("data.experimental.map_and_batch")
@@ -644,9 +679,10 @@ def map_and_batch(map_func,
       whether the last batch should be dropped in case its size is smaller than
       desired; the default behavior is not to drop the smaller batch.
     num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
-        representing the number of elements to process in parallel. If not
-        specified, `batch_size * num_parallel_batches` elements will be
-        processed in parallel.
+      representing the number of elements to process in parallel. If not
+      specified, `batch_size * num_parallel_batches` elements will be processed
+      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      the number of parallel calls is set dynamically based on available CPU.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -670,3 +706,40 @@ def map_and_batch(map_func,
                                num_parallel_calls, drop_remainder)
 
   return _apply_fn
+
+
+class _RebatchDataset(dataset_ops.UnaryDataset):
+  """A `Dataset` that divides the batch size by `num_workers`."""
+
+  def __init__(self, input_dataset, num_workers):
+    self._input_dataset = input_dataset
+
+    def recalculate_output_shapes(output_shapes):
+      """Recalculates the output_shapes after dividing it by num_workers."""
+      if len(output_shapes) < 1:
+        raise ValueError("Input shape should have at least one dimension.")
+      if (tensor_shape.dimension_value(output_shapes[0]) and
+          tensor_shape.dimension_value(output_shapes[0]) % num_workers != 0):
+        raise errors.InvalidArgumentError(
+            None, None,
+            "First dim of input shape: %d is not divisible by num_workers: %d" %
+            (output_shapes[0], num_workers))
+      output_dims = [d for d in output_shapes.dims]
+      output_dims[0] = output_dims[0] // num_workers
+      return tensor_shape.TensorShape(output_dims)
+
+    output_shapes = nest.map_structure(recalculate_output_shapes,
+                                       input_dataset.output_shapes)
+
+    self._structure = structure.convert_legacy_structure(
+        self._input_dataset.output_types, output_shapes,
+        self._input_dataset.output_classes)
+    variant_tensor = ged_ops.experimental_rebatch_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        num_workers=num_workers,
+        **dataset_ops.flat_structure(self))
+    super(_RebatchDataset, self).__init__(input_dataset, variant_tensor)
+
+  @property
+  def _element_structure(self):
+    return self._structure

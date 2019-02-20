@@ -95,7 +95,7 @@ enum WorkerHealth {
 // signal is received.
 enum WorkerShutdownMode {
   DEFAULT = 0;
-  SHUTDOWN_IMMEDIATELY = 1;
+  NOT_CONFIGURED = 1;
   WAIT_FOR_COORDINATOR = 2;
 }
 

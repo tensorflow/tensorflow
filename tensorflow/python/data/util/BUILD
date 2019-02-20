@@ -93,7 +93,25 @@ py_test(
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variables",
+        "//tensorflow/python/data/kernel_tests:test_base",
         "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_library(
+    name = "options",
+    srcs = ["options.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_test(
+    name = "options_test",
+    size = "small",
+    srcs = ["options_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":options",
+        "//tensorflow/python:client_testlib",
     ],
 )
 
@@ -143,5 +161,26 @@ py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:util",
+    ],
+)
+
+py_library(
+    name = "traverse",
+    srcs = ["traverse.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+    ],
+)
+
+py_test(
+    name = "traverse_test",
+    size = "small",
+    srcs = ["traverse_test.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":traverse",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python/data/ops:dataset_ops",
     ],
 )

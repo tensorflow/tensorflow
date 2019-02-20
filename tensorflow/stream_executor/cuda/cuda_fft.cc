@@ -26,48 +26,97 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuFftPlugin);
 
 namespace wrap {
 
+#ifdef PLATFORM_GOOGLE
 // This macro wraps a global identifier, given by __name, in a callable
 // structure that loads the DLL symbol out of the DSO handle in a thread-safe
 // manner on first use. This dynamic loading technique is used to avoid DSO
 // dependencies on vendor libraries which may or may not be available in the
 // deployed binary environment.
-#define STREAM_EXECUTOR_CUFFT_WRAP(__name)                       \
-  struct WrapperShim__##__name {                                 \
-    template <typename... Args>                                  \
-    cufftResult operator()(CUDAExecutor *parent, Args... args) { \
-      cuda::ScopedActivateExecutorContext sac{parent};           \
-      return ::__name(args...);                                  \
-    }                                                            \
+#define STREAM_EXECUTOR_CUFFT_WRAP(__name)                      \
+  struct WrapperShim__##__name {                                \
+    template <typename... Args>                                 \
+    cufftResult operator()(GpuExecutor *parent, Args... args) { \
+      gpu::ScopedActivateExecutorContext sac{parent};           \
+      return ::__name(args...);                                 \
+    }                                                           \
   } __name;
 
-#define CUFFT_ROUTINE_EACH(__macro)                                            \
-  __macro(cufftDestroy) __macro(cufftSetStream) __macro(cufftPlan1d)           \
-      __macro(cufftPlan2d) __macro(cufftPlan3d) __macro(cufftPlanMany)         \
-          __macro(cufftExecD2Z) __macro(cufftExecZ2D) __macro(cufftExecC2C)    \
-              __macro(cufftExecC2R) __macro(cufftExecZ2Z)                      \
-                  __macro(cufftExecR2C) __macro(cufftCreate)                   \
-                      __macro(cufftSetAutoAllocation)                          \
-                          __macro(cufftSetWorkArea) __macro(cufftGetSize1d)    \
-                              __macro(cufftMakePlan1d) __macro(cufftGetSize2d) \
-                                  __macro(cufftMakePlan2d)                     \
-                                      __macro(cufftGetSize3d)                  \
-                                          __macro(cufftMakePlan3d)             \
-                                              __macro(cufftGetSizeMany)        \
-                                                  __macro(cufftMakePlanMany)
+#else
+
+#define STREAM_EXECUTOR_CUFFT_WRAP(__name)                                \
+  struct DynLoadShim__##__name {                                          \
+    static const char *kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void *GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetCufftDsoHandle();            \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void *f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in cufft DSO; dlerror: " << s.error_message();   \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    cufftResult operator()(GpuExecutor *parent, Args... args) {           \
+      gpu::ScopedActivateExecutorContext sac{parent};                     \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char *DynLoadShim__##__name::kName = #__name;
+
+#endif
+
+// clang-format off
+
+#define CUFFT_ROUTINE_EACH(__macro)                                     \
+  __macro(cufftDestroy)                                                 \
+  __macro(cufftSetStream)                                               \
+  __macro(cufftPlan1d)                                                  \
+  __macro(cufftPlan2d)                                                  \
+  __macro(cufftPlan3d)                                                  \
+  __macro(cufftPlanMany)                                                \
+  __macro(cufftExecD2Z)                                                 \
+  __macro(cufftExecZ2D)                                                 \
+  __macro(cufftExecC2C)                                                 \
+  __macro(cufftExecC2R)                                                 \
+  __macro(cufftExecZ2Z)                                                 \
+  __macro(cufftExecR2C)                                                 \
+  __macro(cufftCreate)                                                  \
+  __macro(cufftSetAutoAllocation)                                       \
+  __macro(cufftSetWorkArea)                                             \
+  __macro(cufftGetSize1d)                                               \
+  __macro(cufftMakePlan1d)                                              \
+  __macro(cufftGetSize2d)                                               \
+  __macro(cufftMakePlan2d)                                              \
+  __macro(cufftGetSize3d)                                               \
+  __macro(cufftMakePlan3d)                                              \
+  __macro(cufftGetSizeMany)                                             \
+  __macro(cufftMakePlanMany)
+
+// clang-format on
 
 CUFFT_ROUTINE_EACH(STREAM_EXECUTOR_CUFFT_WRAP)
+#undef CUFFT_ROUTINE_EACH
 
 }  // namespace wrap
 
@@ -96,8 +145,8 @@ cufftType CUDAFftType(fft::Type type) {
 }
 
 // Associates the given stream with the given cuFFT plan.
-bool SetStream(CUDAExecutor *parent, cufftHandle plan, Stream *stream) {
-  auto ret = wrap::cufftSetStream(parent, plan, AsCUDAStreamValue(stream));
+bool SetStream(GpuExecutor *parent, cufftHandle plan, Stream *stream) {
+  auto ret = wrap::cufftSetStream(parent, plan, AsGpuStreamValue(stream));
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to run cuFFT routine cufftSetStream: " << ret;
     return false;
@@ -108,7 +157,7 @@ bool SetStream(CUDAExecutor *parent, cufftHandle plan, Stream *stream) {
 }  // namespace
 
 port::Status CUDAFftPlan::Initialize(
-    CUDAExecutor *parent, Stream *stream, int rank, uint64 *elem_count,
+    GpuExecutor *parent, Stream *stream, int rank, uint64 *elem_count,
     uint64 *input_embed, uint64 input_stride, uint64 input_distance,
     uint64 *output_embed, uint64 output_stride, uint64 output_distance,
     fft::Type type, int batch_count, ScratchAllocator *scratch_allocator) {
@@ -268,7 +317,7 @@ port::Status CUDAFftPlan::Initialize(
   return port::Status::OK();
 }
 
-port::Status CUDAFftPlan::Initialize(CUDAExecutor *parent, Stream *stream,
+port::Status CUDAFftPlan::Initialize(GpuExecutor *parent, Stream *stream,
                                      int rank, uint64 *elem_count,
                                      fft::Type type,
                                      ScratchAllocator *scratch_allocator) {
@@ -500,8 +549,8 @@ bool CUDAFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT cufftExec,
   }
 
   auto ret = cufftExec(parent_, cuda_fft_plan->GetPlan(),
-                       CUDAComplex(const_cast<InputT *>(CUDAMemory(input))),
-                       CUDAComplex(CUDAMemoryMutable(output)));
+                       GpuComplex(const_cast<InputT *>(GpuMemory(input))),
+                       GpuComplex(GpuMemoryMutable(output)));
 
   if (ret != CUFFT_SUCCESS) {
     LOG(ERROR) << "failed to run cuFFT routine: " << ret;
@@ -527,8 +576,8 @@ bool CUDAFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   }
 
   auto ret = cufftExec(parent_, cuda_fft_plan->GetPlan(),
-                       CUDAComplex(const_cast<InputT *>(CUDAMemory(input))),
-                       CUDAComplex(CUDAMemoryMutable(output)),
+                       GpuComplex(const_cast<InputT *>(GpuMemory(input))),
+                       GpuComplex(GpuMemoryMutable(output)),
                        cuda_fft_plan->GetFftDirection());
 
   if (ret != CUFFT_SUCCESS) {
@@ -565,22 +614,22 @@ STREAM_EXECUTOR_CUDA_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 
 #undef STREAM_EXECUTOR_CUDA_DEFINE_FFT
 
-}  // namespace cuda
+}  // namespace gpu
 
 void initialize_cufft() {
   port::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
-          cuda::kCudaPlatformId, cuda::kCuFftPlugin, "cuFFT",
+          cuda::kCudaPlatformId, gpu::kCuFftPlugin, "cuFFT",
           [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
-            cuda::CUDAExecutor *cuda_executor =
-                dynamic_cast<cuda::CUDAExecutor *>(parent);
+            gpu::GpuExecutor *cuda_executor =
+                dynamic_cast<gpu::GpuExecutor *>(parent);
             if (cuda_executor == nullptr) {
               LOG(ERROR) << "Attempting to initialize an instance of the cuFFT "
                          << "support library with a non-CUDA StreamExecutor";
               return nullptr;
             }
 
-            return new cuda::CUDAFft(cuda_executor);
+            return new gpu::CUDAFft(cuda_executor);
           });
   if (!status.ok()) {
     LOG(ERROR) << "Unable to register cuFFT factory: "
@@ -588,7 +637,7 @@ void initialize_cufft() {
   }
 
   PluginRegistry::Instance()->SetDefaultFactory(
-      cuda::kCudaPlatformId, PluginKind::kFft, cuda::kCuFftPlugin);
+      cuda::kCudaPlatformId, PluginKind::kFft, gpu::kCuFftPlugin);
 }
 
 }  // namespace stream_executor

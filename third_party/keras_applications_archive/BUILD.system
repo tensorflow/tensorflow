@@ -1,0 +1,13 @@
+# Description: Keras Applications: set of pre-trained deep learning models.
+
+licenses(["notice"])  # MIT
+
+filegroup(
+    name = "LICENSE",
+    visibility = ["//visibility:public"],
+)
+
+py_library(
+    name = "keras_applications",
+    visibility = ["//visibility:public"],
+)

@@ -9,6 +9,18 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "OpsSet"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "Optimize"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
+    name: "RepresentativeDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TFLiteConverter"
     mtype: "<type \'type\'>"
   }

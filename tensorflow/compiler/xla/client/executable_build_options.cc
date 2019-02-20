@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 
 #include "absl/strings/str_format.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
@@ -39,6 +40,13 @@ ExecutableBuildOptions& ExecutableBuildOptions::set_device_ordinal(
 
 int ExecutableBuildOptions::device_ordinal() const { return device_ordinal_; }
 
+DebugOptions* ExecutableBuildOptions::mutable_debug_options() {
+  if (!has_debug_options()) {
+    debug_options_ = GetDebugOptionsFromFlags();
+  }
+  return &debug_options_.value();
+}
+
 ExecutableBuildOptions& ExecutableBuildOptions::set_result_layout(
     const Shape& shape_with_layout) {
   result_layout_set_ = true;
@@ -50,73 +58,22 @@ const Shape* ExecutableBuildOptions::result_layout() const {
   return result_layout_set_ ? &result_layout_ : nullptr;
 }
 
+ExecutableBuildOptions& ExecutableBuildOptions::set_num_replicas(
+    int num_replicas) {
+  num_replicas_ = num_replicas;
+  return *this;
+}
+
 string ExecutableBuildOptions::ToString() const {
   string result_layout = "nullopt";
   if (result_layout_set_) {
     result_layout = ShapeUtil::HumanStringWithLayout(result_layout_);
   }
-  string generate_hlo_graph = "nullopt";
-  if (generate_hlo_graph_.has_value()) {
-    generate_hlo_graph = generate_hlo_graph_.value();
-  }
   return absl::StrFormat(
       "ExecutableBuildOptions{device_ordinal=%d, result_layout=%s, "
-      "generate_hlo_graph=%s}",
-      device_ordinal_, result_layout, generate_hlo_graph);
-}
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_generate_hlo_graph(
-    string regex) {
-  generate_hlo_graph_ = std::move(regex);
-  return *this;
-}
-
-const absl::optional<string>& ExecutableBuildOptions::generate_hlo_graph()
-    const {
-  return generate_hlo_graph_;
-}
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_dump_optimized_hlo_proto_to(
-    absl::string_view dirpath) {
-  dump_optimized_hlo_proto_to_ = string(dirpath);
-  return *this;
-}
-
-const absl::optional<string>&
-ExecutableBuildOptions::dump_optimized_hlo_proto_to() const {
-  return dump_optimized_hlo_proto_to_;
-}
-
-ExecutableBuildOptions&
-ExecutableBuildOptions::set_dump_unoptimized_hlo_proto_to(
-    absl::string_view dirpath) {
-  dump_unoptimized_hlo_proto_to_ = string(dirpath);
-  return *this;
-}
-
-const absl::optional<string>&
-ExecutableBuildOptions::dump_unoptimized_hlo_proto_to() const {
-  return dump_unoptimized_hlo_proto_to_;
-}
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_dump_per_pass_hlo_proto_to(
-    absl::string_view dirpath) {
-  dump_per_pass_hlo_proto_to_ = string(dirpath);
-  return *this;
-}
-
-const absl::optional<string>&
-ExecutableBuildOptions::dump_per_pass_hlo_proto_to() const {
-  return dump_per_pass_hlo_proto_to_;
-}
-
-ExecutableBuildOptions& ExecutableBuildOptions::set_hlo_profile(bool enabled) {
-  hlo_profile_ = enabled;
-  return *this;
-}
-
-absl::optional<bool> ExecutableBuildOptions::hlo_profile() const {
-  return hlo_profile_;
+      "generate_hlo_graph=%s, num_replicas=%d}",
+      device_ordinal_, result_layout, debug_options().xla_generate_hlo_graph(),
+      num_replicas_);
 }
 
 }  // namespace xla

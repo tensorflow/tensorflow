@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import constant_op
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import histogram_ops
@@ -84,6 +85,7 @@ class HistogramFixedWidthTest(test.TestCase):
   def setUp(self):
     self.rng = np.random.RandomState(0)
 
+  @test_util.run_deprecated_v1
   def test_with_invalid_value_range(self):
     values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
     with self.assertRaisesRegexp(
@@ -92,6 +94,7 @@ class HistogramFixedWidthTest(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Dimension must be 2 but is 3"):
       histogram_ops.histogram_fixed_width(values, [1.0, 2.0, 3.0])
 
+  @test_util.run_deprecated_v1
   def test_with_invalid_nbins(self):
     values = [-1.0, 0.0, 1.5, 2.0, 5.0, 15]
     with self.assertRaisesRegexp(
@@ -146,6 +149,7 @@ class HistogramFixedWidthTest(test.TestCase):
       self.assertEqual(dtypes.int32, hist.dtype)
       self.assertAllClose(expected_bin_counts, self.evaluate(hist))
 
+  @test_util.run_deprecated_v1
   def test_shape_inference(self):
     value_range = [0.0, 5.0]
     values = [[-1.0, 0.0, 1.5], [2.0, 5.0, 15]]

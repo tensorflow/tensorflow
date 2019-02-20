@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
+#include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/executor.h"
 #include "tensorflow/core/common_runtime/function.h"
@@ -42,6 +43,8 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -57,7 +60,11 @@ Status CheckSignature(const DataTypeVector& types,
                             " elements while function has ", types.size());
   }
   for (int i = 0; i < types.size(); ++i) {
-    if (types[i] != args[i].type && types[i] != DT_RESOURCE) {
+    // Don't perform type checks on resource variables and tensor
+    // lists (DT_VARIANT) as we have to trick the type system in order to
+    // plumb them through. DT_VARIANTS are wrapped in a DT_UINT8 tensor.
+    if (types[i] != args[i].type && types[i] != DT_RESOURCE &&
+        types[i] != DT_VARIANT) {
       return errors::Internal(
           "Argument ", i, " has declared type ", DataTypeString(args[i].type),
           " but function parameter has type ", DataTypeString(types[i]));
@@ -178,9 +185,10 @@ Status BuildComputation(
   std::vector<xla::XlaOp> elems;
   elems.reserve(retvals.size());
 
-  // Keeps track of which retvals have layout to update. The first element is
-  // the output index, second element is the new layout.
-  std::vector<std::pair<int64, xla::Layout>> retval_to_update_layout;
+  // Keeps track of the layout of each retval. If a retval is not in this list,
+  // a descending layout is used. The first element is the output index, second
+  // element is the new layout.
+  std::vector<std::pair<int64, xla::Layout>> retval_index_and_layout;
   for (int i = 0; i < retvals.size(); ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
@@ -192,6 +200,8 @@ Status BuildComputation(
         output.shape = output.constant_value.shape();
         break;
 
+      case XlaExpression::Kind::kTensorList:
+        TF_FALLTHROUGH_INTENDED;
       case XlaExpression::Kind::kXlaOp: {
         output.is_constant = false;
         TF_ASSIGN_OR_RETURN(output.shape, retval.GetShape());
@@ -207,7 +217,7 @@ Status BuildComputation(
           TF_ASSIGN_OR_RETURN(xla::Shape shape, shape_representation_fn(
                                                     output.shape, output.type));
           value = xla::Reshape(value, xla::AsInt64Slice(shape.dimensions()));
-          retval_to_update_layout.emplace_back(elems.size(), shape.layout());
+          retval_index_and_layout.emplace_back(elems.size(), shape.layout());
         } else if (it != retval_cores.end()) {
           // Apply the sharding to the output, if there is a core assignment.
           value = identity_op(value);
@@ -280,6 +290,11 @@ Status BuildComputation(
       // Ensures the correct sharding is applied to the output.
       handle = identity_op(handle);
 
+      // Set layout of the retval to device representation layout.
+      if (resource->representation_shape().has_value()) {
+        retval_index_and_layout.emplace_back(
+            elems.size(), resource->representation_shape()->layout());
+      }
       elems.push_back(handle);
     }
   }
@@ -309,15 +324,15 @@ Status BuildComputation(
                       computation->GetProgramShape());
   *output_shape = program_shape.result();
   // Update the output layout to the layout of retval.
-  for (auto& update : retval_to_update_layout) {
+  for (auto& index_and_layout : retval_index_and_layout) {
     if (!always_return_tuple && elems.size() == 1) {
-      *output_shape->mutable_layout() = update.second;
+      *output_shape->mutable_layout() = index_and_layout.second;
       continue;
     }
 
-    xla::Shape* output_sub_shape =
-        xla::ShapeUtil::GetMutableSubshape(output_shape, {update.first});
-    *output_sub_shape->mutable_layout() = update.second;
+    xla::Shape* output_sub_shape = xla::ShapeUtil::GetMutableSubshape(
+        output_shape, {index_and_layout.first});
+    *output_sub_shape->mutable_layout() = index_and_layout.second;
   }
   return Status::OK();
 }
@@ -326,15 +341,28 @@ Status BuildComputation(
 
 bool XlaCompiler::Argument::operator==(
     const XlaCompiler::Argument& other) const {
-  if (std::tie(kind, resource_kind, type, name, initialized, tensor_array_size,
+  if (std::tie(kind, resource_kind, type, name, initialized, max_array_size,
                tensor_array_gradients) !=
       std::tie(other.kind, other.resource_kind, other.type, other.name,
-               other.initialized, other.tensor_array_size,
+               other.initialized, other.max_array_size,
                other.tensor_array_gradients)) {
     return false;
   }
-  if (shape != other.shape) {
-    return false;
+  if (absl::holds_alternative<xla::Shape>(shape)) {
+    if (!absl::holds_alternative<xla::Shape>(other.shape)) {
+      return false;
+    }
+    if (!xla::Shape::Equal()(absl::get<xla::Shape>(shape),
+                             absl::get<xla::Shape>(other.shape))) {
+      return false;
+    }
+  } else {
+    if (!absl::holds_alternative<TensorShape>(other.shape)) {
+      return false;
+    }
+    if (absl::get<TensorShape>(shape) != absl::get<TensorShape>(other.shape)) {
+      return false;
+    }
   }
   if (constant_value.shape() != other.constant_value.shape()) {
     return false;
@@ -348,7 +376,7 @@ string XlaCompiler::Argument::HumanString() const {
     common = absl::StrCat(" name=", name);
   }
   absl::StrAppend(&common, " type=", DataTypeString(type),
-                  " shape=", shape.DebugString());
+                  " shape=", ShapeHumanString());
   switch (kind) {
     case kInvalid:
       return "invalid";
@@ -359,8 +387,8 @@ string XlaCompiler::Argument::HumanString() const {
       string output = absl::StrCat("kind=resource", common, " resource_kind=",
                                    XlaResource::KindToString(resource_kind),
                                    " initialized=", initialized);
-      if (tensor_array_size >= 0) {
-        absl::StrAppend(&output, " tensor_array_size=", tensor_array_size);
+      if (max_array_size >= 0) {
+        absl::StrAppend(&output, " max_array_size=", max_array_size);
       }
       if (!tensor_array_gradients.empty()) {
         absl::StrAppend(&output, " tensor_array_gradients=",
@@ -375,12 +403,29 @@ string XlaCompiler::Argument::HumanString() const {
   }
 }
 
+std::vector<int64> XlaCompiler::Argument::DimensionSizes() const {
+  if (absl::holds_alternative<TensorShape>(shape)) {
+    return xla::InlinedVectorToVector(
+        absl::get<TensorShape>(shape).dim_sizes());
+  } else {
+    return absl::get<xla::Shape>(shape).dimensions();
+  }
+}
+
+string XlaCompiler::Argument::ShapeHumanString() const {
+  if (absl::holds_alternative<TensorShape>(shape)) {
+    return absl::get<TensorShape>(shape).DebugString();
+  } else {
+    return absl::get<xla::Shape>(shape).DebugString();
+  }
+}
+
 XlaCompiler::XlaCompiler(XlaCompiler::Options options)
     : options_(options),
       initialization_status_(Status::OK()),
       next_step_id_(1),
       device_(new XlaCompilationDevice(SessionOptions(), options_.device_type)),
-      device_mgr_({device_}) {
+      device_mgr_(absl::WrapUnique(device_)) {
   CHECK(!options_.device_type.type_string().empty());
   if (options_.populate_resource_manager) {
     initialization_status_ =
@@ -462,8 +507,34 @@ std::unique_ptr<Graph> XlaCompiler::GetGraph(const FunctionBody* fbody) {
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
+  // Do not constant fold nodes that output DT_VARIANT type tensors.
+  // XLA does not support Const nodes of Variant type since it needs
+  // to know the original ops to be able to compile them to the relevant
+  // XLA form.
+  // TODO(srbs): This filter is a little conservative. E.g. a subgraph of
+  // the form:
+  //                          Const
+  //                            |
+  // EmptyTensorList -> TensorListPushBack -> TensorListPopBack -> Op
+  //                                                  |
+  //                                        (Discard popped list)
+  //
+  // Would have been reduced to "Const -> Op" without this filter.
+  // However since we are only allowed to specify the filter at the "Node"
+  // level there is no good way to allow the above behavior. So we
+  // disallow any sort of constant folding on Variant nodes for now.
+  auto cf_consider_fn = [](const Node* n) {
+    for (const auto& output_arg : n->op_def().output_arg()) {
+      if (output_arg.type() == DT_VARIANT) {
+        return false;
+      }
+    }
+    return true;
+  };
+  GraphOptimizer::Options graph_optimizer_options;
+  graph_optimizer_options.cf_consider_fn = cf_consider_fn;
   optimizer.Optimize(flib_runtime_, flib_runtime_->env(),
-                     /*device=*/nullptr, &graph, /*shape_map=*/nullptr);
+                     /*device=*/nullptr, &graph, graph_optimizer_options);
 
   return graph;
 }
@@ -548,11 +619,22 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
       LOG(FATAL) << "Unreachable case";
     case XlaCompiler::Argument::kParameter: {
       if (is_entry_computation) {
-        TF_ASSIGN_OR_RETURN(
-            *xla_shape, options_.shape_representation_fn(arg.shape, arg.type));
+        TensorShape shape;
+        if (absl::holds_alternative<TensorShape>(arg.shape)) {
+          shape = absl::get<TensorShape>(arg.shape);
+        } else {
+          TF_RETURN_IF_ERROR(
+              XLAShapeToTensorShape(absl::get<xla::Shape>(arg.shape), &shape));
+        }
+        TF_ASSIGN_OR_RETURN(*xla_shape,
+                            options_.shape_representation_fn(shape, arg.type));
       } else {
-        TF_RETURN_IF_ERROR(
-            TensorShapeToXLAShape(arg.type, arg.shape, xla_shape));
+        if (absl::holds_alternative<xla::Shape>(arg.shape)) {
+          *xla_shape = absl::get<xla::Shape>(arg.shape);
+        } else {
+          TF_RETURN_IF_ERROR(TensorShapeToXLAShape(
+              arg.type, absl::get<TensorShape>(arg.shape), xla_shape));
+        }
       }
       return Status::OK();
     }
@@ -561,19 +643,22 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
 
       switch (arg.resource_kind) {
         case XlaResource::kVariable: {
-          TF_ASSIGN_OR_RETURN(*xla_shape, options_.shape_representation_fn(
-                                              arg.shape, arg.type));
+          TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
+          TF_ASSIGN_OR_RETURN(*xla_shape,
+                              options_.shape_representation_fn(
+                                  absl::get<TensorShape>(arg.shape), arg.type));
 
           return Status::OK();
         }
         case XlaResource::kTensorArray: {
-          if (arg.tensor_array_size < 0) {
+          if (arg.max_array_size < 0) {
             return errors::InvalidArgument(
-                "Negative tensor_array_size in XLAShapeForArgument");
+                "Negative max_array_size in XLAShapeForArgument");
           }
+          TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.tensor_array_size);
-          shape.AppendShape(arg.shape);
+          shape.AddDim(arg.max_array_size);
+          shape.AppendShape(absl::get<TensorShape>(arg.shape));
           TF_RETURN_IF_ERROR(TensorShapeToXLAShape(arg.type, shape, xla_shape));
 
           if (!arg.tensor_array_gradients.empty()) {
@@ -584,13 +669,14 @@ Status XlaCompiler::XLAShapeForArgument(const XlaCompiler::Argument& arg,
           return Status::OK();
         }
         case XlaResource::kStack: {
-          if (arg.tensor_array_size < 0) {
+          if (arg.max_array_size < 0) {
             return errors::InvalidArgument(
-                "Negative tensor_array_size in XLAShapeForArgument");
+                "Negative max_array_size in XLAShapeForArgument");
           }
+          TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
           TensorShape shape;
-          shape.AddDim(arg.tensor_array_size);
-          shape.AppendShape(arg.shape);
+          shape.AddDim(arg.max_array_size);
+          shape.AppendShape(absl::get<TensorShape>(arg.shape));
           xla::Shape buffer_shape;
           TF_RETURN_IF_ERROR(
               TensorShapeToXLAShape(arg.type, shape, &buffer_shape));
@@ -620,14 +706,15 @@ Status XlaCompiler::BuildArguments(
     bool use_tuple_arg, xla::XlaBuilder* builder, XlaContext* context,
     const std::map<int, int>& arg_cores,
     std::vector<XlaExpression>* arg_expressions,
-    std::vector<int>* input_mapping, std::vector<xla::Shape>* input_shapes,
+    std::vector<int>* input_to_args, std::vector<xla::Shape>* input_shapes,
     bool is_entry_computation) {
   arg_expressions->resize(args.size());
 
   // Argument numbers of arguments and resources that are to be passed to the
-  // XLA computation as runtime parameters.
-  input_mapping->clear();
-  input_mapping->reserve(args.size());
+  // XLA computation as runtime parameters. `input_to_args[a] = b` means that
+  // the a'th XLA input corresponds to the b'th original arg indexes.
+  input_to_args->clear();
+  input_to_args->reserve(args.size());
 
   // Fills in constant arguments, and computes non-constant argument order.
   for (std::vector<XlaCompiler::Argument>::size_type i = 0; i < args.size();
@@ -635,24 +722,27 @@ Status XlaCompiler::BuildArguments(
     const XlaCompiler::Argument& arg = args[i];
     XlaExpression& arg_expression = (*arg_expressions)[i];
     switch (arg.kind) {
-      case XlaCompiler::Argument::kResource:
+      case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.resource_kind != XlaResource::kInvalid);
+        TF_RET_CHECK(absl::holds_alternative<TensorShape>(arg.shape));
         // TODO(phawkins): this code assumes that resource arguments do not
         // alias.
-        XlaResource* resource;
-        TF_RETURN_IF_ERROR(context->CreateResource(
-            arg.resource_kind, i, arg.name, arg.type, arg.shape, xla::XlaOp(),
-            /*tensor_array_size=*/arg.tensor_array_size,
-            /*tensor_array_gradients=*/arg.tensor_array_gradients, &resource));
+        XlaResource* resource =
+            context->AddResource(absl::make_unique<XlaResource>(
+                arg.resource_kind, i, arg.name, arg.type,
+                absl::get<TensorShape>(arg.shape), xla::XlaOp(),
+                /*max_array_size=*/arg.max_array_size,
+                /*tensor_array_gradients=*/arg.tensor_array_gradients,
+                /*tensor_array_multiple_writes_aggregate=*/true));
         arg_expression = XlaExpression::Resource(resource);
         if (arg.initialized) {
-          input_mapping->push_back(i);
+          input_to_args->push_back(i);
         }
-
         break;
+      }
       case XlaCompiler::Argument::kParameter:
       case XlaCompiler::Argument::kToken: {
-        input_mapping->push_back(i);
+        input_to_args->push_back(i);
         break;
       }
       case XlaCompiler::Argument::kConstant:
@@ -664,15 +754,23 @@ Status XlaCompiler::BuildArguments(
     }
   }
 
-  if (input_mapping->empty()) {
+  if (input_to_args->empty()) {
     return Status::OK();
   }
 
-  std::vector<xla::Shape> arg_shapes(input_mapping->size());
-  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+  // `arg_to_inputs[c] = d` means that the c'th original arg index corresponds
+  // to the d'th XLA input. Note that the value -1 corresponds to constants, or
+  // other args that don't correspond to an input.
+  std::vector<int> arg_to_inputs(args.size(), -1);
+  for (int i = 0; i < input_to_args->size(); i++) {
+    arg_to_inputs[input_to_args->at(i)] = i;
+  }
+
+  std::vector<xla::Shape> arg_shapes(input_to_args->size());
+  for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
     // Computes the shapes of non-constant arguments.
     TF_RETURN_IF_ERROR(XLAShapeForArgument(
-        args[(*input_mapping)[i]], is_entry_computation, &arg_shapes[i]));
+        args[(*input_to_args)[i]], is_entry_computation, &arg_shapes[i]));
   }
 
   if (use_tuple_arg) {
@@ -689,13 +787,13 @@ Status XlaCompiler::BuildArguments(
   builder->SetOpMetadata(arg_metadata);
 
   // Build parameter handles for non-constant arguments.
-  std::vector<xla::XlaOp> arg_handles(input_mapping->size());
+  std::vector<xla::XlaOp> arg_handles(input_to_args->size());
   if (use_tuple_arg) {
     xla::XlaOp tuple;
     if (is_entry_computation) {
       xla::OpSharding tuple_sharding;
       tuple_sharding.set_type(xla::OpSharding::Type::OpSharding_Type_TUPLE);
-      for (int64 parameter : *input_mapping) {
+      for (int64 parameter : *input_to_args) {
         auto it = arg_cores.find(parameter);
         const int core = it == arg_cores.end() ? 0 : it->second;
         *tuple_sharding.add_tuple_shardings() =
@@ -707,7 +805,19 @@ Status XlaCompiler::BuildArguments(
     } else {
       tuple = xla::Parameter(builder, 0, (*input_shapes)[0], "arg_tuple");
     }
-    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+
+    for (int i = 0; i < input_to_args->size(); ++i) {
+      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
+      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
+        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
+            /*dynamic_size_param_num=*/0, {dynamic_size_param_index},
+            /*target_param_num=*/0, /*target_param_index=*/{i},
+            dim_and_arg_num.first));
+      }
+    }
+
+    for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_cores.find(i);
       const int core = it == arg_cores.end() ? -1 : it->second;
       xla::XlaScopedShardingAssignment assign_sharding(
@@ -716,7 +826,7 @@ Status XlaCompiler::BuildArguments(
       arg_handles[i] = xla::GetTupleElement(tuple, i);
     }
   } else {
-    for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
+    for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
       auto it = arg_cores.find(i);
       const int core = it == arg_cores.end() ? -1 : it->second;
       xla::XlaScopedShardingAssignment assign_sharding(
@@ -725,6 +835,17 @@ Status XlaCompiler::BuildArguments(
       arg_handles[i] = xla::Parameter(builder, i, (*input_shapes)[i],
                                       absl::StrCat("arg", i));
     }
+
+    for (int i = 0; i < input_to_args->size(); ++i) {
+      const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
+      for (const auto& dim_and_arg_num : arg.dynamic_dim_to_arg_num_map) {
+        int dynamic_size_param_index = arg_to_inputs.at(dim_and_arg_num.second);
+        TF_RETURN_IF_ERROR(builder->SetDynamicBinding(
+            /*dynamic_size_param_num=*/dynamic_size_param_index, {},
+            /*target_param_num=*/i, /*target_param_index=*/{},
+            dim_and_arg_num.first));
+      }
+    }
   }
 
   builder->ClearOpMetadata();
@@ -732,12 +853,12 @@ Status XlaCompiler::BuildArguments(
   // Fill in the handles in non-constant arguments, and reshape parameters
   // back to their correct shapes.
   VLOG(2) << "XLA computation inputs:";
-  for (std::vector<int>::size_type i = 0; i < input_mapping->size(); ++i) {
-    const XlaCompiler::Argument& arg = args[input_mapping->at(i)];
+  for (std::vector<int>::size_type i = 0; i < input_to_args->size(); ++i) {
+    const XlaCompiler::Argument& arg = args[input_to_args->at(i)];
     VLOG(2) << "  XLA arg " << i
             << " shape: " << xla::ShapeUtil::HumanString(arg_shapes[i])
-            << " name: " << arg.name << " TF arg " << input_mapping->at(i);
-    XlaExpression& arg_expression = (*arg_expressions)[input_mapping->at(i)];
+            << " name: " << arg.name << " TF arg " << input_to_args->at(i);
+    XlaExpression& arg_expression = (*arg_expressions)[input_to_args->at(i)];
     switch (arg.kind) {
       case XlaCompiler::Argument::kResource: {
         TF_RET_CHECK(arg.initialized);
@@ -754,7 +875,7 @@ Status XlaCompiler::BuildArguments(
         // return values of functions, and then reshape unconditionally.
         if (is_entry_computation) {
           arg_expression = XlaExpression::XlaOp(
-              xla::Reshape(arg_handles[i], arg.shape.dim_sizes()), arg.type);
+              xla::Reshape(arg_handles[i], arg.DimensionSizes()), arg.type);
         } else {
           arg_expression = XlaExpression::XlaOp(arg_handles[i], arg.type);
         }
@@ -923,9 +1044,7 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
                                    options_.device_type, name));
 
   xla::XlaBuilder builder(name);
-  XlaContext* context =
-      new XlaContext(this, &builder, options_.allow_cpu_custom_calls,
-                     &options_.shape_representation_fn);
+  XlaContext* context = new XlaContext(this, &builder);
   core::ScopedUnref context_unref(context);
 
   std::vector<XlaCompiler::Argument> real_args(args.begin(), args.end());
@@ -997,8 +1116,17 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
   if (options.resolve_compile_time_constants) {
-    TF_RETURN_IF_ERROR(ResolveConstantExpressionsToConstants(
-        client(), absl::Span<XlaExpression>(retvals)));
+    Status status = ResolveConstantExpressionsToConstants(
+        client(), absl::Span<XlaExpression>(retvals));
+
+    // If the HloEvaluator has not implemented an expression, just evaluate it
+    // at runtime.
+    if (status.code() == error::UNIMPLEMENTED) {
+      ConvertConstantsToExpressions(&builder,
+                                    absl::Span<XlaExpression>(retvals));
+    } else {
+      TF_RETURN_IF_ERROR(status);
+    }
   } else {
     ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
   }

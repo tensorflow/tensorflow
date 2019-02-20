@@ -523,10 +523,10 @@ XLA_TEST_F(FusionTest, DynamicSliceNegate) {
   auto const0 = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<int32>({1, 2, 3, 4})));
   auto const1 = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({1})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(1)));
   auto dynamic_slice2 =
       builder.AddInstruction(HloInstruction::CreateDynamicSlice(
-          ShapeUtil::MakeShape(S32, {2}), const0, const1, {2}));
+          ShapeUtil::MakeShape(S32, {2}), const0, {const1}, {2}));
   auto negate3 = builder.AddInstruction(HloInstruction::CreateUnary(
       ShapeUtil::MakeShape(S32, {2}), HloOpcode::kNegate, dynamic_slice2));
   hlo_module->AddEntryComputation(builder.Build())

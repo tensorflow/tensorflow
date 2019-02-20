@@ -162,6 +162,7 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
@@ -169,7 +170,6 @@ genrule(
         "grpc",
         [
             "@grpc//:LICENSE",
-            "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
     ),
@@ -208,7 +208,6 @@ genrule(
         "@zlib_archive//:zlib.h",
         "@grpc//:LICENSE",
         "@grpc//third_party/address_sorting:LICENSE",
-        "@grpc//third_party/nanopb:LICENSE.txt",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
@@ -234,6 +233,7 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",

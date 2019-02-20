@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -55,9 +56,11 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
+#include "tensorflow/core/platform/profile_utils/cpu_utils.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
@@ -131,6 +134,16 @@ struct EdgeInfo {
   int input_slot;
 };
 
+// Time the execution of kernels (in CPU cycles).  Used to dynamically identify
+// inexpensive kernels which can be dispatched inline.
+struct KernelTimer {
+  uint64 start_cycles = profile_utils::CpuUtils::GetCurrentClockCycle();
+
+  uint64 ElapsedCycles() {
+    return profile_utils::CpuUtils::GetCurrentClockCycle() - start_cycles;
+  }
+};
+
 struct NodeItem {
   NodeItem() {}
 
@@ -140,7 +153,6 @@ struct NodeItem {
   // The kernel for this node.
   OpKernel* kernel = nullptr;
 
-  bool kernel_is_expensive : 1;  // True iff kernel->IsExpensive()
   bool kernel_is_async : 1;      // True iff kernel->AsAsync() != nullptr
   bool is_merge : 1;             // True iff IsMerge(node)
   bool is_enter : 1;             // True iff IsEnter(node)
@@ -625,7 +637,6 @@ Status ExecutorImpl::Initialize() {
       return s;
     }
     CHECK(item->kernel);
-    item->kernel_is_expensive = item->kernel->IsExpensive();
     item->kernel_is_async = (item->kernel->AsAsync() != nullptr);
     item->is_merge = IsMerge(n);
     item->is_enter = IsEnter(n);
@@ -1235,11 +1246,11 @@ class ExecutorState {
   Rendezvous* rendezvous_;
   CollectiveExecutor* collective_executor_ = nullptr;
   SessionState* session_state_;
+  string session_handle_;
   TensorStore* tensor_store_;
   // Step-local container.
   ScopedStepContainer* step_container_;
   StepStatsCollectorInterface* const stats_collector_;
-  const tracing::TraceCollector* const trace_collector_;
   const tracing::EventCollector* const event_collector_;
   Context context_;
 
@@ -1266,6 +1277,11 @@ class ExecutorState {
   Executor::DoneCallback done_cb_;
 
   std::atomic_int_fast32_t num_outstanding_ops_;
+
+  // Available via OpKernelContext to every OpKernel invocation.
+  mutex num_deferred_ops_mu_;
+  condition_variable num_deferred_ops_cv_;
+  int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
 
   mutex mu_;
   Status status_ GUARDED_BY(mu_);
@@ -1344,6 +1360,9 @@ class ExecutorState {
 
   // Clean up when this executor is done.
   void Finish();
+  // Schedule Finish() on a separate thread if it needs to wait for deferred
+  // async ops to complete; otherwise run it on the current thread.
+  void ScheduleFinish();
 
   // A standalone routine for this expression so that we can express
   // that we don't want thread safety analysis on this reference (it's
@@ -1363,10 +1382,10 @@ ExecutorState::ExecutorState(const Executor::Args& args, ExecutorImpl* impl)
       rendezvous_(args.rendezvous),
       collective_executor_(args.collective_executor),
       session_state_(args.session_state),
+      session_handle_(args.session_handle),
       tensor_store_(args.tensor_store),
       step_container_(args.step_container),
       stats_collector_(args.stats_collector),
-      trace_collector_(tracing::GetTraceCollector()),
       event_collector_(
           tracing::GetEventCollector(tracing::EventCategory::kCompute)),
       context_(ContextKind::kThread),
@@ -1565,7 +1584,6 @@ struct ExecutorState::AsyncState {
 // Returns true if `item` might be traced by the given trace and event
 // collectors. Returns false only if `item` definitely will not be traced.
 bool MightTrace(const NodeItem& item,
-                const tracing::TraceCollector* trace_collector,
                 const tracing::EventCollector* event_collector,
                 bool using_annotations) {
   // Tracing will only be enabled if either `event_collector` is non null,
@@ -1578,11 +1596,13 @@ bool MightTrace(const NodeItem& item,
   if (event_collector != nullptr) {
     return true;
   }
+  auto* trace_collector = tracing::GetTraceCollector();
   if (trace_collector) {
     if (using_annotations) {
       return trace_collector->IsEnabledForAnnotations();
     } else {
-      return trace_collector->IsEnabledForActivities(item.kernel_is_expensive);
+      return trace_collector->IsEnabledForActivities(
+          item.kernel->IsExpensive());
     }
   }
   return false;
@@ -1608,6 +1628,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.rendezvous = rendezvous_;
   params.collective_executor = collective_executor_;
   params.session_state = session_state_;
+  params.session_handle = session_handle_;
   params.tensor_store = tensor_store_;
   params.cancellation_manager = cancellation_manager_;
   params.call_frame = call_frame_;
@@ -1620,6 +1641,15 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.input_alloc_attrs = &input_alloc_attrs;
   params.runner = &runner_;
   params.stats_collector = stats_collector_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_--;
+    num_deferred_ops_cv_.notify_all();
+  };
 
   Status s;
   NodeExecStatsInterface* stats = nullptr;
@@ -1753,7 +1783,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           const bool completed =
               NodeDone(s, state->item->node, ready, stats, nullptr);
           delete state;
-          if (completed) Finish();
+          if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
         device->ComputeAsync(async, &state->ctx, done);
@@ -1762,9 +1792,8 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
         OpKernelContext ctx(&params, item.num_outputs);
         nodestats::SetOpStart(stats);
 
-        if (TF_PREDICT_FALSE(MightTrace(item, trace_collector_,
-                                        event_collector_,
-                                        trace_using_annotations_))) {
+        if (TF_PREDICT_FALSE(
+                MightTrace(item, event_collector_, trace_using_annotations_))) {
           const string& op_name = op_kernel->name();
           tracing::ScopedRegion region(tracing::EventCategory::kCompute,
                                        op_name);
@@ -1783,12 +1812,18 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
                 op_name,
                 strings::StrCat(op_kernel->type_string(), "#id=", step_id_,
                                 "#"),
-                item.kernel_is_expensive);
+                item.kernel->IsExpensive());
             device->Compute(op_kernel, &ctx);
           }
         } else {
           // In the common case, avoid creating any tracing objects.
-          device->Compute(op_kernel, &ctx);
+          if (op_kernel->IsExpensive()) {
+            KernelTimer timer;
+            device->Compute(op_kernel, &ctx);
+            op_kernel->UpdateCostEstimate(timer.ElapsedCycles());
+          } else {
+            device->Compute(op_kernel, &ctx);
+          }
         }
 
         nodestats::SetOpEnd(stats);
@@ -1835,7 +1870,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   }  // while !inline_ready.empty()
 
   // This thread of computation is done if completed = true.
-  if (completed) Finish();
+  if (completed) ScheduleFinish();
 }
 
 Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
@@ -1886,7 +1921,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
       inp->tensor = entry->val.get();
     } else {
       {
-        mutex_lock ml(*entry->ref_mu);
+        tf_shared_lock ml(*entry->ref_mu);
         if (!entry->ref->IsInitialized() && !IsInitializationOp(item.node)) {
           return AttachDef(errors::FailedPrecondition(
                                "Attempting to use uninitialized value ",
@@ -1902,7 +1937,7 @@ Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
         // tensor but is given a ref to a tensor.  Need to deref it
         // under the mutex.
         {
-          mutex_lock l(*(entry->ref_mu));
+          tf_shared_lock l(*(entry->ref_mu));
           DCHECK(!entry->val_field_is_set);
           entry->val.Init(*entry->ref);
           entry->val_field_is_set = true;
@@ -1991,7 +2026,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
       // Sanity check of output tensor types.
       DataType dtype;
       if (val.is_ref()) {
-        mutex_lock ml(*val.mutex_if_ref);
+        tf_shared_lock ml(*val.mutex_if_ref);
         dtype = MakeRefType(val->dtype());
       } else {
         dtype = val->dtype();
@@ -2008,7 +2043,7 @@ Status ExecutorState::ProcessOutputs(const NodeItem& item, OpKernelContext* ctx,
             Tensor to_log;
             {
               // Dereference the tensor under the lock.
-              mutex_lock l(*out->ref_mu);
+              tf_shared_lock l(*out->ref_mu);
               to_log = *out->ref;
             }
             LogMemory::RecordTensorOutput(ctx->op_kernel().name(),
@@ -2048,13 +2083,14 @@ void ExecutorState::PropagateOutputs(const TaggedNode& tagged_node,
                                      TaggedNodeSeq* ready) {
   auto activity_handle =
       [&]() -> std::unique_ptr<tracing::TraceCollector::Handle> {
-    if (TF_PREDICT_FALSE(trace_collector_ != nullptr &&
-                         trace_collector_->IsEnabledForActivities(
+    auto* trace_collector = tracing::GetTraceCollector();
+    if (TF_PREDICT_FALSE(trace_collector != nullptr &&
+                         trace_collector->IsEnabledForActivities(
                              false /* is_expensive */))) {
       const string& op_name = item->kernel->name();
       // Intentionally using ExecutorPropagateOutputs as the first key so that
       // users are aware that it's not the op invocation.
-      return trace_collector_->CreateActivityHandle(
+      return trace_collector->CreateActivityHandle(
           "ExecutorPropagateOutputs",
           strings::StrCat(op_name, "#id=", step_id_, "#"),
           false /* is_expensive */);
@@ -2220,6 +2256,7 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
   if (stats_collector_) {
     scheduled_nsec = nodestats::NowInNsec();
   }
+
   if (inline_ready == nullptr) {
     // Schedule to run all the ready ops in thread pool.
     for (auto& tagged_node : ready) {
@@ -2227,11 +2264,12 @@ void ExecutorState::ScheduleReady(const TaggedNodeSeq& ready,
     }
     return;
   }
+
   const GraphView& gview = impl_->gview_;
   const TaggedNode* curr_expensive_node = nullptr;
   for (auto& tagged_node : ready) {
     const NodeItem& item = *gview.node(tagged_node.node->id());
-    if (tagged_node.is_dead || !item.kernel_is_expensive) {
+    if (tagged_node.is_dead || !item.kernel->IsExpensive()) {
       // Inline this inexpensive node.
       inline_ready->push_back(tagged_node);
     } else {
@@ -2388,6 +2426,25 @@ void ExecutorState::DumpState() {
   }
 }
 
+void ExecutorState::ScheduleFinish() {
+  int num_deferred_ops;
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops = num_deferred_ops_;
+  }
+  if (num_deferred_ops > 0) {
+    // Finish() may be blocked waiting for deferred async ops to complete. The
+    // execution of deferred async ops may be waiting for non-enqueued ops of
+    // other executors to complete. So running Finish() on the current thread
+    // (inter-op threadpool thread) may lead to a deadlock due to threadpool
+    // exhaustion. Instead, we run it on a separate thread to unblock the
+    // threadpool thread.
+    Env::Default()->SchedClosure([this]() { Finish(); });
+  } else {
+    Finish();
+  }
+}
+
 void ExecutorState::Finish() {
   mu_.lock();
   auto status = status_;
@@ -2397,7 +2454,45 @@ void ExecutorState::Finish() {
   CHECK(done_cb != nullptr);
   Device* device = impl_->params_.device;
 
-  if ((sync_on_finish_ && status.ok()) || device->RequiresSyncOnCompletion()) {
+  // There are several potential race conditions below. To name a few:
+  // 1. Even if the device's status is OK at the precise moment when
+  // num_deferred_ops_ reaches 0, it could go bad before device->RefreshStatus()
+  // is called below, caused by work enqueued onto the same device by other
+  // concurrent ExecutorState objects.
+  // 2. Some implementations of Device::RefreshStatus, such as
+  // XlaDevice::RefreshStatus, may be inherently racy because it releases the
+  // device mutex after a stream pointer is acquired and before the stream is
+  // queried for status.
+  // 3. It's the same for some implementations of Device::Sync, such as
+  // XlaDevice::Sync.
+  //
+  // However, these race conditions are acceptable because a stream (and
+  // therefore an XlaDevice) can only go from OK to not-OK, never the opposite,
+  // which means we will at worst report errors when there isn't any, never the
+  // opposite.
+
+  // If inc_num_deferred_ops_function has ever been called, ExecutorState must
+  // wait for all corresponding dec_num_deferred_ops_function calls to happen
+  // regardless of status. This ensures that dec_num_deferred_ops_function can
+  // safely use ExecutorState's resources.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    while (num_deferred_ops_ > 0) {
+      num_deferred_ops_cv_.wait(lock);
+    }
+  }
+
+  // An early exit for devices don't allow sync on completion. Ops that run on
+  // these devices should have used num_deferred_ops correctly to ensure the
+  // device has finished all relevant work at this point.
+  if (!device->AllowsSyncOnCompletion()) {
+    status.Update(device->RefreshStatus());
+    delete this;
+    runner([=]() { done_cb(status); });
+    return;
+  }
+
+  if (sync_on_finish_ && status.ok()) {
     // Block until the device has finished all queued operations. For
     // devices like GPUs that continue to execute Ops after their Compute
     // methods have completed, this ensures that control is not returned to

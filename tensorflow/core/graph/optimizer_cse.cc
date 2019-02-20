@@ -43,6 +43,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/node_def_util.h"
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -213,6 +214,7 @@ bool OptimizerCSE::Optimize(
         g_->AddEdge(*candidate, e->src_output(), e->dst(), e->dst_input());
       }
 
+      MergeDebugInfo(NodeDebugInfo(*n), *candidate);
       g_->RemoveNode(n);
       changed = true;
     }

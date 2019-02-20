@@ -505,7 +505,8 @@ TEST(TFunc, IntsOnDeviceArgNotSet) {
 
 TEST(TFunc, IntsOnDeviceArgSet) {
   auto fdef = test::function::XTimesTwoInt32();
-  (*fdef.mutable_attr())["experimental_ints_on_device"].set_b(true);
+  (*fdef.mutable_attr())[FunctionLibraryDefinition::kIntsOnDeviceAttr].set_b(
+      true);
   InstantiationResult result;
   TF_ASSERT_OK(InstantiateFunction(fdef, AttrSlice(), GetOpSig, &result));
   EXPECT_EQ(5, result.nodes.size());
@@ -1319,7 +1320,7 @@ TEST(FunctionLibraryDefinitionTest, ReachableDefinitions) {
 
     if (!interface_name.empty()) {
       auto* attr = func_def.mutable_attr();
-      (*attr)["experimental_api_implements"].set_s(interface_name);
+      (*attr)["api_implements"].set_s(interface_name);
     }
     return func_def;
   };

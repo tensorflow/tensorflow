@@ -24,6 +24,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.kernel_tests.signal import test_util
 from tensorflow.python.ops.signal import window_ops
 from tensorflow.python.platform import test
@@ -75,6 +76,7 @@ class WindowOpsTest(test.TestCase):
                                   dtype=tf_dtype).eval()
             self.assertAllClose(expected, actual, tol, tol)
 
+  @tf_test_util.run_deprecated_v1
   def test_hann_window(self):
     """Check that hann_window matches scipy.signal.hann behavior."""
     # The Hann window is a raised cosine window with parameters alpha=0.5 and
@@ -84,6 +86,7 @@ class WindowOpsTest(test.TestCase):
         functools.partial(_scipy_raised_cosine, a=0.5, b=0.5),
         window_ops.hann_window)
 
+  @tf_test_util.run_deprecated_v1
   def test_hamming_window(self):
     """Check that hamming_window matches scipy.signal.hamming's behavior."""
     # The Hamming window is a raised cosine window with parameters alpha=0.54

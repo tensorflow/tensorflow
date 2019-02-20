@@ -3,16 +3,16 @@ cmake_minimum_required(VERSION 3.5)
 
 if(WIN32)
 	if(${CMAKE_VERSION} VERSION_LESS "3.8")
-		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake.")
+		message(WARNING "Your current cmake version is ${CMAKE_VERSION} which does not support setting the toolset architecture to x64. This may cause \"compiler out of heap space\" errors when building. Consider upgrading your cmake to > 3.8 and using the flag -Thost=x64 when running cmake. Ignore this if you are on CMake GUI.")
 	else()
 		if(NOT CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE OR NOT "${CMAKE_VS_PLATFORM_TOOLSET_HOST_ARCHITECTURE}" STREQUAL "x64")
-			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake.")
+			message(WARNING "Your current cmake generator is set to use 32 bit toolset architecture. This may cause \"compiler out of heap space\" errors when building. Consider using the flag -Thost=x64 when running cmake. Ignore this if you are on CMake GUI.")
 		endif()
 	endif()
 endif()
 
 # Project
-project(tensorflow C CXX)
+project(tensorflow VERSION 1.12.0 LANGUAGES C CXX)
 
 # Set C++14 as standard for the whole project
 set(CMAKE_CXX_STANDARD 14)
@@ -52,10 +52,16 @@ option(tensorflow_OPTIMIZE_FOR_NATIVE_ARCH "Enable compiler optimizations for th
 option(tensorflow_ENABLE_SNAPPY_SUPPORT "Enable SNAPPY compression support" ON)
 option(tensorflow_DISABLE_EIGEN_FORCEINLINE "Disable forceinline, to speed up build on windows." OFF)
 
+if (WIN32)
+SET(tensorflow_WIN_CPU_SIMD_OPTIONS "/arch:AVX" CACHE STRING "Enables CPU SIMD instructions")
+SET_PROPERTY(CACHE tensorflow_WIN_CPU_SIMD_OPTIONS PROPERTY STRINGS /arch:AVX) 
+endif()
+
 # SIMD, MKL and MKLDNN options
 option(tensorflow_WIN_CPU_SIMD_OPTIONS "Enables CPU SIMD instructions" OFF)
 option(tensorflow_ENABLE_MKL_SUPPORT "Enable Intel MKL support" OFF)
 option(tensorflow_ENABLE_MKLDNN_SUPPORT "Enable Intel MKLDNN support, requires MKL enabled" OFF)
+
 
 # GPU, CUDA and cuDNN options
 option(tensorflow_ENABLE_GPU "Enable GPU support" OFF)
@@ -79,6 +85,11 @@ if (NOT WIN32)
     # option's default value is OFF. Fill it with real default values
     set(tensorflow_CUDNN_INCLUDE /usr/include)
   endif (NOT tensorflow_CUDNN_INCLUDE)
+  option(tensorflow_NCCL_INCLUDE "nccl.h header install path" /usr/include/)
+  if (NOT tensorflow_NCCL_INCLUDE)
+    # option's default value is OFF. Fill it with real default values
+    set(tensorflow_NCCL_INCLUDE /usr/include)
+  endif (NOT tensorflow_NCCL_INCLUDE)
   option(tensorflow_PATH_CUDNN_LIB "Override PATH_CUDA_LIB for cudnn" ${tensorflow_PATH_CUDA_LIB})
   if (NOT tensorflow_PATH_CUDNN_LIB)
     # option's default value is OFF. Fill it with real default values
@@ -193,6 +204,7 @@ if(WIN32)
   set(CMAKE_SUPPRESS_REGENERATION ON)
 endif()
 
+
 if ("${CMAKE_CXX_COMPILER_ID}" STREQUAL "GNU")
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fno-exceptions -std=c++11")
 endif()
@@ -280,6 +292,14 @@ else (systemlib_ZLIB)
   set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
     ${zlib_STATIC_LIBRARIES})
 endif (systemlib_ZLIB)
+
+if (systemlib_ABSEIL_CPP)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+      ${abseil_cpp_LIBRARIES})
+else (systemlib_ABSEIL_CPP)
+  set(tensorflow_EXTERNAL_LIBRARIES ${tensorflow_EXTERNAL_LIBRARIES}
+    ${abseil_cpp_STATIC_LIBRARIES})
+endif (systemlib_ABSEIL_CPP)
 
 set(tensorflow_EXTERNAL_DEPENDENCIES
     zlib_copy_headers_to_destination
@@ -378,8 +398,8 @@ if (tensorflow_ENABLE_GPU)
     list(APPEND CMAKE_LIBRARY_PATH "${tensorflow_CUDA_LIBRARY_PATH}/stubs")
   endif (NOT WIN32)
 
-  # minimum 9.1 in cuda version
-  find_package(CUDA 9.1 REQUIRED)
+  # minimum 9.0 in cuda version
+  find_package(CUDA 9.0 REQUIRED)
   if(NOT CUDA_FOUND)
     message(FATAL_ERROR "CUDA not found.")
   endif()
@@ -394,6 +414,7 @@ if (tensorflow_ENABLE_GPU)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};--include-path ${PROJECT_BINARY_DIR}/$\{build_configuration\};--expt-relaxed-constexpr)
   set(CUDA_NVCC_FLAGS ${CUDA_NVCC_FLAGS};-ftz=true)  # Flush denormals to zero
   set(CUDA_INCLUDE ${CUDA_TOOLKIT_TARGET_DIR} ${CUDA_TOOLKIT_TARGET_DIR}/extras/CUPTI/include)
+
   include_directories(${CUDA_INCLUDE})
   if (WIN32)
     add_definitions(-DGOOGLE_CUDA=1 -DTF_EXTRA_CUDA_CAPABILITIES=3.7,5.2,6.0,6.1,7.0)
@@ -546,14 +567,20 @@ if (tensorflow_ENABLE_GPU)
       cudnn_version_number=${tensorflow_CUDNN_VERSION})
   endif(WIN32)
 else(tensorflow_ENABLE_GPU)
-  set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
-    msvcp_dll_name=msvcp140.dll)
+  if(WIN32)
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cpu --key_value
+      msvcp_dll_name=msvcp140.dll)
+  else()
+    set(tensorflow_BUILD_INFO_FLAGS --build_config cpu)
+  endif()
 endif(tensorflow_ENABLE_GPU)
 
-# Find python executable
-include(FindPythonInterp)
-if(NOT ${PYTHONINTERP_FOUND})
-    message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+if(tensorflow_BUILD_PYTHON_BINDINGS)
+  # Find python executable
+  include(FindPythonInterp)
+  if(NOT ${PYTHONINTERP_FOUND})
+      message(FATAL_ERROR "CMake was unable to find a python interpreter.")
+  endif()
 endif()
 
 # Let's get to work!
@@ -574,6 +601,7 @@ include(tf_cc_ops.cmake)
 include(tf_c.cmake)
 include(tf_grappler.cmake)
 include(tf_core_profiler.cmake)
+include(tf_core_eager_runtime.cmake)
 if(tensorflow_BUILD_CC_EXAMPLE)
   include(tf_tutorials.cmake)
   include(tf_label_image_example.cmake)

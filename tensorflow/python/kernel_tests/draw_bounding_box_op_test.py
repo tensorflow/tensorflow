@@ -87,7 +87,7 @@ class DrawBoundingBoxOpTest(test.TestCase):
       image = array_ops.expand_dims(image, 0)
       image = image_ops.draw_bounding_boxes(image, bboxes)
       with self.cached_session(use_gpu=False) as sess:
-        op_drawn_image = np.squeeze(sess.run(image), 0)
+        op_drawn_image = np.squeeze(self.evaluate(image), 0)
         self.assertAllEqual(test_drawn_image, op_drawn_image)
 
   def testDrawBoundingBoxRGBColorCycling(self):

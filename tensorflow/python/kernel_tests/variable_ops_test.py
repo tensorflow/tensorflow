@@ -24,6 +24,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
@@ -59,15 +60,18 @@ class VariableOpTest(test.TestCase):
       # that Variable and Assign have GPU implementations for matching tf.
       self.assertAllEqual(x, self._initFetch(x, tftype, use_gpu=True))
 
+  @test_util.run_deprecated_v1
   def testBasic(self):
     self._testTypes(np.arange(0, 20).reshape([4, 5]))
 
+  @test_util.run_deprecated_v1
   def testset_shape(self):
     p = state_ops.variable_op([1, 2], dtypes.float32)
     self.assertEqual([1, 2], p.get_shape())
     p = state_ops.variable_op([1, 2], dtypes.float32, set_shape=False)
     self.assertEqual(tensor_shape.unknown_shape(), p.get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssign(self):
     value = np.array([[42.0, 43.0]])
     var = state_ops.variable_op(value.shape, dtypes.float32)
@@ -75,6 +79,7 @@ class VariableOpTest(test.TestCase):
     assigned = state_ops.assign(var, value)
     self.assertShapeEqual(value, assigned)
 
+  @test_util.run_deprecated_v1
   def testAssignNoValidateShape(self):
     value = np.array([[42.0, 43.0]])
     var = state_ops.variable_op(value.shape, dtypes.float32)
@@ -82,6 +87,7 @@ class VariableOpTest(test.TestCase):
     assigned = state_ops.assign(var, value, validate_shape=False)
     self.assertShapeEqual(value, assigned)
 
+  @test_util.run_deprecated_v1
   def testAssignNoVarShape(self):
     value = np.array([[42.0, 43.0]])
     var = state_ops.variable_op(value.shape, dtypes.float32, set_shape=False)
@@ -89,6 +95,7 @@ class VariableOpTest(test.TestCase):
     assigned = state_ops.assign(var, value)
     self.assertShapeEqual(value, assigned)
 
+  @test_util.run_deprecated_v1
   def testAssignNoVarShapeNoValidateShape(self):
     value = np.array([[42.0, 43.0]])
     var = state_ops.variable_op(value.shape, dtypes.float32, set_shape=False)
@@ -101,6 +108,7 @@ class VariableOpTest(test.TestCase):
     self.assertEqual(tensor_shape.unknown_shape(), tensor.get_shape())
     return tensor
 
+  @test_util.run_deprecated_v1
   def testAssignNoValueShape(self):
     value = self._NewShapelessTensor()
     shape = [1, 2]
@@ -109,6 +117,7 @@ class VariableOpTest(test.TestCase):
     self.assertEqual(shape, var.get_shape())
     self.assertEqual(shape, assigned.get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssignNoValueShapeNoValidateShape(self):
     value = self._NewShapelessTensor()
     shape = [1, 2]
@@ -117,6 +126,7 @@ class VariableOpTest(test.TestCase):
     assigned = state_ops.assign(var, value, validate_shape=False)
     self.assertEqual(tensor_shape.unknown_shape(), assigned.get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssignNoShape(self):
     with self.cached_session():
       value = self._NewShapelessTensor()
@@ -125,6 +135,7 @@ class VariableOpTest(test.TestCase):
       self.assertEqual(tensor_shape.unknown_shape(),
                        state_ops.assign(var, value).get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssignNoShapeNoValidateShape(self):
     with self.cached_session():
       value = self._NewShapelessTensor()
@@ -135,6 +146,7 @@ class VariableOpTest(test.TestCase):
           state_ops.assign(
               var, value, validate_shape=False).get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssignUpdate(self):
     var = state_ops.variable_op([1, 2], dtypes.float32)
     added = state_ops.assign_add(var, [[2.0, 3.0]])
@@ -142,6 +154,7 @@ class VariableOpTest(test.TestCase):
     subbed = state_ops.assign_sub(var, [[12.0, 13.0]])
     self.assertEqual([1, 2], subbed.get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssignUpdateNoVarShape(self):
     var = state_ops.variable_op([1, 2], dtypes.float32, set_shape=False)
     added = state_ops.assign_add(var, [[2.0, 3.0]])
@@ -149,6 +162,7 @@ class VariableOpTest(test.TestCase):
     subbed = state_ops.assign_sub(var, [[12.0, 13.0]])
     self.assertEqual([1, 2], subbed.get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssignUpdateNoValueShape(self):
     var = state_ops.variable_op([1, 2], dtypes.float32)
     added = state_ops.assign_add(var, self._NewShapelessTensor())
@@ -156,6 +170,7 @@ class VariableOpTest(test.TestCase):
     subbed = state_ops.assign_sub(var, self._NewShapelessTensor())
     self.assertEqual([1, 2], subbed.get_shape())
 
+  @test_util.run_deprecated_v1
   def testAssignUpdateNoShape(self):
     var = state_ops.variable_op([1, 2], dtypes.float32, set_shape=False)
     added = state_ops.assign_add(var, self._NewShapelessTensor())
@@ -163,8 +178,9 @@ class VariableOpTest(test.TestCase):
     subbed = state_ops.assign_sub(var, self._NewShapelessTensor())
     self.assertEqual(tensor_shape.unknown_shape(), subbed.get_shape())
 
+  @test_util.run_deprecated_v1
   def testTemporaryVariable(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       var = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="foo")
       var = state_ops.assign(var, [[4.0, 5.0]])
@@ -172,15 +188,17 @@ class VariableOpTest(test.TestCase):
       final = gen_state_ops.destroy_temporary_variable(var, var_name="foo")
       self.assertAllClose([[10.0, 12.0]], self.evaluate(final))
 
+  @test_util.run_deprecated_v1
   def testDestroyNonexistentTemporaryVariable(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       var = gen_state_ops.temporary_variable([1, 2], dtypes.float32)
       final = gen_state_ops.destroy_temporary_variable(var, var_name="bad")
       with self.assertRaises(errors.NotFoundError):
         self.evaluate(final)
 
+  @test_util.run_deprecated_v1
   def testDuplicateTemporaryVariable(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       var1 = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="dup")
       var1 = state_ops.assign(var1, [[1.0, 2.0]])
@@ -191,8 +209,9 @@ class VariableOpTest(test.TestCase):
       with self.assertRaises(errors.AlreadyExistsError):
         self.evaluate(final)
 
+  @test_util.run_deprecated_v1
   def testDestroyTemporaryVariableTwice(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       var = gen_state_ops.temporary_variable([1, 2], dtypes.float32)
       val1 = gen_state_ops.destroy_temporary_variable(var, var_name="dup")
       val2 = gen_state_ops.destroy_temporary_variable(var, var_name="dup")
@@ -200,15 +219,17 @@ class VariableOpTest(test.TestCase):
       with self.assertRaises(errors.NotFoundError):
         self.evaluate(final)
 
+  @test_util.run_deprecated_v1
   def testTemporaryVariableNoLeak(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       var = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="bar")
       final = array_ops.identity(var)
       self.evaluate(final)
 
+  @test_util.run_deprecated_v1
   def testTwoTemporaryVariablesNoLeaks(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       var1 = gen_state_ops.temporary_variable(
           [1, 2], dtypes.float32, var_name="var1")
       var2 = gen_state_ops.temporary_variable(
@@ -216,14 +237,15 @@ class VariableOpTest(test.TestCase):
       final = var1 + var2
       self.evaluate(final)
 
+  @test_util.run_deprecated_v1
   def testAssignDependencyAcrossDevices(self):
-    with self.test_session(use_gpu=True):
+    with test_util.use_gpu():
       # The variable and an op to increment it are on the GPU.
       var = state_ops.variable_op([1], dtypes.float32)
-      state_ops.assign(var, [1.0]).eval()
+      self.evaluate(state_ops.assign(var, [1.0]))
       increment = state_ops.assign_add(var, [1.0])
       with ops.control_dependencies([increment]):
-        with ops.device("/cpu:0"):
+        with test_util.force_cpu():
           # This mul op is pinned to the CPU, but reads the variable from the
           # GPU. The test ensures that the dependency on 'increment' is still
           # honored, i.e., the Send and Recv from GPU to CPU should take place
@@ -231,6 +253,7 @@ class VariableOpTest(test.TestCase):
           result = math_ops.multiply(var, var)
       self.assertAllClose([4.0], self.evaluate(result))
 
+  @test_util.run_deprecated_v1
   def testIsVariableInitialized(self):
     for use_gpu in [True, False]:
       with self.test_session(use_gpu=use_gpu):

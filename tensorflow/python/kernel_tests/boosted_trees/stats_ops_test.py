@@ -67,14 +67,14 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
       self.assertAllClose([[0.004775, 0.41184], [0.02823, 0.41184]],
-                          sess.run(gains_list))
+                          self.evaluate(gains_list))
       self.assertAllEqual([[1, 1], [1, 1]], self.evaluate(thresholds_list))
       # The left node contrib will be later added to the previous node value to
       # make the left node value, and the same for right node contrib.
       self.assertAllClose([[[-.416667], [.568966]], [[-.6], [-.75]]],
-                          sess.run(left_node_contribs_list))
+                          self.evaluate(left_node_contribs_list))
       self.assertAllClose([[[-.592593], [-.75]], [[-.076923], [.568966]]],
-                          sess.run(right_node_contribs_list))
+                          self.evaluate(right_node_contribs_list))
 
   def testCalculateBestGainsWithL2(self):
     """Testing Gain calculation with L2."""
@@ -115,14 +115,14 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
       self.assertAllClose([[0., 0.33931375], [0.01879096, 0.33931375]],
-                          sess.run(gains_list))
+                          self.evaluate(gains_list))
       self.assertAllEqual([[0, 1], [1, 1]], self.evaluate(thresholds_list))
       # The left node contrib will be later added to the previous node value to
       # make the left node value, and the same for right node contrib.
       self.assertAllClose([[[0.], [.485294]], [[-.5], [-.6]]],
-                          sess.run(left_node_contribs_list))
+                          self.evaluate(left_node_contribs_list))
       self.assertAllClose([[[-.424658], [-.6]], [[-.043478], [.485294]]],
-                          sess.run(right_node_contribs_list))
+                          self.evaluate(right_node_contribs_list))
 
   def testCalculateBestGainsWithL1(self):
     """Testing Gain calculation with L1."""
@@ -166,14 +166,14 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
 
       self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
       self.assertAllClose([[[0.0], [0.3965517]], [[-0.4], [-0.5]]],
-                          sess.run(left_node_contribs_list))
+                          self.evaluate(left_node_contribs_list))
 
       self.assertAllClose([[[-0.3333333], [-0.5]], [[0.0], [0.396552]]],
-                          sess.run(right_node_contribs_list))
+                          self.evaluate(right_node_contribs_list))
 
       # Gain should also include an adjustment of the gradient by l1.
       self.assertAllClose([[0.0, 0.191207], [0.01, 0.191207]],
-                          sess.run(gains_list))
+                          self.evaluate(gains_list))
 
   def testCalculateBestGainsWithTreeComplexity(self):
     """Testing Gain calculation with L2."""
@@ -217,15 +217,15 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[1, 2], [1, 2]], self.evaluate(node_ids_list))
 
       self.assertAllClose([[-3., -2.66068625], [-2.98120904, -2.66068625]],
-                          sess.run(gains_list))
+                          self.evaluate(gains_list))
 
       self.assertAllEqual([[0, 1], [1, 1]], self.evaluate(thresholds_list))
       # The left node contrib will be later added to the previous node value to
       # make the left node value, and the same for right node contrib.
       self.assertAllClose([[[0.], [.485294]], [[-.5], [-.6]]],
-                          sess.run(left_node_contribs_list))
+                          self.evaluate(left_node_contribs_list))
       self.assertAllClose([[[-.424658], [-.6]], [[-.043478], [.485294]]],
-                          sess.run(right_node_contribs_list))
+                          self.evaluate(right_node_contribs_list))
 
   def testCalculateBestGainsWithMinNodeWeight(self):
     """Testing Gain calculation without any regularization."""
@@ -270,9 +270,9 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
       self.assertAllClose([[0.384314], [0.098013]], self.evaluate(gains_list))
       self.assertAllEqual([[1], [1]], self.evaluate(thresholds_list))
       self.assertAllClose([[[0.4852941]], [[-.6]]],
-                          sess.run(left_node_contribs_list))
+                          self.evaluate(left_node_contribs_list))
       self.assertAllClose([[[-0.75]], [[-0.014925]]],
-                          sess.run(right_node_contribs_list))
+                          self.evaluate(right_node_contribs_list))
 
   def testCalculateBestGainsWithMinNodeWeightNoSplitOnFeturePossible(self):
     """Testing Gain calculation without any regularization."""
@@ -327,6 +327,7 @@ class StatsOpsTest(test_util.TensorFlowTestCase):
            max_splits=max_splits)
       self.assertAllEqual([[], []], self.evaluate(node_ids_list))
 
+  @test_util.run_deprecated_v1
   def testMakeStatsSummarySimple(self):
     """Simple test for MakeStatsSummary."""
     with self.cached_session():

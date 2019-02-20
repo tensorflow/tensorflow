@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -25,6 +25,8 @@ limitations under the License.
 #include <gtest/gtest.h>
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/dequantize.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/log_softmax.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/test_util.h"
 #include "tensorflow/lite/string.h"
@@ -61,7 +63,42 @@ void RunLogSoftmaxFloatReference(const uint8* input_data,
   }
 }
 
-void CheckOutputData(const uint8* test_output, const uint8* reference_output,
+// Same as above except for the following change:
+// - input and output data type
+// - Dequnatize function
+// - clamping values
+void RunLogSoftmaxFloatReference(const int8* input_data,
+                                 const RuntimeShape& shape_common,
+                                 int32 input_offset, const double input_scale,
+                                 int stride, float beta,
+                                 int8* reference_output_data) {
+  const int ref_buffer_size = shape_common.FlatSize();
+  std::vector<float> reference_dequant_data(ref_buffer_size);
+  std::vector<float> reference_output_float_data(ref_buffer_size);
+
+  // Reference data generated via Dequant of input into float, and then applying
+  // float LogSoftmax.
+  DequantizationParams dq_params;
+  dq_params.zero_point = input_offset;
+  dq_params.scale = input_scale;
+  reference_integer_ops::Dequantize(dq_params, shape_common, input_data,
+                                    shape_common,
+                                    reference_dequant_data.data());
+  SoftmaxParams sm_params;
+  optimized_ops::LogSoftmax(sm_params, shape_common,
+                            reference_dequant_data.data(), shape_common,
+                            reference_output_float_data.data());
+  // Work with quantized scaling for LogSoftmax, under which 255 represents 0,
+  // and -16 gets nudged up to 0.
+  for (int i = 0; i < ref_buffer_size; i++) {
+    reference_output_data[i] = std::max(
+        -128, static_cast<int>(
+                  127 + std::round(16.0f * reference_output_float_data[i])));
+  }
+}
+
+template <typename T>
+void CheckOutputData(const T* test_output, const T* reference_output,
                      const RuntimeShape& shape_common,
                      const string& check_label, bool be_exacting) {
   const int buffer_size = shape_common.FlatSize();
@@ -144,15 +181,58 @@ void RunOneLogSoftmaxTest(const uint8* input_data,
   reference_ops::LogSoftmax(params, shape_common, input_data, shape_common,
                             reference_quant_logsoftmax_output.data());
 
-  CheckOutputData(optimized_logsoftmax_output.data(),
-                  reference_float_logsoftmax_output.data(), shape_common,
-                  "Optimized vs float reference", false);
-  CheckOutputData(optimized_logsoftmax_output.data(),
-                  reference_quant_logsoftmax_output.data(), shape_common,
-                  "Optimized vs quant reference", true);
-  CheckOutputData(reference_quant_logsoftmax_output.data(),
-                  reference_float_logsoftmax_output.data(), shape_common,
-                  "Quant reference vs float reference", false);
+  CheckOutputData<uint8_t>(optimized_logsoftmax_output.data(),
+                           reference_float_logsoftmax_output.data(),
+                           shape_common, "Optimized vs float reference", false);
+  CheckOutputData<uint8_t>(optimized_logsoftmax_output.data(),
+                           reference_quant_logsoftmax_output.data(),
+                           shape_common, "Optimized vs quant reference", true);
+  CheckOutputData<uint8_t>(reference_quant_logsoftmax_output.data(),
+                           reference_float_logsoftmax_output.data(),
+                           shape_common, "Quant reference vs float reference",
+                           false);
+}
+
+// Runs the LogSoftmax and compares against the float reference implementation
+// and the int8 quantized reference implementation.
+void RunOneLogSoftmaxTest(const int8* input_data,
+                          const RuntimeShape& shape_common, int32 input_offset,
+                          const double input_scale, int stride, float beta) {
+  const int buffer_size = shape_common.FlatSize();
+  std::vector<int8> quantized_logsoftmax_reference_implementation(buffer_size);
+  std::vector<int8> float_logsoftmax_optimized_implementation(buffer_size);
+
+  RunLogSoftmaxFloatReference(input_data, shape_common, input_offset,
+                              input_scale, stride, beta,
+                              float_logsoftmax_optimized_implementation.data());
+
+  int32 input_beta_multiplier;
+  int input_beta_left_shift;
+  int32 reverse_scaling_divisor;
+  int reverse_scaling_right_shift;
+  static const int kScaledDiffIntegerBits = 5;
+  tflite::PreprocessLogSoftmaxScalingExp(
+      beta, input_scale, kScaledDiffIntegerBits, &input_beta_multiplier,
+      &input_beta_left_shift, &reverse_scaling_divisor,
+      &reverse_scaling_right_shift);
+  reverse_scaling_right_shift *= -1;
+  // diff_min has a negative value, and is used to limit the maximum magnitude
+  // of the diffs, which are <= 0.
+  const int diff_min = -tflite::CalculateInputRadius(kScaledDiffIntegerBits,
+                                                     input_beta_left_shift);
+
+  const int outer_size =
+      shape_common.Dims(0) * shape_common.Dims(1) * shape_common.Dims(2);
+  const int inner_size = shape_common.Dims(3);
+  reference_integer_ops::LogSoftmax(
+      input_beta_multiplier, input_beta_left_shift, reverse_scaling_divisor,
+      reverse_scaling_right_shift, diff_min, outer_size, inner_size, input_data,
+      quantized_logsoftmax_reference_implementation.data());
+
+  CheckOutputData<int8_t>(quantized_logsoftmax_reference_implementation.data(),
+                          float_logsoftmax_optimized_implementation.data(),
+                          shape_common, "Quant reference vs float reference",
+                          false);
 }
 
 // This function picks some random LogSoftmax params, which are checked for
@@ -161,6 +241,7 @@ void RunOneLogSoftmaxTest(const uint8* input_data,
 // to loop until a test has been run.
 //
 // Currently we do not reject for any reason.
+template <typename T>
 bool TryOneUniformLogSoftmax() {
   // We pick mostly positive values, on the whole emphasizing smaller values and
   // therefore faster tests.  We test a wider range of depths.  In the case of
@@ -178,7 +259,7 @@ bool TryOneUniformLogSoftmax() {
       RuntimeShape({batch, input_height, input_width, input_depth});
   const int buffer_size = shape_common.FlatSize();
 
-  std::vector<uint8> input_data(buffer_size);
+  std::vector<T> input_data(buffer_size);
   FillRandom(&input_data);
   RunOneLogSoftmaxTest(input_data.data(), shape_common, input_offset,
                        input_scale, stride, beta);
@@ -224,24 +305,32 @@ bool TryOneSkyscraperLogSoftmax(bool small_depth) {
   return true;
 }
 
-TEST(TestQuantizedLogSoftmax, UniformLogSoftmaxTests) {
-  const int kTestsToRun = 1000;
+TEST(TestQuantizedLogSoftmax, UniformLogSoftmaxUint8Tests) {
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
-    while (!TryOneUniformLogSoftmax()) {
+    while (!TryOneUniformLogSoftmax<uint8_t>()) {
     }
   }
 }
 
-TEST(TestQuantizedLogSoftmax, SkyscraperLogSoftmaxTests) {
-  const int kTestsToRun = 1000;
+TEST(TestQuantizedLogSoftmax, UniformLogSoftmaxUint8Int8Tests) {
+  const int kTestsToRun = 100;
+  for (int i = 0; i < kTestsToRun; i++) {
+    while (!TryOneUniformLogSoftmax<int8_t>()) {
+    }
+  }
+}
+
+TEST(TestQuantizedLogSoftmax, SkyscraperLogSoftmaxUint8Tests) {
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneSkyscraperLogSoftmax(false)) {
     }
   }
 }
 
-TEST(TestQuantizedLogSoftmax, SmallSkyscraperLogSoftmaxTests) {
-  const int kTestsToRun = 1000;
+TEST(TestQuantizedLogSoftmax, SmallSkyscraperLogSoftmaxUint8Tests) {
+  const int kTestsToRun = 100;
   for (int i = 0; i < kTestsToRun; i++) {
     while (!TryOneSkyscraperLogSoftmax(true)) {
     }

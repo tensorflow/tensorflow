@@ -32,10 +32,31 @@ limitations under the License.
 
 namespace tflite {
 
+namespace {
+
+// Gets the current TfLiteQuantization from the legacy fLiteQuantizationParams.
+TfLiteQuantization GetQuantizationFromLegacy(
+    const TfLiteQuantizationParams& legacy_quantization) {
+  TfLiteQuantization quantization;
+  quantization.type = kTfLiteAffineQuantization;
+  auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  affine_quantization->scale = TfLiteFloatArrayCreate(1);
+  affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+  affine_quantization->scale->data[0] = legacy_quantization.scale;
+  affine_quantization->zero_point->data[0] = legacy_quantization.zero_point;
+  quantization.params = affine_quantization;
+
+  return quantization;
+}
+
+}  // namespace
+
 Interpreter::Interpreter(ErrorReporter* error_reporter)
     : error_reporter_(error_reporter ? error_reporter
                                      : DefaultErrorReporter()) {
-  subgraphs_.emplace_back(new Subgraph(error_reporter_, external_contexts_));
+  // There's always at least 1 subgraph which is the primary subgraph.
+  AddSubgraphs(1);
   context_ = primary_subgraph().context();
 
   // Reserve some space for the tensors to avoid excessive resizing.
@@ -70,7 +91,20 @@ TfLiteStatus Interpreter::AllocateTensors() {
 }
 
 void Interpreter::ReserveNodes(int count) {
-  primary_subgraph().nodes_and_registration().reserve(count);
+  primary_subgraph().ReserveNodes(count);
+}
+
+void Interpreter::AddSubgraphs(int subgraphs_to_add,
+                               int* first_new_subgraph_index) {
+  const size_t base_index = subgraphs_.size();
+  if (first_new_subgraph_index) *first_new_subgraph_index = base_index;
+
+  subgraphs_.reserve(base_index + subgraphs_to_add);
+  for (int i = 0; i < subgraphs_to_add; ++i) {
+    Subgraph* subgraph =
+        new Subgraph(error_reporter_, external_contexts_, &subgraphs_);
+    subgraphs_.emplace_back(subgraph);
+  }
 }
 
 TfLiteStatus Interpreter::AddNodeWithParameters(
@@ -88,15 +122,16 @@ TfLiteStatus Interpreter::ResizeInputTensor(int tensor_index,
 }
 
 TfLiteStatus Interpreter::Invoke() {
-  TfLiteStatus status = primary_subgraph().Invoke();
+  TF_LITE_ENSURE_STATUS(primary_subgraph().Invoke());
 
   if (!allow_buffer_handle_output_) {
     for (int tensor_index : outputs()) {
-      primary_subgraph().EnsureTensorDataIsReadable(tensor_index);
+      TF_LITE_ENSURE_STATUS(
+          primary_subgraph().EnsureTensorDataIsReadable(tensor_index));
     }
   }
 
-  return status;
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::AddTensors(int tensors_to_add,
@@ -109,23 +144,48 @@ TfLiteStatus Interpreter::ResetVariableTensors() {
 }
 
 TfLiteStatus Interpreter::SetTensorParametersReadOnly(
+    int tensor_index, TfLiteType type, const char* name,
+    const std::vector<int>& dims, TfLiteQuantization quantization,
+    const char* buffer, size_t bytes, const Allocation* allocation) {
+  return primary_subgraph().SetTensorParametersReadOnly(
+      tensor_index, type, name, dims.size(), dims.data(), quantization, buffer,
+      bytes, allocation);
+}
+
+TfLiteStatus Interpreter::SetTensorParametersReadWrite(
+    int tensor_index, TfLiteType type, const char* name,
+    const std::vector<int>& dims, TfLiteQuantization quantization,
+    bool is_variable) {
+  return primary_subgraph().SetTensorParametersReadWrite(
+      tensor_index, type, name, dims.size(), dims.data(), quantization,
+      is_variable);
+}
+
+TfLiteStatus Interpreter::SetTensorParametersReadOnly(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, const char* buffer,
     size_t bytes, const Allocation* allocation) {
-  return primary_subgraph().SetTensorParametersReadOnly(
-      tensor_index, type, name, rank, dims, quantization, buffer, bytes,
-      allocation);
+  TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
+  if (primary_subgraph().SetTensorParametersReadOnly(
+          tensor_index, type, name, rank, dims, new_quantization, buffer, bytes,
+          allocation) != kTfLiteOk) {
+    TfLiteQuantizationFree(&new_quantization);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
-// Set description of inputs/outputs/data/fptrs for node `node_index`.
-// This variant assumes an external buffer has been allocated of size
-// bytes. The lifetime of buffer must be ensured to be greater or equal
-// to Interpreter.
 TfLiteStatus Interpreter::SetTensorParametersReadWrite(
     int tensor_index, TfLiteType type, const char* name, const size_t rank,
     const int* dims, TfLiteQuantizationParams quantization, bool is_variable) {
-  return primary_subgraph().SetTensorParametersReadWrite(
-      tensor_index, type, name, rank, dims, quantization, is_variable);
+  TfLiteQuantization new_quantization = GetQuantizationFromLegacy(quantization);
+  if (primary_subgraph().SetTensorParametersReadWrite(
+          tensor_index, type, name, rank, dims, new_quantization,
+          is_variable) != kTfLiteOk) {
+    TfLiteQuantizationFree(&new_quantization);
+    return kTfLiteError;
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetExecutionPlan(const std::vector<int>& new_plan) {
@@ -153,8 +213,20 @@ void Interpreter::SetAllowFp16PrecisionForFp32(bool allow) {
   }
 }
 
+// TODO(b/121264966): Subgraphs added after cancellation is set will not get the
+// cancellation function added to their context.
+void Interpreter::SetCancellationFunction(void* data,
+                                          bool (*check_cancelled_func)(void*)) {
+  for (auto& subgraph : subgraphs_) {
+    subgraph->SetCancellationFunction(data, check_cancelled_func);
+  }
+}
+
 TfLiteStatus Interpreter::ModifyGraphWithDelegate(TfLiteDelegate* delegate) {
-  return primary_subgraph().ModifyGraphWithDelegate(delegate);
+  for (auto& subgraph : subgraphs_) {
+    TF_LITE_ENSURE_OK(context_, subgraph->ModifyGraphWithDelegate(delegate));
+  }
+  return kTfLiteOk;
 }
 
 TfLiteStatus Interpreter::SetBufferHandle(int tensor_index,

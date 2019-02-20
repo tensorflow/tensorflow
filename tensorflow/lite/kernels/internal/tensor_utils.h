@@ -55,6 +55,21 @@ void MatrixBatchVectorMultiplyAccumulate(const float* matrix, int m_rows,
                                          int n_batch, float* result,
                                          int result_stride);
 
+// Same as the function above, but the matrix is stored in block compressed
+// sparse row format with block pattern 1x16 which consists of two arrays:
+//   1. A matrix array stores non-zero blocks of the matrix in row major.
+//   2. A ledger array stores nrows groups, one group per row. Each group starts
+//   with
+//      an integer representing the number of non-zero blocks for the
+//      corresponding row and follows with column indexes of the first element
+//      of each non-zero block.
+// This function assumes that
+//   1. m_cols is a multiple of 16 so that all blocks are full blocks.
+//   2. m_cols < 254 * 16 so that block index can be represented by uint8.
+void SparseMatrixBatchVectorMultiplyAccumulate(
+    const float* matrix, const uint8_t* ledger, int m_rows, int m_cols,
+    const float* vector, int n_batch, float* result, int result_stride);
+
 // Same as the function above, but for values quantized using symmetric
 // quantization (e.g. by calling SymmetricQuantizeFloats).
 // The passed scaling factors is a buffer of the quantization scaling factors
@@ -66,6 +81,23 @@ void MatrixBatchVectorMultiplyAccumulate(
     const int8_t* __restrict__ matrix, const int m_rows, const int m_cols,
     const int8_t* __restrict__ vectors, const float* scaling_factors,
     int n_batch, float* __restrict__ result, int result_stride);
+
+// Same as the function above, but the matrix is stored in block compressed
+// sparse row format with block pattern 1x16 which consists of two arrays:
+//   1. A matrix array stores non-zero blocks of the matrix in row major.
+//   2. A ledger array stores nrows groups, one group per row. Each group starts
+//   with
+//      an integer representing the number of non-zero blocks for the
+//      corresponding row followed by column index of the first element of
+//      each non-zero block.
+// This function assumes that
+//   1. m_cols is a multiple of 16 so that all blocks are full blocks.
+//   2. m_cols < 254 * 16 so that block index can be represented by uint8.
+void SparseMatrixBatchVectorMultiplyAccumulate(
+    const int8_t* __restrict__ matrix, const uint8_t* ledger, const int m_rows,
+    const int m_cols, const int8_t* __restrict__ vectors,
+    const float* scaling_factors, int n_batch, float* __restrict__ result,
+    int result_stride);
 
 // Cwise product of two vectors.
 void VectorVectorCwiseProduct(const float* vector1, const float* vector2,

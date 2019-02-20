@@ -76,8 +76,11 @@ Mobilenet_V1_1.0_128_quant  | [paper](https://arxiv.org/pdf/1712.05877.pdf), [tf
 Mobilenet_V1_1.0_160_quant  | [paper](https://arxiv.org/pdf/1712.05877.pdf), [tflite&pb](http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_160_quant.tgz)  | 4.3 Mb     | 66.9%          | 86.7%          | 37.4 ms
 Mobilenet_V1_1.0_192_quant  | [paper](https://arxiv.org/pdf/1712.05877.pdf), [tflite&pb](http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_192_quant.tgz)  | 4.3 Mb     | 69.1%          | 88.1%          | 51.9 ms
 Mobilenet_V1_1.0_224_quant  | [paper](https://arxiv.org/pdf/1712.05877.pdf), [tflite&pb](http://download.tensorflow.org/models/mobilenet_v1_2018_08_02/mobilenet_v1_1.0_224_quant.tgz)  | 4.3 Mb     | 70.0%          | 89.0%          | 70.2 ms
-Mobilenet_v2_1.0_224_quant  | [paper](https://arxiv.org/abs/1806.08342), [tflite&pb](http://download.tensorflow.org/models/tflite_11_05_08/mobilenet_v2_1.0_224_quant.tgz)              | 3.4 Mb     | 70.8%          | 89.9%          | 80.3 ms
-Inception_v3_quant          | [paper](https://arxiv.org/abs/1806.08342),[tflite&pb](http://download.tensorflow.org/models/tflite_11_05_08/inception_v3_quant.tgz)                       | 23 Mb      | 77.5%          | 93.7%          | 637 ms
+Mobilenet_V2_1.0_224_quant  | [paper](https://arxiv.org/abs/1806.08342), [tflite&pb](http://download.tensorflow.org/models/tflite_11_05_08/mobilenet_v2_1.0_224_quant.tgz)              | 3.4 Mb     | 70.8%          | 89.9%          | 80.3 ms
+Inception_V1_quant          | [paper](https://arxiv.org/abs/1409.4842), [tflite&pb](http://download.tensorflow.org/models/inception_v1_224_quant_20181026.tgz)                          | 6.4 Mb     | 70.1%          | 89.8%          | 154.5 ms
+Inception_V2_quant          | [paper](https://arxiv.org/abs/1512.00567), [tflite&pb](http://download.tensorflow.org/models/inception_v2_224_quant_20181026.tgz)                         | 11 Mb      | 73.5%          | 91.4%          | 235.0 ms
+Inception_V3_quant          | [paper](https://arxiv.org/abs/1806.08342),[tflite&pb](http://download.tensorflow.org/models/tflite_11_05_08/inception_v3_quant.tgz)                       | 23 Mb      | 77.5%          | 93.7%          | 637 ms
+Inception_V4_quant          | [paper](https://arxiv.org/abs/1602.07261), [tflite&pb](http://download.tensorflow.org/models/inception_v4_299_quant_20181026.tgz)                         | 41 Mb      | 79.5%          | 93.9%          | 1250.8 ms
 
 ## Other models
 

@@ -144,12 +144,16 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[1];[2]", "[d1_0]");
     INFER_OK(op, "[2];[1]", "[d0_0]");
     INFER_OK(op, "[2];[]", "[d0_0]");
+    INFER_OK(op, "[2];[?]", "[d0_0]");
 
     INFER_OK(op, "[0];[0]", "[d0_0|d1_0]");
     INFER_OK(op, "[];[0]", "[d1_0]");
     INFER_OK(op, "[1];[0]", "[d1_0]");
     INFER_OK(op, "[0];[1]", "[d0_0]");
     INFER_OK(op, "[0];[]", "[d0_0]");
+
+    INFER_OK(op, "[2];[?,?]", "[d1_0,d0_0]");
+    INFER_OK(op, "[2,2];[?,?,?]", "[d1_0,d0_0,d0_1]");
 
     // Multiple dimension cases (same test cases, switching x and y).
     INFER_OK(op, "[?,1,2,3,4,5];[3,1,?]",

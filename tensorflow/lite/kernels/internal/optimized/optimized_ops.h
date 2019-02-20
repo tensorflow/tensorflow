@@ -25,6 +25,10 @@ limitations under the License.
 #include <tuple>
 #include <type_traits>
 
+#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+#include <Accelerate/Accelerate.h>
+#endif
+
 #include "third_party/eigen3/Eigen/Core"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "fixedpoint/fixedpoint.h"
@@ -60,6 +64,7 @@ using reference_ops::DepthConcatenation;
 using reference_ops::Dequantize;
 using reference_ops::Div;
 using reference_ops::FakeQuant;
+using reference_ops::Fill;
 using reference_ops::Gather;
 using reference_ops::Greater;
 using reference_ops::GreaterEqual;
@@ -80,6 +85,7 @@ using reference_ops::Select;
 using reference_ops::SpaceToBatchND;
 using reference_ops::Split;
 using reference_ops::StridedSlice;
+using reference_ops::Sub16;
 using reference_ops::Transpose;
 
 // TODO(b/80247582) Remove this constant.
@@ -174,45 +180,6 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   TFLITE_DCHECK_EQ(flatsize % rows, 0);
   const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
-}
-
-// This is like the template-parameter version, except that the power-of-two is
-// passed as a function parameter. The template version is to be preferred,
-// since some target hardware optimizations depend on the range of the exponent.
-template <typename IntegerType>
-IntegerType SaturatingRoundingMultiplyByPOTParam(IntegerType x, int exponent) {
-  if (exponent == 0) {
-    return x;
-  }
-  using ScalarIntegerType =
-      typename gemmlowp::FixedPointRawTypeTraits<IntegerType>::ScalarRawType;
-  const IntegerType min =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::min());
-  const IntegerType max =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::max());
-  const int ScalarIntegerTypeBits = 8 * sizeof(ScalarIntegerType);
-
-  const std::int32_t threshold =
-      ((1 << (ScalarIntegerTypeBits - 1 - exponent)) - 1);
-  const IntegerType positive_mask =
-      gemmlowp::MaskIfGreaterThan(x, gemmlowp::Dup<IntegerType>(threshold));
-  const IntegerType negative_mask =
-      gemmlowp::MaskIfLessThan(x, gemmlowp::Dup<IntegerType>(-threshold));
-
-  IntegerType result = gemmlowp::ShiftLeft(x, exponent);
-  result = gemmlowp::SelectUsingMask(positive_mask, max, result);
-  result = gemmlowp::SelectUsingMask(negative_mask, min, result);
-  return result;
-}
-
-// This is like the template-parameter version, except that the power-of-two is
-// passed as a function parameter. See raw-integer version for further comments.
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits>
-SaturatingRoundingMultiplyByPOTParam(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
 inline void AddBiasAndEvalActivationFunction(float output_activation_min,
@@ -835,24 +802,21 @@ inline void FullyConnected(
 }
 
 #ifdef USE_NEON
-inline void FullyConnectedAsGEMV(
+inline void FullyConnectedAsGEMVWorkerImpl(
     const RuntimeShape& input_shape, const uint8* input_data,
     int32 input_offset, const RuntimeShape& filter_shape,
     const uint8* filter_data, int32 filter_offset,
     const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int row_start, int row_end) {
   gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMV/8bit");
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   const int output_dim_count = output_shape.DimensionsCount();
-  const int filter_dim_count = filter_shape.DimensionsCount();
   TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
-  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
-                                      output_shape, output_dim_count - 1);
   static constexpr int kPeel = 4;
   const bool shift_left = (output_shift > 0);
   for (int k = 0; k < input_size; k += 64) {
@@ -861,81 +825,139 @@ inline void FullyConnectedAsGEMV(
   for (int k = 0; k < kPeel * input_size; k += 64) {
     optimized_ops_preload_l1_stream(filter_data + k);
   }
-  TFLITE_DCHECK(!(output_size % kPeel));
-  const int32* bias_ptr = bias_data;
-  uint8* output_ptr = output_data;
-  for (int out = 0; out < output_size; out += kPeel) {
-    int32x4_t acc[kPeel];
-    for (int k = 0; k < kPeel; k++) {
-      acc[k] = vdupq_n_s32(0);
-    }
+
+  TFLITE_DCHECK_GE(row_end - row_start, kPeel);
+
+  for (int out = row_start; out < row_end; out += kPeel) {
+    out = std::min(out, row_end - kPeel);
+    int32x4_t acc0 = vdupq_n_s32(0);
+    int32x4_t acc1 = acc0;
+    int32x4_t acc2 = acc0;
+    int32x4_t acc3 = acc0;
     const int16x8_t input_offset_vec = vdupq_n_s16(input_offset);
     const int16x8_t filter_offset_vec = vdupq_n_s16(filter_offset);
     int in = 0;
     for (; in <= input_size - 16; in += 16) {
       const uint8x16_t input_val_u8 = vld1q_u8(input_data + in);
-      uint8x16_t filter_val_u8[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8* filter_ptr = filter_data + in + (out + k) * input_size;
-        filter_val_u8[k] = vld1q_u8(filter_ptr);
-        optimized_ops_preload_l1_stream(filter_ptr + 64);
-      }
-      int16x8_t input_val[2];
-      const uint8x8_t low = vget_low_u8(input_val_u8);
-      const uint8x8_t high = vget_high_u8(input_val_u8);
-      input_val[0] = vreinterpretq_s16_u16(vmovl_u8(low));
-      input_val[1] = vreinterpretq_s16_u16(vmovl_u8(high));
-      input_val[0] = vaddq_s16(input_val[0], input_offset_vec);
-      input_val[1] = vaddq_s16(input_val[1], input_offset_vec);
-      int16x8_t filter_val[kPeel][2];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8x8_t low = vget_low_u8(filter_val_u8[k]);
-        const uint8x8_t high = vget_high_u8(filter_val_u8[k]);
-        filter_val[k][0] = vreinterpretq_s16_u16(vmovl_u8(low));
-        filter_val[k][1] = vreinterpretq_s16_u16(vmovl_u8(high));
-        filter_val[k][0] = vaddq_s16(filter_val[k][0], filter_offset_vec);
-        filter_val[k][1] = vaddq_s16(filter_val[k][1], filter_offset_vec);
-      }
-      for (int p = 0; p < 2; p++) {
-        for (int k = 0; k < kPeel; k++) {
-          acc[k] = vmlal_s16(acc[k], vget_low_s16(filter_val[k][p]),
-                             vget_low_s16(input_val[p]));
-        }
-        for (int k = 0; k < kPeel; k++) {
-          acc[k] = vmlal_s16(acc[k], vget_high_s16(filter_val[k][p]),
-                             vget_high_s16(input_val[p]));
-        }
-      }
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x16_t filter_val_u8_0 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_1 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_2 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      filter_ptr += input_size;
+      uint8x16_t filter_val_u8_3 = vld1q_u8(filter_ptr);
+      optimized_ops_preload_l1_stream(filter_ptr + 64);
+      int16x8_t input_val_0, input_val_1;
+      uint8x8_t low = vget_low_u8(input_val_u8);
+      uint8x8_t high = vget_high_u8(input_val_u8);
+      input_val_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      input_val_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      input_val_0 = vaddq_s16(input_val_0, input_offset_vec);
+      input_val_1 = vaddq_s16(input_val_1, input_offset_vec);
+      low = vget_low_u8(filter_val_u8_0);
+      high = vget_high_u8(filter_val_u8_0);
+      int16x8_t filter_val_0_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_0_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_0_0 = vaddq_s16(filter_val_0_0, filter_offset_vec);
+      filter_val_0_1 = vaddq_s16(filter_val_0_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_1);
+      high = vget_high_u8(filter_val_u8_1);
+      int16x8_t filter_val_1_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_1_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_1_0 = vaddq_s16(filter_val_1_0, filter_offset_vec);
+      filter_val_1_1 = vaddq_s16(filter_val_1_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_2);
+      high = vget_high_u8(filter_val_u8_2);
+      int16x8_t filter_val_2_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_2_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_2_0 = vaddq_s16(filter_val_2_0, filter_offset_vec);
+      filter_val_2_1 = vaddq_s16(filter_val_2_1, filter_offset_vec);
+      low = vget_low_u8(filter_val_u8_3);
+      high = vget_high_u8(filter_val_u8_3);
+      int16x8_t filter_val_3_0 = vreinterpretq_s16_u16(vmovl_u8(low));
+      int16x8_t filter_val_3_1 = vreinterpretq_s16_u16(vmovl_u8(high));
+      filter_val_3_0 = vaddq_s16(filter_val_3_0, filter_offset_vec);
+      filter_val_3_1 = vaddq_s16(filter_val_3_1, filter_offset_vec);
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_0),
+                       vget_low_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_0),
+                       vget_low_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_0),
+                       vget_low_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_0),
+                       vget_low_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_low_s16(filter_val_0_1),
+                       vget_low_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_low_s16(filter_val_1_1),
+                       vget_low_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_low_s16(filter_val_2_1),
+                       vget_low_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_low_s16(filter_val_3_1),
+                       vget_low_s16(input_val_1));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_0),
+                       vget_high_s16(input_val_0));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_0),
+                       vget_high_s16(input_val_0));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_0),
+                       vget_high_s16(input_val_0));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_0),
+                       vget_high_s16(input_val_0));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0_1),
+                       vget_high_s16(input_val_1));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1_1),
+                       vget_high_s16(input_val_1));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2_1),
+                       vget_high_s16(input_val_1));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3_1),
+                       vget_high_s16(input_val_1));
     }
     for (; in <= input_size - 8; in += 8) {
       const uint8x8_t input_val_u8 = vld1_u8(input_data + in);
-      uint8x8_t filter_val_u8[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        const uint8* filter_ptr = filter_data + in + (out + k) * input_size;
-        filter_val_u8[k] = vld1_u8(filter_ptr);
-      }
-      int16x8_t input_val;
-      input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
+      const uint8* filter_ptr = filter_data + in + out * input_size;
+      uint8x8_t filter_val_u8_0 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_1 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_2 = vld1_u8(filter_ptr);
+      filter_ptr += input_size;
+      uint8x8_t filter_val_u8_3 = vld1_u8(filter_ptr);
+      int16x8_t input_val = vreinterpretq_s16_u16(vmovl_u8(input_val_u8));
       input_val = vaddq_s16(input_val, input_offset_vec);
-      int16x8_t filter_val[kPeel];
-      for (int k = 0; k < kPeel; k++) {
-        filter_val[k] = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8[k]));
-        filter_val[k] = vaddq_s16(filter_val[k], filter_offset_vec);
-      }
-      for (int k = 0; k < kPeel; k++) {
-        acc[k] = vmlal_s16(acc[k], vget_low_s16(filter_val[k]),
-                           vget_low_s16(input_val));
-      }
-      for (int k = 0; k < kPeel; k++) {
-        acc[k] = vmlal_s16(acc[k], vget_high_s16(filter_val[k]),
-                           vget_high_s16(input_val));
-      }
+      int16x8_t filter_val_0 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_0));
+      filter_val_0 = vaddq_s16(filter_val_0, filter_offset_vec);
+      int16x8_t filter_val_1 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_1));
+      filter_val_1 = vaddq_s16(filter_val_1, filter_offset_vec);
+      int16x8_t filter_val_2 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_2));
+      filter_val_2 = vaddq_s16(filter_val_2, filter_offset_vec);
+      int16x8_t filter_val_3 = vreinterpretq_s16_u16(vmovl_u8(filter_val_u8_3));
+      filter_val_3 = vaddq_s16(filter_val_3, filter_offset_vec);
+      acc0 =
+          vmlal_s16(acc0, vget_low_s16(filter_val_0), vget_low_s16(input_val));
+      acc1 =
+          vmlal_s16(acc1, vget_low_s16(filter_val_1), vget_low_s16(input_val));
+      acc2 =
+          vmlal_s16(acc2, vget_low_s16(filter_val_2), vget_low_s16(input_val));
+      acc3 =
+          vmlal_s16(acc3, vget_low_s16(filter_val_3), vget_low_s16(input_val));
+      acc0 = vmlal_s16(acc0, vget_high_s16(filter_val_0),
+                       vget_high_s16(input_val));
+      acc1 = vmlal_s16(acc1, vget_high_s16(filter_val_1),
+                       vget_high_s16(input_val));
+      acc2 = vmlal_s16(acc2, vget_high_s16(filter_val_2),
+                       vget_high_s16(input_val));
+      acc3 = vmlal_s16(acc3, vget_high_s16(filter_val_3),
+                       vget_high_s16(input_val));
     }
     if (in < input_size) {
-      int32 buf[4 * kPeel];
-      for (int k = 0; k < 4; k++) {
-        vst1q_s32(buf + 4 * k, acc[k]);
-      }
+      int32 buf[16];
+      vst1q_s32(buf + 0, acc0);
+      vst1q_s32(buf + 4, acc1);
+      vst1q_s32(buf + 8, acc2);
+      vst1q_s32(buf + 12, acc3);
       for (; in < input_size; in++) {
         int lane = (in + 8 - input_size) % 4;
         const int32 input_val = input_data[in] + input_offset;
@@ -945,26 +967,28 @@ inline void FullyConnectedAsGEMV(
           buf[lane + 4 * k] += filter_val * input_val;
         }
       }
-      for (int k = 0; k < 4; k++) {
-        acc[k] = vld1q_s32(buf + 4 * k);
-      }
+      acc0 = vld1q_s32(buf + 0);
+      acc1 = vld1q_s32(buf + 4);
+      acc2 = vld1q_s32(buf + 8);
+      acc3 = vld1q_s32(buf + 12);
     }
 
     // Horizontally reduce accumulators
-    int32x2_t pairwise_reduced_acc[kPeel];
-    for (int k = 0; k < kPeel; k++) {
-      pairwise_reduced_acc[k] =
-          vpadd_s32(vget_low_s32(acc[k]), vget_high_s32(acc[k]));
-    }
-    static_assert(kPeel == 4, "the code below currently assumes kPeel = 4");
+    int32x2_t pairwise_reduced_acc_0 =
+        vpadd_s32(vget_low_s32(acc0), vget_high_s32(acc0));
+    int32x2_t pairwise_reduced_acc_1 =
+        vpadd_s32(vget_low_s32(acc1), vget_high_s32(acc1));
+    int32x2_t pairwise_reduced_acc_2 =
+        vpadd_s32(vget_low_s32(acc2), vget_high_s32(acc2));
+    int32x2_t pairwise_reduced_acc_3 =
+        vpadd_s32(vget_low_s32(acc3), vget_high_s32(acc3));
     const int32x2_t reduced_lo =
-        vpadd_s32(pairwise_reduced_acc[0], pairwise_reduced_acc[1]);
+        vpadd_s32(pairwise_reduced_acc_0, pairwise_reduced_acc_1);
     const int32x2_t reduced_hi =
-        vpadd_s32(pairwise_reduced_acc[2], pairwise_reduced_acc[3]);
+        vpadd_s32(pairwise_reduced_acc_2, pairwise_reduced_acc_3);
     int32x4_t reduced = vcombine_s32(reduced_lo, reduced_hi);
     // Add bias values.
-    int32x4_t bias_vec = vld1q_s32(bias_ptr);
-    bias_ptr += 4;
+    int32x4_t bias_vec = vld1q_s32(bias_data + out);
     reduced = vaddq_s32(reduced, bias_vec);
     if (shift_left) {
       const int32 multiplier_power_of_two = 1 << output_shift;
@@ -987,11 +1011,116 @@ inline void FullyConnectedAsGEMV(
     // Apply the clamping from the activation function
     res8 = vmax_u8(res8, vdup_n_u8(output_activation_min));
     res8 = vmin_u8(res8, vdup_n_u8(output_activation_max));
-    // Store results to destination. Assumes 32bit alignment.
-    vst1_lane_u32(reinterpret_cast<uint32*>(output_ptr),
-                  vreinterpret_u32_u8(res8), 0);
-    output_ptr += kPeel;
+    // Store results to destination.
+    vst1_lane_u8(output_data + out + 0, res8, 0);
+    vst1_lane_u8(output_data + out + 1, res8, 1);
+    vst1_lane_u8(output_data + out + 2, res8, 2);
+    vst1_lane_u8(output_data + out + 3, res8, 3);
   }
+}
+
+struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
+  FullyConnectedAsGEMVWorkerTask(const RuntimeShape& input_shape,
+                                 const uint8* input_data, int32 input_offset,
+                                 const RuntimeShape& filter_shape,
+                                 const uint8* filter_data, int32 filter_offset,
+                                 const RuntimeShape& bias_shape,
+                                 const int32* bias_data, int32 output_offset,
+                                 int32 output_multiplier, int output_shift,
+                                 int32 output_activation_min,
+                                 int32 output_activation_max,
+                                 const RuntimeShape& output_shape,
+                                 uint8* output_data, int row_start, int row_end)
+      : input_shape_(input_shape),
+        input_data_(input_data),
+        input_offset_(input_offset),
+        filter_shape_(filter_shape),
+        filter_data_(filter_data),
+        filter_offset_(filter_offset),
+        bias_shape_(bias_shape),
+        bias_data_(bias_data),
+        output_offset_(output_offset),
+        output_multiplier_(output_multiplier),
+        output_shift_(output_shift),
+        output_activation_min_(output_activation_min),
+        output_activation_max_(output_activation_max),
+        output_shape_(output_shape),
+        output_data_(output_data),
+        row_start_(row_start),
+        row_end_(row_end) {}
+
+  void Run() override {
+    FullyConnectedAsGEMVWorkerImpl(
+        input_shape_, input_data_, input_offset_, filter_shape_, filter_data_,
+        filter_offset_, bias_shape_, bias_data_, output_offset_,
+        output_multiplier_, output_shift_, output_activation_min_,
+        output_activation_max_, output_shape_, output_data_, row_start_,
+        row_end_);
+  }
+
+  const RuntimeShape& input_shape_;
+  const uint8* input_data_;
+  int32 input_offset_;
+  const RuntimeShape& filter_shape_;
+  const uint8* filter_data_;
+  int32 filter_offset_;
+  const RuntimeShape& bias_shape_;
+  const int32* bias_data_;
+  int32 output_offset_;
+  int32 output_multiplier_;
+  int output_shift_;
+  int32 output_activation_min_;
+  int32 output_activation_max_;
+  const RuntimeShape& output_shape_;
+  uint8* output_data_;
+  gemmlowp::GemmContext* gemm_context_;
+  int row_start_;
+  int row_end_;
+};
+
+inline void FullyConnectedAsGEMV(
+    const RuntimeShape& input_shape, const uint8* input_data,
+    int32 input_offset, const RuntimeShape& filter_shape,
+    const uint8* filter_data, int32 filter_offset,
+    const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext* gemm_context) {
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_rows = output_shape.Dims(output_dim_count - 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  static constexpr int kKernelRows = 4;
+  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+      gemm_context->max_num_threads(), output_rows, batches, input_size);
+  if (thread_count == 1) {
+    // Single-thread case: do the computation on the current thread, don't
+    // use a threadpool
+    FullyConnectedAsGEMVWorkerImpl(
+        input_shape, input_data, input_offset, filter_shape, filter_data,
+        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
+        output_shift, output_activation_min, output_activation_max,
+        output_shape, output_data, 0, output_rows);
+    return;
+  }
+
+  // Multi-threaded case: use the gemmlowp context's threadpool.
+  TFLITE_DCHECK_GT(thread_count, 1);
+  std::vector<gemmlowp::Task*> tasks(thread_count);
+  const int kRowsPerWorker =
+      gemmlowp::RoundUp<kKernelRows>(output_rows / thread_count);
+  int row_start = 0;
+  for (int i = 0; i < thread_count; ++i) {
+    int row_end = std::min(output_rows, row_start + kRowsPerWorker);
+    tasks[i] = new FullyConnectedAsGEMVWorkerTask(
+        input_shape, input_data, input_offset, filter_shape, filter_data,
+        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
+        output_shift, output_activation_min, output_activation_max,
+        output_shape, output_data, row_start, row_end);
+    row_start = row_end;
+  }
+  TFLITE_DCHECK_EQ(row_start, output_rows);
+  gemm_context->workers_pool()->Execute(tasks);
 }
 #endif  // USE_NEON
 
@@ -1048,14 +1177,16 @@ inline void FullyConnected(
   const int filter_dim_count = filter_shape.DimensionsCount();
   const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
 #ifdef USE_NEON
-  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
-                                      output_shape, output_dim_count - 1);
-  if (batches == 1 && !(output_size % 4)) {
-    return FullyConnectedAsGEMV(
-        input_shape, input_data, input_offset, filter_shape, filter_data,
-        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
-        output_shift, output_activation_min, output_activation_max,
-        output_shape, output_data);
+  if (batches == 1) {
+    const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
+                                        output_shape, output_dim_count - 1);
+    if (output_size >= 4) {
+      return FullyConnectedAsGEMV(
+          input_shape, input_data, input_offset, filter_shape, filter_data,
+          filter_offset, bias_shape, bias_data, output_offset,
+          output_multiplier, output_shift, output_activation_min,
+          output_activation_max, output_shape, output_data, gemm_context);
+    }
   }
 #endif  // USE_NEON
   const int filter_rows = filter_shape.Dims(filter_dim_count - 2);
@@ -1868,18 +1999,58 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
     gemm_input_shape = &input_shape;
   }
 
-  const auto im2col_matrix_map =
-      MapAsMatrixWithLastDimAsRows(gemm_input_data, *gemm_input_shape);
-  const auto filter_matrix_map =
-      MapAsMatrixWithFirstDimAsCols(filter_data, filter_shape);
-  auto output_matrix_map =
-      MapAsMatrixWithLastDimAsRows(output_data, output_shape);
+  // The following code computes matrix multiplication c = a * transponse(b)
+  // with CBLAS, where:
+  // * `a` is a matrix with dimensions (m, k).
+  // * `b` is a matrix with dimensions (n, k), so transpose(b) is (k, n).
+  // * `c` is a matrix with dimensions (m, n).
+  // The naming of variables are aligned with CBLAS specification here.
+  const float* a = gemm_input_data;
+  const float* b = filter_data;
+  float* c = output_data;
+  const int gemm_input_dims = gemm_input_shape->DimensionsCount();
+  int m = FlatSizeSkipDim(*gemm_input_shape, gemm_input_dims - 1);
+  int n = output_shape.Dims(3);
+  int k = gemm_input_shape->Dims(gemm_input_dims - 1);
 
-  Gemm(filter_matrix_map.transpose(), im2col_matrix_map, &output_matrix_map);
+#if defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+  // The stride of matrix a, b and c respectively.
+  int stride_a = k;
+  int stride_b = k;
+  int stride_c = n;
 
-  AddBiasAndEvalActivationFunction(output_activation_min, output_activation_max,
-                                   bias_shape, bias_data, output_shape,
-                                   output_data);
+  cblas_sgemm(CblasRowMajor, CblasNoTrans, CblasTrans, m, n, k, 1.0f, a,
+              stride_a, b, stride_b, 0.0f, c, stride_c);
+#else
+  // When an optimized CBLAS implementation is not available, fall back
+  // to using Eigen.
+  typedef Eigen::Matrix<float, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>
+      Matrix;
+  typedef Eigen::Map<Matrix> MatrixRef;
+  typedef Eigen::Map<const Matrix> ConstMatrixRef;
+
+  MatrixRef matrix_c(c, m, n);
+  ConstMatrixRef matrix_a(a, m, k);
+  ConstMatrixRef matrix_b(b, n, k);
+
+  // The following special casing for when a or b is a vector is required
+  // as Eigen seem to fail to make this optimization on its own.
+  if (n == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    matrix_c.col(0).noalias() = matrix_a * matrix_b.row(0).transpose();
+  } else if (m == 1) {
+    gemmlowp::ScopedProfilingLabel label("GEMV");
+    matrix_c.row(0).noalias() = matrix_a.row(0) * matrix_b.transpose();
+  } else {
+    gemmlowp::ScopedProfilingLabel label("GEMM");
+    matrix_c.noalias() = matrix_a * matrix_b.transpose();
+  }
+
+#endif  //  defined(TF_LITE_USE_CBLAS) && defined(__APPLE__)
+
+  optimized_ops::AddBiasAndEvalActivationFunction(
+      output_activation_min, output_activation_max, bias_shape, bias_data,
+      output_shape, output_data);
 }
 
 inline void HybridConv(const ConvParams& params, float* scaling_factors_ptr,
@@ -2038,6 +2209,21 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
   TFLITE_DCHECK_EQ(output_cols, gemm_input_cols);
   TFLITE_DCHECK_EQ(filter_cols, gemm_input_rows);
   TFLITE_DCHECK_EQ(bias_shape.FlatSize(), output_rows);
+
+#ifdef USE_NEON
+  if (gemm_input_cols == 1 && output_rows >= 4) {
+    RuntimeShape fc_filter_shape{
+        filter_shape.Dims(0),
+        filter_shape.Dims(filter_shape.DimensionsCount() - 1)};
+
+    return FullyConnectedAsGEMV(
+        *gemm_input_shape, gemm_input_data, input_offset, fc_filter_shape,
+        filter_data, filter_offset, bias_shape, bias_data, output_offset,
+        output_multiplier, output_shift, output_activation_min,
+        output_activation_max, output_shape, output_data, gemm_context);
+  }
+#endif
+
   gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::RowMajor> filter_matrix(
       filter_data, filter_rows, filter_cols);
   gemmlowp::MatrixMap<const uint8, gemmlowp::MapOrder::ColMajor> input_matrix(
@@ -2315,36 +2501,37 @@ inline void Add(const ArithmeticParams& params,
 inline void AddElementwise(int size, const ArithmeticParams& params,
                            const uint8* input1_data, const uint8* input2_data,
                            uint8* output_data) {
+  gemmlowp::ScopedProfilingLabel label("AddElementwise/8bit");
   int i = 0;
   TFLITE_DCHECK_GT(params.input1_offset, -256);
   TFLITE_DCHECK_GT(params.input2_offset, -256);
   TFLITE_DCHECK_LT(params.input1_offset, 256);
   TFLITE_DCHECK_LT(params.input2_offset, 256);
 #ifdef USE_NEON
-  const auto output_activation_min_vector =
+  const uint8x8_t output_activation_min_vector =
       vdup_n_u8(params.quantized_activation_min);
-  const auto output_activation_max_vector =
+  const uint8x8_t output_activation_max_vector =
       vdup_n_u8(params.quantized_activation_max);
   for (; i <= size - 8; i += 8) {
-    const auto input1_val_original = vld1_u8(input1_data + i);
-    const auto input2_val_original = vld1_u8(input2_data + i);
-    const auto input1_val_s16 =
+    const uint8x8_t input1_val_original = vld1_u8(input1_data + i);
+    const uint8x8_t input2_val_original = vld1_u8(input2_data + i);
+    const int16x8_t input1_val_s16 =
         vreinterpretq_s16_u16(vmovl_u8(input1_val_original));
-    const auto input2_val_s16 =
+    const int16x8_t input2_val_s16 =
         vreinterpretq_s16_u16(vmovl_u8(input2_val_original));
-    const auto input1_val =
+    const int16x8_t input1_val =
         vaddq_s16(input1_val_s16, vdupq_n_s16(params.input1_offset));
-    const auto input2_val =
+    const int16x8_t input2_val =
         vaddq_s16(input2_val_s16, vdupq_n_s16(params.input2_offset));
-    const auto input1_val_high = vget_high_s16(input1_val);
-    const auto input1_val_low = vget_low_s16(input1_val);
-    const auto input2_val_high = vget_high_s16(input2_val);
-    const auto input2_val_low = vget_low_s16(input2_val);
-    auto x11 = vmovl_s16(input1_val_low);
-    auto x12 = vmovl_s16(input1_val_high);
-    auto x21 = vmovl_s16(input2_val_low);
-    auto x22 = vmovl_s16(input2_val_high);
-    const auto left_shift_dup = vdupq_n_s32(params.left_shift);
+    const int16x4_t input1_val_high = vget_high_s16(input1_val);
+    const int16x4_t input1_val_low = vget_low_s16(input1_val);
+    const int16x4_t input2_val_high = vget_high_s16(input2_val);
+    const int16x4_t input2_val_low = vget_low_s16(input2_val);
+    int32x4_t x11 = vmovl_s16(input1_val_low);
+    int32x4_t x12 = vmovl_s16(input1_val_high);
+    int32x4_t x21 = vmovl_s16(input2_val_low);
+    int32x4_t x22 = vmovl_s16(input2_val_high);
+    const int32x4_t left_shift_dup = vdupq_n_s32(params.left_shift);
     x11 = vshlq_s32(x11, left_shift_dup);
     x12 = vshlq_s32(x12, left_shift_dup);
     x21 = vshlq_s32(x21, left_shift_dup);
@@ -2353,24 +2540,24 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
     x12 = vqrdmulhq_n_s32(x12, params.input1_multiplier);
     x21 = vqrdmulhq_n_s32(x21, params.input2_multiplier);
     x22 = vqrdmulhq_n_s32(x22, params.input2_multiplier);
-    const auto input1_shift_dup = vdupq_n_s32(params.input1_shift);
-    const auto input2_shift_dup = vdupq_n_s32(params.input2_shift);
+    const int32x4_t input1_shift_dup = vdupq_n_s32(params.input1_shift);
+    const int32x4_t input2_shift_dup = vdupq_n_s32(params.input2_shift);
     x11 = vshlq_s32(x11, input1_shift_dup);
     x12 = vshlq_s32(x12, input1_shift_dup);
     x21 = vshlq_s32(x21, input2_shift_dup);
     x22 = vshlq_s32(x22, input2_shift_dup);
-    auto s1 = vaddq_s32(x11, x21);
-    auto s2 = vaddq_s32(x12, x22);
+    int32x4_t s1 = vaddq_s32(x11, x21);
+    int32x4_t s2 = vaddq_s32(x12, x22);
     s1 = vqrdmulhq_n_s32(s1, params.output_multiplier);
     s2 = vqrdmulhq_n_s32(s2, params.output_multiplier);
     using gemmlowp::RoundingDivideByPOT;
     s1 = RoundingDivideByPOT(s1, -params.output_shift);
     s2 = RoundingDivideByPOT(s2, -params.output_shift);
-    const auto s1_narrowed = vmovn_s32(s1);
-    const auto s2_narrowed = vmovn_s32(s2);
-    const auto s = vaddq_s16(vcombine_s16(s1_narrowed, s2_narrowed),
-                             vdupq_n_s16(params.output_offset));
-    const auto clamped =
+    const int16x4_t s1_narrowed = vmovn_s32(s1);
+    const int16x4_t s2_narrowed = vmovn_s32(s2);
+    const int16x8_t s = vaddq_s16(vcombine_s16(s1_narrowed, s2_narrowed),
+                                  vdupq_n_s16(params.output_offset));
+    const uint8x8_t clamped =
         vmax_u8(output_activation_min_vector,
                 vmin_u8(output_activation_max_vector, vqmovun_s16(s)));
     vst1_u8(output_data + i, clamped);
@@ -2397,6 +2584,109 @@ inline void AddElementwise(int size, const ArithmeticParams& params,
         std::min(params.quantized_activation_max,
                  std::max(params.quantized_activation_min, raw_output));
     output_data[i] = static_cast<uint8>(clamped_output);
+  }
+}
+
+// Scalar-broadcast add that can be used for inner loop of more general
+// broadcast add, so that, for example, scalar-broadcast with batch will still
+// be fast.
+inline void AddScalarBroadcast(int size, const ArithmeticParams& params,
+                               uint8 input1_data, const uint8* input2_data,
+                               uint8* output_data) {
+  using gemmlowp::RoundingDivideByPOT;
+
+  gemmlowp::ScopedProfilingLabel label("AddScalarBroadcast/8bit");
+  TFLITE_DCHECK_GT(params.input1_offset, -256);
+  TFLITE_DCHECK_GT(params.input2_offset, -256);
+  TFLITE_DCHECK_LT(params.input1_offset, 256);
+  TFLITE_DCHECK_LT(params.input2_offset, 256);
+
+  int i = 0;
+
+#ifdef USE_NEON
+  const int32x4_t left_shift_dup = vdupq_n_s32(params.left_shift);
+  const uint8x8_t output_activation_min_vector =
+      vdup_n_u8(params.quantized_activation_min);
+  const uint8x8_t output_activation_max_vector =
+      vdup_n_u8(params.quantized_activation_max);
+
+  // Process broadcast scalar.
+  const uint8x8_t input1_val_original = vdup_n_u8(input1_data);
+  const int16x8_t input1_val_s16 =
+      vreinterpretq_s16_u16(vmovl_u8(input1_val_original));
+  const int16x8_t input1_val =
+      vaddq_s16(input1_val_s16, vdupq_n_s16(params.input1_offset));
+  const int16x4_t input1_val_high = vget_high_s16(input1_val);
+  const int16x4_t input1_val_low = vget_low_s16(input1_val);
+  int32x4_t x11 = vmovl_s16(input1_val_low);
+  int32x4_t x12 = vmovl_s16(input1_val_high);
+  x11 = vshlq_s32(x11, left_shift_dup);
+  x12 = vshlq_s32(x12, left_shift_dup);
+  x11 = vqrdmulhq_n_s32(x11, params.input1_multiplier);
+  x12 = vqrdmulhq_n_s32(x12, params.input1_multiplier);
+  const int32x4_t input1_shift_dup = vdupq_n_s32(params.input1_shift);
+  x11 = vshlq_s32(x11, input1_shift_dup);
+  x12 = vshlq_s32(x12, input1_shift_dup);
+
+  for (; i <= size - 8; i += 8) {
+    const uint8x8_t input2_val_original = vld1_u8(input2_data + i);
+    const int16x8_t input2_val_s16 =
+        vreinterpretq_s16_u16(vmovl_u8(input2_val_original));
+    const int16x8_t input2_val =
+        vaddq_s16(input2_val_s16, vdupq_n_s16(params.input2_offset));
+    const int16x4_t input2_val_high = vget_high_s16(input2_val);
+    const int16x4_t input2_val_low = vget_low_s16(input2_val);
+    int32x4_t x21 = vmovl_s16(input2_val_low);
+    int32x4_t x22 = vmovl_s16(input2_val_high);
+    x21 = vshlq_s32(x21, left_shift_dup);
+    x22 = vshlq_s32(x22, left_shift_dup);
+    x21 = vqrdmulhq_n_s32(x21, params.input2_multiplier);
+    x22 = vqrdmulhq_n_s32(x22, params.input2_multiplier);
+    const int32x4_t input2_shift_dup = vdupq_n_s32(params.input2_shift);
+    x21 = vshlq_s32(x21, input2_shift_dup);
+    x22 = vshlq_s32(x22, input2_shift_dup);
+    int32x4_t s1 = vaddq_s32(x11, x21);
+    int32x4_t s2 = vaddq_s32(x12, x22);
+    s1 = vqrdmulhq_n_s32(s1, params.output_multiplier);
+    s2 = vqrdmulhq_n_s32(s2, params.output_multiplier);
+    s1 = RoundingDivideByPOT(s1, -params.output_shift);
+    s2 = RoundingDivideByPOT(s2, -params.output_shift);
+    const int16x4_t s1_narrowed = vmovn_s32(s1);
+    const int16x4_t s2_narrowed = vmovn_s32(s2);
+    const int16x8_t s = vaddq_s16(vcombine_s16(s1_narrowed, s2_narrowed),
+                                  vdupq_n_s16(params.output_offset));
+    const uint8x8_t clamped =
+        vmax_u8(output_activation_min_vector,
+                vmin_u8(output_activation_max_vector, vqmovun_s16(s)));
+    vst1_u8(output_data + i, clamped);
+  }
+#endif  // NEON
+
+  if (i < size) {
+    // Process broadcast scalar.
+    const int32 input1_val = params.input1_offset + input1_data;
+    const int32 shifted_input1_val = input1_val * (1 << params.left_shift);
+    const int32 scaled_input1_val =
+        MultiplyByQuantizedMultiplierSmallerThanOneExp(
+            shifted_input1_val, params.input1_multiplier, params.input1_shift);
+
+    for (; i < size; ++i) {
+      const int32 input2_val = params.input2_offset + input2_data[i];
+      const int32 shifted_input2_val = input2_val * (1 << params.left_shift);
+      const int32 scaled_input2_val =
+          MultiplyByQuantizedMultiplierSmallerThanOneExp(
+              shifted_input2_val, params.input2_multiplier,
+              params.input2_shift);
+      const int32 raw_sum = scaled_input1_val + scaled_input2_val;
+      const int32 raw_output =
+          MultiplyByQuantizedMultiplierSmallerThanOneExp(
+              raw_sum, params.output_multiplier, params.output_shift) +
+          params.output_offset;
+      const int32 clamped_output =
+          std::min(params.quantized_activation_max,
+                   std::max(params.quantized_activation_min, raw_output));
+      output_data[i] = static_cast<uint8>(clamped_output);
+    }
   }
 }
 
@@ -2514,26 +2804,63 @@ inline void BroadcastAddFivefold(const ArithmeticParams& unswitched_params,
   uint8* output_data_ptr = output_data;
   const uint8* input1_data_ptr = input1_data;
   const uint8* input2_data_reset = input2_data;
+  // In the fivefold pattern, y0, y2 and y4 are not broadcast, and so shared
+  // between input shapes. y3 for input 1 is always broadcast, and so the
+  // dimension there is 1, whereas optionally y1 might be broadcast for input 2.
+  // Put another way,
+  // input1.shape.FlatSize = y0 * y1 * y2 * y4,
+  // input2.shape.FlatSize = y0 * y2 * y3 * y4.
   int y0 = params.broadcast_shape[0];
   int y1 = params.broadcast_shape[1];
   int y2 = params.broadcast_shape[2];
   int y3 = params.broadcast_shape[3];
   int y4 = params.broadcast_shape[4];
-  for (int i0 = 0; i0 < y0; ++i0) {
-    const uint8* input2_data_ptr;
-    for (int i1 = 0; i1 < y1; ++i1) {
-      input2_data_ptr = input2_data_reset;
-      for (int i2 = 0; i2 < y2; ++i2) {
-        for (int i3 = 0; i3 < y3; ++i3) {
-          AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
-                         output_data_ptr);
-          input2_data_ptr += y4;
-          output_data_ptr += y4;
+  if (y4 > 1) {
+    // General fivefold pattern, with y4 > 1 so there is a non-broadcast inner
+    // dimension.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          for (int i3 = 0; i3 < y3; ++i3) {
+            AddElementwise(y4, params, input1_data_ptr, input2_data_ptr,
+                           output_data_ptr);
+            input2_data_ptr += y4;
+            output_data_ptr += y4;
+          }
+          // We have broadcast y4 of input1 data y3 times, and now move on.
+          input1_data_ptr += y4;
         }
-        input1_data_ptr += y4;
       }
+      // We have broadcast y2*y3*y4 of input2 data y1 times, and now move on.
+      input2_data_reset = input2_data_ptr;
     }
-    input2_data_reset = input2_data_ptr;
+  } else {
+    // Special case of y4 == 1, in which the innermost loop is a single element
+    // and can be combined with the next (y3) as an inner broadcast.
+    //
+    // Note that this handles the case of pure scalar broadcast when
+    // y0 == y1 == y2 == 1. With low overhead it handles cases such as scalar
+    // broadcast with batch (as y2 > 1).
+    //
+    // NOTE The process is the same as the above general case except simplified
+    // for y4 == 1 and the loop over y3 is contained within the
+    // AddScalarBroadcast function.
+    for (int i0 = 0; i0 < y0; ++i0) {
+      const uint8* input2_data_ptr = nullptr;
+      for (int i1 = 0; i1 < y1; ++i1) {
+        input2_data_ptr = input2_data_reset;
+        for (int i2 = 0; i2 < y2; ++i2) {
+          AddScalarBroadcast(y3, params, *input1_data_ptr, input2_data_ptr,
+                             output_data_ptr);
+          input2_data_ptr += y3;
+          output_data_ptr += y3;
+          input1_data_ptr += 1;
+        }
+      }
+      input2_data_reset = input2_data_ptr;
+    }
   }
 }
 
@@ -2878,7 +3205,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
   int y4 = params.broadcast_shape[4];
   if (y4 > 1) {
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -2895,7 +3222,7 @@ inline void BroadcastMulFivefold(const ArithmeticParams& unswitched_params,
     }
   } else {
     for (int i0 = 0; i0 < y0; ++i0) {
-      const uint8* input2_data_ptr;
+      const uint8* input2_data_ptr = nullptr;
       for (int i1 = 0; i1 < y1; ++i1) {
         input2_data_ptr = input2_data_reset;
         for (int i2 = 0; i2 < y2; ++i2) {
@@ -3523,6 +3850,14 @@ inline void AveragePool(const PoolParams& params,
                         const uint8* input_data,
                         const RuntimeShape& output_shape, uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("AveragePool/8bit");
+
+  // Here, and in other pooling ops, in order to maintain locality of reference,
+  // to minimize some recalculations, and to load into NEON vector registers, we
+  // use an inner loop down the depth. Since depths can be large and hence we
+  // would need arbitrarily large temporary storage, we divide the work up into
+  // depth tranches just within the batch loop.
+  static constexpr int kPoolingAccTrancheSize = 256;
+
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -3535,69 +3870,76 @@ inline void AveragePool(const PoolParams& params,
   const int output_width = output_shape.Dims(2);
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
+
+  uint16 acc[kPoolingAccTrancheSize];
   for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin =
-            (out_x * stride_width) - params.padding_values.width;
-        const int in_y_origin =
-            (out_y * stride_height) - params.padding_values.height;
-        const int filter_x_start = std::max(0, -in_x_origin);
-        const int filter_x_end =
-            std::min(params.filter_width, input_width - in_x_origin);
-        const int filter_y_start = std::max(0, -in_y_origin);
-        const int filter_y_end =
-            std::min(params.filter_height, input_height - in_y_origin);
-        const int filter_count =
-            (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
-        // 1280 required by Inception v3
-        static constexpr int kAccBufferMaxSize = 2048;
-        TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
-        uint16 acc[kAccBufferMaxSize];
-        memset(acc, 0, depth * sizeof(acc[0]));
-        const uint8* input_ptr =
-            input_data +
-            depth * (in_x_origin +
-                     input_width * (in_y_origin + input_height * batch));
-        for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-          const uint8* input_row_ptr =
-              input_ptr + depth * (fy * input_width + filter_x_start);
-          for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-            int channel = 0;
+    // We proceed through the depth in tranches (see comment above). The
+    // depth_base is the depth at the beginning of the tranche. The
+    // tranche_depth is the depth dimension of the tranche.
+    for (int depth_base = 0; depth_base < depth;
+         depth_base += kPoolingAccTrancheSize) {
+      const int tranche_depth =
+          std::min(depth - depth_base, kPoolingAccTrancheSize);
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
+          const int filter_x_start = std::max(0, -in_x_origin);
+          const int filter_x_end =
+              std::min(params.filter_width, input_width - in_x_origin);
+          const int filter_y_start = std::max(0, -in_y_origin);
+          const int filter_y_end =
+              std::min(params.filter_height, input_height - in_y_origin);
+          const int filter_count =
+              (filter_x_end - filter_x_start) * (filter_y_end - filter_y_start);
+          memset(acc, 0, tranche_depth * sizeof(acc[0]));
+          const uint8* input_ptr =
+              input_data + depth_base +
+              depth * (in_x_origin +
+                       input_width * (in_y_origin + input_height * batch));
+          for (int fy = filter_y_start; fy < filter_y_end; fy++) {
+            const uint8* input_row_ptr =
+                input_ptr + depth * (fy * input_width + filter_x_start);
+            for (int fx = filter_x_start; fx < filter_x_end; fx++) {
+              const uint8* input_channel_ptr = input_row_ptr;
+              int channel = 0;
 #ifdef USE_NEON
-            for (; channel <= depth - 16; channel += 16) {
-              uint16x8_t acc_reg[2];
-              for (int i = 0; i < 2; i++) {
-                acc_reg[i] = vld1q_u16(acc + channel + 8 * i);
+              for (; channel <= tranche_depth - 16; channel += 16) {
+                uint16x8_t acc_reg[2];
+                for (int i = 0; i < 2; i++) {
+                  acc_reg[i] = vld1q_u16(acc + channel + 8 * i);
+                }
+                uint8x16_t input_reg = vld1q_u8(input_channel_ptr);
+                input_channel_ptr += 16;
+                acc_reg[0] = vaddw_u8(acc_reg[0], vget_low_u8(input_reg));
+                acc_reg[1] = vaddw_u8(acc_reg[1], vget_high_u8(input_reg));
+                for (int i = 0; i < 2; i++) {
+                  vst1q_u16(acc + channel + 8 * i, acc_reg[i]);
+                }
               }
-              uint8x16_t input_reg = vld1q_u8(input_row_ptr);
-              input_row_ptr += 16;
-              acc_reg[0] = vaddw_u8(acc_reg[0], vget_low_u8(input_reg));
-              acc_reg[1] = vaddw_u8(acc_reg[1], vget_high_u8(input_reg));
-              for (int i = 0; i < 2; i++) {
-                vst1q_u16(acc + channel + 8 * i, acc_reg[i]);
+              for (; channel <= tranche_depth - 8; channel += 8) {
+                uint16x8_t acc_reg = vld1q_u16(acc + channel);
+                uint8x8_t input_reg = vld1_u8(input_channel_ptr);
+                input_channel_ptr += 8;
+                acc_reg = vaddw_u8(acc_reg, input_reg);
+                vst1q_u16(acc + channel, acc_reg);
               }
-            }
-            for (; channel <= depth - 8; channel += 8) {
-              uint16x8_t acc_reg = vld1q_u16(acc + channel);
-              uint8x8_t input_reg = vld1_u8(input_row_ptr);
-              input_row_ptr += 8;
-              acc_reg = vaddw_u8(acc_reg, input_reg);
-              vst1q_u16(acc + channel, acc_reg);
-            }
 #endif
-            for (; channel < depth; ++channel) {
-              acc[channel] += *input_row_ptr++;
+              for (; channel < tranche_depth; ++channel) {
+                acc[channel] += *input_channel_ptr++;
+              }
+              input_row_ptr += depth;
             }
           }
-        }
-        uint8* output_ptr =
-            output_data + Offset(output_shape, batch, out_y, out_x, 0);
-        int channel = 0;
+          uint8* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                   out_x, depth_base);
+          int channel = 0;
 #ifdef USE_NEON
 #define AVGPOOL_DIVIDING_BY(FILTER_COUNT)                               \
   if (filter_count == FILTER_COUNT) {                                   \
-    for (; channel <= depth - 8; channel += 8) {                        \
+    for (; channel <= tranche_depth - 8; channel += 8) {                \
       uint16 buf[8];                                                    \
       for (int i = 0; i < 8; i++) {                                     \
         buf[i] = (acc[channel + i] + FILTER_COUNT / 2) / FILTER_COUNT;  \
@@ -3608,25 +3950,26 @@ inline void AveragePool(const PoolParams& params,
       vst1_u8(output_ptr + channel, buf8);                              \
     }                                                                   \
   }
-        AVGPOOL_DIVIDING_BY(9)
-        AVGPOOL_DIVIDING_BY(15)
+          AVGPOOL_DIVIDING_BY(9)
+          AVGPOOL_DIVIDING_BY(15)
 #undef AVGPOOL_DIVIDING_BY
-        for (; channel <= depth - 8; channel += 8) {
-          uint16 buf[8];
-          for (int i = 0; i < 8; i++) {
-            buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
+          for (; channel <= tranche_depth - 8; channel += 8) {
+            uint16 buf[8];
+            for (int i = 0; i < 8; i++) {
+              buf[i] = (acc[channel + i] + filter_count / 2) / filter_count;
+            }
+            uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));
+            buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max));
+            buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min));
+            vst1_u8(output_ptr + channel, buf8);
           }
-          uint8x8_t buf8 = vqmovn_u16(vld1q_u16(buf));
-          buf8 = vmin_u8(buf8, vdup_n_u8(params.quantized_activation_max));
-          buf8 = vmax_u8(buf8, vdup_n_u8(params.quantized_activation_min));
-          vst1_u8(output_ptr + channel, buf8);
-        }
 #endif
-        for (; channel < depth; ++channel) {
-          uint16 a = (acc[channel] + filter_count / 2) / filter_count;
-          a = std::max<uint16>(a, params.quantized_activation_min);
-          a = std::min<uint16>(a, params.quantized_activation_max);
-          output_ptr[channel] = static_cast<uint8>(a);
+          for (; channel < tranche_depth; ++channel) {
+            uint16 a = (acc[channel] + filter_count / 2) / filter_count;
+            a = std::max<uint16>(a, params.quantized_activation_min);
+            a = std::min<uint16>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<uint8>(a);
+          }
         }
       }
     }
@@ -3691,6 +4034,14 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
                     const uint8* input_data, const RuntimeShape& output_shape,
                     uint8* output_data) {
   gemmlowp::ScopedProfilingLabel label("MaxPool/8bit");
+
+  // Here, and in other pooling ops, in order to maintain locality of reference,
+  // to minimize some recalculations, and to load into NEON vector registers, we
+  // use an inner loop down the depth. Since depths can be large and hence we
+  // would need arbitrarily large temporary storage, we divide the work up into
+  // depth tranches just within the batch loop.
+  static constexpr int kPoolingAccTrancheSize = 256;
+
   TFLITE_DCHECK_LE(params.quantized_activation_min,
                    params.quantized_activation_max);
   TFLITE_DCHECK_EQ(input_shape.DimensionsCount(), 4);
@@ -3703,77 +4054,85 @@ inline void MaxPool(const PoolParams& params, const RuntimeShape& input_shape,
   const int output_width = output_shape.Dims(2);
   const int stride_height = params.stride_height;
   const int stride_width = params.stride_width;
-  for (int batch = 0; batch < batches; ++batch) {
-    for (int out_y = 0; out_y < output_height; ++out_y) {
-      for (int out_x = 0; out_x < output_width; ++out_x) {
-        const int in_x_origin =
-            (out_x * stride_width) - params.padding_values.width;
-        const int in_y_origin =
-            (out_y * stride_height) - params.padding_values.height;
-        const int filter_x_start = std::max(0, -in_x_origin);
-        const int filter_x_end =
-            std::min(params.filter_width, input_width - in_x_origin);
-        const int filter_y_start = std::max(0, -in_y_origin);
-        const int filter_y_end =
-            std::min(params.filter_height, input_height - in_y_origin);
-        // 2048 required by Inception v3
-        static constexpr int kAccBufferMaxSize = 2048;
-        TFLITE_DCHECK_LE(depth, kAccBufferMaxSize);
-        uint8 acc[kAccBufferMaxSize];
-        memset(acc, 0, depth * sizeof(acc[0]));
-        const uint8* input_ptr =
-            input_data +
-            depth * (in_x_origin +
-                     input_width * (in_y_origin + input_height * batch));
-        for (int fy = filter_y_start; fy < filter_y_end; fy++) {
-          const uint8* input_row_ptr =
-              input_ptr + depth * (fy * input_width + filter_x_start);
-          for (int fx = filter_x_start; fx < filter_x_end; fx++) {
-            int channel = 0;
-#ifdef USE_NEON
-            for (; channel <= depth - 16; channel += 16) {
-              uint8x16_t acc_reg = vld1q_u8(acc + channel);
-              uint8x16_t input_reg = vld1q_u8(input_row_ptr);
-              input_row_ptr += 16;
-              acc_reg = vmaxq_u8(acc_reg, input_reg);
-              vst1q_u8(acc + channel, acc_reg);
-            }
 
-            for (; channel <= depth - 8; channel += 8) {
-              uint8x8_t acc_reg = vld1_u8(acc + channel);
-              uint8x8_t input_reg = vld1_u8(input_row_ptr);
-              input_row_ptr += 8;
-              acc_reg = vmax_u8(acc_reg, input_reg);
-              vst1_u8(acc + channel, acc_reg);
-            }
+  uint8 acc[kPoolingAccTrancheSize];
+  for (int batch = 0; batch < batches; ++batch) {
+    // We proceed through the depth in tranches (see comment above). The
+    // depth_base is the depth at the beginning of the tranche. The
+    // tranche_depth is the depth dimension of the tranche.
+    for (int depth_base = 0; depth_base < depth;
+         depth_base += kPoolingAccTrancheSize) {
+      const int tranche_depth =
+          std::min(depth - depth_base, kPoolingAccTrancheSize);
+      for (int out_y = 0; out_y < output_height; ++out_y) {
+        for (int out_x = 0; out_x < output_width; ++out_x) {
+          const int in_x_origin =
+              (out_x * stride_width) - params.padding_values.width;
+          const int in_y_origin =
+              (out_y * stride_height) - params.padding_values.height;
+          const int filter_x_start = std::max(0, -in_x_origin);
+          const int filter_x_end =
+              std::min(params.filter_width, input_width - in_x_origin);
+          const int filter_y_start = std::max(0, -in_y_origin);
+          const int filter_y_end =
+              std::min(params.filter_height, input_height - in_y_origin);
+          memset(acc, 0, tranche_depth * sizeof(acc[0]));
+          const uint8* input_ptr =
+              input_data + depth_base +
+              depth * (in_x_origin +
+                       input_width * (in_y_origin + input_height * batch));
+          for (int fy = filter_y_start; fy < filter_y_end; fy++) {
+            const uint8* input_row_ptr =
+                input_ptr + depth * (fy * input_width + filter_x_start);
+            for (int fx = filter_x_start; fx < filter_x_end; fx++) {
+              const uint8* input_channel_ptr = input_row_ptr;
+              int channel = 0;
+#ifdef USE_NEON
+              for (; channel <= tranche_depth - 16; channel += 16) {
+                uint8x16_t acc_reg = vld1q_u8(acc + channel);
+                uint8x16_t input_reg = vld1q_u8(input_channel_ptr);
+                input_channel_ptr += 16;
+                acc_reg = vmaxq_u8(acc_reg, input_reg);
+                vst1q_u8(acc + channel, acc_reg);
+              }
+
+              for (; channel <= tranche_depth - 8; channel += 8) {
+                uint8x8_t acc_reg = vld1_u8(acc + channel);
+                uint8x8_t input_reg = vld1_u8(input_channel_ptr);
+                input_channel_ptr += 8;
+                acc_reg = vmax_u8(acc_reg, input_reg);
+                vst1_u8(acc + channel, acc_reg);
+              }
 #endif
-            for (; channel < depth; ++channel) {
-              acc[channel] = std::max(acc[channel], *input_row_ptr++);
+              for (; channel < tranche_depth; ++channel) {
+                acc[channel] = std::max(acc[channel], *input_channel_ptr++);
+              }
+              input_row_ptr += depth;
             }
           }
-        }
-        uint8* output_ptr =
-            output_data + Offset(output_shape, batch, out_y, out_x, 0);
-        int channel = 0;
+          uint8* output_ptr = output_data + Offset(output_shape, batch, out_y,
+                                                   out_x, depth_base);
+          int channel = 0;
 #ifdef USE_NEON
-        for (; channel <= depth - 16; channel += 16) {
-          uint8x16_t a = vld1q_u8(acc + channel);
-          a = vminq_u8(a, vdupq_n_u8(params.quantized_activation_max));
-          a = vmaxq_u8(a, vdupq_n_u8(params.quantized_activation_min));
-          vst1q_u8(output_ptr + channel, a);
-        }
-        for (; channel <= depth - 8; channel += 8) {
-          uint8x8_t a = vld1_u8(acc + channel);
-          a = vmin_u8(a, vdup_n_u8(params.quantized_activation_max));
-          a = vmax_u8(a, vdup_n_u8(params.quantized_activation_min));
-          vst1_u8(output_ptr + channel, a);
-        }
+          for (; channel <= tranche_depth - 16; channel += 16) {
+            uint8x16_t a = vld1q_u8(acc + channel);
+            a = vminq_u8(a, vdupq_n_u8(params.quantized_activation_max));
+            a = vmaxq_u8(a, vdupq_n_u8(params.quantized_activation_min));
+            vst1q_u8(output_ptr + channel, a);
+          }
+          for (; channel <= tranche_depth - 8; channel += 8) {
+            uint8x8_t a = vld1_u8(acc + channel);
+            a = vmin_u8(a, vdup_n_u8(params.quantized_activation_max));
+            a = vmax_u8(a, vdup_n_u8(params.quantized_activation_min));
+            vst1_u8(output_ptr + channel, a);
+          }
 #endif
-        for (; channel < depth; ++channel) {
-          uint8 a = acc[channel];
-          a = std::max<uint8>(a, params.quantized_activation_min);
-          a = std::min<uint8>(a, params.quantized_activation_max);
-          output_ptr[channel] = static_cast<uint8>(a);
+          for (; channel < tranche_depth; ++channel) {
+            uint8 a = acc[channel];
+            a = std::max<uint8>(a, params.quantized_activation_min);
+            a = std::min<uint8>(a, params.quantized_activation_max);
+            output_ptr[channel] = static_cast<uint8>(a);
+          }
         }
       }
     }
@@ -4157,119 +4516,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
       block_output_data[c] = block_input_data[c] - max - log_sum;
     }
   }
-}
-
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1_impl(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  // assert(__builtin_clz(0u) >= std::numeric_limits<uint32>::digits - 1);
-  // assert(__builtin_clz(0u) <= std::numeric_limits<uint32>::digits);
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-  // The reason for accumulating the result with an extra bit of headroom is
-  // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
-  // recip_denom will otherwise introduce an error.
-  static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
-
-  const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1488522236, std::log(2.0));
-  const FixedPoint0 sqrt_sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1805811301, std::sqrt(std::sqrt(0.5)));
-  const FixedPoint0 sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1518500250, std::sqrt(0.5));
-  const FixedPoint0 one_quarter =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(FixedPoint0, 536870912, 1.0 / 4.0);
-
-  const FixedPoint0 alpha_n = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 117049297, 11.0 / 240.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_d = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 127690142, 1.0 / 20.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_i = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1057819769,
-      2.0 / std::sqrt(std::sqrt(2.0)) - std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_f = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 638450708, 1.0 / 4.0 * std::sqrt(std::sqrt(2.0)));
-
-  const FixedPointAccum shifted_quarter =
-      gemmlowp::Rescale<kAccumIntegerBits>(one_quarter);
-
-  // Reinterpret the input value as Q0.31, because we will figure out the
-  // required shift "ourselves" instead of using, say, Rescale.
-  FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
-  // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
-  FixedPoint0 r_a_tmp =
-      SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
-  const int32 r_a_raw =
-      SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
-  // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
-  // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
-  //                   InputIntegerBits - z_b_headroom - 0.25);
-  const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  // z_b is treated like z_a, but premultiplying by sqrt(0.5).
-  FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
-  const int32 r_b_raw =
-      SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
-  const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
-  const FixedPointAccum z_pow_2_adj = FixedPointAccum::FromRaw(
-      std::max(z_a_pow_2_adj.raw(), z_b_pow_2_adj.raw()));
-
-  const FixedPoint0 p = gemmlowp::RoundingHalfSum(r, sqrt_sqrt_half);
-  FixedPoint0 q = r - sqrt_sqrt_half;
-  q = q + q;
-
-  const FixedPoint0 common_sq = q * q;
-  const FixedPoint0 num = q * r + q * common_sq * alpha_n;
-  const FixedPoint0 denom_minus_one_0 =
-      p * (alpha_i + q + alpha_d * common_sq) + alpha_f * q;
-  const FixedPoint0 recip_denom =
-      one_over_one_plus_x_for_x_in_0_1(denom_minus_one_0);
-
-  const FixedPointAccum num_scaled = gemmlowp::Rescale<kAccumIntegerBits>(num);
-  return gemmlowp::Rescale<OutputIntegerBits>(z_pow_2_adj * log_2 +
-                                              num_scaled * recip_denom);
-}
-
-// Minimum output bits to accommodate log of maximum input range.  It actually
-// does not matter if one considers, say, [-64,64] or [-64,64).
-//
-// For example, run this through Octave:
-// [0:127; ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
-constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90
-             ? 7
-             : input_bits > 44
-                   ? 6
-                   : input_bits > 21
-                         ? 5
-                         : input_bits > 10
-                               ? 4
-                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
-}
-
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  static_assert(
-      OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
-  return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
-                                                     InputIntegerBits>(
-      input_val);
 }
 
 // Currently just a copy of the reference code.
@@ -4866,6 +5112,14 @@ inline void Floor(const RuntimeShape& input_shape, const float* input_data,
   output_map.array() = Eigen::floor(input_map.array());
 }
 
+inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
+                 const RuntimeShape& output_shape, float* output_data) {
+  gemmlowp::ScopedProfilingLabel label("Ceil");
+  auto input_map = MapAsVector(input_data, input_shape);
+  auto output_map = MapAsVector(output_data, output_shape);
+  output_map.array() = Eigen::ceil(input_map.array());
+}
+
 #ifdef USE_NEON
 inline void ResizeBilinearKernel(const float* input_ptr, int32 depth,
                                  float scale, float* output_ptr) {
@@ -5201,9 +5455,6 @@ inline void ResizeBilinearGenericSmallChannel(
     int32 output_height, int32 output_width, float height_scale,
     float width_scale, const RuntimeShape& input_shape, const T* input_data,
     const RuntimeShape& output_shape, T* output_data) {
-  memset(output_data, 0,
-         batches * output_height * output_width * depth * sizeof(T));
-
   T* output_ptr = &output_data[0];
   for (int b = 0; b < batches; ++b) {
     for (int y = 0; y < output_height; ++y) {
@@ -5212,7 +5463,7 @@ inline void ResizeBilinearGenericSmallChannel(
       int32 y1 = std::min(y0 + 1, input_height - 1);
       for (int x = 0; x < output_width; ++x) {
         float input_x = x * width_scale;
-        int32 x0 = static_cast<int32>(input_x);
+        int32 x0 = static_cast<int32>(std::floor((input_x)));
         int32 x1 = std::min(x0 + 1, input_width - 1);
 
         int32 input_offset[4] = {Offset(input_shape, b, y0, x0, 0),
@@ -5896,7 +6147,27 @@ inline void TransposeConv(
     const float* filter_data, const RuntimeShape& output_shape,
     float* output_data, const RuntimeShape& im2col_shape, float* im2col_data) {
   gemmlowp::ScopedProfilingLabel label("TransposeConv");
-
+  // The complexity of the reference implementation is input.flat_size() *
+  // filter.flat_size() / in_channel.
+  //
+  // While the complexity of im2col->gemm
+  // implmentation is batch * output_height * output_width *
+  // (filter.flat_size() / out_channel)^2 * out_channel.
+  //
+  // so if input.flat_size() * out_channel^2 is much smaller than
+  // output.flat_size() * filter.size() * in_channel we should fall back to the
+  // reference implementation.
+  //
+  // TODO(b/122331966): optimize the intuitive implementation.
+  const int out_channel = output_shape.Dims(3);
+  const int in_channel = input_shape.Dims(3);
+  if ((input_shape.FlatSize() * out_channel * out_channel * 4) <
+      (filter_shape.FlatSize() * output_shape.FlatSize() * in_channel)) {
+    reference_ops::TransposeConv(params, input_shape, input_data, filter_shape,
+                                 filter_data, output_shape, output_data,
+                                 im2col_shape, im2col_data);
+    return;
+  }
   // Note we could use transposed weights with forward conv for unstrided
   // cases. But we are already getting good performance with this code as-is.
   TFLITE_DCHECK(im2col_data);

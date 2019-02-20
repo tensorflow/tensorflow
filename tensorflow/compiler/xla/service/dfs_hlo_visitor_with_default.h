@@ -91,13 +91,19 @@ class DfsHloVisitorWithDefaultBase
   Status HandleFft(HloInstructionPtr fft) override {
     return DefaultAction(fft);
   }
-  Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
+  Status HandleTriangularSolve(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
   Status HandleAllToAll(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
   Status HandleCollectivePermute(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleReplicaId(HloInstructionPtr hlo) override {
     return DefaultAction(hlo);
   }
   Status HandleRng(HloInstructionPtr random) override {
@@ -205,6 +211,9 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleGetDimensionSize(HloInstructionPtr get_size) override {
     return DefaultAction(get_size);
+  }
+  Status HandleAddDependency(HloInstructionPtr add_dependency) override {
+    return DefaultAction(add_dependency);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that

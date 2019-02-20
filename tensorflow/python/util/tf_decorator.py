@@ -95,9 +95,17 @@ def make_decorator(target,
     decorator_func.__name__ = target.__name__
   if hasattr(target, '__module__'):
     decorator_func.__module__ = target.__module__
+  if hasattr(target, '__dict__'):
+    # Copy dict entries from target which are not overridden by decorator_func.
+    for name in target.__dict__:
+      if name not in decorator_func.__dict__:
+        decorator_func.__dict__[name] = target.__dict__[name]
   if hasattr(target, '__doc__'):
     decorator_func.__doc__ = decorator.__doc__
   decorator_func.__wrapped__ = target
+  # Keeping a second handle to `target` allows callers to detect whether the
+  # decorator was modified using `rewrap`.
+  decorator_func.__original_wrapped__ = target
   return decorator_func
 
 
@@ -172,6 +180,8 @@ def unwrap(maybe_tf_decorator):
     elif hasattr(cur, '_tf_decorator'):
       decorators.append(getattr(cur, '_tf_decorator'))
     else:
+      break
+    if not hasattr(decorators[-1], 'decorated_target'):
       break
     cur = decorators[-1].decorated_target
   return decorators, cur

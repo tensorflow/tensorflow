@@ -1,0 +1,4 @@
+startup_gcc.c
+am_*.c
+libam*.a
+

@@ -32,6 +32,8 @@ from tensorflow.python.ops import gen_state_ops
 # pylint: disable=wildcard-import
 from tensorflow.python.ops.gen_state_ops import *
 # pylint: enable=wildcard-import
+from tensorflow.python.util import deprecation
+from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -223,6 +225,7 @@ def assign(ref, value, validate_shape=None, use_locking=None, name=None):
 
 
 @tf_export(v1=["count_up_to"])
+@deprecated(None, "Prefer Dataset.range instead.")
 def count_up_to(ref, limit, name=None):
   r"""Increments 'ref' until it reaches 'limit'.
 
@@ -429,19 +432,19 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
   `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
   ```
-  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
   ```
 
   For example, say we want to add 4 scattered elements to a rank-1 tensor to
-  8 elements. In Python, that update would look like this:
+  8 elements. In Python, that addition would look like this:
 
   ```python
-      ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-      indices = tf.constant([[4], [3], [1] ,[7]])
-      updates = tf.constant([9, 10, 11, 12])
-      add = tf.scatter_nd_add(ref, indices, updates)
-      with tf.Session() as sess:
-        print sess.run(add)
+  ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+  indices = tf.constant([[4], [3], [1], [7]])
+  updates = tf.constant([9, 10, 11, 12])
+  add = tf.scatter_nd_add(ref, indices, updates)
+  with tf.Session() as sess:
+    print sess.run(add)
   ```
 
   The resulting update to ref would look like this:
@@ -461,9 +464,8 @@ def scatter_nd_add(ref, indices, updates, use_locking=False, name=None):
     updates: A `Tensor`. Must have the same type as `ref`.
       A tensor of updated values to add to ref.
     use_locking: An optional `bool`. Defaults to `False`.
-      An optional bool. Defaults to True. If True, the assignment will
-      be protected by a lock; otherwise the behavior is undefined,
-      but may exhibit less contention.
+      If True, the assignment will be protected by a lock;
+      otherwise the behavior is undefined, but may exhibit less contention.
     name: A name for the operation (optional).
 
   Returns:
@@ -547,19 +549,19 @@ def scatter_nd_sub(ref, indices, updates, use_locking=False, name=None):
   `updates` is `Tensor` of rank `Q-1+P-K` with shape:
 
   ```
-  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]].
+  [d_0, ..., d_{Q-2}, ref.shape[K], ..., ref.shape[P-1]]
   ```
 
   For example, say we want to subtract 4 scattered elements from a rank-1 tensor
-  to 8 elements. In Python, that update would look like this:
+  with 8 elements. In Python, that update would look like this:
 
   ```python
-      ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
-      indices = tf.constant([[4], [3], [1] ,[7]])
-      updates = tf.constant([9, 10, 11, 12])
-      op = tf.scatter_nd_sub(ref, indices, updates)
-      with tf.Session() as sess:
-        print sess.run(op)
+  ref = tf.Variable([1, 2, 3, 4, 5, 6, 7, 8])
+  indices = tf.constant([[4], [3], [1] ,[7]])
+  updates = tf.constant([9, 10, 11, 12])
+  op = tf.scatter_nd_sub(ref, indices, updates)
+  with tf.Session() as sess:
+    print sess.run(op)
   ```
 
   The resulting update to ref would look like this:
@@ -595,7 +597,9 @@ def scatter_nd_sub(ref, indices, updates, use_locking=False, name=None):
       name=name))
 
 
-@tf_export("batch_scatter_update")
+@tf_export(v1=["batch_scatter_update"])
+@deprecation.deprecated(
+    "2018-11-29", "Use the batch_scatter_update method of Variable instead.")
 def batch_scatter_update(ref, indices, updates, use_locking=True, name=None):
   """Generalization of `tf.scatter_update` to axis different than 0.
 

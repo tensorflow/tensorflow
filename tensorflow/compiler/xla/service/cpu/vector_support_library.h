@@ -114,6 +114,9 @@ class VectorSupportLibrary {
   // raison d'etre) less cluttered.
 
   llvm::Value* FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FCmpEQMask(llvm::Value* lhs, const llvm::APFloat& rhs) {
+    return FCmpEQMask(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
   llvm::Value* FCmpULEMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, const llvm::APFloat& rhs) {

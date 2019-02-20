@@ -48,6 +48,8 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
       return os << "kOutfeed";
     case Thunk::kSequential:
       return os << "kSequential";
+    case Thunk::kTriangularSolve:
+      return os << "kTriangularSolve";
     case Thunk::kTuple:
       return os << "kTuple";
     case Thunk::kWhile:

@@ -209,7 +209,7 @@ TEST_F(BFloat16PropagationTest, DoNotChangeAllReduce) {
       rb.AddInstruction(HloInstruction::CreateParameter(1, shape, "p1"))));
   auto reduction = module->AddEmbeddedComputation(rb.Build());
   HloInstruction* all_reduce =
-      builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
+      builder.AddInstruction(HloInstruction::CreateAllReduce(
           ShapeUtil::MakeTupleShape({shape, shape}), {a, b}, reduction,
           /*replica_groups=*/{}, /*barrier=*/"", /*all_reduce_id=*/1));
   HloInstruction* gte0 = builder.AddInstruction(

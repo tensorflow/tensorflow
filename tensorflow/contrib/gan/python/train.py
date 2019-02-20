@@ -12,12 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""The TFGAN project provides a lightweight GAN training/testing framework.
+"""The TF-GAN project provides a lightweight GAN training/testing framework.
 
 This file contains the core helper functions to create and train a GAN model.
 See the README or examples in `tensorflow_models` for details on how to use.
 
-TFGAN training occurs in four steps:
+TF-GAN training occurs in four steps:
 1) Create a model
 2) Add a loss
 3) Create train ops
@@ -645,9 +645,10 @@ def gan_loss(
         type(model))
 
   # Optionally create pooled model.
-  pooled_model = (
-      _tensor_pool_adjusted_model(model, tensor_pool_fn)
-      if tensor_pool_fn else model)
+  if tensor_pool_fn:
+    pooled_model = _tensor_pool_adjusted_model(model, tensor_pool_fn)
+  else:
+    pooled_model = model
 
   # Create standard losses.
   gen_loss = generator_loss_fn(model, add_summaries=add_summaries)
@@ -665,10 +666,11 @@ def gan_loss(
   if _use_aux_loss(mutual_information_penalty_weight):
     gen_info_loss = tfgan_losses.mutual_information_penalty(
         model, add_summaries=add_summaries)
-    dis_info_loss = (
-        gen_info_loss
-        if tensor_pool_fn is None else tfgan_losses.mutual_information_penalty(
-            pooled_model, add_summaries=add_summaries))
+    if tensor_pool_fn is None:
+      dis_info_loss = gen_info_loss
+    else:
+      dis_info_loss = tfgan_losses.mutual_information_penalty(
+          pooled_model, add_summaries=add_summaries)
     gen_loss += mutual_information_penalty_weight * gen_info_loss
     dis_loss += mutual_information_penalty_weight * dis_info_loss
   if _use_aux_loss(aux_cond_generator_weight):
@@ -924,11 +926,12 @@ def gan_train_ops(
     generator_optimizer,
     discriminator_optimizer,
     check_for_unused_update_ops=True,
+    is_chief=True,
     # Optional args to pass directly to the `create_train_op`.
     **kwargs):
   """Returns GAN train ops.
 
-  The highest-level call in TFGAN. It is composed of functions that can also
+  The highest-level call in TF-GAN. It is composed of functions that can also
   be called, should a user require more control over some part of the GAN
   training process.
 
@@ -939,6 +942,8 @@ def gan_train_ops(
     discriminator_optimizer: The optimizer for the discriminator updates.
     check_for_unused_update_ops: If `True`, throws an exception if there are
       update ops outside of the generator or discriminator scopes.
+    is_chief: Specifies whether or not the training is being run by the primary
+      replica during replica training.
     **kwargs: Keyword args to pass directly to
       `training.create_train_op` for both the generator and
       discriminator train op.
@@ -980,6 +985,9 @@ def gan_train_ops(
       kwargs, model.generator_scope.name, model.discriminator_scope.name,
       check_for_unused_update_ops)
 
+  # Get the sync hooks if these are needed.
+  sync_hooks = []
+
   generator_global_step = None
   if isinstance(generator_optimizer,
                 sync_replicas_optimizer.SyncReplicasOptimizer):
@@ -995,6 +1003,7 @@ def gan_train_ops(
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
     gen_update_ops += [generator_global_step.assign(global_step)]
+    sync_hooks.append(generator_optimizer.make_session_run_hook(is_chief))
   with ops.name_scope('generator_train'):
     gen_train_op = training.create_train_op(
         total_loss=loss.generator_loss,
@@ -1016,6 +1025,7 @@ def gan_train_ops(
         trainable=False,
         collections=[ops.GraphKeys.GLOBAL_VARIABLES])
     dis_update_ops += [discriminator_global_step.assign(global_step)]
+    sync_hooks.append(discriminator_optimizer.make_session_run_hook(is_chief))
   with ops.name_scope('discriminator_train'):
     disc_train_op = training.create_train_op(
         total_loss=loss.discriminator_loss,
@@ -1025,7 +1035,8 @@ def gan_train_ops(
         update_ops=dis_update_ops,
         **kwargs)
 
-  return namedtuples.GANTrainOps(gen_train_op, disc_train_op, global_step_inc)
+  return namedtuples.GANTrainOps(gen_train_op, disc_train_op, global_step_inc,
+                                 sync_hooks)
 
 
 # TODO(joelshor): Implement a dynamic GAN train loop, as in `Real-Time Adaptive
@@ -1066,7 +1077,7 @@ def get_sequential_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
                                      train_steps.generator_train_steps)
     discriminator_hook = RunTrainOpsHook(train_ops.discriminator_train_op,
                                          train_steps.discriminator_train_steps)
-    return [generator_hook, discriminator_hook]
+    return [generator_hook, discriminator_hook] + list(train_ops.train_hooks)
 
   return get_hooks
 
@@ -1126,7 +1137,7 @@ def get_joint_train_hooks(train_steps=namedtuples.GANTrainSteps(1, 1)):
     g_hook = RunTrainOpsHook(g_op, num_g_steps)
     d_hook = RunTrainOpsHook(d_op, num_d_steps)
 
-    return [joint_hook, g_hook, d_hook]
+    return [joint_hook, g_hook, d_hook] + list(train_ops.train_hooks)
 
   return get_hooks
 

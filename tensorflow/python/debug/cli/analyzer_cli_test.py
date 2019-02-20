@@ -573,6 +573,7 @@ def create_analyzer_cli(dump):
   return analyzer, registry
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLISimpleMulAddTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -1668,6 +1669,7 @@ class AnalyzerCLIPrintLargeTensorTest(test_util.TensorFlowTestCase):
     self.assertNotIn("...,", out.lines[4])
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
 
   @classmethod
@@ -1995,6 +1997,7 @@ class AnalyzerCLIControlDepTest(test_util.TensorFlowTestCase):
                      out.font_attr_segs[0])
 
 
+@test_util.run_v1_only("b/120545219")
 class AnalyzerCLIWhileLoopTest(test_util.TensorFlowTestCase):
 
   @classmethod

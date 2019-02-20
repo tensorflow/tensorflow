@@ -160,4 +160,17 @@ void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
   ic->set_output_handle_shapes_and_types(output.index, shapes_and_types);
 }
 
+void AddWhileInputHack(TF_Graph* graph, TF_Output new_src, TF_Operation* dst,
+                       TF_Status* status) {
+  mutex_lock l(graph->mu);
+  status->status = graph->graph.AddWhileInputHack(&new_src.oper->node,
+                                                  new_src.index, &dst->node);
+  if (status->status.ok()) {
+    // This modification only updates the destination node for
+    // the purposes of running this graph in a session. Thus, we don't
+    // record the source node as being modified.
+    RecordMutation(graph, *dst, "adding input tensor");
+  }
+}
+
 }  // namespace tensorflow

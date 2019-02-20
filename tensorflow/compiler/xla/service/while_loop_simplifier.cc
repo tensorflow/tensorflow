@@ -58,7 +58,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   HloComputation* while_body = while_op->while_body();
   HloInstruction* while_body_root = while_body->root_instruction();
 
-  if (!ShapeUtil::IsTuple(while_init->shape())) {
+  if (!while_init->shape().IsTuple()) {
     VLOG(2) << "While op's carried value isn't tuple shaped.";
     return false;
   }
@@ -109,8 +109,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       // operand appears in, but it may appear more than once!
       if (user->user_count() == 1 && user->users().front() == while_body_root &&
           while_body_root->operand_index(user) == user->tuple_index() &&
-          std::count(while_body_root->operands().begin(),
-                     while_body_root->operands().end(), user) == 1) {
+          absl::c_count(while_body_root->operands(), user) == 1) {
         continue;
       }
 
@@ -127,7 +126,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // through to the while body's root, count that element as "used", since
   // removing that element would be observable.
   for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
-    if (used_tuple_indices.count(i)) {
+    if (used_tuple_indices.contains(i)) {
       continue;
     }
 
@@ -158,7 +157,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // Build up maps from the old/new to the new/old tuple indices.
   std::vector<int64> new_to_old_tuple_idx(used_tuple_indices.begin(),
                                           used_tuple_indices.end());
-  std::sort(new_to_old_tuple_idx.begin(), new_to_old_tuple_idx.end());
+  absl::c_sort(new_to_old_tuple_idx);
 
   absl::flat_hash_map<int64, int64> old_to_new_tuple_idx;
   for (int64 new_idx = 0; new_idx < new_to_old_tuple_idx.size(); ++new_idx) {
@@ -181,7 +180,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
   // replace the old instructions after we remove unused elements from the while
   // tuple.
   auto make_while_computation_replacements = [&](const HloComputation* comp) {
-    std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+    absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
         replacements;
 
     auto* param = comp->parameter_instruction(0);
@@ -233,7 +232,7 @@ static StatusOr<bool> TryRemoveDeadWhileParams(HloInstruction* while_op) {
       while_cond->CloneWithReplacements(
           make_while_computation_replacements(while_cond));
 
-  std::unordered_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
       while_body_replacements = make_while_computation_replacements(while_body);
   std::vector<HloInstruction*> new_while_body_root_elems;
   new_while_body_root_elems.reserve(new_to_old_tuple_idx.size());
@@ -526,16 +525,14 @@ static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
   // performance by forcing us to copy constants.
   absl::flat_hash_map<int, const HloInstruction*> index_to_constant;
   for (int i = 0; i < root_operands.size(); i++) {
-    HloInstruction* instr = root_operands[i];
-    if (instr->opcode() == HloOpcode::kGetTupleElement &&
-        instr->tuple_index() == i && instr->operand(0) == while_body_param &&
-        ShapeUtil::IsScalar(instr->shape())) {
-      auto tuple_element = while_init->operand(i);
-      if (tuple_element->IsConstant()) {
-        VLOG(3) << "Found loop invariant tuple element " << i << " "
-                << tuple_element->ToString();
-        index_to_constant[i] = tuple_element;
-      }
+    const HloInstruction* init_tuple_elem = nullptr;
+    if (Match(root_operands[i],
+              m::GetTupleElement(m::Op().Is(while_body_param), i)
+                  .WithShape(m::Shape().IsScalar())) &&
+        Match(while_init->operand(i), m::Constant(&init_tuple_elem))) {
+      VLOG(3) << "Found loop invariant tuple element " << i << " "
+              << init_tuple_elem->ToString();
+      index_to_constant[i] = init_tuple_elem;
     }
   }
 
@@ -585,8 +582,7 @@ static StatusOr<bool> TryPropagateConstant(HloInstruction* while_op) {
 static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
     absl::Span<HloInstruction*> instrs, const Shape& desired_shape,
     std::vector<std::unique_ptr<HloInstruction>>* new_instrs) {
-  CHECK(ShapeUtil::IsTuple(desired_shape))
-      << ShapeUtil::HumanString(desired_shape);
+  CHECK(desired_shape.IsTuple()) << ShapeUtil::HumanString(desired_shape);
 
   // For each child shape in `desired_shape`, slice out the correct number of
   // `instrs` and call UnflattenTupleInstr recursively.  At each step we remove
@@ -595,7 +591,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
   std::vector<HloInstruction*> elems;
   for (int64 i = 0; i < desired_shape.tuple_shapes_size(); ++i) {
     const Shape& subshape = desired_shape.tuple_shapes(i);
-    if (!ShapeUtil::IsTuple(subshape)) {
+    if (!subshape.IsTuple()) {
       elems.push_back(instrs[0]);
       instrs.remove_prefix(1);
       continue;
@@ -605,7 +601,7 @@ static std::unique_ptr<HloInstruction> UnflattenTupleInstr(
     int64 num_leaves = 0;
     ShapeUtil::ForEachSubshape(
         subshape, [&](const Shape& s, const ShapeIndex& /*index*/) {
-          if (!ShapeUtil::IsTuple(s)) {
+          if (!s.IsTuple()) {
             ++num_leaves;
           }
         });
@@ -627,7 +623,7 @@ static std::vector<HloInstruction*> GetFlatTupleElems(
     HloInstruction* instr,
     std::vector<std::unique_ptr<HloInstruction>>* new_instrs) {
   const auto& shape = instr->shape();
-  if (!ShapeUtil::IsTuple(shape)) {
+  if (!shape.IsTuple()) {
     return {instr};
   }
   std::vector<HloInstruction*> elems;
@@ -667,7 +663,7 @@ static StatusOr<bool> TryFlattenNestedTuples(HloInstruction* while_op) {
   std::vector<Shape> flattened_shape_elems;
   ShapeUtil::ForEachSubshape(while_shape,
                              [&](const Shape& s, const ShapeIndex& /*index*/) {
-                               if (!ShapeUtil::IsTuple(s)) {
+                               if (!s.IsTuple()) {
                                  flattened_shape_elems.push_back(s);
                                }
                              });
@@ -793,16 +789,11 @@ static StatusOr<HloInstruction*> TryMergeInductionVariables(
   // Maps the tuple index of each induction variable to its constant increment.
   absl::flat_hash_map<int64, const HloConstantInstruction*> induction_vars;
   for (int64 i = 0; i < while_body_root->operand_count(); ++i) {
-    const auto& elem_shape = while_body_root->operand(i)->shape();
-    if (!ShapeUtil::IsEffectiveScalar(elem_shape) ||
-        elem_shape.element_type() != elem_ty) {
-      continue;
-    }
-
     HloInstruction* constant;
     if (!Match(while_body_root->mutable_operand(i),
                m::AddAnyOrder(m::GetTupleElement(m::Parameter(), i),
-                              m::Constant(&constant)))) {
+                              m::ConstantScalar(&constant))
+                   .WithShape(m::Shape().WithElementType(elem_ty)))) {
       continue;
     }
     if (!trip_counter && constant->literal().IsAll(1) &&

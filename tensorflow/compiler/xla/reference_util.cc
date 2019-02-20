@@ -18,10 +18,10 @@ limitations under the License.
 #include <array>
 #include <utility>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
-#include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/shape_inference.h"
@@ -32,48 +32,19 @@ limitations under the License.
 
 namespace xla {
 
-namespace {
-
-template <typename T>
-std::unique_ptr<Array2D<T>> MatmulArray2DImpl(
-    const Array2D<T>& lhs, const Array2D<T>& rhs,
-    const std::function<void(
-        const void* run_options_ptr, T* out, T* lhs, T* rhs, int64 m, int64 n,
-        int64 k, int32 transpose_lhs, int32 transpose_rhs)>& impl_fn) {
-  CHECK_EQ(lhs.width(), rhs.height());
-  int m = lhs.height();
-  int n = rhs.width();
-  int k = lhs.width();
-  auto result = absl::make_unique<Array2D<T>>(m, n);
-  // Because Eigen is a header-oriented library, make sure that the Eigen code
-  // is the same as the code used by the CPU backend (otherwise the linker will
-  // randomly pick *some* definition).
-  impl_fn(
-      /*run_options_ptr=*/nullptr, result->data(), rhs.data(), lhs.data(), n, m,
-      k,
-      /*transpose_lhs=*/0,
-      /*transpose_rhs=*/0);
-  return result;
-}
-
-}  // namespace
-
 /* static */ std::unique_ptr<Array2D<Eigen::half>> ReferenceUtil::MatmulArray2D(
     const Array2D<Eigen::half>& lhs, const Array2D<Eigen::half>& rhs) {
-  return MatmulArray2DImpl<Eigen::half>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF16);
+  return HloEvaluator::MatmulArray2D(lhs, rhs);
 }
 
 /* static */ std::unique_ptr<Array2D<float>> ReferenceUtil::MatmulArray2D(
     const Array2D<float>& lhs, const Array2D<float>& rhs) {
-  return MatmulArray2DImpl<float>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF32);
+  return HloEvaluator::MatmulArray2D(lhs, rhs);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::MatmulArray2D(
     const Array2D<double>& lhs, const Array2D<double>& rhs) {
-  return MatmulArray2DImpl<double>(
-      lhs, rhs, __xla_cpu_runtime_EigenSingleThreadedMatMulF64);
+  return HloEvaluator::MatmulArray2D(lhs, rhs);
 }
 
 /* static */ std::unique_ptr<Array2D<double>> ReferenceUtil::Array2DF32ToF64(
@@ -557,10 +528,11 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
   dim2.set_base_dilation(lhs_dilation.second);
   *window.add_dimensions() = dim2;
 
-  const Shape& shape = ShapeInference::InferConvolveShape(
-                           lhs_literal.shape(), rhs_literal.shape(),
-                           /*feature_group_count=*/1, window, dnums)
-                           .ConsumeValueOrDie();
+  const Shape& shape =
+      ShapeInference::InferConvolveShape(
+          lhs_literal.shape(), rhs_literal.shape(),
+          /*feature_group_count=*/1, /*batch_group_count=*/1, window, dnums)
+          .ConsumeValueOrDie();
 
   HloInstruction* lhs_instruction =
       b.AddInstruction(HloInstruction::CreateConstant(std::move(lhs_literal)));
@@ -572,16 +544,16 @@ ReferenceUtil::ConvArray4DGeneralDimensionsDilated(
       /*new_size=*/2, PrecisionConfig::DEFAULT);
   b.AddInstruction(HloInstruction::CreateConvolve(
       shape, lhs_instruction, rhs_instruction, /*feature_group_count=*/1,
-      window, dnums, precision_config));
+      /*batch_group_count=*/1, window, dnums, precision_config));
   HloModuleConfig config;
   HloModule module("ReferenceUtil", config);
   auto computation = module.AddEntryComputation(b.Build());
 
   HloEvaluator evaluator;
   Literal result_literal =
-      evaluator.Evaluate<const Literal*>(*computation, {}).ConsumeValueOrDie();
+      evaluator.Evaluate(*computation, {}).ConsumeValueOrDie();
 
-  CHECK_EQ(ShapeUtil::Rank(result_literal.shape()), 4);
+  CHECK_EQ(result_literal.shape().rank(), 4);
   auto result =
       absl::make_unique<Array4D<float>>(result_literal.shape().dimensions(0),
                                         result_literal.shape().dimensions(1),
@@ -634,24 +606,26 @@ ReferenceUtil::ReduceToRowArray2D(
     const std::function<float(float, float)>& reduce_function) {
   std::vector<float> result;
   CHECK_EQ(dims.size(), 3);
-  const std::set<int64> dim_set(dims.begin(), dims.end());
+  const absl::flat_hash_set<int64> dim_set(dims.begin(), dims.end());
   CHECK_EQ(dim_set.size(), 3);
-  for (int64 a0 = 0; a0 == 0 || (!dim_set.count(0) && a0 < array.n1()); ++a0) {
-    for (int64 a1 = 0; a1 == 0 || (!dim_set.count(1) && a1 < array.n2());
+  for (int64 a0 = 0; a0 == 0 || (!dim_set.contains(0) && a0 < array.n1());
+       ++a0) {
+    for (int64 a1 = 0; a1 == 0 || (!dim_set.contains(1) && a1 < array.n2());
          ++a1) {
-      for (int64 a2 = 0; a2 == 0 || (!dim_set.count(2) && a2 < array.n3());
+      for (int64 a2 = 0; a2 == 0 || (!dim_set.contains(2) && a2 < array.n3());
            ++a2) {
-        for (int64 a3 = 0; a3 == 0 || (!dim_set.count(3) && a3 < array.n4());
+        for (int64 a3 = 0; a3 == 0 || (!dim_set.contains(3) && a3 < array.n4());
              ++a3) {
           float accumulator = init;
-          for (int64 i0 = 0; i0 == 0 || (dim_set.count(0) && i0 < array.n1());
-               ++i0) {
-            for (int64 i1 = 0; i1 == 0 || (dim_set.count(1) && i1 < array.n2());
-                 ++i1) {
+          for (int64 i0 = 0;
+               i0 == 0 || (dim_set.contains(0) && i0 < array.n1()); ++i0) {
+            for (int64 i1 = 0;
+                 i1 == 0 || (dim_set.contains(1) && i1 < array.n2()); ++i1) {
               for (int64 i2 = 0;
-                   i2 == 0 || (dim_set.count(2) && i2 < array.n3()); ++i2) {
+                   i2 == 0 || (dim_set.contains(2) && i2 < array.n3()); ++i2) {
                 for (int64 i3 = 0;
-                     i3 == 0 || (dim_set.count(3) && i3 < array.n4()); ++i3) {
+                     i3 == 0 || (dim_set.contains(3) && i3 < array.n4());
+                     ++i3) {
                   // Handle zero-sized arrays.
                   if (array.n1() > 0 && array.n2() > 0 && array.n3() > 0 &&
                       array.n4() > 0) {

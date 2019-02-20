@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DeserializeIterator"
+  endpoint {
+    name: "data.DeserializeIterator"
+  }
+}

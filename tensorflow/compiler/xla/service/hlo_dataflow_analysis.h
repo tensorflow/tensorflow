@@ -193,6 +193,7 @@ class HloDataflowAnalysis {
   bool UpdateSendValueSet(HloInstruction* send);
   bool UpdateTupleValueSet(HloInstruction* tuple);
   bool UpdateWhileValueSet(HloInstruction* xla_while);
+  bool UpdateAddDependencyValueSet(HloInstruction* add_dependency);
 
   // Propagate the dataflow through the module.
   void Propagate();

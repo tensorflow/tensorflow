@@ -53,7 +53,6 @@ cc_test(
         "//tensorflow/lite:testdata/test_model_broken.bin",
     ],
     tags = [
-        "no_oss",
         "tflite_not_portable_android",
         "tflite_not_portable_ios",
     ],
@@ -72,6 +71,7 @@ cc_library(
         "//tensorflow/lite:schema_fbs_version",
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/schema:schema_fbs",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 
@@ -80,7 +80,6 @@ cc_test(
     size = "small",
     srcs = ["verifier_test.cc"],
     tags = [
-        "no_oss",
         "tflite_not_portable",
     ],
     deps = [

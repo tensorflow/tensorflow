@@ -121,7 +121,8 @@ class ActivityAnalyzerTest(test.TestCase):
         arg_types=None,
         owner_type=None)
     node = qual_names.resolve(node)
-    node = activity.resolve(node, entity_info)
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
     return node, entity_info
 
   def assertSymbolSetsAre(self, expected, actual, name):

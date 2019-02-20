@@ -102,19 +102,9 @@ inline void Softmax(const SoftmaxParams& params,
       }
     }
 
-    int32 fixed_sum_of_exps = sum_of_exps.raw();
-    int headroom_plus_one =
-        CountLeadingZeros(static_cast<uint32>(fixed_sum_of_exps));
-    // This is the number of bits to the left of the binary point above 1.0.
-    // Consider fixed_sum_of_exps=1.25.  In that case shifted_scale=0.8 and
-    // no later adjustment will be needed.
-    int num_bits_over_unit = kAccumulationIntegerBits - headroom_plus_one;
-    int32 shifted_sum_minus_one = static_cast<int32>(
-        (static_cast<uint32>(fixed_sum_of_exps) << headroom_plus_one) -
-        (static_cast<uint32>(1) << 31));
-
-    FixedPoint0 shifted_scale = gemmlowp::one_over_one_plus_x_for_x_in_0_1(
-        FixedPoint0::FromRaw(shifted_sum_minus_one));
+    int num_bits_over_unit;
+    FixedPoint0 shifted_scale = FixedPoint0::FromRaw(GetReciprocal(
+        sum_of_exps.raw(), kAccumulationIntegerBits, &num_bits_over_unit));
 
     for (int c = 0; c < depth; ++c) {
       int32 input_diff =

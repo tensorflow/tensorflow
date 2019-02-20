@@ -62,7 +62,7 @@ class CategoricalOp : public XlaOpKernel {
 
     xla::Shape uniform_shape;
     int class_dimension;
-    if (num_samples > 1) {
+    if (num_samples != 1) {
       std::array<int64, 3> uniform_shape_array = {
           {batch_size, num_samples, num_classes}};
       xla::PrimitiveType uniform_xla_type;
@@ -99,8 +99,8 @@ class CategoricalOp : public XlaOpKernel {
     xla::PrimitiveType xla_output_type;
     OP_REQUIRES_OK(ctx,
                    DataTypeToPrimitiveType(output_type(0), &xla_output_type));
-    xla::XlaOp argmax = XlaHelpers::ArgMax(softmax_entries, xla_output_type,
-                                           /*axis=*/class_dimension);
+    xla::XlaOp argmax = xla::ArgMax(softmax_entries, xla_output_type,
+                                    /*axis=*/class_dimension);
     if (num_samples == 1) {
       argmax = xla::Reshape(argmax, {batch_size, 1});
     }

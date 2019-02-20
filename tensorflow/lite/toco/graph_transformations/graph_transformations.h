@@ -102,8 +102,16 @@ class GraphTransformationsSet {
 // construct GraphTransformation objects by using 'new', pass us
 // the resulting raw pointers, and this RunGraphTransformations
 // takes care of delete'ing these pointers.
-void RunGraphTransformations(Model* model, const string& message,
-                             const GraphTransformationsSet& transformations);
+tensorflow::Status RunGraphTransformationsWithStatus(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations);
+
+inline void RunGraphTransformations(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations) {
+  auto s = RunGraphTransformationsWithStatus(model, msg, transformations);
+  CHECK(s.ok()) << s.error_message();
+}
 
 #define DECLARE_GRAPH_TRANSFORMATION(GTName)                     \
   class GTName : public GraphTransformation {                    \
@@ -127,6 +135,8 @@ DECLARE_GRAPH_TRANSFORMATION(FuseActivationFunctions)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoFollowingAffine)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoPrecedingAffine)
 DECLARE_GRAPH_TRANSFORMATION(FuseBroadcastIntoFollowingBinary)
+DECLARE_GRAPH_TRANSFORMATION(GroupBidirectionalSequenceLstm)
+DECLARE_GRAPH_TRANSFORMATION(GroupBidirectionalSequenceRnn)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Normalization)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Pool)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyLstmCell)
@@ -139,7 +149,7 @@ DECLARE_GRAPH_TRANSFORMATION(MakeInitialDequantizeOperator)
 DECLARE_GRAPH_TRANSFORMATION(MoveBinaryOperatorBeforeReshape)
 DECLARE_GRAPH_TRANSFORMATION(PropagateActivationFunctionIntoConstants)
 DECLARE_GRAPH_TRANSFORMATION(PropagateArrayDataTypes)
-DECLARE_GRAPH_TRANSFORMATION(PropagateFakeQuantNumBits);
+DECLARE_GRAPH_TRANSFORMATION(PropagateFakeQuantNumBits)
 DECLARE_GRAPH_TRANSFORMATION(PropagateFixedSizes)
 DECLARE_GRAPH_TRANSFORMATION(HardcodeMinMax)
 DECLARE_GRAPH_TRANSFORMATION(Quantize)

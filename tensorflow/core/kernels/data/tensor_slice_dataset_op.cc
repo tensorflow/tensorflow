@@ -71,8 +71,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::TensorSlice")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::TensorSlice")});
     }
 
     const DataTypeVector& output_dtypes() const override { return dtypes_; }
@@ -83,6 +83,8 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
     string DebugString() const override {
       return "TensorSliceDatasetOp::Dataset";
     }
+
+    int64 Cardinality() const override { return tensors_[0].dim_size(0); }
 
    protected:
     Status AsGraphDefInternal(SerializationContext* ctx,

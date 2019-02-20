@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "LinearOperatorAdjoint"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "LinearOperatorBlockDiag"
     mtype: "<type \'type\'>"
   }
@@ -34,6 +38,10 @@ tf_module {
   }
   member {
     name: "LinearOperatorIdentity"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "LinearOperatorInversion"
     mtype: "<type \'type\'>"
   }
   member {
@@ -118,7 +126,7 @@ tf_module {
   }
   member_method {
     name: "l2_normalize"
-    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\', \'dim\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\', \'None\'], "
+    argspec: "args=[\'x\', \'axis\', \'epsilon\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'1e-12\', \'None\'], "
   }
   member_method {
     name: "logdet"
@@ -133,6 +141,10 @@ tf_module {
     argspec: "args=[\'matrix\', \'rhs\', \'l2_regularizer\', \'fast\', \'name\'], varargs=None, keywords=None, defaults=[\'0.0\', \'True\', \'None\'], "
   }
   member_method {
+    name: "lu"
+    argspec: "args=[\'input\', \'output_idx_type\', \'name\'], varargs=None, keywords=None, defaults=[\"<dtype: \'int32\'>\", \'None\'], "
+  }
+  member_method {
     name: "matmul"
     argspec: "args=[\'a\', \'b\', \'transpose_a\', \'transpose_b\', \'adjoint_a\', \'adjoint_b\', \'a_is_sparse\', \'b_is_sparse\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'False\', \'False\', \'False\', \'False\', \'False\', \'None\'], "
   }
@@ -142,7 +154,7 @@ tf_module {
   }
   member_method {
     name: "norm"
-    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\', \'keep_dims\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'tensor\', \'ord\', \'axis\', \'keepdims\', \'name\'], varargs=None, keywords=None, defaults=[\'euclidean\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "qr"
@@ -191,5 +203,9 @@ tf_module {
   member_method {
     name: "triangular_solve"
     argspec: "args=[\'matrix\', \'rhs\', \'lower\', \'adjoint\', \'name\'], varargs=None, keywords=None, defaults=[\'True\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "tridiagonal_solve"
+    argspec: "args=[\'diagonals\', \'rhs\', \'diagonals_format\', \'transpose_rhs\', \'conjugate_rhs\', \'name\'], varargs=None, keywords=None, defaults=[\'compact\', \'False\', \'False\', \'None\'], "
   }
 }

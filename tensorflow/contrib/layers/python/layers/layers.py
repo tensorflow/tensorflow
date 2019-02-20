@@ -35,6 +35,7 @@ from tensorflow.python.framework import function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
+from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.layers import base
 from tensorflow.python.layers import convolutional as convolutional_layers
 from tensorflow.python.layers import core as core_layers
@@ -1958,7 +1959,7 @@ class GDN(base.Layer):
     self._reparam_offset = reparam_offset
     self.data_format = data_format
     self._channel_axis()  # trigger ValueError early
-    self.input_spec = base.InputSpec(min_ndim=3, max_ndim=5)
+    self.input_spec = input_spec.InputSpec(min_ndim=3, max_ndim=5)
 
   def _channel_axis(self):
     try:
@@ -2015,7 +2016,7 @@ class GDN(base.Layer):
       raise ValueError('The channel dimension of the inputs to `GDN` '
                        'must be defined.')
     self._input_rank = input_shape.ndims
-    self.input_spec = base.InputSpec(
+    self.input_spec = input_spec.InputSpec(
         ndim=input_shape.ndims, axes={
             channel_axis: num_channels
         })
@@ -2307,7 +2308,7 @@ def layer_norm(inputs,
           initializer=init_ops.ones_initializer(),
           collections=gamma_collections,
           trainable=trainable)
-    # Calculate the moments on the last axis (layer activations).
+    # By default, compute the moments across all the dimensions except the one with index 0.
     norm_axes = list(range(begin_norm_axis, inputs_rank))
     mean, variance = nn.moments(inputs, norm_axes, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.
