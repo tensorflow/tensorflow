@@ -24,14 +24,14 @@ limitations under the License.
 namespace tensorflow {
 namespace functor {
 
-template <typename Device, typename T, bool isBilinear>
+template <typename Device, typename T>
 struct CropAndResize {
   // We assume that the tensor sizes are correct.
   bool operator()(const OpKernelContext* context,
                   typename TTypes<T, 4>::ConstTensor image,
                   typename TTypes<float, 2>::ConstTensor boxes,
                   typename TTypes<int32, 1>::ConstTensor box_ind,
-                  float extrapolation_value,
+                  const string& method_name, float extrapolation_value,
                   typename TTypes<float, 4>::Tensor crops);
 };
 
