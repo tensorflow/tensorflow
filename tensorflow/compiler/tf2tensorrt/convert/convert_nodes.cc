@@ -375,6 +375,10 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   return trt_tensor;
 }
 
+// TODO(tmorris): Use this in more ops where we allow want to allow weights or
+// tensors for an input.
+// TODO(tmorris): Add a caching mechanism so many constant layers are not
+// created for the same weights.
 nvinfer1::ITensor* Converter::GetAsTensor(const TRT_TensorOrWeights& input) {
   if (input.is_tensor()) return const_cast<nvinfer1::ITensor*>(input.tensor());
   return CreateConstantLayer(input.weights(), input.GetTrtDims());
