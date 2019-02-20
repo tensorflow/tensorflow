@@ -167,11 +167,12 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
 std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
   std::vector<bool> reachable_nodes(scope_.graph()->num_node_ids(), false);
   std::deque<Node*> queue;
-  std::vector<bool> visited(scope_.graph()->num_node_ids(), false);
   for (const Output& out : outputs_) {
-    if (!reachable_nodes[out.node()->id()]) {
-      queue.push_back(out.node());
-      reachable_nodes[out.node()->id()] = true;
+    const Node* const out_node = out.node();
+    const int out_node_id = out_node->id();
+    if (!reachable_nodes[out_node_id]) {
+      queue.push_back(out_node);
+      reachable_nodes[out_node_id] = true;
     }
   }
 
@@ -180,10 +181,12 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
     queue.pop_front();
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      if (visited[e->src()->id()]) continue;
-      queue.push_back(e->src());
-      reachable_nodes[e->src()->id()] = true;
-      visited[e->src()->id()] = true;
+      const Node* const src_node = e->src();
+      const int src_node_id = src_node->id();
+      if (!reachable_nodes[src_node_id]) {
+        queue.push_back(src_node);
+        reachable_nodes[src_node_id] = true;
+      }
     }
   }
   return reachable_nodes;
