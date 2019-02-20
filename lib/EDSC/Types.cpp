@@ -165,7 +165,6 @@ Expr::build(FuncBuilder &b,
     return {it->second};
 
   auto *impl = static_cast<ImplType *>(storage);
-  auto state = OperationState(b.getContext(), b.getUnknownLoc(), impl->opName);
   SmallVector<Value *, 4> operandValues;
   operandValues.reserve(impl->operands.size());
   for (auto child : impl->operands) {
@@ -174,6 +173,19 @@ Expr::build(FuncBuilder &b,
            "expected single-result expression as operand");
     operandValues.push_back(subResults.front());
   }
+
+  // Special case for emitting composed affine.applies.
+  // FIXME: this should not be a special case, instead, define composed form as
+  // canonical for the affine.apply operator and expose a generic createAndFold
+  // operation on builder that canonicalizes all operations that we emit here.
+  if (is_op<AffineApplyOp>()) {
+    auto affInstr = makeComposedAffineApply(
+        &b, b.getUnknownLoc(),
+        getAttribute("map").cast<AffineMapAttr>().getValue(), operandValues);
+    return {affInstr->getResult()};
+  }
+
+  auto state = OperationState(b.getContext(), b.getUnknownLoc(), impl->opName);
   state.addOperands(operandValues);
   state.addTypes(impl->resultTypes);
   for (const auto &attr : impl->attributes)

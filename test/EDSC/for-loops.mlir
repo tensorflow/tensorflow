@@ -4,8 +4,9 @@
 // CHECK-DAG: #[[idmap:.*]] = (d0) -> (d0)
 // CHECK-DAG: #[[diffmap:.*]] = (d0, d1) -> (d0 - d1)
 // CHECK-DAG: #[[addmap:.*]] = (d0, d1) -> (d0 + d1)
-// CHECK-DAG: #[[prodconstmap:.*]] = (d0, d1) -> (d0 * 3)
-// CHECK-DAG: #[[addconstmap:.*]] = (d0, d1) -> (d1 + 3)
+// CHECK-DAG: #[[prodconstmap:.*]] = (d0) -> (d0 * 3)
+// CHECK-DAG: #[[addconstmap:.*]] = (d0) -> (d0 + 3)
+// CHECK-DAG: #[[composedmap:.*]] = (d0, d1) -> (d0 * 3 + d1)
 // CHECK-DAG: #[[id2dmap:.*]] = (d0, d1) -> (d0, d1)
 
 // This function will be detected by the test pass that will insert
@@ -27,9 +28,9 @@ func @blocks() {
 // before the `return` instruction.
 // CHECK-LABEL: func @dynamic_for_func_args(%arg0: index, %arg1: index) {
 // CHECK:  for %i0 = #[[idmap]](%arg0) to #[[idmap]](%arg1) step 3 {
-// CHECK:  %[[res:.*]] = affine.apply #[[prodconstmap]](%arg0, %c3)
-// CHECK:  {{.*}} = affine.apply #[[addmap]](%[[res]], %arg1)
-// CHECK:  {{.*}} = affine.apply #[[addconstmap]](%c3, %arg0)
+// CHECK:  {{.*}} = affine.apply #[[prodconstmap]](%arg0)
+// CHECK:  {{.*}} = affine.apply #[[composedmap]](%arg0, %arg1)
+// CHECK:  {{.*}} = affine.apply #[[addconstmap]](%arg0)
 func @dynamic_for_func_args(%arg0 : index, %arg1 : index) {
   return
 }
