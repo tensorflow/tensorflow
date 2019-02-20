@@ -414,6 +414,7 @@ class ComputationBuilder {
   _FORWARD_BINOP(Pow)
   _FORWARD_BINOP(Complex)
   _FORWARD_UNOP(Not)
+  _FORWARD_UNOP(Clz)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
   _FORWARD_UNOP(Expm1)

@@ -285,6 +285,7 @@ def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 
 _UNARY_OPS = [
     'Not',
+    'Clz',
     'Abs',
     'Exp',
     'Expm1',
