@@ -388,10 +388,10 @@ message ConfigProto {
   // Optional list of all workers to use in this session.
   ClusterDef cluster_def = 14;
 
-  // This option is deprecated. The same effect can be achieved by setting
-  // share_session_state to an inverse value. For compatibility, this field
-  // still works if share_session_state is not turned on.
-  bool isolate_session_state = 15 [deprecated = true];
+  // If true, any resources such as Variables used in the session will not be
+  // shared with other sessions. However, when clusterspec propagation is
+  // enabled, this field is ignored and sessions are always isolated.
+  bool isolate_session_state = 15;
 
   // Everything inside Experimental is subject to change and is not subject
   // to API stability guarantees in
@@ -419,16 +419,17 @@ message ConfigProto {
     // use NUMA affinity where applicable.  One consequence will be the
     // existence of as many CPU devices as there are available NUMA nodes.
     bool use_numa_affinity = 5;
+
+    // If true, any resources such as Variables used in the session will be
+    // shared with other sessions even if ClusterSpec Propagation is enabled.
+    // TODO(mrry): This field is a patch for isolate_session_state and an
+    // uniform API with flexibility in distributed runtime is needed.
+    bool share_session_state_in_clusterspec_propagation = 17;
   };
 
   Experimental experimental = 16;
 
-  // If true, any resources such as Variables used in the session will be
-  // shared with other sessions. Different from isolate_session_state, even
-  // if ClusterSpec Propagation is enabled, this field still works.
-  bool share_session_state = 17;
-
-  // Next: 18
+  // Next: 17
 };
 
 // Options for a single Run() call.

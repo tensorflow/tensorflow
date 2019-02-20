@@ -1269,8 +1269,6 @@ Status MasterSession::CreateWorkerSessions(
       return status;
     }
 
-    // For compatibility, we first follow the old way to set the isolation field
-    // in the request of creating a worker.
     if (options.cluster_def) {
       *workers[i].request.mutable_server_def()->mutable_cluster() =
           *options.cluster_def;
@@ -1286,9 +1284,11 @@ Status MasterSession::CreateWorkerSessions(
       workers[i].request.set_isolate_session_state(
           session_opts_.config.isolate_session_state());
     }
-    // As isolate_session_state in ConfigProto is deprecated, we should disable
-    // the isolation in request if share_session_state is turned on.
-    if (session_opts_.config.share_session_state()) {
+    if (session_opts_.config.experimental()
+          .share_session_state_in_clusterspec_propagation()) {
+      // In a dynamic cluster, the ClusterSpec info is usually propagated by
+      // master sessions. When training of data parallelism, it is needed for
+      // different worker sessions to update the same variables in PS servers.
       workers[i].request.set_isolate_session_state(false);
     }
   }
