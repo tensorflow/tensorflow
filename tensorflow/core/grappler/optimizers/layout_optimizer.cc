@@ -2048,8 +2048,6 @@ class DataLayoutOptimizer : GraphProcessor {
     // only needs to be performed if at least one node in the previous pass is
     // expanded.
     if (graph_->node_size() > node_size_original) {
-      NodeDef* n = AddNodePermNHWCToNCHW();
-      n = AddNodePermNCHWToNHWC();
       std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
       for (int i = 0; i < graph_->node_size(); i++) {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
