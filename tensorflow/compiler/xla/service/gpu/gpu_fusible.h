@@ -29,6 +29,10 @@ namespace gpu {
 // be the root of an input fusion.
 bool IsFusible(const HloInstruction& instr);
 
+bool IsInputFusible(const HloInstruction& instr);
+
+bool IsLoopFusible(const HloInstruction& instr);
+
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
 // suffers from poor data locality if the layouts of input parameters differ. In
 // such situtations it is better not to fuse. Only input params with
