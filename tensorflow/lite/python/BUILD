@@ -97,6 +97,21 @@ py_test(
 )
 
 py_test(
+    name = "lite_v2_test",
+    srcs = ["lite_v2_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
     name = "lite_flex_test",
     srcs = ["lite_flex_test.py"],
     srcs_version = "PY2AND3",
