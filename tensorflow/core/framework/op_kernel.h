@@ -759,7 +759,7 @@ class OpKernelContext {
   // TODO(mrry): Convert this to return Status.
   bool has_input(int index) const;
 
-  // Return true if there is input under the given name.
+  // Return true if there exists an input.
   bool has_input(StringPiece name) const;
 
   // Returns true if all inputs are the same shape, otherwise sets the

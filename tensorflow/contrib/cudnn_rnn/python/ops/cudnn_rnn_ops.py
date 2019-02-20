@@ -1029,10 +1029,9 @@ def _cudnn_rnn(inputs,
     args["time_major"] = time_major
     outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(**args)
   elif time_major is False:
-    max_time = inputs.get_shape().as_list()[1]
-    batch_size = inputs.get_shape().as_list()[0]
-    lengths = np.repeat(max_time, batch_size)
-    sequence_lengths = ops.convert_to_tensor(lengths.astype(np.int32))
+    batch_size = array_ops.shape(inputs)[0]
+    max_time = array_ops.shape(inputs)[1]
+    sequence_lengths = array_ops.fill([batch_size], max_time)
     args["sequence_lengths"] = sequence_lengths
     args["time_major"] = time_major
     outputs, output_h, output_c, _, _ = gen_cudnn_rnn_ops.cudnn_rnnv3(**args)

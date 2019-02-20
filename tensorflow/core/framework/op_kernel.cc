@@ -135,11 +135,7 @@ const string& OpKernel::requested_input(int i) const { return def_->input(i); }
 
 bool OpKernel::HasInput(StringPiece input_name) const {
   const auto result = input_name_map_.find(input_name);
-  if (result == input_name_map_.end()) {
-    return false;
-  } else {
-    return true;
-  }
+  return result != input_name_map_.end();
 }
 
 Status OpKernel::InputRange(StringPiece input_name, int* start,

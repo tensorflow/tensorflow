@@ -383,9 +383,9 @@ class _CudnnRNN(base_layer.Layer):
     """Runs the forward step for the RNN model.
 
     Args:
-      inputs: `3-D` tensor with shape `[time_len, batch_size, input_size]` if
-        `time_major` is True (default) or `[batch_size, time_len, input_size]`
-        if `time_major` is False.
+      inputs: `3-D` tensor. If `time_major` is True (default), the Tensor shape
+        is [time_len, batch_size, input_size]. If `time_major` is False, the
+        shape is [batch_size, time_len, input_size].
       initial_state: a tuple of tensor(s) of shape
         `[num_layers * num_dirs, batch_size, num_units]` if
         `time_major` is True (default) or `[batch_size, num_layers * num_dirs,
