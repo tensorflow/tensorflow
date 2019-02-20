@@ -1280,13 +1280,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
     ask_cuda_compute_capabilities = (
         'Please specify a list of comma-separated '
-        'Cuda compute capabilities you want to '
+        'CUDA compute capabilities you want to '
         'build with.\nYou can find the compute '
         'capability of your device at: '
         'https://developer.nvidia.com/cuda-gpus.\nPlease'
         ' note that each additional compute '
         'capability significantly increases your '
-        'build time and binary size. [Default is: %s]: ' %
+        'build time and binary size, and that '
+        'TensorFlow only supports compute '
+        'capabilities >= 3.5 [Default is: %s]: ' %
         default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
@@ -1299,12 +1301,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        print('Invalid compute capability: ' % compute_capability)
+        print('Invalid compute capability: %s' % compute_capability)
         all_valid = False
       else:
-        ver = int(m.group(0).split('.')[0])
-        if ver < 3:
-          print('Only compute capabilities 3.0 or higher are supported.')
+        ver = float(m.group(0))
+        if ver < 3.5:
+          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
+                'and higher. Please re-specify the list of compute '
+                'capabilities excluding version %s.' % ver)
           all_valid = False
 
     if all_valid:
