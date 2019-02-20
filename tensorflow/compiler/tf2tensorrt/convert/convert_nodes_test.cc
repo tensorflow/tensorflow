@@ -241,6 +241,16 @@ class FakeITensor : public nvinfer1::ITensor {
   float getDynamicRange() const override { return dynamic_range_; }
 #endif
 
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  bool dynamicRangeIsSet() const override { return true; }
+
+  void resetDynamicRange() override {}
+
+  float getDynamicRangeMin() const override { return 0.f; }
+
+  float getDynamicRangeMax() const override { return 0.f; }
+#endif
+
  private:
   string name_;
   nvinfer1::Dims dims_;
