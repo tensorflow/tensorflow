@@ -138,6 +138,14 @@ class Sequential(training.Model):
             multiple output tensors, or is already connected
             somewhere else (forbidden in `Sequential` models).
     """
+    # If we are passed a Keras tensor created by keras.Input(), we can extract
+    # the input layer from its keras history and use that without any loss of
+    # generality.
+    if hasattr(layer, '_keras_history'):
+      origin_layer = layer._keras_history[0]
+      if isinstance(origin_layer, input_layer.InputLayer):
+        layer = origin_layer
+
     if not isinstance(layer, base_layer.Layer):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
