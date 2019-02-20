@@ -571,6 +571,9 @@ class Converter {
   friend class OpConverterTest;
 };
 
+// Map of all supported UnaryOperations
+std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
+
 }  // namespace convert
 }  // namespace tensorrt
 }  // namespace tensorflow

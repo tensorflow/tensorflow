@@ -3600,31 +3600,17 @@ TEST_F(OpConverterTest, ConvertUnary) {
     return 0;
   };
 
+  // Get list of ops to test.
+  std::vector<string> ops_to_test;
+  // Add all ops supported by ConvertUnary.
+  auto* map = UnaryOperationMap();
+  ops_to_test.reserve(map->size());
+  for (auto& pair : *map) {
+    ops_to_test.push_back(pair.first);
+  }
+  // Add other unary ops to test.
+  ops_to_test.push_back("Rsqrt");
   // Ok.
-  const std::vector<string> ops_to_test = {
-    "Neg",
-    "Exp",
-    "Log",
-    "Sqrt",
-    "Abs",
-    "Rsqrt",
-    "Reciprocal",
-#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
-    "Sin",
-    "Cos",
-    "Tan",
-    "Sinh",
-    "Cosh",
-    "Asin",
-    "Acos",
-    "Atan",
-    "Asinh",
-    "Acosh",
-    "Atanh",
-    "Ceil",
-    "Floor",
-#endif
-  };
   for (string op_name : ops_to_test) {
     Reset();
     NodeDef node_def = get_unary_nodedef(op_name);
