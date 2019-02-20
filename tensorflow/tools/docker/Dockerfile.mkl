@@ -49,6 +49,10 @@ RUN ${PIP} --no-cache-dir install \
     ${PYTHON} -m ipykernel.kernelspec
 
 
+RUN if [ "${PYTHON}" = "python3" ] || [ "${PYTHON}" = "python3.6" ]; then \
+      ln -s -f /usr/bin/python3 /usr/bin/python; \
+    fi
+
 COPY ${TF_WHL_URL} /
 RUN ${PIP} install --no-cache-dir --force-reinstall /${TF_WHL_URL} && \
     rm -rf /${TF_WHL_URL}

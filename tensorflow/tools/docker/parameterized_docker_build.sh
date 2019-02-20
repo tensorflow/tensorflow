@@ -365,7 +365,7 @@ else # TF_DOCKER_BUILD_IS_DEVEL == 'yes'
       TF_BAZEL_BUILD_OPTIONS=("--config=mkl --copt=-mavx --cxxopt=-D_GLIBCXX_USE_CXX11_ABI=0")
     else
       TF_BAZEL_BUILD_OPTIONS="${TF_BAZEL_BUILD_OPTIONS}"
-    fi   
+    fi
     TF_DOCKER_BUILD_ARGS+=("--build-arg TF_BUILD_VERSION=${TF_DOCKER_BUILD_DEVEL_BRANCH}")
     echo "TF_DOCKER_BUILD_ARGS=${TF_DOCKER_BUILD_ARGS[@]}"
 
@@ -381,7 +381,7 @@ else # TF_DOCKER_BUILD_IS_DEVEL == 'yes'
   # Modify python/pip version if necessary.
   if [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3" ]] || [[ "${TF_DOCKER_BUILD_PYTHON_VERSION}" == "python3.6" ]]; then
     if [[ ${TF_DOCKER_BUILD_TYPE} == "mkl" ]] || [[ ${TF_DOCKER_BUILD_TYPE} == "mkl-horovod" ]]; then
-        TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=${TF_DOCKER_BUILD_PYTHON_VERSION}")
+        TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON=python3")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PYTHON3_DEV=python3-dev")
         TF_DOCKER_BUILD_ARGS+=("--build-arg WHL_DIR=/tmp/pip3")
         TF_DOCKER_BUILD_ARGS+=("--build-arg PIP=pip3")
