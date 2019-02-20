@@ -227,8 +227,7 @@ public:
 
   /// Builds a constant op with the specified attribute value and the
   /// attribute's type.
-  static void build(Builder *builder, OperationState *result,
-                    NumericAttr value);
+  static void build(Builder *builder, OperationState *result, Attribute value);
 
   Attribute getValue() const { return getAttr("value"); }
 

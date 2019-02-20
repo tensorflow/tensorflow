@@ -241,19 +241,28 @@ void CondBranchOp::eraseFalseOperand(unsigned index) {
 /// Builds a constant op with the specified attribute value and result type.
 void ConstantOp::build(Builder *builder, OperationState *result, Type type,
                        Attribute value) {
-  auto attr = value.dyn_cast<NumericAttr>();
-  assert(attr && "expected numeric value");
-  assert(attr.getType() == type && "value should be of the given type");
-  (void)attr;
-
   result->addAttribute("value", value);
   result->types.push_back(type);
 }
 
+// Extracts and returns a type of an attribute if it has one.  Returns a null
+// type otherwise.  Currently, NumericAttrs and FunctionAttrs have types.
+static Type getAttributeType(Attribute attr) {
+  assert(attr && "expected non-null attribute");
+  if (auto numericAttr = attr.dyn_cast<NumericAttr>())
+    return numericAttr.getType();
+  if (auto functionAttr = attr.dyn_cast<FunctionAttr>())
+    return functionAttr.getType();
+  return {};
+}
+
+/// Builds a constant of with the specified attribute value and type extracted
+/// from the attribute.  The attribute must have a type.
 void ConstantOp::build(Builder *builder, OperationState *result,
-                       NumericAttr value) {
-  result->addAttribute("value", value);
-  result->types.push_back(value.getType());
+                       Attribute value) {
+  Type t = getAttributeType(value);
+  assert(t && "expected an attribute with a type");
+  return build(builder, result, t, value);
 }
 
 void ConstantOp::print(OpAsmPrinter *p) const {
@@ -333,6 +342,13 @@ bool ConstantOp::verify() const {
       return emitOpError("requires 'value' to be a function reference");
     return false;
   }
+
+  auto attrType = getAttributeType(value);
+  if (!attrType)
+    return emitOpError("requires 'value' attribute to have a type");
+  if (attrType != type)
+    return emitOpError("requires the type of the 'value' attribute to match "
+                       "that of the operation result");
 
   return emitOpError(
       "requires a result type that aligns with the 'value' attribute");
