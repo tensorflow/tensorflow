@@ -40,6 +40,7 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import nest
 
@@ -729,7 +730,8 @@ class RNNTest(keras_parameterized.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = set(trackable_util.list_objects(model))
+    checkpointed_objects = object_identity.ObjectIdentitySet(
+        trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
@@ -1293,3 +1295,4 @@ class NestedCell(keras.layers.Layer):
 
 if __name__ == '__main__':
   test.main()
+
