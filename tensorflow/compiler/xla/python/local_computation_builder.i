@@ -439,6 +439,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::ComputationBuilder::ShiftRightArithmetic;
 %unignore xla::swig::ComputationBuilder::ShiftRightLogical;
 %unignore xla::swig::ComputationBuilder::Not;
+%unignore xla::swig::ComputationBuilder::Clz;
 %unignore xla::swig::ComputationBuilder::Abs;
 %unignore xla::swig::ComputationBuilder::Exp;
 %unignore xla::swig::ComputationBuilder::Expm1;

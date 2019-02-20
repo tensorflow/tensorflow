@@ -592,6 +592,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
             "tf.nn.rnn_cell.LSTMStateTuple",
+        "tf.contrib.rnn.BasicLSTMCell":
+            "tf.compat.v1.nn.rnn_cell.BasicLSTMCell",
+        "tf.contrib.rnn.BasicRNNCell":
+            "tf.compat.v1.nn.rnn_cell.BasicRNNCell",
+        "tf.contrib.rnn.GRUCell":
+            "tf.compat.v1.nn.rnn_cell.GRUCell",
+        "tf.contrib.rnn.LSTMCell":
+            "tf.compat.v1.nn.rnn_cell.LSTMCell",
+        "tf.contrib.rnn.MultiRNNCell":
+            "tf.compat.v1.nn.rnn_cell.MultiRNNCell",
         "tf.contrib.framework.sort":
             "tf.sort",
         "tf.contrib.framework.argsort":

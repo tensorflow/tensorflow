@@ -17,7 +17,7 @@ include (ExternalProject)
 set(GRPC_INCLUDE_DIRS ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc/include)
 set(GRPC_URL https://github.com/grpc/grpc.git)
 set(GRPC_BUILD ${CMAKE_CURRENT_BINARY_DIR}/grpc/src/grpc)
-set(GRPC_TAG 3dacd1afc451803fbbc4d01c53cbaf026aa9d06b)
+set(GRPC_TAG 69b2d570428623d2d9097ec9e21b3e0a02268ab9)
 
 if(WIN32)
   # We use unsecure gRPC because boringssl does not build on windows

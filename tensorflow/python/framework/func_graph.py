@@ -788,9 +788,15 @@ def _get_defun_inputs(flat_args, names, structure):
           requested_name = arg.name
         else:
           requested_name = name
-        placeholder = graph_placeholder(
-            arg.dtype, arg.shape,
-            name=requested_name)
+
+        try:
+          placeholder = graph_placeholder(
+              arg.dtype, arg.shape,
+              name=requested_name)
+        except ValueError:
+          # Sometimes parameter names are not valid op names, so fall back to
+          # unnamed placeholders.
+          placeholder = graph_placeholder(arg.dtype, arg.shape)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.

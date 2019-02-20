@@ -674,8 +674,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run training inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils.filter_callbacks(
-              callbacks)
+          filtered_callbacks = distributed_training_utils \
+              .filter_distributed_callbacks(callbacks)
           return training_distributed.fit_distributed(
               self,
               x=x,
@@ -936,8 +936,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run evaluation inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils.filter_callbacks(
-              callbacks)
+          filtered_callbacks = distributed_training_utils \
+              .filter_distributed_callbacks(callbacks)
           return training_distributed.evaluate_distributed(
               self,
               x=x,

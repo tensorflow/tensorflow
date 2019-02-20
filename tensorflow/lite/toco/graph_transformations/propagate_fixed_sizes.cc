@@ -2341,6 +2341,11 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kUnique:
       ProcessUniqueOperator(model, static_cast<UniqueOperator*>(op));
       break;
+    case OperatorType::kWhere:
+      // The size of the output can only be known after evaluating the cond
+      // tensor. Ignore shape propagation here and defer that to the
+      // interpreter.
+      break;
     default:
       // Unimplemented, another graph transformation should drop it.
       LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(op->type);

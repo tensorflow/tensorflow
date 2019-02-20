@@ -912,6 +912,27 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "composite_tensor_support_test",
+    size = "medium",
+    srcs = ["utils/composite_tensor_support_test.py"],
+    additional_deps = [
+        ":engine",
+        ":layers",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
+    ],
+)
+
+tf_py_test(
     name = "io_utils_test",
     size = "small",
     srcs = ["utils/io_utils_test.py"],

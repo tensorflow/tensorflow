@@ -303,7 +303,7 @@ test_pip_virtualenv_clean() {
   pushd "${TMP_DIR}"
 
   # Run a quick check on tensorflow installation.
-  RET_VAL=$(python -c "import tensorflow as tf; print(tf.Session().run(tf.constant(42)))")
+  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2))")
 
   # Deactivate virtualenv.
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
@@ -313,7 +313,7 @@ test_pip_virtualenv_clean() {
   sudo rm -rf "${TMP_DIR}" "${CLEAN_VENV_DIR}"
 
   # Check result to see if tensorflow is properly installed.
-  if [[ ${RET_VAL} == 42 ]]; then
+  if [[ ${RET_VAL} == *'Tensor("Add:0", shape=(4,), dtype=int32)'* ]]; then
     echo "PIP test on clean virtualenv PASSED."
     return 0
   else
@@ -337,14 +337,14 @@ test_pip_virtualenv_non_clean() {
   pushd "${TMP_DIR}"
 
   # Run a quick check on tensorflow installation.
-  RET_VAL=$(python -c "import tensorflow as tf; print(tf.Session().run(tf.constant(42)))")
+  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2))")
 
   # Return to original directory. Remove temp dirs.
   popd
   sudo rm -rf "${TMP_DIR}"
 
   # Check result to see if tensorflow is properly installed.
-  if [[ ${RET_VAL} -ne 42 ]]; then
+  if ! [[ ${RET_VAL} == *'Tensor("Add:0", shape=(4,), dtype=int32)'* ]]; then
     echo "PIP test on virtualenv (non-clean) FAILED"
     return 1
   fi
@@ -444,8 +444,6 @@ install_tensorflow_pip() {
     die "Please provide a proper wheel file path."
   fi
 
-  TF_WHEEL_PATH="${1}"
-
   # Set path to pip.
   PIP_BIN_PATH="$(which pip${PYTHON_VER_CFG})"
 
@@ -476,7 +474,7 @@ install_tensorflow_pip() {
   PIP_FLAGS="--upgrade --force-reinstall"
   ${PIP_BIN_PATH} install -v ${PIP_FLAGS} ${WHL_PATH} || \
     die "pip install (forcing to reinstall tensorflow) FAILED"
-  echo "Successfully installed pip package ${TF_WHEEL_PATH}"
+  echo "Successfully installed pip package ${WHL_PATH}"
 
   # Force downgrade of setuptools. This must happen after the pip install of the
   # WHL_PATH, which ends up upgrading to the latest version of setuptools.

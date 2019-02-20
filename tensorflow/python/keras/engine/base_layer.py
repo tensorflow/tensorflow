@@ -47,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
@@ -1664,12 +1665,16 @@ class Layer(trackable.Trackable):
       super(Layer, self).__setattr__(name, value)
       return
 
+    # Keep track of trackable objects, for the needs of `Network.save_weights`.
+    value = data_structures.sticky_attribute_assignment(
+        trackable=self, value=value, name=name)
+
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
         trackable_layer_utils.has_weights(value)):
       # Initialize `_layers` here in case `__init__` has not yet been called.
       if not hasattr(self, '_layers'):
-        self._layers = []
+        super(Layer, self).__setattr__('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
@@ -1684,9 +1689,9 @@ class Layer(trackable.Trackable):
       # Users may add extra weights/variables
       # simply by assigning them to attributes (invalid for graph networks)
       if not hasattr(self, '_trainable_weights'):
-        self._trainable_weights = []
+        super(Layer, self).__setattr__('_trainable_weights', [])
       if not hasattr(self, '_non_trainable_weights'):
-        self._non_trainable_weights = []
+        super(Layer, self).__setattr__('_non_trainable_weights', [])
       if value not in self._trainable_weights + self._non_trainable_weights:
         if value.trainable:
           self._trainable_weights.append(value)

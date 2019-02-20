@@ -78,7 +78,6 @@ class StackedRNNCells(Layer):
   ```
   """
 
-  @trackable.no_automatic_dependency_tracking
   def __init__(self, cells, **kwargs):
     for cell in cells:
       if not hasattr(cell, 'call'):
@@ -2019,6 +2018,8 @@ class UnifiedGRU(GRU):
           before matrix multiplication). False = "before",
           True = "after" (default and CuDNN compatible).
   """
+
+  _setattr_tracking = False  # TODO(allenl): Figure out why this is needed.
 
   def __init__(self,
                units,

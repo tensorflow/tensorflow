@@ -700,5 +700,17 @@ class MappingTests(test.TestCase):
     self.assertIsInstance(result, dict)
     self.assertEqual({1: 2, 3: 4}, result)
 
+  def testListAddOrder(self):
+    self.assertEqual([1., 2.],
+                     data_structures._ListWrapper([1.])
+                     + data_structures._ListWrapper([2.]))
+    self.assertEqual([1., 2.],
+                     data_structures._ListWrapper([1.])
+                     + [2.])
+    self.assertEqual([1., 2.],
+                     [1.]
+                     + data_structures._ListWrapper([2.]))
+
+
 if __name__ == "__main__":
   test.main()
