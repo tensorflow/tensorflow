@@ -563,8 +563,8 @@ Status ExtractForwardInput(OpKernelContext* context,
                            bool time_major,
                            const Tensor** input, const Tensor** input_h,
                            const Tensor** input_c, const Tensor** params,
-                           CudnnRnnModelShapes* model_shapes,
-                           const Tensor** sequence_lengths) {
+                           const Tensor** sequence_lengths,
+                           CudnnRnnModelShapes* model_shapes) {
   if (context->has_input("sequence_lengths")) {
     TF_RETURN_IF_ERROR(context->input("sequence_lengths", sequence_lengths));
   }
@@ -1276,7 +1276,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     OP_REQUIRES_OK(
         context, ExtractForwardInput(context, model_types(), time_major,
                                      &input, &input_h, &input_c, &params,
-                                     &model_shapes, &sequence_lengths));
+                                     &sequence_lengths, &model_shapes));
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
@@ -1655,7 +1655,7 @@ class CudnnRNNBackwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     OP_REQUIRES_OK(
         context, ExtractForwardInput(context, model_types(), time_major,
                                      &input, &input_h, &input_c, &params,
-                                     &model_shapes, &sequence_lengths));
+                                     &sequence_lengths, &model_shapes));
     RnnInputMode input_mode;
     OP_REQUIRES_OK(context,
                    ToRNNInputMode(rnn_input_mode(), model_shapes.num_units,
