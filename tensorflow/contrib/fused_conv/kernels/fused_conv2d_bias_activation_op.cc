@@ -696,7 +696,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
     CHECK(stream->parent()->GetConvolveAlgorithms(
         fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
             stream->parent()),
-        &algorithms));
+        stream, dnn::ToDataType<T>::value, conv_input_desc, filter_desc,
+        conv_desc, output_desc, &algorithms));
     if (activation_mode == ActivationMode::NONE) {
       // Only CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM is supported for
       // identity activation, other algs seem to quietly do Relu.

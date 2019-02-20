@@ -2678,7 +2678,8 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
         CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
                                                  "algorithm for doing forward "
                                                  "convolution";
-        *algorithm_desc = dnn::AlgorithmDesc(preference.fwd_algo, false);
+        *algorithm_desc =
+            dnn::AlgorithmDesc(preference.fwd_algo, false, preference.memory);
         break;
       }
       case dnn::ConvolutionKind::BACKWARD_DATA: {
@@ -2696,7 +2697,8 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
         CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
                                                  "algorithm for doing backward "
                                                  "data convolution";
-        *algorithm_desc = dnn::AlgorithmDesc(preference.bwd_data_algo, false);
+        *algorithm_desc = dnn::AlgorithmDesc(preference.bwd_data_algo, false,
+                                             preference.memory);
         break;
       }
       case dnn::ConvolutionKind::BACKWARD_FILTER: {
@@ -2714,8 +2716,8 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
         CHECK_EQ(status, miopenStatusSuccess) << "Unable to find a suitable "
                                                  "algorithm for doing backward "
                                                  "filter convolution";
-        *algorithm_desc =
-            dnn::AlgorithmDesc(preference.bwd_weights_algo, false);
+        *algorithm_desc = dnn::AlgorithmDesc(preference.bwd_weights_algo, false,
+                                             preference.memory);
         break;
       }
       default:
@@ -2726,17 +2728,12 @@ port::Status MIOpenSupport::DoPrepareForConvolution(
     // Restore default allocator, note mac is stack temp
     wrap::miopenSetAllocator(miopen.handle(), nullptr, nullptr, nullptr);
 
-    scratch_memory_size = preference.memory;
   } else {
     // An algorithm has been specified.
     *algorithm_desc = *algo_desc;
-    // commenting this line out for the upstream repo, since
-    // AlgorithmConfig::scratch_size_ has been removed in the upstream repo but
-    // is still used in the ROCM develop-upstream repo
-    //
-    // scratch_memory_size = *(algorithm_config.scratch_size());
-    //
   }
+
+  scratch_memory_size = algorithm_desc->scratch_size();
 
   // allocate scratch memory
   if (scratch_memory_size != 0) {
@@ -2927,11 +2924,11 @@ port::Status MIOpenSupport::DoConvolve(
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
     if (status == miopenStatusSuccess) {
-      dnn::AlgorithmDesc algotype(algorithm_desc.algo_id(), false);
+      dnn::AlgorithmDesc algotype(algorithm_desc.algo_id(), false,
+                                  scratch_memory.size());
       output_profile_result->set_algorithm(algotype);
       output_profile_result->set_elapsed_time_in_ms(
           timer->GetElapsedMilliseconds());
-      output_profile_result->set_scratch_size(scratch_memory.size());
     }
     timer->Destroy();
   }
@@ -2946,14 +2943,18 @@ port::Status MIOpenSupport::DoConvolve(
 
 bool MIOpenSupport::GetConvolveAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+    dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoDirect, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoFFT, false),
-      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoWinograd, false),
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoGEMM, false, 0),
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoDirect, false, 0),
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoFFT, false, 0),
+      dnn::AlgorithmDesc(miopenConvolutionFwdAlgoWinograd, false, 0),
       // clang-format on
   });
   return true;
@@ -2967,14 +2968,18 @@ bool MIOpenSupport::GetRnnAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+    dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoDirect, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoFFT, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoWinograd, false),
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoGEMM, false, 0),
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoDirect, false, 0),
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoFFT, false, 0),
+      dnn::AlgorithmDesc(miopenConvolutionBwdDataAlgoWinograd, false, 0),
       // clang-format on
   });
   return true;
@@ -2982,12 +2987,16 @@ bool MIOpenSupport::GetConvolveBackwardDataAlgorithms(
 
 bool MIOpenSupport::GetConvolveBackwardFilterAlgorithms(
     // ROCM TODO: refactor cc_major / cc_minor
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+    dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
     std::vector<dnn::AlgorithmDesc>* out_algorithms) {
   out_algorithms->assign({
       // clang-format off
-      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoGEMM, false),
-      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoDirect, false),
+      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoGEMM, false, 0),
+      dnn::AlgorithmDesc(miopenConvolutionBwdWeightsAlgoDirect, false, 0),
       // clang-format on
   });
   return true;

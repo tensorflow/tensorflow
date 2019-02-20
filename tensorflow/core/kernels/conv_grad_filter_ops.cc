@@ -842,7 +842,8 @@ void LaunchConv2DBackpropFilterOp<Eigen::GpuDevice, T>::operator()(
     std::vector<AlgorithmDesc> algorithms;
     CHECK(stream->parent()->GetConvolveBackwardFilterAlgorithms(
         conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
-        &algorithms));
+        stream, se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+        conv_desc, output_desc, &algorithms));
     std::vector<tensorflow::AutotuneResult> results;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better

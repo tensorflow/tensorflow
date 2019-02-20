@@ -23,11 +23,17 @@ namespace stream_executor {
 namespace dnn {
 
 uint64 AlgorithmDesc::hash() const {
-  return ::tensorflow::Hash64Combine(algo_id(), tensor_ops_enabled());
+  uint64 hash_value =
+      ::tensorflow::Hash64Combine(algo_id(), tensor_ops_enabled());
+  return ::tensorflow::Hash64Combine(hash_value, scratch_size());
 }
 
 bool DnnSupport::GetConvolveAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+    dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
@@ -37,13 +43,21 @@ bool DnnSupport::GetRnnAlgorithms(std::vector<AlgorithmDesc>* out_algorithms) {
 }
 
 bool DnnSupport::GetConvolveBackwardDataAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+    dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }
 
 bool DnnSupport::GetConvolveBackwardFilterAlgorithms(
-    bool with_winograd_nonfused, int cc_major, int cc_minor,
+    bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+    dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+    const dnn::FilterDescriptor& filter_descriptor,
+    const dnn::ConvolutionDescriptor& convolution_descriptor,
+    const dnn::BatchDescriptor& output_descriptor,
     std::vector<AlgorithmDesc>* out_algorithms) {
   return false;
 }

@@ -42,20 +42,27 @@ using se::dnn::AlgorithmDesc;
 using tensorflow::AutotuneResult;
 
 std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
-                                         se::StreamExecutor* stream_exec) {
+                                         se::StreamExecutor* stream_exec,
+                                         se::Stream* stream,
+                                         const CudnnConvDescriptors& desc) {
   std::vector<AlgorithmDesc> algorithms;
   bool succ = false;
   switch (kind) {
     case CudnnConvKind::kBackwardFilter:
-      succ =
-          stream_exec->GetConvolveBackwardFilterAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveBackwardFilterAlgorithms(
+          true, stream, desc.element_type, desc.input, desc.filter, desc.conv,
+          desc.output, &algorithms);
       break;
     case CudnnConvKind::kBackwardInput:
-      succ = stream_exec->GetConvolveBackwardDataAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveBackwardDataAlgorithms(
+          true, stream, desc.element_type, desc.input, desc.filter, desc.conv,
+          desc.output, &algorithms);
       break;
     case CudnnConvKind::kForward:
     case CudnnConvKind::kForwardActivation:
-      succ = stream_exec->GetConvolveAlgorithms(true, &algorithms);
+      succ = stream_exec->GetConvolveAlgorithms(
+          true, stream, desc.element_type, desc.input, desc.filter, desc.conv,
+          desc.output, &algorithms);
       break;
   }
   DCHECK(succ);
@@ -232,7 +239,12 @@ StatusOr<AutotuneResult> CudnnConvAlgorithmPicker::PickBestAlgorithm(
   optional<AlgorithmDesc> first_algorithm;
   TF_ASSIGN_OR_RETURN(CudnnConvKind kind, GetCudnnConvKind(instr));
   std::vector<AutotuneResult> profile_results;
-  for (const AlgorithmDesc& alg : GetAlgorithms(kind, stream_exec_)) {
+  TF_ASSIGN_OR_RETURN(
+      CudnnConvDescriptors descriptors,
+      GetCudnnConvDescriptors(instr, absl::MakeSpan(operand_buffers),
+                              result_buffer));
+  for (const AlgorithmDesc& alg :
+       GetAlgorithms(kind, stream_exec_, &stream, descriptors)) {
     ScratchAllocator scratch_allocator(device_ordinal, allocator);
     se::dnn::ProfileResult profile_result;
     VLOG(3) << "Trying algorithm " << AlgorithmToString(alg) << " for "
@@ -384,6 +396,7 @@ StatusOr<bool> CudnnConvAlgorithmPicker::RunOnInstruction(
                       instr->backend_config<CudnnConvBackendConfig>());
   backend_config.set_algorithm(best_algo.conv().algorithm());
   backend_config.set_tensor_ops_enabled(best_algo.conv().tensor_ops_enabled());
+  backend_config.set_scratch_size(best_algo.success().scratch_bytes());
 
   HloInstruction* new_call = computation->AddInstruction(
       instr->CloneWithNewOperands(new_call_shape, instr->operands()));

@@ -93,6 +93,7 @@ message AlgorithmProto {
   }
   int64 algo_id = 1;
   MathType math_type = 2;
+  uint64 scratch_size = 3;
 }
 
 // Convolution-specific parameters.

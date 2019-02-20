@@ -503,6 +503,10 @@ template <typename T, typename ConvLaunch>
 Status FindBestConvolveAlgorithm(
     const FusedConvParameters& params, const ConvLaunch launch,
     OpKernelContext* context, se::Stream* stream,
+    const se::dnn::BatchDescriptor& input_desc,
+    const se::dnn::FilterDescriptor& filter_desc,
+    const se::dnn::ConvolutionDescriptor& conv_desc,
+    const se::dnn::BatchDescriptor& output_desc,
     se::dnn::AlgorithmConfig* algorithm_config,
     std::vector<tensorflow::AutotuneResult>* results) {
   // Check if we already have an algorithm selected for the given parameters.
@@ -513,8 +517,9 @@ Status FindBestConvolveAlgorithm(
   // Find all candidate algorithms.
   std::vector<se::dnn::AlgorithmDesc> algorithms;
   if (!stream->parent()->GetConvolveAlgorithms(
-          params.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()),
-          &algorithms)) {
+          params.ShouldIncludeWinogradNonfusedAlgo<T>(stream->parent()), stream,
+          se::dnn::ToDataType<T>::value, input_desc, filter_desc, conv_desc,
+          output_desc, &algorithms)) {
     return errors::Unknown(
         "Failed to get convolution algorithm. This is probably "
         "because cuDNN failed to initialize, so try looking to "
@@ -792,7 +797,8 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
       std::vector<tensorflow::AutotuneResult> results;
       auto status =
           FindBestConvolveAlgorithm<T>(conv_parameters, launch, context, stream,
-                                       &algorithm_config, &results);
+				       input_desc, filter_desc, conv_desc,
+				       output_desc, &algorithm_config, &results);
       LogFusedConvAutotuneResults(context->op_kernel().def(), input,
                                   transformed_filter, transformed_output, bias,
                                   nullptr, stream->parent(), results);

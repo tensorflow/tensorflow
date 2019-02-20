@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_CUDNN_CONV_RUNNER_H_
 
 #include "absl/types/optional.h"
+#include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -35,6 +36,21 @@ struct RunConvOptions {
   // Use this algorithm, instead of the one from the instruction.
   absl::optional<se::dnn::AlgorithmDesc> algo_override;
 };
+
+struct CudnnConvDescriptors {
+  se::dnn::DataType element_type;
+  se::dnn::BatchDescriptor input;
+  se::dnn::FilterDescriptor filter;
+  se::dnn::ConvolutionDescriptor conv;
+  se::dnn::BatchDescriptor output;
+};
+
+// Returns the cudnn convolution descriptors generated from conv, which must be
+// a custom-call to a cudnn convolution.
+StatusOr<CudnnConvDescriptors> GetCudnnConvDescriptors(
+    const HloCustomCallInstruction* conv,
+    absl::Span<se::DeviceMemoryBase> operand_buffers,
+    se::DeviceMemoryBase result_buffer);
 
 // This file contains low-level routines for running cudnn convolutions.
 

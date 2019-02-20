@@ -849,11 +849,11 @@ void LaunchConv2DOp<GPUDevice, T>::operator()(
       !AutoTuneConv::GetInstance()->Find(conv_parameters, &algorithm_config)) {
     std::vector<AlgorithmDesc> algorithms;
     OP_REQUIRES(
-        ctx,
-        stream->parent()->GetConvolveAlgorithms(
-            conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-                stream->parent()),
-            &algorithms),
+        ctx, stream->parent()->GetConvolveAlgorithms(
+                 conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+                     stream->parent()),
+                 stream, se::dnn::ToDataType<T>::value, input_desc, filter_desc,
+                 conv_desc, output_desc, &algorithms),
         errors::Unknown("Failed to get convolution algorithm. This is probably "
                         "because cuDNN failed to initialize, so try looking to "
                         "see if a warning log message was printed above."));

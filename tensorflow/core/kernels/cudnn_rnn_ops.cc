@@ -1310,7 +1310,7 @@ class CudnnRNNForwardOp<GPUDevice, T> : public CudnnRNNKernelCommon {
     CudnnRnnAllocatorInTemp<uint8> workspace_allocator(context);
 
     if (is_debug_mode_) {
-      AlgorithmDesc algo_desc(debug_cudnn_rnn_algo_, debug_use_tensor_ops_);
+      AlgorithmDesc algo_desc(debug_cudnn_rnn_algo_, debug_use_tensor_ops_, 0);
       output_algo_config->set_algorithm(algo_desc);
     } else {
       OP_REQUIRES_OK(context,
@@ -1848,7 +1848,8 @@ class CudnnRNNBackwardOpV2<GPUDevice, T>
     TF_RETURN_IF_ERROR(context->input("host_reserved", &host_reserved));
 
     auto host_reserved_int8 = host_reserved->vec<int8>();
-    const AlgorithmDesc algo_desc(host_reserved_int8(0), host_reserved_int8(1));
+    const AlgorithmDesc algo_desc(host_reserved_int8(0), host_reserved_int8(1),
+                                  0);
     algo_config->set_algorithm(algo_desc);
     return Status::OK();
   }

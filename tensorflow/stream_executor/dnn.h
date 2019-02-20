@@ -40,6 +40,7 @@ limitations under the License.
 
 namespace Eigen {
 struct half;
+struct QInt8;
 }  // namespace Eigen
 
 namespace stream_executor {
@@ -117,6 +118,10 @@ struct ToDataType<int8> {
 template <>
 struct ToDataType<int32> {
   static constexpr DataType value = DataType::kInt32;
+};
+template <>
+struct ToDataType<Eigen::QInt8> {
+  static constexpr DataType value = DataType::kInt8;
 };
 
 // Specifies the types of a RNN model.
@@ -738,12 +743,14 @@ class PoolingDescriptor {
 class AlgorithmDesc {
  public:
   typedef int64 Index;
-  AlgorithmDesc() : AlgorithmDesc(0, false) {}
-  AlgorithmDesc(Index a, bool use_tensor_ops) {
+  AlgorithmDesc() : AlgorithmDesc(0, false, 0) {}
+  AlgorithmDesc(Index a, bool use_tensor_ops, uint64 ss) {
     proto_.set_algo_id(a);
     proto_.set_math_type(use_tensor_ops ? AlgorithmProto::TENSOR_OP_MATH
                                         : AlgorithmProto::DEFAULT_MATH);
+    proto_.set_scratch_size(ss);
   }
+  uint64 scratch_size() const { return proto_.scratch_size(); }
   bool tensor_ops_enabled() const {
     return proto_.math_type() == AlgorithmProto::TENSOR_OP_MATH;
   }
@@ -778,15 +785,9 @@ class ProfileResult {
   float elapsed_time_in_ms() const { return elapsed_time_in_ms_; }
   void set_elapsed_time_in_ms(float val) { elapsed_time_in_ms_ = val; }
 
-  size_t scratch_size() const { return scratch_size_; }
-  void set_scratch_size(size_t val) { scratch_size_ = val; }
-
  private:
   absl::optional<AlgorithmDesc> algorithm_;
   float elapsed_time_in_ms_ = std::numeric_limits<float>::max();
-  // The scratch size algorithm_ requires. Currently it's only populated by
-  // convolutions.
-  size_t scratch_size_ = 0;
 };
 
 // Describes the configuration for the algorithms that will used.
@@ -1269,7 +1270,11 @@ class DnnSupport {
   // Return a list of algorithms supported by the forward convolution pass.
   // cc_major and cc_minor are the compute capabilities of the device.
   virtual bool GetConvolveAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+      dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Returns a list of supported rnn algorithms.
@@ -1362,7 +1367,11 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // data.
   virtual bool GetConvolveBackwardDataAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+      dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Enqueues a single-precision backward convolution (for filter) operation
@@ -1409,7 +1418,11 @@ class DnnSupport {
   // Return a list of algorithms supported by the backward convolution pass for
   // filters.
   virtual bool GetConvolveBackwardFilterAlgorithms(
-      bool with_winograd_nonfused, int cc_major, int cc_minor,
+      bool with_winograd_nonfused, int cc_major, int cc_minor, Stream* stream,
+      dnn::DataType element_type, const dnn::BatchDescriptor& input_descriptor,
+      const dnn::FilterDescriptor& filter_descriptor,
+      const dnn::ConvolutionDescriptor& convolution_descriptor,
+      const dnn::BatchDescriptor& output_descriptor,
       std::vector<AlgorithmDesc>* out_algorithms);
 
   // Enqueues a single-precision backward convolution (for bias) operation onto
