@@ -47,6 +47,10 @@ def _ArgMinGrad(op, grad):
   return [None, None]
 
 
+# TODO(rmlarsen): Implement gradient.
+ops.NotDifferentiable("EuclideanNorm")
+
+
 @ops.RegisterGradient("Sum")
 def _SumGrad(op, grad):
   """Gradient for Sum."""
@@ -99,7 +103,7 @@ def _MinOrMaxGrad(op, grad):
   num_selected = array_ops.reshape(
       math_ops.reduce_sum(indicators, op.inputs[1]), output_shape_kept_dims)
 
-  return [math_ops.div(indicators, num_selected) * grad, None]
+  return [math_ops.divide(indicators, num_selected) * grad, None]
 
 
 @ops.RegisterGradient("Max")
@@ -196,7 +200,7 @@ def _SegmentMeanGrad(op, grad):
       array_ops.fill(array_ops.expand_dims(input_rank - 1, 0), 1)
   ], 0)
   ones = array_ops.fill(ones_shape, constant_op.constant(1, dtype=grad.dtype))
-  scaled_grad = math_ops.div(grad, math_ops.segment_sum(ones, op.inputs[1]))
+  scaled_grad = math_ops.divide(grad, math_ops.segment_sum(ones, op.inputs[1]))
   return array_ops.gather(scaled_grad, op.inputs[1]), None
 
 
@@ -260,7 +264,7 @@ def _SegmentMinOrMaxGrad(op, grad):
                                       op.inputs[1])
   # Compute the gradient for each segment. The gradient for the ith segment is
   # divided evenly among the selected elements in that segment.
-  weighted_grads = math_ops.div(grad, num_selected)
+  weighted_grads = math_ops.divide(grad, num_selected)
   gathered_grads = array_ops.gather(weighted_grads, op.inputs[1])
   return array_ops.where(is_selected, gathered_grads, zeros), None
 
@@ -314,7 +318,7 @@ def _UnsortedSegmentMinOrMaxGrad(op, grad):
       math_ops.cast(is_selected, grad.dtype), op.inputs[1], op.inputs[2])
   # Compute the gradient for each segment. The gradient for the ith segment is
   # divided evenly among the selected elements in that segment.
-  weighted_grads = math_ops.div(grad, num_selected)
+  weighted_grads = math_ops.divide(grad, num_selected)
   gathered_grads, _, _ = _GatherDropNegatives(weighted_grads, None,
                                               zero_clipped_indices,
                                               is_positive)
@@ -956,10 +960,11 @@ def _DivGrad(op, grad):
   rx, ry = gen_array_ops.broadcast_gradient_args(sx, sy)
   x = math_ops.conj(x)
   y = math_ops.conj(y)
-  return (array_ops.reshape(math_ops.reduce_sum(math_ops.div(grad, y), rx), sx),
+  return (array_ops.reshape(
+      math_ops.reduce_sum(math_ops.divide(grad, y), rx), sx),
           array_ops.reshape(
-              math_ops.reduce_sum(grad * math_ops.div(math_ops.div(-x, y), y),
-                                  ry), sy))
+              math_ops.reduce_sum(
+                  grad * math_ops.divide(math_ops.divide(-x, y), y), ry), sy))
 
 
 @ops.RegisterGradient("FloorDiv")

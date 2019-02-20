@@ -505,7 +505,7 @@ class XlaBuilder {
   XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
              int64 dimension = -1);
   XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
-             int64 dimension = -1);
+             int64 dimension = -1, bool is_stable = false);
 
   XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
 
@@ -923,7 +923,8 @@ class XlaBuilder {
   friend XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values,
                     int64 dimension);
   friend XlaOp Sort(absl::Span<const XlaOp> operands,
-                    const XlaComputation& comparator, int64 dimension);
+                    const XlaComputation& comparator, int64 dimension,
+                    bool is_stable);
   friend XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);
   friend XlaOp Map(XlaBuilder* builder, absl::Span<const XlaOp> operands,
                    const XlaComputation& computation,
@@ -1695,7 +1696,8 @@ XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
            int64 dimension = -1);
 
 // Enqueues a sort instruction onto the computation, using 'comparator' for
-// comparisons. 'comparator' needs to define a strict weak order.
+// comparisons. 'comparator' needs to define a strict weak order. 'is_stable'
+// determines whether the stable sorting should be used.
 // If only one operand is provided:
 // * If the operand is a rank-1 tensor (an array), the result is a sorted array.
 //   The resulting sorting order has the property that for all index positions
@@ -1718,7 +1720,7 @@ XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
 //   correspond to the value of operand i at two index positions.
 // Default comparator computations can be found in lib/comparators.h
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
-           int64 dimension = -1);
+           int64 dimension = -1, bool is_stable = false);
 
 // Enqueues a clamp instruction onto the computation.
 XlaOp Clamp(const XlaOp& min, const XlaOp& operand, const XlaOp& max);

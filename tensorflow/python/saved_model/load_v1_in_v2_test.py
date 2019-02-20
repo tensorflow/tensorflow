@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import shutil
 
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.eager import backprop
@@ -26,11 +27,14 @@ from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import builder_impl
 from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import simple_save
 from tensorflow.python.saved_model import utils_impl
@@ -149,6 +153,58 @@ class LoadTest(test.TestCase):
                      self.evaluate(second_imported.signatures["second_key"](
                          second_start=constant_op.constant(2.))))
 
+  def _v1_asset_saved_model(self):
+    export_graph = ops.Graph()
+    vocab_path = os.path.join(self.get_temp_dir(), "vocab.txt")
+    with open(vocab_path, "w") as f:
+      f.write("alpha\nbeta\ngamma\n")
+    with export_graph.as_default():
+      initializer = lookup_ops.TextFileInitializer(
+          vocab_path,
+          key_dtype=dtypes.string,
+          key_index=lookup_ops.TextFileIndex.WHOLE_LINE,
+          value_dtype=dtypes.int64,
+          value_index=lookup_ops.TextFileIndex.LINE_NUMBER)
+      table = lookup_ops.HashTable(
+          initializer, default_value=-1)
+      start = array_ops.placeholder(
+          shape=None, dtype=dtypes.string, name="in")
+      output = table.lookup(start, name="out")
+      with session_lib.Session() as session:
+        session.run([table.initializer])
+        path = os.path.join(self.get_temp_dir(), "saved_model", str(ops.uid()))
+        simple_save.simple_save(
+            session,
+            path,
+            inputs={"start": start},
+            outputs={"output": output},
+            legacy_init_op=table.initializer)
+    file_io.delete_file(vocab_path)
+    return path
+
+  def test_asset_loading(self):
+    first_path = self._v1_asset_saved_model()
+    imported = load.load(first_path)
+    fn = imported.signatures["serving_default"]
+    self.assertAllClose({"output": [2, 0]},
+                        fn(start=constant_op.constant(["gamma", "alpha"])))
+    second_path = os.path.join(self.get_temp_dir(), "saved_model",
+                               str(ops.uid()))
+    save.save(imported, second_path, signatures=imported.signatures)
+    shutil.rmtree(first_path)
+    second_import = load.load(second_path)
+    fn = second_import.signatures["serving_default"]
+    self.assertAllClose({"output": [2, 0]},
+                        fn(start=constant_op.constant(["gamma", "alpha"])))
+
+    third_path = os.path.join(self.get_temp_dir(), "saved_model",
+                              str(ops.uid()))
+    save.save(second_import, third_path, signatures=second_import.signatures)
+    shutil.rmtree(second_path)
+    third_import = load.load(third_path)
+    fn = third_import.signatures["serving_default"]
+    self.assertAllClose({"output": [2, 0]},
+                        fn(start=constant_op.constant(["gamma", "alpha"])))
 
 if __name__ == "__main__":
   test.main()

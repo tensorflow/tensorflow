@@ -600,7 +600,7 @@ cc_library(
         "optimizer_base.h",
     ],
     deps = [
-        "//tensorflow/core:metrics",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
     ],
 )

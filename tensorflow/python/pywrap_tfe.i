@@ -25,6 +25,8 @@ limitations under the License.
 %rename("%s") TFE_ContextHasFunction;
 %rename("%s") TFE_ContextEnableRunMetadata;
 %rename("%s") TFE_ContextDisableRunMetadata;
+%rename("%s") TFE_ContextEnableGraphCollection;
+%rename("%s") TFE_ContextDisableGraphCollection;
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;

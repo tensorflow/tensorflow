@@ -174,8 +174,6 @@ class Node {
   bool IsMetadata() const { return class_ == NC_METADATA; }
   bool IsFakeParam() const { return class_ == NC_FAKE_PARAM; }
 
-  bool IsDataset() const { return class_ == NC_DATASET; }
-
   template <typename T>
   void AddAttr(const string& name, const T& val) {
     SetAttrValue(val, AddAttrHelper(name));
@@ -256,7 +254,6 @@ class Node {
     NC_SCOPED_ALLOCATOR,
     NC_COLLECTIVE,
     NC_FAKE_PARAM,
-    NC_DATASET,
     NC_OTHER  // Not a special kind of node
   };
 

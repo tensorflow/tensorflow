@@ -68,3 +68,11 @@ void TFE_StartProfilerServer(TFE_ProfilerContext* context, int port) {
   // terminating the main thread.
   tensorflow::StartProfilerServer(&context->profiler_context, port).release();
 }
+
+void TFE_ContextEnableGraphCollection(TFE_Context* ctx) {
+  ctx->context.SetShouldStoreGraphs(true);
+}
+
+void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
+  ctx->context.SetShouldStoreGraphs(false);
+}

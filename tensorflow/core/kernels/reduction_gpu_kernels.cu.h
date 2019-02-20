@@ -41,6 +41,20 @@ namespace functor {
 typedef Eigen::GpuDevice GPUDevice;
 
 template <typename T>
+struct Square {
+  __host__ __device__ T operator()(const T& a) const {
+    return a * Eigen::numext::conj(a);
+  }
+};
+
+template <typename T>
+struct Sqrt {
+  __host__ __device__ T operator()(const T& a) const {
+    return Eigen::numext::sqrt(a);
+  }
+};
+
+template <typename T>
 struct Sum {
   __host__ __device__ T operator()(const T& a, const T& b) const {
     return a + b;
@@ -500,7 +514,7 @@ void LaunchScalarReduction(OpKernelContext* ctx, OUT_T out, IN_T in,
     BlockReduceKernel<IN_T, OUT_T, num_threads>
         <<<num_blocks, num_threads, 0, cu_stream>>>(in, out, in_size, op, init);
     return;
-  } else if (in_size <= 1 << 19) {
+  } else if (in_size <= 1 << 18) {
     const int num_threads = 256;
     const int num_blocks = std::min(32, Eigen::divup(in_size, num_threads));
     // it seems like tailoring this to the GPU
@@ -880,6 +894,31 @@ struct ReduceFunctor<GPUDevice, Eigen::internal::SumReducer<T>> {
   template <typename OUT_T>
   static void FillIdentity(const GPUDevice& d, OUT_T out,
                            const Eigen::internal::SumReducer<T>& reducer) {
+    FillIdentityEigenImpl(d, To32Bit(out), reducer);
+  }
+};
+
+// TODO(rmlarsen): Specialize for float16.
+template <typename T>
+struct ReduceFunctor<GPUDevice, functor::EuclideanNormReducer<T>> {
+  template <typename OUT_T, typename IN_T, typename ReductionAxes>
+  static void Reduce(OpKernelContext* ctx, OUT_T out, IN_T in,
+                     const ReductionAxes& reduction_axes,
+                     const functor::EuclideanNormReducer<T>& reducer) {
+    typedef cub::TransformInputIterator<T, Square<T>, T*> inputIterType;
+    inputIterType input_itr((T*)in.data(), Square<T>());
+    typedef TransformOutputIterator<T, T, Sqrt<T>> outputIterType;
+    outputIterType output_itr((T*)out.data(), Sqrt<T>());
+    ReduceImpl<T, Sum<T>, outputIterType, inputIterType, ReductionAxes>(
+        ctx, output_itr, input_itr, in.rank(), in.dimension(0),
+        in.rank() >= 2 ? in.dimension(1) : 1,
+        in.rank() >= 3 ? in.dimension(2) : 1, out.rank(), reduction_axes,
+        Sum<T>());
+  }
+
+  template <typename OUT_T>
+  static void FillIdentity(const GPUDevice& d, OUT_T out,
+                           const functor::EuclideanNormReducer<T>& reducer) {
     FillIdentityEigenImpl(d, To32Bit(out), reducer);
   }
 };

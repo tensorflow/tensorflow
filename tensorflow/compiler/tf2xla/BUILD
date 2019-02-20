@@ -24,7 +24,7 @@ package(
 )
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
 
 cc_library(
     name = "tf2xla_supported_ops_lib",
@@ -58,6 +58,14 @@ xla_proto_library(
     deps = [
         "//tensorflow/core:protos_all_cc",
     ],
+)
+
+xla_py_proto_library(
+    name = "tf2xla_py",
+    has_services = False,
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":tf2xla_proto"],
 )
 
 xla_proto_library(
@@ -283,6 +291,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 

@@ -414,7 +414,7 @@ class TestDistributionStrategySaveLoadWeights(test.TestCase,
 
   @combinations.generate(
       keras_test_lib.all_strategy_combinations_minus_default())
-  def test_save_load_checkpointable(self, distribution):
+  def test_save_load_trackable(self, distribution):
     # TODO(sourabhbajaj): Test fails with optimizer v2 without h5
     with self.cached_session():
       dataset = keras_test_lib.get_dataset(distribution)

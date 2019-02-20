@@ -164,6 +164,7 @@ class FuncGraph(ops.Graph):
     self.name = name
     self.inputs = []
     self.outputs = []
+    self.control_outputs = []
     self.structured_input_signature = None
     self.structured_outputs = None
     self._weak_variables = []
@@ -648,6 +649,8 @@ def func_graph_from_py_func(name,
         func_graph.capture(x)
         for x in flatten(func_graph.structured_outputs)
         if x is not None)
+    if add_control_dependencies:
+      func_graph.control_outputs.extend(a.ops_which_must_run)
 
     func_graph.variables = variables
 
@@ -785,9 +788,15 @@ def _get_defun_inputs(flat_args, names, structure):
           requested_name = arg.name
         else:
           requested_name = name
-        placeholder = graph_placeholder(
-            arg.dtype, arg.shape,
-            name=requested_name)
+
+        try:
+          placeholder = graph_placeholder(
+              arg.dtype, arg.shape,
+              name=requested_name)
+        except ValueError:
+          # Sometimes parameter names are not valid op names, so fall back to
+          # unnamed placeholders.
+          placeholder = graph_placeholder(arg.dtype, arg.shape)
         if name is not None:
           # Record the requested/user-specified name in case it's different than
           # the uniquified name, for validation when exporting signatures.

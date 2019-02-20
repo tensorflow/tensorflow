@@ -252,8 +252,28 @@ def model_iteration(model,
           actual_inputs = ins() if callable(ins) else ins
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
-          if not is_dataset:
+          if is_dataset:
+            # The dataset passed by the user ran out of batches.
+            # Now we know the cardinality of the dataset.
+            # If steps_per_epoch was specified, then running out of data is
+            # unexpected, so we stop training and inform the user.
+            if steps_per_epoch:
+              callbacks.model.stop_training = True
+              logging.warning(
+                  'Your dataset ran out of data; interrupting training. '
+                  'Make sure that your dataset can generate at least '
+                  '`%s * epochs` batches (in this case, %d batches). '
+                  'You may need to use the repeat() function when '
+                  'building your dataset.'
+                  % (steps_name, steps_per_epoch * epochs))
+            elif step > 0:
+              steps_per_epoch = step
+              aggregator.num_samples_or_steps = steps_per_epoch
+              progbar.params['steps'] = steps_per_epoch
+              progbar.progbar.target = steps_per_epoch
+          else:
             # We ran out of batches while the user passed an iterator (legacy).
+            callbacks.model.stop_training = True
             logging.warning(
                 'Your dataset iterator ran out of data; '
                 'interrupting training. Make sure that your iterator '
@@ -261,15 +281,6 @@ def model_iteration(model,
                 'batches (in this case, %d batches). You may need to'
                 'use the repeat() function when building your '
                 'dataset.' % (steps_name, steps_per_epoch * epochs))
-            callbacks.model.stop_training = True
-          else:
-            # The dataset passed by the user ran out of batches.
-            # Now we know the cardinality of the dataset.
-            if step > 0:
-              steps_per_epoch = step
-              aggregator.num_samples_or_steps = steps_per_epoch
-              progbar.params['steps'] = steps_per_epoch
-              progbar.progbar.target = steps_per_epoch
           break
 
         if not isinstance(batch_outs, list):

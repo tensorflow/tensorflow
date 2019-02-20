@@ -55,6 +55,12 @@ NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
 ]
 
+# List of files to be configured for using Bazel on Apple platforms.
+APPLE_BAZEL_FILES = [
+    'tensorflow/lite/experimental/objc/BUILD',
+    'tensorflow/lite/experimental/swift/BUILD'
+]
+
 if platform.machine() == 'ppc64le':
   _DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/powerpc64le-linux-gnu/'
 else:
@@ -1274,13 +1280,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
     ask_cuda_compute_capabilities = (
         'Please specify a list of comma-separated '
-        'Cuda compute capabilities you want to '
+        'CUDA compute capabilities you want to '
         'build with.\nYou can find the compute '
         'capability of your device at: '
         'https://developer.nvidia.com/cuda-gpus.\nPlease'
         ' note that each additional compute '
         'capability significantly increases your '
-        'build time and binary size. [Default is: %s]: ' %
+        'build time and binary size, and that '
+        'TensorFlow only supports compute '
+        'capabilities >= 3.5 [Default is: %s]: ' %
         default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
@@ -1293,12 +1301,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        print('Invalid compute capability: ' % compute_capability)
+        print('Invalid compute capability: %s' % compute_capability)
         all_valid = False
       else:
-        ver = int(m.group(0).split('.')[0])
-        if ver < 3:
-          print('Only compute capabilities 3.0 or higher are supported.')
+        ver = float(m.group(0))
+        if ver < 3.5:
+          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
+                'and higher. Please re-specify the list of compute '
+                'capabilities excluding version %s.' % ver)
           all_valid = False
 
     if all_valid:
@@ -1534,6 +1544,23 @@ def config_info_line(name, help_text):
   print('\t--config=%-12s\t# %s' % (name, help_text))
 
 
+def configure_apple_bazel_rules():
+  """Configures Bazel rules for building on Apple platforms.
+
+  Enables analyzing and building Apple Bazel rules on Apple platforms. This
+  function will only be executed if `is_macos()` is true.
+  """
+  if not is_macos():
+    return
+  for filepath in APPLE_BAZEL_FILES:
+    print(
+        'Configuring %s file to analyze and build Bazel rules on Apple platforms.'
+        % filepath)
+    existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
+    renamed_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath)
+    os.rename(existing_filepath, renamed_filepath)
+
+
 def main():
   global _TF_WORKSPACE_ROOT
   global _TF_BAZELRC
@@ -1574,6 +1601,8 @@ def main():
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
+  else:
+    environ_cp['TF_CONFIGURE_APPLE_BAZEL_RULES'] = '0'
 
   # The numpy package on ppc64le uses OpenBLAS which has multi-threading
   # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
@@ -1675,6 +1704,14 @@ def main():
              'Not configuring the WORKSPACE for Android builds.'):
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
+
+  if get_var(
+      environ_cp, 'TF_CONFIGURE_APPLE_BAZEL_RULES',
+      'Configure Bazel rules for Apple platforms', False,
+      ('Would you like to configure Bazel rules for building on Apple platforms?'
+      ), 'Configuring Bazel rules for Apple platforms.',
+      'Not configuring Bazel rules for Apple platforms.'):
+    configure_apple_bazel_rules()
 
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See .bazelrc for more '

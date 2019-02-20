@@ -554,13 +554,22 @@ REGISTER_OP("IteratorGetNextSync")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(IteratorGetNextShapeFn);
 
+// TODO(b/124308596): Instead of conservatively marking this op as stateful,
+// implement a mechanism to determine whether `dataset` has a side-effect
+// and use it to decide whether to use a stateless or stateful version of this
+// op.
 REGISTER_OP("DatasetToSingleElement")
     .Input("dataset: variant")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()
     .SetShapeFn(IteratorGetNextShapeFn);
 
+// TODO(b/124308596): Instead of conservatively marking this op as stateful,
+// implement a mechanism to determine whether `dataset` has a side-effect
+// and use it to decide whether to use a stateless or stateful version of this
+// op.
 REGISTER_OP("ReduceDataset")
     .Input("input_dataset: variant")
     .Input("initial_state: Tstate")
@@ -572,6 +581,7 @@ REGISTER_OP("ReduceDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
+    .SetIsStateful()
     .SetShapeFn(IteratorGetNextShapeFn);
 
 REGISTER_OP("IteratorToStringHandle")
@@ -652,6 +662,8 @@ REGISTER_OP("ModelDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(b/124308749): Add a stateful version of MapDefun and use it when `f`
+// is stateful.
 REGISTER_OP("MapDefun")
     .Input("arguments: Targuments")
     .Input("captured_inputs: Tcaptured")

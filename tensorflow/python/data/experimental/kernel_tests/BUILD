@@ -322,6 +322,8 @@ py_test(
         "//tensorflow/python:functional_ops",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:session",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
         "//tensorflow/python/data/experimental/ops:map_defun",
         "//tensorflow/python/data/kernel_tests:test_base",
     ],

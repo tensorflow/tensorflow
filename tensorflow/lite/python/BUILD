@@ -39,6 +39,14 @@ py_binary(
     srcs = ["tflite_convert.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
+    deps = [":tflite_convert_main_lib"],
+)
+
+py_library(
+    name = "tflite_convert_main_lib",
+    srcs = ["tflite_convert.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [":tflite_convert_lib"],
 )
 
@@ -63,6 +71,7 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
+        "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/keras",
@@ -78,6 +87,21 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "lite_v2_test",
+    srcs = ["lite_v2_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
         "no_windows",
     ],
     deps = [

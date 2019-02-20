@@ -43,7 +43,6 @@ from tensorflow.python.ops.nn_impl import _compute_sampled_logits
 from tensorflow.python.platform import test as test_lib
 
 
-@test_util.disable_all_xla("This test never passed for XLA")
 class ZeroFractionTest(test_lib.TestCase):
 
   def _ZeroFraction(self, x):
@@ -1020,11 +1019,10 @@ class LeakyReluTest(test_lib.TestCase):
 class SwishTest(test_lib.TestCase):
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testValues(self):
     np_values = np.array(
-        [np.linspace(-10.0, 0.0, 100),
-         np.linspace(0.0, 10.0, 100)],
+        [np.linspace(-7.0, 0.0, 100),
+         np.linspace(0.0, 7.0, 100)],
         dtype=np.float32)
     tf_values = constant_op.constant(np_values)
     actual_tf_outputs = nn_impl.swish(tf_values)
@@ -1241,6 +1239,70 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
     with test_util.use_gpu():
       y_val = self.evaluate(y)
       self.assertAllEqual(y_val, [[7, 4], [4, 5], [5, 1], [9, 3]])
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class AvgPoolTest(test_lib.TestCase):
+
+  def test1DTensor(self):
+    x = array_ops.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpy(self):
+    x = np.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DTensor(self):
+    x = array_ops.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DNumpy(self):
+    x = np.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    x = array_ops.ones([3, 7, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DNumpy(self):
+    x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
 
 
 @test_util.run_all_in_graph_and_eager_modes

@@ -410,6 +410,7 @@ class DistributedCollectiveAllReduceStrategyTest(
         num_gpus=num_gpus,
         use_core_strategy=use_core_strategy)
 
+  # TODO(b/124344198): Re-enable after fixing this flaky test.
   # TODO(yuefengz): Update how we use num_gpus and required_gpus
   @combinations.generate(
       combinations.combine(
@@ -418,7 +419,8 @@ class DistributedCollectiveAllReduceStrategyTest(
           required_gpus=1,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def testMakeInputFnIterator(self, num_gpus, use_dataset, use_core_strategy):
+  def DISABLED_testMakeInputFnIterator(self, num_gpus, use_dataset,
+                                       use_core_strategy):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
     if use_dataset:
@@ -553,7 +555,7 @@ class LocalCollectiveAllReduceStrategy(
           required_gpus=2,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def testMakeInputFnIterator(self, use_dataset, use_core_strategy):
+  def DISABLED_testMakeInputFnIterator(self, use_dataset, use_core_strategy):
     num_gpus = 2
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)

@@ -37,7 +37,7 @@ from tensorflow.python.saved_model import model_utils
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import graph_view
+from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
@@ -300,10 +300,10 @@ def _export_mode(
         # not counting optimizer objects. Optimizer objects are ignored because
         # if the model has not trained, the slot variables will not have been
         # created yet.
-        # TODO(b/113179535): Replace with checkpointable equivalence.
+        # TODO(b/113179535): Replace with trackable equivalence.
         _assert_same_non_optimizer_objects(model, model_graph, clone, g)
 
-        # TODO(b/113178242): Use value transfer for checkpointable objects.
+        # TODO(b/113178242): Use value transfer for trackable objects.
         clone.load_weights(checkpoint_path)
 
         # Add graph and variables to SavedModel.
@@ -361,7 +361,7 @@ def _create_signature_def_map(model, mode):
 
 
 def _assert_same_non_optimizer_objects(model, model_graph, clone, clone_graph):  # pylint: disable=unused-argument
-  """Asserts model and clone contain the same checkpointable objects."""
+  """Asserts model and clone contain the same trackable objects."""
 
   # TODO(fchollet, kathywu): make sure this works in eager mode.
   return True

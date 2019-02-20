@@ -24,31 +24,34 @@ namespace {
 using ::testing::ElementsAreArray;
 using ::testing::Matcher;
 
-template <typename T>
+template <typename RegularInputOuput, typename QuantizedInputOuput>
 class PadOpModel : public SingleOpModel {
  public:
-  void SetInput(std::initializer_list<T> data) {
-    PopulateTensor<T>(input_, data);
+  void SetInput(std::initializer_list<RegularInputOuput> data) {
+    PopulateTensor<RegularInputOuput>(input_, data);
   }
 
   void SetQuantizedInput(std::initializer_list<float> data) {
-    QuantizeAndPopulate<uint8_t>(input_, data);
+    QuantizeAndPopulate<QuantizedInputOuput>(input_, data);
   }
 
   void SetQuantizedPadValue(float data) {
-    QuantizeAndPopulate<uint8_t>(constant_values_, {data});
+    QuantizeAndPopulate<QuantizedInputOuput>(constant_values_, {data});
   }
 
   void SetPaddings(std::initializer_list<int> paddings) {
     PopulateTensor<int>(paddings_, paddings);
   }
 
-  std::vector<T> GetOutput() { return ExtractVector<T>(output_); }
+  std::vector<RegularInputOuput> GetOutput() {
+    return ExtractVector<RegularInputOuput>(output_);
+  }
   std::vector<int> GetOutputShape() { return GetTensorShape(output_); }
 
   std::vector<float> GetDequantizedOutput() {
-    return Dequantize<uint8_t>(ExtractVector<uint8_t>(output_),
-                               GetScale(output_), GetZeroPoint(output_));
+    return Dequantize<QuantizedInputOuput>(
+        ExtractVector<QuantizedInputOuput>(output_), GetScale(output_),
+        GetZeroPoint(output_));
   }
 
  protected:
@@ -59,18 +62,18 @@ class PadOpModel : public SingleOpModel {
 };
 
 // Tests case where paddings is a const tensor. Type T is the dtype.
-template <typename T>
-class PadV2OpConstModel : public PadOpModel<T> {
+template <typename T1, typename T2>
+class PadV2OpConstModel : public PadOpModel<T1, T2> {
  public:
   PadV2OpConstModel(const TensorData& input,
                     std::initializer_list<int> paddings_shape,
-                    std::initializer_list<int> paddings, T constant_values,
+                    std::initializer_list<int> paddings, T1 constant_values,
                     const TensorData& output) {
     this->input_ = this->AddInput(input);
     this->paddings_ =
         this->AddConstInput(TensorType_INT32, paddings, paddings_shape);
     this->constant_values_ =
-        this->AddConstInput(GetTensorType<T>(), {constant_values}, {1});
+        this->AddConstInput(GetTensorType<T1>(), {constant_values}, {1});
 
     this->output_ = this->AddOutput(output);
 
@@ -103,7 +106,7 @@ class PadV2OpConstModel : public PadOpModel<T> {
 //    PadOpDynamicModel m(input_shape, paddings_shape, paddings_data);
 //    m.SetInput(input_data);
 //    m.Invoke();
-class PadOpConstModel : public PadOpModel<float> {
+class PadOpConstModel : public PadOpModel<float, uint8_t> {
  public:
   PadOpConstModel(const TensorData& input,
                   std::initializer_list<int> paddings_shape,
@@ -121,16 +124,18 @@ class PadOpConstModel : public PadOpModel<float> {
 };
 
 // Test case where paddings is a non-const tensor.
-template <typename T>
-class PadV2OpDynamicModel : public PadOpModel<T> {
+template <typename RegularInputOuput, typename QuantizedInputOuput>
+class PadV2OpDynamicModel
+    : public PadOpModel<RegularInputOuput, QuantizedInputOuput> {
  public:
   PadV2OpDynamicModel(const TensorData& input,
                       std::initializer_list<int> paddings_shape,
-                      T constant_values, const TensorData& output) {
+                      RegularInputOuput constant_values,
+                      const TensorData& output) {
     this->input_ = this->AddInput(input);
     this->paddings_ = this->AddInput(TensorType_INT32);
-    this->constant_values_ =
-        this->AddConstInput(GetTensorType<T>(), {constant_values}, {1});
+    this->constant_values_ = this->AddConstInput(
+        GetTensorType<RegularInputOuput>(), {constant_values}, {1});
     this->output_ = this->AddOutput(output);
 
     this->SetBuiltinOp(BuiltinOperator_PADV2, BuiltinOptions_PadV2Options,
@@ -159,7 +164,7 @@ class PadV2OpDynamicModel : public PadOpModel<T> {
 //    m.SetInput(input_data);
 //    m.SetPaddings(paddings_data);
 //    m.Invoke();
-class PadOpDynamicModel : public PadOpModel<float> {
+class PadOpDynamicModel : public PadOpModel<float, uint8_t> {
  public:
   PadOpDynamicModel(const TensorData& input,
                     std::initializer_list<int> paddings_shape,
@@ -377,34 +382,34 @@ TEST_F(QuantizedPadOpTest, AdvancedDynamicTest) {
 
 #ifdef GTEST_HAS_DEATH_TEST
 TEST(PadV2OpTest, TooManyDimensions) {
-  EXPECT_DEATH(PadV2OpConstModel<float>(
-                   {TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
-                   {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9}, 0.0,
-                   {TensorType_FLOAT32}),
+  typedef PadV2OpConstModel<float, uint8_t> f;
+  EXPECT_DEATH(f({TensorType_FLOAT32, {1, 2, 3, 4, 5, 6, 7, 8, 9}}, {9, 2},
+                 {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9}, 0.0,
+                 {TensorType_FLOAT32}),
                "dims <= 4");
 }
 
 TEST(PadV2OpTest, UnequalDimensions) {
-  EXPECT_DEATH(
-      PadV2OpConstModel<float>({TensorType_FLOAT32, {1, 1, 2, 1}}, {3, 2},
-                               {1, 1, 2, 2, 3, 3}, 0.0, {TensorType_FLOAT32}),
-      "3 != 4");
+  typedef PadV2OpConstModel<float, uint8_t> f;
+  EXPECT_DEATH(f({TensorType_FLOAT32, {1, 1, 2, 1}}, {3, 2}, {1, 1, 2, 2, 3, 3},
+                 0.0, {TensorType_FLOAT32}),
+               "3 != 4");
 }
 
 TEST(PadV2OpTest, InvalidPadValue) {
-  EXPECT_DEATH(PadV2OpConstModel<float>({TensorType_FLOAT32, {1, 1, 2, 1}},
-                                        {4, 2}, {0, 0, 1, -1, 2, -1, 0, 0}, 0.0,
-                                        {TensorType_FLOAT32}),
+  typedef PadV2OpConstModel<float, uint8_t> f;
+  EXPECT_DEATH(f({TensorType_FLOAT32, {1, 1, 2, 1}}, {4, 2},
+                 {0, 0, 1, -1, 2, -1, 0, 0}, 0.0, {TensorType_FLOAT32}),
                "Pad value has to be greater than equal to 0.");
 }
 #endif
 
-TEST(PadV2OpTest, SimpleConstTest) {
+TEST(PadV2OpTest, SimpleConstTestUint8) {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
-                             {0, 0, 1, 1, 1, 1, 0, 0}, 0.0,
-                             {TensorType_FLOAT32});
+  PadV2OpConstModel<float, uint8_t> m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                                      {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0}, 0.0,
+                                      {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
@@ -412,11 +417,38 @@ TEST(PadV2OpTest, SimpleConstTest) {
   EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
 }
 
-TEST(PadV2OpTest, SimpleConstFloat32ValuedTest) {
+TEST(PadV2OpTest, SimpleConstTestInt8) {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
-                             {0, 0, 1, 1, 1, 1, 0, 0}, 5, {TensorType_FLOAT32});
+  PadV2OpConstModel<float, int8_t> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
+                                     {0, 0, 1, 1, 1, 1, 0, 0}, 0.0,
+                                     {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({0, 0, 0, 0, 0, 1, 2, 0, 0, 3, 4,
+                                               0, 0, 0, 0, 0}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, SimpleConstFloat32ValuedTestUint8) {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadV2OpConstModel<float, uint8_t> m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                                      {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0}, 5,
+                                      {TensorType_FLOAT32});
+  m.SetInput({1, 2, 3, 4});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
+                                               5, 5, 5, 5, 5}));
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({1, 4, 4, 1}));
+}
+
+TEST(PadV2OpTest, SimpleConstFloat32ValuedTestInt8) {
+  // Padding is represented as four 2-D lists representing above padding and
+  // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
+  PadV2OpConstModel<float, int8_t> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2},
+                                     {0, 0, 1, 1, 1, 1, 0, 0}, 5,
+                                     {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
@@ -427,8 +459,9 @@ TEST(PadV2OpTest, SimpleConstFloat32ValuedTest) {
 TEST(PadV2OpTest, Simple4DConstFloat32ValuedTest) {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 1, 2, 1}}, {4, 2},
-                             {0, 1, 0, 0, 0, 0, 0, 1}, 5, {TensorType_FLOAT32});
+  PadV2OpConstModel<float, uint8_t> m({TensorType_FLOAT32, {1, 1, 2, 1}},
+                                      {4, 2}, {0, 1, 0, 0, 0, 0, 0, 1}, 5,
+                                      {TensorType_FLOAT32});
   m.SetInput({3, 3});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 5, 3, 5, 5, 5, 5, 5}));
@@ -438,8 +471,9 @@ TEST(PadV2OpTest, Simple4DConstFloat32ValuedTest) {
 TEST(PadV2OpTest, SimpleConstInt32ValuedTest) {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadV2OpConstModel<int32_t> m({TensorType_INT32, {1, 2, 2, 1}}, {4, 2},
-                               {0, 0, 1, 1, 1, 1, 0, 0}, 5, {TensorType_INT32});
+  PadV2OpConstModel<int32_t, uint8_t> m({TensorType_INT32, {1, 2, 2, 1}},
+                                        {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0}, 5,
+                                        {TensorType_INT32});
   m.SetInput({1, 2, 3, 4});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({5, 5, 5, 5, 5, 1, 2, 5, 5, 3, 4,
@@ -448,8 +482,8 @@ TEST(PadV2OpTest, SimpleConstInt32ValuedTest) {
 }
 
 TEST(PadV2OpTest, SimpleDynamicTest) {
-  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2}, 0.0,
-                               {TensorType_FLOAT32});
+  PadV2OpDynamicModel<float, uint8_t> m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                                        {4, 2}, 0.0, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
   m.Invoke();
@@ -459,8 +493,8 @@ TEST(PadV2OpTest, SimpleDynamicTest) {
 }
 
 TEST(PadV2OpTest, SimpleDynamicValuedTest) {
-  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 2, 1}}, {4, 2}, 5,
-                               {TensorType_FLOAT32});
+  PadV2OpDynamicModel<float, uint8_t> m({TensorType_FLOAT32, {1, 2, 2, 1}},
+                                        {4, 2}, 5, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4});
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
   m.Invoke();
@@ -470,8 +504,9 @@ TEST(PadV2OpTest, SimpleDynamicValuedTest) {
 }
 
 TEST(PadV2OpTest, AdvancedConstTest) {
-  PadV2OpConstModel<float> m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2},
-                             {0, 0, 0, 2, 1, 3, 0, 0}, 0, {TensorType_FLOAT32});
+  PadV2OpConstModel<float, uint8_t> m({TensorType_FLOAT32, {1, 2, 3, 1}},
+                                      {4, 2}, {0, 0, 0, 2, 1, 3, 0, 0}, 0,
+                                      {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
@@ -481,8 +516,8 @@ TEST(PadV2OpTest, AdvancedConstTest) {
 }
 
 TEST(PadV2OpTest, AdvancedDynamicTest) {
-  PadV2OpDynamicModel<float> m({TensorType_FLOAT32, {1, 2, 3, 1}}, {4, 2}, 0,
-                               {TensorType_FLOAT32});
+  PadV2OpDynamicModel<float, uint8_t> m({TensorType_FLOAT32, {1, 2, 3, 1}},
+                                        {4, 2}, 0, {TensorType_FLOAT32});
   m.SetInput({1, 2, 3, 4, 5, 6});
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
   m.Invoke();
@@ -505,21 +540,20 @@ class QuantizedPadV2OpTest : public ::testing::Test {
 TEST_F(QuantizedPadV2OpTest, ZeroNotInQuantizationRange) {
   // The test_util and actual quantization code currently ensure that the range
   // must include zero, but if that ever changes, this test will catch it.
-  EXPECT_DEATH(
-      PadV2OpConstModel<float> m({TensorType_UINT8, {1, 2, 2, 1}, 1.0, 2.0},
-                                 {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0}, 0,
-                                 {TensorType_UINT8, {}, 1.0, 2.0}),
-      ".*Check failed: f_min <= 0.*");
+  typedef PadV2OpConstModel<float, uint8_t> f;
+  EXPECT_DEATH(f({TensorType_UINT8, {1, 2, 2, 1}, 1.0, 2.0}, {4, 2},
+                 {0, 0, 1, 1, 1, 1, 0, 0}, 0, {TensorType_UINT8, {}, 1.0, 2.0}),
+               ".*Check failed: f_min <= 0.*");
 }
 #endif
 
 TEST_F(QuantizedPadV2OpTest, SimpleConstTest) {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadV2OpConstModel<uint8_t> m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                               {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
-                               {TensorType_UINT8, {1}, -1.0, 1.0},
-                               {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpConstModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
+      {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_UINT8, {1}, -1.0, 1.0},
+      {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7});
   m.SetQuantizedPadValue(0);
   m.Invoke();
@@ -531,9 +565,9 @@ TEST_F(QuantizedPadV2OpTest, SimpleConstTest) {
 }
 
 TEST_F(QuantizedPadV2OpTest, SimpleDynamicTest) {
-  PadV2OpDynamicModel<uint8_t> m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                                 {4, 2}, {TensorType_UINT8, {1}, -1.0, 1.0},
-                                 {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpDynamicModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
+      {TensorType_UINT8, {1}, -1.0, 1.0}, {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7});
   m.SetQuantizedPadValue(0);
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
@@ -546,10 +580,10 @@ TEST_F(QuantizedPadV2OpTest, SimpleDynamicTest) {
 }
 
 TEST_F(QuantizedPadV2OpTest, AdvancedConstTest) {
-  PadV2OpConstModel<uint8_t> m({TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0},
-                               {4, 2}, {0, 0, 0, 2, 1, 3, 0, 0},
-                               {TensorType_UINT8, {1}, -1.0, 1.0},
-                               {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpConstModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
+      {0, 0, 0, 2, 1, 3, 0, 0}, {TensorType_UINT8, {1}, -1.0, 1.0},
+      {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.SetQuantizedPadValue(0);
   m.Invoke();
@@ -562,9 +596,9 @@ TEST_F(QuantizedPadV2OpTest, AdvancedConstTest) {
 }
 
 TEST_F(QuantizedPadV2OpTest, AdvancedDynamicTest) {
-  PadV2OpDynamicModel<uint8_t> m({TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0},
-                                 {4, 2}, {TensorType_UINT8, {1}, -1.0, 1.0},
-                                 {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpDynamicModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
+      {TensorType_UINT8, {1}, -1.0, 1.0}, {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.SetQuantizedPadValue(0);
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});
@@ -580,10 +614,10 @@ TEST_F(QuantizedPadV2OpTest, AdvancedDynamicTest) {
 TEST_F(QuantizedPadV2OpTest, SimpleConstValuedTest) {
   // Padding is represented as four 2-D lists representing above padding and
   // below padding (i.e. {{0, 0}, {1, 1}, {1, 1}, {0, 0}}).
-  PadV2OpConstModel<uint8_t> m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                               {4, 2}, {0, 0, 1, 1, 1, 1, 0, 0},
-                               {TensorType_UINT8, {1}, -1.0, 1.0},
-                               {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpConstModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
+      {0, 0, 1, 1, 1, 1, 0, 0}, {TensorType_UINT8, {1}, -1.0, 1.0},
+      {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7});
   m.SetQuantizedPadValue(-0.5);
   m.Invoke();
@@ -596,9 +630,9 @@ TEST_F(QuantizedPadV2OpTest, SimpleConstValuedTest) {
 }
 
 TEST_F(QuantizedPadV2OpTest, SimpleDynamicValuedTest) {
-  PadV2OpDynamicModel<uint8_t> m({TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0},
-                                 {4, 2}, {TensorType_UINT8, {1}, -1.0, 1.0},
-                                 {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpDynamicModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 2, 1}, -1.0, 1.0}, {4, 2},
+      {TensorType_UINT8, {1}, -1.0, 1.0}, {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7});
   m.SetQuantizedPadValue(-0.5);
   m.SetPaddings({0, 0, 1, 1, 1, 1, 0, 0});
@@ -612,10 +646,10 @@ TEST_F(QuantizedPadV2OpTest, SimpleDynamicValuedTest) {
 }
 
 TEST_F(QuantizedPadV2OpTest, AdvancedConstValuedTest) {
-  PadV2OpConstModel<uint8_t> m({TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0},
-                               {4, 2}, {0, 0, 0, 2, 1, 3, 0, 0},
-                               {TensorType_UINT8, {1}, -1.0, 1.0},
-                               {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpConstModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
+      {0, 0, 0, 2, 1, 3, 0, 0}, {TensorType_UINT8, {1}, -1.0, 1.0},
+      {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.SetQuantizedPadValue(-0.5);
   m.Invoke();
@@ -629,9 +663,9 @@ TEST_F(QuantizedPadV2OpTest, AdvancedConstValuedTest) {
 }
 
 TEST_F(QuantizedPadV2OpTest, AdvancedDynamicValuedTest) {
-  PadV2OpDynamicModel<uint8_t> m({TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0},
-                                 {4, 2}, {TensorType_UINT8, {1}, -1.0, 1.0},
-                                 {TensorType_UINT8, {}, -1.0, 1.0});
+  PadV2OpDynamicModel<uint8_t, uint8_t> m(
+      {TensorType_UINT8, {1, 2, 3, 1}, -1.0, 1.0}, {4, 2},
+      {TensorType_UINT8, {1}, -1.0, 1.0}, {TensorType_UINT8, {}, -1.0, 1.0});
   m.SetQuantizedInput({-0.8, 0.2, 0.9, 0.7, 0.1, -0.3});
   m.SetQuantizedPadValue(-0.5);
   m.SetPaddings({0, 0, 0, 2, 1, 3, 0, 0});

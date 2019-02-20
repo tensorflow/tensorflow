@@ -681,3 +681,58 @@ def contains_indexed_slices(value):
     return contains_indexed_slices(value.values)
   else:
     return False
+
+
+def is_indexed_slices(value):
+  if isinstance(value, ops.IndexedSlices):
+    return True
+  assert isinstance(value, value_lib.DistributedValues)
+  return all([isinstance(v, ops.IndexedSlices) for v in value.values])
+
+
+def split_by_sparsity(values):
+  """Split values into dense and sparse values.
+
+  Args:
+    values: a list of tensors or `PerReplica`s.
+
+  Returns:
+    Four lists:
+      a list of dense values, a list of their indices in `values` and
+      a list of sparse values, a list of their indices in `values`.
+  """
+  dense_values = []
+  dense_indices = []
+  sparse_values = []
+  sparse_indices = []
+  for i, v in enumerate(values):
+    if is_indexed_slices(v):
+      sparse_values.append(v)
+      sparse_indices.append(i)
+    else:
+      dense_values.append(v)
+      dense_indices.append(i)
+  return dense_values, dense_indices, sparse_values, sparse_indices
+
+
+def stitch_values(values_and_indices_list):
+  """Stitch values together according to their indices.
+
+  Args:
+    values_and_indices_list: a list of tuples of values and indices indicating
+      the values and postions in the returned list.
+
+  Returns:
+    a stitched list of values.
+  """
+  length = 0
+  for values_and_indices in values_and_indices_list:
+    length += len(values_and_indices[0])
+
+  result = [None] * length
+  for values_and_indices in values_and_indices_list:
+    if values_and_indices and values_and_indices[0]:
+      for v, i in zip(*values_and_indices):
+        assert result[i] is None
+        result[i] = v
+  return result

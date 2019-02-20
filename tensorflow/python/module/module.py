@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import re
 import sys
 
@@ -26,26 +27,28 @@ import six
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+NO_MODULE_NAME_SCOPE = "__no_module_name_scope__"
 
-class ModuleMetaclass(type):
+
+class ModuleMetaclass(abc.ABCMeta):
   """Metaclass for `tf.Module`."""
 
   def __new__(mcs, name, bases, clsdict):
     for key, value in clsdict.items():
-      if key in ("__init__", "name_scope"):
+      if key == "name_scope":
+        continue
+
+      elif key.startswith("__") and key != "__call__":
+        # Don't patch methods like `__getattr__` or `__del__`.
         continue
 
       elif tf_inspect.isfunction(value):
-        if getattr(value, "_no_module_name_scope", False):
-          # The function has been annotated to say that no autoscoping should
-          # be applied, so do not patch it.
-          continue
         clsdict[key] = with_name_scope(value)
 
       elif isinstance(value, property):
@@ -55,7 +58,7 @@ class ModuleMetaclass(type):
             value.fdel if not value.fdel else with_name_scope(value.fdel),
             doc=value.__doc__)
 
-    return type.__new__(mcs, name, bases, clsdict)
+    return super(ModuleMetaclass, mcs).__new__(mcs, name, bases, clsdict)
 
   def __call__(cls, *args, **kwargs):
     # Call new such that we have an un-initialized module instance that we can
@@ -134,6 +137,11 @@ def wrap_with_name_scope_no_exception(unbound_method):
 
 def with_name_scope(unbound_method):
   """Patches the given method so it enters the modules name scope."""
+  if getattr(unbound_method, NO_MODULE_NAME_SCOPE, False):
+    # The function has been annotated to say that no autoscoping should be
+    # applied, so do not patch it.
+    return unbound_method
+
   if isinstance(unbound_method, def_function.Function):
     # Autograph cannot convert functions that have try/catch.
     unbound_method._decorate(wrap_with_name_scope_no_exception)  # pylint: disable=protected-access
@@ -143,8 +151,8 @@ def with_name_scope(unbound_method):
                                        wrap_with_name_scope(unbound_method))
 
 
-@tf_export("experimental.Module")
-class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
+@tf_export("Module")
+class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
   """Base neural network module class.
 
   A module is a named container for `tf.Variable`s, other `tf.Module`s and
@@ -256,9 +264,9 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     Submodules are modules which are properties of this module, or found as
     properties of modules which are properties of this module (and so on).
 
-    >>> a = tf.experimental.Module()
-    >>> b = tf.experimental.Module()
-    >>> c = tf.experimental.Module()
+    >>> a = tf.Module()
+    >>> b = tf.Module()
+    >>> c = tf.Module()
     >>> a.b = b
     >>> b.c = c
     >>> assert list(a.submodules) == [b, c]
@@ -283,7 +291,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     flattened to find leaves. Finally every leaf value is optionally tested
     against the given `predicate` and finally yielded.
 
-    >>> class Foo(tf.experimental.Module):
+    >>> class Foo(tf.Module):
     ...   def __init__(self):
     ...     super(Foo, self).__init__()
     ...     self.x = [tf.constant('a'), tf.constant('b')]
@@ -352,7 +360,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     Returns:
       The method, with a flag indicating no name scope wrapping should occur.
     """
-    setattr(method, "_no_module_name_scope", True)
+    setattr(method, NO_MODULE_NAME_SCOPE, True)
     return method
 
 _IS_VARIABLE = lambda o: isinstance(o, variables.Variable)
@@ -370,7 +378,7 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-# AutoCheckpointable adds object attributes that users will not expect us to
+# AutoTrackable adds object attributes that users will not expect us to
 # include when flattening (these reference dependencies reachable via other
 # object attributes).
 AUTO_CHECKPOINTABLE_ATTRS = ("_unconditional_checkpoint_dependencies",

@@ -592,7 +592,12 @@ TfLiteStatus Subgraph::ResizeInputTensor(int tensor_index,
 
   // Short-circuit the state change if the dimensions don't change, avoiding
   // unnecessary (re)allocations.
-  if (EqualArrayAndTfLiteIntArray(tensor->dims, dims.size(), dims.data())) {
+  //
+  // Note that it's required to check `tensor->data.raw != nullptr`. Otherwise
+  // the subgraph won't allocate memory for a dynamic tensor when its size
+  // is equal to the original tensor size.
+  if (tensor->data.raw != nullptr &&
+      EqualArrayAndTfLiteIntArray(tensor->dims, dims.size(), dims.data())) {
     return kTfLiteOk;
   }
 

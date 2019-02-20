@@ -17,7 +17,10 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/constant_folding.h"
 
+#include <cmath>
+
 #include "absl/strings/string_view.h"
+#include "absl/strings/substitute.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.pb.h"
@@ -35,6 +38,7 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/evaluation_utils.h"
 #include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/symbolic_shapes.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -166,6 +170,55 @@ bool HasTPUAttributes(const NodeDef& node) {
     }
   }
   return false;
+}
+
+template <typename T>
+bool PackedValuesNotEqual(T a, T b) {
+  return a != b;
+}
+
+template <>
+bool PackedValuesNotEqual(float a, float b) {
+  return reinterpret_cast<int32_t&>(a) != reinterpret_cast<int32_t&>(b);
+}
+
+template <>
+bool PackedValuesNotEqual(double a, double b) {
+  return reinterpret_cast<int64_t&>(a) != reinterpret_cast<int64_t&>(b);
+}
+
+float QuantizedTypeMinAsFloat(DataType data_type) {
+  switch (data_type) {
+    case DT_QINT8:
+      return Eigen::NumTraits<qint8>::lowest();
+    case DT_QUINT8:
+      return Eigen::NumTraits<quint8>::lowest();
+    case DT_QINT16:
+      return Eigen::NumTraits<qint16>::lowest();
+    case DT_QUINT16:
+      return Eigen::NumTraits<quint16>::lowest();
+    case DT_QINT32:
+      return Eigen::NumTraits<qint32>::lowest();
+    default:
+      return 0.0f;
+  }
+}
+
+float QuantizedTypeMaxAsFloat(DataType data_type) {
+  switch (data_type) {
+    case DT_QINT8:
+      return Eigen::NumTraits<qint8>::highest();
+    case DT_QUINT8:
+      return Eigen::NumTraits<quint8>::highest();
+    case DT_QINT16:
+      return Eigen::NumTraits<qint16>::highest();
+    case DT_QUINT16:
+      return Eigen::NumTraits<quint16>::highest();
+    case DT_QINT32:
+      return Eigen::NumTraits<qint32>::highest();
+    default:
+      return 0.0f;
+  }
 }
 
 }  // namespace
@@ -928,6 +981,11 @@ Status CreateConstantTensorAttrValue(DataType type, double value,
       SET_TENSOR_VAL_CASE(DT_UINT16, int32, int);
       SET_TENSOR_VAL_CASE(DT_INT8, int32, int);
       SET_TENSOR_VAL_CASE(DT_UINT8, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QINT32, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QINT16, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QUINT16, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QINT8, int32, int);
+      SET_TENSOR_VAL_CASE(DT_QUINT8, int32, int);
       SET_TENSOR_VAL_CASE(DT_BOOL, bool, bool);
     default:
       return errors::InvalidArgument("Unsupported type: ", type);
@@ -953,6 +1011,42 @@ DataType GetDataTypeFromNodeOrProps(const NodeDef& node,
     }
   }
   return dtype;
+}
+
+// Checks whether the shape of the const input of the Mul op is valid to perform
+// the MulConvPushDown optimization.
+bool IsValidConstShapeForMulConvPushDown(
+    const string& data_format, const TensorShapeProto& filter_shape,
+    const TensorShapeProto& mul_const_input_shape) {
+  // If the const is a scalar, or it has fewer or same number of dimensions
+  // than the filter and it only has single element, the optimization should
+  // work.
+  if (mul_const_input_shape.dim_size() <= data_format.size() &&
+      TensorShape(mul_const_input_shape).num_elements() == 1) {
+    return true;
+  }
+
+  // Otherwise, check the eligibility according to data format.
+  if (data_format == "NHWC" || data_format == "NDHWC") {
+    TensorShapeProto new_filter_shape;
+    if (!ShapeAfterBroadcast(filter_shape, mul_const_input_shape,
+                             &new_filter_shape)) {
+      return false;
+    }
+    if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
+      return false;
+    }
+    // Only the last dimension could be larger than one, since broadcasting over
+    // the last dimension (the output channel) will result in invalid filter.
+    for (int i = 0; i < mul_const_input_shape.dim_size() - 1; ++i) {
+      if (mul_const_input_shape.dim(i).size() > 1) return false;
+    }
+    return true;
+  } else if (data_format == "NCHW" || data_format == "NCDHW") {
+    // TODO(laigd): support NCHW and NCDHW (b/111214513).
+    return false;
+  }
+  return false;
 }
 
 }  // namespace
@@ -982,7 +1076,7 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     int64 last_index = 0;                                                 \
     for (int64 i = 0; i < tensor->NumElements(); ++i) {                   \
       TYPE cur = *val_ptr++;                                              \
-      if (cur != last) {                                                  \
+      if (PackedValuesNotEqual(cur, last)) {                              \
         last = cur;                                                       \
         last_index = i;                                                   \
       }                                                                   \
@@ -1032,6 +1126,8 @@ Status ConstantFolding::CreateNodeDef(const string& name,
     t->set_dtype(tensor->dtype());
     tensor->shape().AsProto(t->mutable_tensor_shape());
   } else {
+    // DT_HALF, DT_BFLOAT16, DT_QINT32, DT_QINT16, DT_QUINT16, DT_QINT8,
+    // DT_QUINT8
     tensor->AsProtoTensorContent(t);
     encoded_size = t->tensor_content().size();
   }
@@ -1480,6 +1576,11 @@ bool ConstantFolding::IsOnes(const NodeDef& node) const {
     IS_ONES_CASE(DT_INT16);
     IS_ONES_CASE(DT_INT32);
     IS_ONES_CASE(DT_INT64);
+    IS_ONES_CASE(DT_QINT32);
+    IS_ONES_CASE(DT_QINT16);
+    IS_ONES_CASE(DT_QUINT16);
+    IS_ONES_CASE(DT_QINT8);
+    IS_ONES_CASE(DT_QUINT8);
     default:
       VLOG(1) << "Unsupported type " << DataTypeString(dtype);
       return false;
@@ -1514,6 +1615,11 @@ bool ConstantFolding::IsZeros(const NodeDef& node) const {
     IS_ZEROS_CASE(DT_INT16);
     IS_ZEROS_CASE(DT_INT32);
     IS_ZEROS_CASE(DT_INT64);
+    IS_ZEROS_CASE(DT_QINT32);
+    IS_ZEROS_CASE(DT_QINT16);
+    IS_ZEROS_CASE(DT_QUINT16);
+    IS_ZEROS_CASE(DT_QINT8);
+    IS_ZEROS_CASE(DT_QUINT8);
     default:
       VLOG(1) << "Unsupported type " << DataTypeString(dtype);
       return false;
@@ -2523,6 +2629,7 @@ Status ConstantFolding::SimplifyArithmeticOperations(
   *success = false;
   const bool is_mul = IsMul(*node) || IsLogicalAnd(*node);
   const bool is_matmul = IsMatMul(*node);
+  const bool is_quantized_matmul = IsQuantizedMatMul(*node);
   const bool is_add = IsAdd(*node) || IsBiasAdd(*node) || IsLogicalOr(*node);
   const bool is_sub = IsSub(*node);
   const bool is_any_div = IsAnyDiv(*node);
@@ -2617,6 +2724,10 @@ Status ConstantFolding::SimplifyArithmeticOperations(
         if (!replace_op_status.ok()) {
           return replace_op_status;
         } else if (replace_succeed) {
+          if (is_quantized_matmul) {
+            TF_RETURN_IF_ERROR(
+                AddQuantizedMatMulMinMaxOutConstNodes(node, optimized_graph));
+          }
           *success = true;
           return Status::OK();
         }
@@ -2780,118 +2891,110 @@ bool ConstantFolding::MulConvPushDown(GraphDef* optimized_graph, NodeDef* node,
   //                 X  C1                       C1  C2
   //
   // where C1 and C2 are constants and X is non-constant.
-  if (IsMul(*node) && NumNonControlInputs(*node) == 2) {
-    NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
-    NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
-    // One child must be constant, and the second must be Conv op.
-    const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
-    const bool right_child_is_constant = IsReallyConstant(*mul_right_child);
-    if (!left_child_is_constant && !right_child_is_constant) {
-      return false;
-    }
-    NodeDef* conv_node =
-        left_child_is_constant ? mul_right_child : mul_left_child;
-    if (!IsConv2D(*conv_node) && !IsConv3D(*conv_node)) {
-      return false;
-    }
-    if (node->device() != mul_left_child->device() ||
-        node->device() != mul_right_child->device()) {
-      return false;
-    }
+  if (!IsMul(*node) || NumNonControlInputs(*node) != 2) return false;
 
-    // Make sure that it is safe to change the value of the convolution
-    // output.
-    if (conv_node->input_size() < 2 ||
-        NumNonControlOutputs(*conv_node, *node_map_) > 1 ||
-        nodes_to_preserve_.find(conv_node->name()) !=
-            nodes_to_preserve_.end()) {
-      return false;
-    }
-
-    // Identify the nodes to swap.
-    NodeDef* conv_left_child = node_map_->GetNode(conv_node->input(0));
-    NodeDef* conv_right_child = node_map_->GetNode(conv_node->input(1));
-    const bool conv_left_is_constant = IsReallyConstant(*conv_left_child);
-    const bool conv_right_is_constant = IsReallyConstant(*conv_right_child);
-    if (!conv_left_is_constant && !conv_right_is_constant) {
-      // At least one of the convolution inputs should be constant.
-      return false;
-    }
-    if (conv_left_is_constant && conv_right_is_constant) {
-      // Leverage regular constant folding to handle this.
-      return false;
-    }
-    const auto& mul_props = properties.GetOutputProperties(node->name());
-    const auto& conv_props = properties.GetOutputProperties(conv_node->name());
-    if (mul_props.empty() || conv_props.empty()) {
-      return false;
-    }
-    const auto& mul_shape = mul_props[0].shape();
-    const auto& conv_shape = conv_props[0].shape();
-    if (!ShapesSymbolicallyEqual(mul_shape, conv_shape)) {
-      return false;
-    }
-
-    const auto& input_props = properties.GetInputProperties(conv_node->name());
-    if (input_props.size() < 2) {
-      return false;
-    }
-    const auto& filter_shape = input_props[1].shape();
-
-    NodeDef* const_node =
-        left_child_is_constant ? mul_left_child : mul_right_child;
-    const auto& const_props =
-        properties.GetOutputProperties(const_node->name());
-    if (const_props.empty()) {
-      return false;
-    }
-    const auto& const_shape = const_props[0].shape();
-
-    TensorShapeProto new_filter_shape;
-    if (!ShapeAfterBroadcast(filter_shape, const_shape, &new_filter_shape)) {
-      return false;
-    }
-    if (!ShapesSymbolicallyEqual(filter_shape, new_filter_shape)) {
-      return false;
-    }
-
-    string mul_new_name =
-        AddPrefixToNodeName("merged_input", conv_node->name());
-    if (node_map_->NodeExists(mul_new_name)) {
-      return false;
-    }
-    // Make sure we don't introduce loops in the graph by removing control
-    // dependencies from the conv2d node to c2.
-    string conv_const_input =
-        conv_left_is_constant ? conv_node->input(0) : conv_node->input(1);
-    if (MaybeRemoveControlInput(conv_node->name(), const_node, optimized_graph,
-                                node_map_.get())) {
-      // Add a control dep from c1 to c2 to ensure c2 is in the right frame
-      MaybeAddControlInput(conv_const_input, const_node, optimized_graph,
-                           node_map_.get());
-    }
-
-    conv_node->set_name(node->name());
-    node->set_name(mul_new_name);
-    if (conv_left_is_constant) {
-      node_map_->UpdateInput(conv_node->name(), node->input(0), mul_new_name);
-      conv_node->set_input(0, mul_new_name);
-    } else {
-      node_map_->UpdateInput(conv_node->name(), node->input(1), mul_new_name);
-      conv_node->set_input(1, mul_new_name);
-    }
-    NodeDef* conv_const_node =
-        conv_left_is_constant ? conv_left_child : conv_right_child;
-    if (left_child_is_constant) {
-      node->set_input(1, conv_const_node->name());
-    } else {
-      node->set_input(0, conv_const_node->name());
-    }
-    node_map_->AddNode(mul_new_name, node);
-
-    return true;
+  NodeDef* mul_left_child = node_map_->GetNode(node->input(0));
+  NodeDef* mul_right_child = node_map_->GetNode(node->input(1));
+  // One child must be constant, and the second must be Conv op.
+  const bool left_child_is_constant = IsReallyConstant(*mul_left_child);
+  const bool right_child_is_constant = IsReallyConstant(*mul_right_child);
+  if (!left_child_is_constant && !right_child_is_constant) {
+    return false;
   }
-  return false;
+  NodeDef* conv_node =
+      left_child_is_constant ? mul_right_child : mul_left_child;
+  if (!IsConv2D(*conv_node) && !IsConv3D(*conv_node)) {
+    return false;
+  }
+  if (node->device() != mul_left_child->device() ||
+      node->device() != mul_right_child->device()) {
+    return false;
+  }
+
+  // Make sure that it is safe to change the value of the convolution
+  // output.
+  if (conv_node->input_size() < 2 ||
+      NumNonControlOutputs(*conv_node, *node_map_) > 1 ||
+      nodes_to_preserve_.find(conv_node->name()) != nodes_to_preserve_.end()) {
+    return false;
+  }
+
+  // Identify the nodes to swap.
+  NodeDef* conv_left_child = node_map_->GetNode(conv_node->input(0));
+  NodeDef* conv_right_child = node_map_->GetNode(conv_node->input(1));
+  const bool conv_left_is_constant = IsReallyConstant(*conv_left_child);
+  const bool conv_right_is_constant = IsReallyConstant(*conv_right_child);
+  if (!conv_left_is_constant && !conv_right_is_constant) {
+    // At least one of the convolution inputs should be constant.
+    return false;
+  }
+  if (conv_left_is_constant && conv_right_is_constant) {
+    // Leverage regular constant folding to handle this.
+    return false;
+  }
+  const auto& mul_props = properties.GetOutputProperties(node->name());
+  const auto& conv_props = properties.GetOutputProperties(conv_node->name());
+  if (mul_props.empty() || conv_props.empty()) {
+    return false;
+  }
+  const auto& mul_shape = mul_props[0].shape();
+  const auto& conv_shape = conv_props[0].shape();
+  if (!ShapesSymbolicallyEqual(mul_shape, conv_shape)) {
+    return false;
+  }
+
+  const auto& input_props = properties.GetInputProperties(conv_node->name());
+  if (input_props.size() < 2) {
+    return false;
+  }
+  const auto& filter_shape = input_props[1].shape();
+
+  NodeDef* const_node =
+      left_child_is_constant ? mul_left_child : mul_right_child;
+  const auto& const_props = properties.GetOutputProperties(const_node->name());
+  if (const_props.empty()) {
+    return false;
+  }
+  const auto& const_shape = const_props[0].shape();
+  if (!IsValidConstShapeForMulConvPushDown(
+          conv_node->attr().at("data_format").s(), filter_shape, const_shape)) {
+    return false;
+  }
+
+  string mul_new_name = AddPrefixToNodeName("merged_input", conv_node->name());
+  if (node_map_->NodeExists(mul_new_name)) {
+    return false;
+  }
+  // Make sure we don't introduce loops in the graph by removing control
+  // dependencies from the conv2d node to c2.
+  string conv_const_input =
+      conv_left_is_constant ? conv_node->input(0) : conv_node->input(1);
+  if (MaybeRemoveControlInput(conv_node->name(), const_node, optimized_graph,
+                              node_map_.get())) {
+    // Add a control dep from c1 to c2 to ensure c2 is in the right frame
+    MaybeAddControlInput(conv_const_input, const_node, optimized_graph,
+                         node_map_.get());
+  }
+
+  conv_node->set_name(node->name());
+  node->set_name(mul_new_name);
+  if (conv_left_is_constant) {
+    node_map_->UpdateInput(conv_node->name(), node->input(0), mul_new_name);
+    conv_node->set_input(0, mul_new_name);
+  } else {
+    node_map_->UpdateInput(conv_node->name(), node->input(1), mul_new_name);
+    conv_node->set_input(1, mul_new_name);
+  }
+  NodeDef* conv_const_node =
+      conv_left_is_constant ? conv_left_child : conv_right_child;
+  if (left_child_is_constant) {
+    node->set_input(1, conv_const_node->name());
+  } else {
+    node->set_input(0, conv_const_node->name());
+  }
+  node_map_->AddNode(mul_new_name, node);
+
+  return true;
 }
 
 bool ConstantFolding::PartialConstPropThroughIdentityN(NodeDef* node) {
@@ -3190,6 +3293,65 @@ bool ConstantFolding::MergeConcat(const GraphProperties& properties,
   (*parent->mutable_attr())["N"].set_i(NumNonControlInputs(*parent) - 1);
 
   return true;
+}
+
+Status ConstantFolding::AddQuantizedMatMulMinMaxOutConstNodes(
+    NodeDef* node, GraphDef* optimized_graph) {
+  auto add_quantized_out = [this, node, optimized_graph](
+                               const string& out_const_name, int index) {
+    NodeDef* out_node = optimized_graph->add_node();
+    Tensor value(DT_FLOAT, TensorShape({}));
+    const bool is_min = index == 1;
+    const DataType type_attr = node->attr().at("dtype").type();
+
+    value.flat<float>()(0) = is_min ? QuantizedTypeMinAsFloat(type_attr)
+                                    : QuantizedTypeMaxAsFloat(type_attr);
+    TF_RETURN_IF_ERROR(
+        CreateNodeDef(out_const_name, TensorValue(&value), out_node));
+    node_map_->AddNode(out_const_name, out_node);
+    out_node->set_device(node->device());
+
+    // Copy all inputs from node.
+    out_node->mutable_input()->CopyFrom(node->input());
+    for (const string& input : out_node->input()) {
+      node_map_->AddOutput(NodeName(input), out_const_name);
+    }
+
+    // Update output nodes consuming node:index to new const node.
+    string old_input = absl::StrCat(node->name(), ":", index);
+    int old_node_count = 0;
+    auto outputs = node_map_->GetOutputs(node->name());
+    for (const auto& output : outputs) {
+      for (int i = 0; i < output->input_size(); ++i) {
+        if (output->input(i) == old_input) {
+          output->set_input(i, out_const_name);
+          node_map_->AddOutput(out_const_name, output->name());
+        } else if (NodeName(output->input(i)) == node->name()) {
+          ++old_node_count;
+        }
+      }
+      if (old_node_count == 0) {
+        node_map_->RemoveOutput(node->name(), output->name());
+      }
+    }
+
+    return Status::OK();
+  };
+  const string min_out_const_name =
+      OptimizedNodeName(*node, "-quantized_matmul_min_out");
+  const string max_out_const_name =
+      OptimizedNodeName(*node, "-quantized_matmul_max_out");
+  if (node_map_->GetNode(min_out_const_name) == nullptr &&
+      node_map_->GetNode(max_out_const_name) == nullptr) {
+    TF_RETURN_IF_ERROR(add_quantized_out(min_out_const_name, 1));
+    TF_RETURN_IF_ERROR(add_quantized_out(max_out_const_name, 2));
+  } else {
+    return errors::Internal(absl::Substitute(
+        "Can't create Const for QuantizedMatMul min_out/max_out of "
+        "node '$0' because of node name conflict",
+        node->name()));
+  }
+  return Status::OK();
 }
 
 Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
