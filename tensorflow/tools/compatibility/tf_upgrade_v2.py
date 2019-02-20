@@ -568,6 +568,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.estimator.make_early_stopping_hook":
+            "tf.estimator.experimental.make_early_stopping_hook",
+        "tf.contrib.estimator.stop_if_higher_hook":
+            "tf.estimator.experimental.stop_if_higher_hook",
+        "tf.contrib.estimator.stop_if_lower_hook":
+            "tf.estimator.experimental.stop_if_lower_hook",
+        "tf.contrib.estimator.stop_if_no_decrease_hook":
+            "tf.estimator.experimental.stop_if_no_decrease_hook",
+        "tf.contrib.estimator.stop_if_no_increase_hook":
+            "tf.estimator.experimental.stop_if_no_increase_hook",
         "tf.contrib.framework.CriticalSection":
             "tf.CriticalSection",
         "tf.contrib.framework.is_tensor":
