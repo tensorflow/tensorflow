@@ -441,7 +441,11 @@ tf_cc_binary(
         # We cannot embed the core:ops dependency directly into :toco_tooling as
         # it can conflict with downstream deps when toco is used as a library.
         "//tensorflow/core:ops",
-    ],
+    ] + select({
+        # Placeholder for internal rule.
+        "//conditions:default": [],
+        "//tensorflow:freebsd": ["//tensorflow/lite/kernels/internal:neon_tensor_utils"],
+    }),
 )
 
 tf_cc_test(
