@@ -58,8 +58,8 @@ static llvm::cl::opt<bool>
 /// A threshold in percent of additional computation allowed when fusing.
 static llvm::cl::opt<double> clFusionAddlComputeTolerance(
     "fusion-compute-tolerance", llvm::cl::Hidden,
-    llvm::cl::desc("Fractional increase in additional"
-                   " computation tolerated while fusing"),
+    llvm::cl::desc("Fractional increase in additional "
+                   "computation tolerated while fusing"),
     llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<unsigned> clFusionFastMemorySpace(
@@ -1260,12 +1260,9 @@ static bool isFusionProfitable(Instruction *srcOpInst,
                                unsigned *dstLoopDepth) {
   LLVM_DEBUG({
     llvm::dbgs() << "Checking whether fusion is profitable between:\n";
-    llvm::dbgs() << " ";
-    srcOpInst->dump();
-    llvm::dbgs() << " and \n";
+    llvm::dbgs() << " " << *srcOpInst << " and \n";
     for (auto dstOpInst : dstLoadOpInsts) {
-      llvm::dbgs() << " ";
-      dstOpInst->dump();
+      llvm::dbgs() << " " << *dstOpInst << "\n";
     };
   });
 
@@ -1423,7 +1420,10 @@ static bool isFusionProfitable(Instruction *srcOpInst,
           << 100.0 * additionalComputeFraction << "%\n"
           << "   storage reduction factor: " << storageReduction << "x\n"
           << "   fused nest cost: " << fusedLoopNestComputeCost << "\n"
-          << "   slice iteration count: " << sliceIterationCount << "\n";
+          << "   slice iteration count: " << sliceIterationCount << "\n"
+          << "   src write region size: " << srcWriteRegionSizeBytes << "\n"
+          << "   slice write region size: " << sliceWriteRegionSizeBytes
+          << "\n";
       llvm::dbgs() << msg.str();
     });
 
@@ -1450,9 +1450,10 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   // -maximal-fusion is set, fuse nevertheless.
 
   if (!clMaximalLoopFusion && !bestDstLoopDepth.hasValue()) {
-    LLVM_DEBUG(llvm::dbgs()
-               << "All fusion choices involve more than the threshold amount of"
-                  "redundant computation; NOT fusing.\n");
+    LLVM_DEBUG(
+        llvm::dbgs()
+        << "All fusion choices involve more than the threshold amount of "
+           "redundant computation; NOT fusing.\n");
     return false;
   }
 
@@ -1694,6 +1695,9 @@ public:
           auto sliceLoopNest = mlir::insertBackwardComputationSlice(
               srcStoreOpInst, dstLoadOpInsts[0], bestDstLoopDepth, &sliceState);
           if (sliceLoopNest != nullptr) {
+            LLVM_DEBUG(llvm::dbgs()
+                       << "\tslice loop nest:\n"
+                       << *sliceLoopNest->getInstruction() << "\n");
             // Move 'dstAffineForOp' before 'insertPointInst' if needed.
             auto dstAffineForOp = dstNode->inst->cast<AffineForOp>();
             if (insertPointInst != dstAffineForOp->getInstruction()) {

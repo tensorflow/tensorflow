@@ -424,7 +424,8 @@ public:
   bool findId(const Value &id, unsigned *pos) const;
 
   // Add identifiers of the specified kind - specified positions are relative to
-  // the kind of identifier. 'id' is the Value corresponding to the
+  // the kind of identifier. The coefficient column corresponding to the added
+  // identifier is initialized to zero. 'id' is the Value corresponding to the
   // identifier that can optionally be provided.
   void addDimId(unsigned pos, Value *id = nullptr);
   void addSymbolId(unsigned pos, Value *id = nullptr);
@@ -579,6 +580,17 @@ public:
   /// one; None otherwise.
   Optional<int64_t> getConstantUpperBound(unsigned pos) const;
 
+  /// Gets the lower and upper bound of the pos^th identifier treating
+  /// [dimStartPos, symbStartPos) as dimensions and [symStartPos,
+  /// getNumDimAndSymbolIds) as symbols. The returned multi-dimensional maps
+  /// in the pair represent the max and min of potentially multiple affine
+  /// expressions. The upper bound is exclusive. 'localExprs' holds pre-computed
+  /// AffineExpr's for all local identifiers in the system.
+  std::pair<AffineMap, AffineMap>
+  getLowerAndUpperBound(unsigned pos, unsigned dimStartPos,
+                        unsigned symStartPos, ArrayRef<AffineExpr> localExprs,
+                        MLIRContext *context);
+
   /// Returns true if the set can be trivially detected as being
   /// hyper-rectangular on the specified contiguous set of identifiers.
   bool isHyperRectangular(unsigned pos, unsigned num) const;
@@ -587,6 +599,9 @@ public:
   /// form <non-negative constant> >= 0 is considered a trivially true
   /// constraint.
   void removeTrivialRedundancy();
+
+  /// A more expensive check to detect redundant inequalities.
+  void removeRedundantInequalities();
 
   // Removes all equalities and inequalities.
   void clearConstraints();

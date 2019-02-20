@@ -222,6 +222,15 @@ AffineExpr getAffineConstantExpr(int64_t constant, MLIRContext *context);
 AffineExpr getAffineBinaryOpExpr(AffineExprKind kind, AffineExpr lhs,
                                  AffineExpr rhs);
 
+/// Constructs an affine expression from a flat ArrayRef. If there are local
+/// identifiers (neither dimensional nor symbolic) that appear in the sum of
+/// products expression, 'localExprs' is expected to have the AffineExpr
+/// for it, and is substituted into. The ArrayRef 'eq' is expected to be in the
+/// format [dims, symbols, locals, constant term].
+AffineExpr toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
+                        unsigned numSymbols, ArrayRef<AffineExpr> localExprs,
+                        MLIRContext *context);
+
 raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr);
 
 template <typename U> bool AffineExpr::isa() const {

@@ -301,11 +301,10 @@ raw_ostream &operator<<(raw_ostream &os, AffineExpr &expr) {
 /// products expression, 'localExprs' is expected to have the AffineExpr
 /// for it, and is substituted into. The ArrayRef 'eq' is expected to be in the
 /// format [dims, symbols, locals, constant term].
-//  TODO(bondhugula): refactor getAddMulPureAffineExpr to reuse it from here.
-static AffineExpr toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
-                               unsigned numSymbols,
-                               ArrayRef<AffineExpr> localExprs,
-                               MLIRContext *context) {
+AffineExpr mlir::toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
+                              unsigned numSymbols,
+                              ArrayRef<AffineExpr> localExprs,
+                              MLIRContext *context) {
   // Assert expected numLocals = eq.size() - numDims - numSymbols - 1
   assert(eq.size() - numDims - numSymbols - 1 == localExprs.size() &&
          "unexpected number of local expressions");
