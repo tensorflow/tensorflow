@@ -1,6 +1,6 @@
-path: "tensorflow.metrics.CosineProximity"
+path: "tensorflow.metrics.CosineSimilarity"
 tf_class {
-  is_instance: "<class \'tensorflow.python.keras.metrics.CosineProximity\'>"
+  is_instance: "<class \'tensorflow.python.keras.metrics.CosineSimilarity\'>"
   is_instance: "<class \'tensorflow.python.keras.metrics.MeanMetricWrapper\'>"
   is_instance: "<class \'tensorflow.python.keras.metrics.Mean\'>"
   is_instance: "<class \'tensorflow.python.keras.metrics.Reduce\'>"
@@ -90,7 +90,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'name\', \'dtype\', \'axis\'], varargs=None, keywords=None, defaults=[\'cosine_proximity\', \'None\', \'-1\'], "
+    argspec: "args=[\'self\', \'name\', \'dtype\', \'axis\'], varargs=None, keywords=None, defaults=[\'cosine_similarity\', \'None\', \'-1\'], "
   }
   member_method {
     name: "add_loss"
