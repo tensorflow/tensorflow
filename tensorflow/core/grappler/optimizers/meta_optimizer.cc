@@ -696,9 +696,10 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 }
 
 Status OptimizeGraph(
-    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
-    const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto, const string& grappler_item_id,
+    std::vector<string> ret_node_names, std::vector<string> keep_node_names,
+    FunctionLibraryDefinition* flib, const DeviceSet& device_set,
+    Device* cpu_device, const ConfigProto& config_proto,
+    const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
@@ -717,6 +718,9 @@ Status OptimizeGraph(
 
   // Add fetches so that the graph can be pruned.
   item.fetch.swap(ret_node_names);
+
+  // Add noes that can't be removed from the graph.
+  item.keep_ops = std::move(keep_node_names);
 
   (*g)->ToGraphDef(&item.graph);
 
