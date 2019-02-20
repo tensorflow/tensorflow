@@ -1402,6 +1402,31 @@ tensorflow::Status CheckInputsWeights(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status AllowDataTypes(
+    const OpConverterParams& params,
+    const std::unordered_set<tensorflow::DataType>& allowed_dtypes) {
+  const auto& node_def = params.node_def;
+  TFAttrs attrs(params.node_def);
+  if (attrs.count("T")) {
+    auto op_dtype = attrs.get<tensorflow::DataType>("T");
+    if (!allowed_dtypes.count(op_dtype)) {
+      // Build string list of allowed types.
+      std::stringstream ss;
+      for (auto dtype : allowed_dtypes) {
+        ss << tensorflow::DataTypeString(dtype) << ", ";
+      }
+      string allowed_dtypes_string = "";
+      return tensorflow::errors::Unimplemented(
+          "Datatype ", tensorflow::DataTypeString(op_dtype),
+          " is not supported for ", node_def.op(), ", must be one of [",
+          ss.str(), "], at ", node_def.name());
+    }
+  }
+  // If there is no T attribute, we can't determine the type of the op. We will
+  // allow it to convert for now.
+  return tensorflow::Status::OK();
+}
+
 TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
                                     const TRT_ShapedWeights& weights_src) {
   auto dtype_new = tensorflow::DataType::DT_HALF;
