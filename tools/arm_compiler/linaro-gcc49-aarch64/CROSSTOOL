@@ -122,7 +122,7 @@ toolchain {
   linker_flag: "-lstdc++"
   linker_flag: "-lm"
   linker_flag: "-lpthread"
-  linker_flag: "-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.3"
+  linker_flag: "-Wl,--dynamic-linker=/lib/ld-linux-aarch64.so.1"
   linker_flag: "-Wl,-no-as-needed"
   linker_flag: "-Wl,-z,relro,-z,now"
   linker_flag: "-no-canonical-prefixes"
