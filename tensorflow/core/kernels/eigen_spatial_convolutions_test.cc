@@ -1468,6 +1468,10 @@ static void PackRhsHelper(int iters,
   std::vector<Evaluator> evaluators;
   std::vector<InputMapper> input_mappers;
 
+  inputs.reserve(num_inputs);
+  evaluators.reserve(num_inputs);
+  input_mappers.reserve(num_inputs);
+
   for (int i = 0; i < num_inputs; ++i) {
     inputs.emplace_back(input_dims);
     inputs[i].setRandom();
@@ -1651,6 +1655,10 @@ static void PackLhsHelper(int iters,
   std::vector<Tensor<float, 4>> filters;
   std::vector<Evaluator> evaluators;
   std::vector<InputMapper> input_mappers;
+
+  filters.reserve(num_filters);
+  evaluators.reserve(num_filters);
+  input_mappers.reserve(num_filters);
 
   for (int i = 0; i < num_filters; ++i) {
     filters.emplace_back(filter_dims);
