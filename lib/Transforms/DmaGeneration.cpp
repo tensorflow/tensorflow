@@ -42,7 +42,7 @@ using llvm::SmallMapVector;
 
 static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
-static llvm::cl::opt<unsigned> clFastMemoryCapacity(
+static llvm::cl::opt<unsigned long long> clFastMemoryCapacity(
     "dma-fast-mem-capacity",
     llvm::cl::init(std::numeric_limits<uint64_t>::max() / 1024),
     llvm::cl::desc(
@@ -357,11 +357,11 @@ bool DmaGeneration::generateDma(const MemRefRegion &region, Block *block,
     fastBufferMap[memref] = fastMemRef;
     // fastMemRefType is a constant shaped memref.
     *sizeInBytes = getMemRefSizeInBytes(fastMemRefType).getValue();
-    LLVM_DEBUG(emitNoteForBlock(*block, "Creating DMA buffer of type ");
-               fastMemRefType.dump();
-               llvm::dbgs()
-               << " and of size " << Twine(llvm::divideCeil(*sizeInBytes, 1024))
-               << " KiB\n";);
+    LLVM_DEBUG(std::string ss; llvm::raw_string_ostream oss(ss);
+               oss << "Creating DMA buffer of type " << fastMemRefType;
+               oss << " and size " << llvm::divideCeil(*sizeInBytes, 1024)
+                   << " KiB\n";
+               emitNoteForBlock(*block, oss.str()));
   } else {
     // Reuse the one already created.
     fastMemRef = fastBufferMap[memref];
