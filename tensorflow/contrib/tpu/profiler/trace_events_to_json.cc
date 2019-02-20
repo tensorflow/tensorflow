@@ -17,6 +17,7 @@ limitations under the License.
 #include "include/json/json.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 
 namespace tensorflow {
 namespace tpu {
@@ -32,12 +33,13 @@ inline void AppendEscapedName(string *json, const string &name) {
 }
 
 // Adds resource events for a single device.
-void AddResourceMetadata(uint32 device_id,
-                         const std::map<uint32, const Resource *> &resources,
-                         string *json) {
+void AddResourceMetadata(
+    uint32 device_id,
+    const std::map<uint32, const profiler::Resource *> &resources,
+    string *json) {
   for (const auto &pair : resources) {
     uint32 resource_id = pair.first;
-    const Resource &resource = *pair.second;
+    const profiler::Resource &resource = *pair.second;
     if (!resource.name().empty()) {
       Appendf(json,
               R"({"ph":"M","pid":%u,"tid":%u,)"
@@ -53,11 +55,11 @@ void AddResourceMetadata(uint32 device_id,
   }
 }
 
-void AddDeviceMetadata(const std::map<uint32, const Device *> &devices,
-                       string *json) {
+void AddDeviceMetadata(
+    const std::map<uint32, const profiler::Device *> &devices, string *json) {
   for (const auto &pair : devices) {
     uint32 device_id = pair.first;
-    const Device &device = *pair.second;
+    const profiler::Device &device = *pair.second;
     if (!device.name().empty()) {
       Appendf(json,
               R"({"ph":"M","pid":%u,"name":"process_name",)"
@@ -71,7 +73,7 @@ void AddDeviceMetadata(const std::map<uint32, const Device *> &devices,
             R"("args":{"sort_index":%u}},)",
             device_id, device_id);
     // Convert to a std::map so that devices are sorted by the device id.
-    std::map<uint32, const Resource *> sorted_resources;
+    std::map<uint32, const profiler::Resource *> sorted_resources;
     for (const auto &pair : device.resources()) {
       sorted_resources[pair.first] = &pair.second;
     }
@@ -79,7 +81,7 @@ void AddDeviceMetadata(const std::map<uint32, const Device *> &devices,
   }
 }
 
-inline void AddTraceEvent(const TraceEvent &event, string *json) {
+inline void AddTraceEvent(const profiler::TraceEvent &event, string *json) {
   Appendf(json, R"({"pid":%u,"tid":%u,"ts":%.5f,)", event.device_id(),
           event.resource_id(), event.timestamp_ps() / kPicosPerMicro);
   AppendEscapedName(json, event.name());
@@ -94,19 +96,19 @@ inline void AddTraceEvent(const TraceEvent &event, string *json) {
 
 }  // namespace
 
-string TraceEventsToJson(const Trace &trace) {
+string TraceEventsToJson(const profiler::Trace &trace) {
   string json;
   Appendf(&json,
           R"({"displayTimeUnit":"ns","metadata":{"highres-ticks":true},)");
   Appendf(&json,
           R"("traceEvents":[)");
   // Convert to a std::map so that devices are sorted by the device id.
-  std::map<uint32, const Device *> sorted_devices;
+  std::map<uint32, const profiler::Device *> sorted_devices;
   for (const auto &pair : trace.devices()) {
     sorted_devices[pair.first] = &pair.second;
   }
   AddDeviceMetadata(sorted_devices, &json);
-  for (const TraceEvent &event : trace.trace_events()) {
+  for (const profiler::TraceEvent &event : trace.trace_events()) {
     AddTraceEvent(event, &json);
   }
   // Add one fake event to avoid dealing with no-trailing-comma rule.

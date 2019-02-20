@@ -110,7 +110,7 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
-        "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
+        "//tensorflow/core/profiler:protos_all_py",
     ],
 )
 
