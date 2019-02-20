@@ -217,8 +217,8 @@ struct CropAndResize<CPUDevice, T> {
     const int depth = crops.dimension(3);
 
     // Sharding across boxes.
-    std::function<void(int start_box, int limit_box)> CropAndResizePerBox
-      = [&](int start_box, int limit_box) {
+    std::function<void(int start_box, int limit_box)> CropAndResizePerBox = [&](
+        int start_box, int limit_box) {
       for (int b = start_box; b < limit_box; ++b) {
         const float y1 = boxes(b, 0);
         const float x1 = boxes(b, 1);
@@ -306,8 +306,9 @@ struct CropAndResize<CPUDevice, T> {
                   ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
                   : 0;
           const float width_scale =
-              (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
-                               : 0;
+              (crop_width > 1)
+                  ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
+                  : 0;
 
           for (int y = 0; y < crop_height; ++y) {
             const float in_y = (crop_height > 1)
@@ -484,69 +485,70 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
     // Parallelize the loop using Eigen thread pool.
     // Assign ranges of boxes into different threads.
     // Split two methods' code to avoid branch mis-prediction.
-    std::function<void(int start_box, int limit_box)> CropAndResizeBackImgPerBox
-      = [&](int start_box, int limit_box) {
-      for (int b = start_box; b < limit_box; ++b) {
-        const float y1 = boxes(b, 0);
-        const float x1 = boxes(b, 1);
-        const float y2 = boxes(b, 2);
-        const float x2 = boxes(b, 3);
+    std::function<void(int start_box, int limit_box)>
+        CropAndResizeBackImgPerBox = [&](int start_box, int limit_box) {
+          for (int b = start_box; b < limit_box; ++b) {
+            const float y1 = boxes(b, 0);
+            const float x1 = boxes(b, 1);
+            const float y2 = boxes(b, 2);
+            const float x2 = boxes(b, 3);
 
-        const int32 b_in = box_index(b);
-        if (!FastBoundsCheck(b_in, batch_size)) {
-          continue;
-        }
-
-        const float height_scale =
-            (crop_height > 1)
-                ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
-                : 0;
-        const float width_scale =
-            (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
-                             : 0;
-
-        for (int y = 0; y < crop_height; ++y) {
-          const float in_y = (crop_height > 1)
-                                 ? y1 * (image_height - 1) + y * height_scale
-                                 : 0.5 * (y1 + y2) * (image_height - 1);
-          if (in_y < 0 || in_y > image_height - 1) {
-            continue;
-          }
-
-          for (int x = 0; x < crop_width; ++x) {
-            const float in_x = (crop_width > 1)
-                                   ? x1 * (image_width - 1) + x * width_scale
-                                   : 0.5 * (x1 + x2) * (image_width - 1);
-            if (in_x < 0 || in_x > image_width - 1) {
+            const int32 b_in = box_index(b);
+            if (!FastBoundsCheck(b_in, batch_size)) {
               continue;
             }
 
-            const int top_y_index = floorf(in_y);
-            const int bottom_y_index = ceilf(in_y);
-            const float y_lerp = in_y - top_y_index;
-            const float one_y_lerp = 1 - y_lerp;
+            const float height_scale =
+                (crop_height > 1)
+                    ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
+                    : 0;
+            const float width_scale =
+                (crop_width > 1)
+                    ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
+                    : 0;
 
-            const int left_x_index = floorf(in_x);
-            const int right_x_index = ceilf(in_x);
-            const float x_lerp = in_x - left_x_index;
-            const float one_x_lerp = 1 - x_lerp;
+            for (int y = 0; y < crop_height; ++y) {
+              const float in_y =
+                  (crop_height > 1) ? y1 * (image_height - 1) + y * height_scale
+                                    : 0.5 * (y1 + y2) * (image_height - 1);
+              if (in_y < 0 || in_y > image_height - 1) {
+                continue;
+              }
 
-            for (int d = 0; d < depth; ++d) {
-              const float dtop = one_y_lerp * grads(b, y, x, d);
-              grads_image(b_in, top_y_index, left_x_index, d) +=
-                  static_cast<T>(one_x_lerp * dtop);
-              grads_image(b_in, top_y_index, right_x_index, d) +=
-                  static_cast<T>(x_lerp * dtop);
-              const float dbottom = y_lerp * grads(b, y, x, d);
-              grads_image(b_in, bottom_y_index, left_x_index, d) +=
-                  static_cast<T>(one_x_lerp * dbottom);
-              grads_image(b_in, bottom_y_index, right_x_index, d) +=
-                  static_cast<T>(x_lerp * dbottom);
+              for (int x = 0; x < crop_width; ++x) {
+                const float in_x =
+                    (crop_width > 1) ? x1 * (image_width - 1) + x * width_scale
+                                     : 0.5 * (x1 + x2) * (image_width - 1);
+                if (in_x < 0 || in_x > image_width - 1) {
+                  continue;
+                }
+
+                const int top_y_index = floorf(in_y);
+                const int bottom_y_index = ceilf(in_y);
+                const float y_lerp = in_y - top_y_index;
+                const float one_y_lerp = 1 - y_lerp;
+
+                const int left_x_index = floorf(in_x);
+                const int right_x_index = ceilf(in_x);
+                const float x_lerp = in_x - left_x_index;
+                const float one_x_lerp = 1 - x_lerp;
+
+                for (int d = 0; d < depth; ++d) {
+                  const float dtop = one_y_lerp * grads(b, y, x, d);
+                  grads_image(b_in, top_y_index, left_x_index, d) +=
+                      static_cast<T>(one_x_lerp * dtop);
+                  grads_image(b_in, top_y_index, right_x_index, d) +=
+                      static_cast<T>(x_lerp * dtop);
+                  const float dbottom = y_lerp * grads(b, y, x, d);
+                  grads_image(b_in, bottom_y_index, left_x_index, d) +=
+                      static_cast<T>(one_x_lerp * dbottom);
+                  grads_image(b_in, bottom_y_index, right_x_index, d) +=
+                      static_cast<T>(x_lerp * dbottom);
+                }
+              }
             }
           }
-        }
-      }
-    };
+        };
 
     if (method_name == "nearest") {
       CropAndResizeBackImgPerBox = [&](int start_box, int limit_box) {
@@ -566,8 +568,9 @@ struct CropAndResizeBackpropImage<CPUDevice, T> {
                   ? (y2 - y1) * (image_height - 1) / (crop_height - 1)
                   : 0;
           const float width_scale =
-              (crop_width > 1) ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
-                               : 0;
+              (crop_width > 1)
+                  ? (x2 - x1) * (image_width - 1) / (crop_width - 1)
+                  : 0;
 
           for (int y = 0; y < crop_height; ++y) {
             const float in_y = (crop_height > 1)
