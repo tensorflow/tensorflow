@@ -169,6 +169,9 @@ public:
   /// Returns the list of attributes of this expression.
   ArrayRef<NamedAttribute> getAttributes() const;
 
+  /// Returns the attribute with the given name, if any.
+  Attribute getAttribute(StringRef name) const;
+
   /// Build the IR corresponding to this expression.
   SmallVector<Value *, 4>
   build(FuncBuilder &b, const llvm::DenseMap<Expr, Value *> &ssaBindings) const;
@@ -592,6 +595,7 @@ inline Expr store(Stmt val, Expr m, llvm::ArrayRef<Expr> indices = {}) {
 }
 Expr select(Expr cond, Expr lhs, Expr rhs);
 Expr vector_type_cast(Expr memrefExpr, Type memrefType);
+Expr constantInteger(Type t, int64_t value);
 
 Stmt Return(ArrayRef<Expr> values = {});
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);

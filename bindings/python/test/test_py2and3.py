@@ -51,8 +51,9 @@ class EdscTest(unittest.TestCase):
 
   def testNestedLoops(self):
     with E.ContextManager():
-      i, lb, ub, step = list(
-          map(E.Expr, [E.Bindable(self.i32Type) for _ in range(4)]))
+      i, lb, ub = list(
+          map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
+      step = E.ConstantInteger(self.indexType, 42)
       ivs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
       lbs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
       ubs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
@@ -65,8 +66,8 @@ class EdscTest(unittest.TestCase):
       self.assertIn("for($6 = $10 to $14 step $18) {", str)
       self.assertIn("for($7 = $11 to $15 step $19) {", str)
       self.assertIn("for($8 = $12 to $16 step $20) {", str)
-      self.assertIn("for($1 = $2 to $3 step $4) {", str)
-      self.assertIn("= (($3 * $4) - $2);", str)
+      self.assertIn("for($1 = $2 to $3 step 42) {", str)
+      self.assertIn("= (($3 * 42) + $2 * -1);", str)
 
   def testIndexed(self):
     with E.ContextManager():
@@ -116,7 +117,7 @@ class EdscTest(unittest.TestCase):
       # currently implemented as "constant 1 - a", which leads to this
       # expression.
       self.assertIn(
-          "(constant({value: 1}) - (constant({value: 1}) - ((constant({value: 1}) - (($1 < $2) && ($2 >= $3))) && (constant({value: 1}) - ($3 == $4)))))",
+          "(1 - (1 - ((1 - (($1 < $2) && ($2 >= $3))) && (1 - ($3 == $4)))))",
           str)
 
   def testSelect(self):

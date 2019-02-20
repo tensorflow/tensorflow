@@ -146,6 +146,13 @@ ArrayRef<NamedAttribute> mlir::edsc::Expr::getAttributes() const {
   return storage->attributes;
 }
 
+Attribute mlir::edsc::Expr::getAttribute(StringRef name) const {
+  for (const auto &namedAttr : getAttributes())
+    if (namedAttr.first.is(name))
+      return namedAttr.second;
+  return {};
+}
+
 StringRef mlir::edsc::Expr::getName() const {
   return static_cast<ImplType *>(storage)->opName;
 }
@@ -176,6 +183,16 @@ Expr::build(FuncBuilder &b,
   return llvm::to_vector<4>(inst->getResults());
 }
 
+static AffineExpr createOperandAffineExpr(Expr e, int64_t position,
+                                          MLIRContext *context) {
+  if (e.is_op<ConstantOp>()) {
+    int64_t cst =
+        e.getAttribute("value").cast<IntegerAttr>().getValue().getSExtValue();
+    return getAffineConstantExpr(cst, context);
+  }
+  return getAffineDimExpr(position, context);
+}
+
 // Create a binary expression between the two arguments emitting `IOp` if
 // arguments are integers or vectors/tensors thereof, `FOp` if arguments are
 // floating-point or vectors/tensors thereof, and `AffineApplyOp` with an
@@ -192,9 +209,9 @@ static Expr createBinaryExpr(
   assert(thisType == thatType && "cannot mix types in operators");
   if (thisType.isIndex()) {
     MLIRContext *context = thisType.getContext();
-    auto d0 = getAffineDimExpr(0, context);
-    auto d1 = getAffineDimExpr(1, context);
-    auto map = AffineMap::get(2, 0, {affCombiner(d0, d1)}, {});
+    auto lhsAff = createOperandAffineExpr(lhs, 0, context);
+    auto rhsAff = createOperandAffineExpr(rhs, 1, context);
+    auto map = AffineMap::get(2, 0, {affCombiner(lhsAff, rhsAff)}, {});
     auto attr = AffineMapAttr::get(map);
     auto attrId = Identifier::get("map", context);
     auto namedAttr = NamedAttribute{attrId, attr};
@@ -439,6 +456,21 @@ Expr mlir::edsc::vector_type_cast(Expr memrefExpr, Type memrefType) {
   return VariadicExpr::make<VectorTypeCastOp>({memrefExpr}, {memrefType});
 }
 
+Expr mlir::edsc::constantInteger(Type t, int64_t value) {
+  assert((t.isa<IndexType>() || t.isa<IntegerType>()) &&
+         "expected integer or index type");
+  MLIRContext *ctx = t.getContext();
+  auto attr = IntegerAttr::get(t, value);
+  auto attrName = Identifier::get("value", ctx);
+  auto namedAttr = NamedAttribute{attrName, attr};
+  return VariadicExpr::make<ConstantOp>({}, t, namedAttr);
+}
+
+edsc_expr_t ConstantInteger(mlir_type_t type, int64_t value) {
+  auto t = Type::getFromOpaquePointer(reinterpret_cast<const void *>(type));
+  return mlir::edsc::constantInteger(t, value);
+}
+
 Stmt mlir::edsc::Return(ArrayRef<Expr> values) {
   return VariadicExpr::make<ReturnOp>(values);
 }
@@ -456,13 +488,7 @@ static raw_ostream &printBinaryExpr(raw_ostream &os, BinaryExpr e,
 // Get the operator spelling for pretty-printing the infix form of a
 // comparison operator.
 static StringRef getCmpIPredicateInfix(const mlir::edsc::Expr &e) {
-  Attribute predicate;
-  for (const auto &namedAttr : e.getAttributes()) {
-    if (namedAttr.first.is(CmpIOp::getPredicateAttrName())) {
-      predicate = namedAttr.second;
-      break;
-    }
-  }
+  Attribute predicate = e.getAttribute(CmpIOp::getPredicateAttrName());
   assert(predicate && "expected a predicate in a comparison expr");
 
   switch (static_cast<CmpIPredicate>(
@@ -613,6 +639,15 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
       os << ')';
       return;
     }
+  }
+
+  // Special case for integer constants that are printed as is.  Use
+  // sign-extended result for everything but i1 (booleans).
+  if (this->is_op<ConstantIndexOp>() || this->is_op<ConstantIntOp>()) {
+    APInt value = getAttribute("value").cast<IntegerAttr>().getValue();
+    os << (value.getBitWidth() == 1 ? value.getZExtValue()
+                                    : value.getSExtValue());
+    return;
   }
 
   // Handle all other types of ops with a more generic printing form.

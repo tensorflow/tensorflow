@@ -216,6 +216,10 @@ edsc_stmt_t Store(edsc_expr_t value, edsc_indexed_t indexed,
 /// Returns an opaque statement for an mlir::SelectOp.
 edsc_expr_t Select(edsc_expr_t cond, edsc_expr_t lhs, edsc_expr_t rhs);
 
+/// Returns an opaque constant integer expression of the specified type.  The
+/// type may be i* or index.
+edsc_expr_t ConstantInteger(mlir_type_t type, int64_t value);
+
 /// Returns an opaque statement for an mlir::ReturnOp.
 edsc_stmt_t Return(edsc_expr_list_t values);
 

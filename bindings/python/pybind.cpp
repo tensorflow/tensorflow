@@ -401,6 +401,9 @@ PYBIND11_MODULE(pybind, m) {
     SmallVector<edsc_expr_t, 8> owningExprs;
     return PythonStmt(::Return(makeCExprs(owningExprs, returns)));
   });
+  m.def("ConstantInteger", [](PythonType type, int64_t value) {
+    return PythonExpr(::ConstantInteger(type, value));
+  });
 
 #define DEFINE_PYBIND_BINARY_OP(PYTHON_NAME, C_NAME)                           \
   m.def(PYTHON_NAME, [](PythonExpr e1, PythonExpr e2) {                        \

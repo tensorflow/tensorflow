@@ -74,14 +74,15 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
              "dynamic_for expected index arguments");
     }
 
+    using namespace edsc::op;
     Type index = IndexType::get(f->getContext());
     edsc::ScopedEDSCContext context;
     edsc::Expr lb(index), ub(index), step(index);
-    auto loop = edsc::For(lb, ub, step, {});
+    step = edsc::constantInteger(index, 3);
+    auto loop = edsc::For(lb, ub, step, {lb * step + ub, step + lb});
     edsc::MLIREmitter(&builder, f->getLoc())
         .bind(edsc::Bindable(lb), f->getArgument(0))
         .bind(edsc::Bindable(ub), f->getArgument(1))
-        .bindConstant<ConstantIndexOp>(edsc::Bindable(step), 3)
         .emitStmt(loop);
     return success();
   }
