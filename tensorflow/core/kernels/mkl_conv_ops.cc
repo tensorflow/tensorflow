@@ -1275,7 +1275,7 @@ class MklConvOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   std::vector<int32> dilations_;
-  std::vector<int32> padding_list_;
+  std::vector<Tpadding> padding_list_;
   bool is_filter_const_;
   mutex mu_;
   Padding padding_;
@@ -2056,6 +2056,25 @@ REGISTER_KERNEL_BUILDER(
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, qint8, true>);
 
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, quint8, true>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, qint8, true>);
 #endif  // INTEL_MKL_ML
 
 // Register 2D operations
@@ -2090,7 +2109,7 @@ REGISTER_KERNEL_BUILDER(
                               .TypeConstraint<int64>("Tpaddings")          \
                               .Label(mkl_op_registry::kMklOpLabel),        \
                           MklConvOp<CPUDevice, float, float, float, float, \
-                                    float, int32, false, true, false>);    \
+                                    float, int64, false, true, false>);    \
   REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithConv2D")                  \
                               .Device(DEVICE_CPU)                          \
                               .TypeConstraint<T>("T")                      \
@@ -2132,7 +2151,7 @@ TF_CALL_float(REGISTER_MKL_CPU_2D_DEPTHWISE);
           .TypeConstraint<T>("T")                                   \
           .TypeConstraint<int64>("Tpaddings")                       \
           .Label(mkl_op_registry::kMklOpLabel),                     \
-      MklFusedConvOp<CPUDevice, T, T, T, T, T, int32, true>);       \
+      MklFusedConvOp<CPUDevice, T, T, T, T, T, int64, true>);       \
   REGISTER_KERNEL_BUILDER(Name("__MklDummyPadWithFusedConv2D")      \
                               .Device(DEVICE_CPU)                   \
                               .TypeConstraint<T>("T")               \
