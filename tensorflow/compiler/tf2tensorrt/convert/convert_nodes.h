@@ -572,7 +572,7 @@ class Converter {
 };
 
 // Map of all supported UnaryOperations
-std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
+const std::unordered_map<string, nvinfer1::UnaryOperation>* UnaryOperationMap();
 
 }  // namespace convert
 }  // namespace tensorrt
