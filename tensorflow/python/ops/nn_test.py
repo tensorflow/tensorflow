@@ -1242,6 +1242,70 @@ class DataFormatVectorPermuteTest(test_lib.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
+class AvgPoolTest(test_lib.TestCase):
+
+  def test1DTensor(self):
+    x = array_ops.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test1DNumpy(self):
+    x = np.ones([3, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool1d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DTensor(self):
+    x = array_ops.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test2DNumpy(self):
+    x = np.ones([3, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DTensor(self):
+    x = array_ops.ones([3, 7, 6, 6, 5])
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+  def test3DNumpy(self):
+    x = np.ones([3, 7, 6, 6, 5], dtype=np.float32)
+    ksize = 2
+    strides = 2
+
+    y1 = nn_ops.avg_pool_v2(x, ksize, strides, "SAME")
+    y2 = nn_ops.avg_pool3d(x, ksize, strides, "SAME")
+
+    self.assertAllEqual(self.evaluate(y1), self.evaluate(y2))
+
+
+@test_util.run_all_in_graph_and_eager_modes
 class MaxPoolTest(test_lib.TestCase):
 
   def test1DTensor(self):
