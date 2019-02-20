@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.tpu.python.tpu import tpu_estimator
 from tensorflow.python.client import session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import tpu_estimator
 
 
 def make_input_fn(num_samples):

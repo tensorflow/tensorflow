@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ===================================================================
-"""Tests for contrib.tpu.python.tpu.feature_column."""
+"""Tests for python.tpu.feature_column."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.tpu.python.tpu import feature_column as tpu_fc
 from tensorflow.python.client import session
 from tensorflow.python.feature_column import feature_column as fc
 from tensorflow.python.feature_column import feature_column_lib as fc_lib
@@ -31,6 +30,7 @@ from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import feature_column as tpu_fc
 
 
 def _initialized_session():

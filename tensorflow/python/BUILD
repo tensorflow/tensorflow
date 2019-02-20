@@ -2010,6 +2010,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
         "//tensorflow/contrib/tpu:__pkg__",
+        "//tensorflow/python/tpu:__pkg__",
     ],
     deps = [
         "//tensorflow/core:tpu_configuration_ops_op_lib",

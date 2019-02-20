@@ -19,18 +19,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tpu.python.tpu import tpu
-from tensorflow.contrib.tpu.python.tpu import tpu_feed
-from tensorflow.contrib.tpu.python.tpu import training_loop
-
 from tensorflow.python.framework import dtypes
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import math_ops
-
 from tensorflow.python.platform import test
+from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_feed
+from tensorflow.python.tpu import training_loop
 
 
 class TPUContextTest(test.TestCase):

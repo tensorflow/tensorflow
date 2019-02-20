@@ -63,11 +63,3 @@ tf_cc_test(
         "@jsoncpp_git//:jsoncpp",
     ],
 )
-
-py_library(
-    name = "tpu_profiler_analysis_pb2_grpc",
-    srcs = ["tpu_profiler_analysis_pb2_grpc.py"],
-    srcs_version = "PY2AND3",
-    visibility = ["//visibility:public"],
-    deps = ["//tensorflow/core/profiler:profiler_analysis_proto_py"],
-)
