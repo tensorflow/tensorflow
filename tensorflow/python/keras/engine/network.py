@@ -548,12 +548,12 @@ class Network(base_layer.Layer):
     return losses
 
   @trackable.no_automatic_dependency_tracking
-  def clear_losses(self):
+  def _clear_losses(self):
     """Used every step in eager to reset losses."""
     self._eager_losses = []
     for layer in self.layers:
       if isinstance(layer, Network):
-        layer.clear_losses()
+        layer._clear_losses()
       else:
         layer._eager_losses = []
 
