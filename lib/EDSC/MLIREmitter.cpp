@@ -117,12 +117,14 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
       auto *lbDef = lb->getDefiningInst();
       (void)lbDef;
       assert((!lbDef || lbDef->isa<ConstantIndexOp>() ||
-              lbDef->isa<AffineApplyOp>() || lbDef->isa<AffineForOp>()) &&
+              lbDef->isa<AffineApplyOp>() || lbDef->isa<AffineForOp>() ||
+              lbDef->isa<DimOp>()) &&
              "lower bound expression does not have affine provenance");
       auto *ubDef = ub->getDefiningInst();
       (void)ubDef;
       assert((!ubDef || ubDef->isa<ConstantIndexOp>() ||
-              ubDef->isa<AffineApplyOp>() || ubDef->isa<AffineForOp>()) &&
+              ubDef->isa<AffineApplyOp>() || ubDef->isa<AffineForOp>() ||
+              ubDef->isa<DimOp>()) &&
              "upper bound expression does not have affine provenance");
 
       // Step must be a static constant.

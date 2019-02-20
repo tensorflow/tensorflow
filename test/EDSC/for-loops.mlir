@@ -41,3 +41,27 @@ func @dynamic_for_func_args(%arg0 : index, %arg1 : index) {
 func @dynamic_for(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : index) {
   return
 }
+
+// These functions will be detected by the test pass that will insert an
+// EDSC-constructed 1-D pointwise-add loop with assignments to scalars before
+// the `return` instruction.
+//
+// CHECK-LABEL: func @assignments_1(%arg0: memref<4xf32>, %arg1: memref<4xf32>, %arg2: memref<4xf32>) {
+// CHECK: for %[[iv:.*]] = 0 to 4 {
+// CHECK:   %[[a:.*]] = load %arg0[%[[iv]]] : memref<4xf32>
+// CHECK:   %[[b:.*]] = load %arg1[%[[iv]]] : memref<4xf32>
+// CHECK:   %[[tmp:.*]] = mulf %[[a]], %[[b]] : f32
+// CHECK:   store %[[tmp]], %arg2[%[[iv]]] : memref<4xf32>
+func @assignments_1(%arg0: memref<4xf32>, %arg1: memref<4xf32>, %arg2: memref<4xf32>) {
+  return
+}
+
+// CHECK-LABEL: func @assignments_2(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: memref<?xf32>) {
+// CHECK: for %[[iv:.*]] = {{.*}} to {{.*}} {
+// CHECK:   %[[a:.*]] = load %arg0[%[[iv]]] : memref<?xf32>
+// CHECK:   %[[b:.*]] = load %arg1[%[[iv]]] : memref<?xf32>
+// CHECK:   %[[tmp:.*]] = mulf %[[a]], %[[b]] : f32
+// CHECK:   store %[[tmp]], %arg2[%[[iv]]] : memref<?xf32>
+func @assignments_2(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: memref<?xf32>) {
+  return
+}

@@ -118,6 +118,37 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
     return success();
   }
 
+  // Inject an EDSC-constructed computation that assigns Stmt and uses the LHS.
+  if (f->getName().strref().contains("assignments")) {
+    FuncBuilder builder(f);
+    edsc::ScopedEDSCContext context;
+    edsc::MLIREmitter emitter(&builder, f->getLoc());
+
+    edsc::Expr zero = emitter.zero();
+    edsc::Expr one = emitter.one();
+    auto args = emitter.makeBoundFunctionArguments(f);
+    auto views = emitter.makeBoundMemRefViews(args.begin(), args.end());
+
+    Type indexType = builder.getIndexType();
+    edsc::Expr i(indexType);
+    edsc::Expr A = args[0], B = args[1], C = args[2];
+    edsc::Expr M = views[0].dim(0);
+    // clang-format off
+    using namespace edsc::op;
+    edsc::Stmt scalarA, scalarB, tmp;
+    auto block = edsc::block({
+      For(i, zero, M, one, {
+        scalarA = load(A, {i}),
+        scalarB = load(B, {i}),
+        tmp = scalarA * scalarB,
+        store(tmp, C, {i})
+      }),
+    });
+    // clang-format on
+
+    emitter.emitStmts(block.getBody());
+  }
+
   f->walk([](Instruction *op) {
     if (op->getName().getStringRef() == "print") {
       auto opName = op->getAttrOfType<StringAttr>("op");

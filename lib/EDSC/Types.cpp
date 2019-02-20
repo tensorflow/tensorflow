@@ -760,7 +760,9 @@ edsc_stmt_t makeStmt(edsc_expr_t e) {
 }
 
 Stmt &mlir::edsc::Stmt::operator=(const Expr &expr) {
-  Stmt res(Bindable(Expr(Type())), expr, {});
+  auto types = expr.getResultTypes();
+  assert(types.size() == 1 && "single result Expr expected in Stmt::operator=");
+  Stmt res(Bindable(Expr(types.front())), expr, {});
   std::swap(res.storage, this->storage);
   return *this;
 }
