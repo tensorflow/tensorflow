@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-#Usage: cd to the directory  tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 and type ./load_prgram executable_name to load an executable from the directory tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/
+#Usage: cd to the directory  tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 and type ./flash_program executable_name to load an executable from the directory tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/ into flash
 #
 #
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
@@ -35,21 +35,19 @@ get_ocd_response() # clean it out
 
 # git path to project elf file
 cur_dir = os.getcwd()
-#elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + 'preprocessor_test'
+#elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + 'micro_speech'
 elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + sys.argv[1]
 print("elf_file = ",elf_file)
 
 
 # use these to download and run the elf fle
 ocd_commands = ["halt\n",
-                "load_image {}\n".format(elf_file),
-                "mww 0x1001FFF8 0xDEADBEEF\n",
-                "mww 0x1001FFFC 0xC369A517\n",
+                "flash erase_sector 0 0 127\n",
+                "flash write_image {}\n".format(elf_file),
+                "mww 0x1001fff8 0\n",
                 "reset\n"]
 
 # OK now do what we came here for!!!
-for x in ocd_commands: 
+for x in ocd_commands:
     print(x)
     send_ocd_cmd(x)
-
-

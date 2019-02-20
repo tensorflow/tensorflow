@@ -5,6 +5,10 @@ ifeq ($(TARGET), ecm3531)
   ETA_SDK := /home/hari/TensaiSDK-v0.0.17/soc/
   GCC_ARM := /home/hari/Downloads/gcc-arm-none-eabi-7-2018-q2-update/
 
+#Pick the appropriate lds file depending whether you are running frof SRAM of flash
+  ETA_LDS_FILE := ecm3531.lds
+#  ETA_LDS_FILE := ecm3531_flash.lds
+
   ifeq ($(wildcard $(ETA_SDK)),)
     $(error Path to ETA SDK is not set (ETA_SDK))
   endif
@@ -59,7 +63,7 @@ ifeq ($(TARGET), ecm3531)
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
     -fno-exceptions \
     -nostdlib --specs=nano.specs -t -lstdc++ -lc -lnosys -lm \
-    -Wl,-T,$(MAKEFILE_DIR)/targets/ecm3531/ecm3531.lds \
+    -Wl,-T,$(MAKEFILE_DIR)/targets/ecm3531/$(ETA_LDS_FILE) \
     -Wl,-Map=$(MAKEFILE_DIR)/targets/ecm3531/ecm3531.map,--cref
   BUILD_TYPE := micro
   MICROLITE_LIBS := \
@@ -92,7 +96,7 @@ ifeq ($(TARGET), ecm3531)
   # directory for generated projects.  This is similar to the behavior needed
   # for headers.
   MICROLITE_CC_HDRS += \
-    $(MAKEFILE_DIR)/targets/ecm3531/ecm3531.lds
+    $(MAKEFILE_DIR)/targets/ecm3531/$(ETA_LDS_FILE)
 
   TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_ecm3531_binary.sh
   # These are tests that don't currently work on the blue pill.

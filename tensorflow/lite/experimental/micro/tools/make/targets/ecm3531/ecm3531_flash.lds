@@ -15,8 +15,8 @@ limitations under the License.
 
 
 /*
- * linker script for use with ECM3531
- * All sections must map to 128KBytes of SRAM beginning at 0x10000000
+ * linker script for use with ECM3531 chip.
+ * .text  and .ro map to FLASH all else to SRAM.
  *
  */
 
@@ -26,10 +26,12 @@ limitations under the License.
 ENTRY(ResetISR)
 
 /*
- *   SRAM is at 0x10000000 of length 0x00020000
+ *   FLASH is at 0x01000000 of length 0x00080000  512KB
+ *   SRAM  is at 0x10000000 of length 0x00020000  128KB
  */
 MEMORY
 {
+    FLASH (RX) : ORIGIN = 0x01000000, LENGTH = 0x00080000
     SRAM (RWX) : ORIGIN = 0x10000000, LENGTH = 0x00020000
 }
 
@@ -45,41 +47,39 @@ SECTIONS
         *(.rodata*)
         . = ALIGN(0x4);
         _etext = .;
-    } > SRAM= 0
+    } > FLASH= 0
     .dummy :
     {
         . = ALIGN(0x4);
         _eftext = .;
-    } > SRAM
-    .datax :
+    } > FLASH
+/* put the stack at the bottom of SRAM*/
+    .datax (NOLOAD) :
     {
         _datax = .;
         KEEP(*(.mainStack))
+        . = ALIGN(0x4);
         . += 16384;
         _edatax = .;
         _stack_top = .;
-        . += 4;
     } > SRAM
     .data :
-       AT (ADDR(.text) + SIZEOF(.text) ) 
     {
         _data = .;
         *(.data*)
         KEEP(*(.mainHeap))
         _edata = .;
-    } > SRAM
+    } > SRAM AT > FLASH
 
-    .bss :
+    .bss (NOLOAD) :
     {
         _bss = .;
         *(.bss*)
         *(COMMON)
         _ebss = .;
     } > SRAM
-    .ARM.exidx :
-    {
-       *(.ARM.exidx*)
-    }
+
+
 
 }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/python3
-#Usage: cd to the directory  tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 and type ./load_prgram executable_name to load an executable from the directory tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/
+#Usage: cd to the directory  tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 and type ./flash_erase to erase the flash.
 #
 #
 # Copyright 2015 The TensorFlow Authors. All Rights Reserved.
@@ -18,7 +18,6 @@
 #==============================================================================
 
 
-import sys, getopt
 import os
 import telnetlib
 
@@ -33,18 +32,11 @@ def get_ocd_response():
 ocd_sock = telnetlib.Telnet(host='localhost', port=4444)
 get_ocd_response() # clean it out
 
-# git path to project elf file
-cur_dir = os.getcwd()
-#elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + 'preprocessor_test'
-elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + sys.argv[1]
-print("elf_file = ",elf_file)
-
-
-# use these to download and run the elf fle
+#ocd comand
 ocd_commands = ["halt\n",
-                "load_image {}\n".format(elf_file),
-                "mww 0x1001FFF8 0xDEADBEEF\n",
-                "mww 0x1001FFFC 0xC369A517\n",
+                "flash erase_sector 0 0 127\n",
+                "mww 0x1001fff8 0\n",
+                "mdw 0x01000000 16\n",
                 "reset\n"]
 
 # OK now do what we came here for!!!
