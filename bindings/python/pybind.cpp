@@ -222,6 +222,22 @@ struct PythonIndexed : public edsc_indexed_t {
   operator PythonExpr() { return PythonExpr(base); }
 };
 
+struct PythonMaxExpr {
+  PythonMaxExpr() : expr(nullptr) {}
+  PythonMaxExpr(const edsc_max_expr_t &e) : expr(e) {}
+  operator edsc_max_expr_t() { return expr; }
+
+  edsc_max_expr_t expr;
+};
+
+struct PythonMinExpr {
+  PythonMinExpr() : expr(nullptr) {}
+  PythonMinExpr(const edsc_min_expr_t &e) : expr(e) {}
+  operator edsc_min_expr_t() { return expr; }
+
+  edsc_min_expr_t expr;
+};
+
 struct MLIRFunctionEmitter {
   MLIRFunctionEmitter(PythonFunction f)
       : currentFunction(reinterpret_cast<mlir::Function *>(f.function)),
@@ -386,19 +402,23 @@ PYBIND11_MODULE(pybind, m) {
                   makeCExprs(owningUBs, ubs), makeCExprs(owningSteps, steps),
                   makeCStmts(owningStmts, stmts)));
   });
+  m.def("Max", [](const py::list &args) {
+    SmallVector<edsc_expr_t, 8> owning;
+    return PythonMaxExpr(::Max(makeCExprs(owning, args)));
+  });
+  m.def("Min", [](const py::list &args) {
+    SmallVector<edsc_expr_t, 8> owning;
+    return PythonMinExpr(::Min(makeCExprs(owning, args)));
+  });
   m.def("For", [](PythonExpr iv, PythonExpr lb, PythonExpr ub, PythonExpr step,
                   const py::list &stmts) {
     SmallVector<edsc_stmt_t, 8> owning;
     return PythonStmt(::For(iv, lb, ub, step, makeCStmts(owning, stmts)));
   });
-  m.def("MaxMinFor", [](PythonExpr iv, const py::list &lbs, const py::list &ubs,
-                        PythonExpr step, const py::list &stmts) {
-    SmallVector<edsc_expr_t, 8> owningLBs;
-    SmallVector<edsc_expr_t, 8> owningUBs;
-    SmallVector<edsc_stmt_t, 8> owningStmts;
-    return PythonStmt(::MaxMinFor(iv, makeCExprs(owningLBs, lbs),
-                                  makeCExprs(owningUBs, ubs), step,
-                                  makeCStmts(owningStmts, stmts)));
+  m.def("For", [](PythonExpr iv, PythonMaxExpr lb, PythonMinExpr ub,
+                  PythonExpr step, const py::list &stmts) {
+    SmallVector<edsc_stmt_t, 8> owning;
+    return PythonStmt(::MaxMinFor(iv, lb, ub, step, makeCStmts(owning, stmts)));
   });
   m.def("Select", [](PythonExpr cond, PythonExpr e1, PythonExpr e2) {
     return PythonExpr(::Select(cond, e1, e2));
@@ -623,6 +643,11 @@ PYBIND11_MODULE(pybind, m) {
                 Store(value, instance, makeCExprs(owning, indices)));
           },
           R"DOC(Returns the Stmt that stores into an Indexed)DOC");
+
+  py::class_<PythonMaxExpr>(m, "MaxExpr",
+                            "Wrapping class for mlir::edsc::MaxExpr");
+  py::class_<PythonMinExpr>(m, "MinExpr",
+                            "Wrapping class for mlir::edsc::MinExpr");
 }
 
 } // namespace python

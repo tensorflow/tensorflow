@@ -75,7 +75,7 @@ class EdscTest(unittest.TestCase):
       step = E.Expr(E.Bindable(self.indexType))
       lbs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(4)]))
       ubs = list(map(E.Expr, [E.Bindable(self.indexType) for _ in range(3)]))
-      loop = E.MaxMinFor(i, lbs, ubs, step, [])
+      loop = E.For(i, E.Max(lbs), E.Min(ubs), step, [])
       s = str(loop)
       self.assertIn("for($1 = max($3, $4, $5, $6) to min($7, $8, $9) step $2)",
                     s)

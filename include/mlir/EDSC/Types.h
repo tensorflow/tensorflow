@@ -677,6 +677,41 @@ private:
   llvm::SmallVector<Expr, 8> indices;
 };
 
+struct MaxExpr {
+public:
+  explicit MaxExpr(llvm::ArrayRef<Expr> arguments);
+  explicit MaxExpr(edsc_max_expr_t st)
+      : storage(reinterpret_cast<detail::ExprStorage *>(st)) {}
+  llvm::ArrayRef<Expr> getArguments() const;
+
+  operator edsc_max_expr_t() { return storage; }
+
+private:
+  detail::ExprStorage *storage;
+};
+
+struct MinExpr {
+public:
+  explicit MinExpr(llvm::ArrayRef<Expr> arguments);
+  explicit MinExpr(edsc_min_expr_t st)
+      : storage(reinterpret_cast<detail::ExprStorage *>(st)) {}
+  llvm::ArrayRef<Expr> getArguments() const;
+
+  operator edsc_min_expr_t() { return storage; }
+
+private:
+  detail::ExprStorage *storage;
+};
+
+Stmt For(const Bindable &idx, MaxExpr lb, MinExpr ub, Expr step,
+         llvm::ArrayRef<Stmt> enclosedStmts);
+Stmt For(llvm::ArrayRef<Expr> idxs, llvm::ArrayRef<MaxExpr> lbs,
+         llvm::ArrayRef<MinExpr> ubs, llvm::ArrayRef<Expr> steps,
+         llvm::ArrayRef<Stmt> enclosedStmts);
+
+inline MaxExpr Max(llvm::ArrayRef<Expr> args) { return MaxExpr(args); }
+inline MinExpr Min(llvm::ArrayRef<Expr> args) { return MinExpr(args); }
+
 } // namespace edsc
 } // namespace mlir
 

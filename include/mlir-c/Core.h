@@ -40,6 +40,10 @@ typedef void *mlir_func_t;
 typedef void *edsc_mlir_emitter_t;
 /// Opaque C type for mlir::edsc::Expr.
 typedef void *edsc_expr_t;
+/// Opaque C type for mlir::edsc::MaxExpr.
+typedef void *edsc_max_expr_t;
+/// Opaque C type for mlir::edsc::MinExpr.
+typedef void *edsc_min_expr_t;
 /// Opaque C type for mlir::edsc::Stmt.
 typedef void *edsc_stmt_t;
 /// Opaque C type for mlir::edsc::Block.
@@ -238,12 +242,17 @@ edsc_stmt_t ForNest(edsc_expr_list_t iv, edsc_expr_list_t lb,
                     edsc_expr_list_t ub, edsc_expr_list_t step,
                     edsc_stmt_list_t enclosedStmts);
 
+/// Returns an opaque 'max' expression that can be used only inside a for loop.
+edsc_max_expr_t Max(edsc_expr_list_t args);
+
+/// Returns an opaque 'min' expression that can be used only inside a for loop.
+edsc_min_expr_t Min(edsc_expr_list_t args);
+
 /// Returns an opaque statement for an mlir::AffineForOp with the lower bound
 /// `max(lbs)` and the upper bound `min(ubs)`, and with `enclosedStmts` nested
 /// below it.
-edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_expr_list_t lbs,
-                      edsc_expr_list_t ubs, edsc_expr_t step,
-                      edsc_stmt_list_t enclosedStmts);
+edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_max_expr_t lb, edsc_min_expr_t ub,
+                      edsc_expr_t step, edsc_stmt_list_t enclosedStmts);
 
 /// Returns an opaque expression for the corresponding Binary operation.
 edsc_expr_t Add(edsc_expr_t e1, edsc_expr_t e2);

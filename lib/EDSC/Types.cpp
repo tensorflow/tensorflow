@@ -369,9 +369,9 @@ Stmt mlir::edsc::For(const Bindable &idx, Expr lb, Expr ub, Expr step,
       stmts);
 }
 
-Stmt mlir::edsc::For(ArrayRef<Expr> indices, ArrayRef<Expr> lbs,
-                     ArrayRef<Expr> ubs, ArrayRef<Expr> steps,
-                     ArrayRef<Stmt> enclosedStmts) {
+template <typename LB, typename UB>
+Stmt forNestImpl(ArrayRef<Expr> indices, ArrayRef<LB> lbs, ArrayRef<UB> ubs,
+                 ArrayRef<Expr> steps, ArrayRef<Stmt> enclosedStmts) {
   assert(!indices.empty());
   assert(indices.size() == lbs.size());
   assert(indices.size() == ubs.size());
@@ -385,6 +385,24 @@ Stmt mlir::edsc::For(ArrayRef<Expr> indices, ArrayRef<Expr> lbs,
                     llvm::ArrayRef<Stmt>{&curStmt, 1}));
   }
   return curStmt;
+}
+
+Stmt mlir::edsc::For(ArrayRef<Expr> indices, ArrayRef<Expr> lbs,
+                     ArrayRef<Expr> ubs, ArrayRef<Expr> steps,
+                     ArrayRef<Stmt> enclosedStmts) {
+  return forNestImpl(indices, lbs, ubs, steps, enclosedStmts);
+}
+
+Stmt mlir::edsc::For(const Bindable &idx, MaxExpr lb, MinExpr ub, Expr step,
+                     llvm::ArrayRef<Stmt> enclosedStmts) {
+  return MaxMinFor(idx, lb.getArguments(), ub.getArguments(), step,
+                   enclosedStmts);
+}
+
+Stmt mlir::edsc::For(llvm::ArrayRef<Expr> idxs, llvm::ArrayRef<MaxExpr> lbs,
+                     llvm::ArrayRef<MinExpr> ubs, llvm::ArrayRef<Expr> steps,
+                     llvm::ArrayRef<Stmt> enclosedStmts) {
+  return forNestImpl(idxs, lbs, ubs, steps, enclosedStmts);
 }
 
 Stmt mlir::edsc::MaxMinFor(const Bindable &idx, ArrayRef<Expr> lbs,
@@ -405,6 +423,14 @@ Stmt mlir::edsc::MaxMinFor(const Bindable &idx, ArrayRef<Expr> lbs,
   return Stmt(idx, StmtBlockLikeExpr(ExprKind::For, exprs), enclosedStmts);
 }
 
+edsc_max_expr_t Max(edsc_expr_list_t args) {
+  return mlir::edsc::Max(makeExprs(args));
+}
+
+edsc_min_expr_t Min(edsc_expr_list_t args) {
+  return mlir::edsc::Min(makeExprs(args));
+}
+
 edsc_stmt_t For(edsc_expr_t iv, edsc_expr_t lb, edsc_expr_t ub,
                 edsc_expr_t step, edsc_stmt_list_t enclosedStmts) {
   llvm::SmallVector<Stmt, 8> stmts;
@@ -422,13 +448,12 @@ edsc_stmt_t ForNest(edsc_expr_list_t ivs, edsc_expr_list_t lbs,
                   makeExprs(steps), stmts));
 }
 
-edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_expr_list_t lbs,
-                      edsc_expr_list_t ubs, edsc_expr_t step,
-                      edsc_stmt_list_t enclosedStmts) {
+edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_max_expr_t lb, edsc_min_expr_t ub,
+                      edsc_expr_t step, edsc_stmt_list_t enclosedStmts) {
   llvm::SmallVector<Stmt, 8> stmts;
   fillStmts(enclosedStmts, &stmts);
-  return Stmt(MaxMinFor(Expr(iv).cast<Bindable>(), makeExprs(lbs),
-                        makeExprs(ubs), Expr(step), stmts));
+  return Stmt(For(Expr(iv).cast<Bindable>(), MaxExpr(lb), MinExpr(ub),
+                  Expr(step), stmts));
 }
 
 StmtBlock mlir::edsc::block(ArrayRef<Bindable> args, ArrayRef<Type> argTypes,
@@ -981,6 +1006,20 @@ edsc_indexed_t makeIndexed(edsc_expr_t expr) {
 edsc_indexed_t index(edsc_indexed_t indexed, edsc_expr_list_t indices) {
   return edsc_indexed_t{indexed.base, indices};
 }
+
+MaxExpr::MaxExpr(ArrayRef<Expr> arguments) {
+  storage = Expr::globalAllocator()->Allocate<detail::ExprStorage>();
+  new (storage) detail::ExprStorage(ExprKind::Variadic, "", {}, arguments, {});
+}
+
+ArrayRef<Expr> MaxExpr::getArguments() const { return storage->operands; }
+
+MinExpr::MinExpr(ArrayRef<Expr> arguments) {
+  storage = Expr::globalAllocator()->Allocate<detail::ExprStorage>();
+  new (storage) detail::ExprStorage(ExprKind::Variadic, "", {}, arguments, {});
+}
+
+ArrayRef<Expr> MinExpr::getArguments() const { return storage->operands; }
 
 mlir_type_t makeScalarType(mlir_context_t context, const char *name,
                            unsigned bitwidth) {
