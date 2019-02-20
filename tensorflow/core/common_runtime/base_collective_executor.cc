@@ -63,7 +63,7 @@ int64 CollectiveAdapter::AlignedChunkElts(int64 elt_bytes, int64 total_elts,
       (chunk_bytes < EIGEN_MAX_ALIGN_BYTES)
           ? (EIGEN_MAX_ALIGN_BYTES - chunk_bytes)
           : (EIGEN_MAX_ALIGN_BYTES - (chunk_bytes % EIGEN_MAX_ALIGN_BYTES));
-  CHECK_EQ(0, diff % elt_bytes);
+  DCHECK_EQ(0, diff % elt_bytes);
   base_chunk_elts += (diff / elt_bytes);
   DCHECK_EQ(0, ((base_chunk_elts * elt_bytes) % EIGEN_MAX_ALIGN_BYTES))
       << "total_elts=" << total_elts << " num_chunks=" << num_chunks
@@ -78,17 +78,23 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
  public:
   // Takes ownership of output and prepares to properly alias its chunks.
   // Ownership is taken because the shape may temporarily change.
-  CollectiveAdapterImpl(Tensor* output, int64 num_chunks, Allocator* allocator)
+  CollectiveAdapterImpl(Tensor* output, int64 num_chunks, Allocator* allocator,
+                        bool align_chunks)
       : output_(std::move(*output)),
         dt_(output_.dtype()),
         old_shape_(output_.shape()),
         num_chunks_(num_chunks),
         allocator_(allocator),
         total_elts_(output_.NumElements()),
-        chunk_elts_(AlignedChunkElts(sizeof(T), total_elts_, num_chunks_)),
+        chunk_elts_(align_chunks
+                        ? AlignedChunkElts(sizeof(T), total_elts_, num_chunks_)
+                        : total_elts_ / num_chunks_),
         data_start_(reinterpret_cast<T*>(DMAHelper::base(&output_))),
         data_end_(data_start_ + total_elts_) {
-    CHECK_GT(chunk_elts_, 0);
+    if (!align_chunks) {
+      DCHECK_EQ(total_elts_, num_chunks_ * chunk_elts_);
+    }
+    DCHECK_GT(chunk_elts_, 0);
     Flatten();
   }
 
@@ -176,19 +182,24 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 }  // namespace
 
 CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
-                                         Allocator* allocator) {
+                                         Allocator* allocator,
+                                         bool align_chunks) {
   switch (output->dtype()) {
     case DT_FLOAT:
-      return new CollectiveAdapterImpl<float>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<float>(output, num_chunks, allocator,
+                                              align_chunks);
       break;
     case DT_DOUBLE:
-      return new CollectiveAdapterImpl<double>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<double>(output, num_chunks, allocator,
+                                               align_chunks);
       break;
     case DT_INT32:
-      return new CollectiveAdapterImpl<int32>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<int32>(output, num_chunks, allocator,
+                                              align_chunks);
       break;
     case DT_INT64:
-      return new CollectiveAdapterImpl<int64>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<int64>(output, num_chunks, allocator,
+                                              align_chunks);
       break;
     default:
       LOG(FATAL) << "Unsupported type " << output->dtype()
@@ -227,6 +238,7 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
 
   Tensor* output = ctx->mutable_output(0);
   const Tensor* input = (col_params.instance.type == REDUCTION_COLLECTIVE ||
+                         col_params.instance.type == GATHER_COLLECTIVE ||
                          (col_params.instance.type == BROADCAST_COLLECTIVE &&
                           col_params.is_source))
                             ? &ctx->input(0)

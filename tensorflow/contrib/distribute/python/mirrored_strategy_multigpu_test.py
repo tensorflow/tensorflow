@@ -116,7 +116,8 @@ class MirroredTwoDeviceDistributionTest(
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
 
-  def testMakeInputFnIteratorWithCallable(self, distribution):
+  # TODO(b/124344198): Re-enable after fixing this flaky test.
+  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
     def fn():
       dataset = dataset_ops.Dataset.range(2).interleave(
           (lambda _: dataset_ops.Dataset.range(10)), cycle_length=2)
@@ -1455,7 +1456,7 @@ class MultiWorkerMirroredStrategyTest(
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess)
 
-  def testMakeInputFnIteratorWithCallable(self, distribution):
+  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
     self._configure_distribution_strategy(distribution)
     def fn():
       dataset = dataset_ops.Dataset.range(100)

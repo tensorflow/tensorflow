@@ -21,28 +21,25 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler_analysis.grpc.pb.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/platform/grpc_services.h"
 
 namespace tensorflow {
 namespace profiler {
 namespace client {
-
-using ::tensorflow::grpc::TPUProfileAnalysis;
-using ::tensorflow::grpc::TPUProfiler;
 
 constexpr uint64 kMaxEvents = 1000000;
 
 string GetCurrentTimeStampAsString() {
   char s[128];
   std::time_t t = std::time(nullptr);
-  DCHECK_NE(std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t)), 0);
+  auto result = std::strftime(s, sizeof(s), "%F_%T", std::localtime(&t));
+  DCHECK_NE(result, 0);
   return s;
 }
 
@@ -94,8 +91,8 @@ bool Profile(const string& service_addr, const string& logdir, int duration_ms,
   // `ValidateHostPortPair` checks for empty host string case.
   channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
                       std::numeric_limits<int32>::max());
-  std::unique_ptr<TPUProfiler::Stub> stub =
-      TPUProfiler::NewStub(::grpc::CreateCustomChannel(
+  std::unique_ptr<grpc::ProfilerService::Stub> stub =
+      grpc::ProfilerService::NewStub(::grpc::CreateCustomChannel(
           "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
           channel_args));
   ProfileResponse response;
@@ -143,8 +140,8 @@ bool NewSession(const string& service_addr,
   // 2. ipv4:host:port or ipv6:[host]:port
   // We might need to change the prefix which depends on what TPU name resolver
   // will give us.
-  std::unique_ptr<TPUProfileAnalysis::Stub> stub =
-      TPUProfileAnalysis::NewStub(::grpc::CreateCustomChannel(
+  std::unique_ptr<grpc::ProfileAnalysis::Stub> stub =
+      grpc::ProfileAnalysis::NewStub(::grpc::CreateCustomChannel(
           "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
           channel_args));
   NewProfileSessionResponse new_session_response;
@@ -222,8 +219,8 @@ void StartMonitoring(const tensorflow::string& service_addr, int duration_ms,
     ::grpc::ChannelArguments channel_args;
     channel_args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH,
                         std::numeric_limits<int32>::max());
-    std::unique_ptr<TPUProfiler::Stub> stub =
-        TPUProfiler::NewStub(::grpc::CreateCustomChannel(
+    std::unique_ptr<grpc::ProfilerService::Stub> stub =
+        grpc::ProfilerService::NewStub(::grpc::CreateCustomChannel(
             "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
             channel_args));
     MonitorResponse response;

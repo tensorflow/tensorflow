@@ -4,7 +4,7 @@ tf_class {
   is_instance: "<class \'tensorflow.python.keras.engine.training.Model\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.network.Network\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
-  is_instance: "<class \'tensorflow.python.training.checkpointable.base.Checkpointable\'>"
+  is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
   member {
     name: "activity_regularizer"
@@ -153,6 +153,10 @@ tf_class {
   member_method {
     name: "call"
     argspec: "args=[\'self\', \'inputs\', \'training\', \'mask\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "clear_losses"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "compile"

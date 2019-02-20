@@ -66,11 +66,26 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
   return kTfLiteOk;
 }
 
+TfLiteStatus CheckCondOutput(TfLiteContext* context,
+                             const TfLiteTensor* cond_output) {
+  // The condition output must be a single boolean value.
+  TF_LITE_ENSURE_EQ(context, cond_output->type, kTfLiteBool);
+  if (cond_output->dims->size == 0) {
+    // It's okay if it's a 0D scalar.
+    return kTfLiteOk;
+  }
+  // Otherwise it must be 1D with shape [1].
+  TF_LITE_ENSURE_EQ(context, cond_output->dims->size, 1);
+  TF_LITE_ENSURE_EQ(context, cond_output->dims->data[0], 1);
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 struct OpData {
   int cond_subgraph_index;
   int body_subgraph_index;
+  bool cond_has_dynamic_output_tensors;
   bool body_has_dynamic_output_tensors;
 };
 
@@ -80,6 +95,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
   op_data->cond_subgraph_index = m["cond_subgraph_index"].AsInt32();
   op_data->body_subgraph_index = m["body_subgraph_index"].AsInt32();
+  op_data->cond_has_dynamic_output_tensors = false;
   op_data->body_has_dynamic_output_tensors = false;
   return op_data;
 }
@@ -123,11 +139,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // This should rarely happens. In most cases the output is static with shape
   // [1]. However theoretically intermediate tensors in the cond subgraph
   // can be dynamic.
-  TF_LITE_ENSURE(context, !IsDynamicTensor(cond_output));
-  // The condition output must be a single boolean value.
-  TF_LITE_ENSURE_EQ(context, cond_output->type, kTfLiteBool);
-  TF_LITE_ENSURE_EQ(context, cond_output->dims->size, 1);
-  TF_LITE_ENSURE_EQ(context, cond_output->dims->data[0], 1);
+  if (IsDynamicTensor(cond_output)) {
+    op_data->cond_has_dynamic_output_tensors = true;
+  } else {
+    TF_LITE_ENSURE_STATUS(CheckCondOutput(context, cond_output));
+  }
 
   // Prepare and check the body subgraph.
   TF_LITE_ENSURE_OK(
@@ -226,6 +242,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     cond_subgraph->EnsureTensorDataIsReadable(cond_subgraph_output_index);
     TfLiteTensor* cond_output =
         cond_subgraph->tensor(cond_subgraph_output_index);
+    if (op_data->cond_has_dynamic_output_tensors) {
+      TF_LITE_ENSURE_STATUS(CheckCondOutput(context, cond_output));
+    }
 
     if (!cond_output->data.b[0]) {
       break;
@@ -271,6 +290,7 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         CopyTensorsShape(context, cond_subgraph, cond_subgraph->inputs(),
                          this_subgraph, TfLiteIntArrayView(node->outputs)));
   }
+
   TF_LITE_ENSURE_OK(
       context,
       CopyTensorsData(context, cond_subgraph, cond_subgraph->inputs(),

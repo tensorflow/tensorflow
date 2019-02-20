@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
@@ -28,6 +29,8 @@ namespace {
 
 // See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following ops.
+
+constexpr char kTextLineDatasetName[] = "TextLine";
 
 class TextLineDatasetOp : public DatasetOpKernel {
  public:
@@ -91,8 +94,8 @@ class TextLineDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::TextLine")});
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::", kTextLineDatasetName)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -142,6 +145,8 @@ class TextLineDatasetOp : public DatasetOpKernel {
 
             if (s.ok()) {
               // Produce the line as output.
+              metrics::RecordTFDataBytesRead(kTextLineDatasetName,
+                                             line_contents.size());
               out_tensors->emplace_back(ctx->allocator({}), DT_STRING,
                                         TensorShape({}));
               out_tensors->back().scalar<string>()() = std::move(line_contents);
@@ -268,9 +273,12 @@ class TextLineDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("TextLineDataset").Device(DEVICE_CPU),
                         TextLineDatasetOp);
 
+constexpr char kFixedLengthRecordDatasetName[] = "FixedLengthRecord";
+
 class FixedLengthRecordDatasetOp : public DatasetOpKernel {
  public:
   using DatasetOpKernel::DatasetOpKernel;
+
   explicit FixedLengthRecordDatasetOp(OpKernelConstruction* ctx)
       : DatasetOpKernel(ctx),
         op_version_(ctx->def().op() == "FixedLengthRecordDataset" ? 1 : 2) {}
@@ -346,10 +354,12 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
       if (compression_type_.empty()) {
         return absl::make_unique<UncompressedIterator>(
             UncompressedIterator::Params{
-                this, strings::StrCat(prefix, "::FixedLengthRecord")});
+                this,
+                strings::StrCat(prefix, "::", kFixedLengthRecordDatasetName)});
       } else {
         return absl::make_unique<CompressedIterator>(CompressedIterator::Params{
-            this, strings::StrCat(prefix, "::FixedLengthRecord")});
+            this,
+            strings::StrCat(prefix, "::", kFixedLengthRecordDatasetName)});
       }
     }
 
@@ -411,6 +421,9 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
               string record;
               TF_RETURN_IF_ERROR(
                   input_buffer_->ReadNBytes(dataset()->record_bytes_, &record));
+              metrics::RecordTFDataBytesRead(kFixedLengthRecordDatasetName,
+                                             dataset()->record_bytes_);
+
               // Produce the record as output.
               Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
               record_tensor.scalar<string>()() = record;
@@ -532,6 +545,9 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
                 string record;
                 TF_RETURN_IF_ERROR(buffered_input_stream_->ReadNBytes(
                     dataset()->record_bytes_, &record));
+                metrics::RecordTFDataBytesRead(kFixedLengthRecordDatasetName,
+                                               dataset()->record_bytes_);
+
                 // Produce the record as output.
                 Tensor record_tensor(ctx->allocator({}), DT_STRING, {});
                 record_tensor.scalar<string>()() = std::move(record);
@@ -544,6 +560,8 @@ class FixedLengthRecordDatasetOp : public DatasetOpKernel {
               Status s = buffered_input_stream_->ReadNBytes(
                   dataset()->record_bytes_, &record);
               if (s.ok()) {
+                metrics::RecordTFDataBytesRead(kFixedLengthRecordDatasetName,
+                                               dataset()->record_bytes_);
                 lookahead_cache_.append(record);
                 record = lookahead_cache_.substr(0, dataset()->record_bytes_);
                 lookahead_cache_ =
@@ -717,6 +735,8 @@ REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordDataset").Device(DEVICE_CPU),
 REGISTER_KERNEL_BUILDER(Name("FixedLengthRecordDatasetV2").Device(DEVICE_CPU),
                         FixedLengthRecordDatasetOp);
 
+constexpr char kTFRecordDatasetName[] = "TFRecord";
+
 class TFRecordDatasetOp : public DatasetOpKernel {
  public:
   using DatasetOpKernel::DatasetOpKernel;
@@ -766,8 +786,8 @@ class TFRecordDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return absl::make_unique<Iterator>(
-          Iterator::Params{this, strings::StrCat(prefix, "::TFRecord")});
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::", kTFRecordDatasetName)});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -816,6 +836,9 @@ class TFRecordDatasetOp : public DatasetOpKernel {
             Status s =
                 reader_->ReadRecord(&out_tensors->back().scalar<string>()());
             if (s.ok()) {
+              metrics::RecordTFDataBytesRead(
+                  kTFRecordDatasetName,
+                  out_tensors->back().scalar<string>()().size());
               *end_of_sequence = false;
               return Status::OK();
             }

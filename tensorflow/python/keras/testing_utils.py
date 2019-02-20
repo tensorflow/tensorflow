@@ -160,7 +160,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
 
   # test training mode (e.g. useful for dropout tests)
   # Rebuild the model to avoid the graph being reused between predict() and
@@ -209,7 +209,7 @@ def layer_test(layer_cls, kwargs=None, input_shape=None, input_dtype=None,
     weights = model.get_weights()
     recovered_model.set_weights(weights)
     output = recovered_model.predict(input_data)
-    np.testing.assert_allclose(output, actual_output, rtol=1e-3)
+    np.testing.assert_allclose(output, actual_output, rtol=2e-3)
 
   # for further checks in the caller function
   return actual_output

@@ -583,7 +583,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
       b_.getVoidTy(),
       {b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
        b_.getInt8PtrTy()->getPointerTo(), b_.getInt32Ty(),
-       b_.getInt32Ty()->getPointerTo(), b_.getInt8PtrTy(),
+       b_.getInt32Ty()->getPointerTo(), b_.getInt1Ty(), b_.getInt8PtrTy(),
        b_.getInt64Ty()->getPointerTo(), less_than_function->getType()},
       /*isVarArg=*/false);
   auto* key_value_sort_func = llvm::dyn_cast<llvm::Function>(
@@ -616,8 +616,8 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
        {b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
         b_.getInt64(lower_dimensions), values,
         b_.getInt32(sort->operand_count()), sizes,
-        GetExecutableRunOptionsArgument(), GetProfileCountersArgument(),
-        less_than_function});
+        b_.getInt1(sort->is_stable()), GetExecutableRunOptionsArgument(),
+        GetProfileCountersArgument(), less_than_function});
 
   if (sort->values_count() > 0) {
     llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_,

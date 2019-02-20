@@ -1038,6 +1038,31 @@ class ControlFlowTest(test.TestCase):
     r = control_flow_ops.cond(foo()[1], lambda: 1.0, lambda: 2.0)
     self.assertEqual(self.evaluate(r), 1.0)
 
+  @test_util.run_v1_only("Tests Session.run() pruning logic.")
+  def testCondFeedConstantPredicate(self):
+    with self.cached_session() as sess:
+      value = constant_op.constant(37.0)
+      predicate = constant_op.constant(True)
+      cond_output = control_flow_ops.cond(
+          predicate, lambda: constant_op.constant(0.0), lambda: value)
+      result = array_ops.identity(cond_output)
+      self.assertEqual(37.0, sess.run(result, feed_dict={predicate: False}))
+      self.assertEqual(0.0, sess.run(result, feed_dict={predicate: True}))
+      self.assertEqual(0.0, sess.run(result))
+
+  @test_util.run_v1_only("Tests Session.run() pruning logic.")
+  def testCondFeedPlaceholderWithDefaultPredicate(self):
+    with self.cached_session() as sess:
+      value = constant_op.constant(37.0)
+      predicate = array_ops.placeholder_with_default(
+          constant_op.constant(True), [])
+      cond_output = control_flow_ops.cond(
+          predicate, lambda: constant_op.constant(0.0), lambda: value)
+      result = array_ops.identity(cond_output)
+      self.assertAllEqual(37.0, sess.run(result, feed_dict={predicate: False}))
+      self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
+      self.assertAllEqual(0.0, sess.run(result))
+
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
 
@@ -1785,6 +1810,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensor(self):
+    if context.executing_eagerly():
+      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
     c = lambda i, _: i < 10
@@ -1828,6 +1855,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensorRaggedRank2(self):
+    if context.executing_eagerly():
+      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[[1, 2], [3], [4, 5, 6]],
                                      [[], [8, 9, 10]]])

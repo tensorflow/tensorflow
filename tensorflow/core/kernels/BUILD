@@ -160,7 +160,6 @@ tf_kernel_library(
     name = "clustering_ops",
     prefix = "clustering_ops",
     deps = [
-        "//tensorflow/core:clustering_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
@@ -191,7 +190,6 @@ tf_kernel_library(
     ]),
     prefix = "collective_ops",
     deps = [
-        "//tensorflow/core:collective_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
@@ -276,7 +274,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
     alwayslink = 1,
@@ -367,7 +364,6 @@ tf_kernel_library(
         "//tensorflow/core/nccl:nccl_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:gpu_headers_lib",
-        "//tensorflow/core:nccl_ops_op_lib",
     ]),
 )
 
@@ -569,7 +565,6 @@ cc_library(
         ":concat_lib_hdrs",
         ":ops_util_hdrs",
         ":split_lib_hdrs",
-        "//tensorflow/core:batch_ops_op_lib",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/kernels/batching_util:periodic_function_dynamic",
@@ -790,7 +785,6 @@ ARRAY_DEPS = [
     ":ops_util",
     ":transpose_functor",
     "//tensorflow/core:array_grad",
-    "//tensorflow/core:array_ops_op_lib",
     "//tensorflow/core:core_cpu",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
@@ -819,7 +813,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
-        "//tensorflow/core:set_ops_op_lib",
         "//third_party/eigen3",
     ],
 )
@@ -1192,7 +1185,6 @@ tf_kernel_library(
     srcs = ["ragged_gather_op.cc"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:ragged_array_ops_op_lib",
     ],
 )
 
@@ -1204,7 +1196,6 @@ tf_cc_test(
         ":ops_testutil",
         ":ragged_gather_op",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ragged_array_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1216,7 +1207,6 @@ tf_kernel_library(
     srcs = ["ragged_range_op.cc"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:ragged_math_ops_op_lib",
     ],
 )
 
@@ -1227,7 +1217,6 @@ tf_cc_test(
         ":ops_testutil",
         ":ragged_range_op",
         "//tensorflow/core:framework",
-        "//tensorflow/core:ragged_math_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1239,7 +1228,6 @@ tf_kernel_library(
     srcs = ["ragged_tensor_to_sparse_kernel.cc"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:ragged_conversion_ops_op_lib",
     ],
 )
 
@@ -1252,7 +1240,6 @@ tf_cc_test(
         ":ragged_tensor_to_sparse_kernel",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:ragged_conversion_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
@@ -1266,7 +1253,6 @@ tf_kernel_library(
     deps = [
         ":bounds_check_lib",
         ":gpu_util_hdrs",
-        "//tensorflow/core:cudnn_rnn_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -1342,7 +1328,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -1867,7 +1852,6 @@ tf_kernel_library(
     prefix = "candidate_sampler_ops",
     deps = [
         ":range_sampler",
-        "//tensorflow/core:candidate_sampling_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1901,7 +1885,6 @@ tf_kernel_library(
     name = "control_flow_ops",
     prefix = "control_flow_ops",
     deps = [
-        "//tensorflow/core:control_flow_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
     ],
@@ -1913,7 +1896,6 @@ tf_kernel_library(
     deps = [
         ":bounds_check",
         ":ops_util",
-        "//tensorflow/core:ctc_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/ctc:ctc_beam_search_lib",
@@ -1994,7 +1976,6 @@ DATA_FLOW_DEPS = [
     ":typed_queue",
     "//third_party/eigen3",
     "//tensorflow/core:core_cpu",
-    "//tensorflow/core:data_flow_ops_op_lib",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -2059,7 +2040,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:scoped_allocator_ops_op_lib",
     ],
 )
 
@@ -2078,7 +2058,6 @@ tf_cuda_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
@@ -2126,7 +2105,6 @@ tf_kernel_library(
 DYNAMIC_DEPS = [
     ":bounds_check",
     "//tensorflow/core:core_cpu",
-    "//tensorflow/core:data_flow_ops_op_lib",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -2159,7 +2137,6 @@ LOOKUP_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:lookup_ops_op_lib",
 ]
 
 tf_kernel_library(
@@ -2198,7 +2175,6 @@ tf_kernel_library(
     deps = [
         ":lookup_table_init_op",
         ":lookup_table_op",
-        "//tensorflow/core:checkpoint_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//third_party/eigen3",
@@ -2209,7 +2185,6 @@ tf_kernel_library(
     name = "load_and_remap_matrix_op",
     srcs = ["load_and_remap_matrix_op.cc"],
     deps = [
-        "//tensorflow/core:checkpoint_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -2354,7 +2329,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:resource_variable_ops_op_lib",
         "@com_google_absl//absl/strings",
     ],
 )
@@ -2372,7 +2346,6 @@ tf_kernel_library(
         ":fill_functor",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:list_ops_op_lib",
         "//third_party/eigen3",
     ],
 )
@@ -2383,7 +2356,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:user_ops_op_lib",
     ],
 )
 
@@ -2406,7 +2378,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//third_party/eigen3",
@@ -2419,7 +2390,6 @@ tf_kernel_library(
     deps = [
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
-        "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
@@ -2464,7 +2434,6 @@ IMAGE_DEPS = [
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:gif_internal",
-    "//tensorflow/core:image_ops_op_lib",
     "//tensorflow/core:jpeg_internal",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
@@ -2805,7 +2774,6 @@ cc_library(
 IO_DEPS = [
     ":ops_util",
     "//tensorflow/core:framework",
-    "//tensorflow/core:io_ops_op_lib",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
@@ -2849,7 +2817,6 @@ SAVE_RESTORE_DEPS = [
     ":bounds_check_lib",
     ":save_restore_tensor",
     "//tensorflow/core:framework",
-    "//tensorflow/core:io_ops_op_lib",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:protos_all_cc",
@@ -2969,7 +2936,6 @@ LINALG_DEPS = [
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:linalg_ops_op_lib",
 ] + if_cuda([
     ":cuda_solvers",
     ":transpose_functor",
@@ -3119,7 +3085,6 @@ LOGGING_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:logging_ops_op_lib",
     "//tensorflow/core:protos_all_cc",
 ]
 
@@ -3191,7 +3156,6 @@ tf_kernel_library(
         ":bounds_check",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:manip_ops_op_lib",
         "//third_party/eigen3",
     ],
 )
@@ -3223,7 +3187,6 @@ MATH_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:math_grad",
-    "//tensorflow/core:math_ops_op_lib",
     "//third_party/eigen3",
 ]
 
@@ -3334,7 +3297,7 @@ tf_kernel_library(
 tf_kernel_library(
     name = "cwise_op",
     prefix = "cwise_op",
-    deps = MATH_DEPS + ["//tensorflow/core:bitwise_ops_op_lib"],
+    deps = MATH_DEPS,
 )
 
 tf_kernel_library(
@@ -3353,7 +3316,6 @@ tf_kernel_library(
     name = "fft_ops",
     prefix = "fft_ops",
     deps = MATH_DEPS + [
-        "//tensorflow/core:spectral_ops_op_lib",
     ] + if_cuda([
         "//tensorflow/core/platform/default/build_config:cufft_plugin",
     ]),
@@ -3560,10 +3522,7 @@ tf_cuda_cc_test(
         ":quantized_ops",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:client_session",
-        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:framework",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -3801,7 +3760,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + select({
         ":xsmm_convolutions": [
             "@libxsmm_archive//:xsmm_avx",
@@ -3831,7 +3789,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + if_cuda([
         "@cub_archive//:cub",
         "@local_config_cuda//cuda:cudnn_header",
@@ -3851,7 +3808,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + if_cuda([
         "@local_config_cuda//cuda:cudnn_header",
     ]),
@@ -3898,9 +3854,8 @@ NN_DEPS = [
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
     "//tensorflow/core:nn_grad",
-    "//tensorflow/core:nn_ops_op_lib",
     "//third_party/eigen3",
-] + if_mkl(["//tensorflow/core:mkl_nn_ops_op_lib"])
+]
 
 tf_kernel_library(
     name = "batch_norm_op",
@@ -4036,7 +3991,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:nn_grad",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + if_cuda(["@cub_archive//:cub"]),
 )
 
@@ -4145,7 +4099,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:nn_ops_op_lib",
         "//tensorflow/core:stream_executor",
         "//third_party/eigen3",
     ],
@@ -4189,7 +4142,6 @@ tf_kernel_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ],
 )
@@ -4271,7 +4223,6 @@ cc_library(
 PARSING_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:parsing_ops_op_lib",
     "//tensorflow/core:proto_text",
     "//tensorflow/core:protos_all_cc",
 ]
@@ -4340,7 +4291,6 @@ RANDOM_OPS_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:random_ops_op_lib",
 ]
 
 tf_kernel_library(
@@ -4404,7 +4354,6 @@ tf_kernel_library(
         ":random_op",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:stateless_random_ops_op_lib",
     ],
 )
 
@@ -4419,8 +4368,6 @@ cc_library(
 REQUIRED_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:no_op_op_lib",
-    "//tensorflow/core:sendrecv_ops_op_lib",
 ]
 
 tf_kernel_library(
@@ -4481,7 +4428,6 @@ cc_library(
 SPARSE_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:sparse_ops_op_lib",
 ]
 
 tf_kernel_library(
@@ -4729,7 +4675,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:sdca_ops_op_lib",
         "//third_party/eigen3",
         "@farmhash_archive//:farmhash",
     ],
@@ -4769,7 +4714,6 @@ STATE_DEPS = [
     "//third_party/eigen3",
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
-    "//tensorflow/core:state_ops_op_lib",
 ] + if_sycl(["//tensorflow/core:sycl_runtime"])
 
 tf_kernel_library(
@@ -4907,7 +4851,6 @@ STRING_DEPS = [
     "//tensorflow/core:framework",
     "//tensorflow/core:lib",
     "//tensorflow/core:lib_internal",
-    "//tensorflow/core:string_ops_op_lib",
 ]
 
 tf_kernel_library(
@@ -5058,7 +5001,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:string_ops_op_lib",
         "//third_party/eigen3",
         "//third_party/icu/data:conversion_data",
         "@icu//:common",
@@ -5080,7 +5022,6 @@ tf_kernel_library(
         ":variable_ops",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:training_ops_op_lib",
         "//third_party/eigen3",
     ],
 )
@@ -5142,7 +5083,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:random_ops_op_lib",
     ],
 )
 
@@ -5170,7 +5110,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:random_ops_op_lib",
     ],
 )
 
@@ -6078,12 +6017,9 @@ tf_kernel_library(
         ":ops_util",
         ":pooling_ops",
         ":quantization_utils",
-        "//tensorflow/core:array_ops_op_lib",
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
-        "//tensorflow/core:math_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
         "@gemmlowp",
     ],
@@ -6700,7 +6636,6 @@ tf_kernel_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:remote_fused_graph_ops_op_lib",
     ],
 )
 
@@ -6855,8 +6790,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
 
@@ -6864,7 +6797,7 @@ tf_cc_test_mkl(
     name = "mkl_conv_ops_test",
     size = "small",
     srcs = ["mkl_conv_ops_test.cc"],
-    tags = ["no_mac"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -6907,8 +6840,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
 
@@ -6927,8 +6858,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
 
@@ -6942,8 +6871,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ] + mkl_deps(),
 )
@@ -6958,8 +6885,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
         "//third_party/eigen3",
     ] + mkl_deps(),
 )
@@ -7057,7 +6982,7 @@ tf_cc_test_mkl(
     name = "mkl_requantize_ops_test",
     size = "small",
     srcs = ["mkl_requantize_ops_test.cc"],
-    tags = ["no_mac"],  #TODO(penporn): Re-enable the test on MacOS.
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_requantize_ops",
         ":ops_testutil",
@@ -7162,7 +7087,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core:summary_ops_op_lib",
         "//tensorflow/core/lib/db:sqlite",
         "//tensorflow/core/summary:schema",
         "//tensorflow/core/summary:summary_db_writer",
@@ -7176,7 +7100,6 @@ tf_kernel_library(
         "decode_proto_op.cc",
     ],
     deps = [
-        "//tensorflow/core:decode_proto_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:decode",
@@ -7191,7 +7114,6 @@ tf_kernel_library(
     name = "encode_proto_op",
     srcs = ["encode_proto_op.cc"],
     deps = [
-        "//tensorflow/core:encode_proto_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core/util/proto:descriptors",
@@ -7209,7 +7131,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:rpc_ops_op_lib",
         "//tensorflow/core/util/rpc:call_container",
         "//tensorflow/core/util/rpc:rpc_factory",
         "//tensorflow/core/util/rpc:rpc_factory_registry",
@@ -7222,7 +7143,6 @@ tf_kernel_library(
     srcs = ["unicode_script_op.cc"],
     deps = [
         "//tensorflow/core:framework",
-        "//tensorflow/core:string_ops_op_lib",
         "@icu//:common",
     ],
 )

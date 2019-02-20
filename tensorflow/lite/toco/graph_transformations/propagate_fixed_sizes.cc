@@ -1517,7 +1517,7 @@ void ProcessPadV2Operator(Model* model, PadV2Operator* op) {
   output_array.copy_shape(output_shape);
 }
 
-void ProcessRankOperator(Model* model, RankOperator* op) {
+void ProcessRankOperator(Model* model, TensorFlowRankOperator* op) {
   CHECK_GE(op->inputs.size(), 1);
   CHECK_EQ(op->outputs.size(), 1);
   auto& output_array = model->GetArray(op->outputs[0]);
@@ -2219,7 +2219,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
       ProcessRangeOperator(model, static_cast<RangeOperator*>(op));
       break;
     case OperatorType::kRank:
-      ProcessRankOperator(model, static_cast<RankOperator*>(op));
+      ProcessRankOperator(model, static_cast<TensorFlowRankOperator*>(op));
       break;
     case OperatorType::kShape:
       ProcessShapeOperator(model, static_cast<TensorFlowShapeOperator*>(op));

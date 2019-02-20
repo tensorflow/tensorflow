@@ -31,7 +31,7 @@ class VersionedTypeRegistration(object):
 
     Args:
       object_factory: A callable which takes a SavedUserObject proto and returns
-        a checkpointable object. Dependencies are added later via `setter`.
+        a trackable object. Dependencies are added later via `setter`.
       version: An integer, the producer version of this wrapper type. When
         making incompatible changes to a wrapper, add a new
         `VersionedTypeRegistration` with an incremented `version`. The most
@@ -45,11 +45,11 @@ class VersionedTypeRegistration(object):
         with this object. `min_consumer_version` should be set to the lowest
         version number which can successfully load protos saved by this
         object. If no matching registration is available on load, the object
-        will be revived with a generic checkpointable type.
+        will be revived with a generic trackable type.
 
         `min_consumer_version` and `bad_consumers` are a blunt tool, and using
         them will generally break forward compatibility: previous versions of
-        TensorFlow will revive newly saved objects as opaque checkpointable
+        TensorFlow will revive newly saved objects as opaque trackable
         objects rather than wrapped objects. When updating wrappers, prefer
         saving new information but preserving compatibility with previous
         wrapper versions. They are, however, useful for ensuring that
@@ -83,7 +83,7 @@ class VersionedTypeRegistration(object):
             bad_consumers=self._bad_consumers))
 
   def from_proto(self, proto):
-    """Recreate a checkpointable object from a SavedUserObject proto."""
+    """Recreate a trackable object from a SavedUserObject proto."""
     return self._object_factory(proto)
 
   def should_load(self, proto):
@@ -111,7 +111,7 @@ def register_revived_type(identifier, predicate, versions):
   Args:
     identifier: A unique string identifying this class of objects.
     predicate: A Boolean predicate for this registration. Takes a
-      checkpointable object as an argument. If True, `type_registration` may be
+      trackable object as an argument. If True, `type_registration` may be
       used to save and restore the object.
     versions: A list of `VersionedTypeRegistration` objects.
   """
@@ -138,7 +138,7 @@ def register_revived_type(identifier, predicate, versions):
 
 
 def serialize(obj):
-  """Create a SavedUserObject from a checkpointable object."""
+  """Create a SavedUserObject from a trackable object."""
   for identifier in _TYPE_IDENTIFIERS:
     predicate, versions = _REVIVED_TYPE_REGISTRY[identifier]
     if predicate(obj):
@@ -148,15 +148,15 @@ def serialize(obj):
 
 
 def deserialize(proto):
-  """Create a checkpointable object from a SavedUserObject proto.
+  """Create a trackable object from a SavedUserObject proto.
 
   Args:
     proto: A SavedUserObject to deserialize.
 
   Returns:
-    A tuple of (checkpointable, assignment_fn) where assignment_fn has the same
+    A tuple of (trackable, assignment_fn) where assignment_fn has the same
     signature as setattr and should be used to add dependencies to
-    `checkpointable` when they are available.
+    `trackable` when they are available.
   """
   _, type_registrations = _REVIVED_TYPE_REGISTRY.get(
       proto.identifier, (None, None))

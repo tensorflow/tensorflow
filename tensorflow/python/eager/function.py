@@ -21,7 +21,6 @@ from __future__ import print_function
 
 import collections
 import functools
-import re
 import threading
 import types as types_lib
 import weakref
@@ -60,13 +59,6 @@ from tensorflow.python.util import tf_inspect
 
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
-
-# TODO(scottzhu): Update this to allow arbitrary attribute names in future.
-WHITELIST_FUNCTION_ATTRIBUTE_REGEX = [
-    "experimental_.*",
-    FORWARD_FUNCTION_ATTRIBUTE_NAME,
-    BACKWARD_FUNCTION_ATTRIBUTE_NAME
-]
 
 CacheKey = collections.namedtuple("CacheKey", [
     "input_signature", "parent_graph", "device_functions", "colocation_stack",
@@ -108,12 +100,6 @@ def _parse_func_attrs(attributes):
   """
   attrs = {}
   for key, value in attributes.items():
-    if not any(re.match(reg, key)
-               for reg in WHITELIST_FUNCTION_ATTRIBUTE_REGEX):
-      raise ValueError("Attribute name is not whitelisted. "
-                       "Whitelisted: prefix %s, got: %s" %
-                       (WHITELIST_FUNCTION_ATTRIBUTE_REGEX, key))
-
     if isinstance(value, attr_value_pb2.AttrValue):
       attrs[key] = value
     # bool type check has to happen before int since bool is a subclass of int.
@@ -219,6 +205,8 @@ class _EagerDefinedFunction(object):
         [t._as_tf_output() for t in inputs],  # pylint: disable=protected-access
         [t._as_tf_output() for t in outputs],  # pylint: disable=protected-access
         [],
+        [], # control_outputs
+        [], # control_output_names
         None,
         compat.as_str(""))
 
@@ -858,6 +846,10 @@ class FunctionSpec(object):
       python_function_to_inspect = python_function.func
       args_to_prepend = python_function.args or tuple()
       kwargs_to_include = python_function.keywords or {}
+      if input_signature is not None:
+        # TODO(b/124441704): Add support for input_signature + partial.
+        raise NotImplementedError(
+            "Missing support for input_signature when using partial functions.")
     else:
       python_function_to_inspect = python_function
       args_to_prepend = tuple()
@@ -959,6 +951,21 @@ class FunctionSpec(object):
         argument when an input signature is specified, or when the inputs
         do not conform to the input signature.
     """
+    if self._input_signature is not None:
+      if len(args) > len(self._input_signature):
+        raise TypeError(
+            "When input_signature is provided, only pass arguments "
+            "covered by it. Received %d argument(s)." % len(args))
+      for arg in six.iterkeys(kwargs):
+        index = self._args_to_indices.get(arg, None)
+        if index is None:
+          raise TypeError(
+              "Function got an unexpected keyword argument %s" % arg)
+        if index >= len(self._input_signature):
+          raise TypeError(
+              "When input_signature is provided, only pass arguments "
+              "covered by it. Received argument %s." % arg)
+
     args = self._args_to_prepend + args
     kwargs = dict(kwargs, **self._kwargs_to_include)
     if not kwargs:
@@ -990,40 +997,80 @@ class FunctionSpec(object):
         # opposed to named arguments called in a keyword-like fashion.
         kwargs.pop(arg)
       inputs = args + _deterministic_dict_values(arg_indices_to_values)
-    flat_inputs = nest.flatten(inputs)
 
-    # Check for NumPy arrays in arguments and convert them to Tensors.
-    # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
-    # finding a way to store them directly in the cache key (currently not
-    # possible since ndarrays are not hashable).
-    need_packing = False
-    for index, value in enumerate(flat_inputs):
-      if type(value) == np.ndarray:
-        flat_inputs[index] = constant_op.constant(value)
-        need_packing = True
-    if need_packing:
-      inputs = nest.pack_sequence_as(
-          structure=inputs, flat_sequence=flat_inputs)
     if self._input_signature is None:
+      inputs = _convert_numpy_inputs(inputs)
       return inputs, kwargs
     else:
       assert not kwargs
-      signature_relevant_inputs = inputs[:len(self._input_signature)]
-      if not is_same_structure(self._input_signature,
-                               signature_relevant_inputs):
-        raise ValueError("Structure of Python function inputs does not match "
-                         "input_signature.")
-      signature_inputs_flat = nest.flatten(signature_relevant_inputs)
-      if any(
-          not pywrap_tensorflow.IsTensor(arg) for arg in signature_inputs_flat):
-        raise ValueError("When input_signature is provided, all inputs to "
-                         "the Python function must be Tensors.")
-      if any(not spec.is_compatible_with(other) for spec, other in zip(
-          self._flat_input_signature, signature_inputs_flat)):
-        raise ValueError("Python inputs incompatible with input_signature: "
-                         "inputs (%s), input_signature (%s)" %
-                         (str(inputs), str(self._input_signature)))
+      inputs = _convert_inputs_to_signature(
+          inputs,
+          self._input_signature,
+          self._flat_input_signature)
       return inputs, {}
+
+
+def _convert_numpy_inputs(inputs):
+  """Convert numpy array inputs to tensors."""
+  flat_inputs = nest.flatten(inputs)
+
+  # Check for NumPy arrays in arguments and convert them to Tensors.
+  # TODO(nareshmodi): Skip ndarray conversion to tensor altogether, perhaps
+  # finding a way to store them directly in the cache key (currently not
+  # possible since ndarrays are not hashable).
+  need_packing = False
+  for index, value in enumerate(flat_inputs):
+    if type(value) == np.ndarray:
+      flat_inputs[index] = constant_op.constant(value)
+      need_packing = True
+  if need_packing:
+    return nest.pack_sequence_as(
+        structure=inputs, flat_sequence=flat_inputs)
+  else:
+    return inputs
+
+
+def _convert_inputs_to_signature(inputs, input_signature, flat_input_signature):
+  """Convert inputs to pass into a function with an explicit signature."""
+  try:
+    # TODO(b/124370185): Use all elements as inputs to throw an error if there
+    # are ignored arguments. Calling with arguments that are not part of the
+    # signature should throw an error.
+    flatten_inputs = nest.flatten_up_to(
+        input_signature,
+        inputs[:len(input_signature)])
+  except ValueError:
+    raise ValueError("Structure of Python function inputs does not match "
+                     "input_signature. Inputs (%s), input_signature(%s)." %
+                     (str(inputs), str(input_signature)))
+
+  need_packing = False
+  for index, (value, spec) in enumerate(zip(flatten_inputs,
+                                            flat_input_signature)):
+    if not pywrap_tensorflow.IsTensor(value):
+      try:
+        flatten_inputs[index] = ops.convert_to_tensor(
+            value, dtype_hint=spec.dtype)
+        need_packing = True
+      except ValueError:
+        raise ValueError("When input_signature is provided, all inputs to "
+                         "the Python function must be convertible to tensors."
+                         "Inputs (%s), input_signature(%s)." %
+                         (str(inputs), str(input_signature)))
+
+  if any(not spec.is_compatible_with(other) for spec, other in zip(
+      flat_input_signature,
+      flatten_inputs)):
+    raise ValueError("Python inputs incompatible with input_signature: "
+                     "inputs (%s), input_signature (%s)" %
+                     (str(inputs), str(input_signature)))
+
+  if need_packing:
+    inputs = nest.pack_sequence_as(
+        structure=input_signature,
+        flat_sequence=flatten_inputs)
+
+  return inputs
 
 
 class Function(object):

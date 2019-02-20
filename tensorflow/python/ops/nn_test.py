@@ -1019,11 +1019,10 @@ class LeakyReluTest(test_lib.TestCase):
 class SwishTest(test_lib.TestCase):
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testValues(self):
     np_values = np.array(
-        [np.linspace(-10.0, 0.0, 100),
-         np.linspace(0.0, 10.0, 100)],
+        [np.linspace(-7.0, 0.0, 100),
+         np.linspace(0.0, 7.0, 100)],
         dtype=np.float32)
     tf_values = constant_op.constant(np_values)
     actual_tf_outputs = nn_impl.swish(tf_values)

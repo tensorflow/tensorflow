@@ -1074,6 +1074,11 @@ void OpKernelRegistrar::InitInternal(const KernelDef* kernel_def,
   delete kernel_def;
 }
 
+OpKernel* OpKernelRegistrar::PtrOpKernelFactory::Create(
+    OpKernelConstruction* context) {
+  return (*create_func_)(context);
+}
+
 }  // namespace kernel_factory
 
 namespace {

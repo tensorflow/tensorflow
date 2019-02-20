@@ -116,6 +116,12 @@ class RunMode(Enum):
   PY_FUNC = 2
 
 
+def do_not_convert_internal(f):
+  """Decorator that marks internal functions which do not need conversion."""
+  setattr(f, '__ag_compiled', True)
+  return f
+
+
 def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   """Decorator that suppresses the conversion of a function.
 
@@ -154,8 +160,6 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
     else:
       raise ValueError('unknown value for run_as: %s' % run_as)
 
-    # Sometimes the decorator is just desugared, making it impossible to detect.
-    # This attribute makes detection easier.
     setattr(wrapper, '__ag_compiled', True)
     return wrapper
 
@@ -347,8 +351,8 @@ def converted_call(f, owner, options, args, kwargs):
     logging.warn(
         'Entity %s could not be transformed and will be staged without change.'
         ' Error details can be found in the logs when running with the env'
-        ' variable AUTOGRAPH_VERBOSITY=5. Please report this to the AutoGraph'
-        ' team. Cause: %s', target_entity, e)
+        ' variable AUTOGRAPH_VERBOSITY >= 1. Please report this to the'
+        ' AutoGraph team. Cause: %s', target_entity, e)
 
     return f(*args, **kwargs)
 
