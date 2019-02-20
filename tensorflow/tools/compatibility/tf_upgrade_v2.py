@@ -225,6 +225,14 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.max_pool": {
             "value": "input"
         },
+
+        "tf.nn.avg_pool": {
+            "value": "input"
+        },
+
+        "tf.nn.avg_pool2d": {
+            "value": "input"
+        },
         "tf.multinomial": {
             "output_dtype": "dtype",
         },
@@ -736,6 +744,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.assert_rank",
         "tf.nn.max_pool":
             "tf.nn.max_pool2d",
+        "tf.nn.avg_pool":
+            "tf.nn.avg_pool2d",
         "tf.keras.initializers.zeros":
             "tf.compat.v1.keras.initializers.zeros",
         "tf.keras.initializers.ones":
@@ -858,6 +868,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.gradients",
         "tf.hessians",
         "tf.nn.max_pool",
+        "tf.nn.avg_pool",
     }
 
     # Manual mapping of function names to be reordered to their list of argument

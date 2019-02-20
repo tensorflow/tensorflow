@@ -420,6 +420,7 @@ renames = {
     'tf.min_max_variable_partitioner': 'tf.compat.v1.min_max_variable_partitioner',
     'tf.model_variables': 'tf.compat.v1.model_variables',
     'tf.moving_average_variables': 'tf.compat.v1.moving_average_variables',
+    'tf.nn.avg_pool_v2': 'tf.nn.avg_pool',
     'tf.nn.bidirectional_dynamic_rnn': 'tf.compat.v1.nn.bidirectional_dynamic_rnn',
     'tf.nn.conv2d_backprop_filter': 'tf.compat.v1.nn.conv2d_backprop_filter',
     'tf.nn.conv3d_backprop_filter': 'tf.compat.v1.nn.conv3d_backprop_filter',

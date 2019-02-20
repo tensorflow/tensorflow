@@ -1305,6 +1305,12 @@ def _log_prob(self, x):
     self.assertIn("'step' argument", errors[0])
     self.assertIn("Manual check required", errors[1])
 
+  def test_avg_pool_2d(self):
+    text = "tf.nn.avg_pool(value=4)"
+    expected_text = "tf.nn.avg_pool2d(input=4)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):
 
