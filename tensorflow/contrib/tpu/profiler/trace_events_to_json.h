@@ -16,15 +16,15 @@ limitations under the License.
 #ifndef TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
 #define TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
 
-#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 
 namespace tensorflow {
 namespace tpu {
 
 // Converts trace events in the trace proto to a JSON string that can be
 // consumed by catapult trace viewer.
-string TraceEventsToJson(const Trace &trace);
+string TraceEventsToJson(const profiler::Trace &trace);
 
 }  // namespace tpu
 }  // namespace tensorflow

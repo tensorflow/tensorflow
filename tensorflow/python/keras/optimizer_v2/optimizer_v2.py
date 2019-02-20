@@ -43,7 +43,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -70,7 +70,7 @@ def _deduplicate_indexed_slices(values, indices):
 
 @six.add_metaclass(abc.ABCMeta)
 @keras_export("keras.optimizers.Optimizer")
-class OptimizerV2(checkpointable.Checkpointable):
+class OptimizerV2(trackable.Trackable):
   """Updated base class for optimizers.
 
   This class defines the API to add Ops to train a model.  You never use this
@@ -244,9 +244,9 @@ class OptimizerV2(checkpointable.Checkpointable):
     self._weights = []
     self._iterations = None
 
-    # For implementing Checkpointable. Stores information about how to restore
+    # For implementing Trackable. Stores information about how to restore
     # slot variables which have not yet been created
-    # (checkpointable._CheckpointPosition objects).
+    # (trackable._CheckpointPosition objects).
     #  {slot_name :
     #      {_var_key(variable_to_train): [checkpoint_position, ... ], ... },
     #   ... }
@@ -829,7 +829,7 @@ class OptimizerV2(checkpointable.Checkpointable):
       return x.value()
 
   # ---------------
-  # For implementing the checkpointable interface
+  # For implementing the trackable interface
   # ---------------
 
   def _restore_slot_variable(self, slot_name, variable, slot_variable):
@@ -860,8 +860,8 @@ class OptimizerV2(checkpointable.Checkpointable):
     slot variable needs to be restored).
 
     Args:
-      slot_variable_position: A `checkpointable._CheckpointPosition` object
-        indicating the slot variable `Checkpointable` object to be restored.
+      slot_variable_position: A `trackable._CheckpointPosition` object
+        indicating the slot variable `Trackable` object to be restored.
       slot_name: The name of this `Optimizer`'s slot to restore into.
       variable: The variable object this slot is being created for.
     """
@@ -879,7 +879,7 @@ class OptimizerV2(checkpointable.Checkpointable):
         # (aside from double initialization), and makes variable creator scopes
         # behave the same way they do when graph building.
         and not ops.get_default_graph()._variable_creator_stack):  # pylint: disable=protected-access
-      initializer = checkpointable.CheckpointInitialValue(
+      initializer = trackable.CheckpointInitialValue(
           checkpoint_position=slot_variable_position)
       slot_variable = self.add_slot(
           var=variable,

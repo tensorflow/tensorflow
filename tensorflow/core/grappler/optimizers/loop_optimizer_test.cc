@@ -1548,7 +1548,7 @@ versions {
   CHECK(protobuf::TextFormat::ParseFromString(gdef_ascii, &item.graph));
   item.fetch = {"Identity"};
   Tensor feed_tensor(DT_BOOL, {});
-  feed_tensor.flat<bool>()(1) = false;
+  feed_tensor.flat<bool>()(0) = false;
   item.feed.push_back({"Const_1", feed_tensor});
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch);
   ASSERT_EQ(tensors_expected.size(), 1);

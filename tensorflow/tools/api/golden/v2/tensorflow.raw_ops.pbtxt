@@ -573,6 +573,10 @@ tf_module {
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "CollectiveGather"
+    argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "CollectiveReduce"
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\'], varargs=None, keywords=None, defaults=None"
   }
@@ -975,6 +979,10 @@ tf_module {
   member_method {
     name: "Erfc"
     argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "EuclideanNorm"
+    argspec: "args=[\'input\', \'reduction_indices\', \'keep_dims\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Exit"
@@ -2655,7 +2663,7 @@ tf_module {
   member_method {
     name: "Requantize"
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'requested_output_min\', \'requested_output_max\', \'out_type\'], varargs=None, keywords=None, defaults=None"
-  }  
+  }
   member_method {
     name: "RequantizePerChannel"
     argspec: "args=[\'input\', \'input_min\', \'input_max\', \'requested_output_min\', \'requested_output_max\', \'out_type\'], varargs=None, keywords=None, defaults=None"
@@ -3783,6 +3791,10 @@ tf_module {
   member_method {
     name: "TensorListScatter"
     argspec: "args=[\'tensor\', \'indices\', \'element_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TensorListScatterIntoExistingList"
+    argspec: "args=[\'input_handle\', \'tensor\', \'indices\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "TensorListScatterV2"

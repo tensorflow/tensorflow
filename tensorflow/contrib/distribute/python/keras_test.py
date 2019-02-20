@@ -34,6 +34,8 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary.writer import writer_cache
@@ -66,6 +68,20 @@ def simple_functional_model():
   b = keras.layers.Dense(_NUM_CLASS, activation='softmax')(b)
   model = keras.models.Model(inputs=[a], outputs=[b])
   return model
+
+
+def simple_subclassed_model(num_labels=_NUM_CLASS):
+
+  class _SimpleMLP(keras.Model):
+
+    def __init__(self, num_labels):
+      super(_SimpleMLP, self).__init__()
+      self.dense = keras.layers.Dense(num_labels)
+
+    def call(self, inputs):
+      return self.dense(inputs)
+
+  return _SimpleMLP(num_labels)
 
 
 def simple_multi_inputs_multi_outputs_model():
@@ -1182,6 +1198,128 @@ class TestDistributionStrategyWithDatasets(test.TestCase,
           model_with_ds_strategy.predict(dataset_with_partial_batch, steps=12),
           cpu_model.predict(dataset_with_partial_batch, steps=12),
           atol=1e-4, rtol=1e-4)
+
+
+class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
+  class IdentityRegularizer(keras.regularizers.Regularizer):
+
+    def __call__(self, x):
+      return array_ops.identity(x)
+
+  class AddLayer(keras.layers.Layer):
+
+    def build(self, _):
+      self.v = self.add_weight(
+          'v', (), initializer='ones',
+          regularizer=TestRegularizerLoss.IdentityRegularizer())
+
+    def call(self, inputs):
+      return inputs + self.v
+
+  @staticmethod
+  def loss_fn(_, y_pred):
+    return math_ops.reduce_mean(y_pred)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_regularizer_loss(self, distribution):
+    batch_size = 2
+    if not distributed_training_utils.global_batch_size_supported(distribution):
+      batch_size //= distribution.num_replicas_in_sync
+
+      # Given an input x, which is always 1, and variable v, this model computes
+      # Loss=x+v+regularizer_loss, where regularizer_loss=v and the variable is
+      # initialized to 1. Therefore, this model computes Loss=1+2v, and so the
+      # gradient dLoss/dv = 2. This gradient of 2 is averaged over all examples
+      # in a batch and then multiplied by the learning rate of 1. As a result,
+      # the model update for one batch should subtract 2 from v, resulting in v
+      # being -1. If the regularizer loss is not scaled correctly by number of
+      # replicas, the variable value will be incorrect when number of replicas
+      # >1. For e.g. it will be -2 if num replicas = 2.
+    with distribution.scope():
+      x = keras.layers.Input(shape=(), batch_size=batch_size)
+      y = TestRegularizerLoss.AddLayer()(x)
+      model = keras.models.Model(inputs=x, outputs=y)
+      opt = gradient_descent_keras.SGD(1.)
+      model.compile(opt, loss=TestRegularizerLoss.loss_fn)
+      model.fit(
+          x=np.array([[1.], [1.]], dtype=np.float32),
+          y=np.array([[1.], [1.]], dtype=np.float32),
+          batch_size=batch_size)
+      v = model.get_weights()[0]
+      self.assertEqual(-1.0, v)
+
+
+class TestDistributionStrategyWithKerasModels(test.TestCase,
+                                              parameterized.TestCase):
+
+  @combinations.generate(all_strategy_combinations())
+  def test_distribution_strategy_on_sequential_model(self, distribution):
+    with distribution.scope():
+      model = simple_sequential_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      inputs = np.zeros((20, 10), np.float32)
+      targets = np.zeros((20, 2), np.float32)
+
+    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
+    model.predict(inputs, steps=1)
+    model.evaluate(inputs, targets, steps=1)
+
+  @combinations.generate(all_strategy_combinations())
+  def test_distribution_strategy_on_functional_model(self, distribution):
+    with distribution.scope():
+      model = get_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      inputs = np.zeros((64, 3), dtype=np.float32)
+      targets = np.zeros((64, 4), dtype=np.float32)
+
+    model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
+    model.predict(inputs, steps=1)
+    model.evaluate(inputs, targets, steps=1)
+
+  # TODO(b/124377929): Remove error assertions once subclassed models
+  # are supported in DistributedStrategy.
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_distribution_strategy_on_subclassed_model(self, distribution):
+    with distribution.scope():
+      model = simple_subclassed_model()
+      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+      loss = 'mse'
+      model.compile(optimizer, loss)
+
+      inputs = np.zeros((64, 3), dtype=np.float32)
+      targets = np.zeros((64, 2), dtype=np.float32)
+
+    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
+      model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
+
+    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
+      model.predict(inputs, steps=1)
+
+    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
+      model.evaluate(inputs, targets, steps=1)
+
+  @combinations.generate(all_strategy_combinations_minus_default())
+  def test_distribution_strategy_one_dimensional(self, distribution):
+    with distribution.scope():
+      inp = keras.layers.Input(shape=(10,))
+      out = keras.layers.Dense(3, activation='softmax')(inp)
+      model = keras.Model(inputs=[inp], outputs=[out])
+      model.compile(
+          optimizer='rmsprop',
+          loss='sparse_categorical_crossentropy',
+          metrics=['sparse_categorical_accuracy'],
+      )
+
+      x = np.random.random((64, 10)).astype('float32')
+      y = np.random.randint(3, size=64)
+
+      model.fit(x, y, epochs=1, steps_per_epoch=2)
 
 
 if __name__ == '__main__':

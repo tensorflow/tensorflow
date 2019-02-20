@@ -79,6 +79,13 @@ py_binary(
     name = "freeze_graph",
     srcs = ["freeze_graph.py"],
     srcs_version = "PY2AND3",
+    deps = [":freeze_graph_main_lib"],
+)
+
+py_library(
+    name = "freeze_graph_main_lib",
+    srcs = ["freeze_graph.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":freeze_graph_lib",
     ],
@@ -207,6 +214,13 @@ py_library(
 
 py_binary(
     name = "optimize_for_inference",
+    srcs = ["optimize_for_inference.py"],
+    srcs_version = "PY2AND3",
+    deps = [":optimize_for_inference_main_lib"],
+)
+
+py_library(
+    name = "optimize_for_inference_main_lib",
     srcs = ["optimize_for_inference.py"],
     srcs_version = "PY2AND3",
     deps = [

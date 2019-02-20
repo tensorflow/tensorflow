@@ -17,5 +17,5 @@ def tf_additional_cudnn_plugin_deps():
 # Returns whether any GPU backend is configuered.
 def if_gpu_is_configured(x):
     if cuda_is_configured() or rocm_is_configured():
-      return x
+        return x
     return []

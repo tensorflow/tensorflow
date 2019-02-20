@@ -27,7 +27,7 @@ from tensorflow.tools.compatibility import tf_upgrade_v2
 def main():
   parser = argparse.ArgumentParser(
       formatter_class=argparse.RawDescriptionHelpFormatter,
-      description="""Convert a TensorFlow Python file to 2.0
+      description="""Convert a TensorFlow Python file from 1.* to 2.0
 
 Simple usage:
   tf_upgrade_v2.py --infile foo.py --outfile bar.py

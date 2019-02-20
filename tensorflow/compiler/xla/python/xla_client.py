@@ -34,9 +34,16 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 from tensorflow.compiler.xla.service import hlo_pb2
 
+# Import the XRT backend, if available.
+try:
+  # pylint: disable=g-import-not-at-top
+  from tensorflow.compiler.xla.python import pywrap_xrt as xrt_api
+except ImportError:
+  xrt_api = None
+
 
 # Most functions are snake_case for consistency with other modules, whereas
-# method names of ComputationBuilder and LocalComputation are CamelCase for
+# method names of ComputationBuilder and Computation are CamelCase for
 # consistency with XLA.
 # pylint: disable=invalid-name
 
@@ -50,7 +57,7 @@ from tensorflow.compiler.xla.service import hlo_pb2
 # which case we need to be able to detect when incompatible versions are
 # installed.
 def version():
-  return (0, 1, 7)
+  return (0, 1, 8)
 
 
 _OP_METADATA_FIELDS = [
@@ -67,6 +74,10 @@ class Backend(object):
   """Abstract base class for XLA backends."""
 
   @abc.abstractmethod
+  def device_count(self):
+    """Returns the number of devices known to the backend."""
+
+  @abc.abstractmethod
   def buffer_from_pyval(self, pyval, device=0):
     """Allocates a fresh buffer and populates it with `pyval`."""
 
@@ -79,7 +90,8 @@ class Backend(object):
     """Destructures a tuple buffer into a sequence of buffers."""
 
   @abc.abstractmethod
-  def compile(self, computation, argument_shapes, compile_options):
+  def compile(self, computation, argument_shapes, result_shape,
+              compile_options):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
@@ -95,25 +107,41 @@ class Backend(object):
     """Runs an executable in a replicated manner."""
 
 
+def _maybe_encode_string(s):
+  if six.PY3:
+    return s.encode('utf-8')
+  else:
+    return s
+
+
 class XlaLocalBackend(Backend):
   """XLA backend implemented using the in-process xla::LocalClient API."""
 
+  def __init__(self, platform=None):
+    platform = platform or _get_default_platform_name()
+    self.client = c_api.LocalClient.Get(_maybe_encode_string(platform))
+    self._delete_buffer = c_api.DeleteLocalShapedBuffer
+    self._delete_executable = c_api.DeleteLocalExecutable
+
+  def device_count(self):
+    return self.client.DeviceCount()
+
   def buffer_from_pyval(self, pyval, device=0):
-    return c_api.LocalShapedBuffer.FromLiteral(pyval, None, device)
+    return c_api.LocalShapedBuffer.FromLiteral(pyval, None, self.client, device)
 
   def delete_buffer(self, c_buffer):
-    c_api.DeleteLocalShapedBuffer(c_buffer)
+    self._delete_buffer(c_buffer)
 
   def destructure_tuple(self, c_buffer):
-    result = c_api.DestructureLocalShapedBufferTuple(c_buffer)
+    result = c_buffer.DestructureTuple()
     return [result.Release(i) for i in xrange(result.size())]
 
-  def compile(self, c_computation, argument_shapes, compile_options):
-    return c_computation.Compile(argument_shapes, compile_options)
+  def compile(self, c_computation, argument_shapes, result_shape,
+              compile_options):
+    return c_computation.Compile(argument_shapes, compile_options, self.client)
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.CompiledLocalComputation)
-    c_api.DeleteCompiledLocalComputation(executable)
+    self._delete_executable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -129,29 +157,35 @@ class XrtBackend(Backend):
 
   def __init__(self, target):
     self.target = target
+    self._delete_buffer = xrt_api.DeleteXrtAllocation
+    self._delete_executable = xrt_api.DeleteXrtExecutable
+
+  def device_count(self):
+    return 1  # Multidevice execution not implemented.
 
   def buffer_from_pyval(self, pyval, device=0):
     if device != 0:
       raise NotImplementedError(
           'Multi-replica execution is not yet supported via the XRT backend.')
-    return c_api.XrtAllocation.FromLiteral(pyval,
-                                           _maybe_encode_string(self.target))
+    return xrt_api.XrtAllocation.FromLiteral(pyval,
+                                             _maybe_encode_string(self.target))
 
   def delete_buffer(self, c_buffer):
-    c_api.DeleteXrtAllocation(c_buffer)
+    self._delete_buffer(c_buffer)
 
   def destructure_tuple(self, c_buffer):
-    result = c_api.DestructureXrtAllocationTuple(
+    result = xrt_api.DestructureXrtAllocationTuple(
         c_buffer, _maybe_encode_string(self.target))
     return [result.Release(i) for i in xrange(result.size())]
 
-  def compile(self, c_computation, argument_shapes, compile_options):
-    return c_computation.CompileForXrt(argument_shapes,
-                                       _maybe_encode_string(self.target))
+  def compile(self, c_computation, argument_shapes, result_shape,
+              compile_options):
+    return xrt_api.XrtExecutable.CompileForXrt(
+        c_computation.GetSerializedProto(), argument_shapes, result_shape,
+        _maybe_encode_string(self.target))
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.CompiledXrtComputation)
-    c_api.DeleteCompiledXrtComputation(executable)
+    self._delete_executable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -163,7 +197,20 @@ class XrtBackend(Backend):
     return [executable.Execute(per_replica_args[0])]
 
 
-XLA_LOCAL_BACKEND = XlaLocalBackend()
+_default_platform_name = 'Host'
+_default_backend = None
+
+
+def _get_default_platform_name():
+  return _default_platform_name
+
+
+def _get_default_local_backend():
+  global _default_backend
+  global _default_platform_name
+  if _default_backend is None:
+    _default_backend = XlaLocalBackend(_default_platform_name)
+  return _default_backend
 
 
 class BackendType(enum.Enum):
@@ -174,7 +221,7 @@ class BackendType(enum.Enum):
 def BackendSpec(backend, target):
   """Compatibility wrapper to support older clients. Do not use in new code."""
   if backend == BackendType.XLA_LOCAL:
-    return XLA_LOCAL_BACKEND
+    return _get_default_local_backend()
   elif backend == BackendType.XRT:
     return XrtBackend(target)
   else:
@@ -199,13 +246,6 @@ def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
       op_name=op_name,
       source_file=filename,
       source_line=lineno)
-
-
-def _maybe_encode_string(s):
-  if six.PY3:
-    return s.encode('utf-8')
-  else:
-    return s
 
 
 class PaddingType(enum.Enum):
@@ -245,6 +285,7 @@ def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 
 _UNARY_OPS = [
     'Not',
+    'Clz',
     'Abs',
     'Exp',
     'Expm1',
@@ -346,22 +387,18 @@ class LocalBuffer(object):
   means the referent is in device memory.
   """
 
-  def __init__(self, c_buffer, backend, replica):
+  def __init__(self, c_buffer, backend, device):
     self.c_buffer = c_buffer
     self._backend = backend
-    self._replica = replica
+    self._device = device
 
   @staticmethod
-  def from_pyval(pyval, replica=0, backend=XLA_LOCAL_BACKEND):
+  def from_pyval(pyval, device=0, backend=None):
     """Allocate and copy to XLA the given python value."""
+    backend = backend or _get_default_local_backend()
     pyval = require_numpy_array_layout(pyval)
-    num_replicas = get_replica_count()
-    if not 0 <= replica < num_replicas:
-      raise ValueError(
-          'Attempt to place buffer on replica {} when the replica count is {}'
-          .format(replica, num_replicas))
-    cbuf = backend.buffer_from_pyval(pyval, replica)
-    return LocalBuffer(cbuf, backend, replica)
+    cbuf = backend.buffer_from_pyval(pyval, device)
+    return LocalBuffer(cbuf, backend, device)
 
   def to_py(self):
     return self.c_buffer.ToLiteral()
@@ -369,8 +406,8 @@ class LocalBuffer(object):
   def shape(self):
     return _wrap_shape(self.c_buffer.shape())
 
-  def replica(self):
-    return self._replica
+  def device(self):
+    return self._device
 
   def delete(self):
     if self.c_buffer is not None:
@@ -383,7 +420,7 @@ class LocalBuffer(object):
     result = self._backend.destructure_tuple(self.c_buffer)
     self.delete()
     return tuple(
-        LocalBuffer(sub_buffer, replica=self._replica, backend=self._backend)
+        LocalBuffer(sub_buffer, device=self._device, backend=self._backend)
         for sub_buffer in result)
 
   def is_deleted(self):
@@ -533,6 +570,16 @@ class Shape(object):
     updated._check_minor_to_major()  # pylint: disable=protected-access
     return updated
 
+  def with_major_to_minor_layout_if_absent(self):
+    """Returns a copy of a shape with missing layouts set to major-to-minor."""
+
+    def f(a):
+      if a.minor_to_major():
+        return None
+      return a.update_minor_to_major(tuple(xrange(a.rank() - 1, -1, -1)))
+
+    return self.map_leaves(f)
+
   def serialize(self, proto):
     """Serializes 'shape' into proto."""
     if self.is_tuple():
@@ -548,6 +595,10 @@ class Shape(object):
         proto.layout.minor_to_major.extend(self.minor_to_major())
 
 
+ProgramShape = collections.namedtuple('ProgramShape',
+                                      ('parameter_shapes', 'result_shape'))
+
+
 def _wrap_shape(shape_info):
   dtype, dims = shape_info
   element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(dtype)]
@@ -556,6 +607,12 @@ def _wrap_shape(shape_info):
     return Shape.tuple_shape(shapes)
   else:
     return Shape.array_shape(dtype, dims)
+
+
+def _wrap_program_shape(shape_info):
+  arg_shapes, result_shape = shape_info
+  return ProgramShape([_wrap_shape(arg) for arg in arg_shapes],
+                      _wrap_shape(result_shape))
 
 
 def require_numpy_array_layout(value):
@@ -581,7 +638,7 @@ class CompileOptions(object):
     self.num_replicas = get_replica_count()
 
 
-def transfer_to_infeed(value, replica_number=None):
+def transfer_to_infeed(value, device_ordinal=0):
   """Transfers the given value into the XLA infeed queue.
 
   XLA's infeed queue is a single queue that feeds the "XLA virtual machine" with
@@ -591,52 +648,50 @@ def transfer_to_infeed(value, replica_number=None):
   Args:
     value: the value that the caller would like to enqueue into the XLA infeed
       queue
-    replica_number: the replica number to infeed the value to -- if not
-      provided, then the default replica (trivially replica 0) is used.
+    device_ordinal: the device to infeed the value to. Each device has a
+      distinct infeed queue.
   """
-  if replica_number is None:
-    c_api.TransferToInfeedLocal(require_numpy_array_layout(value))
-  else:
-    c_api.TransferToInfeedLocalReplica(
-        require_numpy_array_layout(value), replica_number)
+  # TODO(phawkins): support non-default backends.
+  backend = _get_default_local_backend()
+  backend.client.TransferToInfeed(
+      require_numpy_array_layout(value), device_ordinal)
 
 
-def transfer_from_outfeed(shape, replica_number=None):
-  """Transfers a literal of the given shape from replica_number's outfeed.
+def transfer_from_outfeed(shape, device_ordinal=0):
+  """Transfers a literal of the given shape from `device_ordinal`'s outfeed.
 
   Args:
     shape: The shape of the value to transfer from outfeed.
-    replica_number: The replica number ordinal to transfer the outfeed value
-      from. (Each replica has a distinct outfeed queue.)
+    device_ordinal: The device ordinal to transfer the outfeed value from. Each
+      device has a distinct outfeed queue..
 
   Returns:
     The literal value that is produced from the outfeed queue.
   """
-  return c_api.TransferFromOutfeedLocalReplica(shape, replica_number or 0)
+  # TODO(phawkins): support non-default backends.
+  backend = _get_default_local_backend()
+  return backend.client.TransferFromOutfeed(shape, device_ordinal)
 
 
-class LocalComputation(object):
-  """Python wrapper for a local XLA Computation.
+class Computation(object):
+  """Python wrapper for an XLA Computation.
 
-  A LocalComputation can be executed if it is compiled. Otherwise, it
-  can still be used as a Computation where required by the
-  ComputationBuilder methods.
+  A Computation can be compiled to form an Executable, or used as a
+  subcomputation in ComputationBuilder methods.
   """
 
-  def __init__(self, c_computation, is_compiled, backend=XLA_LOCAL_BACKEND):
+  def __init__(self, c_computation, backend=None):
     self._c_computation = c_computation
+    # The backend argument is deprecated. Pass a backend to Compile() instead.
     self._backend = backend
-    self._is_compiled = is_compiled
+    self._delete_computation = c_api.DeleteComputation
 
   @property
   def computation(self):
-    if self._is_compiled:
-      raise ValueError(
-          'Attempt to read the XLA computation of a compiled LocalComputation.')
     return self._c_computation
 
   def GetProto(self):
-    """Get the HloModuleProto proto object in this local computation.
+    """Get the HloModuleProto proto object in this computation.
 
     Returns:
        An HloModuleProto proto object that has the whole-graph information.
@@ -645,30 +700,41 @@ class LocalComputation(object):
     proto = hlo_pb2.HloModuleProto.FromString(serialized)
     return proto
 
-  def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None):
-    """Compiles an un-compiled local computation.
+  def GetHloText(self):
+    """Get the textual HLO representation of this computation.
 
-    Local computations are the result of a "LocalComputationBuild'ing" process
-    -- they start in uncompiled form, and via a call to Compile() turn into a
-    compiled local computation.
+    Returns:
+       A string containing the textual HLO.
+    """
+    return self.computation.GetHloText()
 
-    Raises:
-      ValueError: if this is already a compiled local computation.
+  def GetHloDotGraph(self):
+    """Get a Graphviz Dot representation of this computation.
+
+    Returns:
+       A string containing the graphviz dot graph.
+    """
+    return self.computation.GetHloDotGraph()
+
+  def Compile(self, argument_shapes=(), compile_options=None, layout_fn=None,
+              backend=None):
+    """Compiles a computation.
+
+    Computations are the result of a "ComputationBuild'ing" process.
 
     Arguments:
       argument_shapes: parameter shapes -- they are first laid out by layout_fn
         if layout_fn is provided. Otherwise, the default layout for those shapes
         will be used.
-      compile_options: options to use for compilation, includes an optional
-        laid out result shape for the computation.
+      compile_options: options to use for compilation, includes an optional laid
+        out result shape for the computation.
       layout_fn: lambda that is used to lay out the argument/result shapes.
+      backend: a `Backend` for which an executable should be generated.
 
     Returns:
-      A newly *compiled* local computation instance.
+      A Executable instance.
     """
-    if self._is_compiled:
-      raise ValueError('Attempt to compile a compiled local XLA computation.')
-
+    backend = backend or self._backend or _get_default_local_backend()
     result_shape = _wrap_shape(self.computation.GetReturnValueShape())
 
     if layout_fn:
@@ -681,29 +747,52 @@ class LocalComputation(object):
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    c = self._backend.compile(self.computation, argument_shapes,
-                              compile_options)
-    return LocalComputation(c, is_compiled=True, backend=self._backend)
+    c = backend.compile(self.computation, argument_shapes, result_shape,
+                        compile_options)
+    return Executable(c, backend=backend)
 
   def CompileWithExampleArguments(self,
                                   arguments=(),
                                   compile_options=None,
-                                  layout_fn=None):
+                                  layout_fn=None,
+                                  backend=None):
     return self.Compile(
         argument_shapes=[Shape.from_pyval(arg) for arg in arguments],
         compile_options=compile_options,
-        layout_fn=layout_fn)
+        layout_fn=layout_fn,
+        backend=backend)
+
+  def GetProgramShape(self):
+    return _wrap_program_shape(self._c_computation.GetProgramShape())
 
   def GetReturnValueShape(self):
     return _wrap_shape(self._c_computation.GetReturnValueShape())
+
+  def __del__(self):
+    if self._c_computation:
+      self._delete_computation(self._c_computation)
+
+
+class Executable(object):
+  """Python wrapper for an XLA Executable."""
+
+  def __init__(self, c_executable, backend=None):
+    self._c_executable = c_executable
+    self._device_ordinals = c_executable.DeviceOrdinals()
+    self._backend = backend
+
+  def DeviceOrdinals(self):
+    """Returns a list containing the device ordinals for each replica."""
+    return self._device_ordinals
 
   def Execute(self, arguments=(), check_for_deleted_args=True):
     """Execute on one replica with LocalBuffer arguments and return value."""
     if check_for_deleted_args and any(arg.is_deleted() for arg in arguments):
       raise ValueError('Executing with deleted local buffer argument')
     raw_args = [arg.c_buffer for arg in arguments]
-    output_buffer = self._backend.execute(self._c_computation, raw_args)
-    return LocalBuffer(output_buffer, backend=self._backend, replica=0)
+    output_buffer = self._backend.execute(self._c_executable, raw_args)
+    return LocalBuffer(
+        output_buffer, backend=self._backend, device=self._device_ordinals[0])
 
   def ExecutePerReplica(self, arguments=None):
     """Execute on many replicas with LocalBuffer arguments and return value.
@@ -713,14 +802,12 @@ class LocalComputation(object):
         sequence comprises the arguments for execution on the i'th replica.
 
     Returns:
-      A list of the computation's outputs on each replica, as a LocalBuffer. If
+      A list of the computation's outputs for each replica, as a LocalBuffer. If
       a shallow sequence of arguments was passed in for `arguments`, then the
       sole, zero'th replica's output is returned instead, as a LocalBuffer.
     """
-    if not self._is_compiled:
-      raise ValueError('Cannot execute an uncompiled local XLA computation.')
     if arguments is None:
-      arguments = ((),) * get_replica_count()
+      arguments = ((),) * len(self._device_ordinals)
     else:
       arguments = [list(replica_args) for replica_args in arguments]
 
@@ -729,30 +816,35 @@ class LocalComputation(object):
       for arg in replica_args:
         if arg.is_deleted():
           raise ValueError('Executing with deleted local buffer argument')
-        if arg.replica() != replica:
+        if arg.device() != self._device_ordinals[replica]:
           raise ValueError(
-              'Executing on replica {} with argument from replica {}'.format(
-                  replica, arg.replica()))
+              'Executing on device {} with argument from device {}'.format(
+                  self._device_ordinals[replica], arg.device()))
 
     # Pull out argument buffer handles
+    # pylint: disable=g-complex-comprehension
     stripped_args = [
         [arg.c_buffer for arg in replica_args] for replica_args in arguments
     ]
 
     # Execute
-    output_buffers = self._backend.execute_replicated(
-        self._c_computation, stripped_args)
+    output_buffers = self._backend.execute_replicated(self._c_executable,
+                                                      stripped_args)
 
     # Wrap output handles in LocalBuffer instances
     return tuple(
-        LocalBuffer(output_buffer, backend=self._backend, replica=replica)
+        LocalBuffer(
+            output_buffer,
+            backend=self._backend,
+            device=self._device_ordinals[replica])
         for replica, output_buffer in enumerate(output_buffers))
 
   def ExecuteWithPythonValues(self, arguments=()):
     """Execute on one replica with Python values as arguments and output."""
 
     def put(arg):
-      return LocalBuffer.from_pyval(arg, backend=self._backend)
+      return LocalBuffer.from_pyval(
+          arg, device=self._device_ordinals[0], backend=self._backend)
 
     arguments = [put(arg) for arg in arguments]
     return self.Execute(arguments).to_py()
@@ -760,22 +852,19 @@ class LocalComputation(object):
   def ExecuteWithPythonValuesPerReplica(self, arguments):
     """Execute on many replicas with Python values as arguments and output."""
 
-    def put(arg, replica):
-      return LocalBuffer.from_pyval(arg, replica, backend=self._backend)
+    def put(arg, device):
+      return LocalBuffer.from_pyval(arg, device, backend=self._backend)
 
-    arguments = [[put(arg, replica)
-                  for arg in replica_args]
-                 for replica, replica_args in enumerate(arguments)]
+    # pylint: disable=g-complex-comprehension
+    arguments = [[
+        put(arg, self._device_ordinals[replica]) for arg in replica_args
+    ] for replica, replica_args in enumerate(arguments)]
     return [out.to_py() for out in self.ExecutePerReplica(arguments)]
 
   def __del__(self):
     # Python may have freed c_api first.
-    if c_api and self._c_computation:
-      if self._is_compiled:
-        self._backend.delete_executable(self._c_computation)
-      else:
-        assert isinstance(self._c_computation, c_api.LocalComputation)
-        c_api.DeleteLocalComputation(self._c_computation)
+    if c_api and self._c_executable:
+      self._backend.delete_executable(self._c_executable)
 
 
 def _make_replica_group_proto(replica_group):
@@ -788,8 +877,8 @@ class ComputationBuilder(object):
   """XLA computation builder.
 
   Enqueues XLA ops in sequence and in order to build a
-  LocalComputation, which in turn can be compiled into a
-  CompiledLocalComputation, which in turn can be locally executed.
+  Computation, which in turn can be compiled into a
+  LocalExecutable, which in turn can be locally executed.
   """
 
   # The methods of this class map 1-to-1 onto the XLA C++
@@ -800,16 +889,23 @@ class ComputationBuilder(object):
   # pylint: disable=g-doc-args
 
   def __init__(self, name):
-    self._client = c_api.LocalComputationBuilder(name.encode('utf8'))
+    self._client = c_api.ComputationBuilder(name.encode('utf8'))
     self._parameter_numbering = itertools.count()
 
-  def Build(self, root=None, backend=XLA_LOCAL_BACKEND):
+  def Build(self, root=None, backend=None):
+    """Builds a `Computation` from the contents of the builder.
+
+    Args:
+      root: if not None, the operator containing the return value of the
+        computation.
+      backend: deprecated. Pass a `backend` to `Computation.Compile` instead.
+    Returns:
+      A `Computation`.
+    """
     if root is not None:
-      return LocalComputation(
-          self._client.BuildWithRoot(root), is_compiled=False, backend=backend)
+      return Computation(self._client.BuildWithRoot(root), backend=backend)
     else:
-      return LocalComputation(
-          self._client.Build(), is_compiled=False, backend=backend)
+      return Computation(self._client.Build(), backend=backend)
 
   def SetOpMetadata(self, op_metadata):
     """Set metadata for operations that are about to be enqueued."""
@@ -1461,7 +1557,7 @@ class ComputationBuilder(object):
 
     Args:
       operand: a LocalOp to test.
-    Returns: a LocalComputation that is rooted on the given `operand` which is a
+    Returns: a Computation that is rooted on the given `operand` which is a
       compile-time constant.
     """
     return self._client.BuildConstantSubGraph(operand)
@@ -1662,7 +1758,7 @@ def _forward_methods_to_local_builder():
 
   Set up methods, corresponding to unary and binary XLA operations,
   whose calls are forwarded in a boilerplate manner to the underlying
-  LocalComputationBuilder C-extension API.
+  ComputationBuilder C-extension API.
   """
 
   def forward_to_local_builder_with_handles(target_method, is_binop=False):
@@ -1682,13 +1778,13 @@ def _forward_methods_to_local_builder():
 
   for method_name in _UNARY_OPS:
     forward = forward_to_local_builder_with_handles(
-        getattr(c_api.LocalComputationBuilder, method_name))
+        getattr(c_api.ComputationBuilder, method_name))
     forward.__name__ = method_name
     setattr(ComputationBuilder, method_name, forward)
 
   for method_name in _BINARY_OPS:
     forward = forward_to_local_builder_with_handles(
-        getattr(c_api.LocalComputationBuilder, method_name), is_binop=True)
+        getattr(c_api.ComputationBuilder, method_name), is_binop=True)
     forward.__name__ = method_name
     setattr(ComputationBuilder, method_name, forward)
 
@@ -1696,8 +1792,14 @@ def _forward_methods_to_local_builder():
 _forward_methods_to_local_builder()
 
 
+_default_replica_count = 1
+
+
 def initialize_replica_count(replica_count):
-  """Initializes the desired replica count to use on XLA service init.
+  """Initializes the default replica count to use.
+
+  Deprecated; pass `num_replicas` as an option to `Computation.Compile()`
+  instead.
 
   Args:
     replica_count: number of replicas that are desired for set up during XLA
@@ -1706,31 +1808,30 @@ def initialize_replica_count(replica_count):
   Raises:
     A runtime exception if the XLA service has already been initialized.
   """
-  c_api.InitializeReplicaCount(replica_count)
-
-
-def initialize_platform_name(platform_name):
-  """Initializes the desired platform name to use on XLA service init.
-
-  Args:
-    platform_name: string name of platform.
-
-  Raises:
-    A runtime exception if the XLA service has already been initialized.
-    A runtime exception if the platform does not exist, or there are no devices
-    with that platform.
-  """
-  platform_name = _maybe_encode_string(platform_name)
-  c_api.InitializePlatformName(platform_name)
+  global _default_replica_count
+  _default_replica_count = replica_count
 
 
 def get_replica_count():
-  """Returns the current replica count used for the XLA service.
+  """Returns the default replica count.
 
-  Note: this will return a value whether the XLA service has been initialized
-  yet or not.
+  Deprecated; pass `num_replicas` as an option to `Computation.Compile()`
+  instead.
   """
-  return c_api.GetReplicaCount()
+  return _default_replica_count
+
+
+def initialize_platform_name(platform_name):
+  """Initializes the default platform name to use for XLA.
+
+  Args:
+    platform_name: string name of platform.
+  """
+  global _default_platform_name
+  _default_platform_name = platform_name
+
+  # Make sure the platform is valid by trying to instantiate it.
+  _get_default_local_backend()
 
 
 def register_cpu_custom_call_target(name, fn):

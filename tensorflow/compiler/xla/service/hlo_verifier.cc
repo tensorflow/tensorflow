@@ -1325,8 +1325,8 @@ Status CheckFusionInstruction(HloInstruction* fusion) {
   return Status::OK();
 }
 
-// Checks that the non-scalar operand shapes are compatible to the output
-// shape, i.e., that there are no implicit broadcasts of size-one dimensions.
+// Checks that the operand shapes are compatible to the output shape, i.e.,
+// that there are no implicit broadcasts.
 Status CheckElementwiseInstruction(HloInstruction* instruction) {
   const Shape& out_shape = instruction->shape();
   for (HloInstruction* operand : instruction->operands()) {

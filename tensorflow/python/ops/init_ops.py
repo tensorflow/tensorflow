@@ -38,6 +38,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_linalg_ops
 from tensorflow.python.ops import linalg_ops_impl
@@ -531,7 +532,7 @@ class VarianceScaling(Initializer):
     else:
       scale /= max(1., (fan_in + fan_out) / 2.)
     if self.distribution == "normal" or self.distribution == "truncated_normal":
-    # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
+      # constant taken from scipy.stats.truncnorm.std(a=-2, b=2, loc=0., scale=1.)
       stddev = math.sqrt(scale) / .87962566103423978
       return random_ops.truncated_normal(
           shape, 0.0, stddev, dtype, seed=self.seed)
@@ -605,7 +606,8 @@ class Orthogonal(Initializer):
     num_rows = 1
     for dim in shape[:-1]:
       num_rows *= dim
-    num_cols = shape[-1]
+    num_rows = int(num_rows)
+    num_cols = int(shape[-1])
     if num_rows < num_cols:
       flat_shape = (num_cols, num_rows)
     else:
@@ -1207,6 +1209,8 @@ class Identity(Initializer):
           "Identity matrix initializer can only be used for 2D matrices.")
     if dtype is None:
       dtype = self.dtype
+    if isinstance(full_shape, tensor_shape.TensorShape):
+      full_shape = full_shape.as_list()
     initializer = linalg_ops_impl.eye(*full_shape, dtype=dtype)
     if partition_info is not None:
       initializer = array_ops.slice(initializer, partition_info.var_offset,
@@ -1263,9 +1267,10 @@ class GlorotNormal(VarianceScaling):
   """The Glorot normal initializer, also called Xavier normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / (fan_in + fan_out))`
-  where `fan_in` is the number of input units in the weight tensor
-  and `fan_out` is the number of output units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(2 / (fan_in + fan_out))` where `fan_in` is the number
+  of input units in the weight tensor and `fan_out` is the number of
+  output units in the weight tensor.
 
   Args:
     seed: A Python integer. Used to create random seeds. See
@@ -1321,8 +1326,9 @@ def lecun_normal(seed=None):
   """LeCun normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(1 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(1 / fan_in)` where `fan_in` is the number of
+  input units in the weight tensor.
 
   Arguments:
       seed: A Python integer. Used to seed the random generator.
@@ -1371,8 +1377,9 @@ def he_normal(seed=None):
   """He normal initializer.
 
   It draws samples from a truncated normal distribution centered on 0
-  with `stddev = sqrt(2 / fan_in)`
-  where `fan_in` is the number of input units in the weight tensor.
+  with standard deviation (after truncation) given by
+  `stddev = sqrt(2 / fan_in)` where `fan_in` is the number of
+  input units in the weight tensor.
 
   Arguments:
       seed: A Python integer. Used to seed the random generator.
@@ -1422,7 +1429,7 @@ def _compute_fans(shape):
     shape: Integer shape tuple or TF tensor shape.
 
   Returns:
-    A tuple of scalars (fan_in, fan_out).
+    A tuple of integer scalars (fan_in, fan_out).
   """
   if len(shape) < 1:  # Just to avoid errors for constants.
     fan_in = fan_out = 1
@@ -1434,12 +1441,12 @@ def _compute_fans(shape):
   else:
     # Assuming convolution kernels (2D, 3D, or more).
     # kernel shape: (..., input_depth, depth)
-    receptive_field_size = 1.
+    receptive_field_size = 1
     for dim in shape[:-2]:
       receptive_field_size *= dim
     fan_in = shape[-2] * receptive_field_size
     fan_out = shape[-1] * receptive_field_size
-  return fan_in, fan_out
+  return int(fan_in), int(fan_out)
 
 
 def _assert_float_dtype(dtype):

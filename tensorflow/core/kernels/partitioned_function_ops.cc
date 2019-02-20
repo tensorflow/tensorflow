@@ -173,10 +173,11 @@ class PartitionedCallOp : public AsyncOpKernel {
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.target = lib->device()->name();
     opts.is_multi_device_function = true;
-    opts.optimize_graph_fn = std::bind(
-        grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
-        std::placeholders::_3, std::placeholders::_4, config_proto_,
-        func_.name(), optimization_options, std::placeholders::_5);
+    opts.optimize_graph_fn =
+        std::bind(grappler::OptimizeGraph, std::placeholders::_1,
+                  std::placeholders::_2, std::placeholders::_3,
+                  std::placeholders::_4, std::placeholders::_5, config_proto_,
+                  func_.name(), optimization_options, std::placeholders::_6);
     opts.graph_collector = ctx->graph_collector();
     opts.executor_type = executor_type_;
 

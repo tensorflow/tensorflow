@@ -102,7 +102,7 @@ class ListOpsTest(xla_test.XLATestCase):
       _, e = list_ops.tensor_list_pop_back(l, element_dtype=dtypes.float32)
       with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                    "Set the max number of elements"):
-        self.assertEqual(sess.run(e), 1.0 * np.ones((7, 15)))
+        self.assertAllEqual(sess.run(e), 1.0 * np.ones((7, 15)))
 
   def testEmptyTensorListMax(self):
     with self.cached_session() as sess, self.test_scope():
@@ -136,6 +136,17 @@ class ListOpsTest(xla_test.XLATestCase):
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [3.0, 2.0])
 
+  def testSetDoesNotUpdatePushIndex(self):
+    with self.cached_session(), self.test_scope():
+      l = list_ops.empty_tensor_list(
+          element_shape=[], element_dtype=dtypes.float32, max_num_elements=2)
+      # SetItem should not change the push index.
+      l = list_ops.tensor_list_set_item(l, 1, 3.)
+      l = list_ops.tensor_list_push_back(l, 5.)
+      l = list_ops.tensor_list_push_back(l, 7.)
+      t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      self.assertAllEqual(t, [5., 7.])
+
   def testGetSetReserved(self):
     with self.cached_session(), self.test_scope():
       l = list_ops.tensor_list_reserve(
@@ -145,6 +156,25 @@ class ListOpsTest(xla_test.XLATestCase):
       l = list_ops.tensor_list_set_item(l, 0, 3.0)
       t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
       self.assertAllEqual(t, [3.0, 0.0])
+
+  def testSetStackReservedUnknownElementShape(self):
+    with self.cached_session(), self.test_scope():
+      l = list_ops.tensor_list_reserve(
+          element_dtype=dtypes.float32, element_shape=None, num_elements=2)
+      l = list_ops.tensor_list_set_item(l, 0, [3.0, 4.0])
+      t = list_ops.tensor_list_stack(l, element_dtype=dtypes.float32)
+      self.assertAllEqual(t, [[3.0, 4.0], [0., 0.]])
+
+  def testPushInEmptyListWithUnknownElementShape(self):
+    with self.cached_session(), self.test_scope():
+      l = list_ops.empty_tensor_list(
+          element_dtype=dtypes.float32, element_shape=None, max_num_elements=2)
+      l = list_ops.tensor_list_push_back(l, [3.0, 4.0])
+      # Pushing an element with a different shape should raise an error.
+      with self.assertRaisesRegexp(errors.InvalidArgumentError, "Shape"):
+        l = list_ops.tensor_list_push_back(l, 5.)
+        self.evaluate(
+            list_ops.tensor_list_stack(l, element_dtype=dtypes.float32))
 
   def testGetSetReservedNonScalar(self):
     with self.cached_session() as sess, self.test_scope():

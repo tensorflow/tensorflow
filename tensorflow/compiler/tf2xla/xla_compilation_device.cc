@@ -60,8 +60,6 @@ class XlaCompilationAllocator : public Allocator {
   // buffers, so they get ids to track.
   bool ShouldAllocateEmptyTensors() override { return true; }
 
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
-
  private:
   // Don't run any constructors or destructors for complex objects,
   // since there is no backing store for the tensor to run them

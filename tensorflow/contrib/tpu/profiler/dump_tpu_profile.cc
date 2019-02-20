@@ -19,8 +19,6 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
-#include "tensorflow/contrib/tpu/profiler/op_profile.pb.h"
-#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/compression.h"
@@ -29,6 +27,8 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/profiler/op_profile.pb.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
@@ -72,7 +72,7 @@ Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
   LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
 
   string json_path = JoinPath(run_dir, StrCat(host_prefix, kJsonTraceFileName));
-  Trace trace;
+  profiler::Trace trace;
   trace.ParseFromString(encoded_trace);
   if (os) {
     *os << "Trace contains " << trace.trace_events_size() << " events."
@@ -88,7 +88,7 @@ Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
 
 Status DumpOpProfileToLogDirectory(StringPiece run_dir,
                                    const string& host_prefix,
-                                   const tpu::op_profile::Profile& profile,
+                                   const profiler::op_profile::Profile& profile,
                                    std::ostream* os) {
   string path = JoinPath(run_dir, StrCat(host_prefix, kJsonOpProfileFileName));
   string json;

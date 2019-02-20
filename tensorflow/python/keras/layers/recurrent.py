@@ -42,15 +42,15 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_cudnn_rnn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
 
 # The following string constants are used by Defun approach for unified backend
 # of LSTM and GRU.
-_DEFUN_API_NAME_ATTRIBUTE = 'experimental_api_implements'
-_DEFUN_DEVICE_ATTRIBUTE = 'experimental_api_preferred_device'
+_DEFUN_API_NAME_ATTRIBUTE = 'api_implements'
+_DEFUN_DEVICE_ATTRIBUTE = 'api_preferred_device'
 _CPU_DEVICE_NAME = 'CPU'
 _GPU_DEVICE_NAME = 'GPU'
 
@@ -78,7 +78,6 @@ class StackedRNNCells(Layer):
   ```
   """
 
-  @checkpointable.no_automatic_dependency_tracking
   def __init__(self, cells, **kwargs):
     for cell in cells:
       if not hasattr(cell, 'call'):
@@ -443,7 +442,7 @@ class RNN(Layer):
   ```
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self,
                cell,
                return_sequences=False,
@@ -468,8 +467,8 @@ class RNN(Layer):
     self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
-    if isinstance(cell, checkpointable.Checkpointable):
-      self._track_checkpointable(self.cell, name='cell')
+    if isinstance(cell, trackable.Trackable):
+      self._track_trackable(self.cell, name='cell')
     self.return_sequences = return_sequences
     self.return_state = return_state
     self.go_backwards = go_backwards
@@ -781,9 +780,9 @@ class RNN(Layer):
     else:
       input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
-    if self.unroll and timesteps in [None, 1]:
+    if self.unroll and timesteps is None:
       raise ValueError('Cannot unroll a RNN if the '
-                       'time dimension is undefined or equal to 1. \n'
+                       'time dimension is undefined. \n'
                        '- If using a Sequential model, '
                        'specify the time dimension by passing '
                        'an `input_shape` or `batch_input_shape` '
@@ -2020,6 +2019,8 @@ class UnifiedGRU(GRU):
           True = "after" (default and CuDNN compatible).
   """
 
+  _setattr_tracking = False  # TODO(allenl): Figure out why this is needed.
+
   def __init__(self,
                units,
                activation='tanh',
@@ -2173,11 +2174,11 @@ class UnifiedGRU(GRU):
             recurrent_activation=self.recurrent_activation,
             time_major=self.time_major)
     else:
-      experimental_api_name = 'gru_' + str(uuid.uuid4())
+      api_name = 'gru_' + str(uuid.uuid4())
       defun_standard_gru = _generate_defun_backend(
-          experimental_api_name, _CPU_DEVICE_NAME, standard_gru)
+          api_name, _CPU_DEVICE_NAME, standard_gru)
       defun_cudnn_gru = _generate_defun_backend(
-          experimental_api_name, _GPU_DEVICE_NAME, cudnn_gru)
+          api_name, _GPU_DEVICE_NAME, cudnn_gru)
       # Call the normal GRU impl and register the CuDNN impl function. The
       # grappler will kick in during session execution to optimize the graph.
       last_output, outputs, new_h, runtime = defun_standard_gru(
@@ -3125,11 +3126,11 @@ class UnifiedLSTM(LSTM):
         # identifiable API name, so that Grappler won't get confused when it
         # sees multiple LSTM layers added into same graph, and it will be able
         # to pair up the different implementations across them.
-        experimental_api_name = 'lstm_' + str(uuid.uuid4())
+        api_name = 'lstm_' + str(uuid.uuid4())
         defun_standard_lstm = _generate_defun_backend(
-            experimental_api_name, _CPU_DEVICE_NAME, standard_lstm)
+            api_name, _CPU_DEVICE_NAME, standard_lstm)
         defun_cudnn_lstm = _generate_defun_backend(
-            experimental_api_name, _GPU_DEVICE_NAME, cudnn_lstm)
+            api_name, _GPU_DEVICE_NAME, cudnn_lstm)
 
         # Call the normal LSTM impl and register the CuDNN impl function. The
         # grappler will kick in during session execution to optimize the graph.

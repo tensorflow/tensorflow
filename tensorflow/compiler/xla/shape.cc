@@ -147,7 +147,14 @@ bool Shape::Equal::operator()(const Shape& lhs, const Shape& rhs) {
       return false;
     }
     if (LayoutUtil::IsDenseArray(lhs)) {
-      if (lhs.layout() != rhs.layout()) {
+      Layout::Equal equal;
+      if (ignore_tiles_in_layout_) {
+        equal.IgnoreTiles();
+      }
+      if (ignore_element_size_in_layout_) {
+        equal.IgnoreElementSize();
+      }
+      if (!equal(lhs.layout(), rhs.layout())) {
         VLOG(3) << "CompareShapes: lhs layout != rhs layout";
         return false;
       }

@@ -183,8 +183,10 @@ class EagerContext {
 
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
-  bool ShouldStoreMetadata() LOCKS_EXCLUDED(metadata_mu_);
-  void SetShouldStoreMetadata(bool value);
+  bool ShouldStoreStepStats() LOCKS_EXCLUDED(metadata_mu_);
+  void SetShouldStoreStepStats(bool value);
+  bool ShouldStoreGraphs() LOCKS_EXCLUDED(metadata_mu_);
+  void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
 
@@ -284,7 +286,8 @@ class EagerContext {
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.
-  std::atomic<bool> should_store_metadata_{false};
+  std::atomic<bool> should_store_step_stats_{false};
+  std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
   RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;

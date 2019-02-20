@@ -26,14 +26,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-void AllocatorStats::Clear() {
-  this->num_allocs = 0;
-  this->bytes_in_use = 0;
-  this->max_bytes_in_use = 0;
-  this->max_alloc_size = 0;
-  this->bytes_limit = 0;
-}
-
 string AllocatorStats::DebugString() const {
   return strings::Printf(
       "Limit:        %20lld\n"
@@ -41,8 +33,8 @@ string AllocatorStats::DebugString() const {
       "MaxInUse:     %20lld\n"
       "NumAllocs:    %20lld\n"
       "MaxAllocSize: %20lld\n",
-      this->bytes_limit, this->bytes_in_use, this->max_bytes_in_use,
-      this->num_allocs, this->max_alloc_size);
+      this->bytes_limit ? *this->bytes_limit : 0, this->bytes_in_use,
+      this->peak_bytes_in_use, this->num_allocs, this->largest_alloc_size);
 }
 
 constexpr size_t Allocator::kAllocatorAlignment;
@@ -132,10 +124,10 @@ class CPUAllocator : public Allocator {
       mutex_lock l(mu_);
       ++stats_.num_allocs;
       stats_.bytes_in_use += alloc_size;
-      stats_.max_bytes_in_use =
-          std::max<int64>(stats_.max_bytes_in_use, stats_.bytes_in_use);
-      stats_.max_alloc_size =
-          std::max<int64>(stats_.max_alloc_size, alloc_size);
+      stats_.peak_bytes_in_use =
+          std::max<int64>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+      stats_.largest_alloc_size =
+          std::max<int64>(stats_.largest_alloc_size, alloc_size);
 
       if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
           total_allocation_warning_count_ < kMaxTotalAllocationWarnings) {
@@ -158,16 +150,16 @@ class CPUAllocator : public Allocator {
     port::AlignedFree(ptr);
   }
 
-  void GetStats(AllocatorStats* stats) override {
+  absl::optional<AllocatorStats> GetStats() override {
     mutex_lock l(mu_);
-    *stats = stats_;
+    return stats_;
   }
 
   void ClearStats() override {
     mutex_lock l(mu_);
     stats_.num_allocs = 0;
-    stats_.max_bytes_in_use = stats_.bytes_in_use;
-    stats_.max_alloc_size = 0;
+    stats_.peak_bytes_in_use = stats_.bytes_in_use;
+    stats_.largest_alloc_size = 0;
   }
 
   size_t AllocatedSizeSlow(const void* ptr) override {
