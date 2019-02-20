@@ -848,6 +848,9 @@ class ModelCheckpoint(Callback):
         self.monitor_op = np.less
         self.best = np.Inf
 
+    # Only the chief worker writes model checkpoints.
+    self._chief_worker_only = True
+
   def set_model(self, model):
     self.model = model
     # Use name matching rather than `isinstance` to avoid circular dependencies.

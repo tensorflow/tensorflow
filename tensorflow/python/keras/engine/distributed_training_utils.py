@@ -905,7 +905,7 @@ def distributed_scope(strategy, learning_phase):
     yield
 
 
-def filter_callbacks(callbacks_list):
+def filter_distributed_callbacks(callbacks_list):
   """Filter Callbacks based on the worker context when running multi-worker.
 
   Arguments:
@@ -914,7 +914,23 @@ def filter_callbacks(callbacks_list):
   Returns:
     The list of `Callback` instances that should be run on this worker.
   """
+
+  if not K.in_multi_worker_mode():
+    raise ValueError(
+        'filter_distributed_callbacks() should only be called when Keras '
+        'is in multi worker mode.')
+
   worker_context = dc_context.get_current_worker_context()
+  callbacks_list = callbacks_list or []
+  if not [
+      c for c in callbacks_list if isinstance(c, callbacks.ModelCheckpoint)
+  ]:
+    # TODO(rchao): Consider providing a ModelCheckpoint here if the user
+    # fails to.
+    logging.warning('ModelCheckpoint callback is not provided. '
+                    'Workers will need to restart training if any fails.')
+  # TODO(rchao): Add similar warning for restoring callback (to be designed).
+
   if callbacks_list is None or worker_context.is_chief:
     return callbacks_list
 
