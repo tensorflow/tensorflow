@@ -336,7 +336,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = self.cycle(root, cycles)
 
-    with self.assertRaisesRegexp(AssertionError,
+    with self.assertRaisesRegexp(ValueError,
                                  "Could not find matching function to call"):
       imported.f(input2)
 
@@ -412,7 +412,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = self.cycle(root, cycles)
 
-    with self.assertRaisesRegexp(AssertionError,
+    with self.assertRaisesRegexp(ValueError,
                                  "Could not find matching function to call.*"):
       imported.f(x, learning_rate=0.5, epochs=4)
 
@@ -660,7 +660,7 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     self.assertAllEqual([2, 4, 6, 8],
                         concrete(x=constant_op.constant([1, 2, 3, 4])).numpy())
-    with self.assertRaisesRegexp(AssertionError,
+    with self.assertRaisesRegexp(ValueError,
                                  "Could not find matching function to call"):
       imported.f.get_concrete_function(
           tensor_spec.TensorSpec([None], dtypes.int32))
@@ -1005,6 +1005,53 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     restored_fullargspec = tf_inspect.getfullargspec(imported.f)
     self.assertEqual(original_fullargspec, restored_fullargspec)
+
+  def test_canonicalize_inputs(self, cycles):
+    @def_function.function(autograph=False)
+    def func(a=1, b=2, c=3, training=True):
+      if training:
+        return [a, b, c, training]
+      else:
+        return [c, b, a, training]
+
+    # TODO(b/123501567): Work-around to trigger generic traces of a function
+    # with extra non tensor args.
+    signature = 3*[tensor_spec.TensorSpec(None, dtypes.float32)]
+    @def_function.function(input_signature=signature)
+    def trigger(a, b, c):
+      func(a, b, c, True)
+      func(a, b, c, False)
+
+    trigger.get_concrete_function()
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(root.f(), [1.0, 2.0, 3.0, True])
+    self.assertAllEqual(root.f(-1.0, training=False), [3.0, 2.0, -1.0, False])
+
+    with self.assertRaisesRegexp(ValueError,
+                                 "Could not find matching function"):
+      root.f(["hello", 1.0])
+
+  def test_prefer_specific_trace(self, cycles):
+    @def_function.function(autograph=False)
+    def func(a):
+      if isinstance(a, int):
+        return a
+      else:
+        return a + 1
+
+    self.assertAllEqual(2, func(2).numpy())
+    self.assertAllEqual(3, func(constant_op.constant(2)).numpy())
+
+    root = tracking.AutoTrackable()
+    root.f = func
+    root = self.cycle(root, cycles)
+    self.assertAllEqual(2, root.f(2).numpy())
+    self.assertAllEqual(4, root.f(3).numpy())
+    self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
+    self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):
