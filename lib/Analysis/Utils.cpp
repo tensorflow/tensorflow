@@ -322,7 +322,7 @@ Optional<uint64_t> mlir::getMemRefSizeInBytes(MemRefType memRefType) {
   if (!elementType.isIntOrFloat() && !elementType.isa<VectorType>())
     return None;
 
-  unsigned sizeInBytes = getMemRefEltSizeInBytes(memRefType);
+  uint64_t sizeInBytes = getMemRefEltSizeInBytes(memRefType);
   for (unsigned i = 0, e = memRefType.getRank(); i < e; i++) {
     sizeInBytes = sizeInBytes * memRefType.getDimSize(i);
   }
