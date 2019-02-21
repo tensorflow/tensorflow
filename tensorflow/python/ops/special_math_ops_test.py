@@ -250,7 +250,8 @@ class EinsumTest(test.TestCase):
       'abc, bac',
       'iJ, Ki -> JK',
       'iJk, Jklm -> Jk',
-      'ii'
+    #   'ii',
+      'ijji'
   ]
 
   long_cases = [
@@ -349,10 +350,13 @@ class EinsumTest(test.TestCase):
     with self.session(use_gpu=True):
       output_value = self.evaluate(output_tensor)
 
-    correct_value = np.einsum(axes, *input_vals)
-
+    correct_value=0
+    if axes=='ijji':
+        output =  math_ops.trace(*input_tensors)
+        correct_value = self.evaluate(output)
+    else:
+        correct_value = np.einsum(axes, *input_vals)
     err = np.abs(correct_value - output_value).max()
-    # print(axes, err)
     self.assertLess(err, 1e-8)
 
   def test_input_is_placeholder(self):
