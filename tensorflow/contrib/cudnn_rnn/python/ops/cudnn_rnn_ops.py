@@ -34,7 +34,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import saver
 from tensorflow.python.training.tracking import tracking as trackable_lib
-import numpy as np
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
