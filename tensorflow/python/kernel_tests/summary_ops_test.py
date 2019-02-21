@@ -36,6 +36,9 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
+from tensorflow.python.keras.engine.sequential import Sequential
+from tensorflow.python.keras.layers.core import Activation
+from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.lib.io import tf_record
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
@@ -491,6 +494,17 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
         ],
         step_stats=step_stats)
 
+  def keras_model(self, *args, **kwargs):
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir)
+    with writer.as_default():
+      summary_ops.keras_model(*args, **kwargs)
+    writer.close()
+    events = events_from_logdir(logdir)
+    # The first event contains no summary values. The written content goes to
+    # the second event.
+    return events[1].summary
+
   @test_util.run_v2_only
   def testRunMetadata_usesNameAsTag(self):
     meta = config_pb2.RunMetadata()
@@ -583,6 +597,15 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     actual_run_metadata = config_pb2.RunMetadata.FromString(
         first_val.tensor.string_val[0])
     self.assertProtoEquals(expected_run_metadata, actual_run_metadata)
+
+  @test_util.run_v2_only
+  def testKerasModel(self):
+    model = Sequential(
+        [Dense(10, input_shape=(100,)),
+         Activation('relu', name='my_relu')])
+    summary = self.keras_model(name='my_name', data=model, step=1)
+    first_val = summary.value[0]
+    self.assertEqual(model.to_json(), first_val.tensor.string_val[0])
 
 
 def events_from_file(filepath):
