@@ -12,19 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Distribution Strategy library."""
+"""Experimental Distribution Strategy library."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.python.distribute import cluster_resolver
-from tensorflow.python.distribute import cross_device_ops
-from tensorflow.python.distribute import distribute_lib
-from tensorflow.python.distribute import distribution_strategy_context
-from tensorflow.python.distribute import mirrored_strategy
-from tensorflow.python.distribute import one_device_strategy
-from tensorflow.python.distribute.experimental import collective_all_reduce_strategy
-from tensorflow.python.distribute.experimental import parameter_server_strategy
+from tensorflow.python.distribute import collective_all_reduce_strategy
+from tensorflow.python.distribute import parameter_server_strategy
 # pylint: enable=unused-import
