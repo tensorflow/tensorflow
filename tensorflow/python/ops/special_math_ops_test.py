@@ -250,7 +250,7 @@ class EinsumTest(test.TestCase):
       'abc, bac',
       'iJ, Ki -> JK',
       'iJk, Jklm -> Jk',
-    #   'ii',
+      'ii',
       'ijji'
   ]
 
