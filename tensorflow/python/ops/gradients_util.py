@@ -23,7 +23,6 @@ import contextlib
 import warnings
 
 import numpy as np
-import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
