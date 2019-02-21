@@ -113,7 +113,7 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
       writer.close()
       # Append corrupted data
       with open(fn, "a") as f:
-        f.write(b"corrupted data")
+        f.write("corrupted data")
 
     dataset = readers.TFRecordDataset(filenames).apply(
         error_ops.ignore_errors())
