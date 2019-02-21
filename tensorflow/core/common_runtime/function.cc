@@ -1408,9 +1408,7 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
   // TODO(ezhulenev): Currently common_runtime function inlining can't guarantee
   // that all side-effectful ops will be executed after inlining. See Grappler
   // function_optimizer for details. Unify all function inlining mechanism.
-  if (!fbody->control_ret_nodes.empty()) {
-    return false;
-  }
+  // Do not inline if `!fbody->control_ret_nodes.empty()`.
   for (int i = 0; i < node->num_inputs(); ++i) {
     if (node->input_type(i) != fbody->arg_types[i]) return false;
   }
