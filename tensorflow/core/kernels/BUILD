@@ -33,6 +33,7 @@ load(
     "if_android",
     "if_not_windows",
     "tf_cc_binary",
+    "tf_cc_shared_object",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -7163,5 +7164,24 @@ cc_header_only_library(
     name = "quantize_and_dequantize_op_hdrs",
     deps = [
         ":quantize_and_dequantize_op",
+    ],
+)
+
+cc_library(
+    name = "kernel_platform_strings",
+    srcs = ["kernel_platform_strings.h"],
+    deps = [
+        "//tensorflow/core:platform_strings",
+    ],
+    alwayslink = 1,
+)
+
+# Shared object that links all the kernels TF needs.
+tf_cc_shared_object(
+    name = "libtfkernel_all_kernels.so",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernel_platform_strings",
+        "//tensorflow/core:all_kernels_impl",
     ],
 )
