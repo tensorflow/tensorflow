@@ -2333,7 +2333,7 @@ void UseArraysExtraInfo(Model* model, bool quantize_output) {
         // Make sure to create the shape even if there are no dims, to
         // correctly record 0-D shapes.
         array.mutable_shape();
-        for (int dim : entry.shape().dims()) {
+        for (const auto& dim : entry.shape().dims()) {
           array.mutable_shape()->mutable_dims()->push_back(dim);
         }
       }
