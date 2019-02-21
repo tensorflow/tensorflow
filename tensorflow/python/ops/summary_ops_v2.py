@@ -802,3 +802,36 @@ def run_metadata_graphs(name, data, step):
             data.SerializeToString(), dtype=dtypes.string),
         step=step,
         metadata=summary_metadata)
+
+
+def keras_model(name, data, step):
+  """Writes a Keras model as JSON to as a Summary.
+
+  Writing the Keras model configuration allows the TensorBoard graph plugin to
+  render a conceptual graph, as opposed to graph of ops.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A Keras Model to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_keras_model"
+  # version number = 1
+  summary_metadata.plugin_data.content = "1"
+
+  json_string = data.to_json()
+
+  with summary_scope(name, "graph_keras_model", [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(json_string, dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)
