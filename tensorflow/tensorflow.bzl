@@ -1357,7 +1357,7 @@ def _py_wrap_cc_impl(ctx):
     args += ["-I" + i for i in swig_include_dirs.to_list()]
     args += [src.path]
     outputs = [ctx.outputs.cc_out, ctx.outputs.py_out]
-    ctx.action(
+    ctx.actions.run(
         executable = ctx.executable._swig,
         arguments = args,
         inputs = inputs.to_list(),
@@ -1655,8 +1655,7 @@ _append_init_to_versionscript = rule(
     attrs = {
         "module_name": attr.string(mandatory = True),
         "template_file": attr.label(
-            allow_files = True,
-            single_file = True,
+            allow_single_file = True,
             mandatory = True,
         ),
         "is_version_script": attr.bool(
