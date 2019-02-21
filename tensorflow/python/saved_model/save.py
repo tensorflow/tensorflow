@@ -593,7 +593,8 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.user_object.CopyFrom(registered_type_proto)
 
 
-@tf_export("saved_model.save", v1=["saved_model.experimental.save"])
+@tf_export("saved_model.save",
+           v1=["saved_model.save", "saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None):
   # pylint: disable=line-too-long
   """Exports the Trackable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).

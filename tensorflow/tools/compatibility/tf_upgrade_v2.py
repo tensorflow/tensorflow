@@ -704,6 +704,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         # changed significantly.
         "tf.nn.ctc_loss":
             "tf.compat.v1.nn.ctc_loss",
+        # tf.saved_model.load in 1.x has no equivalent in 2.x, but there is a
+        # symbol with the same name.
+        "tf.saved_model.load":
+            "tf.compat.v1.saved_model.load",
+        "tf.saved_model.load_v2":
+            "tf.compat.v2.saved_model.load",
         "tf.zeros_initializer":
             "tf.compat.v1.initializers.zeros",
         "tf.ones_initializer":
