@@ -29,6 +29,7 @@ RUN curl -fSsL -O https://bootstrap.pypa.io/get-pip.py && \
     rm get-pip.py
 
 RUN pip --no-cache-dir install \
+        pyzmq>=17,<=17.1.2 \
         Pillow \
         h5py \
         ipykernel \

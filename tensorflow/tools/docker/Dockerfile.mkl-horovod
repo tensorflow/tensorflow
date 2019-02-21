@@ -38,6 +38,7 @@ ARG PIP="pip"
 
 
 RUN ${PIP} --no-cache-dir install \
+        pyzmq>=17,<=17.1.2 \
         Pillow \
         h5py \
         ipykernel \
