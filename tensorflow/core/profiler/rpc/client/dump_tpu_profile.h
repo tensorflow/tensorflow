@@ -13,14 +13,16 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
-#define TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
+#ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_DUMP_TPU_PROFILE_H_
+#define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_DUMP_TPU_PROFILE_H_
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/grpc_services.h"
 
 namespace tensorflow {
-namespace tpu {
+
+namespace profiler {
+namespace client {
 
 // Dumps all profiling tool data in a TPU profile to a TensorBoard log directory
 // with the given run name. This writes user-facing log messages to `os`.
@@ -36,7 +38,8 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
                                   const ProfileResponse& response,
                                   std::ostream* os);
 
-}  // namespace tpu
+}  // namespace client
+}  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_TPU_PROFILER_DUMP_TPU_PROFILE_H_
+#endif  // TENSORFLOW_CORE_PROFILER_RPC_CLIENT_DUMP_TPU_PROFILE_H_

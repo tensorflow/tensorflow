@@ -13,20 +13,23 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
-#define TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
+#ifndef TENSORFLOW_CORE_PROFILER_RPC_CLIENT_TRACE_EVENTS_TO_JSON_H_
+#define TENSORFLOW_CORE_PROFILER_RPC_CLIENT_TRACE_EVENTS_TO_JSON_H_
 
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/trace_events.pb.h"
 
 namespace tensorflow {
-namespace tpu {
+
+namespace profiler {
+namespace client {
 
 // Converts trace events in the trace proto to a JSON string that can be
 // consumed by catapult trace viewer.
-string TraceEventsToJson(const profiler::Trace &trace);
+string TraceEventsToJson(const Trace &trace);
 
-}  // namespace tpu
+}  // namespace client
+}  // namespace profiler
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_CONTRIB_TPU_PROFILER_TRACE_EVENTS_TO_JSON_H_
+#endif  // TENSORFLOW_CORE_PROFILER_RPC_CLIENT_TRACE_EVENTS_TO_JSON_H_
