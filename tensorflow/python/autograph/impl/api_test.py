@@ -27,6 +27,7 @@ import numpy as np
 from tensorflow.python.autograph import utils
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.impl import api
+from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.utils import py_func
@@ -496,12 +497,10 @@ class ApiTest(test.TestCase):
       testing_global_numeric = x + testing_global_numeric
       return testing_global_numeric
 
-    compiled_fn = api.to_graph(test_fn)
-
-    x = compiled_fn(constant_op.constant(3))
-    self.assertEqual(5, self.evaluate(x))
-    # TODO(b/122368197): This should be the constant 5!
-    self.assertEqual(2, testing_global_numeric)
+    # TODO(b/122368197)
+    with self.assertRaisesRegex(
+        errors.AutoGraphError, 'global keyword is not yet supported'):
+      api.to_graph(test_fn)
 
   def test_to_graph_with_kwargs_clashing_converted_call(self):
 
