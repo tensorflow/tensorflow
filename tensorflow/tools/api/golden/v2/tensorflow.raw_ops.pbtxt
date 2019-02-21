@@ -1925,6 +1925,10 @@ tf_module {
     argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "MulNoNan"
+    argspec: "args=[\'x\', \'y\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "MultiDeviceIterator"
     argspec: "args=[\'devices\', \'shared_name\', \'container\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
