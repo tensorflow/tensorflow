@@ -71,7 +71,7 @@ RUN apt-get update --allow-insecure-repositories && \
 #RUN ln -s /opt/rocm/hcc-1.0 /opt/rocm/hcc
  
 # Build HIP from source
-RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git && mkdir HIP/build && cd HIP/build && cmake .. && make install -j $(nproc)
+RUN cd $HOME && git clone -b feature_maybe_dlopen https://github.com/ROCm-Developer-Tools/HIP.git && mkdir HIP/build && cd HIP/build && cmake .. && make install -j $(nproc)
 
 # Set up paths
 ENV HCC_HOME=$ROCM_PATH/hcc
