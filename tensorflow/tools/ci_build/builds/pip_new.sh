@@ -28,9 +28,10 @@
 #   TF_PYTHON_VERSION:   (python2 | python2.7 | python3.5 | python3.7)
 #
 # Optional environment variables. If provided, overwrites any default values.
-#   TF_BUILD_FLAGS:      Bazel build flags excluding `--test_tag_filters` and
-#                        test targets.
-#                          e.g. TF_BUILD_FLAGS="--verbose_failures=true \
+#   TF_BUILD_FLAGS:      Bazel build flags.
+#                          e.g. TF_BUILD_FLAGS="--config=opt"
+#   TF_TEST_FLAGS:       Bazel test flags.
+#                          e.g. TF_TEST_FLAGS="--verbose_failures=true \
 #                               --build_tests_only --test_output=errors"
 #   TF_TEST_FILTER_TAGS: Filtering tags for bazel tests. More specifically,
 #                        input tags for `--test_filter_tags` flag.
@@ -38,7 +39,7 @@
 #   TF_TEST_TARGETS:     Bazel test targets.
 #                          e.g. TF_TEST_TARGETS="//tensorflow/contrib/... \
 #                               //tensorflow/... \
-#                               //tensorflow/python/... "
+#                               //tensorflow/python/..."
 #   TF_PIP_TESTS:        PIP tests to run. If NOT specified, skips all tests.
 #                          e.g. TF_PIP_TESTS="test_pip_virtualenv_clean \
 #                               test_pip_virtualenv_clean \
@@ -134,8 +135,10 @@ update_bazel_flags() {
   fi
   # Clean up whitespaces
   BAZEL_BUILD_FLAGS=$(str_strip "${BAZEL_BUILD_FLAGS}")
+  BAZEL_TEST_FLAGS=$(str_strp "${BAZEL_TEST_FLAGS}")
   # Cleaned bazel flags
   echo "Bazel build flags (cleaned):\n" "${BAZEL_BUILD_FLAGS}"
+  echo "Bazel test flags (cleaned):\n" "${BAZEL_TEST_FLAGS}"
 }
 
 update_test_filter_tags() {
@@ -210,7 +213,8 @@ echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH} (version: ${PYTHON_VER_CFG})"
 
 # Default values for optional global variables in case they are not user
 # defined.
-DEFAULT_BAZEL_BUILD_FLAGS='--test_output=errors --verbose_failures=true'
+DEFAULT_BAZEL_BUILD_FLAGS='--config=opt'
+DEFAULT_BAZEL_TEST_FLAGS='--test_output=errors --verbose_failures=true'
 DEFAULT_BAZEL_TEST_FILTERS='-no_oss,-oss_serial'
 DEFAULT_BAZEL_TEST_TARGETS='//tensorflow/python/... -//tensorflow/core/... -//tensorflow/compiler/... '
 DEFAULT_PIP_TESTS="" # Do not run any tests by default
@@ -220,6 +224,7 @@ DEFAULT_PIP_TEST_ROOT="pip_test"
 
 # Take in optional global variables
 BAZEL_BUILD_FLAGS=${TF_BUILD_FLAGS:-$DEFAULT_BAZEL_BUILD_FLAGS}
+BAZEL_TEST_FLAGS=${TF_TEST_FLAGS:-$DEFAULT_BAZEL_TEST_FLAGS}
 BAZEL_TEST_TARGETS=${TF_TEST_TARGETS:-$DEFAULT_BAZEL_TEST_TARGETS}
 BAZEL_TEST_FILTER_TAGS=${TF_TEST_FILTER_TAGS:-$DEFAULT_BAZEL_TEST_FILTERS}
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
@@ -538,7 +543,7 @@ run_test_with_bazel() {
 
   # TODO(hyey): Update test target after validation.
   # Run the test.
-  bazel test --build_tests_only ${BAZEL_BUILD_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- //$PIP_TEST_PREFIX/tensorflow/python/...
+  bazel test --build_tests_only ${BAZEL_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- //$PIP_TEST_PREFIX/tensorflow/python/...
 
   unlink ${TEST_ROOT}/tensorflow
 }
