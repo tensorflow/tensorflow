@@ -199,6 +199,24 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   // CHECK: %{{[0-9]+}} = remiu %arg2, %arg2 : i32
   %45 = "remiu"(%i, %i) : (i32, i32) -> i32
 
+  // CHECK: %{{[0-9]+}} = divf %arg1, %arg1 : f32
+  %46 = "divf"(%f, %f) : (f32,f32) -> f32
+
+  // CHECK: %{{[0-9]+}} = divf %arg1, %arg1 : f32
+  %47 = divf %f, %f : f32
+
+  // CHECK: %{{[0-9]+}} = divf %arg0, %arg0 : tensor<4x4x?xf32>
+  %48 = divf %t, %t : tensor<4x4x?xf32>
+
+  // CHECK: %{{[0-9]+}} = remf %arg1, %arg1 : f32
+  %49 = "remf"(%f, %f) : (f32,f32) -> f32
+
+  // CHECK: %{{[0-9]+}} = remf %arg1, %arg1 : f32
+  %50 = remf %f, %f : f32
+
+  // CHECK: %{{[0-9]+}} = remf %arg0, %arg0 : tensor<4x4x?xf32>
+  %51 = remf %t, %t : tensor<4x4x?xf32>
+
   return
 }
 

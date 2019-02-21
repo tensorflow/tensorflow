@@ -489,6 +489,12 @@ struct SubFOpLowering : public OneToOneLLVMOpLowering<SubFOp, LLVM::FSubOp> {
 struct MulFOpLowering : public OneToOneLLVMOpLowering<MulFOp, LLVM::FMulOp> {
   using Super::Super;
 };
+struct DivFOpLowering : public OneToOneLLVMOpLowering<DivFOp, LLVM::FDivOp> {
+  using Super::Super;
+};
+struct RemFOpLowering : public OneToOneLLVMOpLowering<RemFOp, LLVM::FRemOp> {
+  using Super::Super;
+};
 struct CmpIOpLowering : public OneToOneLLVMOpLowering<CmpIOp, LLVM::ICmpOp> {
   using Super::Super;
 };
@@ -1049,10 +1055,10 @@ protected:
         Call0OpLowering, CallIndirect0OpLowering, CallIndirectOpLowering,
         CallOpLowering, CmpIOpLowering, CondBranchOpLowering,
         ConstLLVMOpLowering, DeallocOpLowering, DimOpLowering, DivISOpLowering,
-        DivIUOpLowering, LoadOpLowering, MemRefCastOpLowering, MulFOpLowering,
-        MulIOpLowering, RemISOpLowering, RemIUOpLowering, ReturnOpLowering,
-        SelectOpLowering, StoreOpLowering, SubFOpLowering,
-        SubIOpLowering>::build(&converterStorage, *llvmDialect);
+        DivIUOpLowering, DivFOpLowering, LoadOpLowering, MemRefCastOpLowering,
+        MulFOpLowering, MulIOpLowering, RemISOpLowering, RemIUOpLowering,
+        RemFOpLowering, ReturnOpLowering, SelectOpLowering, StoreOpLowering,
+        SubFOpLowering, SubIOpLowering>::build(&converterStorage, *llvmDialect);
   }
 
   // Convert types using the stored LLVM IR module.

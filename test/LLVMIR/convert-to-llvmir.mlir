@@ -371,6 +371,10 @@ func @vector_ops(vector<4xf32>, vector<4xi1>, vector<4xi64>) -> vector<4xf32> {
   %5 = remis %arg2, %arg2 : vector<4xi64>
 // CHECK-NEXT:   {{.*}} = "llvm.urem"(%arg2, %arg2) : (!llvm<"<4 x i64>">, !llvm<"<4 x i64>">) -> !llvm<"<4 x i64>">
   %6 = remiu %arg2, %arg2 : vector<4xi64>
+// CHECK-NEXT:   {{.*}} = "llvm.fdiv"(%arg0, {{.*}}) : (!llvm<"<4 x float>">, !llvm<"<4 x float>">) -> !llvm<"<4 x float>">
+  %7 = divf %arg0, %0 : vector<4xf32>
+// CHECK-NEXT:   {{.*}} = "llvm.frem"(%arg0, {{.*}}) : (!llvm<"<4 x float>">, !llvm<"<4 x float>">) -> !llvm<"<4 x float>">
+  %8 = remf %arg0, %0 : vector<4xf32>
   return %1 : vector<4xf32>
 }
 
@@ -393,6 +397,10 @@ func @ops(f32, f32, i32, i32) -> (f32, i32) {
   %7 = remiu %arg2, %arg3 : i32
 // CHECK-NEXT:   {{.*}} = "llvm.select"({{.*}}, %arg2, %arg3) : (!llvm<"i1">, !llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
   %8 = select %2, %arg2, %arg3 : i32
+// CHECK-NEXT:   {{.*}} = "llvm.fdiv"(%arg0, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
+  %9 = divf %arg0, %arg1 : f32
+// CHECK-NEXT:   {{.*}} = "llvm.frem"(%arg0, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
+  %10 = remf %arg0, %arg1 : f32
 
   return %0, %4 : f32, i32
 }

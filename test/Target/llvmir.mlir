@@ -707,6 +707,10 @@ func @vector_ops(%arg0: !llvm<"<4 x float>">, %arg1: !llvm<"<4 x i1>">, %arg2: !
   %5 = "llvm.srem"(%arg2, %arg2) : (!llvm<"<4 x i64>">, !llvm<"<4 x i64>">) -> !llvm<"<4 x i64>">
 // CHECK-NEXT: %9 = urem <4 x i64> %2, %2
   %6 = "llvm.urem"(%arg2, %arg2) : (!llvm<"<4 x i64>">, !llvm<"<4 x i64>">) -> !llvm<"<4 x i64>">
+// CHECK-NEXT: %10 = fdiv <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
+  %7 = "llvm.fdiv"(%arg0, %0) : (!llvm<"<4 x float>">, !llvm<"<4 x float>">) -> !llvm<"<4 x float>">
+// CHECK-NEXT: %11 = frem <4 x float> %0, <float 4.200000e+01, float 4.200000e+01, float 4.200000e+01, float 4.200000e+01>
+  %8 = "llvm.frem"(%arg0, %0) : (!llvm<"<4 x float>">, !llvm<"<4 x float>">) -> !llvm<"<4 x float>">
 // CHECK-NEXT:    ret <4 x float> %4
   "llvm.return"(%1) : (!llvm<"<4 x float>">) -> ()
 }
@@ -733,6 +737,12 @@ func @ops(%arg0: !llvm<"float">, %arg1: !llvm<"float">, %arg2: !llvm<"i32">, %ar
   %8 = "llvm.undef"() : () -> !llvm<"{ float, i32 }">
   %9 = "llvm.insertvalue"(%8, %0) {position: [0]} : (!llvm<"{ float, i32 }">, !llvm<"float">) -> !llvm<"{ float, i32 }">
   %10 = "llvm.insertvalue"(%9, %3) {position: [1]} : (!llvm<"{ float, i32 }">, !llvm<"i32">) -> !llvm<"{ float, i32 }">
+
+// CHECK: %15 = fdiv float %0, %1
+  %11 = "llvm.fdiv"(%arg0, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
+// CHECK-NEXT: %16 = frem float %0, %1
+  %12 = "llvm.frem"(%arg0, %arg1) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
+
   "llvm.return"(%10) : (!llvm<"{ float, i32 }">) -> ()
 }
 
