@@ -873,6 +873,9 @@ def make_constant_tests(zip_path):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
       "constant_is_also_output": [True, False],
+      # This is a regression test for a bug where Toco rejects models with
+      # unread inputs.
+      "has_unread_input": [True, False],
   }]
 
   def build_graph(parameters):
@@ -882,11 +885,18 @@ def make_constant_tests(zip_path):
         shape=parameters["input_shape"])
     constant = tf.constant(
         create_tensor_data(parameters["dtype"], parameters["input_shape"]))
-    out = [tf.maximum(dummy_input, constant)]
+    outputs = [tf.maximum(dummy_input, constant)]
     if parameters["constant_is_also_output"]:
-      out.append(constant)
+      outputs.append(constant)
+    inputs = [dummy_input]
+    if parameters["has_unread_input"]:
+      unread_input = tf.placeholder(
+          dtype=parameters["dtype"],
+          name="unread_input",
+          shape=parameters["input_shape"])
+      inputs.append(unread_input)
 
-    return [dummy_input], out
+    return inputs, outputs
 
   def build_inputs(parameters, sess, inputs, outputs):
     dummy_input = np.zeros(
