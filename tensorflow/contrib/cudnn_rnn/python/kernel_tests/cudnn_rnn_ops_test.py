@@ -217,7 +217,8 @@ def RunLSTM(sess,
     outputs, state_tuple = sess.run([outputs_op, state_tuple_op])
     cu_outputs, cu_state_tuple = sess.run([cu_outputs_op, cu_state_tuple_op],
                                           feed_dict=({inputs: inputs_np} if
-                                              dynamic_shape_input else None))
+                                                     dynamic_shape_input else
+                                                     None))
 
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)
@@ -703,7 +704,7 @@ def RunGRU(sess,
     outputs, h = sess.run([outputs_op, h_op])
     cu_outputs, cu_h = sess.run([cu_outputs_op, cu_h_op],
                                 feed_dict=({inputs: inputs_np} if
-                                    dynamic_shape_input else None))
+                                           dynamic_shape_input else None))
     # Remove the trivial 1st dimension.
     cu_h = np.squeeze(cu_h, axis=0 if time_major else 1)
 
