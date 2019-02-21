@@ -20,11 +20,12 @@ from __future__ import print_function
 
 import copy
 
-from tensorflow.contrib.distribute.python import mirrored_strategy
+
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
@@ -39,12 +40,14 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 _LOCAL_CPU = "/device:CPU:0"
 _LOCAL_GPU_0 = "/device:GPU:0"
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.
+@tf_export("distribute.experimental.ParameterServerStrategy")
 class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   """A parameter server DistributionStrategy.
 
