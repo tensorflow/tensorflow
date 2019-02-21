@@ -30,6 +30,7 @@
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/Location.h"
+#include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
 #include "mlir/StandardOps/StandardOps.h"
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
@@ -205,16 +206,22 @@ mlir::edsc::MLIREmitter::emitExprs(ArrayRef<Expr> exprs) {
   return res;
 }
 
-void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
+mlir::edsc::MLIREmitter &mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   auto *block = builder->getBlock();
   auto ip = builder->getInsertionPoint();
   auto *val = emitExpr(stmt.getRHS());
   if (!val) {
     assert((stmt.getRHS().is_op<DeallocOp>() ||
-            stmt.getRHS().is_op<StoreOp>() ||
-            stmt.getRHS().is_op<ReturnOp>()) &&
-           "dealloc, store or return expected as the only 0-result ops");
-    return;
+            stmt.getRHS().is_op<StoreOp>() || stmt.getRHS().is_op<ReturnOp>() ||
+            stmt.getRHS().is_op<CallIndirectOp>()) &&
+           "dealloc, store, return or call_indirect expected as the only "
+           "0-result ops");
+    if (stmt.getRHS().is_op<CallIndirectOp>()) {
+      assert(
+          stmt.getRHS().cast<VariadicExpr>().getTypes().empty() &&
+          "function call produced 0 results from a non-zero-result function");
+    }
+    return *this;
   }
   // Force create a bindable from stmt.lhs and bind it.
   bind(Bindable(stmt.getLHS()), val);
@@ -224,6 +231,8 @@ void mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   }
   emitStmts(stmt.getEnclosedStmts());
   builder->setInsertionPoint(block, ip);
+
+  return *this;
 }
 
 void mlir::edsc::MLIREmitter::emitStmts(ArrayRef<Stmt> stmts) {
@@ -420,6 +429,16 @@ edsc_expr_t bindConstantIndex(edsc_mlir_emitter_t emitter, int64_t value) {
   return b;
 }
 
+edsc_expr_t bindConstantFunction(edsc_mlir_emitter_t emitter,
+                                 mlir_func_t function) {
+  auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
+  auto *f = reinterpret_cast<mlir::Function *>(function);
+  Expr b(f->getType());
+  e->bindConstant<mlir::ConstantOp>(Bindable(b),
+                                    e->getBuilder()->getFunctionAttr(f));
+  return b;
+}
+
 unsigned getRankOfFunctionArgument(mlir_func_t function, unsigned pos) {
   auto *f = reinterpret_cast<mlir::Function *>(function);
   assert(pos < f->getNumArguments());
@@ -536,3 +555,25 @@ DEFINE_EDSL_BINARY_OP(Or, ||);
 DEFINE_EDSL_UNARY_OP(Negate, !);
 
 #undef DEFINE_EDSL_UNARY_OP
+
+edsc_expr_t Call0(edsc_expr_t callee, edsc_expr_list_t args) {
+  SmallVector<Expr, 8> exprArgs;
+  exprArgs.reserve(args.n);
+  for (int i = 0; i < args.n; ++i) {
+    exprArgs.push_back(Expr(args.exprs[i]));
+  }
+  return edsc::call(Expr(callee), exprArgs);
+}
+
+edsc_expr_t Call1(edsc_expr_t callee, mlir_type_t result,
+                  edsc_expr_list_t args) {
+  SmallVector<Expr, 8> exprArgs;
+  exprArgs.reserve(args.n);
+  for (int i = 0; i < args.n; ++i) {
+    exprArgs.push_back(Expr(args.exprs[i]));
+  }
+  return edsc::call(
+      Expr(callee),
+      Type::getFromOpaquePointer(reinterpret_cast<const void *>(result)),
+      exprArgs);
+}

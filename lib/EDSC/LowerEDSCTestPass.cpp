@@ -145,6 +145,41 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
 
     return success();
   }
+  if (f->getName().strref() == "call_indirect") {
+    assert(!f->getBlocks().empty() && "call_indirect should not be empty");
+    FuncBuilder builder(&f->getBlocks().front(),
+                        f->getBlocks().front().begin());
+    Function *callee = f->getModule()->getNamedFunction("callee");
+    Function *calleeArgs = f->getModule()->getNamedFunction("callee_args");
+    Function *secondOrderCallee =
+        f->getModule()->getNamedFunction("second_order_callee");
+    assert(callee && calleeArgs && secondOrderCallee &&
+           "could not find required declarations");
+
+    auto funcRetIndexType = builder.getFunctionType({}, builder.getIndexType());
+
+    edsc::ScopedEDSCContext context;
+    edsc::Expr func(callee->getType()), funcArgs(calleeArgs->getType()),
+        secondOrderFunc(secondOrderCallee->getType());
+    auto stmt = edsc::call(func, {});
+    auto chainedCallResult =
+        edsc::call(edsc::call(secondOrderFunc, funcRetIndexType, {func}),
+                   builder.getIndexType(), {});
+    auto argsCall =
+        edsc::call(funcArgs, {chainedCallResult, chainedCallResult});
+    edsc::MLIREmitter(&builder, f->getLoc())
+        .bindConstant<ConstantOp>(edsc::Bindable(func),
+                                  builder.getFunctionAttr(callee))
+        .bindConstant<ConstantOp>(edsc::Bindable(funcArgs),
+                                  builder.getFunctionAttr(calleeArgs))
+        .bindConstant<ConstantOp>(edsc::Bindable(secondOrderFunc),
+                                  builder.getFunctionAttr(secondOrderCallee))
+        .emitStmt(stmt)
+        .emitStmt(chainedCallResult)
+        .emitStmt(argsCall);
+
+    return success();
+  }
 
   // Inject an EDSC-constructed computation that assigns Stmt and uses the LHS.
   if (f->getName().strref().contains("assignments")) {

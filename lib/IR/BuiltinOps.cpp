@@ -256,7 +256,7 @@ static Type getAttributeType(Attribute attr) {
   return {};
 }
 
-/// Builds a constant of with the specified attribute value and type extracted
+/// Builds a constant with the specified attribute value and type extracted
 /// from the attribute.  The attribute must have a type.
 void ConstantOp::build(Builder *builder, OperationState *result,
                        Attribute value) {

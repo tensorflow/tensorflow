@@ -542,6 +542,18 @@ edsc_expr_t ConstantInteger(mlir_type_t type, int64_t value) {
   return mlir::edsc::constantInteger(t, value);
 }
 
+Expr mlir::edsc::call(Expr func, Type result, ArrayRef<Expr> args) {
+  auto exprs = llvm::to_vector<8>(args);
+  exprs.insert(exprs.begin(), func);
+  return VariadicExpr::make<CallIndirectOp>(exprs, result);
+}
+
+Expr mlir::edsc::call(Expr func, ArrayRef<Expr> args) {
+  auto exprs = llvm::to_vector<8>(args);
+  exprs.insert(exprs.begin(), func);
+  return VariadicExpr::make<CallIndirectOp>(exprs, {});
+}
+
 Stmt mlir::edsc::Return(ArrayRef<Expr> values) {
   return VariadicExpr::make<ReturnOp>(values);
 }
@@ -707,6 +719,12 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
     if (narExpr.is_op<AffineApplyOp>()) {
       os << '(';
       printAffineApply(os, *this);
+      os << ')';
+      return;
+    }
+    if (narExpr.is_op<CallIndirectOp>()) {
+      os << '@' << getChildExpressions().front() << '(';
+      interleaveComma(getChildExpressions().drop_front(), os);
       os << ')';
       return;
     }

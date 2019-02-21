@@ -610,6 +610,8 @@ inline Expr store(Stmt val, Expr m, llvm::ArrayRef<Expr> indices = {}) {
 Expr select(Expr cond, Expr lhs, Expr rhs);
 Expr vector_type_cast(Expr memrefExpr, Type memrefType);
 Expr constantInteger(Type t, int64_t value);
+Expr call(Expr func, Type result, llvm::ArrayRef<Expr> args);
+Expr call(Expr func, llvm::ArrayRef<Expr> args);
 
 Stmt Return(ArrayRef<Expr> values = {});
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);

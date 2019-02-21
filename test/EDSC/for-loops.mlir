@@ -83,3 +83,26 @@ func @assignments_2(%arg0: memref<?xf32>, %arg1: memref<?xf32>, %arg2: memref<?x
 func @max_min_for(%arg0 : index, %arg1 : index, %arg2 : index, %arg3 : index) {
   return
 }
+
+func @callee()
+func @callee_args(index, index)
+func @second_order_callee(() -> ()) -> (() -> (index))
+
+// This function will be detected by the test pass that will insert an
+// EDSC-constructed chain of indirect calls that corresponds to
+//   @callee()
+//   var x = @second_order_callee(@callee)
+//   @callee_args(x, x)
+// before the `return` instruction.
+//
+// CHECK-LABEL: @call_indirect
+// CHECK: %f = constant @callee : () -> ()
+// CHECK: %f_0 = constant @callee_args : (index, index) -> ()
+// CHECK: %f_1 = constant @second_order_callee : (() -> ()) -> (() -> index)
+// CHECK: call_indirect %f() : () -> ()
+// CHECK: %0 = call_indirect %f_1(%f) : (() -> ()) -> (() -> index)
+// CHECK: %1 = call_indirect %0() : () -> index
+// CHECK: call_indirect %f_0(%1, %1) : (index, index) -> ()
+func @call_indirect() {
+  return
+}

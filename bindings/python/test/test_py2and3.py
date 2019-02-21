@@ -138,6 +138,14 @@ class EdscTest(unittest.TestCase):
       str = stmt.__str__()
       self.assertIn("select(($1 > $2), $1, $2)", str)
 
+  def testCall(self):
+    with E.ContextManager():
+      module = E.MLIRModule()
+      f32 = module.make_scalar_type("f32")
+      func, arg = list(map(E.Expr, [E.Bindable(f32) for _ in range(2)]))
+      code = func(arg, result=f32)
+      self.assertIn("@$1($2)", str(code))
+
   def testBlock(self):
     with E.ContextManager():
       i, j = list(map(E.Expr, [E.Bindable(self.f32Type) for _ in range(2)]))
@@ -196,6 +204,7 @@ class EdscTest(unittest.TestCase):
       emitter.bind_constant_int(123, 16)
       emitter.bind_constant_int(123, 32)
       emitter.bind_constant_index(123)
+      emitter.bind_constant_function(f)
       str = f.__str__()
       self.assertIn("constant 1.230000e+00 : bf16", str)
       self.assertIn("constant 1.230470e+00 : f16", str)
@@ -206,6 +215,7 @@ class EdscTest(unittest.TestCase):
       self.assertIn("constant 123 : i16", str)
       self.assertIn("constant 123 : i32", str)
       self.assertIn("constant 123 : index", str)
+      self.assertIn("constant @constants : () -> ()", str)
 
   def testMLIRBooleanEmission(self):
     m = self.module.make_memref_type(self.boolType, [10])  # i1 tensor

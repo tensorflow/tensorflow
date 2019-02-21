@@ -101,7 +101,7 @@ struct MLIREmitter {
 
   /// Emits the MLIR for `stmt` and inserts at the `builder`'s insertion point.
   /// Prerequisites: all the Bindables have been bound.
-  void emitStmt(const Stmt &stmt);
+  MLIREmitter &emitStmt(const Stmt &stmt);
   void emitStmts(llvm::ArrayRef<Stmt> stmts);
 
   /// Inserts a new IR block using the builder and emits the body of `block`

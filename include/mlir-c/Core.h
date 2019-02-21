@@ -125,6 +125,8 @@ edsc_expr_t bindConstantF64(edsc_mlir_emitter_t emitter, double value);
 edsc_expr_t bindConstantInt(edsc_mlir_emitter_t emitter, int64_t value,
                             unsigned bitwidth);
 edsc_expr_t bindConstantIndex(edsc_mlir_emitter_t emitter, int64_t value);
+edsc_expr_t bindConstantFunction(edsc_mlir_emitter_t emitter,
+                                 mlir_func_t function);
 
 /// Returns the rank of the `function` argument at position `pos`.
 /// If the argument is of MemRefType, this returns the rank of the MemRef.
@@ -269,6 +271,10 @@ edsc_expr_t NE(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t And(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t Or(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t Negate(edsc_expr_t e);
+
+edsc_expr_t Call0(edsc_expr_t callee, edsc_expr_list_t args);
+edsc_expr_t Call1(edsc_expr_t callee, mlir_type_t result,
+                  edsc_expr_list_t args);
 
 #ifdef __cplusplus
 } // end extern "C"

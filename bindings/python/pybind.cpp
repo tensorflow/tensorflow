@@ -80,6 +80,19 @@ struct PythonFunction {
     f->print(os);
     return res;
   }
+
+  // If the function does not yet have an entry block, i.e. if it is a function
+  // declaration, add the entry block, transforming the declaration into a
+  // definition.  Return true if the block was added, false otherwise.
+  bool define() {
+    auto *f = reinterpret_cast<mlir::Function *>(function);
+    if (!f->getBlocks().empty())
+      return false;
+
+    f->addEntryBlock();
+    return true;
+  }
+
   mlir_func_t function;
 };
 
@@ -113,9 +126,12 @@ struct PythonMLIRModule {
   PythonType makeIndexType() {
     return ::makeIndexType(mlir_context_t{&mlirContext});
   }
-  PythonFunction makeFunction(const std::string &name,
-                              std::vector<PythonType> &inputTypes,
-                              std::vector<PythonType> &outputTypes) {
+
+  // Declare a function with the given name, input and output types but do not
+  // define it.
+  PythonFunction declareFunction(const std::string &name,
+                                 std::vector<PythonType> &inputTypes,
+                                 std::vector<PythonType> &outputTypes) {
     std::vector<mlir_type_t> ins(inputTypes.begin(), inputTypes.end());
     std::vector<mlir_type_t> outs(outputTypes.begin(), outputTypes.end());
     auto funcType = ::makeFunctionType(
@@ -124,9 +140,17 @@ struct PythonMLIRModule {
     auto *func = new mlir::Function(
         UnknownLoc::get(&mlirContext), name,
         mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>());
-    func->addEntryBlock();
     module->getFunctions().push_back(func);
-    return mlir_func_t{func};
+    return func;
+  }
+
+  // Define a function with the given name, input and output types.
+  PythonFunction makeFunction(const std::string &name,
+                              std::vector<PythonType> &inputTypes,
+                              std::vector<PythonType> &outputTypes) {
+    auto declaration = declareFunction(name, inputTypes, outputTypes);
+    declaration.define();
+    return declaration;
   }
 
   void compile() {
@@ -149,6 +173,10 @@ struct PythonMLIRModule {
   uint64_t getEngineAddress() {
     assert(engine && "module must be compiled into engine first");
     return reinterpret_cast<uint64_t>(reinterpret_cast<void *>(engine.get()));
+  }
+
+  PythonFunction getNamedFunction(const std::string &name) {
+    return module->getNamedFunction(name);
   }
 
 private:
@@ -250,6 +278,7 @@ struct MLIRFunctionEmitter {
   PythonExpr bindConstantF64(double value);
   PythonExpr bindConstantInt(int64_t value, unsigned bitwidth);
   PythonExpr bindConstantIndex(int64_t value);
+  PythonExpr bindConstantFunction(PythonFunction func);
   PythonExpr bindFunctionArgument(unsigned pos);
   py::list bindFunctionArguments();
   py::list bindFunctionArgumentView(unsigned pos);
@@ -315,6 +344,10 @@ PythonExpr MLIRFunctionEmitter::bindConstantIndex(int64_t value) {
   return ::bindConstantIndex(edsc_mlir_emitter_t{&emitter}, value);
 }
 
+PythonExpr MLIRFunctionEmitter::bindConstantFunction(PythonFunction func) {
+  return ::bindConstantFunction(edsc_mlir_emitter_t{&emitter}, func);
+}
+
 PythonExpr MLIRFunctionEmitter::bindFunctionArgument(unsigned pos) {
   return ::bindFunctionArgument(edsc_mlir_emitter_t{&emitter},
                                 mlir_func_t{currentFunction}, pos);
@@ -375,6 +408,25 @@ void MLIRFunctionEmitter::emitBlock(PythonBlock block) {
 
 void MLIRFunctionEmitter::emitBlockBody(PythonBlock block) {
   emitter.emitStmts(StmtBlock(block).getBody());
+}
+
+PythonExpr dispatchCall(py::args args, py::kwargs kwargs) {
+  assert(args.size() != 0);
+  llvm::SmallVector<edsc_expr_t, 8> exprs;
+  exprs.reserve(args.size());
+  for (auto arg : args) {
+    exprs.push_back(arg.cast<PythonExpr>());
+  }
+
+  edsc_expr_list_t operands{exprs.data() + 1, exprs.size() - 1};
+
+  if (kwargs && kwargs.contains("result")) {
+    for (const auto &kvp : kwargs) {
+      if (static_cast<std::string>(kvp.first.str()) == "result")
+        return ::Call1(exprs.front(), kvp.second.cast<PythonType>(), operands);
+    }
+  }
+  return ::Call0(exprs.front(), operands);
 }
 
 PYBIND11_MODULE(pybind, m) {
@@ -464,7 +516,10 @@ PYBIND11_MODULE(pybind, m) {
   py::class_<PythonFunction>(m, "Function",
                              "Wrapping class for mlir::Function.")
       .def(py::init<PythonFunction>())
-      .def("__str__", &PythonFunction::str);
+      .def("__str__", &PythonFunction::str)
+      .def("define", &PythonFunction::define,
+           "Adds a body to the function if it does not already have one.  "
+           "Returns true if the body was added");
 
   py::class_<PythonBlock>(m, "StmtBlock",
                           "Wrapping class for mlir::edsc::StmtBlock")
@@ -488,8 +543,12 @@ PYBIND11_MODULE(pybind, m) {
       "directly require integration with a tensor library (e.g. numpy). This "
       "is left as the prerogative of libraries and frameworks for now.")
       .def(py::init<>())
+      .def("declare_function", &PythonMLIRModule::declareFunction,
+           "Declares a new mlir::Function in the current mlir::Module.  The "
+           "function has no definition and can be linked to an external "
+           "library.")
       .def("make_function", &PythonMLIRModule::makeFunction,
-           "Creates a new mlir::Function in the current mlir::Module.")
+           "Defines a new mlir::Function in the current mlir::Module.")
       .def(
           "make_scalar_type",
           [](PythonMLIRModule &instance, const std::string &type,
@@ -521,7 +580,9 @@ PYBIND11_MODULE(pybind, m) {
            "debugging purposes.")
       .def("get_engine_address", &PythonMLIRModule::getEngineAddress,
            "Returns the address of the compiled ExecutionEngine. This is used "
-           "for in-process execution.");
+           "for in-process execution.")
+      .def("__str__", &PythonMLIRModule::getIR,
+           "Get the string representation of the module");
 
   py::class_<ContextManager>(
       m, "ContextManager",
@@ -550,6 +611,7 @@ PYBIND11_MODULE(pybind, m) {
       .def("bind_constant_f64", &MLIRFunctionEmitter::bindConstantF64)
       .def("bind_constant_int", &MLIRFunctionEmitter::bindConstantInt)
       .def("bind_constant_index", &MLIRFunctionEmitter::bindConstantIndex)
+      .def("bind_constant_function", &MLIRFunctionEmitter::bindConstantFunction)
       .def("bind_function_argument", &MLIRFunctionEmitter::bindFunctionArgument,
            "Returns an Expr that has been bound to a positional argument in "
            "the current Function.")
@@ -606,6 +668,7 @@ PYBIND11_MODULE(pybind, m) {
       .def("__or__", [](PythonExpr e1,
                         PythonExpr e2) { return PythonExpr(::Or(e1, e2)); })
       .def("__invert__", [](PythonExpr e) { return PythonExpr(::Negate(e)); })
+      .def("__call__", &dispatchCall)
       .def("__str__", &PythonExpr::str,
            R"DOC(Returns the string value for the Expr)DOC");
 
