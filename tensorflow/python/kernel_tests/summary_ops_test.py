@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 import time
+import unittest
 
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
@@ -418,6 +419,40 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     with summary_ops.create_file_writer(logdir).as_default():
       summary_ops.write('tag', 1, step=0)
+
+  def testClose_closesOpenFile(self):
+    try:
+      import psutil  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise unittest.SkipTest('test requires psutil')
+    proc = psutil.Process()
+    get_open_filenames = lambda: set(info[0] for info in proc.open_files())
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer(logdir)
+      files = gfile.Glob(os.path.join(logdir, '*'))
+      self.assertEqual(1, len(files))
+      eventfile = files[0]
+      self.assertIn(eventfile, get_open_filenames())
+      writer.close()
+      self.assertNotIn(eventfile, get_open_filenames())
+
+  def testDereference_closesOpenFile(self):
+    try:
+      import psutil  # pylint: disable=g-import-not-at-top
+    except ImportError:
+      raise unittest.SkipTest('test requires psutil')
+    proc = psutil.Process()
+    get_open_filenames = lambda: set(info[0] for info in proc.open_files())
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer(logdir)
+      files = gfile.Glob(os.path.join(logdir, '*'))
+      self.assertEqual(1, len(files))
+      eventfile = files[0]
+      self.assertIn(eventfile, get_open_filenames())
+      del writer
+      self.assertNotIn(eventfile, get_open_filenames())
 
 
 class SummaryOpsTest(test_util.TensorFlowTestCase):
