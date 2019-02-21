@@ -660,8 +660,7 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
       WHL_PATH=${AUDITED_WHL_NAME}
       echo "Repaired manylinux1 wheel file at: ${WHL_PATH}"
     else
-      # TODO(hyey): modify below to call die upon failure.
-      echo "WARNING: Cannot find repaired wheel."
+      die "WARNING: Cannot find repaired wheel."
     fi
   fi
 done
