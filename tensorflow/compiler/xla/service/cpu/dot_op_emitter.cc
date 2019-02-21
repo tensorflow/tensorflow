@@ -720,8 +720,7 @@ absl::optional<int64> ProfitableToMakeDotOperandColumnMajor(
     return {};
   }
 
-  if (hlo.opcode() == HloOpcode::kFusion &&
-      hlo.fusion_kind() == HloInstruction::FusionKind::kOutput) {
+  if (hlo.IsOutputFusion()) {
     auto* fusion_root =
         hlo.fused_instructions_computation()->root_instruction();
     if (fusion_root->opcode() != HloOpcode::kAdd) {

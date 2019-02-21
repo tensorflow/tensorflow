@@ -138,8 +138,7 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     }
   }
 
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+  if (consumer->IsLoopFusion()) {
     VLOG(2) << "Fusing: consumer is a fusion node.";
     return true;
   }

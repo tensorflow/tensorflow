@@ -968,8 +968,7 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   for (const HloValue* value : GetValueSet(operand, index).values()) {
     for (const HloUse& use : value->uses()) {
       if (use.instruction == user) {
-        if (user->opcode() == HloOpcode::kFusion &&
-            user->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+        if (user->IsLoopFusion()) {
           HloInstruction* fusion_param =
               user->fused_parameter(use.operand_number);
           const HloValue& value =
@@ -1010,8 +1009,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
       return true;
     }
-    if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-        user->fusion_kind() == HloInstruction::FusionKind::kInput) {
+    if (user->IsLoopFusion() || user->IsInputFusion()) {
       if (user->fused_expression_root()->opcode() ==
           HloOpcode::kDynamicUpdateSlice) {
         // Loop fusion with kDynamicUpdateSlice fused root.
@@ -1028,7 +1026,7 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       }
       return AreTransitiveUsesElementwiseOrTuple(fusion_param);
     }
-    if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
+    if (user->IsOutputFusion() &&
         user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
 

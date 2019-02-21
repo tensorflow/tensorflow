@@ -1103,6 +1103,11 @@ class HloInstruction {
   // instruction.
   bool IsFused() const;
 
+  bool IsLoopFusion() const;
+  bool IsInputFusion() const;
+  bool IsOutputFusion() const;
+  bool IsCustomFusion() const;
+
   // Returns true if this instruction can be legally fused into a fusion
   // instruction.
   bool IsFusible() const;
