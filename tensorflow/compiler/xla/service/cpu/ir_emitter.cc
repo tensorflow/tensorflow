@@ -2140,7 +2140,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     return llvm_ir::EmitFusedDynamicUpdateSliceInPlace(
         fusion, GetGeneratorForOperandIrArrays(fusion), GetIrArrayFor(fusion),
         &elemental_emitter, &b_);
-  } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kLoop) {
+  } else if (fusion->IsLoopFusion()) {
     VLOG(3) << "HandleFusion kLoop";
     CpuElementalIrEmitter elemental_emitter(hlo_module_config_, this, module_);
     auto operands = GetIrArraysForOperandsOf(fusion);
@@ -2149,7 +2149,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
     TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));
 
     return EmitTargetElementLoop(fusion, fused_emitter.GetRootGenerator());
-  } else if (fusion->fusion_kind() == HloInstruction::FusionKind::kOutput) {
+  } else if (fusion->IsOutputFusion()) {
     VLOG(3) << "HandleFusion kOutput";
     int64 dot_op_index = root->operand(0)->opcode() == HloOpcode::kDot ? 0 : 1;
     const HloInstruction* dot = root->operand(dot_op_index);
