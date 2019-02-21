@@ -748,11 +748,8 @@ class RNN(Layer):
       # input. Update the input_spec to match the inputs.
       full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
                         ] + additional_specs
-      # Perform the call with temporarily replaced input_spec
-      original_input_spec = self.input_spec
       self.input_spec = full_input_spec
       output = super(RNN, self).__call__(full_input, **kwargs)
-      self.input_spec = original_input_spec
       return output
     else:
       if initial_state is not None:
