@@ -904,11 +904,6 @@ void CheckNonExistentIOArrays(const Model& model) {
   static constexpr char general_comment[] =
       "Is it a typo? To silence this message, pass this flag:  "
       "allow_nonexistent_arrays";
-  for (const auto& input_array : model.flags.input_arrays()) {
-    QCHECK(GetOpWithInput(model, input_array.name()))
-        << "Specified input array \"" << input_array.name()
-        << "\" is not consumed by any op in this graph. " << general_comment;
-  }
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {
       continue;  // It is OK to request that a constant be an output.
