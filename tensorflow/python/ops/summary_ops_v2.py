@@ -27,6 +27,8 @@ import time
 import six
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -731,3 +733,72 @@ def _choose_step(step):
   if not isinstance(step, ops.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step
+
+
+def run_metadata(name, data, step):
+  """Writes entire RunMetadata summary.
+
+  A RunMetadata can contain DeviceStats, partition graphs, and function graphs.
+  Please refer to the proto for definition of each field.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A RunMetadata proto to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_run_metadata"
+  # version number = 1
+  summary_metadata.plugin_data.content = "1"
+
+  with summary_scope(name,
+                     "graph_run_metadata_summary",
+                     [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(
+            data.SerializeToString(), dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)
+
+
+def run_metadata_graphs(name, data, step):
+  """Writes graphs from a RunMetadata summary.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A RunMetadata proto to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_run_metadata_graph"
+  # version number = 1
+  summary_metadata.plugin_data.content = "1"
+
+  data = config_pb2.RunMetadata(
+      function_graphs=data.function_graphs,
+      partition_graphs=data.partition_graphs)
+
+  with summary_scope(name,
+                     "graph_run_metadata_graph_summary",
+                     [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(
+            data.SerializeToString(), dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)
