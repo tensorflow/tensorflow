@@ -496,12 +496,10 @@ class ConcreteFunction(object):
           "through the public interface. Use get_concrete_function instead.")
     if len(args) > self._num_positional_args:
       raise TypeError(
-          ("Expected at most {} positional arguments ({}), got {}. When "
-           "calling a concrete function, positional arguments may not be bound "
-           "to Tensors within nested structures.").format(
-               self._num_positional_args,
-               self._arg_keywords[:self._num_positional_args],
-               args))
+          ("Expected at most {} positional arguments (and the rest keywords, "
+           "of {}), got {}. When calling a concrete function, positional "
+           "arguments may not be bound to Tensors within nested structures."
+          ).format(self._num_positional_args, self._arg_keywords, args))
     args = list(args)
     for keyword in self._arg_keywords[len(args):]:
       try:
