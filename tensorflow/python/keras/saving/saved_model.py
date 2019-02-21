@@ -25,6 +25,7 @@ from tensorflow.python.client import session
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.saving import model_from_json
 from tensorflow.python.keras.saving import saving_utils
 from tensorflow.python.keras.utils import mode_keys
@@ -182,8 +183,8 @@ def _save_v1_format(model, path, custom_objects, as_text, input_signature):
 
   has_saved_vars = False
   if model.optimizer:
-    # TODO(kathywu): Verify this works with v2 optimizer.
-    if isinstance(model.optimizer, optimizers.TFOptimizer):
+    if isinstance(model.optimizer, (optimizers.TFOptimizer,
+                                    optimizer_v2.OptimizerV2)):
       _export_mode(mode_keys.ModeKeys.TRAIN, has_saved_vars, **export_args)
       has_saved_vars = True
       _export_mode(mode_keys.ModeKeys.TEST, has_saved_vars, **export_args)
@@ -268,9 +269,8 @@ def _export_mode(
       clone._make_predict_function()
     g.get_collection_ref(ops.GraphKeys.UPDATE_OPS).extend(clone.state_updates)
 
-    clone_var_list = _get_var_list(clone)
-
     with session.Session().as_default():
+      clone_var_list = _get_var_list(clone)
       if has_saved_vars:
         # Confirm all variables in the clone have an entry in the checkpoint.
         status = clone.load_weights(checkpoint_path)
@@ -291,13 +291,13 @@ def _export_mode(
         clone.save_weights(checkpoint_path, save_format='tf', overwrite=True)
         builder._has_saved_variables = True
 
-    # Add graph to the SavedModel builder.
-    builder.add_meta_graph(
-        model_utils.EXPORT_TAG_MAP[mode],
-        signature_def_map=_create_signature_def_map(clone, mode),
-        saver=saver_lib.Saver(clone_var_list),
-        init_op=variables.local_variables_initializer(),
-        train_op=train_op)
+      # Add graph to the SavedModel builder.
+      builder.add_meta_graph(
+          model_utils.EXPORT_TAG_MAP[mode],
+          signature_def_map=_create_signature_def_map(clone, mode),
+          saver=saver_lib.Saver(clone_var_list),
+          init_op=variables.local_variables_initializer(),
+          train_op=train_op)
     return None
 
 
