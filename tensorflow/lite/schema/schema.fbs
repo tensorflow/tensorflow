@@ -224,6 +224,7 @@ enum BuiltinOperator : byte {
   COS = 108,
   WHERE = 109,
   RANK = 110,
+  ELU = 111,
 }
 
 // Options for the builtin operators.

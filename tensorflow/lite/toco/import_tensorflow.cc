@@ -2421,6 +2421,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Div", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"DynamicPartition", ConvertDynamicPartitionOperator},
       {"DynamicStitch", ConvertDynamicStitchOperator},
+      {"Elu", ConvertSimpleOperator<EluOperator, 1, 1>},
       {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2, 1>},
       {"Exp", ConvertSimpleOperator<ExpOperator, 1, 1>},
       {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2, 1>},

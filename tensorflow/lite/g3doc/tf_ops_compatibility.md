@@ -302,6 +302,17 @@ Options {
 }
 ```
 
+**ELU**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to exp(features) - 1 if < 0, features otherwise.
+}
+```
+
 **EQUAL**
 
 ```

@@ -241,6 +241,7 @@ def generated_test_models():
         "cos",
         "depthwiseconv",
         "div",
+        "elu",
         "equal",
         "exp",
         "expand_dims",
