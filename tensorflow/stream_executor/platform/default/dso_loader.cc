@@ -39,7 +39,7 @@ port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
   port::Status status =
       port::Env::Default()->LoadLibrary(filename.c_str(), &dso_handle);
   if (status.ok()) {
-    LOG(INFO) << "Successfully opened CUDA library " << filename;
+    LOG(INFO) << "Successfully opened dynamic library " << filename;
     return dso_handle;
   }
 
@@ -99,6 +99,25 @@ port::StatusOr<void*> GetCuptiDsoHandle() {
 port::StatusOr<void*> GetCudnnDsoHandle() {
   return GetDsoHandle("cudnn", GetCudnnVersion());
 }
+
+port::StatusOr<void*> GetRocblasDsoHandle() {
+  return GetDsoHandle("rocblas", "");
+}
+
+port::StatusOr<void*> GetMiopenDsoHandle() {
+  return GetDsoHandle("MIOpen", "");
+}
+
+port::StatusOr<void*> GetRocfftDsoHandle() {
+  return GetDsoHandle("rocfft", "");
+}
+
+port::StatusOr<void*> GetRocrandDsoHandle() {
+  return GetDsoHandle("rocrand", "");
+}
+
+port::StatusOr<void*> GetHipDsoHandle() { return GetDsoHandle("hip_hcc", ""); }
+
 }  // namespace DsoLoader
 
 namespace CachedDsoLoader {
@@ -136,6 +155,32 @@ port::StatusOr<void*> GetCudnnDsoHandle() {
   static auto result = new auto(DsoLoader::GetCudnnDsoHandle());
   return *result;
 }
+
+port::StatusOr<void*> GetRocblasDsoHandle() {
+  static auto result = new auto(DsoLoader::GetRocblasDsoHandle());
+  return result;
+}
+
+port::StatusOr<void*> GetMiopenDsoHandle() {
+  static auto result = new auto(DsoLoader::GetMiopenDsoHandle());
+  return result;
+}
+
+port::StatusOr<void*> GetRocfftDsoHandle() {
+  static auto result = new auto(DsoLoader::GetRocfftDsoHandle());
+  return result;
+}
+
+port::StatusOr<void*> GetRocrandDsoHandle() {
+  static auto result = new auto(DsoLoader::GetRocrandDsoHandle());
+  return result;
+}
+
+port::StatusOr<void*> GetHipDsoHandle() {
+  static auto result = new auto(DsoLoader::GetHipDsoHandle());
+  return result;
+}
+
 }  // namespace CachedDsoLoader
 }  // namespace internal
 }  // namespace stream_executor
