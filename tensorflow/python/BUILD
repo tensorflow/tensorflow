@@ -179,6 +179,7 @@ py_library(
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:profiler",
+        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
