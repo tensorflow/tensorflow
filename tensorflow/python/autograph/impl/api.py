@@ -209,8 +209,9 @@ def converted_call(f, owner, options, args, kwargs):
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
-  if (f in collections.__dict__.values() or f in pdb.__dict__.values() or
-      f in copy.__dict__.values()):
+  # Note: TF linter disallows importing inspect.
+  if any(f in m.__dict__.values()
+         for m in (collections, pdb, copy, tf_inspect._inspect)):  # pylint:disable=protected-access
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
     return f(*args, **kwargs)
 
