@@ -983,7 +983,8 @@ class TPUMirroredVariable(trackable.Trackable):
     return self._read_variable_op()
 
   def assign_sub(self, *args, **kwargs):
-    def assign_sub_fn(var, delta, **kw):
+    def assign_sub_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -997,7 +998,8 @@ class TPUMirroredVariable(trackable.Trackable):
     return self._assign_func(f=assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    def assign_add_fn(var, delta, **kw):
+    def assign_add_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -1011,7 +1013,8 @@ class TPUMirroredVariable(trackable.Trackable):
     return self._assign_func(f=assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    def assign_fn(var, value, **kw):
+    def assign_fn(var, value, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
