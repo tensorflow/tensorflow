@@ -2892,7 +2892,10 @@ def make_strided_slice_1d_exhaustive_tests(zip_path):
   _make_strided_slice_tests(zip_path, test_parameters)
 
 
-def make_strided_slice_buggy_tests(zip_path):
+# For verifying https://github.com/tensorflow/tensorflow/issues/23599
+# TODO(chaomei): refactor the test to cover more cases, like negative stride,
+# negative array index etc.
+def make_resolve_constant_strided_slice_tests(zip_path):
   """Make a set of tests to show strided_slice yields incorrect results."""
 
   test_parameters = [{
