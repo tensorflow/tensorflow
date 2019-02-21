@@ -18,6 +18,23 @@ limitations under the License.
 namespace tensorflow {
 namespace data {
 
+Status DatasetOpsTestBase::ExpectEqual(const Tensor& a, const Tensor& b) {
+  EXPECT_EQ(a.dtype(), b.dtype());
+  switch (a.dtype()) {
+#define CASE(type)                       \
+  case DataTypeToEnum<type>::value:      \
+    test::ExpectTensorEqual<type>(a, b); \
+    break;
+    TF_CALL_NUMBER_TYPES(CASE);
+    TF_CALL_string(CASE);
+    // TODO(feihugis): figure out how to support variant tensors.
+#undef CASE
+    default:
+      return errors::Internal("Unsupported dtype", a.dtype());
+  }
+  return Status::OK();
+}
+
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   Status status;
