@@ -63,13 +63,13 @@ The pruning library allows for specification of the following hyper parameters:
 | sparsity_function_exponent | float | 3.0 | exponent = 1 is linearly varying sparsity between initial and final. exponent > 1 varies more slowly towards the end than the beginning |
 | use_tpu | bool | False | Training using TPUs? |
 
-The sparsity $$s_t$$ at global step $$t$$ is given by:
+The sparsity $s_t$ at global step $t$ is given by:
 
-$$ s_{t}=s_{f}+\left(s_{i}-s_{f}\right)\left(1-\frac{t-t_{0}}{n\Delta t}\right)^{3} $$
+$s_{t}=s_{f}+\left(s_{i}-s_{f}\right)\left(1-\frac{t-t_{0}}{n\Delta t}\right)^{3}$
 
 The interval between sparsity_function_begin_step and sparsity_function_end_step
-is divided into $$n$$ intervals of size equal to the pruning_frequency ($$\Delta
-t$$). $$s_f$$ is the target_sparsity, $$s_i$$ is the initial_sparsity, $$t_0$$
+is divided into $n$ intervals of size equal to the pruning_frequency ($\Delta
+t$). $s_f$ is the target_sparsity, $s_i$ is the initial_sparsity, $t_0$
 is the sparsity_function_begin_step. In this equation, the
 sparsity_function_exponent is set to 3.
 
