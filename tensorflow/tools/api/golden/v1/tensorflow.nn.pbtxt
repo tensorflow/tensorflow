@@ -105,6 +105,10 @@ tf_module {
     argspec: "args=[\'value\', \'filter\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'name\', \'input\', \'filters\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'SAME\', \'NDHWC\', \'None\', \'None\', \'None\', \'None\'], "
   }
   member_method {
+    name: "conv_transpose"
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'None\', \'None\', \'None\'], "
+  }
+  member_method {
     name: "convolution"
     argspec: "args=[\'input\', \'filter\', \'padding\', \'strides\', \'dilation_rate\', \'name\', \'data_format\', \'filters\', \'dilations\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\'], "
   }
