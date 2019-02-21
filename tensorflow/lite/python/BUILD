@@ -88,6 +88,7 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_oss",  # TODO(b/125045671) reenable once segfault is fixed.
         "no_windows",
     ],
     deps = [
