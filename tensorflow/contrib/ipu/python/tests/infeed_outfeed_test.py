@@ -23,6 +23,7 @@ from tensorflow.contrib.compiler import xla
 from tensorflow.contrib import ipu
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
@@ -171,8 +172,9 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
     with session_lib.Session(config=config_pb2.ConfigProto(ipu_options=cfg)) as sess:
       sess.run(infeed_queue.initializer)
-      result = sess.run(res)
-      self.assertAllClose(result[0], np.broadcast_to(25, [4, 4]))
+      with self.assertRaisesRegexp(errors.FailedPreconditionError,
+                                   'Currently calling'):
+        sess.run(res)
 
   def testSingleInfeedMultipleRepeats(self):
     dataset = create_increasing_dataset(2)
@@ -377,7 +379,6 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       initial_loss = sess.run(r, {iters: 1})
       final_loss = sess.run(r, {iters: 1000})
       self.assertTrue(initial_loss > final_loss)
-
 
 if __name__ == "__main__":
   googletest.main()

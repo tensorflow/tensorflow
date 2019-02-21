@@ -130,6 +130,15 @@ Status DeferredAllocationVisitor::HandleGetTupleElement(HloInstruction* inst) {
 }
 
 Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
+  VLOG(1) << "Processing " << inst->name();
+  // We currently have no way of ordering infeeds in the same compuation - this
+  // can result in unexpected results.
+  if (has_infeed_) {
+    return xla::FailedPrecondition(
+        "Currently calling `get_next()` multiple times on the same "
+        "IPUInfeedQueue in the same computation block is not supported.");
+  }
+
   HloInfeedInstruction* infeed = Cast<HloInfeedInstruction>(inst);
   // We allow the same infeed queue to be dequeued multiple times, however
   // we don't support multiple infeed queues in the same program.
@@ -137,8 +146,9 @@ Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
                      [&](const HloInfeedInstruction* inst) {
                        return inst->infeed_config() != infeed->infeed_config();
                      })) {
-    LOG(FATAL) << "Currently multiple infeed queues in the same program are "
-                  "not supported.";
+    return xla::FailedPrecondition(
+        "Currently multiple IPUInfeedQueue in the same program are not "
+        "supported.");
   }
   std::vector<Shape> shapes = FlattenedXlaShape(infeed->infeed_shape());
   for (int64 i = 0; i < shapes.size(); i++) {
@@ -149,7 +159,7 @@ Status DeferredAllocationVisitor::HandleInfeed(HloInstruction* inst) {
               << i << ".";
     }
   }
-
+  has_infeed_ = true;
   resources_.annotations.infeed_infos.insert(infeed);
 
   return Status::OK();

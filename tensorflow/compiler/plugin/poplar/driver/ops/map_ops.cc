@@ -122,7 +122,8 @@ GetOrCompileSubComputation(CompilerResources& res, const ArgVectors& inputs,
 
   auto visitor = std::make_shared<SubComputationVisitor>(
       res, inputs, inplace_inputs, dependent_subcomputations);
-  TF_RETURN_IF_ERROR(comp->Accept(visitor.get()));
+  auto order = comp->parent()->schedule().sequence(comp).instructions();
+  TF_RETURN_IF_ERROR(comp->AcceptOrdered(visitor.get(), order));
 
   // We can reuse sub computation if it's not inplace.
   if (!inplace_inputs) {

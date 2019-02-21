@@ -159,6 +159,8 @@ class BaseVisitor : public DfsHloVisitor {
   Status Unimplemented(HloInstruction* inst);
 
   CompilerResources& resources_;
+
+  bool has_infeed_ = false;
 };
 
 }  // namespace poplarplugin
