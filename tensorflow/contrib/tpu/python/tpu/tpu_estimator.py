@@ -26,5 +26,8 @@ from tensorflow.python.tpu.tpu_estimator import _create_global_step
 from tensorflow.python.tpu.tpu_estimator import _export_output_to_tensors
 from tensorflow.python.tpu.tpu_estimator import _get_scaffold
 from tensorflow.python.tpu.tpu_estimator import _Inputs
+from tensorflow.python.tpu.tpu_estimator import _ITERATIONS_PER_LOOP_VAR
+from tensorflow.python.tpu.tpu_estimator import _TPU_ENQUEUE_OPS
 from tensorflow.python.tpu.tpu_estimator import _TPU_ESTIMATOR
+from tensorflow.python.tpu.tpu_estimator import _TPU_TRAIN_OP
 # pylint: enable=wildcard-import,unused-import,redefined-builtin
