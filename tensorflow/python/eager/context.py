@@ -921,6 +921,7 @@ def device(name):
   return context().device(name)
 
 
+@tf_export("config.experimental_list_devices")
 def list_devices():
   """List the names of the available devices.
 
