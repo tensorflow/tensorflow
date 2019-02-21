@@ -21,12 +21,6 @@ Status GrpcStatusToTfStatus(const ::grpc::Status& status) {
   if (status.ok()) {
     return Status::OK();
   }
-  auto grpc_code = status.error_code();
-  if (status.error_code() == ::grpc::StatusCode::ABORTED ||
-      status.error_code() == ::grpc::StatusCode::UNAVAILABLE ||
-      status.error_code() == ::grpc::StatusCode::OUT_OF_RANGE) {
-    grpc_code = ::grpc::StatusCode::INTERNAL;
-  }
   return Status(static_cast<::tensorflow::error::Code>(status.error_code()),
                 strings::StrCat("Error reading from Cloud Bigtable: ",
                                 status.error_message()));
