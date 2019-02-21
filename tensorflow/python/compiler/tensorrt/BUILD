@@ -168,11 +168,11 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
-        "nooss",  # TODO(b/125290478): allow running in at least some OSS configurations.
     ],
     xla_enable_strict_auto_jit = True,
 )
