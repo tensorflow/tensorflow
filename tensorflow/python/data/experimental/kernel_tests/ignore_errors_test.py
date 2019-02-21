@@ -115,7 +115,8 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
       with open(fn, "a") as f:
         f.write(b"corrupted data")
 
-    dataset = readers.TFRecordDataset(filenames).apply(error_ops.ignore_errors())
+    dataset = readers.TFRecordDataset(filenames).apply(
+        error_ops.ignore_errors())
     get_next = self.getNext(dataset)
 
     # All of the files are present.
