@@ -442,7 +442,8 @@ class RNN(Layer):
   ```
   """
 
-  @trackable.no_automatic_dependency_tracking
+  _setattr_tracking = False
+
   def __init__(self,
                cell,
                return_sequences=False,
