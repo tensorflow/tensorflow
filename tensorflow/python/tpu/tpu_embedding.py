@@ -467,9 +467,6 @@ class TPUEmbedding(object):
           optimization_parameters_pb2.GradientAccumulationStatus.ENABLED
           if self._optimization_parameters.use_gradient_accumulation else
           optimization_parameters_pb2.GradientAccumulationStatus.DISABLED)
-      # For compatibility with old TPU workers.
-      table_descriptor.optimization_parameters.use_gradient_accumulation = (
-          self._optimization_parameters.use_gradient_accumulation)
       self._optimizer_handler.set_optimization_parameters(table_descriptor)
 
     config_proto.mode = self._mode
