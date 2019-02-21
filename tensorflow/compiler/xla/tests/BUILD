@@ -681,7 +681,7 @@ xla_test(
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
-        "nooss",
+        "no_oss",
     ],
     deps = [
         ":client_library_test_base",
