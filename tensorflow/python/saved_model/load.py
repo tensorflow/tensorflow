@@ -38,6 +38,7 @@ from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _Loader(object):
@@ -261,6 +262,7 @@ def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
 
 
+@tf_export("saved_model.load", v1=["saved_model.load_v2"])
 def load(export_dir, tags=None):
   """Load a SavedModel from `export_dir`.
 
