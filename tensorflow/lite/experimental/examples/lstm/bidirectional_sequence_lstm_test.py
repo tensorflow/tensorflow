@@ -20,7 +20,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.python.framework import test_util
@@ -56,16 +55,18 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
   def buildLstmLayer(self):
     return tf.nn.rnn_cell.MultiRNNCell([
-        TFLiteLSTMCell(
+        tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
-        TFLiteLSTMCell(self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
-        TFLiteLSTMCell(
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
+        tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units // 2,
             use_peepholes=True,
             num_proj=8,
             forget_bias=0,
             name="rnn3"),
-        TFLiteLSTMCell(self.num_units, forget_bias=0, name="rnn4")
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, forget_bias=0, name="rnn4")
     ])
 
   def buildModel(self, fw_lstm_layer, bw_lstm_layer):

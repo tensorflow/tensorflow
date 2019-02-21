@@ -22,7 +22,6 @@ import tensorflow as tf
 from tensorflow import flags
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.python.framework import test_util
@@ -63,8 +62,8 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
 
   def buildRnnLayer(self):
     return tf.nn.rnn_cell.MultiRNNCell([
-        TfLiteRNNCell(self.num_units, name="rnn1"),
-        TfLiteRNNCell(self.num_units, name="rnn2")
+        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
+        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
     ])
 
   def buildModel(self, fw_rnn_layer, bw_rnn_layer):
