@@ -1880,7 +1880,11 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
       << "this shape: " << ShapeUtil::HumanString(shape())
       << ", replacement shape: "
       << ShapeUtil::HumanString(new_producer->shape());
+  return ReplaceUseWithDifferentShape(user, new_producer);
+}
 
+Status HloInstruction::ReplaceUseWithDifferentShape(
+    HloInstruction* user, HloInstruction* new_producer) {
   VLOG(3) << "Replacing uses of " << name() << " in " << user->name()
           << " with " << new_producer->name();
 
