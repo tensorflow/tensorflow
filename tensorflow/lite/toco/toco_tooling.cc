@@ -330,6 +330,10 @@ tensorflow::Status TransformWithStatus(const TocoFlags& toco_flags,
   bidirectional_transformations.Add(new RemoveUnusedOp);
   bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceLstm);
   bidirectional_transformations.Add(new toco::GroupBidirectionalSequenceRnn);
+  bidirectional_transformations.Add(
+      new toco::GroupDynamicBidirectionalSequenceRnn);
+  bidirectional_transformations.Add(
+      new toco::GroupDynamicBidirectionalSequenceLstm);
   TF_RETURN_IF_ERROR(RunGraphTransformationsWithStatus(
       model, "Group bidirectional sequence lstm/rnn",
       bidirectional_transformations));
