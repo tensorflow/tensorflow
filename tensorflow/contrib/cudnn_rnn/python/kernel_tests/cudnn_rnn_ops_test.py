@@ -196,7 +196,7 @@ def RunLSTM(sess,
      cu_bgrad) = sess.run([
          cu_outputs_op, cu_state_tuple_op, cu_inp_grad_op,
          (cu_hgrad_op, cu_cgrad_op), cu_wgrad_op, cu_bgrad_op
-     ], feed_dict={inputs:inputs_np} if dynamic_shape_input else None)
+     ], feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
 
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)
@@ -216,7 +216,8 @@ def RunLSTM(sess,
   else:
     outputs, state_tuple = sess.run([outputs_op, state_tuple_op])
     cu_outputs, cu_state_tuple = sess.run([cu_outputs_op, cu_state_tuple_op],
-        feed_dict={inputs:inputs_np} if dynamic_shape_input else None)
+                                          feed_dict=({inputs: inputs_np} if
+                                              dynamic_shape_input else None))
 
     logging.vlog(1, "outputs: %s" % outputs)
     logging.vlog(1, "cu_outputs: %s" % cu_outputs)
@@ -680,7 +681,7 @@ def RunGRU(sess,
         cu_outputs_op, cu_h_op, cu_inp_grad_op, cu_hgrad_op,
         (cu_gk_grad_op, cu_cik_grad_op, cu_chk_grad_op),
         (cu_gb_grad_op, cu_cib_grad_op, cu_chb_grad_op)
-    ], feed_dict={inputs:inputs_np} if dynamic_shape_input else None)
+    ], feed_dict={inputs: inputs_np} if dynamic_shape_input else None)
     # Remove the trivial 1st dimension
     cu_h = np.squeeze(cu_h, axis=0 if time_major else 1)
 
@@ -701,7 +702,8 @@ def RunGRU(sess,
   else:
     outputs, h = sess.run([outputs_op, h_op])
     cu_outputs, cu_h = sess.run([cu_outputs_op, cu_h_op],
-        feed_dict={inputs:inputs_np} if dynamic_shape_input else None)
+                                feed_dict=({inputs: inputs_np} if
+                                    dynamic_shape_input else None))
     # Remove the trivial 1st dimension.
     cu_h = np.squeeze(cu_h, axis=0 if time_major else 1)
 
