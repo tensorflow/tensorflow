@@ -44,8 +44,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'add/add.*/AddTo',
+      ok = ['add/add.*/AddTo',
             'sub/subtract.*/AddTo',
             'add_1/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -79,8 +78,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'host-exchange-local-copy-',
+      ok = ['host-exchange-local-copy-',
             'Copy_XLA_Args/arg0.*_to_transpose/transpose',
             'add/add.*/AddTo',
             'truediv/divide.*/Op/Divide']
@@ -120,8 +118,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'Copy_XLA_Args/arg0.*_to_transpose/transpose'
+      ok = ['Copy_XLA_Args/arg0.*_to_transpose/transpose'
             'mul/multiply.*/Op/Multiply',
             'add/add.*/AddTo',
             'mul_1/multiply.*/Op/Multiply',
@@ -160,8 +157,7 @@ class UpdateOpDependenciesTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'Copy_XLA_Args/arg*_to_Slice/*/slice*.clone',
+      ok = ['Copy_XLA_Args/arg*_to_Slice/*/slice*.clone',
             'add/add.*/AddTo',
             'truediv/divide.*/Op/Divide',
             'add_1/add.*/AddTo']

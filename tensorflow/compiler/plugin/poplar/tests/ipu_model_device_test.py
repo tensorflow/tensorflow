@@ -171,8 +171,7 @@ class IpuIpuModelTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(rep)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'my_ops/my_add_op/add']
+      ok = ['my_ops/my_add_op/add']
 
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 

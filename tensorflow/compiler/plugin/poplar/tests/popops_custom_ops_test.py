@@ -51,8 +51,7 @@ class PopopsCustomOpsTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(result, expected_result)
 
-    ok = ['progIdCopy',
-          'Sqrt/custom-call.*/Op/Sqrt']
+    ok = ['Sqrt/custom-call.*/Op/Sqrt']
     self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testRsqrt(self):
@@ -63,8 +62,7 @@ class PopopsCustomOpsTest(test_util.TensorFlowTestCase):
 
     self.assertAllClose(result, expected_result)
 
-    ok = ['progIdCopy',
-          'Rsqrt/custom-call.*/Op/Rsqrt']
+    ok = ['Rsqrt/custom-call.*/Op/Rsqrt']
     self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 

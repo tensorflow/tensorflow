@@ -40,7 +40,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       # Check that there are no casts to float at the beginning
       # Note that intermidiates are still floats, so there is a final cast
       ok = [
-        'progIdCopy',
         'host-exchange-local-copy-',
         'Sum/reduce*/ReduceOnTile/InToIntermediateNoExchange/Reduce',
         'Sum/reduce*/ReduceStage*/IntermediateToIntermediate/Reduce',
@@ -102,7 +101,6 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       ok = [
         'host-exchange-local-copy-',
-        'progIdCopy',
         'Sum/reduce*/Reduce',
         'Sum_1/reduce*/Reduce',
         'add/add*/AddTo']
@@ -157,8 +155,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'host-exchange-local-copy-',
+      ok = ['host-exchange-local-copy-',
             'Cast/convert.*/Cast',
             'add/add.*/AddTo',
             'Cast_1/convert.*/Cast']

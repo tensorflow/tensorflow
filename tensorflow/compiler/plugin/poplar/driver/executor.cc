@@ -619,12 +619,8 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       pooling_options_.set(opt.option(), opt.value());
     }
 
-    report_options_.set("includeVarStorageReport", "true");
-    report_options_.set("doLayerWiseBreakdown", "true");
-    if (!CompilerReportingTextFormat()) {
-      report_options_.set("doLayerWisePerIPUBreakdown", "true");
-      report_options_.set("doLayerWisePerTileBreakdown", "true");
-    }
+    report_options_.set("showVarStorage", "true");
+    report_options_.set("showExecutionSteps", "true");
     for (const auto& opt : current_config_.profiling().options()) {
       report_options_.set(opt.option(), opt.value());
     }
@@ -748,13 +744,11 @@ void PoplarExecutor::AddLoadEngineEventRecord(const std::string& module_name) {
 }
 
 void PoplarExecutor::AddExecuteEventRecord(const std::string& module_name,
-                                           const std::string& report,
-                                           const std::string& trace) {
+                                           const std::string& report) {
   auto evt = NewTraceEvent();
   evt.set_type(tensorflow::IpuTraceEvent::EXECUTE);
   evt.mutable_execute()->set_module_name(std::move(module_name));
   evt.mutable_execute()->set_execution_report(std::move(report));
-  evt.mutable_execute()->set_activity_trace(std::move(trace));
 
   reports_.push_back(evt);
 }
@@ -1410,22 +1404,22 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
     try {
       if (current_config_.profiling().enable_ipu_trace_events()) {
         std::stringstream report_stream;
-        std::stringstream trace_stream;
         if (current_config_.profiling().enable_execution_trace() > 0) {
           if (executable.ExecutionCount() == 0) {
-            auto rep = current_engine_->getExecutionReport(GetReportFlags());
+            auto rep = current_engine_->getExecutionProfile();
+            auto opts = GetReportFlags();
             if (CompilerReportingTextFormat()) {
-              rep.printSummary(report_stream);
+              poplar::printProfileSummary(
+                  report_stream, current_engine_->getGraphProfile(), rep, opts);
             } else {
-              rep.serialize(report_stream, poplar::SerializationFormat::JSON);
+              poplar::serializeToJSON(report_stream, rep);
             }
 
-            current_engine_->reportIntervals(trace_stream);
+            current_engine_->resetExecutionProfile();
           }
         }
 
-        AddExecuteEventRecord(executable.module().name(), report_stream.str(),
-                              trace_stream.str());
+        AddExecuteEventRecord(executable.module().name(), report_stream.str());
       }
     } catch (const std::exception& e) {
       return PoplarExceptionToTensorflowStatus("[Execute engine] ", e);

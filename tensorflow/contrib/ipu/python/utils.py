@@ -198,7 +198,7 @@ def set_report_options(opts, report_options=None):
     ```python
     opts = create_ipu_config()
     opts = set_report_options(opts,
-        report_options={"doLayerWiseBreakdown": "false"})
+        report_options={"reportOption1": "false"})
 
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
@@ -628,10 +628,10 @@ def get_memory_size_from_events(events):
           l = l.strip()
           if l.startswith('Memory Usage'):
             in_memory_usage_section=True
-          if l.startswith('Total') and in_memory_usage_section:
-              m = re.match(r'.+:\s+(\d+)', l)
+          if l.startswith('Including Gaps') and in_memory_usage_section:
+              m = re.match(r'.+:\s+([\d,]+) B', l)
               if m:
-                return int(m.group(1))
+                return int(m.group(1).replace(',', ''))
       except UnicodeDecodeError:
         pass
   return None

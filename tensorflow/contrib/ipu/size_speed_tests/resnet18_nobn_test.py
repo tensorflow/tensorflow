@@ -137,7 +137,7 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
 
     evts = utils.extract_all_events(out)
     size = utils.get_memory_size_from_events(evts)
-    self.assertTrue(size < 220000000)
+    self.assertTrue(size < 221000000)
 
   def testTraining(self):
     x = array_ops.placeholder(datatype, shape=[1, 224, 224, 4])

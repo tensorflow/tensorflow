@@ -483,11 +483,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       try {
         auto& opts = poplarExecutor->GetReportFlags();
 
-        auto rep = engine->getGraphReport(opts);
+        auto rep = engine->getGraphProfile();
         if (poplarExecutor->CompilerReportingTextFormat()) {
-          rep.printSummary(stream);
+          poplar::printProfileSummary(stream, rep, {}, opts);
         } else {
-          rep.serialize(stream, poplar::SerializationFormat::JSON);
+          poplar::serializeToJSON(stream, rep);
         }
       } catch (const std::exception& e) {
         return PoplarExceptionToTensorflowStatus("[Compiler report] ", e);

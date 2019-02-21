@@ -299,8 +299,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   void AddLoadEngineEventRecord(const std::string& module_name);
 
   void AddExecuteEventRecord(const std::string& module_name,
-                             const std::string& report,
-                             const std::string& trace);
+                             const std::string& report);
 
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 
