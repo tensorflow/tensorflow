@@ -673,6 +673,9 @@ Status DirectSession::RunInternal(int64 step_id, const RunOptions& run_options,
 
   {
     mutex_lock l(run_state.mu_);
+    if (!run_state.status.ok() && run_state.collector) {
+      run_state.collector->Finalize();
+    }
     TF_RETURN_IF_ERROR(run_state.status);
   }
 

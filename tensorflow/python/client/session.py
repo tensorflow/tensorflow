@@ -933,6 +933,9 @@ class BaseSession(SessionInterface):
         run_metadata.ParseFromString(compat.as_bytes(proto_data))
     finally:
       if run_metadata_ptr:
+        if run_metadata_ptr.length > 0:
+          proto_data = tf_session.TF_GetBuffer(run_metadata_ptr)
+          run_metadata.ParseFromString(compat.as_bytes(proto_data))
         tf_session.TF_DeleteBuffer(run_metadata_ptr)
       if options:
         tf_session.TF_DeleteBuffer(options_ptr)
