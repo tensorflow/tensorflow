@@ -20,7 +20,6 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
-#include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/grpc_services.h"
+#include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -100,8 +100,8 @@ Status Profile(const string& service_addr, const string& logdir,
       FromGrpcStatus(stub->Profile(&context, request, &response)));
 
   if (!response.encoded_trace().empty()) {
-    TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(
-        logdir, session_id, "", response, &std::cout));
+    TF_CHECK_OK(WriteTensorboardTPUProfile(logdir, session_id, "", response,
+                                           &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
         << "NOTE: using the trace duration " << duration_ms << "ms."

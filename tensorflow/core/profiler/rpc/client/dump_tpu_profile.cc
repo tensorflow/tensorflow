@@ -13,13 +13,12 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
+#include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
 
 #include <cstdio>
 #include <ctime>
 #include <vector>
 
-#include "tensorflow/contrib/tpu/profiler/trace_events_to_json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/compression.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -28,11 +27,14 @@ limitations under the License.
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/profiler/op_profile.pb.h"
+#include "tensorflow/core/profiler/rpc/client/trace_events_to_json.h"
 #include "tensorflow/core/profiler/trace_events.pb.h"
 #include "tensorflow/core/util/events_writer.h"
 
 namespace tensorflow {
-namespace tpu {
+
+namespace profiler {
+namespace client {
 namespace {
 
 using ::tensorflow::io::JoinPath;
@@ -72,7 +74,7 @@ Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
   LOG(INFO) << "Dumped raw-proto trace data to " << proto_path;
 
   string json_path = JoinPath(run_dir, StrCat(host_prefix, kJsonTraceFileName));
-  profiler::Trace trace;
+  Trace trace;
   trace.ParseFromString(encoded_trace);
   if (os) {
     *os << "Trace contains " << trace.trace_events_size() << " events."
@@ -88,7 +90,7 @@ Status DumpTraceToLogDirectory(StringPiece run_dir, const string& host_prefix,
 
 Status DumpOpProfileToLogDirectory(StringPiece run_dir,
                                    const string& host_prefix,
-                                   const profiler::op_profile::Profile& profile,
+                                   const op_profile::Profile& profile,
                                    std::ostream* os) {
   string path = JoinPath(run_dir, StrCat(host_prefix, kJsonOpProfileFileName));
   string json;
@@ -109,7 +111,7 @@ Status DumpOpProfileToLogDirectory(StringPiece run_dir,
 
 Status DumpToolDataToLogDirectory(StringPiece run_dir,
                                   const string& host_prefix,
-                                  const tensorflow::ProfileToolData& tool,
+                                  const ProfileToolData& tool,
                                   std::ostream* os) {
   // Don't save the intermediate results for combining the per host tool data.
   if (EndsWith(tool.name(), kFlatProfilerFileName) ||
@@ -155,5 +157,6 @@ Status WriteTensorboardTPUProfile(const string& logdir, const string& run,
   return Status::OK();
 }
 
-}  // namespace tpu
+}  // namespace client
+}  // namespace profiler
 }  // namespace tensorflow
