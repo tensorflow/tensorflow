@@ -1212,7 +1212,6 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
   def __init__(
       self, strategy, device_map, values, aggregation, logical_device=None):
     self._aggregation = aggregation
-    assert aggregation != "sum"
     super(ReplicaLocalVariable, self).__init__(
         strategy, device_map, values, logical_device=logical_device)
 
