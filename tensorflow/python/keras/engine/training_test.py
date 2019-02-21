@@ -27,6 +27,7 @@ import numpy as np
 import six
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
@@ -690,14 +691,17 @@ class TrainingTest(keras_parameterized.TestCase):
           validation_data=(x_train, y_train))
       self.assertEqual(test_callback.batch_end_call_count, 10)
       self.assertEqual(test_callback.epoch_end_call_count, 2)
+
+      weighted_metric = ('mae'
+                         if tf2.enabled() else 'weighted_mean_absolute_error')
       self.assertSetEqual(
           set(test_callback.batch_end_logs.keys()),
-          set(['batch', 'size', 'acc', 'loss', 'weighted_mean_absolute_error']))
+          set(['batch', 'size', 'acc', 'loss', weighted_metric]))
       self.assertSetEqual(
           set(test_callback.epoch_end_logs.keys()),
           set([
-              'acc', 'loss', 'weighted_mean_absolute_error', 'val_acc',
-              'val_loss', 'val_weighted_mean_absolute_error'
+              'acc', 'loss', weighted_metric, 'val_acc', 'val_loss',
+              'val_' + weighted_metric
           ]))
 
   @keras_parameterized.run_all_keras_modes
@@ -2257,9 +2261,11 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     metrics = ['mse', metrics_module.BinaryAccuracy()]
     model.compile(optimizer, loss='mae', metrics=metrics,
                   run_eagerly=testing_utils.should_run_eagerly())
+
+    mse_metric = 'mse' if tf2.enabled() else 'mean_squared_error'
     reference_metric_names = [
-        'loss', 'dense_loss', 'dropout_loss', 'dense_mean_squared_error',
-        'dense_binary_accuracy', 'dropout_mean_squared_error',
+        'loss', 'dense_loss', 'dropout_loss', 'dense_' + mse_metric,
+        'dense_binary_accuracy', 'dropout_' + mse_metric,
         'dropout_binary_accuracy'
     ]
     self.assertEqual(reference_metric_names, model.metrics_names)
@@ -2534,19 +2540,14 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.compile(
         'sgd',
         loss='mse',
-        metrics=['acc'],
+        metrics=[metrics_module.Accuracy('acc')],
         run_eagerly=testing_utils.should_run_eagerly())
 
     # Verify that the metrics added using `compile` and `add_metric` API are
     # included
-    self.assertEqual(model._compile_metrics, ['acc'])
-    names = []
-    for m in model.metrics:
-      if isinstance(m, metrics_module.Metric):
-        names.append(m.name)
-      else:
-        names.append(m.__name__)
-    self.assertEqual(names, ['binary_accuracy', 'metric_1', 'metric_2'])
+    self.assertEqual([m.name for m in model._compile_metrics], ['acc'])
+    self.assertEqual([m.name for m in model.metrics],
+                     ['acc', 'metric_1', 'metric_2'])
 
   @keras_parameterized.run_all_keras_modes
   def test_model_metrics_list_in_call(self):
@@ -2566,20 +2567,14 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     model.compile(
         loss='mse',
         optimizer=RMSPropOptimizer(0.01),
-        metrics=['acc'],
+        metrics=[metrics_module.Accuracy('acc')],
         run_eagerly=testing_utils.should_run_eagerly())
     x = np.ones(shape=(10, 1))
     y = np.ones(shape=(10, 2))
     model.fit(x, y, epochs=2, batch_size=5, validation_data=(x, y))
 
-    self.assertEqual(model._compile_metrics, ['acc'])
-    names = []
-    for m in model.metrics:
-      if isinstance(m, metrics_module.Metric):
-        names.append(m.name)
-      else:
-        names.append(m.__name__)
-    self.assertEqual(names, ['categorical_accuracy', 'metric_1'])
+    self.assertEqual([m.name for m in model._compile_metrics], ['acc'])
+    self.assertEqual([m.name for m in model.metrics], ['acc', 'metric_1'])
 
   @keras_parameterized.run_all_keras_modes
   def test_multiple_add_metric_calls(self):

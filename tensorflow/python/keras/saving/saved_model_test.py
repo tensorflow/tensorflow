@@ -25,6 +25,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.client import session
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
@@ -362,16 +363,20 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
 
         # First obtain the loss and predictions, and run the metric update op by
         # feeding in the inputs and targets.
+        metrics_name = 'mae' if tf2.enabled() else 'mean_absolute_error'
+        metrics_update_op_key = 'metrics/' + metrics_name + '/update_op'
+        metrics_value_op_key = 'metrics/' + metrics_name + '/value'
+
         loss, predictions, _ = sess.run(
             (outputs['loss'], outputs['predictions/' + output_name],
-             outputs['metrics/mean_absolute_error/update_op']), {
+             outputs[metrics_update_op_key]), {
                  inputs[input_name]: input_arr,
                  inputs[target_name]: target_arr
              })
 
         # The metric value should be run after the update op, to ensure that it
         # reflects the correct value.
-        metric_value = sess.run(outputs['metrics/mean_absolute_error/value'])
+        metric_value = sess.run(outputs[metrics_value_op_key])
 
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
@@ -386,8 +391,8 @@ class TestModelSavedModelExport(test.TestCase, parameterized.TestCase):
         self.assertEqual(int(train_before_export),
                          sess.run(training_module.get_global_step()))
         self.assertIn('loss', outputs)
-        self.assertIn('metrics/mean_absolute_error/update_op', outputs)
-        self.assertIn('metrics/mean_absolute_error/value', outputs)
+        self.assertIn(metrics_update_op_key, outputs)
+        self.assertIn(metrics_value_op_key, outputs)
         self.assertIn('predictions/' + output_name, outputs)
 
         # Train for a step

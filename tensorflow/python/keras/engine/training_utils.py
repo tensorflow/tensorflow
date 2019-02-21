@@ -25,6 +25,7 @@ from collections import OrderedDict
 import numpy as np
 import six
 
+from tensorflow.python import tf2
 from tensorflow.python.data.experimental.ops import cardinality
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -597,7 +598,7 @@ def collect_per_output_metric_info(metrics,
       stateful_fn = metric_fn
       if not is_stateful:
         stateful_fn = metrics_module.MeanMetricWrapper(
-            metric_fn, name=metric_fn.__name__)
+            metric_fn, name=metric_name)
 
       metrics_dict[metric_name] = (metric_fn, stateful_fn)
     per_output_metrics.append(metrics_dict)
@@ -825,21 +826,29 @@ def get_metric_name(metric, weighted=False):
   Returns:
       The metric name.
   """
-  metric_name_prefix = 'weighted_' if weighted else ''
-  if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
-    if metric in ('accuracy', 'acc'):
-      suffix = 'acc'
-    elif metric in ('crossentropy', 'ce'):
-      suffix = 'ce'
+  if tf2.enabled():
+    # We keep the string that the user has set in compile as the metric name.
+    if isinstance(metric, six.string_types):
+      return metric
+
+    metric = metrics_module.get(metric)
+    return metric.name if hasattr(metric, 'name') else metric.__name__
   else:
-    metric_fn = metrics_module.get(metric)
-    # Get metric name as string
-    if hasattr(metric_fn, 'name'):
-      suffix = metric_fn.name
+    metric_name_prefix = 'weighted_' if weighted else ''
+    if metric in ('accuracy', 'acc', 'crossentropy', 'ce'):
+      if metric in ('accuracy', 'acc'):
+        suffix = 'acc'
+      elif metric in ('crossentropy', 'ce'):
+        suffix = 'ce'
     else:
-      suffix = metric_fn.__name__
-  metric_name = metric_name_prefix + suffix
-  return metric_name
+      metric_fn = metrics_module.get(metric)
+      # Get metric name as string
+      if hasattr(metric_fn, 'name'):
+        suffix = metric_fn.name
+      else:
+        suffix = metric_fn.__name__
+    metric_name = metric_name_prefix + suffix
+    return metric_name
 
 
 def get_metric_function(metric, output_shape=None, loss_fn=None):
