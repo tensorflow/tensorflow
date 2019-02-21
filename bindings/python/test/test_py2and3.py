@@ -113,9 +113,9 @@ class EdscTest(unittest.TestCase):
     with E.ContextManager():
       i, j, k, l = list(
           map(E.Expr, [E.Bindable(self.f32Type) for _ in range(4)]))
-      stmt = i + j * k - l
+      stmt = i % j + j * k - l / k
       str = stmt.__str__()
-      self.assertIn("(($1 + ($2 * $3)) - $4)", str)
+      self.assertIn("((($1 % $2) + ($2 * $3)) - ($4 / $3))", str)
 
   def testBoolean(self):
     with E.ContextManager():

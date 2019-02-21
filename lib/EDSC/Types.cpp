@@ -205,6 +205,26 @@ static AffineExpr createOperandAffineExpr(Expr e, int64_t position,
   return getAffineDimExpr(position, context);
 }
 
+static Expr createBinaryIndexExpr(
+    Expr lhs, Expr rhs,
+    std::function<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
+  assert(lhs.getResultTypes().size() == 1 && rhs.getResultTypes().size() == 1 &&
+         "only single-result exprs are supported in operators");
+  auto thisType = lhs.getResultTypes().front();
+  auto thatType = rhs.getResultTypes().front();
+  assert(thisType == thatType && "cannot mix types in operators");
+  assert(thisType.isIndex() && "expected exprs of index type");
+  MLIRContext *context = thisType.getContext();
+  auto lhsAff = createOperandAffineExpr(lhs, 0, context);
+  auto rhsAff = createOperandAffineExpr(rhs, 1, context);
+  auto map = AffineMap::get(2, 0, {affCombiner(lhsAff, rhsAff)}, {});
+  auto attr = AffineMapAttr::get(map);
+  auto attrId = Identifier::get("map", context);
+  auto namedAttr = NamedAttribute{attrId, attr};
+  return VariadicExpr("affine.apply", {lhs, rhs}, {IndexType::get(context)},
+                      {namedAttr});
+}
+
 // Create a binary expression between the two arguments emitting `IOp` if
 // arguments are integers or vectors/tensors thereof, `FOp` if arguments are
 // floating-point or vectors/tensors thereof, and `AffineApplyOp` with an
@@ -220,15 +240,7 @@ static Expr createBinaryExpr(
   auto thatType = rhs.getResultTypes().front();
   assert(thisType == thatType && "cannot mix types in operators");
   if (thisType.isIndex()) {
-    MLIRContext *context = thisType.getContext();
-    auto lhsAff = createOperandAffineExpr(lhs, 0, context);
-    auto rhsAff = createOperandAffineExpr(rhs, 1, context);
-    auto map = AffineMap::get(2, 0, {affCombiner(lhsAff, rhsAff)}, {});
-    auto attr = AffineMapAttr::get(map);
-    auto attrId = Identifier::get("map", context);
-    auto namedAttr = NamedAttribute{attrId, attr};
-    return VariadicExpr("affine.apply", {lhs, rhs}, {IndexType::get(context)},
-                        {namedAttr});
+    return createBinaryIndexExpr(lhs, rhs, affCombiner);
   } else if (thisType.isa<IntegerType>()) {
     return BinaryExpr::make<IOp>(thisType, lhs, rhs);
   } else if (thisType.isa<FloatType>()) {
@@ -254,6 +266,25 @@ Expr mlir::edsc::op::operator-(Expr lhs, Expr rhs) {
 Expr mlir::edsc::op::operator*(Expr lhs, Expr rhs) {
   return createBinaryExpr<MulIOp, MulFOp>(
       lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 * d1; });
+}
+Expr mlir::edsc::op::operator/(Expr lhs, Expr rhs) {
+  return createBinaryExpr<DivISOp, DivFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) -> AffineExpr {
+        llvm_unreachable("only exprs of non-index type support operator/");
+      });
+}
+Expr mlir::edsc::op::operator%(Expr lhs, Expr rhs) {
+  return createBinaryExpr<RemISOp, RemFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 % d1; });
+}
+
+Expr mlir::edsc::floorDiv(Expr lhs, Expr rhs) {
+  return createBinaryIndexExpr(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0.floorDiv(d1); });
+}
+Expr mlir::edsc::ceilDiv(Expr lhs, Expr rhs) {
+  return createBinaryIndexExpr(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0.ceilDiv(d1); });
 }
 
 static Expr createComparisonExpr(CmpIPredicate predicate, Expr lhs, Expr rhs) {
@@ -688,9 +719,11 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
       infix = "-";
     else if (binExpr.is_op<MulIOp>() || binExpr.is_op<MulFOp>())
       infix = binExpr.getResultTypes().front().isInteger(1) ? "&&" : "*";
-    else if (binExpr.is_op<DivISOp>() || binExpr.is_op<DivIUOp>())
+    else if (binExpr.is_op<DivISOp>() || binExpr.is_op<DivIUOp>() ||
+             binExpr.is_op<DivFOp>())
       infix = "/";
-    else if (binExpr.is_op<RemISOp>() || binExpr.is_op<RemIUOp>())
+    else if (binExpr.is_op<RemISOp>() || binExpr.is_op<RemIUOp>() ||
+             binExpr.is_op<RemFOp>())
       infix = "%";
     else if (binExpr.is_op<CmpIOp>())
       infix = getCmpIPredicateInfix(*this);

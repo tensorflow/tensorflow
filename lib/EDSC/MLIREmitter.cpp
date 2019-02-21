@@ -534,7 +534,8 @@ void bindMemRefView(edsc_mlir_emitter_t emitter, edsc_expr_t boundMemRef,
 DEFINE_EDSL_BINARY_OP(Add, +);
 DEFINE_EDSL_BINARY_OP(Sub, -);
 DEFINE_EDSL_BINARY_OP(Mul, *);
-// DEFINE_EDSL_BINARY_OP(Div, /);
+DEFINE_EDSL_BINARY_OP(Div, /);
+DEFINE_EDSL_BINARY_OP(Rem, %);
 DEFINE_EDSL_BINARY_OP(LT, <);
 DEFINE_EDSL_BINARY_OP(LE, <=);
 DEFINE_EDSL_BINARY_OP(GT, >);
@@ -545,6 +546,14 @@ DEFINE_EDSL_BINARY_OP(And, &&);
 DEFINE_EDSL_BINARY_OP(Or, ||);
 
 #undef DEFINE_EDSL_BINARY_OP
+
+edsc_expr_t FloorDiv(edsc_expr_t e1, edsc_expr_t e2) {
+  return edsc::floorDiv(Expr(e1), Expr(e2));
+}
+
+edsc_expr_t CeilDiv(edsc_expr_t e1, edsc_expr_t e2) {
+  return edsc::ceilDiv(Expr(e1), Expr(e2));
+}
 
 #define DEFINE_EDSL_UNARY_OP(FUN_NAME, OP_SYMBOL)                              \
   edsc_expr_t FUN_NAME(edsc_expr_t e) {                                        \

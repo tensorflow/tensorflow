@@ -82,6 +82,10 @@ def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
   let hasConstantFolder = 0b1;
 }
 
+def DivFOp : FloatArithmeticOp<"divf"> {
+  let summary = "floating point division operation";
+}
+
 def DivISOp : IntArithmeticOp<"divis"> {
   let summary = "signed integer division operation";
   let hasConstantFolder = 0b1;
@@ -101,6 +105,10 @@ def MulIOp : IntArithmeticOp<"muli", [Commutative]> {
   let summary = "integer multiplication operation";
   let hasConstantFolder = 0b1;
   let hasFolder = 1;
+}
+
+def RemFOp : FloatArithmeticOp<"remf"> {
+  let summary = "floating point division remainder operation";
 }
 
 def RemISOp : IntArithmeticOp<"remis"> {

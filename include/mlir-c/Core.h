@@ -260,13 +260,17 @@ edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_max_expr_t lb, edsc_min_expr_t ub,
 edsc_expr_t Add(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t Sub(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t Mul(edsc_expr_t e1, edsc_expr_t e2);
-// edsc_expr_t Div(edsc_expr_t e1, edsc_expr_t e2);
+edsc_expr_t Div(edsc_expr_t e1, edsc_expr_t e2);
+edsc_expr_t Rem(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t LT(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t LE(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t GT(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t GE(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t EQ(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t NE(edsc_expr_t e1, edsc_expr_t e2);
+
+edsc_expr_t FloorDiv(edsc_expr_t e1, edsc_expr_t e2);
+edsc_expr_t CeilDiv(edsc_expr_t e1, edsc_expr_t e2);
 
 edsc_expr_t And(edsc_expr_t e1, edsc_expr_t e2);
 edsc_expr_t Or(edsc_expr_t e1, edsc_expr_t e2);

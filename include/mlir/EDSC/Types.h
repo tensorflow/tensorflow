@@ -436,6 +436,8 @@ namespace op {
 Expr operator+(Expr lhs, Expr rhs);
 Expr operator-(Expr lhs, Expr rhs);
 Expr operator*(Expr lhs, Expr rhs);
+Expr operator/(Expr lhs, Expr rhs);
+Expr operator%(Expr lhs, Expr rhs);
 /// In particular operator==, operator!= return a new Expr and *not* a bool.
 Expr operator==(Expr lhs, Expr rhs);
 Expr operator!=(Expr lhs, Expr rhs);
@@ -478,6 +480,9 @@ inline Expr operator||(Stmt lhs, Stmt rhs) {
 }
 inline Expr operator!(Stmt stmt) { return !stmt.getLHS(); }
 } // end namespace op
+
+Expr floorDiv(Expr lhs, Expr rhs);
+Expr ceilDiv(Expr lhs, Expr rhs);
 
 template <typename U> bool Expr::isa() const {
   auto kind = getKind();

@@ -494,7 +494,10 @@ PYBIND11_MODULE(pybind, m) {
   DEFINE_PYBIND_BINARY_OP("Add", Add);
   DEFINE_PYBIND_BINARY_OP("Mul", Mul);
   DEFINE_PYBIND_BINARY_OP("Sub", Sub);
-  // DEFINE_PYBIND_BINARY_OP("Div", Div);
+  DEFINE_PYBIND_BINARY_OP("Div", Div);
+  DEFINE_PYBIND_BINARY_OP("Rem", Rem);
+  DEFINE_PYBIND_BINARY_OP("FloorDiv", FloorDiv);
+  DEFINE_PYBIND_BINARY_OP("CeilDiv", CeilDiv);
   DEFINE_PYBIND_BINARY_OP("LT", LT);
   DEFINE_PYBIND_BINARY_OP("LE", LE);
   DEFINE_PYBIND_BINARY_OP("GT", GT);
@@ -649,8 +652,14 @@ PYBIND11_MODULE(pybind, m) {
                          PythonExpr e2) { return PythonExpr(::Sub(e1, e2)); })
       .def("__mul__", [](PythonExpr e1,
                          PythonExpr e2) { return PythonExpr(::Mul(e1, e2)); })
-      // .def("__div__", [](PythonExpr e1, PythonExpr e2) { return
-      // PythonExpr(::Div(e1, e2)); })
+      .def("__div__", [](PythonExpr e1,
+                         PythonExpr e2) { return PythonExpr(::Div(e1, e2)); })
+      .def("__truediv__",
+           [](PythonExpr e1, PythonExpr e2) {
+             return PythonExpr(::Div(e1, e2));
+           })
+      .def("__mod__", [](PythonExpr e1,
+                         PythonExpr e2) { return PythonExpr(::Rem(e1, e2)); })
       .def("__lt__", [](PythonExpr e1,
                         PythonExpr e2) { return PythonExpr(::LT(e1, e2)); })
       .def("__le__", [](PythonExpr e1,
