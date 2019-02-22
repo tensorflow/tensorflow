@@ -12,7 +12,12 @@ ARG PYTHON_DEV="python-dev"
 ARG PIP="pip"
 
 # Pick up some TF dependencies
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends --fix-missing \
+        ${PYTHON} \
+        ${PYTHON}-dev \
+        ${PYTHON}-pip \
+        ${PYTHON}-setuptools \
+        ${PYTHON}-wheel \
         build-essential \
         curl \
         libfreetype6-dev \
@@ -20,8 +25,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libpng-dev \
         libzmq3-dev \
         pkg-config \
-        ${PYTHON} \
-        ${PYTHON_DEV} \
         rsync \
         software-properties-common \
         unzip \
@@ -29,9 +32,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     apt-get clean && \
     rm -rf /var/lib/apt/lists/*
 
-RUN curl -O https://bootstrap.pypa.io/get-pip.py && \
-    ${PYTHON} get-pip.py && \
-    rm get-pip.py
 
 RUN ${PIP} --no-cache-dir install \
         Pillow \
@@ -48,13 +48,15 @@ RUN ${PIP} --no-cache-dir install \
         && \
     ${PYTHON} -m ipykernel.kernelspec
 
+
+RUN if [ "${PYTHON}" = "python3" ] || [ "${PYTHON}" = "python3.6" ]; then \
+      ln -s -f /usr/bin/python3 /usr/bin/python; \
+    fi
+
 COPY ${TF_WHL_URL} /
 RUN ${PIP} install --no-cache-dir --force-reinstall /${TF_WHL_URL} && \
     rm -rf /${TF_WHL_URL}
 
-RUN if [ "${PYTHON}" = "python3" ]; then \
-  ln -s -f /usr/bin/python3 /usr/bin/python; \
-  fi
 
 # Set up our notebook config.
 COPY jupyter_notebook_config.py /root/.jupyter/
