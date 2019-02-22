@@ -46,7 +46,6 @@ from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
-
 # A global dictionary mapping graph keys to a list of summary writer init ops.
 _SUMMARY_WRITER_INIT_OP = {}
 
@@ -756,7 +755,7 @@ def run_metadata(name, data, step):
   # the rationale.
   summary_metadata.plugin_data.plugin_name = "graph_run_metadata"
   # version number = 1
-  summary_metadata.plugin_data.content = "1"
+  summary_metadata.plugin_data.content = b"1"
 
   with summary_scope(name,
                      "graph_run_metadata_summary",
@@ -787,7 +786,7 @@ def run_metadata_graphs(name, data, step):
   # the rationale.
   summary_metadata.plugin_data.plugin_name = "graph_run_metadata_graph"
   # version number = 1
-  summary_metadata.plugin_data.content = "1"
+  summary_metadata.plugin_data.content = b"1"
 
   data = config_pb2.RunMetadata(
       function_graphs=data.function_graphs,
@@ -825,7 +824,7 @@ def keras_model(name, data, step):
   # the rationale.
   summary_metadata.plugin_data.plugin_name = "graph_keras_model"
   # version number = 1
-  summary_metadata.plugin_data.content = "1"
+  summary_metadata.plugin_data.content = b"1"
 
   json_string = data.to_json()
 
