@@ -447,6 +447,7 @@ renames = {
     'tf.nn.rnn_cell.DropoutWrapper': 'tf.compat.v1.nn.rnn_cell.DropoutWrapper',
     'tf.nn.rnn_cell.GRUCell': 'tf.compat.v1.nn.rnn_cell.GRUCell',
     'tf.nn.rnn_cell.LSTMCell': 'tf.compat.v1.nn.rnn_cell.LSTMCell',
+    'tf.nn.rnn_cell.LSTMStateTuple': 'tf.compat.v1.nn.rnn_cell.LSTMStateTuple',
     'tf.nn.rnn_cell.MultiRNNCell': 'tf.compat.v1.nn.rnn_cell.MultiRNNCell',
     'tf.nn.rnn_cell.ResidualWrapper': 'tf.compat.v1.nn.rnn_cell.ResidualWrapper',
     'tf.nn.static_bidirectional_rnn': 'tf.compat.v1.nn.static_bidirectional_rnn',
