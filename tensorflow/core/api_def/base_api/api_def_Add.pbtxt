@@ -4,5 +4,20 @@ op {
   description: <<END
 *NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
 [here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+
+For example:
+
+```
+# x and y are rank 3 tensors of shape (2, 2, 2)
+x = tf.constant([[[1, 2], [3, 4]],
+                 [[5, 6], [7, 8]]])
+
+y = tf.constant([[[8, 7], [6, 5]],
+                 [[4, 3], [2, 1]]])
+
+tf.add(x, y) ==> [[[9, 9], [9, 9]],
+                  [[9, 9], [9, 9]]]
+```
+
 END
 }

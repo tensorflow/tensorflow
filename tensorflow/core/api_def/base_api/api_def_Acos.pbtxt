@@ -1,4 +1,19 @@
 op {
   graph_op_name: "Acos"
   summary: "Computes acos of x element-wise."
+  description: <<END
+The `tf.math.acos` operation returns the inverse of `tf.math.cos`, such that
+if `y = tf.math.cos(x)` then, `x = tf.math.acos(y)`.
+
+For example:
+
+```
+# [1.047, 0.785] roughly means [(pi/3), (pi/4)]
+a = tf.constant([1.047, 0.785])
+b = tf.math.cos(a) # ~= [0.500171, 0.7073882]
+
+tf.math.acos(b) ~= [1.047, 0.785] => a
+```
+
+END
 }
