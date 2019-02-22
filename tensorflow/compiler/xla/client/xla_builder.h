@@ -910,6 +910,8 @@ class XlaBuilder {
   friend XlaOp Tanh(const XlaOp& operand);
   friend XlaOp Real(const XlaOp& operand);
   friend XlaOp Imag(const XlaOp& operand);
+  friend XlaOp Sqrt(const XlaOp& operand);
+  friend XlaOp Rsqrt(const XlaOp& operand);
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
@@ -1637,6 +1639,12 @@ XlaOp Real(const XlaOp& operand);
 
 // Enqueues an imaginary-part instruction onto the computation.
 XlaOp Imag(const XlaOp& operand);
+
+// Enqueues a sqrt computation onto the computation.
+XlaOp Sqrt(const XlaOp& operand);
+
+// Enqueues a rsqrt computation onto the computation.
+XlaOp Rsqrt(const XlaOp& operand);
 
 // Enqueues a lhs^rhs computation onto the computation.
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,

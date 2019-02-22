@@ -4879,5 +4879,41 @@ TEST_F(AlgebraicSimplifierTest, DividedByConstantInstructionWithoutLayout) {
   EXPECT_THAT(root, GmockMatch(m::Multiply()));
 }
 
+// Test that 1/sqrt(X) is simplified to rsqrt(X).
+TEST_F(AlgebraicSimplifierTest, RecipSqrt) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      sqrt = f32[] sqrt(p0)
+      ROOT div = f32[] divide(p1, sqrt)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(m::Parameter(1),
+                                             m::Rsqrt(m::Parameter(0)))));
+}
+
+// Test that 1/rsqrt(X) is simplified to sqrt(X).
+TEST_F(AlgebraicSimplifierTest, RecipRsqrt) {
+  const char* kModuleStr = R"(
+    HloModule m
+    test {
+      p0 = f32[] parameter(0)
+      p1 = f32[] parameter(1)
+      rsqrt = f32[] rsqrt(p0)
+      ROOT div = f32[] divide(p1, rsqrt)
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(auto m, ParseAndReturnVerifiedModule(kModuleStr));
+  ASSERT_TRUE(AlgebraicSimplifier(default_options_).Run(m.get()).ValueOrDie());
+  EXPECT_THAT(m->entry_computation()->root_instruction(),
+              GmockMatch(m::MultiplyAnyOrder(m::Parameter(1),
+                                             m::Sqrt(m::Parameter(0)))));
+}
+
 }  // namespace
 }  // namespace xla
