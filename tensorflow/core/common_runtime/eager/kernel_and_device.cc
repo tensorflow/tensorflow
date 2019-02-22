@@ -54,6 +54,16 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
+KernelAndDeviceOp::~KernelAndDeviceOp() {
+  // Make sure that the device execution has finished before deleting cm_.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    while (num_deferred_ops_ > 0) {
+      no_deferred_ops_cv_.wait(lock);
+    }
+  }
+}
+
 Status KernelAndDeviceOp::Init(const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
@@ -198,6 +208,17 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.cancellation_manager = &cm_;
   cm_.Reset();
   params.log_memory = log_memory_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_--;
+    if (num_deferred_ops_ == 0) {
+      no_deferred_ops_cv_.notify_all();
+    }
+  };
   std::unique_ptr<StepStatsCollector> step_stats_collector;
   if (stats != nullptr) {
     step_stats_collector.reset(new StepStatsCollector(step_stats));
