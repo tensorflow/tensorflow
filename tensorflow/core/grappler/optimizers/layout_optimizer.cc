@@ -2048,6 +2048,11 @@ class DataLayoutOptimizer : GraphProcessor {
     // only needs to be performed if at least one node in the previous pass is
     // expanded.
     if (graph_->node_size() > node_size_original) {
+      // Creating Const nodes holding the permutation used by added Transposes
+      // of nodes and ensure both are in the same frame.
+      NodeDef* n = AddNodePermNHWCToNCHW();
+      n = AddNodePermNCHWToNHWC();
+      n = n; // Avoid compilation warning
       std::set<string> ops_format_agnostic = GetOpsFormatAgnostic();
       for (int i = 0; i < graph_->node_size(); i++) {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
