@@ -431,6 +431,14 @@ Returns x - y element-wise.
 REGISTER_OP("Mul").BINARY_MORE().SetIsCommutative().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
 
+REGISTER_OP("MulNoNan")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetIsCommutative()
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
+
 REGISTER_OP("_MklMul")
     .BINARY_MORE()
     .Input("mkl_x: uint8")

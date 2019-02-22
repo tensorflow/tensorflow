@@ -22,7 +22,15 @@ tf_module {
   }
   member_method {
     name: "avg_pool"
-    argspec: "args=[\'value\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "avg_pool1d"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NWC\', \'None\'], "
+  }
+  member_method {
+    name: "avg_pool2d"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'padding\', \'data_format\', \'name\'], varargs=None, keywords=None, defaults=[\'NHWC\', \'None\'], "
   }
   member_method {
     name: "avg_pool3d"
@@ -71,6 +79,10 @@ tf_module {
   member_method {
     name: "conv3d_transpose"
     argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'NDHWC\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "conv_transpose"
+    argspec: "args=[\'input\', \'filters\', \'output_shape\', \'strides\', \'padding\', \'data_format\', \'dilations\', \'name\'], varargs=None, keywords=None, defaults=[\'SAME\', \'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "convolution"

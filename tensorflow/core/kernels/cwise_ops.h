@@ -147,30 +147,48 @@ struct functor_traits<safe_div_or_mod_op<T, DivOrMod>> {
   };
 };
 
-template <typename T>
-struct div_no_nan_op {
-  EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
+template <typename T, typename Binary>
+struct no_nan_op {
+  EIGEN_EMPTY_STRUCT_CTOR(no_nan_op)
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const T operator()(const T& a,
                                                            const T& b) const {
     if (b != 0) {
-      return scalar_quotient_op<T>()(a, b);
+      return Binary()(a, b);
     } else {
-      return 0;
+      return T(0);
     }
   }
   template <typename Packet>
   EIGEN_DEVICE_FUNC EIGEN_STRONG_INLINE const Packet
   packetOp(const Packet& a, const Packet& b) const {
     const Packet mask = pcmp_eq(b, pzero(b));
-    const Packet quotient = scalar_quotient_op<T>().packetOp(a, b);
+    const Packet quotient = Binary().packetOp(a, b);
     return pandnot(quotient, mask);
   }
+};
+
+template <typename T>
+struct div_no_nan_op : public no_nan_op<T, scalar_quotient_op<T>> {
+  EIGEN_EMPTY_STRUCT_CTOR(div_no_nan_op)
 };
 
 template <typename T>
 struct functor_traits<div_no_nan_op<T>> {
   enum {
     Cost = functor_traits<scalar_quotient_op<T>>::Cost + NumTraits<T>::AddCost,
+    PacketAccess = true,
+  };
+};
+
+template <typename T>
+struct mul_no_nan_op : public no_nan_op<T, scalar_product_op<T>> {
+  EIGEN_EMPTY_STRUCT_CTOR(mul_no_nan_op)
+};
+
+template <typename T>
+struct functor_traits<mul_no_nan_op<T>> {
+  enum {
+    Cost = functor_traits<scalar_product_op<T>>::Cost + NumTraits<T>::AddCost,
     PacketAccess = true,
   };
 };
@@ -797,6 +815,9 @@ template <typename T>
 struct mul : base<T, Eigen::internal::scalar_product_op<T>> {
   static const bool use_bcast_optimization = true;
 };
+
+template <typename T>
+struct mul_no_nan : base<T, Eigen::internal::mul_no_nan_op<T>> {};
 
 template <typename T>
 struct div : base<T, Eigen::internal::scalar_quotient_op<T>> {};

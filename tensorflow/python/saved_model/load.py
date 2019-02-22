@@ -24,24 +24,21 @@ import os
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
-from tensorflow.python.lib.io import file_io
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables
-from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_deserialization
 from tensorflow.python.saved_model import load_v1_in_v2
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import utils_impl as saved_model_utils
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import graph_view
 from tensorflow.python.training.tracking import tracking
 from tensorflow.python.training.tracking import util
-from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 class _Loader(object):
@@ -265,12 +262,7 @@ def _call_attribute(instance, *args, **kwargs):
   return instance.__call__(*args, **kwargs)
 
 
-def _load_saved_object_graph_proto(filename):
-  with file_io.FileIO(filename, "rb") as f:
-    contents = f.read()
-    return saved_object_graph_pb2.SavedObjectGraph.FromString(contents)
-
-
+@tf_export("saved_model.load", v1=["saved_model.load_v2"])
 def load(export_dir, tags=None):
   """Load a SavedModel from `export_dir`.
 
@@ -315,12 +307,8 @@ def load(export_dir, tags=None):
     # Supports e.g. tags=SERVING and tags=[SERVING]
     tags = nest.flatten(tags)
   saved_model_proto = loader_impl.parse_saved_model(export_dir)
-  object_graph_filename = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY),
-      compat.as_bytes("object_graph.pb"))
-  if (file_io.file_exists(object_graph_filename)
-      and len(saved_model_proto.meta_graphs) == 1):
+  if (len(saved_model_proto.meta_graphs) == 1
+      and saved_model_proto.meta_graphs[0].HasField("object_graph_def")):
     meta_graph_def = saved_model_proto.meta_graphs[0]
     if (tags is not None
         and set(tags) != set(meta_graph_def.meta_info_def.tags)):
@@ -329,7 +317,7 @@ def load(export_dir, tags=None):
            "incompatible argument tags={} to tf.saved_model.load. You may omit "
            "it, pass 'None', or pass matching tags.")
           .format(export_dir, meta_graph_def.meta_info_def.tags, tags))
-    object_graph_proto = _load_saved_object_graph_proto(object_graph_filename)
+    object_graph_proto = meta_graph_def.object_graph_def
     with ops.init_scope():
       loader = _Loader(object_graph_proto,
                        saved_model_proto,

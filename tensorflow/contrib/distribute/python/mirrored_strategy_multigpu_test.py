@@ -1456,7 +1456,7 @@ class MultiWorkerMirroredStrategyTest(
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess)
 
-  def testMakeInputFnIteratorWithCallable(self, distribution):
+  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
     self._configure_distribution_strategy(distribution)
     def fn():
       dataset = dataset_ops.Dataset.range(100)

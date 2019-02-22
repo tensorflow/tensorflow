@@ -11,9 +11,10 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow:grpc++",
-        "//tensorflow/contrib/tpu/profiler:tpu_profiler_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:grpc_services",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/lib:profiler_session",
     ],
     alwayslink = 1,
@@ -27,9 +28,10 @@ tf_cuda_library(
     deps = [
         ":profiler_service_impl",
         "//tensorflow:grpc++",
-        "//tensorflow/contrib/tpu/profiler:tpu_profiler_proto_cc",
         "//tensorflow/core:framework",
+        "//tensorflow/core:grpc_services",
         "//tensorflow/core/common_runtime/eager:context",
+        "//tensorflow/core/profiler:protos_all_cc",
         "//tensorflow/core/profiler/lib:profiler_session",
     ],
     alwayslink = 1,

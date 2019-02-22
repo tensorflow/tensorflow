@@ -47,6 +47,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
@@ -777,7 +778,7 @@ class Layer(trackable.Trackable):
         already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
         y_pred))`. If aggregation='mean', the given metric tensor will be
         sample-wise reduced using `mean` function. eg, `model.add_metric(
-        tf.reduce_mean(outputs), name='output_mean', aggregation='mean')`.
+        tf.reduce_sum(outputs), name='output_mean', aggregation='mean')`.
       name: String metric name.
 
     Raises:
@@ -788,8 +789,25 @@ class Layer(trackable.Trackable):
           'We currently support only `mean` sample-wise metric aggregation. '
           'You provided aggregation=`%s`' % aggregation)
 
-    if tf_utils.is_symbolic_tensor(value):
-      self._symbolic_add_metric(value, aggregation, name)
+    is_symbolic = tf_utils.is_symbolic_tensor(value)
+    if name is None and (not is_symbolic or not hasattr(value, '_metric_obj')):
+      # Eg. `self.add_metric(math_ops.reduce_sum(x), aggregation='mean')`
+      # In eager mode, we use metric name to lookup a metric. Without a name,
+      # a new Mean metric wrapper will be created on every model/layer call.
+      # So, we raise an error when no name is provided.
+      # We will do the same for symbolic mode for consistency although a name
+      # will be generated if no name is provided.
+
+      # We will not raise this error in the foll use case for the sake of
+      # consistency as name in provided in the metric constructor.
+      # model.add_metric(metrics.Mean(name='my_metric')(outputs))
+      raise ValueError('Please provide a name for your metric like '
+                       '`self.add_metric(tf.reduce_sum(inputs), '
+                       'name=\'mean_activation\', aggregation=\'mean\')`')
+
+    if is_symbolic:
+      with backend.get_graph().as_default():
+        self._symbolic_add_metric(value, aggregation, name)
     else:
       self._eager_add_metric(value, aggregation, name)
 
@@ -1311,9 +1329,10 @@ class Layer(trackable.Trackable):
       match(value)  # Update the metric state.
       return
     else:
-      if aggregation is None:
-        raise ValueError('We do not support adding an aggregated metric tensor '
-                         'in `call` in eager execution.')
+      # Aggregation will always be set in this use case. If not we will raise
+      # error on model/layer call in graph function mode when model/layer is
+      # created.
+      assert aggregation is not None
       metric_obj, _ = base_layer_utils.create_mean_metric(value, name)
       self._metrics.append(metric_obj)
 
@@ -1332,10 +1351,20 @@ class Layer(trackable.Trackable):
         else:
           raise ValueError(
               'We currently do not support reusing a metric instance.')
-      else:
+      elif hasattr(value, '_metric_obj'):
         # We track the instance using the metadata on the result tensor.
         result_tensor = value
         metric_obj = result_tensor._metric_obj
+      else:
+        raise ValueError(
+            'We do not support adding an aggregated metric result tensor that '
+            'is not the output of a `tf.keras.metrics.Metric` metric instance. '
+            'Without having access to the metric instance we cannot reset the '
+            'state of a metric after every epoch during training. You can '
+            'create a `tf.keras.metrics.Metric` instance and pass the result '
+            'here or pass an un-aggregated result with `aggregation` parameter '
+            'set as `mean`. For example: `self.add_metric(tf.reduce_sum(inputs)'
+            ', name=\'mean_activation\', aggregation=\'mean\')`')
     else:
       # If a non-aggregated tensor is given as input (ie. `aggregation` is
       # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
@@ -1636,12 +1665,16 @@ class Layer(trackable.Trackable):
       super(Layer, self).__setattr__(name, value)
       return
 
+    # Keep track of trackable objects, for the needs of `Network.save_weights`.
+    value = data_structures.sticky_attribute_assignment(
+        trackable=self, value=value, name=name)
+
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
         trackable_layer_utils.has_weights(value)):
       # Initialize `_layers` here in case `__init__` has not yet been called.
       if not hasattr(self, '_layers'):
-        self._layers = []
+        super(Layer, self).__setattr__('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
@@ -1652,18 +1685,23 @@ class Layer(trackable.Trackable):
           value._use_resource_variables = True
 
     # Append value to list of trainable / non-trainable weights if relevant
-    if isinstance(value, tf_variables.Variable):
-      # Users may add extra weights/variables
-      # simply by assigning them to attributes (invalid for graph networks)
-      if not hasattr(self, '_trainable_weights'):
-        self._trainable_weights = []
-      if not hasattr(self, '_non_trainable_weights'):
-        self._non_trainable_weights = []
-      if value not in self._trainable_weights + self._non_trainable_weights:
-        if value.trainable:
-          self._trainable_weights.append(value)
-        else:
-          self._non_trainable_weights.append(value)
+    # TODO(b/125122625): This won't pick up on any variables added to a
+    # list/dict after creation.
+    for val in nest.flatten(value):
+      if isinstance(val, tf_variables.Variable):
+        # Users may add extra weights/variables
+        # simply by assigning them to attributes (invalid for graph networks)
+        if not hasattr(self, '_trainable_weights'):
+          super(Layer, self).__setattr__('_trainable_weights', [])
+        if not hasattr(self, '_non_trainable_weights'):
+          super(Layer, self).__setattr__('_non_trainable_weights', [])
+        if val not in self._trainable_weights + self._non_trainable_weights:
+          if val.trainable:
+            self._trainable_weights.append(val)
+          else:
+            self._non_trainable_weights.append(val)
+          backend.track_variable(val)
+
     super(Layer, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):

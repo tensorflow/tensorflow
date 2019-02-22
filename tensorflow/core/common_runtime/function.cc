@@ -803,12 +803,24 @@ void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
 
 namespace {
 // Removes all stateless nodes that do not contribute to a return
-// value from the function body.  Unlike `RemoveDeadNodes()`, which is
+// value from the function body. Unlike `RemoveDeadNodes()`, which is
 // triggered by `OptimizerOptions.do_function_inlining`, this pass
 // ignores the SINK node, from which (by definition) all nodes are
-// reverse reachable.
-void PruneFunctionBody(Graph* g) {
-  VLOG(2) << "Pruning function body";
+// reverse reachable, and preserves all nodes that are reachable from
+// control output nodes.
+//
+// TODO(ezhulenev, skyewm): Function body should not have special treatment of
+// stateful ops, graph should encode nodes that must execute with `control_ret`
+// and `control_output`.
+void PruneFunctionBody(const FunctionDef& fdef, Graph* g) {
+  VLOG(2) << "Pruning function body: function_name=" << fdef.signature().name();
+
+  // `control_ret` nodes must be always executed.
+  std::unordered_set<StringPiece, StringPieceHasher> control_ret_nodes;
+  for (const auto& control_ret : fdef.control_ret()) {
+    control_ret_nodes.insert(control_ret.second);
+  }
+
   std::unordered_set<const Node*> nodes;
   for (auto n : g->nodes()) {
     // NOTE(mrry): "_Retval" nodes are stateful, and so will be added
@@ -819,7 +831,8 @@ void PruneFunctionBody(Graph* g) {
     // still needed. It would be preferable to prune entire loops and/or
     // conditionals if they are not used in the graph.
     if (n->IsControlFlow() ||
-        (n->op_def().is_stateful() && n->type_string() != kArgOp)) {
+        (n->op_def().is_stateful() && n->type_string() != kArgOp) ||
+        (control_ret_nodes.find(n->name()) != control_ret_nodes.end())) {
       nodes.insert(n);
     }
   }
@@ -846,7 +859,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   std::unique_ptr<Graph> g(new Graph(lib_def));
   CopyGraph(*fbody->graph, g.get());
 
-  PruneFunctionBody(g.get());
+  PruneFunctionBody(fbody->fdef, g.get());
   optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
@@ -1392,6 +1405,10 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
   if (static_cast<size_t>(node->num_outputs()) != fbody->ret_nodes.size()) {
     return false;
   }
+  // TODO(ezhulenev): Currently common_runtime function inlining can't guarantee
+  // that all side-effectful ops will be executed after inlining. See Grappler
+  // function_optimizer for details. Unify all function inlining mechanism.
+  // Do not inline if `!fbody->control_ret_nodes.empty()`.
   for (int i = 0; i < node->num_inputs(); ++i) {
     if (node->input_type(i) != fbody->arg_types[i]) return false;
   }
@@ -1685,6 +1702,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
       graph(g),
       arg_types(arg_t.begin(), arg_t.end()),
       ret_types(ret_t.begin(), ret_t.end()) {
+  // 1. Find regular Arg/Ret nodes.
   this->arg_nodes.resize(arg_types.size());
   this->ret_nodes.resize(ret_types.size());
   for (Node* n : this->graph->op_nodes()) {
@@ -1701,6 +1719,17 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
     CHECK_LE(0, index);
     CHECK_LT(index, node_vec->size());
     (*node_vec)[index] = n;
+  }
+  // 2. Find ControlRet nodes that must be always executed.
+  std::unordered_set<StringPiece, StringPieceHasher> control_ret_node_names;
+  for (const auto& control_ret : fdef.control_ret()) {
+    control_ret_node_names.insert(control_ret.second);
+  }
+  this->control_ret_nodes.reserve(control_ret_node_names.size());
+  for (Node* n : this->graph->op_nodes()) {
+    if (control_ret_node_names.count(n->name()) > 0) {
+      this->control_ret_nodes.push_back(n);
+    }
   }
 }
 

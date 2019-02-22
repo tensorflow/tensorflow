@@ -59,7 +59,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools as _functools
 import traceback as _traceback
 
 
@@ -212,8 +211,8 @@ class TFDecorator(object):
     else:
       self.__doc__ = ''
 
-  def __get__(self, obj, objtype):
-    return _functools.partial(self.__call__, obj)
+  def __get__(self, instance, owner):
+    return self._decorated_target.__get__(instance, owner)
 
   def __call__(self, *args, **kwargs):
     return self._decorated_target(*args, **kwargs)

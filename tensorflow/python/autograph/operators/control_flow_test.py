@@ -52,7 +52,7 @@ class ForLoopTest(test.TestCase):
     to_int32 = lambda i: math_ops.cast(i, dtypes.int32)
     s = control_flow.for_stmt(
         dataset_ops.Dataset.range(5).map(to_int32),
-        extra_test=lambda s: True,
+        None,
         body=lambda i, s: (s + i,),
         init_state=(0,))
     with self.cached_session():

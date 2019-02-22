@@ -342,6 +342,27 @@ class BaseLayerTest(keras_parameterized.TestCase):
     history = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
     self.assertEqual(history.history['loss'][0], 0.)
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_raw_variable_assignment(self):
+
+    class RawVariableLayer(keras.layers.Layer):
+
+      def __init__(self, **kwargs):
+        super(RawVariableLayer, self).__init__(**kwargs)
+        # Test variables in nested structure.
+        self.var_list = [variables.Variable(1.), {'a': variables.Variable(2.)}]
+
+      def call(self, inputs):
+        return inputs * self.var_list[0] * self.var_list[1]['a']
+
+    model = testing_utils.get_model_from_layers([RawVariableLayer()],
+                                                input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    # Checks that variables get initialized.
+    model.fit(x, y, batch_size=2, epochs=2)
+
 
 class SymbolicSupportTest(test.TestCase):
 
@@ -478,6 +499,9 @@ class NestedTrackingTest(test.TestCase):
     self.assertEqual(len(layer.weights), 8)
     self.assertEqual(len(layer.trainable_weights), 0)
     self.assertEqual(len(layer.non_trainable_weights), 8)
+    self.assertEqual(
+        set([layer.dense1, layer.dense2, layer.v1, layer.v2]),
+        set([obj for unused_name, obj in layer._checkpoint_dependencies]))
 
   def test_nested_layer_updates_losses_tracking(self):
     # Test that updates and losses from nested sublayers are

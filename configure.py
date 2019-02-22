@@ -1280,13 +1280,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
     ask_cuda_compute_capabilities = (
         'Please specify a list of comma-separated '
-        'Cuda compute capabilities you want to '
+        'CUDA compute capabilities you want to '
         'build with.\nYou can find the compute '
         'capability of your device at: '
         'https://developer.nvidia.com/cuda-gpus.\nPlease'
         ' note that each additional compute '
         'capability significantly increases your '
-        'build time and binary size. [Default is: %s]: ' %
+        'build time and binary size, and that '
+        'TensorFlow only supports compute '
+        'capabilities >= 3.5 [Default is: %s]: ' %
         default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
@@ -1299,12 +1301,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        print('Invalid compute capability: ' % compute_capability)
+        print('Invalid compute capability: %s' % compute_capability)
         all_valid = False
       else:
-        ver = int(m.group(0).split('.')[0])
-        if ver < 3:
-          print('Only compute capabilities 3.0 or higher are supported.')
+        ver = float(m.group(0))
+        if ver < 3.5:
+          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
+                'and higher. Please re-specify the list of compute '
+                'capabilities excluding version %s.' % ver)
           all_valid = False
 
     if all_valid:
@@ -1490,6 +1494,34 @@ def set_other_mpi_vars(environ_cp):
     raise ValueError(
         'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
         (mpi_home, mpi_home, mpi_home))
+
+def system_specific_test_config(env):
+  """Add default test flags required for TF tests to bazelrc."""
+  write_to_bazelrc('test --flaky_test_attempts=3')
+  write_to_bazelrc('test --test_size_filters=small,medium')
+  write_to_bazelrc(
+      'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
+  write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
+  if is_windows():
+    if env.get('TF_NEED_CUDA', None) == 1:
+      write_to_bazelrc(
+          'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+      write_to_bazelrc(
+          'test --build_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+    else:
+      write_to_bazelrc('test --test_tag_filters=-no_windows,-gpu')
+      write_to_bazelrc('test --build_tag_filters=-no_windows,-gpu')
+  elif is_macos():
+    write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
+    write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
+  elif is_linux():
+    if env.get('TF_NEED_CUDA', None) == 1:
+      write_to_bazelrc('test --test_tag_filters=-no_gpu')
+      write_to_bazelrc('test --build_tag_filters=-no_gpu')
+      write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
+    else:
+      write_to_bazelrc('test --test_tag_filters=-gpu')
+      write_to_bazelrc('test --build_tag_filters=-gpu')
 
 
 def set_system_libs_flag(environ_cp):
@@ -1700,6 +1732,8 @@ def main():
              'Not configuring the WORKSPACE for Android builds.'):
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
+
+  system_specific_test_config(os.environ)
 
   if get_var(
       environ_cp, 'TF_CONFIGURE_APPLE_BAZEL_RULES',

@@ -681,7 +681,7 @@ xla_test(
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
-        "nooss",
+        "no_oss",
     ],
     deps = [
         ":client_library_test_base",
@@ -1394,8 +1394,8 @@ xla_test(
 )
 
 xla_test(
-    name = "fmax_test",
-    srcs = ["fmax_test.cc"],
+    name = "fmax_fmin_test",
+    srcs = ["fmax_fmin_test.cc"],
     deps = [
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",

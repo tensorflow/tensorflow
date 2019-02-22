@@ -22,8 +22,6 @@ import tensorflow as tf
 from tensorflow import flags
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.rnn import dynamic_rnn
-from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -63,8 +61,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
 
   def buildRnnLayer(self):
     return tf.nn.rnn_cell.MultiRNNCell([
-        TfLiteRNNCell(self.num_units, name="rnn1"),
-        TfLiteRNNCell(self.num_units, name="rnn2")
+        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
+        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
     ])
 
   def buildModel(self, rnn_layer, is_dynamic_rnn):
@@ -80,7 +78,8 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     # x is shaped [batch_size,time_steps,num_inputs]
     if is_dynamic_rnn:
       rnn_input = tf.transpose(x, perm=[1, 0, 2])
-      outputs, _ = dynamic_rnn(rnn_layer, rnn_input, dtype="float32")
+      outputs, _ = tf.lite.experimental.nn.dynamic_rnn(
+          rnn_layer, rnn_input, dtype="float32")
       outputs = tf.unstack(outputs, axis=0)
     else:
       rnn_input = tf.unstack(x, self.time_steps, 1)

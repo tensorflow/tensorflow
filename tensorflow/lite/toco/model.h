@@ -166,7 +166,8 @@ enum class OperatorType : uint8 {
   kReverseV2,
   kBidirectionalSequenceRnn,
   kGatherNd,
-  kWhere
+  kWhere,
+  kElu
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -688,6 +689,17 @@ struct MulOperator : Operator {
 // TensorFlow equivalent: Relu
 struct AbsOperator : Operator {
   AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
+// Elu
+//   f(x) -> exp(x) - 1 for x < 0, x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Elu
+struct EluOperator : Operator {
+  EluOperator() : Operator(OperatorType::kElu) {}
 };
 
 // Element-wise Relu operator:

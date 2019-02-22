@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <vector>
 #include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_testutil.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
@@ -429,6 +430,136 @@ TEST(TensorProtoUtil, CreatesBoolTensorProto) {
             "}\n"
             "bool_val: true\n"
             "bool_val: false\n");
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {
+  const int kLength = 63;
+  TensorProto tensor_proto =
+      tensor::CreateTensorProto(std::vector<float>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
+  const int kLength = 64;
+  TensorProto tensor_proto =
+      tensor::CreateTensorProto(std::vector<float>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<float>::NumValues(tensor_proto),
+            1);
+
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<int>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<int>::NumValues(tensor_proto),
+            1);
+
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<uint8>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<uint8>::NumValues(tensor_proto),
+            1);
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
+            1);
+}
+
+template <typename T>
+std::vector<T> VectorWithConstantTail(int size, int tail_length) {
+  CHECK_LE(tail_length, size);
+  std::vector<T> v(size, T(0));
+  std::iota(v.begin(), v.end() - tail_length, T(1));
+  return v;
+}
+
+template <typename T>
+TensorProto CreateAsProtoTensorContent(int size, int tail_length) {
+  auto values = VectorWithConstantTail<T>(size, tail_length);
+  Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
+  std::copy(values.begin(), values.end(), tensor.flat<T>().data());
+  TensorProto tensor_proto;
+  tensor.AsProtoTensorContent(&tensor_proto);
+  return tensor_proto;
+}
+
+template <typename T>
+TensorProto CreateAsProtoField(int size, int tail_length) {
+  auto values = VectorWithConstantTail<T>(size, tail_length);
+  Tensor tensor(DataTypeToEnum<T>::value, TensorShape({size}));
+  std::copy(values.begin(), values.end(), tensor.flat<T>().data());
+  TensorProto tensor_proto;
+  tensor.AsProtoField(&tensor_proto);
+  return tensor_proto;
+}
+
+template <typename T>
+void CompareTensorValues(const TensorProto& x, const TensorProto& y) {
+  Tensor x_t;
+  EXPECT_TRUE(x_t.FromProto(x));
+  Tensor y_t;
+  EXPECT_TRUE(y_t.FromProto(y));
+  test::ExpectTensorEqual<T>(x_t, y_t);
+}
+
+template <typename T>
+void ConstantTailTest(int64 length, int64 tail_length, bool as_field) {
+  using TensorProtoHelper = tensor::internal::TensorProtoHelper<T>;
+  using FieldType = typename TensorProtoHelper::FieldType;
+  const float kMinCompressionRatio = 2.0;
+  const int64 kMinSize = 64;
+  TensorProto tensor_proto =
+      as_field ? CreateAsProtoField<T>(length, tail_length)
+               : CreateAsProtoTensorContent<T>(length, tail_length);
+  TensorProto original_tensor_proto = tensor_proto;
+  int64 original_size = length * (as_field ? sizeof(FieldType) : sizeof(T));
+  int64 size_as_tensor_content = length * sizeof(T);
+  int64 size_as_field =
+      std::min(length, (length - tail_length + 1)) * sizeof(FieldType);
+  bool will_compress = std::min(size_as_tensor_content, size_as_field) <=
+                       static_cast<int64>(original_size / kMinCompressionRatio);
+
+  EXPECT_EQ(tensor::CompressTensorProtoInPlace(kMinSize, kMinCompressionRatio,
+                                               &tensor_proto),
+            will_compress);
+  if (will_compress) {
+    if (size_as_tensor_content < size_as_field) {
+      EXPECT_EQ(TensorProtoHelper::NumValues(tensor_proto), 0);
+      EXPECT_FALSE(tensor_proto.tensor_content().empty());
+    } else {
+      EXPECT_LE(TensorProtoHelper::NumValues(tensor_proto),
+                (length - tail_length + 1));
+      EXPECT_TRUE(tensor_proto.tensor_content().empty());
+    }
+  }
+  CompareTensorValues<T>(tensor_proto, original_tensor_proto);
+}
+
+TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
+  const int kLength = 64;
+  for (bool as_field : {true, false}) {
+    for (int tail_length : {0, 1, 2, 32, 33, 63, 64}) {
+      ConstantTailTest<float>(kLength, tail_length, as_field);
+      ConstantTailTest<double>(kLength, tail_length, as_field);
+      ConstantTailTest<int32>(kLength, tail_length, as_field);
+      ConstantTailTest<uint32>(kLength, tail_length, as_field);
+      ConstantTailTest<int64>(kLength, tail_length, as_field);
+      ConstantTailTest<uint64>(kLength, tail_length, as_field);
+      ConstantTailTest<int8>(kLength, tail_length, as_field);
+      ConstantTailTest<uint8>(kLength, tail_length, as_field);
+      ConstantTailTest<int16>(kLength, tail_length, as_field);
+      ConstantTailTest<uint16>(kLength, tail_length, as_field);
+    }
+  }
 }
 
 }  // namespace

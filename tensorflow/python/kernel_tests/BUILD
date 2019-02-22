@@ -1092,14 +1092,20 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
     ],
 )
 
@@ -3105,7 +3111,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
-    tags = ["nooss"],  # b/124474135
+    tags = ["no_oss"],  # b/124474135
     xla_enable_strict_auto_jit = True,
 )
 

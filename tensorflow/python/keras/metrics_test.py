@@ -453,7 +453,7 @@ class KerasAccuracyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class CosineProximityTest(test.TestCase):
+class CosineSimilarityTest(test.TestCase):
 
   def l2_norm(self, x, axis):
     epsilon = 1e-12
@@ -467,25 +467,25 @@ class CosineProximityTest(test.TestCase):
 
     y_true = self.l2_norm(self.np_y_true, axis)
     y_pred = self.l2_norm(self.np_y_pred, axis)
-    self.expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(axis,))
+    self.expected_loss = np.sum(np.multiply(y_true, y_pred), axis=(axis,))
 
     self.y_true = constant_op.constant(self.np_y_true)
     self.y_pred = constant_op.constant(self.np_y_pred)
 
   def test_config(self):
-    cosine_obj = metrics.CosineProximity(
+    cosine_obj = metrics.CosineSimilarity(
         axis=2, name='my_cos', dtype=dtypes.int32)
     self.assertEqual(cosine_obj.name, 'my_cos')
     self.assertEqual(cosine_obj._dtype, dtypes.int32)
 
     # Check save and restore config
-    cosine_obj2 = metrics.CosineProximity.from_config(cosine_obj.get_config())
+    cosine_obj2 = metrics.CosineSimilarity.from_config(cosine_obj.get_config())
     self.assertEqual(cosine_obj2.name, 'my_cos')
     self.assertEqual(cosine_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    cosine_obj = metrics.CosineProximity()
+    cosine_obj = metrics.CosineSimilarity()
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
@@ -493,7 +493,7 @@ class CosineProximityTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    cosine_obj = metrics.CosineProximity()
+    cosine_obj = metrics.CosineSimilarity()
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
     sample_weight = np.asarray([1.2, 3.4])
     loss = cosine_obj(
@@ -506,7 +506,7 @@ class CosineProximityTest(test.TestCase):
 
   def test_axis(self):
     self.setup(axis=1)
-    cosine_obj = metrics.CosineProximity(axis=1)
+    cosine_obj = metrics.CosineSimilarity(axis=1)
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
