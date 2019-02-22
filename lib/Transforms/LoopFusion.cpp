@@ -88,7 +88,7 @@ struct LoopFusion : public FunctionPass {
   LoopFusion() : FunctionPass(&LoopFusion::passID) {}
 
   PassResult runOnFunction(Function *f) override;
-  static char passID;
+  constexpr static PassID passID = {};
 
   // Any local buffers smaller than this size will be created in
   // `fastMemorySpace` if provided.
@@ -101,8 +101,6 @@ struct LoopFusion : public FunctionPass {
 };
 
 } // end anonymous namespace
-
-char LoopFusion::passID = 0;
 
 FunctionPass *mlir::createLoopFusionPass() { return new LoopFusion; }
 

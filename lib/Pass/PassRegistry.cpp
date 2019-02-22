@@ -23,10 +23,11 @@
 using namespace mlir;
 
 /// Static mapping of all of the registered passes.
-static llvm::ManagedStatic<llvm::DenseMap<const void *, PassInfo>> passRegistry;
+static llvm::ManagedStatic<llvm::DenseMap<const PassID *, PassInfo>>
+    passRegistry;
 
 void mlir::registerPass(StringRef arg, StringRef description,
-                        const void *passID,
+                        const PassID *passID,
                         const PassAllocatorFunction &function) {
   bool inserted = passRegistry
                       ->insert(std::make_pair(
@@ -37,7 +38,7 @@ void mlir::registerPass(StringRef arg, StringRef description,
 }
 
 /// Returns the pass info for the specified pass class or null if unknown.
-const PassInfo *mlir::Pass::lookupPassInfo(const void *passID) {
+const PassInfo *mlir::Pass::lookupPassInfo(const PassID *passID) {
   auto it = passRegistry->find(passID);
   if (it == passRegistry->end())
     return nullptr;

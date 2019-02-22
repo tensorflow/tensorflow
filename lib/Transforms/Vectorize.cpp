@@ -656,12 +656,10 @@ struct Vectorize : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char Vectorize::passID = 0;
 
 /////// TODO(ntv): Hoist to a VectorizationStrategy.cpp when appropriate. //////
 namespace {

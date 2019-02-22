@@ -151,7 +151,7 @@ class DialectConversion : public ModulePass {
 
 public:
   /// Construct a pass given its unique identifier.
-  DialectConversion(const void *passID) : ModulePass(passID) {}
+  DialectConversion(const PassID *passID) : ModulePass(passID) {}
 
   /// Run the pass on the module.
   PassResult runOnModule(Module *m) override;

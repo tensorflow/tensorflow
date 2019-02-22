@@ -35,11 +35,9 @@ struct LowerEDSCTestPass : public FunctionPass {
   LowerEDSCTestPass() : FunctionPass(&LowerEDSCTestPass::passID) {}
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
-
-char LowerEDSCTestPass::passID = 0;
 
 #include "mlir/EDSC/reference-impl.inc"
 

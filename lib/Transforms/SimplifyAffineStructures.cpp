@@ -42,12 +42,10 @@ struct SimplifyAffineStructures : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char SimplifyAffineStructures::passID = 0;
 
 FunctionPass *mlir::createSimplifyAffineStructuresPass() {
   return new SimplifyAffineStructures();

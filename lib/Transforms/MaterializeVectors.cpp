@@ -201,12 +201,10 @@ struct MaterializeVectorsPass : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char MaterializeVectorsPass::passID = 0;
 
 /// Given a shape with sizes greater than 0 along all dimensions,
 /// returns the distance, in number of elements, between a slice in a dimension

@@ -116,12 +116,10 @@ struct DmaGeneration : public FunctionPass {
   // Constant zero index to avoid too many duplicates.
   Value *zeroIndex = nullptr;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char DmaGeneration::passID = 0;
 
 /// Generates DMAs for memref's living in 'slowMemorySpace' into newly created
 /// buffers in 'fastMemorySpace', and replaces memory operations to the former

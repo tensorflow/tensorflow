@@ -1030,7 +1030,7 @@ class LLVMLowering : public DialectConversion {
 public:
   LLVMLowering() : DialectConversion(&passID) {}
 
-  const static char passID = '\0';
+  constexpr static PassID passID = {};
 
 protected:
   // Create a set of converters that live in the pass object by passing them a
@@ -1077,8 +1077,6 @@ private:
   // LLVM IR module used to parse/create types.
   llvm::Module *module;
 };
-
-const char LLVMLowering::passID;
 
 ModulePass *mlir::createConvertToLLVMIRPass() { return new LLVMLowering; }
 

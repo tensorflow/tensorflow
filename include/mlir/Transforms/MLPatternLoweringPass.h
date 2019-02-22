@@ -101,7 +101,7 @@ using OwningMLLoweringPatternList =
 template <typename... Patterns>
 class MLPatternLoweringPass : public FunctionPass {
 public:
-  explicit MLPatternLoweringPass(void *ID) : FunctionPass(ID) {}
+  explicit MLPatternLoweringPass(const PassID *ID) : FunctionPass(ID) {}
 
   virtual std::unique_ptr<MLFuncGlobalLoweringState>
   makeFuncWiseState(Function *f) const {

@@ -28,11 +28,9 @@ struct StripDebugInfo : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
-
-char StripDebugInfo::passID = 0;
 
 PassResult StripDebugInfo::runOnFunction(Function *f) {
   UnknownLoc unknownLoc = UnknownLoc::get(f->getContext());

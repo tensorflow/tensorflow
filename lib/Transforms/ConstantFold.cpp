@@ -37,11 +37,9 @@ struct ConstantFold : public FunctionPass {
   void foldInstruction(Instruction *op);
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
-
-char ConstantFold::passID = 0;
 
 /// Attempt to fold the specified operation, updating the IR to match.  If
 /// constants are found, we keep track of them in the existingConstants list.

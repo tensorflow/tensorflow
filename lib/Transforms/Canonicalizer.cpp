@@ -37,11 +37,9 @@ struct Canonicalizer : public FunctionPass {
   Canonicalizer() : FunctionPass(&Canonicalizer::passID) {}
   PassResult runOnFunction(Function *fn) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
-
-char Canonicalizer::passID = 0;
 
 PassResult Canonicalizer::runOnFunction(Function *fn) {
   auto *context = fn->getContext();

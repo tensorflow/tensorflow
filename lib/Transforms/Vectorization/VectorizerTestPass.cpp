@@ -96,12 +96,10 @@ struct VectorizerTestPass : public FunctionPass {
   void testComposeMaps(Function *f);
   void testNormalizeMaps(Function *f);
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char VectorizerTestPass::passID = 0;
 
 void VectorizerTestPass::testVectorShapeRatio(Function *f) {
   using matcher::Op;

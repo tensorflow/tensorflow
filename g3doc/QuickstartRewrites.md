@@ -222,7 +222,7 @@ struct TestPass : public FunctionPass {
   TestPass() : FunctionPass(&TestPass::passID) {}
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
 

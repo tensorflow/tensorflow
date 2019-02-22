@@ -24,6 +24,10 @@ namespace mlir {
 class Function;
 class Module;
 
+/// A special type used by transformation passes to provide an address that can
+/// act as a unique identifier during pass registration.
+struct alignas(8) PassID {};
+
 // Values that can be used by to signal success/failure. This can be implicitly
 // converted to/from boolean values, with false representing success and true
 // failure.
@@ -35,18 +39,18 @@ struct LLVM_NODISCARD PassResult {
 
 class Pass {
 public:
-  explicit Pass(const void *passID) : passID(passID) {}
+  explicit Pass(const PassID *passID) : passID(passID) {}
   virtual ~Pass() = default;
   virtual PassResult runOnModule(Module *m) = 0;
 
   /// Returns the unique identifier that corresponds to this pass.
-  const void *getPassID() const { return passID; }
+  const PassID *getPassID() const { return passID; }
 
   static PassResult success() { return PassResult::Success; }
   static PassResult failure() { return PassResult::Failure; }
 
   /// Returns the pass info for the specified pass class or null if unknown.
-  static const PassInfo *lookupPassInfo(const void *passID);
+  static const PassInfo *lookupPassInfo(const PassID *passID);
 
   /// Returns the pass info for this pass.
   const PassInfo *lookupPassInfo() const { return lookupPassInfo(passID); }
@@ -57,12 +61,12 @@ private:
   virtual void anchor();
 
   /// Unique identifier for pass.
-  const void *const passID;
+  const PassID *const passID;
 };
 
 class ModulePass : public Pass {
 public:
-  explicit ModulePass(const void *passID) : Pass(passID) {}
+  explicit ModulePass(const PassID *passID) : Pass(passID) {}
 
   virtual PassResult runOnModule(Module *m) override = 0;
 
@@ -79,7 +83,7 @@ private:
 /// module.
 class FunctionPass : public Pass {
 public:
-  explicit FunctionPass(const void *passID) : Pass(passID) {}
+  explicit FunctionPass(const PassID *passID) : Pass(passID) {}
 
   /// Implement this function to be run on every function in the module.
   virtual PassResult runOnFunction(Function *fn) = 0;

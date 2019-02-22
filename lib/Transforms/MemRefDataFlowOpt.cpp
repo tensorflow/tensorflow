@@ -84,12 +84,10 @@ struct MemRefDataFlowOpt : public FunctionPass {
   DominanceInfo *domInfo = nullptr;
   PostDominanceInfo *postDomInfo = nullptr;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char MemRefDataFlowOpt::passID = 0;
 
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.

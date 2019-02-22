@@ -31,6 +31,7 @@
 
 namespace mlir {
 class Pass;
+class PassID;
 
 using PassAllocatorFunction = std::function<Pass *()>;
 
@@ -40,7 +41,7 @@ class PassInfo {
 public:
   /// PassInfo constructor should not be invoked directly, instead use
   /// PassRegistration or registerPass.
-  PassInfo(StringRef arg, StringRef description, const void *passID,
+  PassInfo(StringRef arg, StringRef description, const PassID *passID,
            PassAllocatorFunction allocator)
       : arg(arg), description(description), allocator(allocator),
         passID(passID) {}
@@ -70,12 +71,12 @@ private:
   PassAllocatorFunction allocator;
 
   // Unique identifier for pass.
-  const void *passID;
+  const PassID *passID;
 };
 
 /// Register a specific dialect creation function with the system, typically
 /// used through the PassRegistration template.
-void registerPass(StringRef arg, StringRef description, const void *passID,
+void registerPass(StringRef arg, StringRef description, const PassID *passID,
                   const PassAllocatorFunction &function);
 
 /// PassRegistration provides a global initializer that registers a Pass

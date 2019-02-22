@@ -86,11 +86,9 @@ struct LoopUnroll : public FunctionPass {
 
   static const unsigned kDefaultUnrollFactor = 4;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
-
-char LoopUnroll::passID = 0;
 
 PassResult LoopUnroll::runOnFunction(Function *f) {
   // Gathers all innermost loops through a post order pruned walk.

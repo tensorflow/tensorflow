@@ -251,11 +251,9 @@ public:
   bool lowerAffineIf(AffineIfOp *ifOp);
   bool lowerAffineApply(AffineApplyOp *op);
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
-
-char LowerAffinePass::passID = 0;
 
 // Given a range of values, emit the code that reduces them with "min" or "max"
 // depending on the provided comparison predicate.  The predicate defines which

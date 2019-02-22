@@ -52,12 +52,10 @@ struct LoopTiling : public FunctionPass {
   PassResult runOnFunction(Function *f) override;
 
   constexpr static unsigned kDefaultTileSize = 4;
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char LoopTiling::passID = 0;
 
 // Tile size to use for all loops (overridden by -tile-sizes if provided).
 static llvm::cl::opt<unsigned>

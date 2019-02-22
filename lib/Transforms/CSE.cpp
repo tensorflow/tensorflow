@@ -83,7 +83,7 @@ namespace {
 struct CSE : public FunctionPass {
   CSE() : FunctionPass(&CSE::passID) {}
 
-  static char passID;
+  constexpr static PassID passID = {};
 
   /// Shared implementation of operation elimination and scoped map definitions.
   using AllocatorTy = llvm::RecyclingAllocator<
@@ -124,8 +124,6 @@ private:
   std::vector<Instruction *> opsToErase;
 };
 } // end anonymous namespace
-
-char CSE::passID = 0;
 
 /// Attempt to eliminate a redundant operation.
 bool CSE::simplifyOperation(Instruction *op) {

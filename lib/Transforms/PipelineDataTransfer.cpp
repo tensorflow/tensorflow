@@ -45,12 +45,10 @@ struct PipelineDataTransfer : public FunctionPass {
 
   std::vector<OpPointer<AffineForOp>> forOps;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char PipelineDataTransfer::passID = 0;
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.

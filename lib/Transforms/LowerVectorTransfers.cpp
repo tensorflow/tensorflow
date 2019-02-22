@@ -434,12 +434,10 @@ struct LowerVectorTransfersPass
   // Thread-safe RAII context with local scope. BumpPtrAllocator freed on exit.
   edsc::ScopedEDSCContext raiiContext;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char LowerVectorTransfersPass::passID = 0;
 
 FunctionPass *mlir::createLowerVectorTransfersPass() {
   return new LowerVectorTransfersPass();

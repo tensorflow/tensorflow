@@ -44,12 +44,10 @@ struct MemRefDependenceCheck : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char MemRefDependenceCheck::passID = 0;
 
 FunctionPass *mlir::createMemRefDependenceCheckPass() {
   return new MemRefDependenceCheck();

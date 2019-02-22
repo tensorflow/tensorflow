@@ -42,12 +42,10 @@ struct MemRefBoundCheck : public FunctionPass {
 
   PassResult runOnFunction(Function *f) override;
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
-
-char MemRefBoundCheck::passID = 0;
 
 FunctionPass *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();

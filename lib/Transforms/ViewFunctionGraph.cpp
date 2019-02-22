@@ -83,7 +83,7 @@ struct PrintCFGPass : public FunctionPass {
     return success();
   }
 
-  static char passID;
+  constexpr static PassID passID = {};
 
 private:
   llvm::raw_ostream &os;
@@ -91,8 +91,6 @@ private:
   const llvm::Twine &title;
 };
 } // namespace
-
-char PrintCFGPass::passID = 0;
 
 FunctionPass *mlir::createPrintCFGGraphPass(llvm::raw_ostream &os,
                                             bool shortNames,

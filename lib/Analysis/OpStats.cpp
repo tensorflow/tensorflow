@@ -36,15 +36,13 @@ struct PrintOpStatsPass : public ModulePass {
   // Print summary of op stats.
   void printSummary();
 
-  static char passID;
+  constexpr static PassID passID = {};
 
 private:
   llvm::StringMap<int64_t> opCount;
   llvm::raw_ostream &os;
 };
 } // namespace
-
-char PrintOpStatsPass::passID = 0;
 
 PassResult PrintOpStatsPass::runOnModule(Module *m) {
   opCount.clear();

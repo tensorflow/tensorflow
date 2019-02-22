@@ -82,11 +82,9 @@ struct LoopUnrollAndJam : public FunctionPass {
   PassResult runOnFunction(Function *f) override;
   bool runOnAffineForOp(OpPointer<AffineForOp> forOp);
 
-  static char passID;
+  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
-
-char LoopUnrollAndJam::passID = 0;
 
 FunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
   return new LoopUnrollAndJam(
