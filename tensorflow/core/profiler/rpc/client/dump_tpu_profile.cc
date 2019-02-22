@@ -26,6 +26,9 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/protobuf.h"
+// Windows.h #defines ERROR, but it is also used in
+// tensorflow/core/util/event.proto
+#undef ERROR
 #include "tensorflow/core/profiler/op_profile.pb.h"
 #include "tensorflow/core/profiler/rpc/client/trace_events_to_json.h"
 #include "tensorflow/core/profiler/trace_events.pb.h"
