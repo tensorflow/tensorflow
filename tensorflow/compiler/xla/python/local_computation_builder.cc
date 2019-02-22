@@ -443,6 +443,8 @@ StatusOr<Shape> ComputationBuilder::GetReturnValueShape() {
   return program_shape.result();
 }
 
+LocalOp ComputationBuilder::ReplicaId() { return xla::ReplicaId(&builder_); }
+
 LocalOp ComputationBuilder::Infeed(const Shape& shape) {
   return xla::Infeed(&builder_, shape);
 }
