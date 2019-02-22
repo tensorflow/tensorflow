@@ -270,6 +270,16 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitPow(PrimitiveType prim_type,
                                prim_type);
 }
 
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
+                                                       llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_sqrt", {value}, {prim_type}, prim_type);
+}
+
+StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
+                                                        llvm::Value* value) {
+  return EmitLibdeviceMathCall("__nv_rsqrt", {value}, {prim_type}, prim_type);
+}
+
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
                                                         llvm::Value* lhs,
                                                         llvm::Value* rhs) {

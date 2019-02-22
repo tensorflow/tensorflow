@@ -2058,6 +2058,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
@@ -2068,6 +2069,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTriangularSolve:

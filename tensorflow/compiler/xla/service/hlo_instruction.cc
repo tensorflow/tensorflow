@@ -631,8 +631,10 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       break;
     default:
@@ -1312,8 +1314,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -1673,12 +1677,14 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReshape:
     case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
@@ -2033,8 +2039,10 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       CHECK_EQ(1, operand_count());
       return true;
@@ -2471,6 +2479,10 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCos(this);
     case HloOpcode::kSin:
       return visitor->HandleSin(this);
+    case HloOpcode::kSqrt:
+      return visitor->HandleSqrt(this);
+    case HloOpcode::kRsqrt:
+      return visitor->HandleRsqrt(this);
     case HloOpcode::kReal:
       return visitor->HandleReal(this);
     case HloOpcode::kImag:

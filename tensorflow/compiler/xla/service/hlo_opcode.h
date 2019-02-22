@@ -123,6 +123,7 @@ namespace xla {
   V(kReverse, "reverse", 1)                                            \
   V(kRng, "rng", kHloOpcodeIsVariadic)                                 \
   V(kRoundNearestAfz, "round-nearest-afz", 1)                          \
+  V(kRsqrt, "rsqrt", 1)                                                \
   V(kScatter, "scatter", 3)                                            \
   V(kSelect, "select", 3)                                              \
   V(kSelectAndScatter, "select-and-scatter", 3)                        \
@@ -135,6 +136,7 @@ namespace xla {
   V(kSin, "sine", 1)                                                   \
   V(kSlice, "slice", 1)                                                \
   V(kSort, "sort", kHloOpcodeIsVariadic)                               \
+  V(kSqrt, "sqrt", 1)                                                  \
   V(kSubtract, "subtract", 2)                                          \
   V(kTanh, "tanh", 1)                                                  \
   V(kTrace, "trace", 1)                                                \
