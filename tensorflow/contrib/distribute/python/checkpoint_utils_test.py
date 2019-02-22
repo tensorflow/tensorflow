@@ -56,6 +56,12 @@ def _create_checkpoints(sess, checkpoint_dir):
 class CheckpointUtilsWithDistributionStrategyTest(
     test.TestCase, parameterized.TestCase):
 
+  def _get_test_object(self):
+    checkpoint_dir = self.get_temp_dir()
+    with self.cached_session() as session:
+      v1, v2 = _create_checkpoints(session, checkpoint_dir)
+    return checkpoint_dir, v1, v2
+
   @combinations.generate(combinations.combine(
       distribution=[combinations.default_strategy,
                     combinations.one_device_strategy,
@@ -66,9 +72,7 @@ class CheckpointUtilsWithDistributionStrategyTest(
       in_replica_mode=[True, False],
       mode=["graph"]))
   def testInitFromCheckpoint(self, distribution, in_replica_mode):
-    checkpoint_dir = self.get_temp_dir()
-    with self.cached_session() as session:
-      v1_value, v2_value = _create_checkpoints(session, checkpoint_dir)
+    checkpoint_dir, v1_value, v2_value = self._get_test_object()
 
     def init_and_verify(g):
       v1 = variable_scope.get_variable("new_var1", [1, 10])
@@ -88,6 +92,39 @@ class CheckpointUtilsWithDistributionStrategyTest(
     with ops.Graph().as_default() as g, distribution.scope():
       if in_replica_mode:
         distribution.extended.call_for_each_replica(init_and_verify, args=[g])
+      else:
+        init_and_verify(g)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              combinations.default_strategy, combinations.one_device_strategy,
+              combinations.mirrored_strategy_with_gpu_and_cpu,
+              combinations.mirrored_strategy_with_two_gpus,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_two_gpus
+          ],
+          in_replica_mode=[True, False],
+          mode=["graph"]))
+  def testInitFromDifferentNameObject(self, distribution, in_replica_mode):
+    checkpoint_dir, v1_value, _ = self._get_test_object()
+
+    def init_and_verify(g):
+      v1 = variable_scope.get_variable("new_var1", [1, 10])
+      # Use string add to create new object in each replica
+      prefix = "new_"
+      suffix = "var1"
+      new_var1 = prefix + suffix
+      checkpoint_utils.init_from_checkpoint(checkpoint_dir, {
+          "var1": new_var1,
+      })
+      with self.test_session(graph=g) as session:
+        session.run(variables.global_variables_initializer())
+        self.assertAllEqual(v1_value, self.evaluate(v1))
+
+    with ops.Graph().as_default() as g, distribution.scope():
+      if in_replica_mode:
+        distribution.extended.call_for_each_replica(init_and_verify, [g])
       else:
         init_and_verify(g)
 
