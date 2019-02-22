@@ -7,6 +7,8 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		CD0E62F7221FECAC00111750 /* deeplabv3_257_mv_gpu.tflite in Resources */ = {isa = PBXBuildFile; fileRef = CD0E62F6221FECAC00111750 /* deeplabv3_257_mv_gpu.tflite */; };
+		CD0E62F9221FECDD00111750 /* README in Resources */ = {isa = PBXBuildFile; fileRef = CD0E62F8221FECDD00111750 /* README */; };
 		CD84CB0A2216BB4F0076AC39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB002216BB4F0076AC39 /* Assets.xcassets */; };
 		CD84CB0B2216BB4F0076AC39 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB012216BB4F0076AC39 /* LaunchScreen.storyboard */; };
 		CD84CB0C2216BB4F0076AC39 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB032216BB4F0076AC39 /* Main.storyboard */; };
@@ -17,6 +19,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		CD0E62F6221FECAC00111750 /* deeplabv3_257_mv_gpu.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = deeplabv3_257_mv_gpu.tflite; sourceTree = "<group>"; };
+		CD0E62F8221FECDD00111750 /* README */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = README; sourceTree = "<group>"; };
 		CD84CAEA2216BB000076AC39 /* DeepLabApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeepLabApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		CD84CAF92216BB010076AC39 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
 		CD84CB002216BB4F0076AC39 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -70,6 +74,8 @@
 		CD84CAFF2216BB4F0076AC39 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
+				CD0E62F8221FECDD00111750 /* README */,
+				CD0E62F6221FECAC00111750 /* deeplabv3_257_mv_gpu.tflite */,
 				CD84CB0F2216BC280076AC39 /* labels.txt */,
 				CD84CB002216BB4F0076AC39 /* Assets.xcassets */,
 				CD84CB012216BB4F0076AC39 /* LaunchScreen.storyboard */,
@@ -165,9 +171,11 @@
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				CD0E62F9221FECDD00111750 /* README in Resources */,
 				CD84CB0C2216BB4F0076AC39 /* Main.storyboard in Resources */,
 				CD84CB0A2216BB4F0076AC39 /* Assets.xcassets in Resources */,
 				CD84CB0B2216BB4F0076AC39 /* LaunchScreen.storyboard in Resources */,
+				CD0E62F7221FECAC00111750 /* deeplabv3_257_mv_gpu.tflite in Resources */,
 				CD84CB112216BC280076AC39 /* labels.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
