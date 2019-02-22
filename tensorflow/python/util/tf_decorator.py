@@ -59,6 +59,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import inspect
 import traceback as _traceback
 
 
@@ -154,7 +155,18 @@ def rewrap(decorator_func, previous_target, new_target):
     return
 
   target.decorated_target = new_target
-  innermost_decorator.__wrapped__ = new_target
+
+  if inspect.ismethod(innermost_decorator):
+    # Bound methods can't be assigned attributes. Thankfully, they seem to
+    # be just proxies for their unbound counterpart, and we can modify that.
+    if hasattr(innermost_decorator, '__func__'):
+      innermost_decorator.__func__.__wrapped__ = new_target
+    elif hasattr(innermost_decorator, 'im_func'):
+      innermost_decorator.im_func.__wrapped__ = new_target
+    else:
+      innermost_decorator.__wrapped__ = new_target
+  else:
+    innermost_decorator.__wrapped__ = new_target
 
 
 def unwrap(maybe_tf_decorator):
