@@ -195,6 +195,7 @@ xla_test(
     name = "math_test",
     srcs = ["math_test.cc"],
     deps = [
+        ":constants",
         ":math",
         "//tensorflow/compiler/xla:literal_util",
         "//tensorflow/compiler/xla:shape_util",

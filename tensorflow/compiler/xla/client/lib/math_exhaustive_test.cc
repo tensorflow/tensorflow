@@ -95,6 +95,7 @@ class MathExhaustiveTest : public ClientLibraryTestBase,
 // Checks a function's behavior on all fp16 values.
 //
 // TODO(jlebar): asin and lgamma tests fail on interpreter.
+#if !defined(XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16)
 XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
   const Testcase& tc = GetParam();
   XlaBuilder b(TestName());
@@ -137,6 +138,7 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
   tc.op(param);
   ComputeAndCompareR1<half>(&b, expected_result, {}, tc.error);
 }
+#endif
 
 // TODO(b/123355973): The following tests from math.cc are missing.
 //
@@ -163,10 +165,10 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
 // TODO(b/123355973): Test bf16 and f32.
 // TODO(b/123355973): Get rid of skip_infs / skip_neg_zero below if possible.
 // TODO(b/123355973): Reduce lgamma error if possible; it is very high.
+// TODO(b/123355973): Move these into exhaustive_op_test.
 INSTANTIATE_TEST_CASE_P(
     MathExhaustiveTest_Instantiation, MathExhaustiveTest,
     ::testing::ValuesIn(std::vector<Testcase>{
-        Testcase{"sqrt", Sqrt, std::sqrt}.set_skip_neg_inf(),
         Testcase{"rsqrt", Rsqrt, [](float x) { return 1 / std::sqrt(x); }}
             .set_tolerance(0.05, 0.05)
             .set_skip_infs()
