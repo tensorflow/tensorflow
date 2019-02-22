@@ -578,7 +578,7 @@ tensorflow::Status SegmentGraph(
         device_maps[u.ParentValue()->name()].insert(
             tf_node->requested_device());
       } else {
-        VLOG(1) << "Node " << tf_node->name()
+        VLOG(2) << "Node " << tf_node->name()
                 << " has no device assigned requested device is: "
                 << tf_node->requested_device();
       }
