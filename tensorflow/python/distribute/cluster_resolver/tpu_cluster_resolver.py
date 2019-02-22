@@ -460,7 +460,6 @@ class TPUClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='TPU',
                        config_proto=None):
     """Returns the number of TPU cores per worker.
 
@@ -471,7 +470,6 @@ class TPUClusterResolver(ClusterResolver):
     Args:
       task_type: Unused.
       task_id: Unused.
-      accelerator_type: Unused.
       config_proto: Used to create a connection to a TPU master in order to
         retrieve the system metadata.
 
@@ -498,9 +496,9 @@ class TPUClusterResolver(ClusterResolver):
           raise RuntimeError(error_message)
 
     if device_details.total_cores:
-      return TPUClusterResolver._verify_and_return_same_core_count(
-          device_details.device_map)
-    return 0
+      return {'TPU': TPUClusterResolver._verify_and_return_same_core_count(
+          device_details.device_map)}
+    return {'TPU': 0}
 
   @property
   def environment(self):
