@@ -27,21 +27,24 @@ limitations under the License.
 
 namespace xla {
 
-// Returns operation(operand), except if `operand` is BF16, first converts it to
-// F32, and then converts the result down to BF16.
-static XlaOp DoWithBF16Upcast(XlaOp operand,
-                              const std::function<XlaOp(XlaOp)>& operation) {
+// Returns operation(operand), except if `operand` is one of the types in
+// upcast_types, in which case first converts it to F32, and then converts the
+// result down to the original type.
+static XlaOp DoWithUpcastToF32(XlaOp operand,
+                               absl::Span<const PrimitiveType> upcast_types,
+                               const std::function<XlaOp(XlaOp)>& operation) {
   auto& b = *operand.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
-    bool is_bf16 = shape.element_type() == BF16;
+    PrimitiveType elem_ty = shape.element_type();
+    bool needs_upcast = absl::c_linear_search(upcast_types, elem_ty);
 
-    if (is_bf16) {
+    if (needs_upcast) {
       operand = ConvertElementType(operand, F32);
     }
     XlaOp result = operation(operand);
-    if (is_bf16) {
-      result = ConvertElementType(result, BF16);
+    if (needs_upcast) {
+      result = ConvertElementType(result, elem_ty);
     }
     return result;
   });
@@ -210,7 +213,7 @@ XlaOp Erfc(XlaOp x) {
     //
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithBF16Upcast(x, [](XlaOp x) {
+    return DoWithUpcastToF32(x, {BF16}, [](XlaOp x) {
       return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl(x),
                     ScalarLike(x, 1) - ErfImpl(x));
     });
@@ -227,7 +230,7 @@ XlaOp Erf(XlaOp x) {
     //
     // Erf(c)Impl don't have enough precision when run with bf16 intermediates
     // (not surprising!), so upcast to f32 in this case.
-    return DoWithBF16Upcast(x, [](XlaOp x) {
+    return DoWithUpcastToF32(x, {BF16}, [](XlaOp x) {
       return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl(x),
                     ScalarLike(x, 1) - ErfcImpl(x));
     });
@@ -297,10 +300,7 @@ static constexpr std::array<double, 8> kLanczosCoefficients = {
 // t(z) = z + kLanczosGamma + 1/2
 // A(z) = kBaseLanczosCoeff + sigma(k = 1, n, kLanczosCoefficients[i] / (z + k))
 XlaOp Lgamma(XlaOp input) {
-  auto& b = *input.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Lgamma", input));
-
+  auto do_it = [](XlaOp input) {
     XlaOp one_half = ScalarLike(input, 0.5);
     XlaOp one = ScalarLike(input, 1);
 
@@ -336,7 +336,16 @@ XlaOp Lgamma(XlaOp input) {
     XlaOp log_t = log_lanczos_gamma_plus_one_half +
                   Log1p(z / lanczos_gamma_plus_one_half);
 
-    XlaOp log_y = log_sqrt_two_pi + (z + one_half) * log_t - t + Log(x);
+    // Compute the final result (modulo reflection).  t(z) may be large, and we
+    // need to be careful not to overflow to infinity in the first term of
+    //
+    //   (z + 1/2) * log(t(z)) - t(z).
+    //
+    // Therefore we compute this as
+    //
+    //   (z + 1/2 - t(z) / log(t(z))) * log(t(z)).
+    //
+    XlaOp log_y = log_sqrt_two_pi + (z + one_half - t / log_t) * log_t + Log(x);
 
     // Compute the reflected value, used when x < 0.5:
     //
@@ -351,18 +360,27 @@ XlaOp Lgamma(XlaOp input) {
     // important.
     //
     // Because abs(sin(pi * x)) has period 1, we can equivalently use
-    // abs(sin(pi * frac(x))) = sin(pi * frac(x)), where frac(x) is the
-    // fractional part of x.  This is more numerically accurate: It doesn't
-    // overflow to inf like pi * x can, and if x is an integer, it evaluates to
-    // 0 exactly, which is significant because we then take the log of this
-    // value, and log(0) is inf.
+    // abs(sin(pi * frac(x))), where frac(x) is the fractional part of x.  This
+    // is more numerically accurate: It doesn't overflow to inf like pi * x can,
+    // and if x is an integer, it evaluates to 0 exactly, which is significant
+    // because we then take the log of this value, and log(0) is inf.
     //
     // We don't have a frac(x) primitive in XLA and computing it is tricky, but
     // because abs(sin(pi * x)) = abs(sin(pi * abs(x))), it's good enough for
     // our purposes to use abs(frac(x)) = abs(x) - floor(abs(x)).
     //
+    // Furthermore, pi * abs(frac(x)) loses precision when abs(frac(x)) is close
+    // to 1.  To remedy this, we can use the fact that sin(pi * x) in the domain
+    // [0, 1] is symmetric across the line Y=0.5.
+    //
     XlaOp abs_input = Abs(input);
-    XlaOp reflection_denom = Log(Sin(pi * (abs_input - Floor(abs_input))));
+    XlaOp abs_frac_input = abs_input - Floor(abs_input);
+    // Convert values of abs_frac_input > 0.5 to (1 - frac_input) to improve
+    // precision of pi * abs_frac_input for values of abs_frac_input close to 1.
+    XlaOp reduced_frac_input =
+        Select(Gt(abs_frac_input, ScalarLike(abs_frac_input, 0.5)),
+               ScalarLike(abs_frac_input, 1) - abs_frac_input, abs_frac_input);
+    XlaOp reflection_denom = Log(Sin(pi * reduced_frac_input));
 
     // Avoid computing -inf - inf, which is nan.  If reflection_denom is +/-inf,
     // then it "wins" and the result is +/-inf.
@@ -376,6 +394,15 @@ XlaOp Lgamma(XlaOp input) {
     return Select(Or(IsFinite(input),                           // is finite, or
                      Not(Or(Lt(input, one), Ge(input, one)))),  // is nan
                   result, inf_bcast);
+  };
+
+  auto& b = *input.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Lgamma", input));
+    // F16 and BF16 don't provide sufficient precision for intermediate results
+    // here (although it's better than you might expect!), so do the
+    // computations in F32.
+    return DoWithUpcastToF32(input, {BF16, F16}, do_it);
   });
 }
 

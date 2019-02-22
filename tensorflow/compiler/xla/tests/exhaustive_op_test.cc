@@ -397,6 +397,26 @@ XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
 XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
 XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
 XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
+XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
+  // Our implementation gets within 0.0001 rel error except for ~20 denormal
+  // inputs on GPU.  Anyway 0.001 rel error should be good enough for lgamma.
+  if (platform_ == "CUDA" && (ty_ == F32 || ty_ == F16)) {
+    rel_err_ = 0.001;
+  }
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    // TODO(b/123956399): This is a fairly high error, significantly higher than
+    // we see on CPU/GPU.
+    rel_err_ = 0.01;
+    abs_err_ = 0.01;
+
+    // Overflows for to inf for input 4.08500343e+36 (0x7c44af8e).
+    if (ty_ == F32) {
+      known_incorrect_begin_ = 0x7c44af8e;
+      known_incorrect_end_ = 0x7c44af8e + 1;
+    }
+  }
+  Run(Lgamma, std::lgamma);
+}
 
 std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
   // We break up the 2^32-element space into small'ish chunks to keep peak
