@@ -37,6 +37,7 @@ DeviceDescription::DeviceDescription()
                         kUninitializedUint64),
       block_dim_limit_(kUninitializedUint64, kUninitializedUint64,
                        kUninitializedUint64),
+      blocks_per_core_limit_(kUninitializedUint64),
       threads_per_core_limit_(kUninitializedUint64),
       threads_per_block_limit_(kUninitializedUint64),
       threads_per_warp_(kUninitializedUint64),
