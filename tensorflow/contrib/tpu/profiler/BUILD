@@ -14,11 +14,13 @@ tf_cc_binary(
     srcs = [
         "capture_tpu_profile.cc",
     ],
+    tags = ["no_windows"],
     visibility = ["//visibility:public"],
     deps = [
         ":version",
         "//tensorflow/core:framework_internal",
         "//tensorflow/core:lib",
+        "//tensorflow/core/platform/cloud:gcs_file_system",
         "//tensorflow/core/profiler/rpc/client:capture_profile",
     ],
 )

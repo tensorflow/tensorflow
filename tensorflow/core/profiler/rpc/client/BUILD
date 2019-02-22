@@ -19,7 +19,6 @@ tf_cuda_library(
         "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",
-        "//tensorflow/core/platform/cloud:gcs_file_system",
         "//tensorflow/core/profiler:protos_all_cc",
     ],
 )
