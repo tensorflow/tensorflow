@@ -1765,7 +1765,7 @@ class Model(Network):
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.EagerIterator)):
           ds_batch_size = tensor_shape.as_dimension(
-              nest.flatten(x.output_shapes)[0][0]).value
+              nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None and ds_batch_size != static_batch_size:
             raise ValueError('The batch output shape of your `Dataset` is {}, '
                              'which is incompatible with the specified batch '
