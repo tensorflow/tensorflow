@@ -45,7 +45,7 @@ DOCLINES = __doc__.split('\n')
 # This version string is semver compatible, but incompatible with pip.
 # For pip, we will remove all '-' characters from this string, and use the
 # result for pip.
-_VERSION = '1.13.0-rc2'
+_VERSION = '1.13.0'
 
 REQUIRED_PACKAGES = [
     'absl-py >= 0.1.6',
@@ -57,7 +57,7 @@ REQUIRED_PACKAGES = [
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
     'tensorboard >= 1.12.0, < 1.13.0',
-    'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
+    'tensorflow_estimator >= 1.13.0, < 1.14.0rc0',
     'termcolor >= 1.1.0',
 ]
 
