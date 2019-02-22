@@ -453,9 +453,10 @@ def no_automatic_dependency_tracking(method):
     previous_value = getattr(self, "_setattr_tracking", True)
     self._setattr_tracking = False  # pylint: disable=protected-access
     try:
-      method(self, *args, **kwargs)
+      result = method(self, *args, **kwargs)
     finally:
       self._setattr_tracking = previous_value  # pylint: disable=protected-access
+    return result
 
   return tf_decorator.make_decorator(
       target=method, decorator_func=_method_wrapper)

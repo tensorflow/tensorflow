@@ -34,7 +34,7 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.losses import binary_crossentropy
 from tensorflow.python.keras.losses import categorical_crossentropy
 from tensorflow.python.keras.losses import categorical_hinge
-from tensorflow.python.keras.losses import cosine_proximity
+from tensorflow.python.keras.losses import cosine_similarity
 from tensorflow.python.keras.losses import hinge
 from tensorflow.python.keras.losses import kullback_leibler_divergence
 from tensorflow.python.keras.losses import logcosh
@@ -1818,21 +1818,30 @@ class AUC(Metric):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@keras_export('keras.metrics.CosineProximity')
-class CosineProximity(MeanMetricWrapper):
-  """Computes the cosine distance between the labels and predictions.
+@keras_export('keras.metrics.CosineSimilarity')
+class CosineSimilarity(MeanMetricWrapper):
+  """Computes the cosine similarity between the labels and predictions.
+
+  cosine similarity = (a . b) / ||a|| ||b||
+  (https://en.wikipedia.org/wiki/Cosine_similarity)
 
   For example, if `y_true` is [0, 1, 1], and `y_pred` is [1, 0, 1], the cosine
-  proximity is -0.5.
+  similarity is 0.5.
 
-  This metric keeps the average cosine distance between `predictions` and
+  This metric keeps the average cosine similarity between `predictions` and
   `labels` over a stream of data.
 
   Usage:
   ```python
-  m = tf.keras.metrics.CosineProximity()
-  m.update_state([0, 1, 1], [1, 0, 1])
-  print('Final result: ', m.result().numpy())  # Final result: -0.5
+  m = tf.keras.metrics.CosineSimilarity(axis=1)
+  m.update_state([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]])
+  # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
+  # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
+  # result = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
+         = ((0. + 0.) +  (0.5 + 0.5)) / 2
+
+  print('Final result: ', m.result().numpy())  # Final result: 0.5
   ```
 
   Usage with tf.keras API:
@@ -1842,20 +1851,21 @@ class CosineProximity(MeanMetricWrapper):
   model.compile(
       'sgd',
       loss='mse',
-      metrics=[tf.keras.metrics.CosineProximity()])
+      metrics=[tf.keras.metrics.CosineSimilarity(axis=1)])
   ```
   """
 
-  def __init__(self, name='cosine_proximity', dtype=None, axis=-1):
-    """Creates a `CosineProximity` instance.
+  def __init__(self, name='cosine_similarity', dtype=None, axis=-1):
+    """Creates a `CosineSimilarity` instance.
 
     Args:
       name: (Optional) string name of the metric instance.
       dtype: (Optional) data type of the metric result.
       axis: (Optional) Defaults to -1. The dimension along which the cosine
-        proximity is computed.
+        similarity is computed.
     """
-    super(CosineProximity, self).__init__(cosine, name, dtype=dtype, axis=axis)
+    super(CosineSimilarity, self).__init__(
+        cosine_similarity, name, dtype=dtype, axis=axis)
 
 
 @keras_export('keras.metrics.MeanAbsoluteError')
@@ -2744,7 +2754,7 @@ mse = MSE = mean_squared_error
 mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
-cosine = cosine_proximity
+cosine_proximity = cosine_similarity
 
 
 def clone_metric(metric):

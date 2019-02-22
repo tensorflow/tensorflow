@@ -91,9 +91,10 @@ Status HloCostAnalysis::HandleElementwiseOp(
   auto opcode = hlo_instruction->opcode();
   // We treat transcendental operations separately since one transcendental
   // operation can correspond to several floating point ops.
-  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kPower ||
-      opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
-      opcode == HloOpcode::kCos) {
+  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
+      opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
+      opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
+      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from

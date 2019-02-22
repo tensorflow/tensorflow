@@ -63,6 +63,7 @@ using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
 using reference_ops::Dequantize;
 using reference_ops::Div;
+using reference_ops::Elu;
 using reference_ops::FakeQuant;
 using reference_ops::Fill;
 using reference_ops::Gather;
@@ -180,45 +181,6 @@ MatrixMap<Scalar> MapAsMatrixWithGivenNumberOfRows(Scalar* data,
   TFLITE_DCHECK_EQ(flatsize % rows, 0);
   const int cols = flatsize / rows;
   return MatrixMap<Scalar>(data, rows, cols);
-}
-
-// This is like the template-parameter version, except that the power-of-two is
-// passed as a function parameter. The template version is to be preferred,
-// since some target hardware optimizations depend on the range of the exponent.
-template <typename IntegerType>
-IntegerType SaturatingRoundingMultiplyByPOTParam(IntegerType x, int exponent) {
-  if (exponent == 0) {
-    return x;
-  }
-  using ScalarIntegerType =
-      typename gemmlowp::FixedPointRawTypeTraits<IntegerType>::ScalarRawType;
-  const IntegerType min =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::min());
-  const IntegerType max =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::max());
-  const int ScalarIntegerTypeBits = 8 * sizeof(ScalarIntegerType);
-
-  const std::int32_t threshold =
-      ((1 << (ScalarIntegerTypeBits - 1 - exponent)) - 1);
-  const IntegerType positive_mask =
-      gemmlowp::MaskIfGreaterThan(x, gemmlowp::Dup<IntegerType>(threshold));
-  const IntegerType negative_mask =
-      gemmlowp::MaskIfLessThan(x, gemmlowp::Dup<IntegerType>(-threshold));
-
-  IntegerType result = gemmlowp::ShiftLeft(x, exponent);
-  result = gemmlowp::SelectUsingMask(positive_mask, max, result);
-  result = gemmlowp::SelectUsingMask(negative_mask, min, result);
-  return result;
-}
-
-// This is like the template-parameter version, except that the power-of-two is
-// passed as a function parameter. See raw-integer version for further comments.
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits>
-SaturatingRoundingMultiplyByPOTParam(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
 inline void AddBiasAndEvalActivationFunction(float output_activation_min,
@@ -841,24 +803,21 @@ inline void FullyConnected(
 }
 
 #ifdef USE_NEON
-inline void FullyConnectedAsGEMV(
+inline void FullyConnectedAsGEMVWorkerImpl(
     const RuntimeShape& input_shape, const uint8* input_data,
     int32 input_offset, const RuntimeShape& filter_shape,
     const uint8* filter_data, int32 filter_offset,
     const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
     int32 output_multiplier, int output_shift, int32 output_activation_min,
     int32 output_activation_max, const RuntimeShape& output_shape,
-    uint8* output_data) {
+    uint8* output_data, int row_start, int row_end) {
   gemmlowp::ScopedProfilingLabel label("FullyConnectedAsGEMV/8bit");
   TFLITE_DCHECK_GE(input_shape.DimensionsCount(), 1);
   TFLITE_DCHECK_GE(filter_shape.DimensionsCount(), 2);
   TFLITE_DCHECK_GE(output_shape.DimensionsCount(), 1);
   const int output_dim_count = output_shape.DimensionsCount();
-  const int filter_dim_count = filter_shape.DimensionsCount();
   TFLITE_DCHECK_EQ(FlatSizeSkipDim(output_shape, output_dim_count - 1), 1);
   const int input_size = FlatSizeSkipDim(input_shape, 0);
-  const int output_size = MatchingDim(filter_shape, filter_dim_count - 2,
-                                      output_shape, output_dim_count - 1);
   static constexpr int kPeel = 4;
   const bool shift_left = (output_shift > 0);
   for (int k = 0; k < input_size; k += 64) {
@@ -867,10 +826,11 @@ inline void FullyConnectedAsGEMV(
   for (int k = 0; k < kPeel * input_size; k += 64) {
     optimized_ops_preload_l1_stream(filter_data + k);
   }
-  TFLITE_DCHECK_GE(output_size, kPeel);
 
-  for (int out = 0; out < output_size; out += kPeel) {
-    out = std::min(out, output_size - kPeel);
+  TFLITE_DCHECK_GE(row_end - row_start, kPeel);
+
+  for (int out = row_start; out < row_end; out += kPeel) {
+    out = std::min(out, row_end - kPeel);
     int32x4_t acc0 = vdupq_n_s32(0);
     int32x4_t acc1 = acc0;
     int32x4_t acc2 = acc0;
@@ -1059,6 +1019,110 @@ inline void FullyConnectedAsGEMV(
     vst1_lane_u8(output_data + out + 3, res8, 3);
   }
 }
+
+struct FullyConnectedAsGEMVWorkerTask : public gemmlowp::Task {
+  FullyConnectedAsGEMVWorkerTask(const RuntimeShape& input_shape,
+                                 const uint8* input_data, int32 input_offset,
+                                 const RuntimeShape& filter_shape,
+                                 const uint8* filter_data, int32 filter_offset,
+                                 const RuntimeShape& bias_shape,
+                                 const int32* bias_data, int32 output_offset,
+                                 int32 output_multiplier, int output_shift,
+                                 int32 output_activation_min,
+                                 int32 output_activation_max,
+                                 const RuntimeShape& output_shape,
+                                 uint8* output_data, int row_start, int row_end)
+      : input_shape_(input_shape),
+        input_data_(input_data),
+        input_offset_(input_offset),
+        filter_shape_(filter_shape),
+        filter_data_(filter_data),
+        filter_offset_(filter_offset),
+        bias_shape_(bias_shape),
+        bias_data_(bias_data),
+        output_offset_(output_offset),
+        output_multiplier_(output_multiplier),
+        output_shift_(output_shift),
+        output_activation_min_(output_activation_min),
+        output_activation_max_(output_activation_max),
+        output_shape_(output_shape),
+        output_data_(output_data),
+        row_start_(row_start),
+        row_end_(row_end) {}
+
+  void Run() override {
+    FullyConnectedAsGEMVWorkerImpl(
+        input_shape_, input_data_, input_offset_, filter_shape_, filter_data_,
+        filter_offset_, bias_shape_, bias_data_, output_offset_,
+        output_multiplier_, output_shift_, output_activation_min_,
+        output_activation_max_, output_shape_, output_data_, row_start_,
+        row_end_);
+  }
+
+  const RuntimeShape& input_shape_;
+  const uint8* input_data_;
+  int32 input_offset_;
+  const RuntimeShape& filter_shape_;
+  const uint8* filter_data_;
+  int32 filter_offset_;
+  const RuntimeShape& bias_shape_;
+  const int32* bias_data_;
+  int32 output_offset_;
+  int32 output_multiplier_;
+  int output_shift_;
+  int32 output_activation_min_;
+  int32 output_activation_max_;
+  const RuntimeShape& output_shape_;
+  uint8* output_data_;
+  gemmlowp::GemmContext* gemm_context_;
+  int row_start_;
+  int row_end_;
+};
+
+inline void FullyConnectedAsGEMV(
+    const RuntimeShape& input_shape, const uint8* input_data,
+    int32 input_offset, const RuntimeShape& filter_shape,
+    const uint8* filter_data, int32 filter_offset,
+    const RuntimeShape& bias_shape, const int32* bias_data, int32 output_offset,
+    int32 output_multiplier, int output_shift, int32 output_activation_min,
+    int32 output_activation_max, const RuntimeShape& output_shape,
+    uint8* output_data, gemmlowp::GemmContext* gemm_context) {
+  const int output_dim_count = output_shape.DimensionsCount();
+  const int batches = FlatSizeSkipDim(output_shape, output_dim_count - 1);
+  const int output_rows = output_shape.Dims(output_dim_count - 1);
+  const int input_size = FlatSizeSkipDim(input_shape, 0);
+  static constexpr int kKernelRows = 4;
+  const int thread_count = gemmlowp::HowManyThreads<kKernelRows>(
+      gemm_context->max_num_threads(), output_rows, batches, input_size);
+  if (thread_count == 1) {
+    // Single-thread case: do the computation on the current thread, don't
+    // use a threadpool
+    FullyConnectedAsGEMVWorkerImpl(
+        input_shape, input_data, input_offset, filter_shape, filter_data,
+        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
+        output_shift, output_activation_min, output_activation_max,
+        output_shape, output_data, 0, output_rows);
+    return;
+  }
+
+  // Multi-threaded case: use the gemmlowp context's threadpool.
+  TFLITE_DCHECK_GT(thread_count, 1);
+  std::vector<gemmlowp::Task*> tasks(thread_count);
+  const int kRowsPerWorker =
+      gemmlowp::RoundUp<kKernelRows>(output_rows / thread_count);
+  int row_start = 0;
+  for (int i = 0; i < thread_count; ++i) {
+    int row_end = std::min(output_rows, row_start + kRowsPerWorker);
+    tasks[i] = new FullyConnectedAsGEMVWorkerTask(
+        input_shape, input_data, input_offset, filter_shape, filter_data,
+        filter_offset, bias_shape, bias_data, output_offset, output_multiplier,
+        output_shift, output_activation_min, output_activation_max,
+        output_shape, output_data, row_start, row_end);
+    row_start = row_end;
+  }
+  TFLITE_DCHECK_EQ(row_start, output_rows);
+  gemm_context->workers_pool()->Execute(tasks);
+}
 #endif  // USE_NEON
 
 struct GemmlowpOutputPipeline {
@@ -1122,7 +1186,7 @@ inline void FullyConnected(
           input_shape, input_data, input_offset, filter_shape, filter_data,
           filter_offset, bias_shape, bias_data, output_offset,
           output_multiplier, output_shift, output_activation_min,
-          output_activation_max, output_shape, output_data);
+          output_activation_max, output_shape, output_data, gemm_context);
     }
   }
 #endif  // USE_NEON
@@ -2157,7 +2221,7 @@ inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
         *gemm_input_shape, gemm_input_data, input_offset, fc_filter_shape,
         filter_data, filter_offset, bias_shape, bias_data, output_offset,
         output_multiplier, output_shift, output_activation_min,
-        output_activation_max, output_shape, output_data);
+        output_activation_max, output_shape, output_data, gemm_context);
   }
 #endif
 
@@ -4453,119 +4517,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
       block_output_data[c] = block_input_data[c] - max - log_sum;
     }
   }
-}
-
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1_impl(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  // assert(__builtin_clz(0u) >= std::numeric_limits<uint32>::digits - 1);
-  // assert(__builtin_clz(0u) <= std::numeric_limits<uint32>::digits);
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-  // The reason for accumulating the result with an extra bit of headroom is
-  // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
-  // recip_denom will otherwise introduce an error.
-  static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
-
-  const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1488522236, std::log(2.0));
-  const FixedPoint0 sqrt_sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1805811301, std::sqrt(std::sqrt(0.5)));
-  const FixedPoint0 sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1518500250, std::sqrt(0.5));
-  const FixedPoint0 one_quarter =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(FixedPoint0, 536870912, 1.0 / 4.0);
-
-  const FixedPoint0 alpha_n = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 117049297, 11.0 / 240.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_d = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 127690142, 1.0 / 20.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_i = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1057819769,
-      2.0 / std::sqrt(std::sqrt(2.0)) - std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_f = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 638450708, 1.0 / 4.0 * std::sqrt(std::sqrt(2.0)));
-
-  const FixedPointAccum shifted_quarter =
-      gemmlowp::Rescale<kAccumIntegerBits>(one_quarter);
-
-  // Reinterpret the input value as Q0.31, because we will figure out the
-  // required shift "ourselves" instead of using, say, Rescale.
-  FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
-  // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
-  FixedPoint0 r_a_tmp =
-      SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
-  const int32 r_a_raw =
-      SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
-  // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
-  // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
-  //                   InputIntegerBits - z_b_headroom - 0.25);
-  const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  // z_b is treated like z_a, but premultiplying by sqrt(0.5).
-  FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
-  const int32 r_b_raw =
-      SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
-  const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
-  const FixedPointAccum z_pow_2_adj = FixedPointAccum::FromRaw(
-      std::max(z_a_pow_2_adj.raw(), z_b_pow_2_adj.raw()));
-
-  const FixedPoint0 p = gemmlowp::RoundingHalfSum(r, sqrt_sqrt_half);
-  FixedPoint0 q = r - sqrt_sqrt_half;
-  q = q + q;
-
-  const FixedPoint0 common_sq = q * q;
-  const FixedPoint0 num = q * r + q * common_sq * alpha_n;
-  const FixedPoint0 denom_minus_one_0 =
-      p * (alpha_i + q + alpha_d * common_sq) + alpha_f * q;
-  const FixedPoint0 recip_denom =
-      one_over_one_plus_x_for_x_in_0_1(denom_minus_one_0);
-
-  const FixedPointAccum num_scaled = gemmlowp::Rescale<kAccumIntegerBits>(num);
-  return gemmlowp::Rescale<OutputIntegerBits>(z_pow_2_adj * log_2 +
-                                              num_scaled * recip_denom);
-}
-
-// Minimum output bits to accommodate log of maximum input range.  It actually
-// does not matter if one considers, say, [-64,64] or [-64,64).
-//
-// For example, run this through Octave:
-// [0:127; ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
-constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90
-             ? 7
-             : input_bits > 44
-                   ? 6
-                   : input_bits > 21
-                         ? 5
-                         : input_bits > 10
-                               ? 4
-                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
-}
-
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  static_assert(
-      OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
-  return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
-                                                     InputIntegerBits>(
-      input_val);
 }
 
 // Currently just a copy of the reference code.

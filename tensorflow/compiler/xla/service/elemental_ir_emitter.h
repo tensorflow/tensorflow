@@ -119,6 +119,12 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   virtual StatusOr<llvm::Value*> EmitLog(PrimitiveType prim_type,
                                          llvm::Value* value);
 
+  virtual StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
+                                          llvm::Value* value);
+
+  virtual StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
+                                           llvm::Value* value);
+
   virtual StatusOr<llvm::Value*> EmitLog1p(PrimitiveType prim_type,
                                            llvm::Value* value);
 
@@ -211,6 +217,11 @@ class ElementalIrEmitter : public IrBuilderMixin<ElementalIrEmitter> {
   const HloModuleConfig& hlo_module_config_;
 
  private:
+  // Computes the complex power function, returns (a + i*b)^(c + i*d).
+  StatusOr<llvm::Value*> EmitComplexPower(const HloInstruction* op,
+                                          llvm::Value* a, llvm::Value* b,
+                                          llvm::Value* c, llvm::Value* d);
+
   // Returns a ElementGenerator for an RNG HloInstruction using the Philox
   // random number generation algorithm.
   llvm_ir::ElementGenerator MakePhiloxRngElementGenerator(

@@ -1,8 +1,7 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_kernel_library")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_kernel_library")
 
 # Platform specific build config
 load(
@@ -124,6 +123,7 @@ tf_cc_test(
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:direct_session",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -324,14 +324,19 @@ cc_library(
         ":constant_folding",
         ":graph_optimizer",
         "//tensorflow/core:framework",
+        "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/costs:graph_properties",
         "//tensorflow/core/grappler/utils:topological_sort",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

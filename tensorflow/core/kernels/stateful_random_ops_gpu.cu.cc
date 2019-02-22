@@ -74,9 +74,9 @@ void UpdateVariableAndFill_Philox<GPUDevice, Distribution>::operator()(
 
   int zero = 0;
   cudaMemcpyToSymbol(thread_counter, &zero, sizeof(int));
-  FillKernel<Distribution>
-      <<<cfg.block_count, cfg.thread_per_block, 0, d.stream()>>>(
-          Distribution(), state_size, output_size, state_data, output_data);
+  CudaLaunchKernel(FillKernel<Distribution>, cfg.block_count,
+                   cfg.thread_per_block, 0, d.stream(), Distribution(),
+                   state_size, output_size, state_data, output_data);
 }
 
 // Explicit instantiation of the GPU distributions functors.

@@ -674,8 +674,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run training inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils.filter_callbacks(
-              callbacks)
+          filtered_callbacks = distributed_training_utils \
+              .filter_distributed_callbacks(callbacks)
           return training_distributed.fit_distributed(
               self,
               x=x,
@@ -936,8 +936,8 @@ class Model(Network):
         # servers via the Distribute Coordinator.
         def _worker_fn(_):
           """Run evaluation inside the distributed coordinator."""
-          filtered_callbacks = distributed_training_utils.filter_callbacks(
-              callbacks)
+          filtered_callbacks = distributed_training_utils \
+              .filter_distributed_callbacks(callbacks)
           return training_distributed.evaluate_distributed(
               self,
               x=x,
@@ -1895,6 +1895,9 @@ class Model(Network):
     updated_metrics_dict = collections.OrderedDict()
     for metric_name, (metric_fn, stateful_metric_fn) in metrics_dict.items():
       metric_name = self._add_unique_metric_name(metric_name, output_index)
+
+      # Update the name on the metric class to be the unique generated name.
+      stateful_metric_fn._name = metric_name  # pylint: disable=protected-access
       updated_metrics_dict[metric_name] = (metric_fn, stateful_metric_fn)
       # Keep track of metric name, function and stateful function.
       self._compile_metrics_names.append(metric_name)

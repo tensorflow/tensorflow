@@ -549,11 +549,12 @@ enum BuiltinOperator {
   BuiltinOperator_COS = 108,
   BuiltinOperator_WHERE = 109,
   BuiltinOperator_RANK = 110,
+  BuiltinOperator_ELU = 111,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_RANK
+  BuiltinOperator_MAX = BuiltinOperator_ELU
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[110] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[111] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -664,7 +665,8 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[110] {
     BuiltinOperator_GATHER_ND,
     BuiltinOperator_COS,
     BuiltinOperator_WHERE,
-    BuiltinOperator_RANK
+    BuiltinOperator_RANK,
+    BuiltinOperator_ELU
   };
   return values;
 }
@@ -782,6 +784,7 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "COS",
     "WHERE",
     "RANK",
+    "ELU",
     nullptr
   };
   return names;

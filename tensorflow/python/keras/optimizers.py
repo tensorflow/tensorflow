@@ -29,6 +29,7 @@ from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
 from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
+from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -806,7 +807,8 @@ def deserialize(config, custom_objects=None):
       'adamax': adamax_v2.Adamax,
       'nadam': nadam_v2.Nadam,
       'rmsprop': rmsprop_v2.RMSprop,
-      'sgd': gradient_descent_v2.SGD
+      'sgd': gradient_descent_v2.SGD,
+      'ftrl': ftrl.Ftrl
   }
 
   # Make deserialization case-insensitive for built-in optimizers.

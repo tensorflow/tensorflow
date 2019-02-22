@@ -34,6 +34,13 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
 from tensorflow.compiler.xla.service import hlo_pb2
 
+# Import the XRT backend, if available.
+try:
+  # pylint: disable=g-import-not-at-top
+  from tensorflow.compiler.xla.python import pywrap_xrt as xrt_api
+except ImportError:
+  xrt_api = None
+
 
 # Most functions are snake_case for consistency with other modules, whereas
 # method names of ComputationBuilder and Computation are CamelCase for
@@ -83,7 +90,8 @@ class Backend(object):
     """Destructures a tuple buffer into a sequence of buffers."""
 
   @abc.abstractmethod
-  def compile(self, computation, argument_shapes, compile_options):
+  def compile(self, computation, argument_shapes, result_shape,
+              compile_options):
     """Compiles a computation. Returns an executable."""
 
   @abc.abstractmethod
@@ -112,6 +120,8 @@ class XlaLocalBackend(Backend):
   def __init__(self, platform=None):
     platform = platform or _get_default_platform_name()
     self.client = c_api.LocalClient.Get(_maybe_encode_string(platform))
+    self._delete_buffer = c_api.DeleteLocalShapedBuffer
+    self._delete_executable = c_api.DeleteLocalExecutable
 
   def device_count(self):
     return self.client.DeviceCount()
@@ -120,18 +130,18 @@ class XlaLocalBackend(Backend):
     return c_api.LocalShapedBuffer.FromLiteral(pyval, None, self.client, device)
 
   def delete_buffer(self, c_buffer):
-    c_api.DeleteLocalShapedBuffer(c_buffer)
+    self._delete_buffer(c_buffer)
 
   def destructure_tuple(self, c_buffer):
     result = c_buffer.DestructureTuple()
     return [result.Release(i) for i in xrange(result.size())]
 
-  def compile(self, c_computation, argument_shapes, compile_options):
+  def compile(self, c_computation, argument_shapes, result_shape,
+              compile_options):
     return c_computation.Compile(argument_shapes, compile_options, self.client)
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.LocalExecutable)
-    c_api.DeleteLocalExecutable(executable)
+    self._delete_executable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -147,6 +157,8 @@ class XrtBackend(Backend):
 
   def __init__(self, target):
     self.target = target
+    self._delete_buffer = xrt_api.DeleteXrtAllocation
+    self._delete_executable = xrt_api.DeleteXrtExecutable
 
   def device_count(self):
     return 1  # Multidevice execution not implemented.
@@ -155,24 +167,25 @@ class XrtBackend(Backend):
     if device != 0:
       raise NotImplementedError(
           'Multi-replica execution is not yet supported via the XRT backend.')
-    return c_api.XrtAllocation.FromLiteral(pyval,
-                                           _maybe_encode_string(self.target))
+    return xrt_api.XrtAllocation.FromLiteral(pyval,
+                                             _maybe_encode_string(self.target))
 
   def delete_buffer(self, c_buffer):
-    c_api.DeleteXrtAllocation(c_buffer)
+    self._delete_buffer(c_buffer)
 
   def destructure_tuple(self, c_buffer):
-    result = c_api.DestructureXrtAllocationTuple(
+    result = xrt_api.DestructureXrtAllocationTuple(
         c_buffer, _maybe_encode_string(self.target))
     return [result.Release(i) for i in xrange(result.size())]
 
-  def compile(self, c_computation, argument_shapes, compile_options):
-    return c_computation.CompileForXrt(argument_shapes,
-                                       _maybe_encode_string(self.target))
+  def compile(self, c_computation, argument_shapes, result_shape,
+              compile_options):
+    return xrt_api.XrtExecutable.CompileForXrt(
+        c_computation.GetSerializedProto(), argument_shapes, result_shape,
+        _maybe_encode_string(self.target))
 
   def delete_executable(self, executable):
-    assert isinstance(executable, c_api.XrtExecutable)
-    c_api.DeleteXrtExecutable(executable)
+    self._delete_executable(executable)
 
   def execute(self, executable, args):
     return executable.Execute(args)
@@ -272,6 +285,7 @@ def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
 
 _UNARY_OPS = [
     'Not',
+    'Clz',
     'Abs',
     'Exp',
     'Expm1',
@@ -595,6 +609,12 @@ def _wrap_shape(shape_info):
     return Shape.array_shape(dtype, dims)
 
 
+def _wrap_program_shape(shape_info):
+  arg_shapes, result_shape = shape_info
+  return ProgramShape([_wrap_shape(arg) for arg in arg_shapes],
+                      _wrap_shape(result_shape))
+
+
 def require_numpy_array_layout(value):
   if isinstance(value, tuple):
     return tuple(require_numpy_array_layout(x) for x in value)
@@ -664,6 +684,7 @@ class Computation(object):
     self._c_computation = c_computation
     # The backend argument is deprecated. Pass a backend to Compile() instead.
     self._backend = backend
+    self._delete_computation = c_api.DeleteComputation
 
   @property
   def computation(self):
@@ -726,7 +747,8 @@ class Computation(object):
 
     compile_options = compile_options or CompileOptions()
     compile_options.result_shape = result_shape
-    c = backend.compile(self.computation, argument_shapes, compile_options)
+    c = backend.compile(self.computation, argument_shapes, result_shape,
+                        compile_options)
     return Executable(c, backend=backend)
 
   def CompileWithExampleArguments(self,
@@ -741,18 +763,14 @@ class Computation(object):
         backend=backend)
 
   def GetProgramShape(self):
-    (arg_shapes, result_shape) = self._c_computation.GetProgramShape()
-    return ProgramShape([_wrap_shape(arg) for arg in arg_shapes],
-                        _wrap_shape(result_shape))
+    return _wrap_program_shape(self._c_computation.GetProgramShape())
 
   def GetReturnValueShape(self):
     return _wrap_shape(self._c_computation.GetReturnValueShape())
 
   def __del__(self):
-    # Python may have freed c_api first.
-    if c_api and self._c_computation:
-      assert isinstance(self._c_computation, c_api.Computation)
-      c_api.DeleteComputation(self._c_computation)
+    if self._c_computation:
+      self._delete_computation(self._c_computation)
 
 
 class Executable(object):

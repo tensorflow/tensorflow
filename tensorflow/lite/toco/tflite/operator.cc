@@ -1813,6 +1813,21 @@ class Logistic : public SimpleOperator<LogisticOperator> {
   }
 };
 
+class LogSoftmax : public SimpleOperator<LogSoftmaxOperator> {
+ public:
+  explicit LogSoftmax()
+      : SimpleOperator("LOG_SOFTMAX", OperatorType::kLogSoftmax) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
 class SquaredDifference
     : public BuiltinOperator<
           SquaredDifferenceOperator, ::tflite::SquaredDifferenceOptions,
@@ -2439,6 +2454,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<CeilOperator>>("CEIL", OperatorType::kCeil));
   ops.push_back(
+      MakeUnique<SimpleOperator<EluOperator>>("ELU", OperatorType::kElu));
+  ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));
@@ -2451,8 +2468,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
   ops.push_back(
       MakeUnique<SimpleOperator<CosOperator>>("COS", OperatorType::kCos));
-  ops.push_back(MakeUnique<SimpleOperator<LogSoftmaxOperator>>(
-      "LOG_SOFTMAX", OperatorType::kLogSoftmax));
+  ops.push_back(MakeUnique<LogSoftmax>());
   ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
   ops.push_back(MakeUnique<Minimum>());  //  Element-wise Minimum
   ops.push_back(MakeUnique<Greater>());

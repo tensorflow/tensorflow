@@ -138,8 +138,8 @@ void SegmentSumFunctor<T, Index>::operator()(
   }
   // Set 'output' to zeros.
   CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-  SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-      output.size(), output.data());
+  CudaLaunchKernel(SetZero<T>, config.block_count, config.thread_per_block, 0,
+                   d.stream(), output.size(), output.data());
   if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
     return;
   }
@@ -162,10 +162,10 @@ void SegmentSumFunctor<T, Index>::operator()(
       input_inner_dim_size * input_outer_dim_num_stripe;
 
   config = GetCudaLaunchConfig(total_stripe_count, d);
-  SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          input_outer_dim_size, input_inner_dim_size, output_rows,
-          segment_ids.data(), data, output.data(), total_stripe_count);
+  CudaLaunchKernel(SortedSegmentSumCustomKernel<T, Index, OuterDimTileSize>,
+                   config.block_count, config.thread_per_block, 0, d.stream(),
+                   input_outer_dim_size, input_inner_dim_size, output_rows,
+                   segment_ids.data(), data, output.data(), total_stripe_count);
 }
 
 template <typename T, typename Index, typename InitialValueF,
@@ -182,8 +182,9 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     // Set 'output' to initial value.
     GPUDevice d = ctx->template eigen_device<GPUDevice>();
     CudaLaunchConfig config = GetCudaLaunchConfig(output.size(), d);
-    SetToValue<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-        output.size(), output.data(), InitialValueF()());
+    CudaLaunchKernel(SetToValue<T>, config.block_count, config.thread_per_block,
+                     0, d.stream(), output.size(), output.data(),
+                     InitialValueF()());
     if (data_size == 0 || segment_ids_shape.num_elements() == 0) {
       return;
     }
@@ -196,10 +197,10 @@ struct UnsortedSegmentFunctor<GPUDevice, T, Index, InitialValueF, ReductionF> {
     const Index input_inner_dim_size = data_size / input_outer_dim_size;
     config = GetCudaLaunchConfig(data_size, d);
 
-    UnsortedSegmentCustomKernel<T, Index, ReductionF>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            input_outer_dim_size, input_inner_dim_size, num_segments,
-            segment_ids.data(), data, output.data());
+    CudaLaunchKernel(UnsortedSegmentCustomKernel<T, Index, ReductionF>,
+                     config.block_count, config.thread_per_block, 0, d.stream(),
+                     input_outer_dim_size, input_inner_dim_size, num_segments,
+                     segment_ids.data(), data, output.data());
   }
 };
 

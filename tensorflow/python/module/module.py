@@ -33,11 +33,15 @@ from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+NO_MODULE_NAME_SCOPE = "__no_module_name_scope__"
+
 
 class ModuleMetaclass(abc.ABCMeta):
   """Metaclass for `tf.Module`."""
 
   def __new__(mcs, name, bases, clsdict):
+    methods = []
+
     for key, value in clsdict.items():
       if key == "name_scope":
         continue
@@ -47,20 +51,33 @@ class ModuleMetaclass(abc.ABCMeta):
         continue
 
       elif tf_inspect.isfunction(value):
-        if getattr(value, "_no_module_name_scope", False):
-          # The function has been annotated to say that no autoscoping should
-          # be applied, so do not patch it.
-          continue
-        clsdict[key] = with_name_scope(value)
+        # We defer patching methods until after the type is created such that we
+        # can trigger the descriptor binding them to the class.
+        methods.append(key)
 
       elif isinstance(value, property):
+        # TODO(tomhennigan) Preserve the type of property subclasses.
         clsdict[key] = property(
             value.fget if not value.fget else with_name_scope(value.fget),
             value.fset if not value.fset else with_name_scope(value.fset),
             value.fdel if not value.fdel else with_name_scope(value.fdel),
             doc=value.__doc__)
 
-    return super(ModuleMetaclass, mcs).__new__(mcs, name, bases, clsdict)
+    cls = super(ModuleMetaclass, mcs).__new__(mcs, name, bases, clsdict)
+
+    for method_name in methods:
+      # Note: the below is quite subtle, we need to ensure that we're wrapping
+      # the method bound to the class. In some cases (e.g. `wrapt`) this is
+      # important since the method can trigger different behavior when it is
+      # bound (e.g. in wrapt `FunctionWrapper.__get__(None, cls)` produces a
+      # `BoundFunctionWrapper` which in turn populates the `instance` argument
+      # to decorator functions using args[0]).
+      # Equivalent to: `cls.__dict__[method_name].__get__(None, cls)`
+      method = getattr(cls, method_name)
+      method = with_name_scope(method)
+      setattr(cls, method_name, method)
+
+    return cls
 
   def __call__(cls, *args, **kwargs):
     # Call new such that we have an un-initialized module instance that we can
@@ -139,6 +156,11 @@ def wrap_with_name_scope_no_exception(unbound_method):
 
 def with_name_scope(unbound_method):
   """Patches the given method so it enters the modules name scope."""
+  if getattr(unbound_method, NO_MODULE_NAME_SCOPE, False):
+    # The function has been annotated to say that no autoscoping should be
+    # applied, so do not patch it.
+    return unbound_method
+
   if isinstance(unbound_method, def_function.Function):
     # Autograph cannot convert functions that have try/catch.
     unbound_method._decorate(wrap_with_name_scope_no_exception)  # pylint: disable=protected-access
@@ -357,7 +379,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
     Returns:
       The method, with a flag indicating no name scope wrapping should occur.
     """
-    setattr(method, "_no_module_name_scope", True)
+    setattr(method, NO_MODULE_NAME_SCOPE, True)
     return method
 
 _IS_VARIABLE = lambda o: isinstance(o, variables.Variable)

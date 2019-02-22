@@ -87,6 +87,20 @@ class TestModuleNaming(test.TestCase):
     # `foo` is not a method so we do not re-enter the name scope.
     self.assertEqual(mod.foo(), "")
 
+  def test_property(self):
+    mod = PropertyModule()
+    mod.some_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.some_property
+    self.assertEqual(getter_scope_name, "property_module/")
+    self.assertEqual(setter_scope_name, "property_module/")
+
+  def test_property_no_name_scope(self):
+    mod = PropertyModule()
+    mod.no_name_scope_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.no_name_scope_property
+    self.assertEqual(getter_scope_name, "")
+    self.assertEqual(setter_scope_name, "")
+
   def test_invalid_name(self):
     msg = ".* is not a valid module name"
     with self.assertRaisesRegexp(ValueError, msg):
@@ -388,6 +402,32 @@ class ModuleWithFunctionAnnotatedCall(module.Module):
   def forward_ag(self):
     return get_name_scope()
 
+
+class PropertyModule(module.Module):
+
+  def __init__(self):
+    super(PropertyModule, self).__init__()
+    self._setter_scope_name = None
+
+  @property
+  def some_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
+
+  @some_property.setter
+  def some_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
+
+  @property
+  @module.Module.no_name_scope
+  def no_name_scope_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
+
+  @no_name_scope_property.setter
+  @module.Module.no_name_scope
+  def no_name_scope_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
 
 NamedPair = collections.namedtuple("NamedPair", ("first", "second"))
 mk_index_dict = lambda v: dict(enumerate(v))

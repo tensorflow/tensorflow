@@ -848,6 +848,9 @@ class ModelCheckpoint(Callback):
         self.monitor_op = np.less
         self.best = np.Inf
 
+    # Only the chief worker writes model checkpoints.
+    self._chief_worker_only = True
+
   def set_model(self, model):
     self.model = model
     # Use name matching rather than `isinstance` to avoid circular dependencies.
@@ -1206,6 +1209,8 @@ class TensorBoard(Callback):
           with self._train_writer.as_default():
             with summary_ops_v2.always_record_summaries():
               summary_ops_v2.graph(K.get_graph())
+              if self.model._is_graph_network:  # pylint: disable=protected-access
+                summary_ops_v2.keras_model('keras', self.model, step=0)
 
   def _close_writers(self):
     """Close all remaining open file writers owned by this callback.

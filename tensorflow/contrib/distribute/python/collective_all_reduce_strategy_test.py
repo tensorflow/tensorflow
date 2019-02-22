@@ -555,7 +555,7 @@ class LocalCollectiveAllReduceStrategy(
           required_gpus=2,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def testMakeInputFnIterator(self, use_dataset, use_core_strategy):
+  def DISABLED_testMakeInputFnIterator(self, use_dataset, use_core_strategy):
     num_gpus = 2
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)

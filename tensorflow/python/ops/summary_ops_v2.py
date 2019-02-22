@@ -27,6 +27,8 @@ import time
 import six
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -43,7 +45,6 @@ from tensorflow.python.training import training_util
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
-
 
 # A global dictionary mapping graph keys to a list of summary writer init ops.
 _SUMMARY_WRITER_INIT_OP = {}
@@ -447,9 +448,9 @@ def write(tag, tensor, step, metadata=None, name=None):
     if context.context().summary_writer_resource is None:
       return constant_op.constant(False)
     if metadata is None:
-      serialized_metadata = constant_op.constant(b"")
+      serialized_metadata = b""
     elif hasattr(metadata, "SerializeToString"):
-      serialized_metadata = constant_op.constant(metadata.SerializeToString())
+      serialized_metadata = metadata.SerializeToString()
     else:
       serialized_metadata = metadata
 
@@ -731,3 +732,105 @@ def _choose_step(step):
   if not isinstance(step, ops.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step
+
+
+def run_metadata(name, data, step):
+  """Writes entire RunMetadata summary.
+
+  A RunMetadata can contain DeviceStats, partition graphs, and function graphs.
+  Please refer to the proto for definition of each field.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A RunMetadata proto to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_run_metadata"
+  # version number = 1
+  summary_metadata.plugin_data.content = b"1"
+
+  with summary_scope(name,
+                     "graph_run_metadata_summary",
+                     [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(
+            data.SerializeToString(), dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)
+
+
+def run_metadata_graphs(name, data, step):
+  """Writes graphs from a RunMetadata summary.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A RunMetadata proto to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_run_metadata_graph"
+  # version number = 1
+  summary_metadata.plugin_data.content = b"1"
+
+  data = config_pb2.RunMetadata(
+      function_graphs=data.function_graphs,
+      partition_graphs=data.partition_graphs)
+
+  with summary_scope(name,
+                     "graph_run_metadata_graph_summary",
+                     [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(
+            data.SerializeToString(), dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)
+
+
+def keras_model(name, data, step):
+  """Writes a Keras model as JSON to as a Summary.
+
+  Writing the Keras model configuration allows the TensorBoard graph plugin to
+  render a conceptual graph, as opposed to graph of ops.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A Keras Model to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_keras_model"
+  # version number = 1
+  summary_metadata.plugin_data.content = b"1"
+
+  json_string = data.to_json()
+
+  with summary_scope(name, "graph_keras_model", [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(json_string, dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)

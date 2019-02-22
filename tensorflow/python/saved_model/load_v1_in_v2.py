@@ -107,7 +107,12 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
                    for name, out in signature_def.outputs.items()})
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
-      signature_fn._num_positional_args = 0
+      if len(input_names) == 1:
+        # Allowing positional arguments does not create any ambiguity if there's
+        # only one.
+        signature_fn._num_positional_args = 1
+      else:
+        signature_fn._num_positional_args = 0
       # pylint: enable=protected-access
       signature_functions[signature_key] = signature_fn
     return signature_functions

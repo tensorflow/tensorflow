@@ -3192,7 +3192,7 @@ class EmbeddingColumn(
         sparse_tensors,
         weight_collections=weight_collections,
         trainable=trainable)
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -3376,7 +3376,7 @@ class SharedEmbeddingColumn(
                                                    state_manager)
     sparse_tensors = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -4426,7 +4426,7 @@ class IndicatorColumn(
     dense_tensor = transformation_cache.get(self, state_manager)
     sparse_tensors = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -4455,7 +4455,7 @@ class IndicatorColumn(
     # representation created by _transform_feature.
     dense_tensor = inputs.get(self)
     sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -4507,6 +4507,31 @@ def _verify_static_batch_size_equality(tensors, columns):
             'Batch size of columns ({}, {}): ({}, {})'.format(
                 columns[bath_size_column_index].name, columns[i].name,
                 expected_batch_size, batch_size))
+
+
+def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
+  """Returns a [batch_size] Tensor with per-example sequence length."""
+  with ops.name_scope(None, 'sequence_length') as name_scope:
+    row_ids = sp_tensor.indices[:, 0]
+    column_ids = sp_tensor.indices[:, 1]
+    # Add one to convert column indices to element length
+    column_ids += array_ops.ones_like(column_ids)
+    # Get the number of elements we will have per example/row
+    seq_length = math_ops.segment_max(column_ids, segment_ids=row_ids)
+
+    # The raw values are grouped according to num_elements;
+    # how many entities will we have after grouping?
+    # Example: orig tensor [[1, 2], [3]], col_ids = (0, 1, 1),
+    # row_ids = (0, 0, 1), seq_length = [2, 1]. If num_elements = 2,
+    # these will get grouped, and the final seq_length is [1, 1]
+    seq_length = math_ops.cast(
+        math_ops.ceil(seq_length / num_elements), dtypes.int64)
+
+    # If the last n rows do not have ids, seq_length will have shape
+    # [batch_size - n]. Pad the remaining values with zeros.
+    n_pad = array_ops.shape(sp_tensor)[:1] - array_ops.shape(seq_length)[:1]
+    padding = array_ops.zeros(n_pad, dtype=seq_length.dtype)
+    return array_ops.concat([seq_length, padding], axis=0, name=name_scope)
 
 
 class SequenceCategoricalColumn(

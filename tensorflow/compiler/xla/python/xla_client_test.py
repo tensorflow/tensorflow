@@ -777,6 +777,12 @@ class SingleOpTest(ComputationTest):
     c.Not(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=~arr)
 
+  def testCountLeadingZeros(self):
+    c = self._NewComputation()
+    arr = NumpyArrayS32([0x7FFF, 0x12345678])
+    c.Clz(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=[17, 3])
+
   def testExp(self):
     c = self._NewComputation()
     arr = NumpyArrayF32([3.3, 12.1])

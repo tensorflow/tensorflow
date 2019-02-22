@@ -66,11 +66,11 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     device = ctx.device_name
     # Missing context.
     with self.assertRaisesRegexp(
-        TypeError, r"Required argument 'context' \(pos 2\) not found"):
+        TypeError, r".*argument 'context' \(pos 2\).*"):
       ops.EagerTensor(1, device=device)
     # Missing device.
     with self.assertRaisesRegexp(
-        TypeError, r"Required argument 'device' \(pos 3\) not found"):
+        TypeError, r".*argument 'device' \(pos 3\).*"):
       ops.EagerTensor(1, context=handle)
     # Bad dtype type.
     with self.assertRaisesRegexp(TypeError,

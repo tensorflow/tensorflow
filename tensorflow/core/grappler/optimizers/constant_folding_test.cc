@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/tensor_coding.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -3650,8 +3651,7 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
   auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 3, 4}));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
 
-  ConstantFolding optimizer(/*opt_level=*/RewriterConfig::AGGRESSIVE,
-                            /*cpu_device=*/nullptr);
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
   GraphDef output;
   Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -3679,6 +3679,40 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
       test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
     } else {
       test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, MaterializeConstantValuedNodeHugeFill) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output value = ops::Const(scope.WithOpName("value"), 42, {});
+  Output fill_huge = ops::Fill(scope.WithOpName("fill_huge"),
+                               {1024, 1024, 1024, 1024, 1024}, value);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  // Manually convert the input value format to tensor_content to test this
+  // case.
+  NodeDef* node = item.graph.mutable_node(0);
+  ASSERT_EQ(node->name(), "value");
+  TensorProto* t = (*node->mutable_attr())["value"].mutable_tensor();
+  t->clear_int_val();
+  int val = 42;
+  port::CopyFromArray(t->mutable_tensor_content(),
+                      reinterpret_cast<const char*>(&val), sizeof(int));
+  item.fetch = {"fill_huge"};
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.node_size(), 3);
+  for (const auto& node : output.node()) {
+    EXPECT_EQ(node.op(), "Const");
+    if (node.name() == "fill_huge") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0)[0], '^');
+      EXPECT_EQ(node.input(1)[0], '^');
     }
   }
 }

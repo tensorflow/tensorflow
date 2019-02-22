@@ -423,6 +423,10 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatUnaryOp(
       return EmitSin(op->shape().element_type(), operand_value);
     case HloOpcode::kTanh:
       return EmitTanh(op->shape().element_type(), operand_value);
+    case HloOpcode::kSqrt:
+      return EmitSqrt(op->shape().element_type(), operand_value);
+    case HloOpcode::kRsqrt:
+      return EmitRsqrt(op->shape().element_type(), operand_value);
     case HloOpcode::kFloor:
       return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::floor,
                                           {operand_value},
@@ -655,6 +659,20 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexUnaryOp(
           EmitComposeComplex(op, FDiv(EmitExtractReal(operand_value), cplx_abs),
                              FDiv(EmitExtractImag(operand_value), cplx_abs)));
     }
+    case HloOpcode::kSqrt: {
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
+      auto c = llvm::ConstantFP::get(a->getType(), 0.5);
+      auto d = llvm::ConstantFP::get(b->getType(), 0.0);
+      return EmitComplexPower(op, a, b, c, d);
+    }
+    case HloOpcode::kRsqrt: {
+      auto a = EmitExtractReal(operand_value);
+      auto b = EmitExtractImag(operand_value);
+      auto c = llvm::ConstantFP::get(a->getType(), -0.5);
+      auto d = llvm::ConstantFP::get(b->getType(), 0.0);
+      return EmitComplexPower(op, a, b, c, d);
+    }
     case HloOpcode::kNegate:
       return EmitComposeComplex(op, FNeg(EmitExtractReal(operand_value)),
                                 FNeg(EmitExtractImag(operand_value)));
@@ -738,6 +756,43 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
   }
 }
 
+// (a+bi)^(c+di) =
+//    (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
+//    where q = c*atan2(b,a)+0.5d*ln(a*a+b*b)
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
+    const HloInstruction* op, llvm::Value* a, llvm::Value* b, llvm::Value* c,
+    llvm::Value* d) {
+  PrimitiveType component_type =
+      primitive_util::ComplexComponentType(op->shape().element_type());
+  auto aa_p_bb = FAdd(FMul(a, a), FMul(b, b));
+  auto zero = llvm::ConstantFP::get(a->getType(), 0);
+  auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
+  auto one = llvm::ConstantFP::get(a->getType(), 1);
+  auto half_c = FMul(one_half, c);
+
+  TF_ASSIGN_OR_RETURN(auto aa_p_bb_to_half_c,
+                      EmitPow(component_type, aa_p_bb, half_c));
+
+  auto neg_d = FNeg(d);
+  TF_ASSIGN_OR_RETURN(auto arg_lhs, EmitAtan2(component_type, b, a));
+  auto neg_d_arg_lhs = FMul(neg_d, arg_lhs);
+  TF_ASSIGN_OR_RETURN(auto e_to_neg_d_arg_lhs,
+                      EmitExp(component_type, neg_d_arg_lhs));
+  auto coeff = FMul(aa_p_bb_to_half_c, e_to_neg_d_arg_lhs);
+  TF_ASSIGN_OR_RETURN(auto ln_aa_p_bb, EmitLog(component_type, aa_p_bb));
+  auto half_d = FMul(one_half, d);
+  auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
+  TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
+  TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
+  // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
+  // Branch Cuts for Complex Elementary Functions or Much Ado About
+  // Nothing's Sign Bit, W. Kahan, Section 10.
+  return Select(
+      And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
+      EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
+      EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
+}
+
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
     const HloInstruction* op, llvm::Value* lhs_value, llvm::Value* rhs_value) {
   switch (op->opcode()) {
@@ -804,42 +859,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
                                         EmitExtractImag(rhs_value), b_));
 
     case HloOpcode::kPower: {
-      // (a+bi)^(c+di) =
-      //    (a*a+b*b)^(0.5c) * exp(-d*atan2(b,a)) * (cos(q) + i*sin(q)),
-      //    where q = c*atan2(b,a)+0.5d*ln(a*a+b*b)
-      PrimitiveType component_type =
-          primitive_util::ComplexComponentType(op->shape().element_type());
       auto a = EmitExtractReal(lhs_value);
       auto b = EmitExtractImag(lhs_value);
       auto c = EmitExtractReal(rhs_value);
       auto d = EmitExtractImag(rhs_value);
-      auto aa_p_bb = FAdd(FMul(a, a), FMul(b, b));
-      auto zero = llvm::ConstantFP::get(a->getType(), 0);
-      auto one_half = llvm::ConstantFP::get(a->getType(), 0.5);
-      auto one = llvm::ConstantFP::get(a->getType(), 1);
-      auto half_c = FMul(one_half, c);
-
-      TF_ASSIGN_OR_RETURN(auto aa_p_bb_to_half_c,
-                          EmitPow(component_type, aa_p_bb, half_c));
-
-      auto neg_d = FNeg(d);
-      TF_ASSIGN_OR_RETURN(auto arg_lhs, EmitAtan2(component_type, b, a));
-      auto neg_d_arg_lhs = FMul(neg_d, arg_lhs);
-      TF_ASSIGN_OR_RETURN(auto e_to_neg_d_arg_lhs,
-                          EmitExp(component_type, neg_d_arg_lhs));
-      auto coeff = FMul(aa_p_bb_to_half_c, e_to_neg_d_arg_lhs);
-      TF_ASSIGN_OR_RETURN(auto ln_aa_p_bb, EmitLog(component_type, aa_p_bb));
-      auto half_d = FMul(one_half, d);
-      auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
-      TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
-      TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
-      // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
-      // Branch Cuts for Complex Elementary Functions or Much Ado About
-      // Nothing's Sign Bit, W. Kahan, Section 10.
-      return Select(
-          And(And(FCmpOEQ(aa_p_bb, zero), FCmpOEQ(d, zero)), FCmpOLE(zero, c)),
-          EmitComposeComplex(op, Select(FCmpOEQ(zero, c), one, zero), zero),
-          EmitComposeComplex(op, FMul(coeff, cos_q), FMul(coeff, sin_q)));
+      return EmitComplexPower(op, a, b, c, d);
     }
     default:
       return Unimplemented("binary complex op '%s'",
@@ -1050,6 +1074,18 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitLog1p(PrimitiveType prim_type,
   auto x_is_small = FCmpOLT(
       abs_x, llvm::ConstantFP::get(type, kAntilogarithmIsSmallThreshold));
   return Select(x_is_small, for_small_x, for_large_x);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitSqrt(PrimitiveType prim_type,
+                                                    llvm::Value* value) {
+  return llvm_ir::EmitCallToIntrinsic(llvm::Intrinsic::sqrt, {value},
+                                      {value->getType()}, b_);
+}
+
+StatusOr<llvm::Value*> ElementalIrEmitter::EmitRsqrt(PrimitiveType prim_type,
+                                                     llvm::Value* value) {
+  TF_ASSIGN_OR_RETURN(auto sqrt, EmitSqrt(prim_type, value));
+  return FDiv(llvm::ConstantFP::get(sqrt->getType(), 1.0), sqrt);
 }
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitSin(PrimitiveType prim_type,
@@ -2188,8 +2224,10 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kReal:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {

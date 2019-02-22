@@ -80,10 +80,8 @@ class LoadTest(test.TestCase):
     imported = load.load(self._v1_single_metagraph_saved_model(
         use_resource=True))
     fn = imported.signatures["serving_default"]
-    with self.assertRaisesRegexp(TypeError, "positional"):
-      fn(constant_op.constant(2.))
     self.assertEqual({"output": 6.},
-                     self.evaluate(fn(start=constant_op.constant(2.))))
+                     self.evaluate(fn(constant_op.constant(2.))))
     self.assertAllEqual([3., 1.], self.evaluate(imported.variables))
     imported.variables[0].assign(4.)
     self.assertEqual({"output": 8.},

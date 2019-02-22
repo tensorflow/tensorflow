@@ -505,16 +505,24 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with self.assertRaisesRegexp(
         errors.InvalidArgumentError,
         "Indices in TensorListScatter must all be non-negative."):
-      l = list_ops.tensor_list_scatter(
-          c0, [-1, -2], ops.convert_to_tensor([], dtype=dtypes.int32))
+      l = list_ops.tensor_list_scatter(c0, [-1, -2], element_shape=[])
       self.evaluate(l)
+
+  def testScatterIntoExistingList(self):
+    l = list_ops.tensor_list_reserve(
+        element_dtype=dtypes.float32, element_shape=[], num_elements=3)
+    l = list_ops.tensor_list_scatter(tensor=[1.], indices=[0], element_shape=[])
+    l = list_ops.tensor_list_scatter(
+        tensor=[2., 3.], indices=[1, 2], element_shape=[], input_handle=l)
+    self.assertAllEqual(
+        list_ops.tensor_list_stack(l, element_dtype=dtypes.float32),
+        [1., 2., 3.])
 
   def testScatterGrad(self):
     with backprop.GradientTape() as tape:
       c0 = constant_op.constant([1.0, 2.0])
       tape.watch(c0)
-      l = list_ops.tensor_list_scatter(
-          c0, [1, 0], ops.convert_to_tensor([], dtype=dtypes.int32))
+      l = list_ops.tensor_list_scatter(c0, [1, 0], element_shape=[])
       t0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
       t1 = list_ops.tensor_list_get_item(l, 1, element_dtype=dtypes.float32)
       self.assertAllEqual(self.evaluate(t0), 2.0)
@@ -527,8 +535,7 @@ class ListOpsTest(test_util.TensorFlowTestCase, parameterized.TestCase):
     with backprop.GradientTape() as tape:
       c0 = constant_op.constant([1.0, 2.0])
       tape.watch(c0)
-      l = list_ops.tensor_list_scatter(
-          c0, [1, 0], ops.convert_to_tensor([], dtype=dtypes.int32))
+      l = list_ops.tensor_list_scatter(c0, [1, 0], element_shape=[])
       t0 = list_ops.tensor_list_get_item(l, 0, element_dtype=dtypes.float32)
       self.assertAllEqual(self.evaluate(t0), 2.0)
       loss = t0 * t0

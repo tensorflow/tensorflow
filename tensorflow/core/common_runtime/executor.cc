@@ -2487,6 +2487,20 @@ void ExecutorState::Finish() {
   // device has finished all relevant work at this point.
   if (!device->AllowsSyncOnCompletion()) {
     status.Update(device->RefreshStatus());
+    if (!status.ok()) {
+      // In device async execution mode, it's possible for device execution to
+      // lag behind ExecutorState scheduling so much that this is the first
+      // place a device execution error surfaces.
+      // If so, all ExecutorState::NodeDone calls have already happened with OK
+      // status. This is the last defense where StartCancel must be called to
+      // abort all computation still running on any device.
+      // TODO(b/124523000): Always call Finish in a separate thread, so even if
+      // StartCancel blocks the current thread's execution, we won't encounter
+      // deadlocks caused by inter-op thread exhaustion.
+      if (cancellation_manager_) {
+        cancellation_manager_->StartCancel();
+      }
+    }
     delete this;
     runner([=]() { done_cb(status); });
     return;

@@ -275,9 +275,8 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
         keras.layers.Dense(NUM_CLASSES, activation='softmax')
     ]
     model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
-    model.compile(loss='categorical_crossentropy',
-                  optimizer='rmsprop',
-                  metrics=['accuracy'])
+    model.compile(
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     temp_dir = self.get_temp_dir()
     self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
@@ -301,9 +300,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
             NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
     model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
     model.compile(
-        loss='categorical_crossentropy',
-        optimizer='rmsprop',
-        metrics=['accuracy'])
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
     cbks = [
         keras.callbacks.ModelCheckpoint(
@@ -451,9 +448,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
-          loss='categorical_crossentropy',
-          optimizer='rmsprop',
-          metrics=['accuracy'])
+          loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
       cases = [
           ('max', 'val_acc'),
@@ -511,7 +506,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=1, num_classes=1, input_dim=1)
       model.compile(
-          optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
+          optimizer='sgd', loss='binary_crossentropy', metrics=['acc'])
 
       stopper = keras.callbacks.EarlyStopping(monitor='acc',
                                               baseline=baseline)

@@ -24,6 +24,7 @@ import os
 from tensorflow.core.framework import versions_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import saved_model_pb2
+from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as defun
@@ -40,7 +41,6 @@ from tensorflow.python.saved_model import constants
 from tensorflow.python.saved_model import function_serialization
 from tensorflow.python.saved_model import nested_structure_coder
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.saved_model import saved_object_graph_pb2
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import signature_serialization
@@ -542,7 +542,7 @@ def _fill_meta_graph_def(meta_graph_def, saveable_view, signature_functions):
   return asset_info, exported_graph
 
 
-def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
+def _serialize_object_graph(saveable_view, asset_file_def_index):
   """Save a SavedObjectGraph proto for `root`."""
   # SavedObjectGraph is similar to the TrackableObjectGraph proto in the
   # checkpoint. It will eventually go into the SavedModel.
@@ -559,14 +559,7 @@ def _write_object_graph(saveable_view, export_dir, asset_file_def_index):
 
   for obj, obj_proto in zip(saveable_view.nodes, proto.nodes):
     _write_object_proto(obj, obj_proto, asset_file_def_index)
-
-  extra_asset_dir = os.path.join(
-      compat.as_bytes(export_dir),
-      compat.as_bytes(constants.EXTRA_ASSETS_DIRECTORY))
-  file_io.recursive_create_dir(extra_asset_dir)
-  object_graph_filename = os.path.join(
-      extra_asset_dir, compat.as_bytes("object_graph.pb"))
-  file_io.write_string_to_file(object_graph_filename, proto.SerializeToString())
+  return proto
 
 
 def _write_object_proto(obj, proto, asset_file_def_index):
@@ -600,7 +593,8 @@ def _write_object_proto(obj, proto, asset_file_def_index):
     proto.user_object.CopyFrom(registered_type_proto)
 
 
-@tf_export("saved_model.save", v1=["saved_model.experimental.save"])
+@tf_export("saved_model.save",
+           v1=["saved_model.save", "saved_model.experimental.save"])
 def save(obj, export_dir, signatures=None):
   # pylint: disable=line-too-long
   """Exports the Trackable object `obj` to [SavedModel format](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/saved_model/README.md).
@@ -814,8 +808,10 @@ def save(obj, export_dir, signatures=None):
   path = os.path.join(
       compat.as_bytes(export_dir),
       compat.as_bytes(constants.SAVED_MODEL_FILENAME_PB))
+  object_graph_proto = _serialize_object_graph(
+      saveable_view, asset_info.asset_index)
+  meta_graph_def.object_graph_def.CopyFrom(object_graph_proto)
   file_io.write_string_to_file(path, saved_model.SerializeToString())
-  _write_object_graph(saveable_view, export_dir, asset_info.asset_index)
   # Clean reference cycles so repeated export()s don't make work for the garbage
   # collector. Before this point we need to keep references to captured
   # constants in the saved graph.

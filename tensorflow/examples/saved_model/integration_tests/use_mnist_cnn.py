@@ -46,6 +46,12 @@ flags.DEFINE_integer(
 flags.DEFINE_bool(
     'retrain', False,
     'If set, the imported SavedModel is trained further.')
+flags.DEFINE_float(
+    'dropout_rate', None,
+    'If set, dropout rate passed to the SavedModel.')
+flags.DEFINE_float(
+    'regularization_loss_multiplier', None,
+    'If set, multiplier for the regularization losses in the SavedModel.')
 flags.DEFINE_bool(
     'use_fashion_mnist', False,
     'Use Fashion MNIST (products) instead of the real MNIST (digits). '
@@ -55,14 +61,26 @@ flags.DEFINE_bool(
     'Shortcut training for running in unit tests.')
 
 
-def make_classifier(feature_extractor, dropout_rate=0.5):
+def make_classifier(feature_extractor, l2_strength=0.01, dropout_rate=0.5):
   """Returns a Keras Model to classify MNIST using feature_extractor."""
+  regularizer = lambda: tf.keras.regularizers.l2(l2_strength)
   net = inp = tf.keras.Input(mnist_util.INPUT_SHAPE)
   net = feature_extractor(net)
   net = tf.keras.layers.Dropout(dropout_rate)(net)
-  net = tf.keras.layers.Dense(mnist_util.NUM_CLASSES,
-                              activation='softmax')(net)
+  net = tf.keras.layers.Dense(mnist_util.NUM_CLASSES, activation='softmax',
+                              kernel_regularizer=regularizer())(net)
   return tf.keras.Model(inputs=inp, outputs=net)
+
+
+def scale_regularization_losses(obj, multiplier):
+  """Scales obj.regularization_losses by multiplier if not None."""
+  if multiplier is None: return
+  def _scale_one_loss(l):  # Separate def avoids lambda capture of loop var.
+    f = tf.function(lambda: tf.multiply(multiplier, l()))
+    _ = f.get_concrete_function()
+    return f
+  obj.regularization_losses = [_scale_one_loss(l)
+                               for l in obj.regularization_losses]
 
 
 def main(argv):
@@ -70,8 +88,13 @@ def main(argv):
 
   # Load a pre-trained feature extractor and wrap it for use in Keras.
   obj = tf.saved_model.load(FLAGS.export_dir)
+  scale_regularization_losses(obj, FLAGS.regularization_loss_multiplier)
+  arguments = {}
+  if FLAGS.dropout_rate is not None:
+    arguments['dropout_rate'] = FLAGS.dropout_rate
   feature_extractor = util.CustomLayer(obj, output_shape=[128],
-                                       trainable=FLAGS.retrain)
+                                       trainable=FLAGS.retrain,
+                                       arguments=arguments)
 
   # Build a classifier with it.
   model = make_classifier(feature_extractor)

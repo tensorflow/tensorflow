@@ -17,7 +17,7 @@ limitations under the License.
 #include <memory>
 #include <utility>
 #include "grpcpp/grpcpp.h"
-#include "tensorflow/contrib/tpu/profiler/tpu_profiler.grpc.pb.h"
+#include "tensorflow/core/platform/grpc_services.h"
 #include "tensorflow/core/profiler/rpc/profiler_service_impl.h"
 #include "tensorflow/core/util/ptr_util.h"
 
@@ -33,7 +33,7 @@ std::unique_ptr<Thread> StartProfilerServer(
   ProfilerContext ctx = *profiler_context;
   return WrapUnique(env->StartThread({}, "profiler server", [ctx, port]() {
     string server_address = strings::StrCat("0.0.0.0:", port);
-    std::unique_ptr<TPUProfiler::Service> service =
+    std::unique_ptr<grpc::ProfilerService::Service> service =
         CreateProfilerService(ctx);
     ::grpc::ServerBuilder builder;
     builder.AddListeningPort(server_address,

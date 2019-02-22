@@ -71,9 +71,9 @@ __global__ void PopulationCountKernel<int64>(const int size, const int64* input,
     const GPUDevice& d = c->eigen_device<GPUDevice>();                    \
     int64 total_count = input.size();                                     \
     CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);        \
-    PopulationCountKernel<T>                                              \
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>( \
-            total_count, input.data(), output.data());                    \
+    CudaLaunchKernel(PopulationCountKernel<T>, config.block_count,        \
+                     config.thread_per_block, 0, d.stream(), total_count, \
+                     input.data(), output.data());                        \
   }
 
 TF_CALL_uint8(DEFINE_GPU_SPECS);
