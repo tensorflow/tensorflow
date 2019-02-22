@@ -2366,6 +2366,8 @@ class StructuredFunctionWrapper(object):
     else:
       defun_kwargs.update({"func_name": func_name})
 
+      # TODO(b/124254153): Enable autograph once the overhead is low enough.
+      # TODO(mdan): Make sure autograph recurses into _wrapper_helper when on.
       @eager_function.defun_with_attributes(
           input_signature=[
               tensor_spec.TensorSpec(input_shape, input_type)  # pylint: disable=g-complex-comprehension
@@ -2373,6 +2375,7 @@ class StructuredFunctionWrapper(object):
                   self._input_structure._flat_shapes,
                   self._input_structure._flat_types)
           ],
+          autograph=False,
           attributes=defun_kwargs)
       def wrapper_fn(*args):  # pylint: disable=missing-docstring
         ret = _wrapper_helper(*args)
