@@ -41,14 +41,14 @@ from tensorflow.python.training import server_lib
 from tensorflow.python.training.tracking import util as trackable
 
 
-class HashTableTest(test.TestCase):
+class StaticHashTableTest(test.TestCase):
 
-  def testHashTable(self):
+  def testStaticHashTable(self):
     with self.cached_session():
       default_val = -1
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -67,12 +67,12 @@ class HashTableTest(test.TestCase):
                             self.evaluate(exported_keys_tensor))
       self.assertItemsEqual([0, 1, 2], self.evaluate(exported_values_tensor))
 
-  def testHashTableFindHighRank(self):
+  def testStaticHashTableFindHighRank(self):
     with self.cached_session():
       default_val = -1
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -85,12 +85,12 @@ class HashTableTest(test.TestCase):
       result = self.evaluate(output)
       self.assertAllEqual([[0, 1], [-1, -1]], result)
 
-  def testHashTableInitWithPythonArrays(self):
+  def testStaticHashTableInitWithPythonArrays(self):
     with self.cached_session():
       default_val = -1
       keys = ["brain", "salad", "surgery"]
       values = [0, 1, 2]
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(
               keys, values, value_dtype=dtypes.int64), default_val)
       self.evaluate(table.initializer)
@@ -103,12 +103,12 @@ class HashTableTest(test.TestCase):
       result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
-  def testHashTableInitWithNumPyArrays(self):
+  def testStaticHashTableInitWithNumPyArrays(self):
     with self.cached_session():
       default_val = -1
       keys = np.array(["brain", "salad", "surgery"], dtype=np.str)
       values = np.array([0, 1, 2], dtype=np.int64)
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -120,18 +120,18 @@ class HashTableTest(test.TestCase):
       result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
-  def testMultipleHashTables(self):
+  def testMultipleStaticHashTables(self):
     with self.cached_session():
 
       default_val = -1
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
 
-      table1 = lookup_ops.HashTable(
+      table1 = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
-      table2 = lookup_ops.HashTable(
+      table2 = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
-      table3 = lookup_ops.HashTable(
+      table3 = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
       self.evaluate(table1.initializer)
@@ -151,12 +151,12 @@ class HashTableTest(test.TestCase):
       self.assertAllEqual([0, 1, -1], out2)
       self.assertAllEqual([0, 1, -1], out3)
 
-  def testHashTableWithTensorDefault(self):
+  def testStaticHashTableWithTensorDefault(self):
     with self.cached_session():
       default_val = constant_op.constant(-1, dtypes.int64)
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -166,12 +166,12 @@ class HashTableTest(test.TestCase):
       result = self.evaluate(output)
       self.assertAllEqual([0, 1, -1], result)
 
-  def testHashTableWithSparseTensorInput(self):
+  def testStaticHashTableWithSparseTensorInput(self):
     with self.cached_session():
       default_val = constant_op.constant(-1, dtypes.int64)
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -194,7 +194,7 @@ class HashTableTest(test.TestCase):
       default_val = -1
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -208,14 +208,14 @@ class HashTableTest(test.TestCase):
         table.lookup(input_string)
 
       with self.assertRaises(TypeError):
-        lookup_ops.HashTable(
+        lookup_ops.StaticHashTable(
             lookup_ops.KeyValueTensorInitializer(keys, values), "UNK")
 
   def testDTypes(self):
     with self.cached_session():
       default_val = -1
       with self.assertRaises(TypeError):
-        lookup_ops.HashTable(
+        lookup_ops.StaticHashTable(
             lookup_ops.KeyValueTensorInitializer(["a"], [1], [dtypes.string],
                                                  dtypes.int64), default_val)
 
@@ -223,7 +223,7 @@ class HashTableTest(test.TestCase):
   def testNotInitialized(self):
     with self.cached_session():
       default_val = -1
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(["a"], [1],
                                                value_dtype=dtypes.int64),
           default_val)
@@ -240,7 +240,7 @@ class HashTableTest(test.TestCase):
       default_val = -1
       keys = constant_op.constant(["brain", "salad", "surgery"])
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -255,7 +255,7 @@ class HashTableTest(test.TestCase):
       values = constant_op.constant([0, 1, 2, 3, 4], dtypes.int64)
 
       with self.assertRaises(ValueError):
-        lookup_ops.HashTable(
+        lookup_ops.StaticHashTable(
             lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
 
   @test_util.run_deprecated_v1
@@ -271,7 +271,7 @@ class HashTableTest(test.TestCase):
     default_val = -1
     keys = constant_op.constant(["brain", "salad", "surgery"])
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    table = lookup_ops.HashTable(
+    table = lookup_ops.StaticHashTable(
         lookup_ops.KeyValueTensorInitializer(keys, values),
         default_val,
         name="t1")
@@ -287,12 +287,12 @@ class HashTableTest(test.TestCase):
       table.initializer.run()
       self.assertAllEqual(3, self.evaluate(table.size()))
 
-  def testHashTableInt32String(self):
+  def testStaticHashTableInt32String(self):
     with self.cached_session():
       default_val = "n/a"
       keys = constant_op.constant([0, 1, 2], dtypes.int32)
       values = constant_op.constant(["brain", "salad", "surgery"])
-      table = lookup_ops.HashTable(
+      table = lookup_ops.StaticHashTable(
           lookup_ops.KeyValueTensorInitializer(keys, values), default_val)
       self.evaluate(table.initializer)
 
@@ -576,7 +576,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
       init = lookup_ops.KeyValueTensorInitializer(
           ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string, dtypes.int64)
       self.assertEqual("", init._shared_name)
-      table = lookup_ops.HashTable(init, default_value=-1)
+      table = lookup_ops.StaticHashTable(init, default_value=-1)
       table.initializer.run()
 
   def test_multiple_tables(self):
@@ -586,7 +586,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
             ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string,
             dtypes.int64)
         self.assertEqual("", init1._shared_name)
-        table1 = lookup_ops.HashTable(init1, default_value=-1)
+        table1 = lookup_ops.StaticHashTable(init1, default_value=-1)
         self.assertEqual("hash_table", table1.name)
         self.assertEqual("table_scope/hash_table",
                          table1.resource_handle.op.name)
@@ -594,7 +594,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
             ("brain", "salad", "surgery"), (0, 1, 2), dtypes.string,
             dtypes.int64)
         self.assertEqual("", init2._shared_name)
-        table2 = lookup_ops.HashTable(init2, default_value=-1)
+        table2 = lookup_ops.StaticHashTable(init2, default_value=-1)
         self.assertEqual("hash_table_1", table2.name)
         self.assertEqual("table_scope/hash_table_1",
                          table2.resource_handle.op.name)
@@ -604,7 +604,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
       init = lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                                   dtypes.int64, dtypes.int64)
       self.assertEqual("", init._shared_name)
-      table = lookup_ops.HashTable(init, default_value=-1)
+      table = lookup_ops.StaticHashTable(init, default_value=-1)
       table.initializer.run()
 
   def test_int32(self):
@@ -612,7 +612,7 @@ class KeyValueTensorInitializerTest(test.TestCase):
       init = lookup_ops.KeyValueTensorInitializer((42, 1, -1000), (0, 1, 2),
                                                   dtypes.int32, dtypes.int64)
       self.assertEqual("", init._shared_name)
-      table = lookup_ops.HashTable(init, default_value=-1)
+      table = lookup_ops.StaticHashTable(init, default_value=-1)
       with self.assertRaisesRegexp(errors_impl.OpError,
                                    "No OpKernel was registered"):
         table.initializer.run()
@@ -882,7 +882,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
         vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
         dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
     self.assertTrue("one_column_1.txt_-2_-1" in init._shared_name)
-    table = lookup_ops.HashTable(init, default_value)
+    table = lookup_ops.StaticHashTable(init, default_value)
     self.evaluate(table.initializer)
 
     output = table.lookup(constant_op.constant(["brain", "salad", "tank"]))
@@ -900,7 +900,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           vocabulary_file, dtypes.int64, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertTrue("one_column_int64.txt_-2_-1" in init._shared_name)
-      table = lookup_ops.HashTable(init, default_value)
+      table = lookup_ops.StaticHashTable(init, default_value)
       self.evaluate(table.initializer)
 
       output = table.lookup(
@@ -919,7 +919,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       init = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.int64, key_index, dtypes.string, value_index)
       self.assertTrue("one_column_2.txt_-1_-2" in init._shared_name)
-      table = lookup_ops.HashTable(init, default_value)
+      table = lookup_ops.StaticHashTable(init, default_value)
       self.evaluate(table.initializer)
 
       input_values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
@@ -941,7 +941,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       init = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.string, key_index, dtypes.int64, value_index)
       self.assertTrue("three_columns.txt_1_2" in init._shared_name)
-      table = lookup_ops.HashTable(init, default_value)
+      table = lookup_ops.StaticHashTable(init, default_value)
       self.evaluate(table.initializer)
 
       input_string = constant_op.constant(["brain", "salad", "surgery"])
@@ -963,7 +963,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           vocabulary_file, dtypes.string, key_index, dtypes.int64, value_index)
       self.assertTrue("three_columns.txt_2_1" in init._shared_name)
       with self.assertRaisesOpError("is not a valid"):
-        table = lookup_ops.HashTable(init, default_value)
+        table = lookup_ops.StaticHashTable(init, default_value)
         self.evaluate(table.initializer)
 
   def testInvalidDataType(self):
@@ -979,7 +979,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
                                               key_index, dtypes.string,
                                               value_index)
         self.assertTrue("one_column_3.txt_-2_-1" in init._shared_name)
-        lookup_ops.HashTable(init, default_value)
+        lookup_ops.StaticHashTable(init, default_value)
 
   def testInvalidIndex(self):
     vocabulary_file = self._createVocabFile("one_column_4.txt")
@@ -992,7 +992,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       self.assertTrue("one_column_4.txt_1_-1" in init._shared_name)
 
       with self.assertRaisesOpError("Invalid number of columns"):
-        table = lookup_ops.HashTable(init, default_value)
+        table = lookup_ops.StaticHashTable(init, default_value)
         self.evaluate(table.initializer)
 
   def testInitializeSameTableWithMultipleNodes(self):
@@ -1004,17 +1004,17 @@ class InitializeTableFromFileOpTest(test.TestCase):
           vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertTrue("one_column_5.txt_-2_-1" in init1._shared_name)
-      table1 = lookup_ops.HashTable(init1, default_value)
+      table1 = lookup_ops.StaticHashTable(init1, default_value)
       init2 = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertTrue("one_column_5.txt_-2_-1" in init2._shared_name)
-      table2 = lookup_ops.HashTable(init2, default_value)
+      table2 = lookup_ops.StaticHashTable(init2, default_value)
       init3 = lookup_ops.TextFileInitializer(
           vocabulary_file, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertTrue("one_column_5.txt_-2_-1" in init3._shared_name)
-      table3 = lookup_ops.HashTable(init3, default_value)
+      table3 = lookup_ops.StaticHashTable(init3, default_value)
 
       self.evaluate(lookup_ops.tables_initializer())
 
@@ -1033,7 +1033,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
     with self.cached_session():
       default_value = -1
       with self.assertRaises(ValueError):
-        lookup_ops.HashTable(
+        lookup_ops.StaticHashTable(
             lookup_ops.TextFileInitializer(
                 "", dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                 dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
@@ -1052,7 +1052,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           lookup_ops.TextFileIndex.LINE_NUMBER,
           vocab_size=vocab_size)
       self.assertTrue("one_column6.txt_3_-2_-1" in init1._shared_name)
-      table1 = lookup_ops.HashTable(init1, default_value)
+      table1 = lookup_ops.StaticHashTable(init1, default_value)
 
       # Initialize from file.
       self.evaluate(table1.initializer)
@@ -1069,7 +1069,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           vocab_size=vocab_size)
       self.assertTrue("one_column7.txt_5_-2_-1" in init2._shared_name)
       with self.assertRaisesOpError("Invalid vocab_size"):
-        table2 = lookup_ops.HashTable(init2, default_value)
+        table2 = lookup_ops.StaticHashTable(init2, default_value)
         self.evaluate(table2.initializer)
 
       vocab_size = 1
@@ -1082,7 +1082,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           lookup_ops.TextFileIndex.LINE_NUMBER,
           vocab_size=vocab_size)
       self.assertTrue("one_column3.txt_1_-2_-1" in init3._shared_name)
-      table3 = lookup_ops.HashTable(init3, default_value)
+      table3 = lookup_ops.StaticHashTable(init3, default_value)
 
       # Smaller vocab size reads only vocab_size records.
       self.evaluate(table3.initializer)
@@ -1098,7 +1098,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
           "old_file.txt", dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
           dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER)
       self.assertTrue("old_file.txt_-2_-1" in init._shared_name)
-      table = lookup_ops.HashTable(init, default_value)
+      table = lookup_ops.StaticHashTable(init, default_value)
 
       # Initialize with non existing file (old_file.txt) should fail.
       # TODO(yleon): Update message, which might change per FileSystem.
@@ -1124,7 +1124,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       # Invalid data type
       other_type = constant_op.constant(1)
       with self.assertRaises(Exception) as cm:
-        lookup_ops.HashTable(
+        lookup_ops.StaticHashTable(
             lookup_ops.TextFileInitializer(
                 other_type, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                 dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
@@ -1135,7 +1135,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       filenames = constant_op.constant([vocabulary_file, vocabulary_file])
       if not context.executing_eagerly():
         with self.assertRaises(Exception) as cm:
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileInitializer(
                   filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                   dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
@@ -1143,7 +1143,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
         self.assertTrue(isinstance(cm.exception, (ValueError, TypeError)))
       else:
         with self.assertRaises(errors_impl.InvalidArgumentError):
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileInitializer(
                   filenames, dtypes.string, lookup_ops.TextFileIndex.WHOLE_LINE,
                   dtypes.int64, lookup_ops.TextFileIndex.LINE_NUMBER),
@@ -1157,7 +1157,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       init = lookup_ops.TextFileStringTableInitializer(
           vocab_file, vocab_size=vocab_size)
       self.assertTrue("feat_to_id_1.txt_3_-1_-2", init._shared_name)
-      table = lookup_ops.HashTable(init, default_value)
+      table = lookup_ops.StaticHashTable(init, default_value)
 
       self.evaluate(table.initializer)
 
@@ -1176,7 +1176,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       init = lookup_ops.TextFileIdTableInitializer(
           vocab_file, vocab_size=vocab_size)
       self.assertTrue("feat_to_id_2.txt_3_-1_-2", init._shared_name)
-      table = lookup_ops.HashTable(init, default_value)
+      table = lookup_ops.StaticHashTable(init, default_value)
       self.evaluate(table.initializer)
 
       input_string = constant_op.constant(["brain", "salad", "surgery", "UNK"])
@@ -1194,7 +1194,7 @@ class InitializeTableFromFileOpTest(test.TestCase):
       init = lookup_ops.TextFileIdTableInitializer(
           vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64)
       self.assertTrue("feat_to_id_3.txt_3_-1_-2", init._shared_name)
-      table = lookup_ops.HashTable(init, default_value)
+      table = lookup_ops.StaticHashTable(init, default_value)
       self.evaluate(table.initializer)
 
       out = table.lookup(
@@ -1219,7 +1219,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       vocab_size = 3
       oov_buckets = 1
       table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
                   vocab_file, vocab_size=vocab_size), default_value),
           oov_buckets)
@@ -1240,7 +1240,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       vocab_size = 3
       oov_buckets = 1
       table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
                   vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
               default_value),
@@ -1263,7 +1263,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       vocab_size = 3
       oov_buckets = 1
       table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
                   vocab_file, vocab_size=vocab_size, key_dtype=dtypes.int64),
               default_value), oov_buckets)
@@ -1341,7 +1341,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       vocab_size = 3
       oov_buckets = 3
 
-      vocab_table = lookup_ops.HashTable(
+      vocab_table = lookup_ops.StaticHashTable(
           lookup_ops.TextFileIdTableInitializer(
               vocab_file, vocab_size=vocab_size), default_value)
       table1 = lookup_ops.IdTableWithHashBuckets(
@@ -1382,7 +1382,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       vocab_size = 3
       oov_buckets = 1
       table1 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
                   vocab_file, vocab_size=vocab_size), default_value),
           oov_buckets)
@@ -1405,7 +1405,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       # Underlying lookup table already initialized in previous session.
       # No need to call table2.initializer.run()
       table2 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
                   vocab_file, vocab_size=vocab_size), default_value),
           oov_buckets)
@@ -1425,14 +1425,14 @@ class IdTableWithHashBucketsTest(test.TestCase):
       vocab_size = 3
       oov_buckets = 0
       table1 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
                   vocab_file, vocab_size=vocab_size), default_value1),
           oov_buckets)
 
       default_value2 = -2
       table2 = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(
                   vocab_file, vocab_size=vocab_size), default_value2),
           oov_buckets)
@@ -1465,7 +1465,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           constant_op.constant(input_shape, dtypes.int64))
 
       table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.TextFileIdTableInitializer(vocab_file, vocab_size=3),
               -1), 1)
       table.initializer.run()
@@ -1492,7 +1492,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           constant_op.constant(input_shape, dtypes.int64))
 
       table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.KeyValueTensorInitializer(
                   (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
           1,
@@ -1521,7 +1521,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
           constant_op.constant(input_shape, dtypes.int64))
 
       table = lookup_ops.IdTableWithHashBuckets(
-          lookup_ops.HashTable(
+          lookup_ops.StaticHashTable(
               lookup_ops.KeyValueTensorInitializer(
                   (42, 1, -1000), (0, 1, 2), dtypes.int64, dtypes.int64), -1),
           1,
@@ -1545,7 +1545,7 @@ class IdTableWithHashBucketsTest(test.TestCase):
       default_value = -1
       vocab_size = 3
       oov_buckets = 1
-      lookup_table = lookup_ops.HashTable(
+      lookup_table = lookup_ops.StaticHashTable(
           lookup_ops.TextFileIdTableInitializer(
               vocab_file, vocab_size=vocab_size), default_value)
 
@@ -2130,14 +2130,14 @@ class MutableHashTableOpTest(test.TestCase):
       self.assertAllEqual((b"brain", b"salad", b"n/a"), result)
 
 
-class MutableDenseHashTableOpTest(test.TestCase):
+class DenseHashTableOpTest(test.TestCase):
 
   def testBasic(self):
     with self.cached_session():
 
       keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
       values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
@@ -2164,7 +2164,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
       keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
       values = constant_op.constant([True, True, True, True], dtypes.bool)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.bool,
           default_value=False,
@@ -2190,7 +2190,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     with self.cached_session():
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "Empty and deleted keys"):
-        table = lookup_ops.MutableDenseHashTable(
+        table = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
             default_value=-1,
@@ -2203,7 +2203,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     with self.cached_session():
       keys = constant_op.constant([11, 12, 13], dtypes.int64)
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
@@ -2225,7 +2225,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       keys = constant_op.constant(["a", "b", "c", "d"], dtypes.string)
       values = constant_op.constant([0.0, 1.1, 2.2, 3.3], dtypes.float32)
       default_value = constant_op.constant(-1.5, dtypes.float32)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.string,
           dtypes.float32,
           default_value=default_value,
@@ -2254,7 +2254,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
         keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
         values = constant_op.constant([0.0, 1.1, 2.2, 3.3], float_dtype)
         default_value = constant_op.constant(-1.5, float_dtype)
-        table = lookup_ops.MutableDenseHashTable(
+        table = lookup_ops.DenseHashTable(
             dtypes.int64,
             float_dtype,
             default_value=default_value,
@@ -2282,7 +2282,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       values = constant_op.constant([[0, 1, 2, 3], [3, 4, 5, 6], [6, 7, 8, 9]],
                                     dtypes.int64)
       default_value = constant_op.constant([-1, -2, -3, -4], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2325,7 +2325,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       empty_key = constant_op.constant([0, 3], dtypes.int64)
       deleted_key = constant_op.constant([-1, -1], dtypes.int64)
       default_value = constant_op.constant(-1, dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2361,7 +2361,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     with self.cached_session():
       keys = constant_op.constant([11, 12, 13], dtypes.int64)
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
@@ -2396,7 +2396,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
       keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
       values = constant_op.constant([1, 2, 3, 4], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
@@ -2438,7 +2438,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       deleted_key = -1
       keys = constant_op.constant([11, 12, 13, 14], dtypes.int64)
       values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2465,7 +2465,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       self.assertEqual(save_path, val)
 
     with self.session(graph=ops.Graph()) as sess:
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2502,7 +2502,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     deleted_key = -1
     keys = constant_op.constant([11, 12, 13], dtypes.int64)
     values = constant_op.constant([0, 1, 2], dtypes.int64)
-    save_table = lookup_ops.MutableDenseHashTable(
+    save_table = lookup_ops.DenseHashTable(
         dtypes.int64,
         dtypes.int64,
         default_value=default_value,
@@ -2522,7 +2522,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     save_path = save_checkpoint.save(save_prefix)
     del save_table, save_checkpoint
 
-    load_table = lookup_ops.MutableDenseHashTable(
+    load_table = lookup_ops.DenseHashTable(
         dtypes.int64,
         dtypes.int64,
         default_value=default_value,
@@ -2563,7 +2563,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
                                   dtypes.int64)
       values = constant_op.constant([[0, 1], [2, 3], [2, 4], [4, 5]],
                                     dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2593,7 +2593,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       empty_key = constant_op.constant([11, 13], dtypes.int64)
       deleted_key = constant_op.constant([-2, -3], dtypes.int64)
       default_value = constant_op.constant([-1, -2], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2634,7 +2634,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       keys = constant_op.constant([[11, 12], [11, 14], [12, 13], [13, 14]],
                                   dtypes.int64)
       values = constant_op.constant([0, 1, 2, 3], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2664,7 +2664,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       empty_key = constant_op.constant([11, 13], dtypes.int64)
       deleted_key = constant_op.constant([-1, -1], dtypes.int64)
       default_value = constant_op.constant(-1, dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=default_value,
@@ -2698,7 +2698,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       # The values are chosen to make sure collisions occur when using GCC STL
       keys = constant_op.constant([11, 12, 13, 19, 20, 21], dtypes.int64)
       values = constant_op.constant([51, 52, 53, 54, 55, 56], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
@@ -2722,7 +2722,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
     with self.cached_session():
       keys = constant_op.constant([11, 0, 13], dtypes.int64)
       values = constant_op.constant([0, 1, 2], dtypes.int64)
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
@@ -2742,7 +2742,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
   def testErrors(self):
     with self.cached_session():
-      table = lookup_ops.MutableDenseHashTable(
+      table = lookup_ops.DenseHashTable(
           dtypes.int64,
           dtypes.int64,
           default_value=-1,
@@ -2785,7 +2785,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "Number of buckets must be"):
-        table2 = lookup_ops.MutableDenseHashTable(
+        table2 = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
             default_value=-1,
@@ -2797,7 +2797,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
       with self.assertRaisesRegexp(
           errors_impl.InvalidArgumentError,
           "Empty and deleted keys must have same shape"):
-        table3 = lookup_ops.MutableDenseHashTable(
+        table3 = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
             default_value=-1,
@@ -2807,7 +2807,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "Empty and deleted keys cannot be equal"):
-        table4 = lookup_ops.MutableDenseHashTable(
+        table4 = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
             default_value=-1,
@@ -2817,7 +2817,7 @@ class MutableDenseHashTableOpTest(test.TestCase):
 
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    "Empty and deleted keys cannot be equal"):
-        table5 = lookup_ops.MutableDenseHashTable(
+        table5 = lookup_ops.DenseHashTable(
             dtypes.int64,
             dtypes.int64,
             default_value=-1,
@@ -2874,10 +2874,10 @@ class MutableHashTableBenchmark(test.Benchmark):
       assert sess.run(size) >= 1000 * 32
 
 
-class MutableDenseHashTableBenchmark(MutableHashTableBenchmark):
+class DenseHashTableBenchmark(MutableHashTableBenchmark):
 
   def _create_table(self):
-    return lookup_ops.MutableDenseHashTable(
+    return lookup_ops.DenseHashTable(
         dtypes.int64,
         dtypes.float32,
         default_value=0.0,
