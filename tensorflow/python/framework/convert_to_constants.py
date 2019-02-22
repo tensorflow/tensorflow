@@ -81,7 +81,15 @@ def convert_variables_to_constants_v2(func):
   get_name = lambda name: name.split(":")[0]
   map_name_to_node = {get_name(node.name): node for node in graph_def.node}
 
-  variables_generator = func.graph.variables
+  # TODO(b/125838789): Use `func.graph.captures`.
+  # Get mapping from input name to variable value.
+  tensor_data = {}
+  input_tensors = func.inputs[-len(func.captured_inputs):]
+  for var in func.graph.variables:
+    index = func.captured_inputs.index(var.handle)
+    tensor = input_tensors[index]
+    tensor_data[get_name(tensor.name)] = var.numpy()
+
   resource_identities = {}
   resource_placeholders = {}
   for node in graph_def.node:
@@ -98,11 +106,9 @@ def convert_variables_to_constants_v2(func):
                          "to the ReadVariableOp.")
       # Build a map of Placeholder ops that are inputs to ReadVariableOps to the
       # variable's dtype and data.
-      # TODO(nupurgarg): Confirm relationship between variables in
-      # `func.graph.variables` and ReadVariableOps in `graph_def.nodes`.
       resource_placeholders[input_name] = {
           "dtype": node.attr["dtype"],
-          "data": next(variables_generator).numpy(),
+          "data": tensor_data[input_name],
       }
 
   # Reconstruct the graph with constants in place of variables.
