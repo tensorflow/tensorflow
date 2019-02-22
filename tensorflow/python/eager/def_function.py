@@ -514,7 +514,7 @@ class Function(object):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    @function_lib.defun(autograph=False)  # Pure graph code.
     def initialize_variables():
       for v, init in initializer_map.items():
         with ops.init_scope():

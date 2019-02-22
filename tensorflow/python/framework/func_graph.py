@@ -633,7 +633,8 @@ def func_graph_from_py_func(name,
         # Wrapping around a decorator allows checks like tf_inspect.getargspec
         # to be accurate.
         converted_func = tf_decorator.make_decorator(original_func, wrapper)
-        tf_decorator.rewrap(python_func, original_func, converted_func)
+        python_func = tf_decorator.rewrap(python_func, original_func,
+                                          converted_func)
 
       func_outputs = python_func(*func_args, **func_kwargs)
 
