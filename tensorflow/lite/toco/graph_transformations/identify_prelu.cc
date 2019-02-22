@@ -55,18 +55,38 @@ namespace toco {
   }
 
   const auto* relu_input_op = GetOpWithOutput(*model, add_op->inputs[0]);
-  if (relu_input_op == nullptr || relu_input_op->type != OperatorType::kRelu ||
-      relu_input_op->inputs.size() != 1 ||
+  const auto* mul_op = GetOpWithOutput(*model, add_op->inputs[1]);
+  // We check if they are commutative and then proceed
+  if (mul_op == nullptr || relu_input_op == nullptr) {
+    return ::tensorflow::Status::OK();
+  }
+
+  if (relu_input_op->type != OperatorType::kRelu ||
+      relu_input_op->type != OperatorType::kMul ||
+      mul_op->type != OperatorType::kMul ||
+      mul_op->type != OperatorType::kRelu) {
+    return ::tensorflow::Status::OK();
+  }
+
+  // We now know one of the operator is Relu and other is Mul let's find which
+  // one is which
+  if (relu_input_op->type == OperatorType::kRelu &&
+      mul_op->type == OperatorType::kMul) {
+    // Just do nothing everything is fine
+  } else {
+    // swap the operator and continue
+    const Operator* swap = relu_input_op;
+    relu_input_op = mul_op;
+    mul_op = swap;
+  }
+
+  if (relu_input_op->inputs.size() != 1 ||
       relu_input_op->fused_activation_function !=
           FusedActivationFunctionType::kNone) {
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(ycling): Both Add and Mul are commutative. Support the case where
-  // the position of operands are exchanged.
-  const auto* mul_op = GetOpWithOutput(*model, add_op->inputs[1]);
-  if (mul_op == nullptr || mul_op->type != OperatorType::kMul ||
-      mul_op->inputs.size() != 2 ||
+  if (mul_op->inputs.size() != 2 ||
       mul_op->fused_activation_function != FusedActivationFunctionType::kNone) {
     return ::tensorflow::Status::OK();
   }
@@ -75,8 +95,7 @@ namespace toco {
 
   const auto* relu_neg_input_op = GetOpWithOutput(*model, mul_op->inputs[1]);
 
-  if (relu_neg_input_op == nullptr ||
-      relu_neg_input_op->inputs.size() != 1) {
+  if (relu_neg_input_op == nullptr || relu_neg_input_op->inputs.size() != 1) {
     return ::tensorflow::Status::OK();
   }
 
