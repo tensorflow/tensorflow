@@ -169,14 +169,8 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
 INSTANTIATE_TEST_CASE_P(
     MathExhaustiveTest_Instantiation, MathExhaustiveTest,
     ::testing::ValuesIn(std::vector<Testcase>{
-        Testcase{"rsqrt", Rsqrt, [](float x) { return 1 / std::sqrt(x); }}
-            .set_tolerance(0.05, 0.05)
-            .set_skip_infs()
-            .set_skip_neg_zero(),
         Testcase{"square", Square, [](float x) { return x * x; }},
         Testcase{"reciprocal", Reciprocal, [](float x) { return 1 / x; }},
-        Testcase{"erf", Erf, std::erf}.set_tolerance(0.001, 0.0001),
-        Testcase{"erfc", Erfc, std::erfc}.set_tolerance(0.001, 0.0001),
         Testcase{"lgamma", Lgamma, std::lgamma}
             .set_tolerance(0.1, 0.15)
             .set_fewer_infs_ok(),
