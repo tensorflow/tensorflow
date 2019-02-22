@@ -135,7 +135,7 @@ update_bazel_flags() {
   fi
   # Clean up whitespaces
   BAZEL_BUILD_FLAGS=$(str_strip "${BAZEL_BUILD_FLAGS}")
-  BAZEL_TEST_FLAGS=$(str_strp "${BAZEL_TEST_FLAGS}")
+  BAZEL_TEST_FLAGS=$(str_strip "${BAZEL_TEST_FLAGS}")
   # Cleaned bazel flags
   echo "Bazel build flags (cleaned):\n" "${BAZEL_BUILD_FLAGS}"
   echo "Bazel test flags (cleaned):\n" "${BAZEL_TEST_FLAGS}"
