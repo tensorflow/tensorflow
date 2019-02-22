@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
@@ -139,9 +140,16 @@ def _dataset_for_stmt(ds, extra_test, body, init_state):
     new_state = body(iterate, *state)
     return new_state
 
-  results = ds.reduce(init_state, reduce_body)
+  if init_state:
+    return ds.reduce(init_state, reduce_body)
 
-  return results
+  # Workaround for Datset.reduce not allowing empty state tensors - create
+  # a dummy state variable that remains unused.
+  def reduce_body_with_dummy_state(state, iterate):
+    reduce_body((), iterate)
+    return state
+  ds.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
+  return ()
 
 
 def while_stmt(test, body, init_state, extra_deps, opts=None):
