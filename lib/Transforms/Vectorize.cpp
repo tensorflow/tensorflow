@@ -979,7 +979,7 @@ static Value *vectorizeConstant(Instruction *inst, const ConstantOp &constant,
   OperationState state(
       b.getContext(), loc, constantOpInst->getName().getStringRef(), {},
       {vectorType},
-      {make_pair(Identifier::get("value", b.getContext()), attr)});
+      {std::make_pair(Identifier::get("value", b.getContext()), attr)});
 
   return b.createOperation(state)->getResult(0);
 }
