@@ -13,7 +13,6 @@
 		CD84CB0D2216BB4F0076AC39 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD84CB072216BB4F0076AC39 /* ViewController.swift */; };
 		CD84CB0E2216BB4F0076AC39 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD84CB092216BB4F0076AC39 /* AppDelegate.swift */; };
 		CD84CB112216BC280076AC39 /* labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB0F2216BC280076AC39 /* labels.txt */; };
-		CD84CB122216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB102216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite */; };
 		CD84CB192216BD0E0076AC39 /* DeepLabModel.mm in Sources */ = {isa = PBXBuildFile; fileRef = CD84CB172216BD0E0076AC39 /* DeepLabModel.mm */; };
 /* End PBXBuildFile section */
 
@@ -26,7 +25,6 @@
 		CD84CB072216BB4F0076AC39 /* ViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
 		CD84CB092216BB4F0076AC39 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
 		CD84CB0F2216BC280076AC39 /* labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = labels.txt; sourceTree = "<group>"; };
-		CD84CB102216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = deeplabv3_257_mv_gpu.tflite; sourceTree = "<group>"; };
 		CD84CB162216BD0D0076AC39 /* DeepLabApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DeepLabApp-Bridging-Header.h"; sourceTree = "<group>"; };
 		CD84CB172216BD0E0076AC39 /* DeepLabModel.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DeepLabModel.mm; sourceTree = "<group>"; };
 		CD84CB182216BD0E0076AC39 /* DeepLabModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DeepLabModel.h; sourceTree = "<group>"; };
@@ -72,7 +70,6 @@
 		CD84CAFF2216BB4F0076AC39 /* Resources */ = {
 			isa = PBXGroup;
 			children = (
-				CD84CB102216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite */,
 				CD84CB0F2216BC280076AC39 /* labels.txt */,
 				CD84CB002216BB4F0076AC39 /* Assets.xcassets */,
 				CD84CB012216BB4F0076AC39 /* LaunchScreen.storyboard */,
@@ -171,7 +168,6 @@
 				CD84CB0C2216BB4F0076AC39 /* Main.storyboard in Resources */,
 				CD84CB0A2216BB4F0076AC39 /* Assets.xcassets in Resources */,
 				CD84CB0B2216BB4F0076AC39 /* LaunchScreen.storyboard in Resources */,
-				CD84CB122216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite in Resources */,
 				CD84CB112216BC280076AC39 /* labels.txt in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
