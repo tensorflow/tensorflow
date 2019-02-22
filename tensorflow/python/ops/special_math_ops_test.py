@@ -350,12 +350,12 @@ class EinsumTest(test.TestCase):
     with self.session(use_gpu=True):
       output_value = self.evaluate(output_tensor)
 
-    correct_value=0
-    if axes=='ijji':
-        output =  math_ops.trace(*input_tensors)
-        correct_value = self.evaluate(output)
+    correct_value = 0
+    if axes == 'ijji':
+      output = math_ops.trace(*input_tensors)
+      correct_value = self.evaluate(output)
     else:
-        correct_value = np.einsum(axes, *input_vals)
+      correct_value = np.einsum(axes, *input_vals)
     err = np.abs(correct_value - output_value).max()
     self.assertLess(err, 1e-8)
 
