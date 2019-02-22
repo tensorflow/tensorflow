@@ -185,7 +185,7 @@ def _graph_mode_decorator(f, *args, **kwargs):
                    current_var_scope.local_variables())
   new_vars = after_vars - before_vars
   for v in new_vars:
-    if not isinstance(v, resource_variable_ops.ResourceVariable):
+    if not resource_variable_ops.is_resource_variable(v):
       raise TypeError(
           "All variables used by a function wrapped with @custom_gradient must "
           "be `ResourceVariable`s. Ensure that no `variable_scope` is created "

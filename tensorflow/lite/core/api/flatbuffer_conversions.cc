@@ -683,6 +683,7 @@ TfLiteStatus ParseOpData(const Operator* op, BuiltinOperator op_type,
     case BuiltinOperator_COS:
     case BuiltinOperator_CUSTOM:
     case BuiltinOperator_DEQUANTIZE:
+    case BuiltinOperator_ELU:
     case BuiltinOperator_EMBEDDING_LOOKUP:
     case BuiltinOperator_EQUAL:
     case BuiltinOperator_EXP:

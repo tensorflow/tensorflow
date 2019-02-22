@@ -950,13 +950,8 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
   TfLiteTensor* output = GetOutput(context, node, 0);
   switch (input->type) {
     case kTfLiteFloat32: {
-      size_t elements = input->bytes / sizeof(float);
-      float* in = input->data.f;
-      float* in_end = in + elements;
-      float* out = output->data.f;
-      for (; in < in_end; in++, out++) {
-	      *out = *in > 0 ? *in : (std::exp(*in) -1);
-      }
+      optimized_ops::Elu(GetTensorShape(input), GetTensorData<float>(input),
+                         GetTensorShape(output), GetTensorData<float>(output));
       return kTfLiteOk;
     } break;
     default:
@@ -967,6 +962,13 @@ TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
 }
 
 }  // namespace activations
+
+TfLiteRegistration* Register_ELU() {
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                 activations::GenericPrepare,
+                                 activations::EluEval};
+  return &r;
+}
 
 TfLiteRegistration* Register_RELU() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,

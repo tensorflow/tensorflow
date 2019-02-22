@@ -748,32 +748,6 @@ class TestWholeModelSaving(test.TestCase):
       os.close(fd)
       os.remove(fname)
 
-  def test_saving_with_dir_not_created(self):
-    if h5py is None:
-      self.skipTest('h5py required to run this test')
-
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir)
-    for f in ['tf', 'h5']:
-      with self.cached_session():
-        data = np.random.random((1000, 32)).astype(np.float32)
-        labels = np.random.random((1000, 10)).astype(np.float32)
-
-        model = keras.models.Sequential([
-            keras.layers.Dense(10, activation='softmax'),
-            keras.layers.Dense(10, activation='softmax')
-        ])
-
-        model.compile(
-            optimizer=training_module.RMSPropOptimizer(0.001),
-            loss='categorical_crossentropy',
-            metrics=['accuracy'])
-
-        model.fit(data, labels)
-        prefix = os.path.join(temp_dir, f, 'ckpt')
-        model.save_weights(prefix, save_format=f)
-        model.load_weights(prefix)
-
 
 class SubclassedModel(training.Model):
 

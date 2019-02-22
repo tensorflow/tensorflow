@@ -118,6 +118,20 @@ class QuantizedActivationsOpModel : public BaseActivationsOpModel {
   }
 };
 
+TEST(FloatActivationsOpTest, Elu) {
+  FloatActivationsOpModel m(BuiltinOperator_ELU,
+                            /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});
+  m.SetInput({
+      0, -6, 2, -4,     //
+      3, -2, 10, -0.1,  //
+  });
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray(ArrayFloatNear({
+                                 0.0, -0.997521, 2.0, -0.981684,    //
+                                 3.0, -0.864665, 10.0, -0.0951626,  //
+                             })));
+}
+
 TEST(FloatActivationsOpTest, Relu) {
   FloatActivationsOpModel m(BuiltinOperator_RELU,
                             /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}});

@@ -1176,6 +1176,8 @@ Status MarkForCompilationPass::RunImpl(
       if (absl::optional<absl::string_view> cluster_name =
               GetXlaClusterForNode(*n)) {
         n->set_name(absl::StrCat(*cluster_name, "/", n->name()));
+      } else if (n->type_string() == "VarHandleOp") {
+        n->set_name(absl::StrCat("varhandle/", n->name()));
       } else {
         // There is room for improvement here.  In particular, it may help to
         // split these unclustered nodes into classes where every node in a

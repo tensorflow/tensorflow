@@ -2065,6 +2065,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kBatchNormalization:
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
+    case OperatorType::kElu:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:

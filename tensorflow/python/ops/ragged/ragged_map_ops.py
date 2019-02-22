@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Functional operations.
-
-See the [Higher Order
-Functions](https://tensorflow.org/api_guides/python/functional_ops) guide.
-"""
+"""Functional operations for RaggedTensors."""
 
 from __future__ import absolute_import
 from __future__ import division

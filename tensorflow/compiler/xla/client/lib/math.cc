@@ -107,10 +107,6 @@ XlaOp IsNegZero(XlaOp operand) {
   });
 }
 
-XlaOp Sqrt(XlaOp operand) { return Pow(operand, ScalarLike(operand, 0.5)); }
-
-XlaOp Rsqrt(XlaOp operand) { return Pow(operand, ScalarLike(operand, -0.5)); }
-
 XlaOp Square(XlaOp operand) { return operand * operand; }
 
 XlaOp Reciprocal(XlaOp operand) { return ScalarLike(operand, 1.0) / operand; }

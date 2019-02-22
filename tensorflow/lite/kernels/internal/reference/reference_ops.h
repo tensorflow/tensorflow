@@ -391,6 +391,15 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
   }
 }
 
+inline void Elu(const RuntimeShape& input_shape, const float* input_data,
+                const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const float val = input_data[i];
+    output_data[i] = val < 0.0 ? std::exp(val) - 1 : val;
+  }
+}
+
 inline void Relu(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);

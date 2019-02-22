@@ -1685,18 +1685,23 @@ class Layer(trackable.Trackable):
           value._use_resource_variables = True
 
     # Append value to list of trainable / non-trainable weights if relevant
-    if isinstance(value, tf_variables.Variable):
-      # Users may add extra weights/variables
-      # simply by assigning them to attributes (invalid for graph networks)
-      if not hasattr(self, '_trainable_weights'):
-        super(Layer, self).__setattr__('_trainable_weights', [])
-      if not hasattr(self, '_non_trainable_weights'):
-        super(Layer, self).__setattr__('_non_trainable_weights', [])
-      if value not in self._trainable_weights + self._non_trainable_weights:
-        if value.trainable:
-          self._trainable_weights.append(value)
-        else:
-          self._non_trainable_weights.append(value)
+    # TODO(b/125122625): This won't pick up on any variables added to a
+    # list/dict after creation.
+    for val in nest.flatten(value):
+      if isinstance(val, tf_variables.Variable):
+        # Users may add extra weights/variables
+        # simply by assigning them to attributes (invalid for graph networks)
+        if not hasattr(self, '_trainable_weights'):
+          super(Layer, self).__setattr__('_trainable_weights', [])
+        if not hasattr(self, '_non_trainable_weights'):
+          super(Layer, self).__setattr__('_non_trainable_weights', [])
+        if val not in self._trainable_weights + self._non_trainable_weights:
+          if val.trainable:
+            self._trainable_weights.append(val)
+          else:
+            self._non_trainable_weights.append(val)
+          backend.track_variable(val)
+
     super(Layer, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):

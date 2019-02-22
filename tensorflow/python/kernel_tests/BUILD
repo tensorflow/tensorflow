@@ -1104,6 +1104,8 @@ tf_py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
     ],
 )
 

@@ -1,5 +1,4 @@
-
-# List of Hosted Models
+# Hosted models
 
 # AutoML mobile image classification models (Float Models)
 

@@ -578,9 +578,11 @@ class Function(object):
     concrete_functions = []
     # pylint: disable=protected-access
     if self._stateful_fn:
-      concrete_functions.extend(self._stateful_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateful_fn._function_cache.all_values())
     if self._stateless_fn:
-      concrete_functions.extend(self._stateless_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
     deduplicated_concrete_functions = list()
     seen_signatures = list()

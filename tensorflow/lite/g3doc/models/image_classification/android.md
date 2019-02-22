@@ -3,21 +3,20 @@
 This tutorial provides a simple Android mobile application to classify images
 using the Android device camera. In this tutorial, you will download the demo
 application from the Tensorflow repository, build it on your computer, and
-install it on your Android Device. You will also learn how to customize the
+install it on your Android device. You will also learn how to customize the
 application to suit your requirements.
 
 ### Prerequisites
 
 *   Android Studio 3.2 (installed on a Linux, Mac or Windows machine)
 
-*   Android Device
+*   Android device
 
 *   USB cable (to connect Android device to your computer)
 
 ### Step 1. Clone the TensorFlow source code
 
-First, we clone the GitHub repository on the computer in a folder to get the
-demo application.
+Clone the GitHub repository to your computer to get the demo application.
 
 ```
 
@@ -29,21 +28,21 @@ Open the TensorFlow source code in Android Studio. To do this, open Android
 Studio and select `Open an existing project` setting the folder to
 `tensorflow/lite/examples/android`
 
-![Step 1](images/classifydemo_img1.png)
+<img src="images/classifydemo_img1.png" />
 
 This folder contains the demo application for image classification, object
 detection, and speech hotword detection.
 
 ### Step 2. Build the Android Studio project
 
-In this step, Select `Build -> Make Project` and check that the project builds
+Select `Build -> Make Project` and check that the project builds
 successfully. You will need Android SDK configured in the settings. You'll need
 at least SDK version 23. The gradle file will prompt you to download any missing
 libraries.
 
-![Step 2](images/classifydemo_img4.png)
+<img src="images/classifydemo_img4.png" style="width: 40%" />
 
-![Step 2a](images/classifydemo_img2.png)
+<img src="images/classifydemo_img2.png" style="width: 60%" />
 
 #### TensorFlow Lite AAR from JCenter:
 
@@ -53,25 +52,25 @@ build.
 If you see a build error related to compatibility with Tensorflow Lite's Java
 API (example: method X is undefined for type Interpreter), there has likely been
 a backwards compatible change to the API. You will need to pull new app code
-that's compatible with the nightly build by running git pull.
+that's compatible with the nightly build by running `git pull`.
 
-### Step 3. Install and Run the app
+### Step 3. Install and run the app
 
-Connect the Android device to the computer, and be sure to approve any ADB
+Connect the Android device to the computer and be sure to approve any ADB
 permission prompts that appear on your phone. Select `Run -> Run app.` Select
-the deployment target in the connected devices to the device on which app will
+the deployment target in the connected devices to the device on which the app will
 be installed. This will install the app on the device.
 
-![Step 3](images/classifydemo_img5.png)
+<img src="images/classifydemo_img5.png" style="width: 60%" />
 
-![Step 3a](images/classifydemo_img6.png)
+<img src="images/classifydemo_img6.png" style="width: 70%" />
 
-![Step 3b](images/classifydemo_img7.png)
+<img src="images/classifydemo_img7.png" style="width: 40%" />
 
-![Step 3c](images/classifydemo_img8.png)
+<img src="images/classifydemo_img8.png" style="width: 80%" />
 
-To test the app, open the app named `TFL Classify` on the device. When you run
-the app first time, the app will request permission to access the camera.
+To test the app, open the app called `TFL Classify` on your device. When you run
+the app the first time, the app will request permission to access the camera.
 Re-installing the app may require you to uninstall the previous installations.
 
 ## Understanding Android App Code
@@ -85,7 +84,7 @@ This file depends on `AndroidManifest.xml` in the folder
 `tensorflow/tensorflow/lite/examples/android/app/src/main` to set the camera
 orientation.
 
-### Pre-process of bitmap image
+### Pre-process bitmap image
 
 The mobile application code that pre-processes the images and runs inference is
 in
@@ -102,7 +101,7 @@ DIM_PIXEL_SIZE);
 c.imgData.order(ByteOrder.nativeOrder());
 ```
 
-While running the application, we preprocess the incoming bitmap images from the
+While running the application, we pre-process the incoming bitmap images from the
 camera to a Bytebuffer. Since this model is quantized 8-bit, we will put a
 single byte for each channel. `imgData` will contain an encoded `Color` for each
 pixel in ARGB format, so we need to mask the least significant 8 bits to get

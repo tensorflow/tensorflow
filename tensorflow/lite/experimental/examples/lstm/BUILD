@@ -88,6 +88,7 @@ py_test(
         "no_pip",
     ],
     deps = [
+        ":rnn",
         ":rnn_cell",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",
@@ -110,6 +111,7 @@ py_test(
         "no_pip",
     ],
     deps = [
+        ":rnn",
         ":rnn_cell",
         "//tensorflow:tensorflow_py",
         "//tensorflow/examples/tutorials/mnist:input_data",

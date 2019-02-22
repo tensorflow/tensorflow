@@ -83,7 +83,7 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
   """Overload of for_stmt that executes a Python for loop."""
   state = init_state
   for target in iter_:
-    if not extra_test(*state):
+    if extra_test is not None and not extra_test(*state):
       break
     state = body(target, *state)
   return state
@@ -104,7 +104,9 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
     return state
 
   def while_cond(iterate_index, *state):
-    return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
+    if extra_test is not None:
+      return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
+    return iterate_index < n
 
   results = while_stmt(
       while_cond,
@@ -127,9 +129,11 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
 
 def _dataset_for_stmt(ds, extra_test, body, init_state):
   """Overload of for_stmt that iterates over TF Datasets."""
-  if extra_test(*init_state) is not True:
+
+  if extra_test is not None:
     raise NotImplementedError(
-        'break statements are not yet supported in for/Dataset loops')
+        'break and return statements are not yet supported in '
+        'for/Dataset loops.')
 
   def reduce_body(state, iterate):
     new_state = body(iterate, *state)

@@ -238,7 +238,7 @@ Successfully tagged riscv_build:latest
 
 Building micro_speech_test binary
 
--   Lauch the Docker that we just created using: `docker run -it-v
+-   Launch the Docker that we just created using: `docker run -it-v
     /tmp/copybara_out:/workspace riscv_build:latest bash`
 -   Enter the source root directory by running `cd /workspace`
 -   Download the dependencies by running
@@ -249,7 +249,7 @@ Building micro_speech_test binary
 -   Build the binary: `make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=riscv32_mcu`
 
-Lauching Renode to test the binary, currently this set up is not automated.
+Launching Renode to test the binary, currently this set up is not automated.
 
 -   Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's
     @/workspace/tensorflow/lite/experimental/micro/testing/sifive_fe310.resc'`
