@@ -93,7 +93,10 @@ tf_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
     ],
-    tags = ["nomac"],
+    tags = [
+        "nomac" +
+        "no_windows",
+    ],
 )
 
 py_library(
