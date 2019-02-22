@@ -1136,6 +1136,14 @@ class ComputationBuilder(object):
   def GetComputationStats(self):
     raise NotImplementedError()
 
+  def ReplicaId(self):
+    """Enqueues a ReplicaId operation onto the computation.
+
+    Returns:
+      A LocalOp representing the replica id.
+    """
+    return self._client.ReplicaId()
+
   def Pad(self, operand, padding_value, padding_config):
     """Enqueues a Pad operation onto the computation.
 
