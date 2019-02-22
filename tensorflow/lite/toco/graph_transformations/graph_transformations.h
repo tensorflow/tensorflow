@@ -102,8 +102,16 @@ class GraphTransformationsSet {
 // construct GraphTransformation objects by using 'new', pass us
 // the resulting raw pointers, and this RunGraphTransformations
 // takes care of delete'ing these pointers.
-void RunGraphTransformations(Model* model, const string& message,
-                             const GraphTransformationsSet& transformations);
+tensorflow::Status RunGraphTransformationsWithStatus(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations);
+
+inline void RunGraphTransformations(
+    Model* model, const string& msg,
+    const GraphTransformationsSet& transformations) {
+  auto s = RunGraphTransformationsWithStatus(model, msg, transformations);
+  CHECK(s.ok()) << s.error_message();
+}
 
 #define DECLARE_GRAPH_TRANSFORMATION(GTName)                     \
   class GTName : public GraphTransformation {                    \
@@ -127,6 +135,10 @@ DECLARE_GRAPH_TRANSFORMATION(FuseActivationFunctions)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoFollowingAffine)
 DECLARE_GRAPH_TRANSFORMATION(FuseBinaryIntoPrecedingAffine)
 DECLARE_GRAPH_TRANSFORMATION(FuseBroadcastIntoFollowingBinary)
+DECLARE_GRAPH_TRANSFORMATION(GroupBidirectionalSequenceLstm)
+DECLARE_GRAPH_TRANSFORMATION(GroupBidirectionalSequenceRnn)
+DECLARE_GRAPH_TRANSFORMATION(GroupDynamicBidirectionalSequenceLstm)
+DECLARE_GRAPH_TRANSFORMATION(GroupDynamicBidirectionalSequenceRnn)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Normalization)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyL2Pool)
 DECLARE_GRAPH_TRANSFORMATION(IdentifyLstmCell)

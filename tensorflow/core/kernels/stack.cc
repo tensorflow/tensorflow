@@ -96,7 +96,7 @@ class Stack : public ResourceBase {
 
   DataType ElemType() { return elem_type_; }
 
-  string DebugString() override {
+  string DebugString() const override {
     mutex_lock l(mu_);
     return strings::StrCat("Stack[", stack_name_, "]");
   }
@@ -244,9 +244,9 @@ void StackPushOp::ComputeAsync(OpKernelContext* ctx, DoneCallback done) {
     DeviceContext* device_ctxt = ctx->op_device_context();
     auto device = static_cast<tensorflow::Device*>(ctx->device());
     Allocator* allocator = device->GetAllocator(alloc_attrs);
-    AllocatorStats stats;
-    allocator->GetStats(&stats);
-    if (stats.bytes_in_use > (stats.bytes_limit * kOccupancy)) {
+    absl::optional<AllocatorStats> stats = allocator->GetStats();
+    if (stats && *stats->bytes_limit &&
+        stats->bytes_in_use > (*stats->bytes_limit * kOccupancy)) {
       // Asynchronously copy the tensor from GPU to CPU memory.
       // TODO(yuanbyu): Swap the oldest tensor first.
       AllocatorAttributes host_alloc_attrs;

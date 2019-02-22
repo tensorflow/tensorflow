@@ -58,7 +58,7 @@ class MatchFilenamesOnceTest(test_lib.TestCase):
       question = inp.match_filenames_once(
           os.path.join(self.get_temp_dir(), "match_filenames.?"))
       one = inp.match_filenames_once(additional[1])
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       self.assertItemsEqual(
           map(compat.as_bytes, filenames), self.evaluate(star))
@@ -84,7 +84,7 @@ class LimitEpochsTest(test_lib.TestCase):
     with self.cached_session():
       love_me = constant_op.constant("Love Me")
       love_me_two_times = inp.limit_epochs(love_me, num_epochs=2)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       self.assertEqual(b"Love Me", self.evaluate(love_me_two_times))
       self.assertEqual(b"Love Me", self.evaluate(love_me_two_times))
@@ -105,7 +105,7 @@ class InputProducerTest(test_lib.TestCase):
           input_tensor, num_epochs=num_epochs, shuffle=False)
       dequeue_many = queue.dequeue_many(len(input_tensor) * num_epochs)
       dequeue = queue.dequeue()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -132,7 +132,7 @@ class InputProducerTest(test_lib.TestCase):
           input_tensor, element_shape=[4], num_epochs=num_epochs, shuffle=False)
       dequeue_many = queue.dequeue_many(len(input_value) * num_epochs)
       dequeue = queue.dequeue()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -163,7 +163,7 @@ class StringInputProducerTest(test_lib.TestCase):
           strings, num_epochs=num_epochs, shuffle=False)
       dequeue_many = queue.dequeue_many(len(strings) * num_epochs)
       dequeue = queue.dequeue()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -186,7 +186,7 @@ class StringInputProducerTest(test_lib.TestCase):
           strings, num_epochs=num_epochs, shuffle=True, seed=271828)
       dequeue_many = queue.dequeue_many(len(strings))
       dequeue = queue.dequeue()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -234,7 +234,7 @@ class StringInputProducerTest(test_lib.TestCase):
           constant_op.constant(
               [], dtype=dtypes.string))
       dequeue = queue.dequeue()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners(coord=coord)
       with self.assertRaises(errors_impl.OutOfRangeError):
@@ -284,7 +284,7 @@ class RangeInputProducerTest(test_lib.TestCase):
           range_size, num_epochs=num_epochs, shuffle=False)
       dequeue_many = queue.dequeue_many(range_size * num_epochs)
       dequeue = queue.dequeue()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -307,7 +307,7 @@ class RangeInputProducerTest(test_lib.TestCase):
           range_size, num_epochs=num_epochs, shuffle=True, seed=314159)
       dequeue_many = queue.dequeue_many(range_size)
       dequeue = queue.dequeue()
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -358,7 +358,7 @@ class SliceInputProducerTest(test_lib.TestCase):
       source_ints = [2, 3, 5, 7]
       slices = inp.slice_input_producer(
           [source_strings, source_ints], num_epochs=num_epochs, shuffle=False)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -386,7 +386,7 @@ class SliceInputProducerTest(test_lib.TestCase):
           num_epochs=num_epochs,
           shuffle=True,
           seed=161803)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -487,7 +487,7 @@ class BatchTest(test_lib.TestCase):
         batched = inp.batch(
             [counter, sparse_counter, "string"], batch_size=batch_size)
         batched_fetch = batched
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -555,7 +555,7 @@ class BatchTest(test_lib.TestCase):
       counter = examples.count_up_to(num_batches * batch_size)
       string = array_ops.tile(["string"],
                               math_ops.to_int32(array_ops.stack([counter])))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       batched = inp.batch(
           [counter, string], batch_size=batch_size, dynamic_pad=True)
@@ -590,7 +590,7 @@ class BatchTest(test_lib.TestCase):
           dense_shape=[1])
       pre_batched = inp.batch([counter, sparse_counter, "string"], batch_size=2)
       batched = inp.batch(pre_batched, enqueue_many=True, batch_size=batch_size)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -629,7 +629,7 @@ class BatchTest(test_lib.TestCase):
           [counter, sparse_counter, "string"],
           batch_size=batch_size,
           num_threads=4)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -672,7 +672,7 @@ class BatchTest(test_lib.TestCase):
           [counter, sparse_counter, "string"],
           batch_size=batch_size,
           allow_smaller_final_batch=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -730,7 +730,7 @@ class BatchTest(test_lib.TestCase):
           batch_size=batch_size,
           num_threads=4,
           allow_smaller_final_batch=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1058,7 +1058,7 @@ class BatchJoinTest(test_lib.TestCase):
                           batched_fetch[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((batch_size,), batched_fetch[2].get_shape().as_list())
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1157,7 +1157,7 @@ class BatchJoinTest(test_lib.TestCase):
       self.assertAllEqual((batch_size,), batched[0].get_shape().as_list())
       self.assertAllEqual((batch_size, None), batched[1].get_shape().as_list())
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1244,7 +1244,7 @@ class BatchJoinTest(test_lib.TestCase):
       self.assertAllEqual((2,), batched[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((None,), batched[2].get_shape().as_list())
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1339,7 +1339,7 @@ class BatchJoinTest(test_lib.TestCase):
       self.assertAllEqual((None,), batched[0].get_shape().as_list())
       self.assertAllEqual((None, None), batched[1].get_shape().as_list())
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1644,7 +1644,7 @@ class ShuffleBatchTest(test_lib.TestCase):
             min_after_dequeue=16,
             seed=141421)
         batched_fetch = batched
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1702,7 +1702,7 @@ class ShuffleBatchTest(test_lib.TestCase):
           seed=141421,
           allow_smaller_final_batch=True)
       batched_fetch = batched
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1756,7 +1756,7 @@ class ShuffleBatchTest(test_lib.TestCase):
           min_after_dequeue=16,
           seed=173205,
           num_threads=4)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -1807,7 +1807,7 @@ class ShuffleBatchTest(test_lib.TestCase):
           seed=173205,
           num_threads=4,
           allow_smaller_final_batch=True)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -2070,7 +2070,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
                           batched_fetch[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((batch_size,), batched_fetch[2].get_shape().as_list())
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 
@@ -2165,7 +2165,7 @@ class ShuffleBatchJoinTest(test_lib.TestCase):
       self.assertAllEqual((2,), batched[1].dense_shape.get_shape().as_list())
       self.assertAllEqual((None,), batched[2].get_shape().as_list())
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       variables.local_variables_initializer().run()
       threads = queue_runner_impl.start_queue_runners()
 

@@ -53,7 +53,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       return var, assign
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign = distribution.call_for_each_replica(replica_fn)
+      var, assign = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([10.0, 11.0], var.eval())
       sess.run(distribution.unwrap(assign))
@@ -79,7 +79,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       return var, assign.op
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign_op = distribution.call_for_each_replica(replica_fn)
+      var, assign_op = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([0.0, 0.0], var.eval())
       sess.run(distribution.unwrap(assign_op))
@@ -152,7 +152,7 @@ class AssignMovingAveragesTest(test.TestCase, parameterized.TestCase):
       return var, assign
 
     with distribution.scope(), self.cached_session() as sess:
-      var, assign = distribution.call_for_each_replica(replica_fn)
+      var, assign = distribution.extended.call_for_each_replica(replica_fn)
       variables.global_variables_initializer().run()
       self.assertAllClose([10.0, 11.0], var.eval())
       sess.run(distribution.unwrap(assign))

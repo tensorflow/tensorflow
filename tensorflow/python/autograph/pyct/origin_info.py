@@ -18,6 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import difflib
+import os
 import tokenize
 
 import gast
@@ -26,6 +28,8 @@ import six
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import pretty_printer
+from tensorflow.python.autograph.utils import ag_logging as logging
 from tensorflow.python.util import tf_inspect
 
 
@@ -73,6 +77,13 @@ class OriginInfo(
     return (self.loc.filename, self.loc.lineno, self.function_name,
             self.source_code_line)
 
+  def __repr__(self):
+    if self.loc.filename:
+      return '{}:{}:{}'.format(
+          os.path.split(self.loc.filename)[1], self.loc.lineno,
+          self.loc.col_offset)
+    return '<no file>:{}:{}'.format(self.loc.lineno, self.loc.col_offset)
+
 
 # TODO(mdan): This source map should be a class - easier to refer to.
 def create_source_map(nodes, code, filename, indices_in_code):
@@ -97,32 +108,47 @@ def create_source_map(nodes, code, filename, indices_in_code):
   resolve(reparsed_nodes, code)
   result = {}
 
-  for before, after in ast_util.parallel_walk(nodes, reparsed_nodes):
-    # Note: generated code might not be mapped back to its origin.
-    # TODO(mdan): Generated code should always be mapped to something.
-    origin_info = anno.getanno(before, anno.Basic.ORIGIN, default=None)
-    final_info = anno.getanno(after, anno.Basic.ORIGIN, default=None)
-    if origin_info is None or final_info is None:
-      continue
-
-    line_loc = LineLocation(filename, final_info.loc.lineno)
-
-    existing_origin = result.get(line_loc)
-    if existing_origin is not None:
-      # Overlaps may exist because of child nodes, but almost never to
-      # different line locations. Exception make decorated functions, where
-      # both lines are mapped to the same line in the AST.
-
-      # Line overlaps: keep bottom node.
-      if existing_origin.loc.line_loc == origin_info.loc.line_loc:
-        if existing_origin.loc.lineno >= origin_info.loc.lineno:
-          continue
-
-      # In case of overlaps, keep the leftmost node.
-      if existing_origin.loc.col_offset <= origin_info.loc.col_offset:
+  try:
+    for before, after in ast_util.parallel_walk(nodes, reparsed_nodes):
+      # Note: generated code might not be mapped back to its origin.
+      # TODO(mdan): Generated code should always be mapped to something.
+      origin_info = anno.getanno(before, anno.Basic.ORIGIN, default=None)
+      final_info = anno.getanno(after, anno.Basic.ORIGIN, default=None)
+      if origin_info is None or final_info is None:
         continue
 
-    result[line_loc] = origin_info
+      line_loc = LineLocation(filename, final_info.loc.lineno)
+
+      existing_origin = result.get(line_loc)
+      if existing_origin is not None:
+        # Overlaps may exist because of child nodes, but almost never to
+        # different line locations. Exception make decorated functions, where
+        # both lines are mapped to the same line in the AST.
+
+        # Line overlaps: keep bottom node.
+        if existing_origin.loc.line_loc == origin_info.loc.line_loc:
+          if existing_origin.loc.lineno >= origin_info.loc.lineno:
+            continue
+
+        # In case of overlaps, keep the leftmost node.
+        if existing_origin.loc.col_offset <= origin_info.loc.col_offset:
+          continue
+
+      result[line_loc] = origin_info
+  except ValueError:
+    if logging.has_verbosity(3):
+      for n, rn in zip(nodes, reparsed_nodes):
+        nodes_str = pretty_printer.fmt(n, color=False, noanno=True)
+        reparsed_nodes_str = pretty_printer.fmt(rn, color=False, noanno=True)
+        diff = difflib.context_diff(
+            nodes_str.split('\n'),
+            reparsed_nodes_str.split('\n'),
+            fromfile='Original nodes',
+            tofile='Reparsed nodes',
+            n=7)
+        diff = '\n'.join(diff)
+        logging.log(3, 'AST seems to lack integrity. Diff:\n%s', diff)
+    raise
 
   return result
 

@@ -32,7 +32,7 @@ from tensorflow.python.platform import googletest
 from tensorflow.python.training import monitored_session
 
 
-@test_util.run_v1_only("b/120545219")
+@test_util.run_deprecated_v1
 class DumpingDebugWrapperDiskUsageLimitTest(test_util.TensorFlowTestCase):
 
   @classmethod

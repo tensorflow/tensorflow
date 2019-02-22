@@ -27,7 +27,6 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
-from tensorflow.python.training import rmsprop
 
 
 class TestDNNModel(keras.models.Model):
@@ -57,7 +56,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         keras.layers.Dense(20, activation='softmax')
     ])
     model.compile(
-        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
@@ -79,7 +78,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
         keras.layers.Dense(20, activation='softmax')
     ])
     model.compile(
-        optimizer=rmsprop.RMSPropOptimizer(1e-3),
+        optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
@@ -103,7 +102,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     dnn_model = TestDNNModel([col_a, col_b], 20)
 
     dnn_model.compile(
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+        optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
@@ -124,7 +123,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
     dnn_model = TestDNNModel([col_a, col_b], 20)
 
     dnn_model.compile(
-        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.001),
+        optimizer='rmsprop',
         loss='categorical_crossentropy',
         metrics=['accuracy'],
         run_eagerly=testing_utils.should_run_eagerly())
@@ -155,7 +154,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
 
     model = keras.models.Model([feature_layer], [output])
 
-    optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     loss = 'mse'
     loss_weights = [1., 0.5]
     model.compile(
@@ -184,7 +183,7 @@ class FeatureColumnsIntegrationTest(keras_parameterized.TestCase):
 
     model = keras.models.Model([fc1, fc2], [output])
 
-    optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
+    optimizer = 'rmsprop'
     loss = 'mse'
     loss_weights = [1., 0.5]
     model.compile(

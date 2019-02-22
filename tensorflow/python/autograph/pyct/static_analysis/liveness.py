@@ -144,10 +144,10 @@ class WholeTreeAnalyzer(transformer.Base):
     self.current_analyzer = parent_analyzer
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
 
@@ -217,6 +217,10 @@ class Annotator(transformer.Base):
     cfg_node = self.current_analyzer.graph.index[node]
     anno.setanno(node, anno.Static.LIVE_VARS_OUT,
                  frozenset(self.current_analyzer.out[cfg_node]))
+    return node
+
+  def visit_ExceptHandler(self, node):
+    # TODO(b/123995141) Add Exception Handlers to the CFG
     return node
 
 

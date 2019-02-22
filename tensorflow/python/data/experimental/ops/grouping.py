@@ -130,7 +130,8 @@ def bucket_by_sequence_length(element_length_func,
                               padded_shapes=None,
                               padding_values=None,
                               pad_to_bucket_boundary=False,
-                              no_padding=False):
+                              no_padding=False,
+                              drop_remainder=False):
   """A transformation that buckets elements in a `Dataset` by length.
 
   Elements of the `Dataset` are grouped together by length and then are padded
@@ -160,6 +161,10 @@ def bucket_by_sequence_length(element_length_func,
       any elements with length longer than `max(bucket_boundaries)`.
     no_padding: `bool`, indicates whether to pad the batch features (features
       need to be either of type `tf.SparseTensor` or of same shape).
+    drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+      whether the last batch should be dropped in the case it has fewer than
+      `batch_size` elements; the default behavior is not to drop the smaller
+      batch.
 
   Returns:
     A `Dataset` transformation function, which can be passed to
@@ -209,7 +214,7 @@ def bucket_by_sequence_length(element_length_func,
       """Batch elements in dataset."""
       batch_size = window_size_fn(bucket_id)
       if no_padding:
-        return grouped_dataset.batch(batch_size)
+        return grouped_dataset.batch(batch_size, drop_remainder=drop_remainder)
       none_filler = None
       if pad_to_bucket_boundary:
         err_msg = ("When pad_to_bucket_boundary=True, elements must have "
@@ -227,7 +232,8 @@ def bucket_by_sequence_length(element_length_func,
       shapes = make_padded_shapes(
           padded_shapes or grouped_dataset.output_shapes,
           none_filler=none_filler)
-      return grouped_dataset.padded_batch(batch_size, shapes, padding_values)
+      return grouped_dataset.padded_batch(
+          batch_size, shapes, padding_values, drop_remainder=drop_remainder)
 
     def _apply_fn(dataset):
       return dataset.apply(
@@ -242,14 +248,23 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, key_func, reducer):
     """See `group_by_reducer()` for details."""
-    super(_GroupByReducerDataset, self).__init__(input_dataset)
-
     self._input_dataset = input_dataset
-
     self._make_key_func(key_func, input_dataset)
     self._make_init_func(reducer.init_func)
     self._make_reduce_func(reducer.reduce_func, input_dataset)
     self._make_finalize_func(reducer.finalize_func)
+    variant_tensor = ged_ops.experimental_group_by_reducer_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._key_func.function.captured_inputs,
+        self._init_func.function.captured_inputs,
+        self._reduce_func.function.captured_inputs,
+        self._finalize_func.function.captured_inputs,
+        key_func=self._key_func.function,
+        init_func=self._init_func.function,
+        reduce_func=self._reduce_func.function,
+        finalize_func=self._finalize_func.function,
+        **dataset_ops.flat_structure(self))
+    super(_GroupByReducerDataset, self).__init__(input_dataset, variant_tensor)
 
   def _make_key_func(self, key_func, input_dataset):
     """Make wrapping defun for key_func."""
@@ -347,19 +362,6 @@ class _GroupByReducerDataset(dataset_ops.UnaryDataset):
         self._key_func, self._init_func, self._reduce_func, self._finalize_func
     ]
 
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_group_by_reducer_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._key_func.function.captured_inputs,
-        self._init_func.function.captured_inputs,
-        self._reduce_func.function.captured_inputs,
-        self._finalize_func.function.captured_inputs,
-        key_func=self._key_func.function,
-        init_func=self._init_func.function,
-        reduce_func=self._reduce_func.function,
-        finalize_func=self._finalize_func.function,
-        **dataset_ops.flat_structure(self))
-
   def _transformation_name(self):
     return "tf.data.experimental.group_by_reducer()"
 
@@ -369,13 +371,20 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, key_func, reduce_func, window_size_func):
     """See `group_by_window()` for details."""
-    super(_GroupByWindowDataset, self).__init__(input_dataset)
-
     self._input_dataset = input_dataset
-
     self._make_key_func(key_func, input_dataset)
     self._make_reduce_func(reduce_func, input_dataset)
     self._make_window_size_func(window_size_func)
+    variant_tensor = ged_ops.experimental_group_by_window_dataset(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
+        self._key_func.function.captured_inputs,
+        self._reduce_func.function.captured_inputs,
+        self._window_size_func.function.captured_inputs,
+        key_func=self._key_func.function,
+        reduce_func=self._reduce_func.function,
+        window_size_func=self._window_size_func.function,
+        **dataset_ops.flat_structure(self))
+    super(_GroupByWindowDataset, self).__init__(input_dataset, variant_tensor)
 
   def _make_window_size_func(self, window_size_func):
     """Make wrapping defun for window_size_func."""
@@ -425,17 +434,6 @@ class _GroupByWindowDataset(dataset_ops.UnaryDataset):
 
   def _functions(self):
     return [self._key_func, self._reduce_func, self._window_size_func]
-
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_group_by_window_dataset(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
-        self._key_func.function.captured_inputs,
-        self._reduce_func.function.captured_inputs,
-        self._window_size_func.function.captured_inputs,
-        key_func=self._key_func.function,
-        reduce_func=self._reduce_func.function,
-        window_size_func=self._window_size_func.function,
-        **dataset_ops.flat_structure(self))
 
   def _transformation_name(self):
     return "tf.data.experimental.group_by_window()"

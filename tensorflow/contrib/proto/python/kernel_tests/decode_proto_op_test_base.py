@@ -84,7 +84,10 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
       values = field_dict[field.name]
       self.assertEqual(dtypes.as_dtype(values.dtype), field.dtype)
 
-      fd = field.value.DESCRIPTOR.fields_by_name[field.name]
+      if 'ext_value' in field.name:
+        fd = test_example_pb2.PrimitiveValue()
+      else:
+        fd = field.value.DESCRIPTOR.fields_by_name[field.name]
 
       # Values has the same shape as the input plus an extra
       # dimension for repeats.
@@ -92,13 +95,16 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
 
       # Nested messages are represented as TF strings, requiring
       # some special handling.
-      if field.name == 'message_value':
+      if field.name == 'message_value' or 'ext_value' in field.name:
         vs = []
         for buf in values.flat:
           msg = test_example_pb2.PrimitiveValue()
           msg.ParseFromString(buf)
           vs.append(msg)
-        evs = getattr(field.value, field.name)
+        if 'ext_value' in field.name:
+          evs = field.value.Extensions[test_example_pb2.ext_value]
+        else:
+          evs = getattr(field.value, field.name)
         if len(vs) != len(evs):
           self.fail('Field %s decoded %d outputs, expected %d' %
                     (fd.name, len(vs), len(evs)))
@@ -223,7 +229,8 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
         sanitize=False,
         force_disordered=True)
 
-  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  @parameterized.named_parameters(
+      *test_base.ProtoOpTestBase.named_parameters(extension=False))
   def testPacked(self, case):
     # Now try with the packed serialization.
     #
@@ -235,8 +242,7 @@ class DecodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
         # Note: float_format='.17g' is necessary to ensure preservation of
         # doubles and floats in text format.
         text_format.Parse(
-            text_format.MessageToString(
-                value, float_format='.17g'),
+            text_format.MessageToString(value, float_format='.17g'),
             test_example_pb2.PackedTestValue()).SerializeToString()
         for value in case.values
     ]

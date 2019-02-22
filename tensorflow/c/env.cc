@@ -159,3 +159,25 @@ TF_CAPI_EXPORT extern uint64_t TF_NowMicros(void) {
 TF_CAPI_EXPORT extern uint64_t TF_NowSeconds(void) {
   return ::tensorflow::Env::Default()->NowSeconds();
 }
+
+void TF_DefaultThreadOptions(TF_ThreadOptions* options) {
+  options->stack_size = 0;
+  options->guard_size = 0;
+  options->numa_node = -1;
+}
+
+TF_Thread* TF_StartThread(const TF_ThreadOptions* options,
+                          const char* thread_name, void (*work_func)(void*),
+                          void* param) {
+  ::tensorflow::ThreadOptions cc_options;
+  cc_options.stack_size = options->stack_size;
+  cc_options.guard_size = options->guard_size;
+  cc_options.numa_node = options->numa_node;
+  return reinterpret_cast<TF_Thread*>(::tensorflow::Env::Default()->StartThread(
+      cc_options, thread_name, [=]() { (*work_func)(param); }));
+}
+
+void TF_JoinThread(TF_Thread* thread) {
+  // ::tensorflow::Thread joins on destruction
+  delete reinterpret_cast<::tensorflow::Thread*>(thread);
+}

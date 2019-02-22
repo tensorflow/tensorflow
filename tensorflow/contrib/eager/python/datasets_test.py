@@ -37,7 +37,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class IteratorTest(test.TestCase):
@@ -200,13 +200,6 @@ class IteratorTest(test.TestCase):
         y = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], y.numpy())
 
-  def testGpuDefinedDataset(self):
-    with ops.device(test.gpu_device_name()):
-      ds = Dataset.from_tensors([0., 1.])
-      for x in ds:
-        y = math_ops.add(x, x)
-    self.assertAllEqual([0., 2.], y.numpy())
-
   def testOverrideThreadPool(self):
 
     def get_thread_id(_):
@@ -245,7 +238,7 @@ class IteratorTest(test.TestCase):
     dataset = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     dataset = dataset.map(math_ops.square).batch(2)
     iterator = datasets.Iterator(dataset)
-    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertAllEqual([1, 4], iterator.get_next().numpy())
     save_path = checkpoint.save(checkpoint_prefix)
     self.assertAllEqual([9, 16], iterator.get_next().numpy())
@@ -264,7 +257,7 @@ class IteratorTest(test.TestCase):
     dataset_2 = Dataset.range(10)
     iterator_3 = datasets.Iterator(dataset_2)
 
-    checkpoint = checkpointable_utils.Checkpoint(
+    checkpoint = trackable_utils.Checkpoint(
         iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
     self.assertAllEqual([1, 4], iterator_1.get_next().numpy())
     self.assertEqual(0, iterator_3.get_next().numpy())
@@ -286,7 +279,7 @@ class IteratorTest(test.TestCase):
     dataset = Dataset.range(3)
     iterator = datasets.Iterator(dataset)
 
-    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertEqual(0, iterator.get_next().numpy())
     self.assertEqual(1, iterator.get_next().numpy())
     save_path = checkpoint.save(checkpoint_prefix)
@@ -300,7 +293,7 @@ class IteratorTest(test.TestCase):
     dataset = Dataset.range(10)
     for i in range(5):
       iterator = datasets.Iterator(dataset)
-      checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+      checkpoint = trackable_utils.Checkpoint(iterator=iterator)
       checkpoint.restore(checkpoint_management.latest_checkpoint(
           checkpoint_directory))
       for j in range(2):

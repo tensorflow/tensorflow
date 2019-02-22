@@ -77,17 +77,16 @@ StatusOr<DisassemblerResult> Disassembler::DisassembleObjectFile(
     }
 
     // Sort the symbols in increasing address order.
-    std::sort(
-        symbols.begin(), symbols.end(),
-        [](const llvm::object::SymbolRef& a, const llvm::object::SymbolRef& b) {
-          // getAddress returns a Expected object. Assert there is no error
-          // before extracting the address.
-          llvm::Expected<uint64_t> a_address_or_error = a.getAddress();
-          CHECK(a_address_or_error);
-          llvm::Expected<uint64_t> b_address_or_error = b.getAddress();
-          CHECK(b_address_or_error);
-          return a_address_or_error.get() < b_address_or_error.get();
-        });
+    absl::c_sort(symbols, [](const llvm::object::SymbolRef& a,
+                             const llvm::object::SymbolRef& b) {
+      // getAddress returns a Expected object. Assert there is no error
+      // before extracting the address.
+      llvm::Expected<uint64_t> a_address_or_error = a.getAddress();
+      CHECK(a_address_or_error);
+      llvm::Expected<uint64_t> b_address_or_error = b.getAddress();
+      CHECK(b_address_or_error);
+      return a_address_or_error.get() < b_address_or_error.get();
+    });
 
     // Construct ArrayRef pointing to section contents.
     llvm::StringRef section_content_string;

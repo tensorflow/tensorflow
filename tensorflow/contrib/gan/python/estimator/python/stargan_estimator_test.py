@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for TFGAN's stargan_estimator.py."""
+"""Tests for TF-GAN's stargan_estimator.py."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -23,7 +23,6 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
@@ -80,7 +79,7 @@ class StarGetGANModelTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(input_data, gan_model.input_data)
     self.assertIsNotNone(gan_model.generated_data)
     self.assertIsNotNone(gan_model.generated_data_domain_target)
-    self.assertEqual(1, len(gan_model.generator_variables))
+    self.assertLen(gan_model.generator_variables, 1)
     self.assertIsNotNone(gan_model.generator_scope)
     self.assertIsNotNone(gan_model.generator_fn)
     if mode == model_fn_lib.ModeKeys.PREDICT:
@@ -109,7 +108,7 @@ class StarGetGANModelTest(test.TestCase, parameterized.TestCase):
           gan_model.discriminator_input_data_domain_predication)
       self.assertIsNotNone(
           gan_model.discriminator_generated_data_domain_predication)
-      self.assertEqual(2, len(gan_model.discriminator_variables))  # 1 FC layer
+      self.assertLen(gan_model.discriminator_variables, 2)  # 1 FC layer
       self.assertIsNotNone(gan_model.discriminator_scope)
       self.assertIsNotNone(gan_model.discriminator_fn)
 
@@ -163,6 +162,7 @@ class GetEstimatorSpecTest(test.TestCase, parameterized.TestCase):
 
   @classmethod
   def setUpClass(cls):
+    super(GetEstimatorSpecTest, cls).setUpClass()
     cls._generator_optimizer = training.GradientDescentOptimizer(1.0)
     cls._discriminator_optimizer = training.GradientDescentOptimizer(1.0)
 
@@ -234,10 +234,10 @@ class StarGANEstimatorIntegrationTest(test.TestCase):
     # EVALUTE
     scores = est.evaluate(eval_input_fn)
     self.assertEqual(num_steps, scores[ops.GraphKeys.GLOBAL_STEP])
-    self.assertIn('loss', six.iterkeys(scores))
+    self.assertIn('loss', scores)
     self.assertEqual(scores['discriminator_loss'] + scores['generator_loss'],
                      scores['loss'])
-    self.assertIn('mse_custom_metric', six.iterkeys(scores))
+    self.assertIn('mse_custom_metric', scores)
 
     # PREDICT
     predictions = np.array([x for x in est.predict(predict_input_fn)])

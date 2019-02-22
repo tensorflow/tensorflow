@@ -55,8 +55,6 @@ import numpy as np
 import six
 
 from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver as tpu_cluster_resolver_lib
-from tensorflow.contrib.framework.python.framework import experimental
-from tensorflow.contrib.tpu.proto import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import keras_tpu_variables
 from tensorflow.contrib.tpu.python.tpu import tpu
@@ -64,6 +62,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_function
 from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilation_result
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -94,6 +93,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 
 # TODO(b/114775106): temporary shim to optionally initialize the TPU
@@ -1373,6 +1373,10 @@ class KerasTPUModel(models.Model):
     # not hashable.
     self._numpy_to_infeed_manager_list = []
 
+    # Add distribution specific arguments since we don't call the Model init.
+    self._distribution_strategy = None
+    self._compile_distribution = None
+
     self.predict_function = None
     self.test_function = None
     self.train_function = None
@@ -2069,6 +2073,8 @@ class KerasTPUModel(models.Model):
       # tpu_model may not be compiled, e.g., loading weights and then predict.
       return
     for k, v in six.iteritems(cpu_optimizer_config):
+      if k == 'name':
+        continue
       opt_var = getattr(self._tpu_model.optimizer, k)
       if isinstance(opt_var, variables.Variable):
         logging.info('CPU -> TPU %s: %s {%s}', k, v, K.get_value(opt_var))
@@ -2097,6 +2103,8 @@ class KerasTPUModel(models.Model):
     self._cpu_model.set_weights(tpu_weights)
     for k, v in six.iteritems(tpu_optimizer_config):
       logging.info('TPU -> CPU %s: %s', k, v)
+      if k == 'name':
+        continue
       opt_var = getattr(self.cpu_optimizer, k)
       if isinstance(opt_var, variables.Variable):
         K.get_session().run(opt_var.assign(v))
@@ -2164,7 +2172,10 @@ Output shape: %(output_shape)s
 # pylint: enable=bad-continuation
 
 
-@experimental
+@deprecated(
+    '2019-02-20', 'Switch to tf.contrib.distribute.TPUStrategy. '
+    'https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/DistributionStrategy'
+)
 def tpu_model(model, strategy=None):
   """Copy `model` along with weights to the TPU.
 

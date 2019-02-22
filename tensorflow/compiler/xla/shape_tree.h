@@ -395,7 +395,7 @@ class ShapeTreeIterator
 template <typename T>
 int64 ShapeTree<T>::CountSubshapes(const Shape& shape) {
   int64 current_count = 1;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int64 count = ShapeUtil::TupleElementCount(shape);
     for (int i = 0; i < count; ++i) {
       current_count += CountSubshapes(shape.tuple_shapes(i));
@@ -407,7 +407,7 @@ int64 ShapeTree<T>::CountSubshapes(const Shape& shape) {
 template <typename T>
 void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
                                 Node* node, Index* index) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
 #ifndef NDEBUG
     index->children_count = size;
@@ -443,7 +443,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
 
 template <typename T>
 void ShapeTree<T>::InitChildren(const Shape& shape, Node* node, Index* index) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
 #ifndef NDEBUG
     index->children_count = size;

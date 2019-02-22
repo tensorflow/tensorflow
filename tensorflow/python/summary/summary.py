@@ -13,9 +13,10 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Tensor summaries for exporting information about a model.
+"""Operations for writing summary data, for use in analysis and visualization.
 
-See the [Summary](https://tensorflow.org/api_guides/python/summary) guide.
+See the [Summaries and
+TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) guide.
 """
 
 from __future__ import absolute_import

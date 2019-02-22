@@ -153,8 +153,11 @@ class AdadeltaOptimizerTest(test.TestCase):
       with self.cached_session():
         var0 = resource_variable_ops.ResourceVariable([[1.0, 2.0]], dtype=dtype)
         x = constant_op.constant([[4.0], [5.0]], dtype=dtype)
-        pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)
-        loss = pred * pred
+
+        def loss():
+          pred = math_ops.matmul(embedding_ops.embedding_lookup([var0], [0]), x)  # pylint: disable=cell-var-from-loop
+          return pred * pred
+
         sgd_op = adadelta.Adadelta(1.0, 1.0, 1.0).minimize(
             loss, var_list=[var0])
         variables.global_variables_initializer().run()
@@ -164,6 +167,28 @@ class AdadeltaOptimizerTest(test.TestCase):
         sgd_op.run()
         # Validate updated params
         self.assertAllCloseAccordingToType([[-111, -138]], self.evaluate(var0))
+
+  def testConstructAdadeltaWithLR(self):
+    opt = adadelta.Adadelta(lr=1.0, rho=0.9, epsilon=1.)
+    opt_2 = adadelta.Adadelta(learning_rate=0.1, rho=0.9, epsilon=1., lr=1.0)
+    opt_3 = adadelta.Adadelta(learning_rate=0.1, rho=0.9, epsilon=1.)
+    self.assertIsInstance(opt.lr, variables.Variable)
+    self.assertIsInstance(opt_2.lr, variables.Variable)
+    self.assertIsInstance(opt_3.lr, variables.Variable)
+
+    self.evaluate(variables.global_variables_initializer())
+    self.assertAllClose(self.evaluate(opt.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_2.lr), (1.0))
+    self.assertAllClose(self.evaluate(opt_3.lr), (0.1))
+
+  def testConstructAdadeltaWithEpsilonValues(self):
+    opt = adadelta.Adadelta(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = adadelta.Adadelta(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
 
 
 if __name__ == "__main__":

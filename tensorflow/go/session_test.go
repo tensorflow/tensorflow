@@ -299,3 +299,21 @@ func TestListDevices(t *testing.T) {
 		t.Fatalf("no devices detected")
 	}
 }
+
+func TestDeviceString(t *testing.T) {
+	d := Device{Name: "foo", Type: "bar", MemoryLimitBytes: 12345}
+	got := d.String()
+	want := "(Device: name \"foo\", type bar, memory limit 12345 bytes)"
+	if got != want {
+		t.Errorf("Got \"%s\", want \"%s\"", got, want)
+	}
+}
+
+func TestDeviceStringNoMemoryLimit(t *testing.T) {
+	d := Device{Name: "foo", Type: "bar", MemoryLimitBytes: -1}
+	got := d.String()
+	want := "(Device: name \"foo\", type bar, no memory limit)"
+	if got != want {
+		t.Errorf("Got \"%s\", want \"%s\"", got, want)
+	}
+}

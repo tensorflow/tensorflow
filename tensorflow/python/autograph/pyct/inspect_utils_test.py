@@ -183,6 +183,63 @@ class InspectUtilsTest(test.TestCase):
     self.assertEqual(inspect_utils.getqualifiedname(ns, bar), 'bar')
     self.assertEqual(inspect_utils.getqualifiedname(ns, baz), 'bar.baz')
 
+  def test_getqualifiedname_efficiency(self):
+    foo = object()
+
+    # We create a densely connected graph consisting of a relatively small
+    # number of modules and hide our symbol in one of them. The path to the
+    # symbol is at least 10, and each node has about 10 neighbors. However,
+    # by skipping visited modules, the search should take much less.
+    ns = {}
+    prev_level = []
+    for i in range(10):
+      current_level = []
+      for j in range(10):
+        mod_name = 'mod_{}_{}'.format(i, j)
+        mod = imp.new_module(mod_name)
+        current_level.append(mod)
+        if i == 9 and j == 9:
+          mod.foo = foo
+      if prev_level:
+        # All modules at level i refer to all modules at level i+1
+        for prev in prev_level:
+          for mod in current_level:
+            prev.__dict__[mod.__name__] = mod
+      else:
+        for mod in current_level:
+          ns[mod.__name__] = mod
+      prev_level = current_level
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertIsNotNone(
+        inspect_utils.getqualifiedname(ns, foo, max_depth=10000000000))
+
+  def test_getqualifiedname_cycles(self):
+    foo = object()
+
+    # We create a graph of modules that contains circular references. The
+    # search process should avoid them. The searched object is hidden at the
+    # bottom of a path of length roughly 10.
+    ns = {}
+    mods = []
+    for i in range(10):
+      mod = imp.new_module('mod_{}'.format(i))
+      if i == 9:
+        mod.foo = foo
+      # Module i refers to module i+1
+      if mods:
+        mods[-1].__dict__[mod.__name__] = mod
+      else:
+        ns[mod.__name__] = mod
+      # Module i refers to all modules j < i.
+      for prev in mods:
+        mod.__dict__[prev.__name__] = prev
+      mods.append(mod)
+
+    self.assertIsNone(inspect_utils.getqualifiedname(ns, inspect_utils))
+    self.assertIsNotNone(
+        inspect_utils.getqualifiedname(ns, foo, max_depth=10000000000))
+
   def test_getqualifiedname_finds_via_parent_module(self):
     # TODO(mdan): This test is vulnerable to change in the lib module.
     # A better way to forge modules should be found.
@@ -220,16 +277,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = TestClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        test_obj)
+        TestClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.static_method),
         TestClass)
@@ -278,16 +335,16 @@ class InspectUtilsTest(test.TestCase):
     test_obj = LocalClass()
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.member_function),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.decorated_member),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.fn_decorated_member),
-        test_obj)
+        LocalClass)
     self.assertEqual(
         inspect_utils.getmethodclass(test_obj.wrap_decorated_member),
-        test_obj)
+        LocalClass)
 
   def test_getmethodclass_callables(self):
     class TestCallable(object):
@@ -310,12 +367,13 @@ class InspectUtilsTest(test.TestCase):
       return self
 
     bound_method = types.MethodType(test_fn, WeakrefWrapper())
-    self.assertEqual(inspect_utils.getmethodclass(bound_method), test_obj)
+    self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
 
   def test_getmethodclass_no_bool_conversion(self):
 
     tensor = constant_op.constant([1])
-    self.assertEqual(inspect_utils.getmethodclass(tensor.get_shape), tensor)
+    self.assertEqual(
+        inspect_utils.getmethodclass(tensor.get_shape), type(tensor))
 
   def test_getdefiningclass(self):
     class Superclass(object):
@@ -349,10 +407,12 @@ class InspectUtilsTest(test.TestCase):
         Superclass)
 
   def test_isbuiltin(self):
-    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(enumerate))
     self.assertTrue(inspect_utils.isbuiltin(float))
     self.assertTrue(inspect_utils.isbuiltin(int))
     self.assertTrue(inspect_utils.isbuiltin(len))
+    self.assertTrue(inspect_utils.isbuiltin(range))
+    self.assertTrue(inspect_utils.isbuiltin(zip))
     self.assertFalse(inspect_utils.isbuiltin(function_decorator))
 
   def test_super_wrapper_for_dynamic_attrs(self):

@@ -1681,7 +1681,7 @@ def _get_defined_in(py_object, parser_config):
     path = path[:-1]
 
   # Never include links outside this code base.
-  if path.startswith('..'):
+  if path.startswith('..') or re.search(r'\b_api\b', path):
     return None
 
   if re.match(r'.*/gen_[^/]*\.py$', path):

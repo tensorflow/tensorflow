@@ -165,6 +165,17 @@ Options {
 }
 ```
 
+**ADD_N**
+
+```
+Inputs {
+  0-N: any number of tensors (must have same size and shape)
+}
+Outputs {
+  0: elementwise sum of the input tensors
+}
+```
+
 **ARG_MAX**
 
 ```
@@ -185,7 +196,7 @@ Inputs {
   1: a tensor
 }
 Outputs {
-  0: A tensor of indices of minium values.
+  0: A tensor of indices of minimum values.
 }
 ```
 
@@ -291,6 +302,17 @@ Options {
 }
 ```
 
+**ELU**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to exp(features) - 1 if < 0, features otherwise.
+}
+```
+
 **EQUAL**
 
 ```
@@ -362,6 +384,17 @@ Outputs {
 }
 ```
 
+**CEIL**
+
+```
+inputs {
+  0: tensor
+}
+outputs: {
+  0: result of computing element-wise ceil of the input tensor
+}
+```
+
 **FULLY_CONNECTED**
 
 ```
@@ -386,6 +419,18 @@ Inputs {
   0: params tensor
   1: indices tensor
   2: axis tensor (optional)
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
+}
+```
+
+**GATHER_ND**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
 }
 Outputs {
   0: a tensor with same type as the params tensor.
@@ -691,6 +736,17 @@ Options {
 }
 ```
 
+**RANK**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 0-D int32 Tensor representing the rank of input
+}
+```
+
 **RELU**
 
 ```
@@ -975,6 +1031,22 @@ Inputs {
 }
 Outputs {
   0-N: tensors of unpacked tensor.
+}
+```
+
+**WHERE**
+
+```
+Inputs {
+  0: A tensor of type bool.
+  1: A tensor which may have the same shape as condition. If condition is rank
+     1, x may have higher rank, but its first dimension must match the size of
+     condition.
+  2: A tensor with the same shape and type as x.
+}
+Outputs {
+  0: A tensor with the same type and shape as x, y if they are non-None, or
+     a tensor with shape (num_true, dim_size(condition)).
 }
 ```
 

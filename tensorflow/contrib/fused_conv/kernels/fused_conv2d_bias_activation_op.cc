@@ -19,13 +19,13 @@ limitations under the License.
 
 #include "tensorflow/contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -522,7 +522,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   auto bias_ptr = AsDeviceMemory(bias.template flat<BiasType>().data(),
                                  bias.template flat<BiasType>().size());
 
-  static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+  static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
   );
@@ -565,12 +565,26 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
         fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
             stream->parent()),
         &algorithms));
+    if (activation_mode == ActivationMode::NONE) {
+      // Only CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM is supported for
+      // identity activation, other algs seem to quietly do Relu.
+      // See
+      // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
+      algorithms.erase(
+          std::remove_if(
+              algorithms.begin(), algorithms.end(),
+              [](dnn::AlgorithmDesc alg) {
+                return alg.algo_id() !=
+                       CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+              }),
+          algorithms.end());
+    }
     dnn::ProfileResult best_result;
     dnn::ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       dnn::ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
@@ -609,7 +623,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                                       algorithm_config);
   }
 
-  CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+  DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   bool cudnn_launch_status =
       stream
           ->ThenFusedConvolveWithAlgorithm(

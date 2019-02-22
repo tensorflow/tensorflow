@@ -113,15 +113,15 @@ class _DirectedInterleaveDataset(dataset_ops.Dataset):
     self._structure = structure.convert_legacy_structure(
         data_inputs[0].output_types, output_shapes,
         data_inputs[0].output_classes)
+    super(_DirectedInterleaveDataset, self).__init__()
 
   def _as_variant_tensor(self):
     # pylint: disable=protected-access
     return (
         gen_experimental_dataset_ops.experimental_directed_interleave_dataset(
-            self._selector_input._as_variant_tensor(), [
-                data_input._as_variant_tensor()
-                for data_input in self._data_inputs
-            ], **dataset_ops.flat_structure(self)))
+            self._selector_input._variant_tensor,
+            [data_input._variant_tensor for data_input in self._data_inputs],
+            **dataset_ops.flat_structure(self)))
     # pylint: enable=protected-access
 
   def _inputs(self):

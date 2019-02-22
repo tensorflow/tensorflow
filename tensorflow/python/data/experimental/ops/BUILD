@@ -355,6 +355,19 @@ py_library(
 )
 
 py_library(
+    name = "take_while_ops",
+    srcs = ["take_while_ops.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:function",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_library(
     name = "threading_options",
     srcs = ["threading_options.py"],
     srcs_version = "PY2AND3",
@@ -454,6 +467,7 @@ py_library(
         ":shuffle_ops",
         ":sleep",
         ":stats_ops",
+        ":take_while_ops",
         ":threadpool",
         ":unique",
         ":writers",

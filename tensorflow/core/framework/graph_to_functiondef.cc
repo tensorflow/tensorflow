@@ -165,6 +165,7 @@ Status GraphToFunctionDef(const Graph& graph, const string& name,
       node_def->set_device(node->assigned_device_name());
     }
     node_def->set_name(node_names.Uniquify(node->name()));
+    MergeDebugInfo(NodeDebugInfo(node->def()), node_def);
 
     // Reset input names based on graph rather than the NodeDef.
     node_def->clear_input();

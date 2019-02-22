@@ -104,6 +104,10 @@ static Node* AddIdentity(Graph* g, Endpoint input) {
   NodeDef ndef;
   ndef.set_name(g->NewName(kNodeLabel));
   ndef.set_op("Identity");
+  // NOTE(skyewm): we explicitly set the device here to address a multi-GPU
+  // performance issue where this Identity would be placed alone on a GPU,
+  // causing unnecessary device traffic. See b/122483225 for details.
+  ndef.set_device(input.node->def().device());
   ndef.add_input(input.name());
   AddNodeAttr("T", BaseType(input.dtype()), &ndef);
   Status s;
@@ -453,7 +457,9 @@ class CallOp : public AsyncOpKernel {
   CallOp(FunctionLibraryRuntime::Handle handle, OpKernelConstruction* ctx)
       : AsyncOpKernel(ctx), handle_(handle) {}
 
-  ~CallOp() override {}
+  ~CallOp() override {
+    // TODO(iga): Release the cached handle_
+  }
 
   void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override {
     FunctionLibraryRuntime* lib = ctx->function_library();
@@ -628,11 +634,20 @@ bool FunctionLibraryRuntimeImpl::IsLocalTarget(
     const InstantiateOptions& options) {
   if (device_ == nullptr) return true;
   if (options.target.empty()) return true;
+  if (options.is_multi_device_function) return false;
   Device* target_device;
   if (!device_mgr_->LookupDevice(options.target, &target_device).ok()) {
+    VLOG(1) << "Not instantiating function in FLR because failed to "
+            << "find device " << options.target << " in device manager";
     return false;
   }
-  return target_device == device_;
+  if (target_device != device_) {
+    VLOG(1) << "Not instantiating function in FLR because target device "
+            << options.target
+            << " is different from FLR's device: " << device_->DebugString();
+    return false;
+  }
+  return true;
 }
 
 Status FunctionLibraryRuntimeImpl::Instantiate(
@@ -732,15 +747,32 @@ Status FunctionLibraryRuntimeImpl::ReleaseHandle(Handle handle) {
   if (h == kInvalidLocalHandle) {
     return parent_->ReleaseHandle(handle);
   }
-  mutex_lock l(mu_);
-  CHECK_EQ(1, items_.count(h));
-  std::unique_ptr<Item>& item = items_[h];
-  --item->instantiation_counter;
-  if (item->instantiation_counter == 0) {
-    items_.erase(h);
-    TF_RETURN_IF_ERROR(parent_->RemoveHandle(handle));
+
+  std::unique_ptr<Item> item_to_delete;
+  Status parent_status;
+  {
+    mutex_lock l(mu_);
+    auto it = items_.find(h);
+    if (it == items_.end()) {
+      return errors::Internal(
+          "Inconsistent FunctionLibraryRuntime. Expected to find an item for "
+          "handle ",
+          h, " but found none");
+    }
+    std::unique_ptr<Item>& item = it->second;
+    --item->instantiation_counter;
+    if (item->instantiation_counter == 0) {
+      // We don't simply erase h's item because that would trigger
+      // item destruction while holding mu_. Item destruction can
+      // trigger graph destruction. If the graph contains kernels like
+      // CallOp or PartitionCallOp, their destructors will release cached
+      // function handles, resulting in deadlock here.
+      item_to_delete = std::move(item);
+      items_.erase(h);
+      parent_status = parent_->RemoveHandle(handle);
+    }
   }
-  return Status::OK();
+  return parent_status;
 }
 
 void DumpGraph(StringPiece label, const Graph* g) {
@@ -754,23 +786,41 @@ void DumpGraph(StringPiece label, const Graph* g) {
   }
 }
 
-void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
+                   const GraphOptimizer::Options& graph_optimizer_options) {
   OptimizerOptions opts;
   opts.set_do_common_subexpression_elimination(true);
   opts.set_do_function_inlining(true);
   opts.set_do_constant_folding(true);
   GraphOptimizer optimizer(opts);
-  optimizer.Optimize(lib, lib->env(), lib->device(), g, /*shape_map=*/nullptr);
+  optimizer.Optimize(lib, lib->env(), lib->device(), g,
+                     graph_optimizer_options);
+}
+
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g) {
+  OptimizeGraph(lib, g, GraphOptimizer::Options());
 }
 
 namespace {
 // Removes all stateless nodes that do not contribute to a return
-// value from the function body.  Unlike `RemoveDeadNodes()`, which is
+// value from the function body. Unlike `RemoveDeadNodes()`, which is
 // triggered by `OptimizerOptions.do_function_inlining`, this pass
 // ignores the SINK node, from which (by definition) all nodes are
-// reverse reachable.
-void PruneFunctionBody(Graph* g) {
-  VLOG(2) << "Pruning function body";
+// reverse reachable, and preserves all nodes that are reachable from
+// control output nodes.
+//
+// TODO(ezhulenev, skyewm): Function body should not have special treatment of
+// stateful ops, graph should encode nodes that must execute with `control_ret`
+// and `control_output`.
+void PruneFunctionBody(const FunctionDef& fdef, Graph* g) {
+  VLOG(2) << "Pruning function body: function_name=" << fdef.signature().name();
+
+  // `control_ret` nodes must be always executed.
+  std::unordered_set<StringPiece, StringPieceHasher> control_ret_nodes;
+  for (const auto& control_ret : fdef.control_ret()) {
+    control_ret_nodes.insert(control_ret.second);
+  }
+
   std::unordered_set<const Node*> nodes;
   for (auto n : g->nodes()) {
     // NOTE(mrry): "_Retval" nodes are stateful, and so will be added
@@ -781,7 +831,8 @@ void PruneFunctionBody(Graph* g) {
     // still needed. It would be preferable to prune entire loops and/or
     // conditionals if they are not used in the graph.
     if (n->IsControlFlow() ||
-        (n->op_def().is_stateful() && n->type_string() != kArgOp)) {
+        (n->op_def().is_stateful() && n->type_string() != kArgOp) ||
+        (control_ret_nodes.find(n->name()) != control_ret_nodes.end())) {
       nodes.insert(n);
     }
   }
@@ -808,7 +859,7 @@ Status FunctionLibraryRuntimeImpl::CreateItem(Item** item) {
   std::unique_ptr<Graph> g(new Graph(lib_def));
   CopyGraph(*fbody->graph, g.get());
 
-  PruneFunctionBody(g.get());
+  PruneFunctionBody(fbody->fdef, g.get());
   optimizer_.Optimize(this, env(), device(), &g, /*shape_map=*/nullptr);
   TF_RETURN_IF_ERROR(EnsureMemoryTypes(DeviceType(device()->device_type()),
                                        device()->name(), g.get()));
@@ -1354,6 +1405,10 @@ static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
   if (static_cast<size_t>(node->num_outputs()) != fbody->ret_nodes.size()) {
     return false;
   }
+  // TODO(ezhulenev): Currently common_runtime function inlining can't guarantee
+  // that all side-effectful ops will be executed after inlining. See Grappler
+  // function_optimizer for details. Unify all function inlining mechanism.
+  // Do not inline if `!fbody->control_ret_nodes.empty()`.
   for (int i = 0; i < node->num_inputs(); ++i) {
     if (node->input_type(i) != fbody->arg_types[i]) return false;
   }
@@ -1386,6 +1441,7 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     if (e->IsControlEdge()) {
       if (input_control_node == nullptr) {
         input_control_node = AddNoOp(g);
+        input_control_node->set_requested_device(caller->def().device());
       }
       g->AddControlEdge(e->src(), input_control_node);
     } else {
@@ -1406,6 +1462,12 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
     if (override_device || ndef.device().empty()) {
       ndef.set_device(caller->def().device());
+    }
+    for (auto& attr : *ndef.mutable_attr()) {
+      if (attr.first == "_class") {
+        attr.second.set_s(
+            strings::StrCat(caller->name(), "/", attr.second.s()));
+      }
     }
     Node* clone = g->AddNode(ndef, &s);
     TF_CHECK_OK(s);
@@ -1586,6 +1648,13 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty) {
     for (const auto& attr : n->attrs()) {
       (*ndef->mutable_attr())[attr.first] = attr.second;
     }
+
+    if (!n->assigned_device_name().empty()) {
+      ndef->set_device(n->assigned_device_name());
+    } else {
+      ndef->set_device(n->requested_device());
+    }
+
     inputs.clear();
     inputs.resize(n->num_inputs());
     for (const Edge* e : n->in_edges()) {
@@ -1633,6 +1702,7 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
       graph(g),
       arg_types(arg_t.begin(), arg_t.end()),
       ret_types(ret_t.begin(), ret_t.end()) {
+  // 1. Find regular Arg/Ret nodes.
   this->arg_nodes.resize(arg_types.size());
   this->ret_nodes.resize(ret_types.size());
   for (Node* n : this->graph->op_nodes()) {
@@ -1649,6 +1719,17 @@ FunctionBody::FunctionBody(const FunctionDef& f, DataTypeSlice arg_t,
     CHECK_LE(0, index);
     CHECK_LT(index, node_vec->size());
     (*node_vec)[index] = n;
+  }
+  // 2. Find ControlRet nodes that must be always executed.
+  std::unordered_set<StringPiece, StringPieceHasher> control_ret_node_names;
+  for (const auto& control_ret : fdef.control_ret()) {
+    control_ret_node_names.insert(control_ret.second);
+  }
+  this->control_ret_nodes.reserve(control_ret_node_names.size());
+  for (Node* n : this->graph->op_nodes()) {
+    if (control_ret_node_names.count(n->name()) > 0) {
+      this->control_ret_nodes.push_back(n);
+    }
   }
 }
 

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Tests for ragged.map_flat_values."""
+"""Tests for ragged_functional_ops.map_flat_values."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -24,7 +24,9 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.ops import ragged
+from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_functional_ops
+from tensorflow.python.ops.ragged import ragged_tensor
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -38,68 +40,66 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
                                         args=(),
                                         kwargs=None):
     kwargs = kwargs or {}
-    result = ragged.map_flat_values(op, *args, **kwargs)
-    with self.test_session():
-      self.assertRaggedEqual(result, expected)
+    result = ragged_functional_ops.map_flat_values(op, *args, **kwargs)
+    self.assertRaggedEqual(result, expected)
 
   def testDocStringExamples(self):
     """Test the examples in apply_op_to_ragged_values.__doc__."""
-    rt = ragged.constant([[1, 2, 3], [], [4, 5], [6]])
-    v1 = ragged.map_flat_values(array_ops.ones_like, rt)
-    v2 = ragged.map_flat_values(math_ops.multiply, rt, rt)
-    v3 = ragged.map_flat_values(math_ops.add, rt, 5)
-    with self.test_session():
-      self.assertRaggedEqual(v1, [[1, 1, 1], [], [1, 1], [1]])
-      self.assertRaggedEqual(v2, [[1, 4, 9], [], [16, 25], [36]])
-      self.assertRaggedEqual(v3, [[6, 7, 8], [], [9, 10], [11]])
+    rt = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5], [6]])
+    v1 = ragged_functional_ops.map_flat_values(array_ops.ones_like, rt)
+    v2 = ragged_functional_ops.map_flat_values(math_ops.multiply, rt, rt)
+    v3 = ragged_functional_ops.map_flat_values(math_ops.add, rt, 5)
+    self.assertRaggedEqual(v1, [[1, 1, 1], [], [1, 1], [1]])
+    self.assertRaggedEqual(v2, [[1, 4, 9], [], [16, 25], [36]])
+    self.assertRaggedEqual(v3, [[6, 7, 8], [], [9, 10], [11]])
 
   def testOpWithSingleRaggedTensorArg(self):
-    tensor = ragged.constant([[1, 2, 3], [], [4, 5]])
+    tensor = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5]])
     self.assertRaggedMapInnerValuesReturns(
         op=array_ops.zeros_like,
         args=(tensor,),
         expected=[[0, 0, 0], [], [0, 0]])
 
   def testOpWithTwoRaggedTensorArgs(self):
-    x = ragged.constant([[3, 1, 4], [], [1, 5]])
-    y = ragged.constant([[1, 2, 3], [], [4, 5]])
+    x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
+    y = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply, args=(x, y), expected=[[3, 2, 12], [], [4, 25]])
 
   def testOpWithRaggedTensorAndScalarArgs(self):
-    y = ragged.constant([[1, 2, 3], [], [4, 5]])
+    y = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply, args=(5, y), expected=[[5, 10, 15], [], [20, 25]])
 
   def testOpWithThreeRaggedTensorArgs(self):
-    condition = ragged.constant(
+    condition = ragged_factory_ops.constant(
         [[True, True, False], [], [True, False]])  # pyformat: disable
-    x = ragged.constant([['a', 'b', 'c'], [], ['d', 'e']])
-    y = ragged.constant([['A', 'B', 'C'], [], ['D', 'E']])
+    x = ragged_factory_ops.constant([['a', 'b', 'c'], [], ['d', 'e']])
+    y = ragged_factory_ops.constant([['A', 'B', 'C'], [], ['D', 'E']])
     self.assertRaggedMapInnerValuesReturns(
         op=array_ops.where,
         args=(condition, x, y),
         expected=[[b'a', b'b', b'C'], [], [b'd', b'E']])
 
   def testOpWithRaggedTensorListArg(self):
-    x = ragged.constant([[1, 2, 3], [], [4, 5]])
-    y = ragged.constant([[10, 20, 30], [], [40, 50]])
+    x = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5]])
+    y = ragged_factory_ops.constant([[10, 20, 30], [], [40, 50]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.add_n,
         args=([x, y, x],),
         expected=[[12, 24, 36], [], [48, 60]])
 
   def testOpWithKeywordArgs(self):
-    x = ragged.constant([[3, 1, 4], [], [1, 5]])
-    y = ragged.constant([[1, 2, 3], [], [4, 5]])
+    x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
+    y = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply,
         kwargs=dict(x=x, y=y),
         expected=[[3, 2, 12], [], [4, 25]])
 
   def testOpWithMixedPositionalAndKeywordArgs(self):
-    x = ragged.constant([[3, 1, 4], [], [1, 5]])
-    y = ragged.constant([[1, 2, 3], [], [4, 5]])
+    x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
+    y = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply,
         args=(x,),
@@ -107,7 +107,7 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
         expected=[[3, 2, 12], [], [4, 25]])
 
   def testNonElementWiseOp(self):
-    x = ragged.constant(
+    x = ragged_factory_ops.constant(
         [[[3, 1, 4], [1, 5, 9], [2, 6, 5]], [], [[3, 5, 8], [9, 7, 9]]],
         ragged_rank=1)
     self.assertRaggedMapInnerValuesReturns(
@@ -122,21 +122,22 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
     # ragged_rank=0
     x0 = [3, 1, 4, 1, 5, 9, 2, 6, 5]
     y0 = [1, 2, 3, 4, 5, 6, 7, 8, 9]
-    with self.test_session():
-      self.assertRaggedEqual(
-          math_ops.multiply(x0, y0), [3, 2, 12, 4, 25, 54, 14, 48, 45])
+    self.assertRaggedEqual(
+        math_ops.multiply(x0, y0), [3, 2, 12, 4, 25, 54, 14, 48, 45])
 
     # ragged_rank=1
-    x1 = ragged.constant([[3, 1, 4], [], [1, 5], [9, 2], [6, 5]])
-    y1 = ragged.constant([[1, 2, 3], [], [4, 5], [6, 7], [8, 9]])
+    x1 = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5], [9, 2], [6, 5]])
+    y1 = ragged_factory_ops.constant([[1, 2, 3], [], [4, 5], [6, 7], [8, 9]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply,
         args=(x1, y1),
         expected=[[3, 2, 12], [], [4, 25], [54, 14], [48, 45]])
 
     # ragged_rank=2
-    x2 = ragged.constant([[[3, 1, 4]], [], [[], [1, 5]], [[9, 2], [6, 5]]])
-    y2 = ragged.constant([[[1, 2, 3]], [], [[], [4, 5]], [[6, 7], [8, 9]]])
+    x2 = ragged_factory_ops.constant([[[3, 1, 4]], [], [[], [1, 5]],
+                                      [[9, 2], [6, 5]]])
+    y2 = ragged_factory_ops.constant([[[1, 2, 3]], [], [[], [4, 5]],
+                                      [[6, 7], [8, 9]]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply,
         args=(x2, y2),
@@ -147,10 +148,10 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
                  ])  # pyformat: disable
 
     # ragged_rank=3
-    x3 = ragged.constant([[[[3, 1, 4]], []], [], [[[], [1, 5]]],
-                          [[[9, 2], [6, 5]]]])
-    y3 = ragged.constant([[[[1, 2, 3]], []], [], [[[], [4, 5]]],
-                          [[[6, 7], [8, 9]]]])
+    x3 = ragged_factory_ops.constant([[[[3, 1, 4]], []], [], [[[], [1, 5]]],
+                                      [[[9, 2], [6, 5]]]])
+    y3 = ragged_factory_ops.constant([[[[1, 2, 3]], []], [], [[[], [4, 5]]],
+                                      [[[6, 7], [8, 9]]]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply,
         args=(x3, y3),
@@ -162,8 +163,8 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
         ])  # pyformat: disable
 
   def testOpWithRaggedRankThree(self):
-    x = ragged.constant([[[3, 1, 4]], [], [[], [1, 5]]])
-    y = ragged.constant([[[1, 2, 3]], [], [[], [4, 5]]])
+    x = ragged_factory_ops.constant([[[3, 1, 4]], [], [[], [1, 5]]])
+    y = ragged_factory_ops.constant([[[1, 2, 3]], [], [[], [4, 5]]])
     self.assertRaggedMapInnerValuesReturns(
         op=math_ops.multiply,
         args=(x, y),
@@ -176,29 +177,30 @@ class RaggedMapInnerValuesOpTest(ragged_test_util.RaggedTensorTestCase):
         op=math_ops.multiply, args=(x, y), expected=[[2, 4], [6, 8], [10, 12]])
 
   def testRaggedTensorSplitsRaggedRankMismatchError(self):
-    x = ragged.constant([[3, 1, 4], [], [1, 5]])
-    y = ragged.constant([[[3, 1, 4], []], [], [[1, 5]]])
-    self.assertRaisesRegexp(ValueError,
-                            r'Inputs must have identical ragged splits.*',
-                            ragged.map_flat_values, math_ops.add, x, y)
+    x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
+    y = ragged_factory_ops.constant([[[3, 1, 4], []], [], [[1, 5]]])
+    self.assertRaisesRegexp(
+        ValueError, r'Inputs must have identical ragged splits.*',
+        ragged_functional_ops.map_flat_values, math_ops.add, x, y)
 
   def testRaggedTensorSplitsValueMismatchError(self):
-    x = ragged.constant([[3, 1, 4], [], [1, 5]])
-    y = ragged.constant([[1], [2, 3], [4, 5]])
+    x = ragged_factory_ops.constant([[3, 1, 4], [], [1, 5]])
+    y = ragged_factory_ops.constant([[1], [2, 3], [4, 5]])
     self.assertRaisesRegexp(errors.InvalidArgumentError,
                             r'Inputs must have identical ragged splits.*',
-                            ragged.map_flat_values, math_ops.add, x, y)
+                            ragged_functional_ops.map_flat_values, math_ops.add,
+                            x, y)
 
   def testRaggedTensorSplitsMismatchErrorAtRuntime(self):
     splits1 = array_ops.placeholder_with_default(
         constant_op.constant([0, 3, 3, 5], dtypes.int64), None)
     splits2 = array_ops.placeholder_with_default(
         constant_op.constant([0, 1, 3, 5], dtypes.int64), None)
-    x = ragged.RaggedTensor.from_row_splits([3, 1, 4, 1, 5], splits1)
-    y = ragged.RaggedTensor.from_row_splits([1, 2, 3, 4, 5], splits2)
+    x = ragged_tensor.RaggedTensor.from_row_splits([3, 1, 4, 1, 5], splits1)
+    y = ragged_tensor.RaggedTensor.from_row_splits([1, 2, 3, 4, 5], splits2)
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'.*Inputs must have identical ragged splits'):
-      self.evaluate(ragged.map_flat_values(math_ops.add, x, y))
+      self.evaluate(ragged_functional_ops.map_flat_values(math_ops.add, x, y))
 
 
 if __name__ == '__main__':

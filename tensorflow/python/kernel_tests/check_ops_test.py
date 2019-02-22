@@ -889,6 +889,8 @@ class EnsureShapeTest(test.TestCase):
 
   # Dynamic shape check
   @test_util.run_deprecated_v1
+  @test_util.disable_xla(
+      "b/123337890")  # Dynamic shapes not supported now with XLA
   def testEnsuresDynamicShape_RaisesError(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     derived = math_ops.divide(placeholder, 3, name="MyDivide")
@@ -902,6 +904,8 @@ class EnsureShapeTest(test.TestCase):
         sess.run(derived, feed_dict={placeholder: feed_val})
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla(
+      "b/123337890")  # Dynamic shapes not supported now with XLA
   def testEnsuresDynamicShape_RaisesErrorDimUnknown(self):
     placeholder = array_ops.placeholder(dtypes.int32)
     derived = placeholder / 3

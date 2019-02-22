@@ -59,6 +59,22 @@ py_test(
 )
 
 py_test(
+    name = "map_defun_benchmark",
+    srcs = ["map_defun_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:functional_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/data/experimental/ops:map_defun",
+        "//tensorflow/python/eager:function",
+    ],
+)
+
+py_test(
     name = "map_vectorization_benchmark",
     srcs = ["map_vectorization_benchmark.py"],
     srcs_version = "PY2AND3",
@@ -95,6 +111,20 @@ py_test(
 )
 
 py_test(
+    name = "choose_fastest_benchmark",
+    srcs = ["choose_fastest_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "optimize_benchmark",
     srcs = ["optimize_benchmark.py"],
     srcs_version = "PY2AND3",
@@ -105,6 +135,36 @@ py_test(
         "//tensorflow/python:session",
         "//tensorflow/python/data/ops:dataset_ops",
         "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "parallel_interleave_benchmark",
+    srcs = ["parallel_interleave_benchmark.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:optimization",
+        "//tensorflow/python/data/experimental/ops:sleep",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
+    name = "rejection_resample_benchmark",
+    srcs = ["rejection_resample_benchmark.py"],
+    srcs_version = "PY2AND3",
+    tags = ["no_pip"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:resampling",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+        "@six_archive//:six",
     ],
 )
 

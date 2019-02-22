@@ -26,9 +26,9 @@ from tensorflow.python.keras import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import data_structures
-from tensorflow.python.training.checkpointable import tracking
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import tracking
+from tensorflow.python.training.tracking import util
 
 
 class UniqueNameTrackerTests(test.TestCase):
@@ -52,7 +52,7 @@ class UniqueNameTrackerTests(test.TestCase):
     save_root = util.Checkpoint(slots=slots)
     save_path = save_root.save(checkpoint_prefix)
 
-    restore_slots = tracking.Checkpointable()
+    restore_slots = tracking.AutoTrackable()
     restore_root = util.Checkpoint(
         slots=restore_slots)
     status = restore_root.restore(save_path)
@@ -68,7 +68,7 @@ class UniqueNameTrackerTests(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testExample(self):
-    class SlotManager(tracking.Checkpointable):
+    class SlotManager(tracking.AutoTrackable):
 
       def __init__(self):
         self.slotdeps = containers.UniqueNameTracker()

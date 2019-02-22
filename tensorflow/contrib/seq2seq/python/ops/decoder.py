@@ -27,6 +27,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import layers
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import control_flow_util
@@ -135,6 +136,127 @@ class Decoder(object):
     return False
 
 
+class BaseDecoder(layers.Layer):
+  """An RNN Decoder that is based on a Keras layer.
+
+  Concepts used by this interface:
+  - `inputs`: (structure of) tensors and TensorArrays that is passed as input to
+    the RNNCell composing the decoder, at each time step.
+  - `state`: (structure of) tensors and TensorArrays that is passed to the
+    RNNCell instance as the state.
+  - `memory`: (sturecute of) tensors that is usually the full output of the
+    encoder, which will be used for the attention wrapper for the RNNCell.
+  - `finished`: boolean tensor telling whether each sequence in the batch is
+    finished.
+  - `outputs`: Instance of BasicDecoderOutput. Result of the decoding, at each
+    time step.
+  """
+
+  def __init__(self,
+               output_time_major=False,
+               impute_finished=False,
+               maximum_iterations=None,
+               parallel_iterations=32,
+               swap_memory=False,
+               **kwargs):
+    self.output_time_major = output_time_major
+    self.impute_finished = impute_finished
+    self.maximum_iterations = maximum_iterations
+    self.parallel_iterations = parallel_iterations
+    self.swap_memory = swap_memory
+    super(BaseDecoder, self).__init__(**kwargs)
+
+  def call(self, inputs, initial_state=None, **kwargs):
+    init_kwargs = kwargs
+    init_kwargs["initial_state"] = initial_state
+    return dynamic_decode(self,
+                          output_time_major=self.output_time_major,
+                          impute_finished=self.impute_finished,
+                          maximum_iterations=self.maximum_iterations,
+                          parallel_iterations=self.parallel_iterations,
+                          swap_memory=self.swap_memory,
+                          decoder_init_input=inputs,
+                          decoder_init_kwargs=init_kwargs)
+
+  @property
+  def batch_size(self):
+    """The batch size of input values."""
+    raise NotImplementedError
+
+  @property
+  def output_size(self):
+    """A (possibly nested tuple of...) integer[s] or `TensorShape` object[s]."""
+    raise NotImplementedError
+
+  @property
+  def output_dtype(self):
+    """A (possibly nested tuple of...) dtype[s]."""
+    raise NotImplementedError
+
+  def initialize(self, inputs, initial_state=None, **kwargs):
+    """Called before any decoding iterations.
+
+    This methods must compute initial input values and initial state.
+
+    Args:
+      inputs: (structure of) tensors that contains the input for the decoder. In
+        the normal case, its a tensor with shape [batch, timestep, embedding].
+      initial_state: (structure of) tensors that contains the initial state for
+        the RNNCell.
+      **kwargs: Other arguments that are passed in from layer.call() method. It
+        could contains item like input sequence_length, or masking for input.
+
+    Returns:
+      `(finished, initial_inputs, initial_state)`: initial values of
+      'finished' flags, inputs and state.
+    """
+    raise NotImplementedError
+
+  def step(self, time, inputs, state):
+    """Called per step of decoding (but only once for dynamic decoding).
+
+    Args:
+      time: Scalar `int32` tensor. Current step number.
+      inputs: RNNCell input (possibly nested tuple of) tensor[s] for this time
+        step.
+      state: RNNCell state (possibly nested tuple of) tensor[s] from previous
+        time step.
+
+    Returns:
+      `(outputs, next_state, next_inputs, finished)`: `outputs` is an object
+      containing the decoder output, `next_state` is a (structure of) state
+      tensors and TensorArrays, `next_inputs` is the tensor that should be used
+      as input for the next step, `finished` is a boolean tensor telling whether
+      the sequence is complete, for each sequence in the batch.
+    """
+    raise NotImplementedError
+
+  def finalize(self, outputs, final_state, sequence_lengths):
+    raise NotImplementedError
+
+  @property
+  def tracks_own_finished(self):
+    """Describes whether the Decoder keeps track of finished states.
+
+    Most decoders will emit a true/false `finished` value independently
+    at each time step.  In this case, the `dynamic_decode` function keeps track
+    of which batch entries are already finished, and performs a logical OR to
+    insert new batches to the finished set.
+
+    Some decoders, however, shuffle batches / beams between time steps and
+    `dynamic_decode` will mix up the finished state across these entries because
+    it does not track the reshuffle across time steps.  In this case, it is
+    up to the decoder to declare that it will keep track of its own finished
+    state by setting this property to `True`.
+
+    Returns:
+      Python bool.
+    """
+    return False
+
+  # TODO(scottzhu): Add build/get_config/from_config and other layer methods.
+
+
 def _create_zero_outputs(size, dtype, batch_size):
   """Create a zero outputs Tensor structure."""
   def _create(s, d):
@@ -149,7 +271,8 @@ def dynamic_decode(decoder,
                    maximum_iterations=None,
                    parallel_iterations=32,
                    swap_memory=False,
-                   scope=None):
+                   scope=None,
+                   **kwargs):
   """Perform dynamic decoding with `decoder`.
 
   Calls initialize() once and step() repeatedly on the Decoder object.
@@ -171,6 +294,9 @@ def dynamic_decode(decoder,
     parallel_iterations: Argument passed to `tf.while_loop`.
     swap_memory: Argument passed to `tf.while_loop`.
     scope: Optional variable scope to use.
+    **kwargs: dict, other keyword arguments for dynamic_decode. It might contain
+      arguments for `BaseDecoder` to initialize, which takes all tensor inputs
+      during call().
 
   Returns:
     `(final_outputs, final_state, final_sequence_lengths)`.
@@ -179,7 +305,7 @@ def dynamic_decode(decoder,
     TypeError: if `decoder` is not an instance of `Decoder`.
     ValueError: if `maximum_iterations` is provided but is not a scalar.
   """
-  if not isinstance(decoder, Decoder):
+  if not isinstance(decoder, (Decoder, BaseDecoder)):
     raise TypeError("Expected decoder to be type Decoder, but saw: %s" %
                     type(decoder))
 
@@ -204,7 +330,14 @@ def dynamic_decode(decoder,
       if maximum_iterations.get_shape().ndims != 0:
         raise ValueError("maximum_iterations must be a scalar")
 
-    initial_finished, initial_inputs, initial_state = decoder.initialize()
+    if isinstance(decoder, Decoder):
+      initial_finished, initial_inputs, initial_state = decoder.initialize()
+    else:
+      # For BaseDecoder that takes tensor inputs during call.
+      decoder_init_input = kwargs.pop("decoder_init_input", None)
+      decoder_init_kwargs = kwargs.pop("decoder_init_kwargs", {})
+      initial_finished, initial_inputs, initial_state = decoder.initialize(
+          decoder_init_input, **decoder_init_kwargs)
 
     zero_outputs = _create_zero_outputs(decoder.output_size,
                                         decoder.output_dtype,
@@ -222,7 +355,7 @@ def dynamic_decode(decoder,
     def _shape(batch_size, from_shape):
       if (not isinstance(from_shape, tensor_shape.TensorShape) or
           from_shape.ndims == 0):
-        return tensor_shape.TensorShape(None)
+        return None
       else:
         batch_size = tensor_util.constant_value(
             ops.convert_to_tensor(

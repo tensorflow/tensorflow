@@ -44,6 +44,7 @@ default_execution_mode = EAGER_MODE if tf2.enabled() else GRAPH_MODE
 # Note that we do not protect this with a lock and instead rely on python's GIL
 # and the idempotent nature of writes to provide thread safety.
 _device_parsing_cache = {}
+_starting_device_spec = pydev.DeviceSpec.from_string("")
 
 _MAXINT32 = 2**31 - 1
 
@@ -135,30 +136,57 @@ class _EagerContext(threading.local):
 
   def __init__(self, config=None):
     super(_EagerContext, self).__init__()
-    self.device_spec = pydev.DeviceSpec.from_string("")
-    self.device_name = self.device_spec.to_string()
+    self.device_spec = _starting_device_spec
+    self.device_name = ""
     self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.recording_summaries = False
     self.summary_writer_resource = None
+    self.recording_summaries = None
     self.scalar_cache = {}
-    self.ones_rank_cache = _EagerTensorCache()
-    self.zeros_cache = _EagerTensorCache()
+    self._ones_rank_cache = None
+    self._zeros_cache = None
     self.execution_mode = None
 
     # Default rewriter config corresponds to turning all default grappler
     # optimizations on.
-    base_config = config_pb2.ConfigProto()
+    self._config = config
 
-    if config is not None:
-      base_config.MergeFrom(config)
+    self._function_call_options = None
 
-    self.function_call_options = FunctionCallOptions(config_proto=base_config)
+  @property
+  def function_call_options(self):
+    if self._function_call_options is None:
+      base_config = config_pb2.ConfigProto()
+      if self._config is not None:
+        base_config.MergeFrom(self._config)
+      self._config = None
+      self._function_call_options = FunctionCallOptions(
+          config_proto=base_config)
+
+    return self._function_call_options
+
+  @function_call_options.setter
+  def function_call_options(self, function_call_options):
+    self._function_call_options = function_call_options
+    self._config = None
+
+  @property
+  def ones_rank_cache(self):
+    if not self._ones_rank_cache:
+      self._ones_rank_cache = _EagerTensorCache()
+    return self._ones_rank_cache
+
+  @property
+  def zeros_cache(self):
+    if not self._zeros_cache:
+      self._zeros_cache = _EagerTensorCache()
+    return self._zeros_cache
 
 
 ContextSwitch = collections.namedtuple(
-    "ContextSwitch", ["is_building_function", "enter_context_fn"])
+    "ContextSwitch", ["is_building_function", "enter_context_fn",
+                      "device_stack"])
 
 
 # `_ContextSwitchStack` is a `threading.local` to match the semantics of
@@ -175,23 +203,28 @@ class _ContextSwitchStack(threading.local):
       # across threads, since (1) `enable_eager_execution` modifies a
       # process-level flag (`default_execution_mode`) and (2) `__init__` is
       # called each time a threading.local object is used in a separate thread.
-      self.push(is_building_function=False, enter_context_fn=eager_mode)
+      self.push(is_building_function=False, enter_context_fn=eager_mode,
+                device_stack=None)
 
-  def push(self, is_building_function, enter_context_fn):
+  def push(self, is_building_function, enter_context_fn, device_stack):
     """Push metadata about a context switch onto the stack.
 
-    A context switch can take one of two forms: installing a graph as the
-    default graph, or entering the eager context. For each context switch,
+    A context switch can take any one of the two forms: installing a graph as
+    the default graph, or entering the eager context. For each context switch,
     we record whether or not the entered context is building a function.
 
     Args:
       is_building_function: (bool.) Whether the context is building a function.
       enter_context_fn: (function.) A callable that executes the context switch.
         For example, `graph.as_default` or `eager_mode`.
+      device_stack: If applicable, the device function stack for this
+        graph. When breaking out of graphs in init_scope, the innermost nonempty
+        device stack is used. Eager contexts put `None` here and the value is
+        never used.
     """
 
     self.stack.append(
-        ContextSwitch(is_building_function, enter_context_fn))
+        ContextSwitch(is_building_function, enter_context_fn, device_stack))
 
   def pop(self):
     """Pop the stack."""
@@ -265,6 +298,7 @@ class Context(object):
       execution_mode = SYNC
     self._execution_mode = execution_mode
     self._server_def = server_def
+    self._collective_ops_server_def = None
 
   # pylint: enable=redefined-outer-name
 
@@ -325,9 +359,16 @@ class Context(object):
         self._context_handle = pywrap_tensorflow.TFE_NewContext(opts)
       finally:
         pywrap_tensorflow.TFE_DeleteContextOptions(opts)
+      assert not (self._server_def and self._collective_ops_server_def), (
+          "Cannot enable remote execution as well as collective ops at the "
+          "moment. If this is important to you, please file an issue.")
       if self._server_def is not None:
         server_def_str = self._server_def.SerializeToString()
         pywrap_tensorflow.TFE_ContextSetServerDef(self._context_handle, 600,
+                                                  server_def_str)
+      elif self._collective_ops_server_def is not None:
+        server_def_str = self._collective_ops_server_def.SerializeToString()
+        pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
                                                   server_def_str)
 
       self._initialize_devices()
@@ -370,6 +411,30 @@ class Context(object):
 
       self._initialize_devices()
 
+  def enable_collective_ops(self, server_def):
+    """Enable collective ops with an appropriate server_def.
+
+    If previously enabled, this cannot be re-enabled.
+
+    Args:
+      server_def: A tensorflow::ServerDef proto. Enables execution on remote
+        devices.
+
+    Raises:
+      ValueError: if server_def is None.
+    """
+    if not server_def:
+      raise ValueError("server_def is None.")
+    if not self._context_handle:
+      self._collective_ops_server_def = server_def
+    else:
+      server_def_str = server_def.SerializeToString()
+      pywrap_tensorflow.TFE_EnableCollectiveOps(self._context_handle,
+                                                server_def_str)
+
+      self._clear_caches()
+      self._initialize_devices()
+
   @property
   def _handle(self):
     ctx = self._context_handle
@@ -410,7 +475,7 @@ class Context(object):
       # Entering graph mode does not provide us with sufficient information to
       # record a context switch; graph-based context switches are only logged
       # when a graph is registered as the default graph.
-      self.context_switches.push(False, eager_mode)
+      self.context_switches.push(False, eager_mode, None)
     try:
       yield
     finally:
@@ -454,6 +519,16 @@ class Context(object):
   def summary_writer_resource(self, resource):
     """Sets summary writer resource."""
     self._eager_context.summary_writer_resource = resource
+
+  @property
+  def recording_summaries(self):
+    """Returns summary recording condition."""
+    return self._eager_context.recording_summaries
+
+  @recording_summaries.setter
+  def recording_summaries(self, condition):
+    """Sets summary recording condition."""
+    self._eager_context.recording_summaries = condition
 
   @property
   def device_name(self):
@@ -611,6 +686,10 @@ class Context(object):
     pywrap_tensorflow.TFE_ContextAddFunctionDef(
         self._handle, fdef_string, len(fdef_string))
 
+  def has_function(self, name):
+    """Check if a function `name` is registered."""
+    return bool(pywrap_tensorflow.TFE_ContextHasFunction(self._handle, name))
+
   def add_post_execution_callback(self, callback):
     """Add a post-execution callback to the context.
 
@@ -646,14 +725,6 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
-  def enable_run_metadata(self):
-    """Enables tracing of op execution via RunMetadata.
-
-    To retrieve the accumulated metadata call context.export_run_metadata()
-    and to stop tracing call context.disable_run_metadata().
-    """
-    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
-
   @tf_contextlib.contextmanager
   def device_policy(self, policy):
     handle = self._handle
@@ -666,11 +737,33 @@ class Context(object):
       pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
           handle, old)
 
+  def enable_run_metadata(self):
+    """Enables tracing of op execution via RunMetadata.
+
+    To retrieve the accumulated metadata call context.export_run_metadata()
+    and to stop tracing call context.disable_run_metadata().
+    """
+    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
+
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableRunMetadata(self._context_handle)
+
+  def enable_graph_collection(self):
+    """Enables graph collection of executed functions.
+
+    To retrieve the accumulated graphs call context.export_run_metadata()
+    and to stop collecting graphs call context.disable_graph_collection().
+    """
+    pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
+
+  def disable_graph_collection(self):
+    """Disables graph collections of executed functions."""
+    if not self._context_handle:
+      return
+    pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
 
   def export_run_metadata(self):
     """Returns a RunMetadata proto with accumulated information.
@@ -756,6 +849,27 @@ def in_eager_mode():
   return executing_eagerly()
 
 
+def shared_name(name=None):
+  """Returns the anonymous shared name GUID if no shared name is specified.
+
+  In eager mode we need to use a unique shared name to avoid spurious sharing
+  issues. The runtime generates a unique name on our behalf when the reserved
+  GUID is used as a shared name.
+
+  Args:
+    name: Optional shared name
+
+  Returns:
+    Eager compatible shared name.
+  """
+  if name or not executing_eagerly():
+    return name
+
+  # Ensure a unique name when eager execution is enabled to avoid spurious
+  # sharing issues.
+  return "cd2c89b7-88b7-44c8-ad83-06c2a9158347"
+
+
 def graph_mode():
   """Context-manager to disable eager execution for the current thread."""
   return context()._mode(GRAPH_MODE)  # pylint: disable=protected-access
@@ -807,6 +921,7 @@ def device(name):
   return context().device(name)
 
 
+@tf_export("config.experimental_list_devices")
 def list_devices():
   """List the names of the available devices.
 
@@ -878,6 +993,20 @@ def disable_run_metadata():
   context().disable_run_metadata()
 
 
+def enable_graph_collection():
+  """Enables tracing of op execution via RunMetadata.
+
+  To retrieve the accumulated metadata call context.export_run_metadata()
+  and to stop tracing call context.disable_run_metadata().
+  """
+  context().enable_graph_collection()
+
+
+def disable_graph_collection():
+  """Disables tracing of op execution via RunMetadata."""
+  context().disable_graph_collection()
+
+
 def export_run_metadata():
   """Returns a RunMetadata proto with accumulated information.
 
@@ -923,6 +1052,10 @@ def add_function(fdef):
 # but they do all import this file.  Note that IS_IN_GRAPH_MODE and
 # in_graph_mode are both parameterless functions.
 def _tmp_in_graph_mode():
+  if context_safe() is None:
+    # Context not yet initialized. Assume graph mode following the
+    # default implementation in `is_in_graph_mode`.
+    return True
   return not executing_eagerly()
 
 

@@ -114,5 +114,29 @@ class LinearOperatorAdjointTest(
     self.assertEqual("my_operator_adjoint", operator.name)
 
 
+class LinearOperatorAdjointNonSquareTest(
+    linear_operator_test_util.NonSquareLinearOperatorDerivedClassTest):
+  """Tests done in the base class NonSquareLinearOperatorDerivedClassTest."""
+
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+    shape_before_adjoint = list(build_info.shape)
+    # We need to swap the last two dimensions because we are taking the adjoint
+    # of this operator
+    shape_before_adjoint[-1], shape_before_adjoint[-2] = (
+        shape_before_adjoint[-2], shape_before_adjoint[-1])
+    matrix = linear_operator_test_util.random_normal(
+        shape_before_adjoint, dtype=dtype)
+
+    lin_op_matrix = matrix
+
+    if use_placeholder:
+      lin_op_matrix = array_ops.placeholder_with_default(matrix, shape=None)
+
+    operator = LinearOperatorAdjoint(
+        linalg.LinearOperatorFullMatrix(lin_op_matrix))
+
+    return operator, linalg.adjoint(matrix)
+
+
 if __name__ == "__main__":
   test.main()
