@@ -144,6 +144,22 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     value = events[1].summary.value[0]
     self.assertAllEqual([b'foo', b'bar'], to_numpy(value))
 
+  @test_util.run_gpu_only
+  def testWrite_gpuDeviceContext(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer(logdir).as_default():
+        with ops.device('/GPU:0'):
+          value = constant_op.constant(42.0)
+          step = constant_op.constant(12, dtype=dtypes.int64)
+          summary_ops.write('tag', value, step=step).numpy()
+    empty_metadata = summary_pb2.SummaryMetadata()
+    events = events_from_logdir(logdir)
+    self.assertEqual(2, len(events))
+    self.assertEqual(12, events[1].step)
+    self.assertEqual(42, to_numpy(events[1].summary.value[0]))
+    self.assertEqual(empty_metadata, events[1].summary.value[0].metadata)
+
   @test_util.also_run_as_tf_function
   def testWrite_noDefaultWriter(self):
     with context.eager_mode():

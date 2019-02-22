@@ -1084,7 +1084,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "summary_ops_test",
     size = "small",
     srcs = ["summary_ops_test.py"],
@@ -1107,6 +1107,7 @@ tf_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
