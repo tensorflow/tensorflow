@@ -271,7 +271,10 @@ tf_py_test(
         ":client_testlib",
         ":platform",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
 )
 
 tf_py_test(
@@ -279,10 +282,7 @@ tf_py_test(
     size = "small",
     srcs = ["platform/app_test.py"],
     additional_deps = [":platform"],
-    tags = [
-        "nomac",
-        "notap",
-    ],
+    tags = ["notap"],
 )
 
 cc_library(
