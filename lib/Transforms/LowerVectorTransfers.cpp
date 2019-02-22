@@ -424,12 +424,15 @@ public:
   }
 };
 
-struct LowerVectorTransfersPass
-    : public MLPatternLoweringPass<
-          VectorTransferExpander<VectorTransferReadOp>,
-          VectorTransferExpander<VectorTransferWriteOp>> {
+struct LowerVectorTransfersPass : public FunctionPass {
   LowerVectorTransfersPass()
-      : MLPatternLoweringPass(&LowerVectorTransfersPass::passID) {}
+      : FunctionPass(&LowerVectorTransfersPass::passID) {}
+
+  PassResult runOnFunction(Function *fn) override {
+    applyMLPatternsGreedily<VectorTransferExpander<VectorTransferReadOp>,
+                            VectorTransferExpander<VectorTransferWriteOp>>(fn);
+    return success();
+  }
 
   // Thread-safe RAII context with local scope. BumpPtrAllocator freed on exit.
   edsc::ScopedEDSCContext raiiContext;
