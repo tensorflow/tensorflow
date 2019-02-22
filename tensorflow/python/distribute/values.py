@@ -983,7 +983,8 @@ class TPUMirroredVariable(trackable.Trackable):
     return self._read_variable_op()
 
   def assign_sub(self, *args, **kwargs):
-    def assign_sub_fn(var, delta, **kw):
+    def assign_sub_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -997,7 +998,8 @@ class TPUMirroredVariable(trackable.Trackable):
     return self._assign_func(f=assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    def assign_add_fn(var, delta, **kw):
+    def assign_add_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -1011,7 +1013,8 @@ class TPUMirroredVariable(trackable.Trackable):
     return self._assign_func(f=assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    def assign_fn(var, value, **kw):
+    def assign_fn(var, value, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -1204,6 +1207,7 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
+# TODO(josh11b): Rename this to SyncOnReadVariable.
 class ReplicaLocalVariable(DistributedVariable, PerReplica,
                            trackable.Trackable):
   """Holds a map from device to variables whose values are reduced on save."""
@@ -1243,11 +1247,8 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self.primary
-    # TODO(josh11b): Use a strategy-specific method.
-    total = math_ops.add_n(self._values)
-    if self._aggregation == vs.VariableAggregation.MEAN:
-      return total * (1./ len(self._values))
-    return total
+    return self._distribute_strategy.reduce(
+        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self)
 
   def _as_graph_element(self):
     # pylint: disable=protected-access

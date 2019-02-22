@@ -362,4 +362,4 @@ class HashTable(InitializableLookupTableBase):
 
 
 MutableHashTable = lookup_ops.MutableHashTable
-MutableDenseHashTable = lookup_ops.MutableDenseHashTable
+MutableDenseHashTable = lookup_ops.DenseHashTable

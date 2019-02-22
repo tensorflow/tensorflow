@@ -224,6 +224,8 @@ class ComputationBuilder {
   // Returns the shape of the current return value for the computation.
   StatusOr<Shape> GetReturnValueShape();
 
+  LocalOp ReplicaId();
+
   LocalOp Infeed(const Shape& shape);
 
   void Outfeed(const LocalOp& operand, const Shape& shape,

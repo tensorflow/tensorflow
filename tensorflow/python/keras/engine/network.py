@@ -549,10 +549,7 @@ class Network(base_layer.Layer):
     """Used every step in eager to reset losses."""
     self._eager_losses = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        layer._clear_losses()
-      else:
-        layer._eager_losses = []
+      layer._clear_losses()
 
   @property
   def updates(self):

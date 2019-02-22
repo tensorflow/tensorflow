@@ -70,7 +70,8 @@ class BatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     else:
       dim0 = None
     self.assertEqual(
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)],
+        [ts.as_list() for ts in nest.flatten(
+            dataset_ops.get_legacy_output_shapes(dataset))],
         [[dim0] + list(c.shape[1:]) for c in components])
 
     num_full_batches = (count * 7) // batch_size

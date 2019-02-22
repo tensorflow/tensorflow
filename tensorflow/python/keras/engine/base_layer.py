@@ -214,6 +214,12 @@ class Layer(trackable.Trackable):
     else:
       self._initial_weights = None
 
+    # This flag is used to keep track of whether symbolic tensors are added to
+    # the model outside of the call context. This is required for disabling
+    # `run_eagerly` on compile.
+    # TODO(b/124303407): Remove this flag after we add support for the use case.
+    self._contains_symbolic_tensors = False
+
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -550,6 +556,13 @@ class Layer(trackable.Trackable):
         # pass to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
+    # Clear eager losses on top level model call.
+    # We are clearing the losses only on the top level model call and not on
+    # every layer/mode call because layer/model may be reused.
+    if (context.executing_eagerly() and
+        not base_layer_utils.is_in_call_context()):
+      self._clear_losses()
+
     with base_layer_utils.call_context():
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
@@ -763,9 +776,20 @@ class Layer(trackable.Trackable):
           # Ignoring constant values as this does not affect the gradients.
           return
         if tf_utils.is_symbolic_tensor(loss):
+          if not base_layer_utils.is_in_call_context():
+            self._contains_symbolic_tensors = True
           self._losses.append(_tag_unconditional(loss))
         else:
           self._eager_losses.append(_tag_unconditional(loss))
+
+  @trackable.no_automatic_dependency_tracking
+  def _clear_losses(self):
+    """Used every step in eager to reset losses."""
+    self._eager_losses = []
+    if hasattr(self, '_layers'):
+      for layer in trackable_layer_utils.filter_empty_layer_containers(
+          self._layers):
+        layer._clear_losses()
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -1337,6 +1361,8 @@ class Layer(trackable.Trackable):
       self._metrics.append(metric_obj)
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    if not base_layer_utils.is_in_call_context():
+      self._contains_symbolic_tensors = True
     if aggregation is None:
       # Iterate over the metrics and check if the given metric exists already.
       # This can happen when a metric instance is created in subclassed model
@@ -1685,26 +1711,36 @@ class Layer(trackable.Trackable):
           value._use_resource_variables = True
 
     # Append value to list of trainable / non-trainable weights if relevant
-    if isinstance(value, tf_variables.Variable):
-      # Users may add extra weights/variables
-      # simply by assigning them to attributes (invalid for graph networks)
-      if not hasattr(self, '_trainable_weights'):
-        super(Layer, self).__setattr__('_trainable_weights', [])
-      if not hasattr(self, '_non_trainable_weights'):
-        super(Layer, self).__setattr__('_non_trainable_weights', [])
-      if value not in self._trainable_weights + self._non_trainable_weights:
-        if value.trainable:
-          self._trainable_weights.append(value)
-        else:
-          self._non_trainable_weights.append(value)
+    # TODO(b/125122625): This won't pick up on any variables added to a
+    # list/dict after creation.
+    for val in nest.flatten(value):
+      if isinstance(val, tf_variables.Variable):
+        # Users may add extra weights/variables
+        # simply by assigning them to attributes (invalid for graph networks)
+        if not hasattr(self, '_trainable_weights'):
+          super(Layer, self).__setattr__('_trainable_weights', [])
+        if not hasattr(self, '_non_trainable_weights'):
+          super(Layer, self).__setattr__('_non_trainable_weights', [])
+        if val not in self._trainable_weights + self._non_trainable_weights:
+          if val.trainable:
+            self._trainable_weights.append(val)
+          else:
+            self._non_trainable_weights.append(val)
+          backend.track_variable(val)
+
     super(Layer, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
-    assert attribute in {'weights', 'trainable_weights',
-                         'non_trainable_weights', 'updates', 'losses'}
+    assert attribute in {
+        'weights', 'trainable_weights', 'non_trainable_weights', 'updates',
+        'losses'
+    }
     if hasattr(self, '_layers'):
-      return list(itertools.chain.from_iterable(
-          getattr(layer, attribute) for layer in self._layers))
+      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+          self._layers)
+      return list(
+          itertools.chain.from_iterable(
+              getattr(layer, attribute) for layer in nested_layers))
     return []
 
   # This is a hack so that the is_layer (within

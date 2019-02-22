@@ -115,6 +115,7 @@ py_library(
         ":distribute_lib",
         ":mirrored_strategy",
         ":one_device_strategy",
+        "//tensorflow/python/distribute/experimental",
     ],
 )
 

@@ -229,6 +229,8 @@ bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
 
+bool IsHostConstant(const NodeDef& node) { return node.op() == "HostConst"; }
+
 bool IsHistogramSummary(const NodeDef& node) {
   return node.op() == "HistogramSummary";
 }
@@ -558,7 +560,7 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }  // namespace
 
 bool IsPersistent(const NodeDef& node) {
-  return IsConstant(node) || IsVariable(node);
+  return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
 bool MaybeHasRefInput(const NodeDef& node) {

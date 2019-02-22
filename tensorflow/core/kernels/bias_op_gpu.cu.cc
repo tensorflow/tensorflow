@@ -85,14 +85,15 @@ void BiasGPU<T>::compute(const GPUDevice& d, const T* input, const T* bias,
   }
   CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
   if (data_format == FORMAT_NHWC) {
-    BiasNHWCKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            config.virtual_thread_count, input, bias, output, bias_size);
+    CudaLaunchKernel(BiasNHWCKernel<T>, config.block_count,
+                     config.thread_per_block, 0, d.stream(),
+                     config.virtual_thread_count, input, bias, output,
+                     bias_size);
   } else {
-    BiasNCHWKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            config.virtual_thread_count, input, bias, output, bias_size,
-            image_size);
+    CudaLaunchKernel(BiasNCHWKernel<T>, config.block_count,
+                     config.thread_per_block, 0, d.stream(),
+                     config.virtual_thread_count, input, bias, output,
+                     bias_size, image_size);
   }
 }
 
@@ -225,24 +226,22 @@ void BiasGradGPU<T>::compute(const GPUDevice& d, const T* output_backprop,
       if (config.thread_per_block < kWarpSize) {
         config.thread_per_block = kWarpSize;
       }
-      BiasGradNCHW_SharedAtomics<T>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-              output_backprop, bias_backprop, batch, bias_size, image_size,
-              group_size);
+      CudaLaunchKernel(BiasGradNCHW_SharedAtomics<T>, config.block_count,
+                       config.thread_per_block, 0, d.stream(), output_backprop,
+                       bias_backprop, batch, bias_size, image_size, group_size);
     }
   } else {
     // Note that even if we don't have enough shared memory to fit the entire
     // output block, it is possible to process one group of elements at a time.
     // But for now, we simply fall back to the naive implementation.
     if (data_format == FORMAT_NHWC) {
-      BiasGradNHWC_Naive<T>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-              total_count, output_backprop, bias_backprop, bias_size);
+      CudaLaunchKernel(BiasGradNHWC_Naive<T>, config.block_count,
+                       config.thread_per_block, 0, d.stream(), total_count,
+                       output_backprop, bias_backprop, bias_size);
     } else {
-      BiasGradNCHW_Naive<T>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-              total_count, output_backprop, bias_backprop, bias_size,
-              image_size);
+      CudaLaunchKernel(BiasGradNCHW_Naive<T>, config.block_count,
+                       config.thread_per_block, 0, d.stream(), total_count,
+                       output_backprop, bias_backprop, bias_size, image_size);
     }
   }
 }

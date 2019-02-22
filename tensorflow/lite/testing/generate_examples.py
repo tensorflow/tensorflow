@@ -678,6 +678,32 @@ def make_abs_tests(zip_path):
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
+def make_elu_tests(zip_path):
+  """Make a set of tests to do (float) tf.nn.elu."""
+
+  test_parameters = [
+      {
+          "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                          [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    out = tf.nn.elu(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build the inputs for the test case."""
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 def make_relu_tests(zip_path):
   """Make a set of tests to do relu."""
@@ -847,6 +873,9 @@ def make_constant_tests(zip_path):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
       "constant_is_also_output": [True, False],
+      # This is a regression test for a bug where Toco rejects models with
+      # unread inputs.
+      "has_unread_input": [True, False],
   }]
 
   def build_graph(parameters):
@@ -856,11 +885,18 @@ def make_constant_tests(zip_path):
         shape=parameters["input_shape"])
     constant = tf.constant(
         create_tensor_data(parameters["dtype"], parameters["input_shape"]))
-    out = [tf.maximum(dummy_input, constant)]
+    outputs = [tf.maximum(dummy_input, constant)]
     if parameters["constant_is_also_output"]:
-      out.append(constant)
+      outputs.append(constant)
+    inputs = [dummy_input]
+    if parameters["has_unread_input"]:
+      unread_input = tf.placeholder(
+          dtype=parameters["dtype"],
+          name="unread_input",
+          shape=parameters["input_shape"])
+      inputs.append(unread_input)
 
-    return [dummy_input], out
+    return inputs, outputs
 
   def build_inputs(parameters, sess, inputs, outputs):
     dummy_input = np.zeros(
@@ -2892,7 +2928,10 @@ def make_strided_slice_1d_exhaustive_tests(zip_path):
   _make_strided_slice_tests(zip_path, test_parameters)
 
 
-def make_strided_slice_buggy_tests(zip_path):
+# For verifying https://github.com/tensorflow/tensorflow/issues/23599
+# TODO(chaomei): refactor the test to cover more cases, like negative stride,
+# negative array index etc.
+def make_resolve_constant_strided_slice_tests(zip_path):
   """Make a set of tests to show strided_slice yields incorrect results."""
 
   test_parameters = [{

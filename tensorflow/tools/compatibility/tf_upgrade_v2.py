@@ -568,6 +568,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.data.experimental.unbatch",
         "tf.contrib.data.unique":
             "tf.data.experimental.unique",
+        "tf.contrib.estimator.make_early_stopping_hook":
+            "tf.estimator.experimental.make_early_stopping_hook",
+        "tf.contrib.estimator.stop_if_higher_hook":
+            "tf.estimator.experimental.stop_if_higher_hook",
+        "tf.contrib.estimator.stop_if_lower_hook":
+            "tf.estimator.experimental.stop_if_lower_hook",
+        "tf.contrib.estimator.stop_if_no_decrease_hook":
+            "tf.estimator.experimental.stop_if_no_decrease_hook",
+        "tf.contrib.estimator.stop_if_no_increase_hook":
+            "tf.estimator.experimental.stop_if_no_increase_hook",
         "tf.contrib.framework.CriticalSection":
             "tf.CriticalSection",
         "tf.contrib.framework.is_tensor":
@@ -587,7 +597,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.saved_model.load_keras_model":
             "tf.keras.experimental.load_from_saved_model",
         "tf.contrib.saved_model.save_keras_model":
-            "tf.keras.experimental.export",
+            "tf.keras.experimental.export_saved_model",
         "tf.contrib.rnn.RNNCell":
             "tf.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
@@ -694,6 +704,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         # changed significantly.
         "tf.nn.ctc_loss":
             "tf.compat.v1.nn.ctc_loss",
+        # tf.saved_model.load in 1.x has no equivalent in 2.x, but there is a
+        # symbol with the same name.
+        "tf.saved_model.load":
+            "tf.compat.v1.saved_model.load",
+        "tf.saved_model.load_v2":
+            "tf.compat.v2.saved_model.load",
         "tf.zeros_initializer":
             "tf.compat.v1.initializers.zeros",
         "tf.ones_initializer":

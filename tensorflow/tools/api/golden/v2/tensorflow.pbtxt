@@ -177,6 +177,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "initializers"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "int16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -539,10 +543,6 @@ tf_module {
   member_method {
     name: "device"
     argspec: "args=[\'device_name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "div_no_nan"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "divide"

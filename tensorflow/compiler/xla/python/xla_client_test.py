@@ -603,6 +603,12 @@ class SingleOpTest(ComputationTest):
       c.CrossReplicaSum(c.Constant(lhs))
       self._ExecuteAndCompareExact(c, expected=lhs)
 
+  def DISABLED_testReplicaId(self):
+    # TODO(b/125740859): enable this test
+    c = self._NewComputation()
+    _ = c.ReplicaId()
+    self._ExecuteAndCompareExact(c, expected=0)
+
   def testCrossReplicaSumOneReplicaWithSingletonGroup(self):
     samples = [
         NumpyArrayF32(42.0),

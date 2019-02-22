@@ -406,8 +406,9 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = batch * image_height * image_width * depth;
     if (total_count > 0) {
       config = GetCudaLaunchConfig(total_count, d);
-      SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          config.virtual_thread_count, grads_image.data());
+      CudaLaunchKernel(SetZero<T>, config.block_count, config.thread_per_block,
+                       0, d.stream(), config.virtual_thread_count,
+                       grads_image.data());
     }
 
     // Configurate interpolation method.
@@ -454,8 +455,9 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     total_count = num_boxes * 4;
     if (total_count > 0) {
       config = GetCudaLaunchConfig(total_count, d);
-      SetZero<<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          config.virtual_thread_count, grads_boxes.data());
+      CudaLaunchKernel(SetZero<float>, config.block_count,
+                       config.thread_per_block, 0, d.stream(),
+                       config.virtual_thread_count, grads_boxes.data());
     }
 
     // Accumulate.

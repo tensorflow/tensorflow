@@ -20,6 +20,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include <cstdlib>
+#include <cstring>
+
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/graph.pb_text.h"
@@ -998,6 +1001,12 @@ static Status IsProbablySafeToLoad(const string& path) {
 
 void LoadDynamicKernelsInternal() {
   Env* env = Env::Default();
+
+  // Override to allow loading unsafe packages for development.
+  // DO NOT USE UNLESS YOU KNOW WHAT ABI ISSUES YOU CAN ENCOUNTER.
+  bool override_abi_check =
+      strcmp(getenv("TF_REALLY_LOAD_UNSAFE_PACKAGES"), "1") == 0;
+
   string bazel_kernel_dir = io::JoinPath(env->GetRunfilesDir(),
                                          "tensorflow",
                                          "core",
@@ -1010,7 +1019,12 @@ void LoadDynamicKernelsInternal() {
       string fullpath = io::JoinPath(bazel_kernel_dir, file);
       if (env->MatchPath(fullpath, dll_spec)) {
         Status s = IsProbablySafeToLoad(fullpath);
-        if (s.ok()) {
+        if (!s.ok() && override_abi_check) {
+          LOG(WARNING) << "Loading UNSAFE library " << fullpath
+                       << " because ABI check override is set: "
+                       << s.error_message();
+        }
+        if (s.ok() || override_abi_check) {
           // TODO(gunan): Store the handles to the opened files.
           void* unused_filehandle;
           TF_CHECK_OK(env->LoadLibrary(fullpath.c_str(), &unused_filehandle));

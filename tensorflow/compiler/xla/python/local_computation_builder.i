@@ -379,6 +379,7 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::ComputationBuilder::Parameter;
 %unignore xla::swig::ComputationBuilder::GetShape;
 %unignore xla::swig::ComputationBuilder::GetReturnValueShape;
+%unignore xla::swig::ComputationBuilder::ReplicaId;
 %unignore xla::swig::ComputationBuilder::Infeed;
 %unignore xla::swig::ComputationBuilder::Outfeed;
 %unignore xla::swig::ComputationBuilder::ConstantLiteral;

@@ -179,6 +179,7 @@ py_library(
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:profiler",
+        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
@@ -270,7 +271,10 @@ tf_py_test(
         ":client_testlib",
         ":platform",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
 )
 
 tf_py_test(
@@ -2010,6 +2014,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
         "//tensorflow/contrib/tpu:__pkg__",
+        "//tensorflow/python/tpu:__pkg__",
     ],
     deps = [
         "//tensorflow/core:tpu_configuration_ops_op_lib",
@@ -3298,6 +3303,7 @@ py_library(
         ":smart_cond",
         ":summary_op_util",
         ":summary_ops_gen",
+        ":tensor_util",
         ":training_util",
         ":util",
         "//tensorflow/core:protos_all_py",
@@ -6048,6 +6054,7 @@ tf_py_test(
         "grappler",
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "nomac",
     ],
 )
 

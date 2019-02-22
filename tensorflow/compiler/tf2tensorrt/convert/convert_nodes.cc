@@ -3096,7 +3096,7 @@ Status ConvertBinary(OpConverterParams* params) {
   // If both input are tensors, or one of them is weights but the conversion
   // above failed, try the conversion using BinaryTensorOpTensor.
   if ((inputs.at(0).is_tensor() && inputs.at(1).is_tensor()) || !status.ok()) {
-    if (!status.ok()) VLOG(1) << status;
+    if (!status.ok()) VLOG(2) << status;
     status = BinaryTensorOpTensor(params, inputs.at(0), inputs.at(1));
   }
   return status;

@@ -569,6 +569,9 @@ string Print(const FunctionDef& fdef) {
   for (const auto& n : fdef.node_def()) {
     strings::StrAppend(&out, "  ", Print(n), "\n");
   }
+  for (const auto& cr : fdef.control_ret()) {
+    strings::StrAppend(&out, "  @return ", cr.first, " = ", cr.second, "\n");
+  }
   for (const auto& r : fdef.ret()) {
     strings::StrAppend(&out, "  return ", r.first, " = ", r.second, "\n");
   }

@@ -18,9 +18,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.framework import func_graph as func_graph_module
 from tensorflow.python.saved_model import nested_structure_coder
-from tensorflow.python.saved_model import saved_object_graph_pb2
 
 
 def _serialize_function_spec(function_spec, coder):

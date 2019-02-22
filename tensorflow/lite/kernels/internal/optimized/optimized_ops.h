@@ -63,6 +63,7 @@ using reference_ops::ConcatenationWithScaling;
 using reference_ops::DepthConcatenation;
 using reference_ops::Dequantize;
 using reference_ops::Div;
+using reference_ops::Elu;
 using reference_ops::FakeQuant;
 using reference_ops::Fill;
 using reference_ops::Gather;

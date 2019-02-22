@@ -1282,28 +1282,6 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.predict(inputs, steps=1)
     model.evaluate(inputs, targets, steps=1)
 
-  # TODO(b/124377929): Remove error assertions once subclassed models
-  # are supported in DistributedStrategy.
-  @combinations.generate(all_strategy_combinations_minus_default())
-  def test_distribution_strategy_on_subclassed_model(self, distribution):
-    with distribution.scope():
-      model = simple_subclassed_model()
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-      loss = 'mse'
-      model.compile(optimizer, loss)
-
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      targets = np.zeros((64, 2), dtype=np.float32)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.predict(inputs, steps=1)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.evaluate(inputs, targets, steps=1)
-
   @combinations.generate(all_strategy_combinations_minus_default())
   def test_distribution_strategy_one_dimensional(self, distribution):
     with distribution.scope():

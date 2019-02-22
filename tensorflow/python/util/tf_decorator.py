@@ -59,7 +59,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools as _functools
+import inspect
 import traceback as _traceback
 
 
@@ -138,6 +138,10 @@ def rewrap(decorator_func, previous_target, new_target):
     decorator_func: Callable returned by `wrap`.
     previous_target: Callable that needs to be replaced.
     new_target: Callable to replace previous_target with.
+
+  Returns:
+    The updated decorator. If decorator_func is not a tf_decorator, new_target
+    is returned.
   """
   # Because the process mutates the decorator, we only need to alter the
   # innermost function that wraps previous_target.
@@ -145,17 +149,36 @@ def rewrap(decorator_func, previous_target, new_target):
   innermost_decorator = None
   target = None
   while hasattr(cur, '_tf_decorator'):
+    assert cur is not None
     innermost_decorator = cur
     target = getattr(cur, '_tf_decorator')
     if target.decorated_target is previous_target:
       break
     cur = target.decorated_target
 
+  # If decorator_func is not a decorator, new_target replaces it directly.
   if innermost_decorator is None:
-    return
+    # Consistency check. The caller should always pass the result of
+    # tf_decorator.unwrap as previous_target. If decorator_func is not a
+    # decorator, that will have returned decorator_func itself.
+    assert decorator_func is previous_target
+    return new_target
 
   target.decorated_target = new_target
-  innermost_decorator.__wrapped__ = new_target
+
+  if inspect.ismethod(innermost_decorator):
+    # Bound methods can't be assigned attributes. Thankfully, they seem to
+    # be just proxies for their unbound counterpart, and we can modify that.
+    if hasattr(innermost_decorator, '__func__'):
+      innermost_decorator.__func__.__wrapped__ = new_target
+    elif hasattr(innermost_decorator, 'im_func'):
+      innermost_decorator.im_func.__wrapped__ = new_target
+    else:
+      innermost_decorator.__wrapped__ = new_target
+  else:
+    innermost_decorator.__wrapped__ = new_target
+
+  return decorator_func
 
 
 def unwrap(maybe_tf_decorator):
@@ -212,8 +235,8 @@ class TFDecorator(object):
     else:
       self.__doc__ = ''
 
-  def __get__(self, obj, objtype):
-    return _functools.partial(self.__call__, obj)
+  def __get__(self, instance, owner):
+    return self._decorated_target.__get__(instance, owner)
 
   def __call__(self, *args, **kwargs):
     return self._decorated_target(*args, **kwargs)
