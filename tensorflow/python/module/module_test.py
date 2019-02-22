@@ -26,10 +26,7 @@ import six
 
 from tensorflow.python.compat import v2_compat
 from tensorflow.python.eager import def_function
-from tensorflow.python.framework import constant_op
-from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
-from tensorflow.python.framework import tensor_spec
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -283,32 +280,6 @@ class AbcTest(test.TestCase):
     self.assertEqual(x, 4.)
     self.assertEqual(scope_name, "concrete_module/")
     self.assertEqual(get_name_scope(), "")
-
-  def testModuleDecoratedMethodInputSignature(self):
-
-    class Module(module.Module):
-
-      def no_sig(self, called_with_keyword):
-        return 2. * called_with_keyword
-
-      @def_function.function(
-          input_signature=[tensor_spec.TensorSpec([], dtypes.float32)])
-      def mutate(self, new_v):
-        if not hasattr(self, "v"):
-          self.v = variables.Variable(1.)
-        if new_v > 0.:
-          self.v.assign(new_v)
-        else:
-          # Autograph should still be running
-          self.v.assign(-new_v)
-
-    m = Module()
-    m.mutate(constant_op.constant(2.))
-    self.assertEqual(2., m.v.numpy())
-    m.mutate(constant_op.constant(-3.))
-    self.assertEqual(3., m.v.numpy())
-
-    m.no_sig(called_with_keyword=1.)  # keyword names preserved
 
 
 def get_name_scope():
