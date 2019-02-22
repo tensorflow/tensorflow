@@ -19,7 +19,6 @@ from __future__ import division
 from __future__ import print_function
 
 import os
-import time
 import unittest
 
 from tensorflow.core.framework import graph_pb2
@@ -32,6 +31,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
@@ -52,7 +52,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
   def testWrite(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         output = summary_ops.write('tag', 42, step=12)
         self.assertTrue(output.numpy())
     events = events_from_logdir(logdir)
@@ -64,11 +64,12 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
 
   def testWrite_fromFunction(self):
     logdir = self.get_temp_dir()
-    @def_function.function
-    def f():
-      with summary_ops.create_file_writer(logdir).as_default():
-        return summary_ops.write('tag', 42, step=12)
     with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      @def_function.function
+      def f():
+        with writer.as_default():
+          return summary_ops.write('tag', 42, step=12)
       output = f()
       self.assertTrue(output.numpy())
     events = events_from_logdir(logdir)
@@ -83,7 +84,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     metadata = summary_pb2.SummaryMetadata()
     metadata.plugin_data.plugin_name = 'foo'
     with context.eager_mode():
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         summary_ops.write('obj', 0, 0, metadata=metadata)
         summary_ops.write('bytes', 0, 0, metadata=metadata.SerializeToString())
         m = constant_op.constant(metadata.SerializeToString())
@@ -104,7 +105,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
   def testWrite_ndarray(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         summary_ops.write('tag', [[1, 2], [3, 4]], step=12)
     events = events_from_logdir(logdir)
     value = events[1].summary.value[0]
@@ -114,7 +115,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     with context.eager_mode():
       t = constant_op.constant([[1, 2], [3, 4]])
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         summary_ops.write('tag', t, step=12)
       expected = t.numpy()
     events = events_from_logdir(logdir)
@@ -123,11 +124,12 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
 
   def testWrite_tensor_fromFunction(self):
     logdir = self.get_temp_dir()
-    @def_function.function
-    def f(t):
-      with summary_ops.create_file_writer(logdir).as_default():
-        summary_ops.write('tag', t, step=12)
     with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      @def_function.function
+      def f(t):
+        with writer.as_default():
+          summary_ops.write('tag', t, step=12)
       t = constant_op.constant([[1, 2], [3, 4]])
       f(t)
       expected = t.numpy()
@@ -138,7 +140,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
   def testWrite_stringTensor(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         summary_ops.write('tag', [b'foo', b'bar'], step=12)
     events = events_from_logdir(logdir)
     value = events[1].summary.value[0]
@@ -168,7 +170,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
   def testWrite_recordIf_constant(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         self.assertTrue(summary_ops.write('default', 1, step=0))
         with summary_ops.record_if(True):
           self.assertTrue(summary_ops.write('set_on', 1, step=0))
@@ -181,16 +183,17 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
 
   def testWrite_recordIf_constant_fromFunction(self):
     logdir = self.get_temp_dir()
-    @def_function.function
-    def f():
-      with summary_ops.create_file_writer(logdir).as_default():
-        # Use assertAllEqual instead of assertTrue since it works in a defun.
-        self.assertAllEqual(summary_ops.write('default', 1, step=0), True)
-        with summary_ops.record_if(True):
-          self.assertAllEqual(summary_ops.write('set_on', 1, step=0), True)
-        with summary_ops.record_if(False):
-          self.assertAllEqual(summary_ops.write('set_off', 1, step=0), False)
     with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      @def_function.function
+      def f():
+        with writer.as_default():
+          # Use assertAllEqual instead of assertTrue since it works in a defun.
+          self.assertAllEqual(summary_ops.write('default', 1, step=0), True)
+          with summary_ops.record_if(True):
+            self.assertAllEqual(summary_ops.write('set_on', 1, step=0), True)
+          with summary_ops.record_if(False):
+            self.assertAllEqual(summary_ops.write('set_off', 1, step=0), False)
       f()
     events = events_from_logdir(logdir)
     self.assertEqual(3, len(events))
@@ -204,7 +207,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
       def record_fn():
         step.assign_add(1)
         return int(step % 2) == 0
-      with summary_ops.create_file_writer(logdir).as_default():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
         with summary_ops.record_if(record_fn):
           self.assertTrue(summary_ops.write('tag', 1, step=step))
           self.assertFalse(summary_ops.write('tag', 1, step=step))
@@ -220,6 +223,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
   def testWrite_recordIf_callable_fromFunction(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
       step = variables.Variable(-1, dtype=dtypes.int64)
       @def_function.function
       def record_fn():
@@ -227,7 +231,7 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
         return math_ops.equal(step % 2, 0)
       @def_function.function
       def f():
-        with summary_ops.create_file_writer(logdir).as_default():
+        with writer.as_default():
           with summary_ops.record_if(record_fn):
             return [
                 summary_ops.write('tag', 1, step=step),
@@ -243,13 +247,14 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
 
   def testWrite_recordIf_tensorInput_fromFunction(self):
     logdir = self.get_temp_dir()
-    @def_function.function(input_signature=[
-        tensor_spec.TensorSpec(shape=[], dtype=dtypes.int64)])
-    def f(step):
-      with summary_ops.create_file_writer(logdir).as_default():
-        with summary_ops.record_if(math_ops.equal(step % 2, 0)):
-          return summary_ops.write('tag', 1, step=step)
     with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[], dtype=dtypes.int64)])
+      def f(step):
+        with writer.as_default():
+          with summary_ops.record_if(math_ops.equal(step % 2, 0)):
+            return summary_ops.write('tag', 1, step=step)
       self.assertTrue(f(0))
       self.assertFalse(f(1))
       self.assertTrue(f(2))
@@ -311,77 +316,152 @@ class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
 
 class SummaryWriterTest(test_util.TensorFlowTestCase):
 
-  def testWriterInitAndClose(self):
+  def testCreate_withInitAndClose(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      writer = summary_ops.create_file_writer(
+      writer = summary_ops.create_file_writer_v2(
           logdir, max_queue=1000, flush_millis=1000000)
-      files = gfile.Glob(os.path.join(logdir, '*'))
-      self.assertEqual(1, len(files))
-      file1 = files[0]
-      self.assertEqual(1, len(events_from_file(file1)))  # file_version Event
+      get_total = lambda: len(events_from_logdir(logdir))
+      self.assertEqual(1, get_total())  # file_version Event
       # Calling init() again while writer is open has no effect
       writer.init()
-      self.assertEqual(1, len(events_from_file(file1)))
+      self.assertEqual(1, get_total())
       with writer.as_default():
         summary_ops.write('tag', 1, step=0)
-        self.assertEqual(1, len(events_from_file(file1)))
+        self.assertEqual(1, get_total())
         # Calling .close() should do an implicit flush
         writer.close()
-        self.assertEqual(2, len(events_from_file(file1)))
-        # Calling init() on a closed writer should start a new file
-        time.sleep(1.1)  # Ensure filename has a different timestamp
-        writer.init()
-        files = gfile.Glob(os.path.join(logdir, '*'))
-        self.assertEqual(2, len(files))
-        files.remove(file1)
-        file2 = files[0]
-        self.assertEqual(1, len(events_from_file(file2)))  # file_version
-        self.assertEqual(2, len(events_from_file(file1)))  # should be unchanged
+        self.assertEqual(2, get_total())
 
-  def testSharedName(self):
+  def testCreate_fromFunction(self):
+    logdir = self.get_temp_dir()
+    @def_function.function
+    def f():
+      # Returned SummaryWriter must be stored in a non-local variable so it
+      # lives throughout the function execution.
+      if not hasattr(f, 'writer'):
+        f.writer = summary_ops.create_file_writer_v2(logdir)
+    with context.eager_mode():
+      f()
+    event_files = gfile.Glob(os.path.join(logdir, '*'))
+    self.assertEqual(1, len(event_files))
+
+  def testCreate_graphTensorArgument_raisesError(self):
+    logdir = self.get_temp_dir()
+    with context.graph_mode():
+      logdir_tensor = constant_op.constant(logdir)
+    with context.eager_mode():
+      with self.assertRaisesRegex(
+          ValueError, 'Invalid graph Tensor argument.*logdir'):
+        summary_ops.create_file_writer_v2(logdir_tensor)
+    self.assertEmpty(gfile.Glob(os.path.join(logdir, '*')))
+
+  def testCreate_fromFunction_graphTensorArgument_raisesError(self):
+    logdir = self.get_temp_dir()
+    @def_function.function
+    def f():
+      summary_ops.create_file_writer_v2(constant_op.constant(logdir))
+    with context.eager_mode():
+      with self.assertRaisesRegex(
+          ValueError, 'Invalid graph Tensor argument.*logdir'):
+        f()
+    self.assertEmpty(gfile.Glob(os.path.join(logdir, '*')))
+
+  def testCreate_fromFunction_unpersistedResource_raisesError(self):
+    logdir = self.get_temp_dir()
+    @def_function.function
+    def f():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        pass  # Calling .as_default() is enough to indicate use.
+    with context.eager_mode():
+      # TODO(nickfelt): change this to a better error
+      with self.assertRaisesRegex(
+          errors.NotFoundError, 'Resource.*does not exist'):
+        f()
+    # Even though we didn't use it, an event file will have been created.
+    self.assertEqual(1, len(gfile.Glob(os.path.join(logdir, '*'))))
+
+  def testNoSharing(self):
+    # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      # Create with default shared name (should match logdir)
-      writer1 = summary_ops.create_file_writer(logdir)
+      writer1 = summary_ops.create_file_writer_v2(logdir)
       with writer1.as_default():
         summary_ops.write('tag', 1, step=1)
-        summary_ops.flush()
-      # Create with explicit logdir shared name (should be same resource/file)
-      shared_name = 'logdir:' + logdir
-      writer2 = summary_ops.create_file_writer(logdir, name=shared_name)
+      event_files = gfile.Glob(os.path.join(logdir, '*'))
+      self.assertEqual(1, len(event_files))
+      file1 = event_files[0]
+
+      writer2 = summary_ops.create_file_writer_v2(logdir)
       with writer2.as_default():
         summary_ops.write('tag', 1, step=2)
-        summary_ops.flush()
-      # Create with different shared name (should be separate resource/file)
-      time.sleep(1.1)  # Ensure filename has a different timestamp
-      writer3 = summary_ops.create_file_writer(logdir, name='other')
-      with writer3.as_default():
-        summary_ops.write('tag', 1, step=3)
-        summary_ops.flush()
+      event_files = gfile.Glob(os.path.join(logdir, '*'))
+      self.assertEqual(2, len(event_files))
+      event_files.remove(file1)
+      file2 = event_files[0]
 
-    event_files = iter(sorted(gfile.Glob(os.path.join(logdir, '*'))))
+      # Extra writes to ensure interleaved usage works.
+      with writer1.as_default():
+        summary_ops.write('tag', 1, step=1)
+      with writer2.as_default():
+        summary_ops.write('tag', 1, step=2)
 
-    # First file has tags "one" and "two"
-    events = iter(events_from_file(next(event_files)))
+    events = iter(events_from_file(file1))
     self.assertEqual('brain.Event:2', next(events).file_version)
     self.assertEqual(1, next(events).step)
+    self.assertEqual(1, next(events).step)
+    self.assertRaises(StopIteration, lambda: next(events))
+    events = iter(events_from_file(file2))
+    self.assertEqual('brain.Event:2', next(events).file_version)
+    self.assertEqual(2, next(events).step)
     self.assertEqual(2, next(events).step)
     self.assertRaises(StopIteration, lambda: next(events))
 
-    # Second file has tag "three"
-    events = iter(events_from_file(next(event_files)))
-    self.assertEqual('brain.Event:2', next(events).file_version)
-    self.assertEqual(3, next(events).step)
-    self.assertRaises(StopIteration, lambda: next(events))
+  def testNoSharing_fromFunction(self):
+    logdir = self.get_temp_dir()
+    @def_function.function
+    def f1():
+      if not hasattr(f1, 'writer'):
+        f1.writer = summary_ops.create_file_writer_v2(logdir)
+      with f1.writer.as_default():
+        summary_ops.write('tag', 1, step=1)
+    @def_function.function
+    def f2():
+      if not hasattr(f2, 'writer'):
+        f2.writer = summary_ops.create_file_writer_v2(logdir)
+      with f2.writer.as_default():
+        summary_ops.write('tag', 1, step=2)
+    with context.eager_mode():
+      f1()
+      event_files = gfile.Glob(os.path.join(logdir, '*'))
+      self.assertEqual(1, len(event_files))
+      file1 = event_files[0]
 
-    # No more files
-    self.assertRaises(StopIteration, lambda: next(event_files))
+      f2()
+      event_files = gfile.Glob(os.path.join(logdir, '*'))
+      self.assertEqual(2, len(event_files))
+      event_files.remove(file1)
+      file2 = event_files[0]
+
+      # Extra writes to ensure interleaved usage works.
+      f1()
+      f2()
+
+    events = iter(events_from_file(file1))
+    self.assertEqual('brain.Event:2', next(events).file_version)
+    self.assertEqual(1, next(events).step)
+    self.assertEqual(1, next(events).step)
+    self.assertRaises(StopIteration, lambda: next(events))
+    events = iter(events_from_file(file2))
+    self.assertEqual('brain.Event:2', next(events).file_version)
+    self.assertEqual(2, next(events).step)
+    self.assertEqual(2, next(events).step)
+    self.assertRaises(StopIteration, lambda: next(events))
 
   def testMaxQueue(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      with summary_ops.create_file_writer(
+      with summary_ops.create_file_writer_v2(
           logdir, max_queue=1, flush_millis=999999).as_default():
         get_total = lambda: len(events_from_logdir(logdir))
         # Note: First tf.Event is always file_version.
@@ -396,7 +476,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     logdir = self.get_temp_dir()
     get_total = lambda: len(events_from_logdir(logdir))
     with context.eager_mode():
-      writer = summary_ops.create_file_writer(
+      writer = summary_ops.create_file_writer_v2(
           logdir, max_queue=1000, flush_millis=1000000)
       self.assertEqual(1, get_total())  # file_version Event
       with writer.as_default():
@@ -412,7 +492,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
   def testFlushFunction(self):
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      writer = summary_ops.create_file_writer(
+      writer = summary_ops.create_file_writer_v2(
           logdir, max_queue=999999, flush_millis=999999)
       with writer.as_default(), summary_ops.always_record_summaries():
         get_total = lambda: len(events_from_logdir(logdir))
@@ -436,8 +516,23 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
   @test_util.assert_no_new_pyobjects_executing_eagerly
   def testEagerMemory(self):
     logdir = self.get_temp_dir()
-    with summary_ops.create_file_writer(logdir).as_default():
+    with summary_ops.create_file_writer_v2(logdir).as_default():
       summary_ops.write('tag', 1, step=0)
+
+  def testClose_preventsLaterUse(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      writer = summary_ops.create_file_writer_v2(logdir)
+      writer.close()
+      writer.close()  # redundant close() is a no-op
+      writer.flush()  # redundant flush() is a no-op
+      with self.assertRaisesRegex(RuntimeError, 'already closed'):
+        writer.init()
+      with self.assertRaisesRegex(RuntimeError, 'already closed'):
+        with writer.as_default():
+          self.fail('should not get here')
+      with self.assertRaisesRegex(RuntimeError, 'already closed'):
+        writer.set_as_default()
 
   def testClose_closesOpenFile(self):
     try:
@@ -448,7 +543,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     get_open_filenames = lambda: set(info[0] for info in proc.open_files())
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      writer = summary_ops.create_file_writer(logdir)
+      writer = summary_ops.create_file_writer_v2(logdir)
       files = gfile.Glob(os.path.join(logdir, '*'))
       self.assertEqual(1, len(files))
       eventfile = files[0]
@@ -465,7 +560,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     get_open_filenames = lambda: set(info[0] for info in proc.open_files())
     logdir = self.get_temp_dir()
     with context.eager_mode():
-      writer = summary_ops.create_file_writer(logdir)
+      writer = summary_ops.create_file_writer_v2(logdir)
       files = gfile.Glob(os.path.join(logdir, '*'))
       self.assertEqual(1, len(files))
       eventfile = files[0]

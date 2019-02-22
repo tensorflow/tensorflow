@@ -19,6 +19,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
+import functools
 import getpass
 import os
 import re
@@ -34,6 +36,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_summary_ops
@@ -124,65 +127,120 @@ def never_record_summaries():
 
 
 @tf_export("summary.SummaryWriter", v1=[])
+@six.add_metaclass(abc.ABCMeta)
 class SummaryWriter(object):
-  """Encapsulates a stateful summary writer resource.
+  """Interface representing a stateful summary writer object."""
 
-  See also:
-  - `tf.summary.create_file_writer`
-  - `tf.summary.create_db_writer`
-  """
+  @abc.abstractmethod
+  def set_as_default(self):
+    """Enables this summary writer for the current thread."""
+    raise NotImplementedError()
 
-  def  __init__(self, resource, init_op_fn):
-    self._resource = resource
-    # TODO(nickfelt): cache constructed ops in graph mode
+  @abc.abstractmethod
+  @tf_contextlib.contextmanager
+  def as_default(self):
+    """Returns a context manager that enables summary writing."""
+    raise NotImplementedError()
+
+  def init(self):
+    """Initializes the summary writer."""
+    raise NotImplementedError()
+
+  def flush(self):
+    """Flushes any buffered data."""
+    raise NotImplementedError()
+
+  def close(self):
+    """Flushes and closes the summary writer."""
+    raise NotImplementedError()
+
+
+class ResourceSummaryWriter(SummaryWriter):
+  """Implementation of SummaryWriter using a SummaryWriterInterface resource."""
+
+  def  __init__(self, shared_name, init_op_fn, name=None, v2=False):
+    self._resource = gen_summary_ops.summary_writer(
+        shared_name=shared_name, name=name)
+    # TODO(nickfelt): cache other constructed ops in graph mode
     self._init_op_fn = init_op_fn
-    if context.executing_eagerly() and self._resource is not None:
+    self._init_op = init_op_fn(self._resource)
+    self._v2 = v2
+    self._closed = False
+    if context.executing_eagerly():
       self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._resource, handle_device="cpu:0")
+    else:
+      global _SUMMARY_WRITER_INIT_OP
+      key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
+      _SUMMARY_WRITER_INIT_OP.setdefault(key, []).append(self._init_op)
 
   def set_as_default(self):
     """Enables this summary writer for the current thread."""
+    if self._v2 and context.executing_eagerly() and self._closed:
+      raise RuntimeError("SummaryWriter is already closed")
     context.context().summary_writer_resource = self._resource
 
   @tf_contextlib.contextmanager
   def as_default(self):
-    """Enables summary writing within a `with` block."""
-    if self._resource is None:
+    """Returns a context manager that enables summary writing."""
+    if self._v2 and context.executing_eagerly() and self._closed:
+      raise RuntimeError("SummaryWriter is already closed")
+    old = context.context().summary_writer_resource
+    try:
+      context.context().summary_writer_resource = self._resource
       yield self
-    else:
-      old = context.context().summary_writer_resource
-      try:
-        context.context().summary_writer_resource = self._resource
-        yield self
-        # Flushes the summary writer in eager mode or in graph functions, but
-        # not in legacy graph mode (you're on your own there).
-        with ops.device("cpu:0"):
-          gen_summary_ops.flush_summary_writer(self._resource)
-      finally:
-        context.context().summary_writer_resource = old
+      # Flushes the summary writer in eager mode or in graph functions, but
+      # not in legacy graph mode (you're on your own there).
+      self.flush()
+    finally:
+      context.context().summary_writer_resource = old
 
   def init(self):
-    """Operation to initialize the summary writer resource."""
-    if self._resource is not None:
-      return self._init_op_fn()
-
-  def _flush(self):
-    return _flush_fn(writer=self)
+    """Initializes the summary writer."""
+    if self._v2:
+      if context.executing_eagerly() and self._closed:
+        raise RuntimeError("SummaryWriter is already closed")
+      return self._init_op
+    # Legacy behavior allows re-initializing the resource.
+    return self._init_op_fn(self._resource)
 
   def flush(self):
-    """Operation to force the summary writer to flush any buffered data."""
-    if self._resource is not None:
-      return self._flush()
-
-  def _close(self):
-    with ops.control_dependencies([self.flush()]):
-      with ops.device("cpu:0"):
-        return gen_summary_ops.close_summary_writer(self._resource)
+    """Flushes any buffered data."""
+    if self._v2 and context.executing_eagerly() and self._closed:
+      return
+    return _flush_fn(writer=self)
 
   def close(self):
-    """Operation to flush and close the summary writer resource."""
-    if self._resource is not None:
-      return self._close()
+    """Flushes and closes the summary writer."""
+    if self._v2 and context.executing_eagerly() and self._closed:
+      return
+    try:
+      with ops.control_dependencies([self.flush()]):
+        with ops.device("cpu:0"):
+          return gen_summary_ops.close_summary_writer(self._resource)
+    finally:
+      if self._v2 and context.executing_eagerly():
+        self._closed = True
+
+
+class NoopSummaryWriter(SummaryWriter):
+  """A summary writer that does nothing, for create_noop_writer()."""
+
+  def set_as_default(self):
+    pass
+
+  @tf_contextlib.contextmanager
+  def as_default(self):
+    yield
+
+  def init(self):
+    pass
+
+  def flush(self):
+    pass
+
+  def close(self):
+    pass
 
 
 @tf_export(v1=["summary.initialize"])
@@ -228,6 +286,66 @@ def initialize(
 
 
 @tf_export("summary.create_file_writer", v1=[])
+def create_file_writer_v2(logdir,
+                          max_queue=None,
+                          flush_millis=None,
+                          filename_suffix=None,
+                          name=None):
+  """Creates a summary file writer for the given log directory.
+
+  Args:
+    logdir: a string specifying the directory in which to write an event file.
+    max_queue: the largest number of summaries to keep in a queue; will
+     flush once the queue gets bigger than this. Defaults to 10.
+    flush_millis: the largest interval between flushes. Defaults to 120,000.
+    filename_suffix: optional suffix for the event file name. Defaults to `.v2`.
+    name: a name for the op that creates the writer.
+
+  Returns:
+    A SummaryWriter object.
+  """
+  if logdir is None:
+    raise ValueError("logdir cannot be None")
+  inside_function = ops.inside_function()
+  with ops.name_scope(name, "create_file_writer") as scope, ops.device("cpu:0"):
+    # Run init inside an init_scope() to hoist it out of tf.functions.
+    with ops.init_scope():
+      if context.executing_eagerly():
+        _check_create_file_writer_args(
+            inside_function,
+            logdir=logdir,
+            max_queue=max_queue,
+            flush_millis=flush_millis,
+            filename_suffix=filename_suffix)
+      logdir = ops.convert_to_tensor(logdir, dtype=dtypes.string)
+      if max_queue is None:
+        max_queue = constant_op.constant(10)
+      if flush_millis is None:
+        flush_millis = constant_op.constant(2 * 60 * 1000)
+      if filename_suffix is None:
+        filename_suffix = constant_op.constant(".v2")
+      # Prepend the PID and a process-local UID to the filename suffix to avoid
+      # filename collisions within the machine (the filename already contains
+      # the hostname to avoid cross-machine collisions).
+      unique_prefix = constant_op.constant(".%s.%s" % (os.getpid(), ops.uid()))
+      filename_suffix = unique_prefix + filename_suffix
+      # Use a unique shared_name to prevent resource sharing.
+      if context.executing_eagerly():
+        shared_name = context.shared_name()
+      else:
+        shared_name = ops._name_from_scope_name(scope)  # pylint: disable=protected-access
+      return ResourceSummaryWriter(
+          shared_name=shared_name,
+          init_op_fn=functools.partial(
+              gen_summary_ops.create_summary_file_writer,
+              logdir=logdir,
+              max_queue=max_queue,
+              flush_millis=flush_millis,
+              filename_suffix=filename_suffix),
+          name=name,
+          v2=True)
+
+
 def create_file_writer(logdir,
                        max_queue=None,
                        flush_millis=None,
@@ -254,7 +372,7 @@ def create_file_writer(logdir,
     summary writer.
   """
   if logdir is None:
-    return SummaryWriter(None, None)
+    return NoopSummaryWriter()
   logdir = str(logdir)
   with ops.device("cpu:0"):
     if max_queue is None:
@@ -265,13 +383,14 @@ def create_file_writer(logdir,
       filename_suffix = constant_op.constant(".v2")
     if name is None:
       name = "logdir:" + logdir
-    return _make_summary_writer(
-        name,
-        gen_summary_ops.create_summary_file_writer,
-        logdir=logdir,
-        max_queue=max_queue,
-        flush_millis=flush_millis,
-        filename_suffix=filename_suffix)
+    return ResourceSummaryWriter(
+        shared_name=name,
+        init_op_fn=functools.partial(
+            gen_summary_ops.create_summary_file_writer,
+            logdir=logdir,
+            max_queue=max_queue,
+            flush_millis=flush_millis,
+            filename_suffix=filename_suffix))
 
 
 def create_db_writer(db_uri,
@@ -316,26 +435,23 @@ def create_db_writer(db_uri,
         "experiment_name", _EXPERIMENT_NAME_PATTERNS, experiment_name)
     run_name = _cleanse_string("run_name", _RUN_NAME_PATTERNS, run_name)
     user_name = _cleanse_string("user_name", _USER_NAME_PATTERNS, user_name)
-    return _make_summary_writer(
-        name,
-        gen_summary_ops.create_summary_db_writer,
-        db_uri=db_uri,
-        experiment_name=experiment_name,
-        run_name=run_name,
-        user_name=user_name)
+    return ResourceSummaryWriter(
+        shared_name=name,
+        init_op_fn=functools.partial(
+            gen_summary_ops.create_summary_db_writer,
+            db_uri=db_uri,
+            experiment_name=experiment_name,
+            run_name=run_name,
+            user_name=user_name))
 
 
-def _make_summary_writer(name, factory, **kwargs):
-  resource = gen_summary_ops.summary_writer(shared_name=name)
-  init_op_fn = lambda: factory(resource, **kwargs)
-  init_op = init_op_fn()
-  if not context.executing_eagerly():
-    # TODO(apassos): Consider doing this instead.
-    #   ops.get_default_session().run(init_op)
-    global _SUMMARY_WRITER_INIT_OP
-    key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-    _SUMMARY_WRITER_INIT_OP.setdefault(key, []).append(init_op)
-  return SummaryWriter(resource, init_op_fn)
+@tf_export("summary.create_noop_writer", v1=[])
+def create_noop_writer():
+  """Returns a summary writer that does nothing.
+
+  This is useful as a placeholder in code that expects a context manager.
+  """
+  return NoopSummaryWriter()
 
 
 def _cleanse_string(name, pattern, value):
@@ -436,7 +552,7 @@ def write(tag, tensor, step, metadata=None, name=None):
     tag: string tag used to identify the summary (e.g. in TensorBoard), usually
       generated with `tf.summary.summary_scope`
     tensor: the Tensor holding the summary data to write
-    step: `int64`-castable monotic step value for this summary
+    step: `int64`-castable monotonic step value for this summary
     metadata: Optional SummaryMetadata, as a proto or serialized bytes
     name: Optional string name for this op.
 
@@ -732,6 +848,30 @@ def _choose_step(step):
   if not isinstance(step, ops.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step
+
+
+def _check_create_file_writer_args(inside_function, **kwargs):
+  """Helper to check the validity of arguments to a create_file_writer() call.
+
+  Args:
+    inside_function: whether the create_file_writer() call is in a tf.function
+    **kwargs: the arguments to check, as kwargs to give them names.
+
+  Raises:
+    ValueError: if the arguments are graph tensors.
+  """
+  for arg_name, arg in kwargs.items():
+    if not isinstance(arg, ops.EagerTensor) and tensor_util.is_tensor(arg):
+      if inside_function:
+        raise ValueError(
+            "Invalid graph Tensor argument \"%s=%s\" to create_file_writer() "
+            "inside an @tf.function. The create call will be lifted into the "
+            "outer eager execution context, so it cannot consume graph tensors "
+            "defined inside the function body." % (arg_name, arg))
+      else:
+        raise ValueError(
+            "Invalid graph Tensor argument \"%s=%s\" to eagerly executed "
+            "create_file_writer()." % (arg_name, arg))
 
 
 def run_metadata(name, data, step):
