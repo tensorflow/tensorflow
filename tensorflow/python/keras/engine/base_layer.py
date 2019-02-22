@@ -214,6 +214,12 @@ class Layer(trackable.Trackable):
     else:
       self._initial_weights = None
 
+    # This flag is used to keep track of whether symbolic tensors are added to
+    # the model outside of the call context. This is required for disabling
+    # `run_eagerly` on compile.
+    # TODO(b/124303407): Remove this flag after we add support for the use case.
+    self._contains_symbolic_tensors = False
+
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
 
@@ -763,6 +769,8 @@ class Layer(trackable.Trackable):
           # Ignoring constant values as this does not affect the gradients.
           return
         if tf_utils.is_symbolic_tensor(loss):
+          if not base_layer_utils.is_in_call_context():
+            self._contains_symbolic_tensors = True
           self._losses.append(_tag_unconditional(loss))
         else:
           self._eager_losses.append(_tag_unconditional(loss))
@@ -1337,6 +1345,8 @@ class Layer(trackable.Trackable):
       self._metrics.append(metric_obj)
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    if not base_layer_utils.is_in_call_context():
+      self._contains_symbolic_tensors = True
     if aggregation is None:
       # Iterate over the metrics and check if the given metric exists already.
       # This can happen when a metric instance is created in subclassed model

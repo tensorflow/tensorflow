@@ -206,6 +206,12 @@ class Model(Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     run_eagerly = kwargs.pop('run_eagerly', None)
+    if run_eagerly and getattr(self, '_contains_symbolic_tensors', False):
+      raise ValueError(
+          'We currently do not support enabling `run_eagerly` on compile if '
+          '`model.add_loss(tensor)` or `model.add_metric(tensor)` '
+          'has been called.')
+
     self._run_eagerly = run_eagerly
     optimizer = optimizers.get(optimizer)
 
@@ -240,6 +246,23 @@ class Model(Network):
       if target_tensors:
         raise ValueError('target_tensors is not supported with '
                          'DistributionStrategy.')
+
+      if run_eagerly:
+        raise ValueError(
+            'We currently do not support enabling `run_eagerly` with '
+            'distribution strategy.')
+
+      if getattr(self, '_contains_symbolic_tensors', False):
+        raise ValueError(
+            'We currently do not support compiling the model with distribution '
+            'strategy if `model.add_loss(tensor)` or `model.add_metric(tensor)`'
+            ' has been called.')
+
+      if not self.built or not self.inputs or not self.outputs:
+        raise ValueError(
+            'We currently do not support distribution strategy with a '
+            '`Sequential` model that is created without `input_shape`/'
+            '`input_dim` set in its first layer or a subclassed model.')
 
     loss = loss or {}
 
@@ -2736,10 +2759,17 @@ class Model(Network):
         # itself isn't dynamic.
         # Obtain symbolic outputs by calling the model.
         with K.get_graph().as_default():
+          contains_symbolic_tensors = getattr(
+              self, '_contains_symbolic_tensors', False)
           if self._expects_training_arg:
             outputs = self.call(inputs, training=training)
           else:
             outputs = self.call(inputs)
+          # Reset to the previously saved value. If `call()` had `add_metric`
+          # or `add_loss`, then `_contains_symbolic_tensors` will have been set
+          # to True since we are not in `__call__` context. Hence we are
+          # resetting to the old value here.
+          self._contains_symbolic_tensors = contains_symbolic_tensors
       else:
         # Case: network's `call` is dynamic.
         try:
