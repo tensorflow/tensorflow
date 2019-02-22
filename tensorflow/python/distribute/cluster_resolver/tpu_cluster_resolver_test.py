@@ -661,7 +661,7 @@ class TPUClusterResolverTest(test.TestCase):
     mock_list_devices.return_value = device_list
 
     resolver = TPUClusterResolver(tpu='')
-    self.assertEqual(resolver.num_accelerators(), 2)
+    self.assertEqual(resolver.num_accelerators(), {'TPU': 2})
 
   @mock.patch.object(session.BaseSession, 'list_devices')
   @mock.patch.object(TPUClusterResolver,

@@ -160,7 +160,7 @@ class SimpleClusterResolver(ClusterResolver):
   """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
 
   def __init__(self, cluster_spec, master='', task_type=None, task_id=None,
-               environment='', num_accelerators=0,
+               environment='', num_accelerators=None,
                rpc_layer=None):
     """Creates a SimpleClusterResolver from a ClusterSpec."""
     super(SimpleClusterResolver, self).__init__()
@@ -168,6 +168,7 @@ class SimpleClusterResolver(ClusterResolver):
     self._task_type = task_type
     self._task_id = task_id
     self._environment = environment
+
     self._num_accelerators = num_accelerators
     self._rpc_layer = rpc_layer
 
@@ -227,23 +228,23 @@ class SimpleClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     """Returns the number of accelerator cores per worker.
 
     The SimpleClusterResolver does not do automatic detection of accelerators,
     so a TensorFlow session will never be created, and thus all arguments are
-    unused and we simply return whatever was passed in when this object was
-    initialized.
+    unused and we simply assume that the type of accelerator is a GPU and return
+    the value in provided to us in the constructor.
 
     Args:
       task_type: Unused.
       task_id: Unused.
-      accelerator_type: Unused.
       config_proto: Unused.
     """
     # Unused
-    del task_type, task_id, accelerator_type, config_proto
+    del task_type, task_id, config_proto
+    if self._num_accelerators is None:
+      return {}
     return self._num_accelerators
 
   @property
@@ -419,10 +420,9 @@ class UnionClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     return self._cluster_resolvers[0].num_accelerators(
-        task_type, task_id, accelerator_type, config_proto)
+        task_type, task_id, config_proto)
 
   @property
   def rpc_layer(self):
