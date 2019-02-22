@@ -48,7 +48,7 @@ class TensorDatasetOpTest : public DatasetOpsTestBase {
     node_def_ = test::function::NDef(
         kNodeName, kOpName, components,
         {{"Toutput_types", dtypes}, {"output_shapes", shapes}});
-    TF_CHECK_OK(CreateOpKernel(node_def_, tensor_dataset_kernel));
+    TF_RETURN_IF_ERROR(CreateOpKernel(node_def_, tensor_dataset_kernel));
     return Status::OK();
   }
 
