@@ -377,12 +377,13 @@ Status IrEmitter::EmitAtomicOperationUsingCAS(const HloComputation& computation,
     atomic_memory_address = And(atomic_memory_address, mask);
     atomic_memory_address =
         IntToPtr(atomic_memory_address, atomic_address_type);
-    binop_output_address =
-        BitCast(cas_new_output_address, element_address_type);
+    binop_output_address = PointerBitCastOrAddrSpaceCast(cas_new_output_address,
+                                                         element_address_type);
   } else {
-    atomic_memory_address = BitCast(output_address, atomic_address_type);
-    binop_output_address =
-        BitCast(cas_new_output_address, element_address_type);
+    atomic_memory_address =
+        PointerBitCastOrAddrSpaceCast(output_address, atomic_address_type);
+    binop_output_address = PointerBitCastOrAddrSpaceCast(cas_new_output_address,
+                                                         element_address_type);
   }
 
   // Use the value from the memory that atomicCAS operates on to initialize
