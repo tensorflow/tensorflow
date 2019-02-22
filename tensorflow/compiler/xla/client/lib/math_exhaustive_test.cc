@@ -171,9 +171,6 @@ INSTANTIATE_TEST_CASE_P(
     ::testing::ValuesIn(std::vector<Testcase>{
         Testcase{"square", Square, [](float x) { return x * x; }},
         Testcase{"reciprocal", Reciprocal, [](float x) { return 1 / x; }},
-        Testcase{"lgamma", Lgamma, std::lgamma}
-            .set_tolerance(0.1, 0.15)
-            .set_fewer_infs_ok(),
         Testcase{"asin", Asin, std::asin}.set_skip_infs(),
         Testcase{"acos", Acos, std::acos}.set_skip_infs(),
         Testcase{"atan", Atan, std::atan},
