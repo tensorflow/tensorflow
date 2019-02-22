@@ -807,6 +807,7 @@ Status ConstantFolding::MaterializeConstantValuedNode(
             "Could not construct Tensor form TensorProto in node: ",
             input_node->name());
       }
+      tensor->clear_tensor_content();
       t.AsProtoField(tensor);
     } else {
       *tensor = input_tensor;
@@ -3404,6 +3405,20 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   return Status::OK();
 }
 
+namespace {
+Status CompressConstants(GraphDef* graph) {
+  for (int i = 0; i < graph->node_size(); ++i) {
+    NodeDef* node = graph->mutable_node(i);
+    if ((IsConstant(*node) || IsHostConstant(*node)) &&
+        HasNodeAttr(*node, "value")) {
+      AttrValue& attr_val = (*node->mutable_attr())["value"];
+      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
@@ -3442,6 +3457,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(
         RunOptimizationPass(cluster, item_to_optimize, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
+  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();
 
