@@ -142,7 +142,7 @@ class EdscTest(unittest.TestCase):
     with E.ContextManager():
       module = E.MLIRModule()
       f32 = module.make_scalar_type("f32")
-      func, arg = list(map(E.Expr, [E.Bindable(f32) for _ in range(2)]))
+      func, arg = [E.Expr(E.Bindable(f32)) for _ in range(2)]
       code = func(arg, result=f32)
       self.assertIn("@$1($2)", str(code))
 
@@ -216,6 +216,23 @@ class EdscTest(unittest.TestCase):
       self.assertIn("constant 123 : i32", str)
       self.assertIn("constant 123 : index", str)
       self.assertIn("constant @constants : () -> ()", str)
+
+  def testMLIRBuiltinEmission(self):
+    module = E.MLIRModule()
+    m = module.make_memref_type(self.f32Type, [10])  # f32 tensor
+    f = module.make_function("call_builtin", [m, m], [])
+    with E.ContextManager():
+      emitter = E.MLIRFunctionEmitter(f)
+      input, output = list(map(E.Indexed, emitter.bind_function_arguments()))
+      fn = module.declare_function("sqrtf", [self.f32Type], [self.f32Type])
+      fn = emitter.bind_constant_function(fn)
+      zero = emitter.bind_constant_index(0)
+      emitter.emit_inplace(E.Block([
+        output.store([zero], fn(input.load([zero]), result=self.f32Type))
+      ]))
+      str = f.__str__()
+      self.assertIn("%f = constant @sqrtf : (f32) -> f32", str)
+      self.assertIn("call_indirect %f(%0) : (f32) -> f32", str)
 
   def testMLIRBooleanEmission(self):
     m = self.module.make_memref_type(self.boolType, [10])  # i1 tensor
