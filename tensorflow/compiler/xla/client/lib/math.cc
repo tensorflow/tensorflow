@@ -273,7 +273,18 @@ XlaOp ErfInv(XlaOp x) {
   for (int i = 1; i < kDegree; ++i) {
     p = coefficient(i) + p * w;
   }
-  return p * x;
+
+  // Result modulo edge cases.
+  XlaOp result = p * x;
+
+  // Handle edge cases, namely erfinv(+/-1) = +/-inf.  (The above computation is
+  // indeterminate, and can give nan or -/+inf.)
+  auto& b = *x.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape shape, b.GetShape(x));
+    return Select(Eq(Abs(x), ScalarLike(x, 1)),
+                  x * MaxValue(&b, shape.element_type()), result);
+  });
 }
 
 namespace {
