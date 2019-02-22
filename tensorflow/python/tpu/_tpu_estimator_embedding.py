@@ -272,13 +272,13 @@ class EmbeddingConfig(object):
   """
 
   def __init__(self, embedding_config_spec, train_batch_size, eval_batch_size,
-               num_hosts, num_cores, master):
+               num_hosts, num_cores, run_config):
     self._embedding_config_spec = embedding_config_spec
     self._train_batch_size = train_batch_size
     self._eval_batch_size = eval_batch_size
     self._num_hosts = num_hosts
     self._num_cores = num_cores
-    self._master = master
+    self._run_config = run_config
 
     self._table_to_config_dict, self._feature_to_table_dict = (
         get_tpu_embedding_config_from_feature_columns(
@@ -306,13 +306,19 @@ class EmbeddingConfig(object):
     else:
       raise ValueError('Mode {} is not supported.'.format(mode))
 
+    master = (
+        self._run_config.evaluation_master
+        if mode == model_fn_lib.ModeKeys.EVAL else self._run_config.master)
+    cluster_def = (self._run_config.session_config.cluster_def
+                   if self._run_config.session_config else None)
     tpu_embedding_ = tpu_embedding.TPUEmbedding(
         self._table_to_config_dict,
         self._feature_to_table_dict,
         batch_size,
         tpu_embedding_mode,
-        self._master,
+        master,
         self._optimization_parameters,
+        cluster_def,
     )
     return tpu_embedding_
 
