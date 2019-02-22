@@ -1005,6 +1005,30 @@ class TrainingTest(keras_parameterized.TestCase):
       self.assertAllClose(history.history['loss'], [3., 2.7, 2.4, 2.1, 1.8],
                           1e-3)
 
+  @keras_parameterized.run_all_keras_modes
+  def test_clear_losses(self):
+
+    class LayerWithSharedNestedLossLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(LayerWithSharedNestedLossLayer, self).__init__()
+        self.loss_layer = keras.layers.ActivityRegularization()
+        self.add_weight(shape=(1,), regularizer='l2')
+
+      def call(self, x):
+        x = self.loss_layer(x)
+        return self.loss_layer(x)
+
+    inputs = keras.Input(shape=(1,))
+    outputs = LayerWithSharedNestedLossLayer()(inputs)
+    model = keras.Model(inputs, outputs)
+
+    model(array_ops.ones((1, 1)))
+    self.assertEqual(len(model.losses), 3)  # Weight loss + 2 activity losses.
+
+    model(array_ops.ones((1, 1)))
+    self.assertEqual(len(model.losses), 3)  # Losses are reset upon __call__.
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
