@@ -21,6 +21,7 @@ from __future__ import print_function
 import abc
 import re
 import sys
+import weakref
 
 import six
 
@@ -146,11 +147,19 @@ def wrap_with_name_scope(unbound_method):
 
 def wrap_with_name_scope_no_exception(unbound_method):
   """Patches the given method so it enters the modules name scope."""
+  weak_enter_name_scope = None
   def enter_name_scope(self, *args, **kwargs):
     with self.name_scope:
       # tf.Module enters the module name scope for all methods. To disable this
       # for a particular method annotate it with `@no_module_name_scope`.
-      return unbound_method(self, *args, **kwargs)
+      return weak_enter_name_scope().__wrapped__(self, *args, **kwargs)
+  weak_enter_name_scope = weakref.ref(enter_name_scope)
+  # make_decorator forwards argspecs through the wrapper, which tf.function
+  # requires for naming inputs (e.g. default argument names in the result of
+  # get_concrete_function) and error checking. Calling __wrapped__ lets
+  # tf_decorator.rewrap replace the called function, currently used to swap in
+  # the AutoGraph-converted function.
+  tf_decorator.make_decorator(unbound_method, enter_name_scope)
   return enter_name_scope
 
 
