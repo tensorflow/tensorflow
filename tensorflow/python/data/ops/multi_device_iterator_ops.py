@@ -322,13 +322,5 @@ class MultiDeviceIterator(object):
                                       self._device_iterators[i]._resource)
 
   @property
-  def output_types(self):
-    return self._dataset.output_types
-
-  @property
-  def output_shapes(self):
-    return self._dataset.output_shapes
-
-  @property
-  def output_classes(self):
-    return self._dataset.output_classes
+  def _element_structure(self):
+    return dataset_ops.get_structure(self._dataset)
