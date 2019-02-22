@@ -203,8 +203,9 @@ void OpEmitter::emitAttrGetters() {
     OUT(2) << attr.getReturnType() << ' ' << getter << "() const {\n";
 
     // Return the queried attribute with the correct return type.
-    std::string attrVal = formatv("this->getAttr(\"{1}\").dyn_cast<{0}>()",
-                                  attr.getStorageType(), name);
+    std::string attrVal =
+        formatv("this->getAttr(\"{1}\").dyn_cast_or_null<{0}>()",
+                attr.getStorageType(), name);
     OUT(4) << "auto attr = " << attrVal << ";\n";
     if (attr.hasDefaultValue()) {
       // Returns the default value if not set.
@@ -265,7 +266,8 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
     const auto &attr = namedAttr.attr;
     if (attr.isDerivedAttr())
       break;
-    os << ", " << attr.getStorageType() << ' ' << namedAttr.getName();
+    os << ", /*optional*/" << attr.getStorageType() << ' '
+       << namedAttr.getName();
   }
 
   os << ") {\n";
@@ -315,10 +317,19 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   }
 
   // Push all attributes to the result
-  for (const auto &namedAttr : op.getAttributes())
-    if (!namedAttr.attr.isDerivedAttr())
+  for (const auto &namedAttr : op.getAttributes()) {
+    if (!namedAttr.attr.isDerivedAttr()) {
+      bool emitNotNullCheck = namedAttr.attr.isOptional();
+      if (emitNotNullCheck) {
+        OUT(4) << formatv("if ({0}) {\n", namedAttr.getName());
+      }
       OUT(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
                         namedAttr.getName());
+      if (emitNotNullCheck) {
+        OUT(4) << formatv("}\n");
+      }
+    }
+  }
   OUT(2) << "}\n";
 }
 
@@ -462,7 +473,8 @@ void OpEmitter::emitVerifier() {
       continue;
     }
 
-    if (attr.hasDefaultValue()) {
+    bool allowMissingAttr = attr.hasDefaultValue() || attr.isOptional();
+    if (allowMissingAttr) {
       // If the attribute has a default value, then only verify the predicate if
       // set. This does effectively assume that the default value is valid.
       // TODO: verify the debug value is valid (perhaps in debug mode only).
@@ -482,7 +494,7 @@ void OpEmitter::emitVerifier() {
                         name, attr.getTableGenDefName());
     }
 
-    if (attr.hasDefaultValue())
+    if (allowMissingAttr)
       OUT(4) << "}\n";
   }
 

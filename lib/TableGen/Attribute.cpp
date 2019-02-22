@@ -118,6 +118,10 @@ bool tblgen::Attribute::hasDefaultValue() const {
   return !getValueAsString(init).empty();
 }
 
+bool tblgen::Attribute::isOptional() const {
+  return def->getValueAsBit("isOptional");
+}
+
 std::string tblgen::Attribute::getDefaultValueTemplate() const {
   assert(isConstBuildable() && "requiers constBuilderCall");
   const auto *init = def->getValueInit("defaultValue");

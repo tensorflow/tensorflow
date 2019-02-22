@@ -160,6 +160,7 @@ class F<int width>
 }
 
 def F32 : F<32>;
+def F64 : F<64>;
 
 // A container type is a type that has another type embedded within it.
 class ContainerType<Type etype, Pred containerPred, code elementTypeCall,
@@ -267,8 +268,14 @@ class Attr<Pred condition, string descr = ""> :
   // Default value for attribute.
   // Requires a constBuilderCall defined.
   string defaultValue = ?;
+
+  // Whether the attribute is optional. Typically requires a custom
+  // convertFromStorage method to handle the case where the attribute is
+  // not present.
+  bit isOptional = 0b0;
 }
 
+// Decorates an attribute to have an (unvalidated) default value if not present.
 class DefaultValuedAttr<Attr attr, string val> :
     Attr<attr.predicate, attr.description> {
   // Construct this attribute with the input attribute and change only
@@ -279,6 +286,19 @@ class DefaultValuedAttr<Attr attr, string val> :
   let convertFromStorage = attr.convertFromStorage;
   let constBuilderCall = attr.constBuilderCall;
   let defaultValue = val;
+}
+
+// Decorates an attribute as optional. The return type of the generated
+// attribute accessor method will be Optional<>.
+class OptionalAttr<Attr attr> :
+    Attr<attr.predicate, attr.description> {
+  // Rewrite the attribute to be optional.
+  // Note: this has to be kept up to date with Attr above.
+  let storageType = attr.storageType;
+  let returnType = "Optional<" # attr.returnType #">";
+  let convertFromStorage = "{0} ? " # returnType # "({0}.getValue())" #
+      " : (llvm::None)";
+  let isOptional = 0b1;
 }
 
 // A generic attribute that must be constructed around a specific type.
@@ -299,7 +319,9 @@ class StringBasedAttr<string descr> : Attr<CPred<"true">, descr> {
 
 // Base class for instantiating float attributes of fixed width.
 class FloatAttrBase<BuildableType t, string descr> :
-    TypeBasedAttr<t, "FloatAttr", descr>;
+    TypeBasedAttr<t, "FloatAttr", descr> {
+  let returnType = [{ APFloat }];
+}
 
 // Base class for instantiating integer attributes of fixed width.
 class IntegerAttrBase<BuildableType t, string descr> :
@@ -322,9 +344,8 @@ class ElementsAttrBase<Pred condition, string description> :
   let convertFromStorage = "{0}";
 }
 def ElementsAttr: ElementsAttrBase<CPred<"true">, "constant vector/tensor">;
-def F32Attr : FloatAttrBase<F32, "32-bit float"> {
-  let returnType = [{ APFloat }];
-}
+def F32Attr : FloatAttrBase<F32, "32-bit float">;
+def F64Attr : FloatAttrBase<F64, "64-bit float">;
 def I32Attr : IntegerAttrBase<I32, "32-bit integer"> {
   let storageType = [{ IntegerAttr }];
   let returnType = [{ int }];
