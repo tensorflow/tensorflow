@@ -323,6 +323,6 @@ DialectConversion::convertFunctionSignatureType(FunctionType type) {
   return FunctionType::get(arguments, results, type.getContext());
 }
 
-PassResult DialectConversion::runOnModule(Module *m) {
-  return impl::FunctionConversion::convert(this, m) ? failure() : success();
+bool DialectConversion::convert(Module *m) {
+  return impl::FunctionConversion::convert(this, m);
 }

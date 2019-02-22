@@ -122,12 +122,12 @@ template <typename Arg> struct ConversionListBuilder<Arg> {
   }
 };
 
-/// Base class for dialect conversion passes.  Specific passes must derive this
-/// class and implement the pure virtual functions.
+/// Base class for dialect conversion interface.  Specific converters must
+/// derive this class and implement the pure virtual functions.
 ///
-/// The module pass proceeds as follows.
+/// The module conversion proceeds as follows.
 /// 1. Call `initConverters` to obtain a set of conversions to apply, given the
-/// current MLIR context.
+///    current MLIR context.
 /// 2. For each function in the module do the following.
 //    a. Create a new function with the same name and convert its signature
 //    using `convertType`.
@@ -145,16 +145,17 @@ template <typename Arg> struct ConversionListBuilder<Arg> {
 /// If any error happend during the conversion, the pass fails as soon as
 /// possible.
 ///
-/// If the pass fails, the module is not modified.
-class DialectConversion : public ModulePass {
+/// If the conversion fails, the module is not modified.
+class DialectConversion {
   friend class impl::FunctionConversion;
 
 public:
-  /// Construct a pass given its unique identifier.
-  DialectConversion(const PassID *passID) : ModulePass(passID) {}
+  virtual ~DialectConversion() = default;
 
-  /// Run the pass on the module.
-  PassResult runOnModule(Module *m) override;
+  /// Run the converter on the provided module. This function returns
+  /// true if the module was unsuccessfully converted. Otherwise, it returns
+  /// false for success.
+  bool convert(Module *m);
 
 protected:
   /// Derived classes must implement this hook to produce a set of conversion

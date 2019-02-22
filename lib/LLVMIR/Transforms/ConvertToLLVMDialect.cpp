@@ -1026,11 +1026,15 @@ struct CondBranchOpLowering
 
 /// A pass converting MLIR Standard and Builtin operations into the LLVM IR
 /// dialect.
-class LLVMLowering : public DialectConversion {
+class LLVMLowering : public ModulePass, public DialectConversion {
 public:
-  LLVMLowering() : DialectConversion(&passID) {}
+  LLVMLowering() : ModulePass(&passID) {}
 
   constexpr static PassID passID = {};
+
+  PassResult runOnModule(Module *m) override {
+    return DialectConversion::convert(m) ? failure() : success();
+  }
 
 protected:
   // Create a set of converters that live in the pass object by passing them a
