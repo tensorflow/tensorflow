@@ -12,12 +12,29 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Profiler for eager mode."""
+"""TensorFlow 2.0 Profiler for both Eager Mode and Graph Mode.
+
+The profiler has two mode:
+- Programmatic Mode: start(), stop() and Profiler class. It will perform
+                    when calling start() or create Profiler class and will stop
+                    when calling stop() or destroying Profiler class.
+- On-demand Mode: start_profiler_server(). It will perform profiling when
+                  receive profiling request.
+
+NOTE: Only one active profiler session is allowed. Use of simultaneous
+Programmatic Mode and On-demand Mode is undefined and will likely fail.
+
+NOTE: The Keras TensorBoard callback will automatically perform sampled
+profiling. Before enabling customized profiling, set the callback flag
+"profile_batches=[]" to disable automatic sampled profiling.
+customized profiling.
+"""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import datetime
 import os
 import threading
 
@@ -36,8 +53,6 @@ _run_num = 0
 
 def start():
   """Start profiling.
-
-  Only one active profiling session is allowed.
 
   Raises:
     AssertionError: If another profiling session is running.
@@ -86,6 +101,21 @@ def stop():
   return result
 
 
+def save(logdir, result):
+  """Save profile result to TensorBoard logdir.
+
+  Args:
+    logdir: log directory read by TensorBoard.
+    result: profiling result returned by stop().
+  """
+  plugin_dir = os.path.join(
+      logdir, LOGDIR_PLUGIN,
+      datetime.datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
+  gfile.MakeDirs(plugin_dir)
+  with gfile.Open(os.path.join(plugin_dir, 'local.trace'), 'wb') as f:
+    f.write(result)
+
+
 def start_profiler_server(port):
   """Start a profiler grpc server that listens to given port.
 
@@ -126,8 +156,4 @@ class Profiler(object):
 
   def __exit__(self, typ, value, tb):
     result = stop()
-    plugin_dir = os.path.join(self._logdir, LOGDIR_PLUGIN,
-                              'run{}'.format(_run_num))
-    gfile.MakeDirs(plugin_dir)
-    with gfile.Open(os.path.join(plugin_dir, 'local.trace'), 'wb') as f:
-      f.write(result)
+    save(self._logdir, result)
