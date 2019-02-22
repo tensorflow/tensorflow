@@ -279,7 +279,10 @@ tf_py_test(
     size = "small",
     srcs = ["platform/app_test.py"],
     additional_deps = [":platform"],
-    tags = ["notap"],
+    tags = [
+        "nomac",
+        "notap",
+    ],
 )
 
 cc_library(
@@ -6050,6 +6053,7 @@ tf_py_test(
         "grappler",
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "nomac",
     ],
 )
 
