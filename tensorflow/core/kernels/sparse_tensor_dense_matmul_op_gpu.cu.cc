@@ -81,10 +81,10 @@ struct SparseTensorDenseMatMulFunctor<GPUDevice, T, Tindices, ADJ_A, ADJ_B> {
     // out.size()?  Perhaps p * nnz ?
     CudaLaunchConfig config = GetCudaLaunchConfig(p * nnz, d);
 
-    SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            nnz, m, b_rows, b_cols, p, a_indices.data(), a_values.data(),
-            b.data(), out.data());
+    CudaLaunchKernel(SparseTensorDenseMatMulKernel<T, Tindices, ADJ_A, ADJ_B>,
+                     config.block_count, config.thread_per_block, 0, d.stream(),
+                     nnz, m, b_rows, b_cols, p, a_indices.data(),
+                     a_values.data(), b.data(), out.data());
 
     return Status::OK();
   }

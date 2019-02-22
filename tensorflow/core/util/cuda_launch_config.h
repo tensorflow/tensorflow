@@ -20,6 +20,7 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/base/casts.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
@@ -296,6 +297,49 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
   return *ptr;
+}
+
+namespace detail {
+template <typename... Ts, size_t... Is>
+std::array<void*, sizeof...(Ts)> GetArrayOfElementPointersImpl(
+    std::tuple<Ts...>* tuple, absl::index_sequence<Is...>) {
+  return {{&std::get<Is>(*tuple)...}};
+}
+// Returns an array of void pointers to the elements of the given tuple.
+template <typename... Ts>
+std::array<void*, sizeof...(Ts)> GetArrayOfElementPointers(
+    std::tuple<Ts...>* tuple) {
+  return GetArrayOfElementPointersImpl(tuple,
+                                       absl::index_sequence_for<Ts...>{});
+}
+
+template <bool...>
+struct BoolPack;
+template <bool... Bs>
+using NoneTrue = std::is_same<BoolPack<Bs..., false>, BoolPack<false, Bs...>>;
+// Returns whether none of the types in Ts is a reference.
+template <typename... Ts>
+constexpr bool NoneIsReference() {
+  return NoneTrue<(std::is_reference<Ts>::value)...>::value;
+}
+}  // namespace detail
+
+// Launches a CUDA kernel through cudaLaunchKernel with the given arguments.
+//
+// The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
+template <typename... Ts, typename... Args>
+void CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
+                      size_t shared_memory_size_bytes, cudaStream_t stream,
+                      Args... arguments) {
+  static_assert(detail::NoneIsReference<Ts...>(),
+                "Kernels with reference arguments have undefined behaviour.");
+  // Cast arguments and forward them as an array of pointers.
+  auto args_tuple = std::tuple<Ts...>(arguments...);
+  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
+  auto func_ptr = absl::bit_cast<const void*>(function);
+  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
+                                 shared_memory_size_bytes, stream);
+  DCHECK_EQ(result, cudaSuccess) << cudaGetErrorString(result);
 }
 
 }  // namespace tensorflow

@@ -968,7 +968,10 @@ tf_cuda_library(
         "util/mkl_util.h",
     ]),
     visibility = ["//visibility:public"],
-    deps = [":framework_internal"],
+    deps = [
+        ":framework_internal",
+        "@com_google_absl//absl/base",
+    ],
 )
 
 cc_library(

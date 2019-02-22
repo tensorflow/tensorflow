@@ -57,9 +57,9 @@ void DynamicStitchGPUImpl(const Eigen::GpuDevice& gpu_device,
   const int32 output_size = first_dim_size * slice_size;
   auto config = GetCudaLaunchConfig(output_size, gpu_device);
 
-  DynamicStitchKernel<T>
-      <<<config.block_count, config.thread_per_block, 0, gpu_device.stream()>>>(
-          slice_size, output_size, input_indices, input_ptrs, output);
+  CudaLaunchKernel(DynamicStitchKernel<T>, config.block_count,
+                   config.thread_per_block, 0, gpu_device.stream(), slice_size,
+                   output_size, input_indices, input_ptrs, output);
 }
 
 #define REGISTER_GPU(T)                                           \

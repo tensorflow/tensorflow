@@ -124,9 +124,9 @@ __global__ void CompareAndBitpackKernel<double>(const int size,
     int64 total_count = output.size();                                    \
     CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);        \
                                                                           \
-    CompareAndBitpackKernel<T>                                            \
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>( \
-            total_count, threshold.data(), input.data(), output.data());  \
+    CudaLaunchKernel(CompareAndBitpackKernel<T>, config.block_count,      \
+                     config.thread_per_block, 0, d.stream(), total_count, \
+                     threshold.data(), input.data(), output.data());      \
   }
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS)
