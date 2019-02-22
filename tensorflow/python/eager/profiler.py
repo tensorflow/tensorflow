@@ -58,9 +58,9 @@ def start():
     AssertionError: If another profiling session is running.
   """
   global _profiler
-  if _profiler is not None:
-    raise AssertionError('Another profiler is running.')
   with _profiler_lock:
+    if _profiler is not None:
+      raise AssertionError('Another profiler is running.')
     profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
     if context.default_execution_mode == context.EAGER_MODE:
       pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
@@ -86,15 +86,15 @@ def stop():
   """
   global _profiler
   global _run_num
-  if _profiler is None:
-    raise AssertionError('Cannot stop profiling. No profiler is running.')
-  with c_api_util.tf_buffer() as buffer_:
-    pywrap_tensorflow.TFE_ProfilerSerializeToString(
-        context.context()._handle,  # pylint: disable=protected-access
-        _profiler,
-        buffer_)
-    result = pywrap_tensorflow.TF_GetBuffer(buffer_)
   with _profiler_lock:
+    if _profiler is None:
+      raise AssertionError('Cannot stop profiling. No profiler is running.')
+    with c_api_util.tf_buffer() as buffer_:
+      pywrap_tensorflow.TFE_ProfilerSerializeToString(
+          context.context()._handle,  # pylint: disable=protected-access
+          _profiler,
+          buffer_)
+      result = pywrap_tensorflow.TF_GetBuffer(buffer_)
     pywrap_tensorflow.TFE_DeleteProfiler(_profiler)
     _profiler = None
     _run_num += 1
@@ -122,7 +122,7 @@ def start_profiler_server(port):
   The profiler server will keep the program running even the training finishes.
   Please shutdown the server with CTRL-C. It can be used in both eager mode and
   graph mode. The service defined in
-  tensorflow/contrib/tpu/profiler/tpu_profiler.proto. Please use
+  tensorflow/core/profiler/profiler_service.proto. Please use
   tensorflow/contrib/tpu/profiler/capture_tpu_profile to capture tracable
   file following https://cloud.google.com/tpu/docs/cloud-tpu-tools#capture_trace
 
