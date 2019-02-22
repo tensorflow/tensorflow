@@ -215,8 +215,8 @@ message IPUOptions {
   // Options to control Poplar compilation
   repeated PoplarOptionFlag compilation_options = 4;
 
+  // Options controlling the configuration of each IPU device
   message DeviceConfig {
-
     // Set one of these fields to determine the way to select IPUs
     oneof selection {
       // Set this to the number of IPUs which are required.  The system will
@@ -228,20 +228,28 @@ message IPUOptions {
     }
   };
 
-  // Options controlling the configuration of each IPU device
   repeated DeviceConfig device_config = 5;
 
-  // Option controlling whether to rearrange streamed copies on the host
-  bool always_rearrange_copies_on_the_host = 6;
+  // Options to control the memory size and speed of the execution trade-off.
+  message SpeedSizeConfig {
+    // Option controlling whether to rearrange streamed copies on the host
+    bool always_rearrange_copies_on_the_host = 1;
+
+    // Option to disable caching of sub-graphs containing convolutions
+    bool disable_graph_convolution_caching = 2;
+
+    // Option to enable re-computation of non linearities.
+    bool recompute_non_linearities = 3;
+    bool has_recompute_non_linearities = 4;
+  }
+
+  SpeedSizeConfig speed_size_config = 6;
 
   // Options controlling the configuration of convolutions
   repeated PoplarOptionFlag convolution_options = 7;
 
   // Options controlling the configuration of pooling operations
   repeated PoplarOptionFlag pooling_options = 8;
-
-  // Option to disable caching of sub-graphs containing convolutions
-  bool disable_graph_convolution_caching = 9;
 };
 
 // Options passed to the graph optimizer

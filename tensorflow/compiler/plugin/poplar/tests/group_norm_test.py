@@ -163,17 +163,13 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
 
     # Undo the shuffle.
     output = np.swapaxes(output, 0, feature_index)
-    input_whitened = np.swapaxes(input_whitened, 0, feature_index)
 
     reshuffled_output = np.empty(output.shape, output.dtype)
-    reshuffled_input_whitened = np.empty(input_whitened.shape, input_whitened.dtype)
     for to_idx in range(num_channels):
       from_idx = (to_idx % groups) * group_size + to_idx // groups
       reshuffled_output[to_idx] = output[from_idx]
-      reshuffled_input_whitened[to_idx] = input_whitened[from_idx]
     inv_std_dev = np.power(variance + epsilon, -0.5)
     return (np.swapaxes(reshuffled_output, 0, feature_index),
-            np.swapaxes(reshuffled_input_whitened, 0, feature_index),
             np.reshape(np.squeeze(mean), (mean.size)),
             np.reshape(np.squeeze(inv_std_dev), (inv_std_dev.size)))
 
@@ -256,7 +252,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       pinputs = array_ops.placeholder(dataType, inputs.shape, name="inputs")
       pgamma = array_ops.placeholder(dataType, gamma.shape, name="gamma")
       pbeta = array_ops.placeholder(dataType, beta.shape, name="beta")
-      norm, mean, inv_std_dev, inputs_whitened = gen_popnn_ops.popnn_group_norm_training(
+      norm, mean, inv_std_dev = gen_popnn_ops.popnn_group_norm_training(
         inputs=pinputs, gamma=pgamma, beta=pbeta, data_format=data_format,
         epsilon=epsilon, num_groups=groups)
 
@@ -266,7 +262,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
         pgamma : gamma,
         pbeta : beta,
       }
-      return sess.run((norm, inputs_whitened, mean, inv_std_dev), fd)
+      return sess.run((norm, mean, inv_std_dev), fd)
 
   def _implGroupNormStatistics(self, inputs, groups, epsilon=0.0015, data_format="NHWC"):
     if data_format != "NHWC" and data_format != "NCHW":
@@ -309,7 +305,7 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
           activations, gamma, beta, num_groups, mean, inv_std_dev,
           epsilon=epsilon, data_format=data_format)
 
-      expected, _, _, _ = self._refGroupNormFwd(
+      expected, _, _ = self._refGroupNormFwd(
           activations, gamma, beta, num_groups, mean=mean, inv_std_dev=inv_std_dev,
           epsilon=epsilon, data_format=data_format)
 
@@ -331,11 +327,11 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
       activations = np.random.rand(*acts_shape).astype(dataType)
       gamma = np.random.rand(*gamma_beta_shape).astype(dataType)
       beta = np.random.rand(*gamma_beta_shape).astype(dataType)
-      norm, acts_whitened, mean, inv_std_dev = self._implGroupNormTraining(
+      norm, mean, inv_std_dev = self._implGroupNormTraining(
           activations, gamma, beta, num_groups,
           epsilon=epsilon, data_format=data_format)
 
-      expected_norm, expected_acts_whitened, expected_mean, expected_inv_std_dev = self._refGroupNormFwd(
+      expected_norm, expected_mean, expected_inv_std_dev = self._refGroupNormFwd(
           activations, gamma, beta, num_groups,
           epsilon=epsilon, data_format=data_format)
       self.assertAllClose(expected_mean, mean,
@@ -345,9 +341,6 @@ class GroupNormTest(test.TestCase, parameterized.TestCase):
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
       self.assertAllClose(expected_norm, norm,
-                            rtol=training_rel_tolerance,
-                            atol=training_abs_tolerance)
-      self.assertAllClose(expected_acts_whitened, acts_whitened,
                             rtol=training_rel_tolerance,
                             atol=training_abs_tolerance)
 

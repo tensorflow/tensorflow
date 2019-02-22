@@ -142,7 +142,6 @@ REGISTER_OP("PopnnGroupNormTraining")
     .Output("output: dtype")
     .Output("mean: dtype")
     .Output("inv_std_dev: dtype")
-    .Output("input_whitened: dtype")
     .Attr("data_format: string")
     .Attr("epsilon: float")
     .Attr("num_groups: int")
@@ -159,7 +158,6 @@ REGISTER_OP("PopnnGroupNormTraining")
       c->set_output(0, in_shape);
       c->set_output(1, mean_inv_std_dev_shape);
       c->set_output(2, mean_inv_std_dev_shape);
-      c->set_output(3, in_shape);
       return Status::OK();
     })
     .Doc(R"doc(
@@ -167,7 +165,7 @@ Internal implementation of PopnnGroupNormTraining.
 )doc");
 
 REGISTER_OP("PopnnGroupNormGrad")
-    .Input("input_whitened: dtype")
+    .Input("inputs: dtype")
     .Input("gamma: dtype")
     .Input("mean: dtype")
     .Input("inv_std_dev: dtype")

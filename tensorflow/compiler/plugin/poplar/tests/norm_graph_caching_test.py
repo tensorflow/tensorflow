@@ -526,7 +526,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
                                  name='conv1')
         gamma = constant_op.constant([0.5, 0.5], np.float32)
         beta = constant_op.constant([0.5, 0.5], np.float32)
-        y, _, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
                                                         gamma=gamma,
                                                         beta=beta,
                                                         data_format="NHWC",
@@ -535,7 +535,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
         y = convolutional.conv2d(y, 2, 1, use_bias=False,
                                  kernel_initializer=init_ops.ones_initializer(),
                                  name='conv2')
-        y, _, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
                                                         gamma=gamma,
                                                         beta=beta,
                                                         data_format="NHWC",
@@ -544,7 +544,7 @@ class NormGraphCachingTest(test_util.TensorFlowTestCase):
         y = convolutional.conv2d(y, 2, 1, use_bias=False,
                                  kernel_initializer=init_ops.ones_initializer(),
                                  name='conv3')
-        y, _, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
+        y, _, _ = gen_popnn_ops.popnn_group_norm_training(inputs=y,
                                                         gamma=gamma,
                                                         beta=beta,
                                                         data_format="NHWC",

@@ -444,8 +444,14 @@ StatusOr<bool> ForwardAllocation::Run(
         }
         auto* layout_producer = *optional_layout_producer;
 
-        auto prefix = g.ShortestPath(source, target);
-        auto suffix = g.ShortestPath(layout_producer, target);
+        // Try and find the shortest paths from/to target.
+        auto optional_prefix = g.ShortestPath(source, target);
+        auto optional_suffix = g.ShortestPath(layout_producer, target);
+        if (!(optional_prefix && optional_suffix)) {
+          continue;
+        }
+        auto prefix = *optional_prefix;
+        auto suffix = *optional_suffix;
         // Only some operands are layout sensitive.
         auto optional_op_idx = IsLayoutSensitiveOperand(
             target, prefix.rbegin()[1], layout_producer);

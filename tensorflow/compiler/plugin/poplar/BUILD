@@ -80,6 +80,7 @@ cc_library(
         "driver/passes/inplace_util.cc",
         "driver/tools/input_output_aliasing_map.cc",
         "driver/tools/matcher_predicates.cc",
+        "driver/passes/non_linearity_recomputation.cc",
         "driver/passes/not_supported_gather_expander.cc",
         "driver/passes/not_supported_scatter_expander.cc",
         "driver/passes/root_token_replacer.cc",
@@ -116,6 +117,7 @@ cc_library(
         "driver/tools/input_output_aliasing_map.h",
         "driver/tools/matcher_predicates.h",
         "driver/tools/meta_graph.h",
+        "driver/passes/non_linearity_recomputation.h",
         "driver/passes/not_supported_gather_expander.h",
         "driver/passes/not_supported_scatter_expander.h",
         "driver/passes/root_token_replacer.h",
@@ -745,6 +747,19 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test(
+    name = "non_linearity_recomputation_test",
+    srcs = ["tests/non_linearity_recomputation_test.cc"],
+    extra_copts = [
+        "-fexceptions",
+    ],
+    deps = [
+        ":poplar_lib",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
 py_library(
     name = "test_utils_py",
     srcs = ["tests/test_utils.py"],
@@ -1254,6 +1269,7 @@ test_suite(
         "deferred_allocation_visitor_test",
         "ipu_outfeed_test",
         "forward_allocation_test",
+        "non_linearity_recomputation_test",
     ],
 )
 

@@ -45,7 +45,15 @@ bool IsBiasAdd(const HloInstruction*);
 bool IsPopOpsBiasAdd(const xla::HloInstruction*);
 bool IsPopOpsElementwise(const xla::HloInstruction*);
 bool IsPopOpsElementwiseBinary(const xla::HloInstruction*);
+bool IsNormInference(const xla::HloInstruction*);
+bool IsNormTraining(const xla::HloInstruction*);
 bool IsNormInferenceOrTraining(const xla::HloInstruction*);
+bool IsNormGradient(const xla::HloInstruction*);
+bool IsGTEIndex0(const xla::HloInstruction*);
+bool IsGTEIndex1(const xla::HloInstruction*);
+bool IsGTEIndex2(const xla::HloInstruction*);
+bool IsNonLinearityGradient(const xla::HloInstruction*);
+bool IsNonLinearity(const xla::HloInstruction*);
 }  // namespace poplarplugin
 }  // namespace xla
 

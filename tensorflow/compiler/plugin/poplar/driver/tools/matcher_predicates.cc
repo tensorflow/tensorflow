@@ -314,13 +314,50 @@ bool IsPopOpsElementwiseBinary(const HloInstruction* inst) {
          IsPopOpsFusion(inst, "scaled_inplace");
 }
 
-bool IsNormInferenceOrTraining(const HloInstruction* inst) {
+bool IsNormInference(const HloInstruction* inst) {
   return inst->opcode() == HloOpcode::kBatchNormInference ||
-         inst->opcode() == HloOpcode::kBatchNormTraining ||
          IsPoplibsCustomOp(inst, PoplibsLib::Popnn,
-                           PoplibsOp::GroupNormInference) ||
+                           PoplibsOp::GroupNormInference);
+}
+
+bool IsNormTraining(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kBatchNormTraining ||
          IsPoplibsCustomOp(inst, PoplibsLib::Popnn,
                            PoplibsOp::GroupNormTraining);
+}
+
+bool IsNormInferenceOrTraining(const HloInstruction* inst) {
+  return IsNormTraining(inst) || IsNormInference(inst);
+}
+
+bool IsNormGradient(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kBatchNormGrad ||
+         IsPoplibsCustomOp(inst, PoplibsLib::Popnn, PoplibsOp::GroupNormGrad);
+}
+
+bool IsGTEIndex0(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kGetTupleElement &&
+         inst->tuple_index() == 0;
+}
+
+bool IsGTEIndex1(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kGetTupleElement &&
+         inst->tuple_index() == 1;
+}
+
+bool IsGTEIndex2(const HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kGetTupleElement &&
+         inst->tuple_index() == 2;
+}
+
+bool IsNonLinearity(const HloInstruction* inst) {
+  return !IsNonLinearityGradient(inst) &&
+         (IsPopOpsFusion(inst, "relu") || IsPopOpsFusion(inst, "sigmoid"));
+}
+
+bool IsNonLinearityGradient(const HloInstruction* inst) {
+  return IsPopOpsFusion(inst, "relugrad") ||
+         IsPopOpsFusion(inst, "sigmoidgrad");
 }
 
 }  // namespace poplarplugin
