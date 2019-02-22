@@ -238,6 +238,79 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
   return std::move(literal);
 }
 
+template <typename IntT>
+void PopulateWithRandomIntegralDataWithBounds(Literal* literal,
+                                              std::minstd_rand0* engine,
+                                              IntT min, IntT max) {
+  CHECK(engine != nullptr);
+  CHECK_EQ(literal->shape().element_type(),
+           primitive_util::NativeToPrimitiveType<IntT>());
+  std::uniform_int_distribution<IntT> generator(min, max);
+  for (IntT& value : literal->data<IntT>()) {
+    value = generator(*engine);
+  }
+}
+
+// Same as MakeFakeLiteralInternal but generates random numbers in the given
+// range [min, max]. Currently this works only for INT types.
+StatusOr<Literal> MakeFakeLiteralInternalWithBounds(const Shape& shape,
+                                                    std::minstd_rand0* engine,
+                                                    int64 min, int64 max) {
+  if (shape.IsTuple()) {
+    std::vector<Literal> elements;
+    for (const Shape& element_shape : shape.tuple_shapes()) {
+      TF_ASSIGN_OR_RETURN(
+          Literal element,
+          MakeFakeLiteralInternalWithBounds(element_shape, engine, min, max));
+      elements.push_back(std::move(element));
+    }
+    return LiteralUtil::MakeTupleOwned(std::move(elements));
+  }
+  if (engine == nullptr) {
+    return Literal::CreateFromShape(shape);
+  }
+  Literal literal(shape);
+  switch (shape.element_type()) {
+    case S8:
+      PopulateWithRandomIntegralDataWithBounds<int8>(
+          &literal, engine, static_cast<int8>(min), static_cast<int8>(max));
+      break;
+    case U8:
+      PopulateWithRandomIntegralDataWithBounds<uint8>(
+          &literal, engine, static_cast<uint8>(min), static_cast<uint8>(max));
+      break;
+    case S16:
+      PopulateWithRandomIntegralDataWithBounds<int16>(
+          &literal, engine, static_cast<int16>(min), static_cast<int16>(max));
+      break;
+    case U16:
+      PopulateWithRandomIntegralDataWithBounds<uint16>(
+          &literal, engine, static_cast<uint16>(min), static_cast<uint16>(max));
+      break;
+    case S32:
+      PopulateWithRandomIntegralDataWithBounds<int32>(
+          &literal, engine, static_cast<int32>(min), static_cast<int32>(max));
+      break;
+    case U32:
+      PopulateWithRandomIntegralDataWithBounds<uint32>(
+          &literal, engine, static_cast<uint32>(min), static_cast<uint32>(max));
+      break;
+    case S64:
+      PopulateWithRandomIntegralDataWithBounds<int64>(
+          &literal, engine, static_cast<int64>(min), static_cast<int64>(max));
+      break;
+    case U64:
+      PopulateWithRandomIntegralDataWithBounds<uint64>(
+          &literal, engine, static_cast<uint64>(min), static_cast<uint64>(max));
+      break;
+    default:
+      return Unimplemented(
+          "Unsupported type for fake random literal generation with bounds: %s",
+          ShapeUtil::HumanString(shape));
+  }
+  return std::move(literal);
+}
+
 enum class ConstantType { kUnknown, kZero, kOne };
 
 // Return the constant type required by this computation, if known.
@@ -296,6 +369,10 @@ std::vector<HloInstruction*> FindConstrainedUses(
       const int64 op_num = use.operand_number;
       if ((opcode == HloOpcode::kDynamicSlice && op_num >= 1) ||
           (opcode == HloOpcode::kDynamicUpdateSlice && op_num >= 2)) {
+        constrained_uses.push_back(instruction);
+      } else if ((opcode == HloOpcode::kGather ||
+                  opcode == HloOpcode::kScatter) &&
+                 op_num == 1) {
         constrained_uses.push_back(instruction);
       } else if (opcode == HloOpcode::kFusion) {
         const HloInstruction* const to_analyze =
@@ -356,6 +433,22 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
         }
         break;
       }
+      case HloOpcode::kGather:
+      case HloOpcode::kScatter: {
+        const Shape& operand_shape = use->operand(0)->shape();
+        if (use->operand(1) == &param) {
+          auto index_map =
+              use->opcode() == HloOpcode::kGather
+                  ? use->gather_dimension_numbers().start_index_map()
+                  : use->scatter_dimension_numbers()
+                        .scatter_dims_to_operand_dims();
+          for (const auto dim_in_operand : index_map) {
+            index_bound =
+                std::min(index_bound, operand_shape.dimensions(dim_in_operand));
+          }
+        }
+        break;
+      }
       case HloOpcode::kReduce:
       case HloOpcode::kReduceWindow:
         needs_constant = true;
@@ -385,8 +478,8 @@ StatusOr<Literal> CreateLiteralForConstrainedUses(
     return Unimplemented("Conflicting operand generation constraints.");
   }
   if (index_bound != INT64_MAX) {
-    return MakeRandomIndex(index_bound, engine)
-        .Reshape(param.shape().dimensions());
+    return MakeFakeLiteralInternalWithBounds(param.shape(), engine, -1,
+                                             index_bound);
   } else if (needs_constant) {
     switch (constant_type) {
       case ConstantType::kZero:

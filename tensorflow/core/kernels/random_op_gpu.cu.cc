@@ -59,8 +59,8 @@ void FillPhiloxRandom<GPUDevice, Distribution>::operator()(
       (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
       block_size;
 
-  FillPhiloxRandomKernelLaunch<Distribution>
-      <<<num_blocks, block_size, 0, d.stream()>>>(gen, data, size, dist);
+  CudaLaunchKernel(FillPhiloxRandomKernelLaunch<Distribution>, num_blocks,
+                   block_size, 0, d.stream(), gen, data, size, dist);
 }
 
 // Explicit instantiation of the GPU distributions functors

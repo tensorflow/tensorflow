@@ -55,7 +55,6 @@ import numpy as np
 import six
 
 from tensorflow.contrib.cluster_resolver.python.training import tpu_cluster_resolver as tpu_cluster_resolver_lib
-from tensorflow.contrib.framework.python.framework import experimental
 from tensorflow.contrib.tpu.python.ops import tpu_ops
 from tensorflow.contrib.tpu.python.tpu import keras_tpu_variables
 from tensorflow.contrib.tpu.python.tpu import tpu
@@ -94,6 +93,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.deprecation import deprecated
 
 
 # TODO(b/114775106): temporary shim to optionally initialize the TPU
@@ -2172,7 +2172,10 @@ Output shape: %(output_shape)s
 # pylint: enable=bad-continuation
 
 
-@experimental
+@deprecated(
+    '2019-02-20', 'Switch to tf.contrib.distribute.TPUStrategy. '
+    'https://www.tensorflow.org/api_docs/python/tf/contrib/distribute/DistributionStrategy'
+)
 def tpu_model(model, strategy=None):
   """Copy `model` along with weights to the TPU.
 

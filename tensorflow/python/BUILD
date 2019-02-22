@@ -179,6 +179,7 @@ py_library(
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:profiler",
+        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
@@ -278,7 +279,10 @@ tf_py_test(
     size = "small",
     srcs = ["platform/app_test.py"],
     additional_deps = [":platform"],
-    tags = ["notap"],
+    tags = [
+        "nomac",
+        "notap",
+    ],
 )
 
 cc_library(
@@ -679,6 +683,7 @@ py_library(
     deps = [
         ":common_shapes",
         ":composite_tensor",
+        ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
         ":framework_fast_tensor_util",
@@ -850,6 +855,22 @@ py_library(
         ":framework_ops",
         ":platform",
         ":tensor_util",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "convert_to_constants",
+    srcs = [
+        "framework/convert_to_constants.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":platform",
+        ":tensor_util",
+        ":tf_optimizer",
         "//tensorflow/core:protos_all_py",
     ],
 )
@@ -1993,6 +2014,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//smartass/brain/configure/python:__pkg__",
         "//tensorflow/contrib/tpu:__pkg__",
+        "//tensorflow/python/tpu:__pkg__",
     ],
     deps = [
         "//tensorflow/core:tpu_configuration_ops_op_lib",
@@ -3955,6 +3977,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
+        "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
         "//third_party/py/numpy",
@@ -4789,6 +4812,17 @@ tf_py_test(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_py_test(
+    name = "convert_to_constants_test",
+    size = "small",
+    srcs = ["framework/convert_to_constants_test.py"],
+    additional_deps = [
+        ":convert_to_constants",
+        "client_testlib",
+        "framework_test_lib",
     ],
 )
 
@@ -6019,6 +6053,7 @@ tf_py_test(
         "grappler",
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "nomac",
     ],
 )
 

@@ -1019,16 +1019,6 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(operand_shape);
-    if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
-      return absl::make_unique<Layout>(operand_shape.layout());
-    }
-    if (operand_shape.rank() == output_shape.rank()) {
-      *operand_shape.mutable_layout() = output_layout;
-      if (ShapeUtil::ReshapeIsBitcast(operand_shape,
-                                      output_shape_with_layout)) {
-        return absl::make_unique<Layout>(output_layout);
-      }
-    }
     auto aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
     if (aligned_operand_shape) {
@@ -1090,16 +1080,6 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     Shape output_shape = user->shape();
     *output_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(output_shape);
-    if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
-      return absl::make_unique<Layout>(output_shape.layout());
-    }
-    if (operand->shape().rank() == output_shape.rank()) {
-      *output_shape.mutable_layout() = operand_layout;
-      if (ShapeUtil::ReshapeIsBitcast(output_shape,
-                                      operand_shape_with_layout)) {
-        return absl::make_unique<Layout>(operand_layout);
-      }
-    }
     auto aligned_user_shape =
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
     if (aligned_user_shape) {
@@ -2058,6 +2038,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
@@ -2068,6 +2049,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTriangularSolve:

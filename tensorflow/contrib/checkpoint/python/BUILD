@@ -120,5 +120,5 @@ tf_py_test(
         "//tensorflow/python/keras:layers",
         "//tensorflow/python/training/tracking:util",
     ],
-    tags = ["nooss"],  # b/124472244
+    tags = ["no_oss"],  # b/124472244
 )

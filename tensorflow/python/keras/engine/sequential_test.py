@@ -48,6 +48,18 @@ class TestSequential(keras_parameterized.TestCase):
     self.assertEqual(model.get_layer(name='dp').name, 'dp')
 
   @keras_parameterized.run_all_keras_modes
+  def test_input_defined_first_layer(self):
+    model = keras.models.Sequential()
+    model.add(keras.Input(shape=(2,), name='input_layer'))
+    model.add(keras.layers.Dense(1))
+    model.add(keras.layers.Dropout(0.3, name='dp'))
+    model.add(keras.layers.Dense(2, kernel_regularizer='l2',
+                                 kernel_constraint='max_norm'))
+    self.assertLen(model.layers, 3)
+    self.assertLen(model.weights, 2 * 2)
+    self.assertEqual(model.get_layer(name='dp').name, 'dp')
+
+  @keras_parameterized.run_all_keras_modes
   def test_sequential_pop(self):
     num_hidden = 5
     input_dim = 3

@@ -76,6 +76,12 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
   StatusOr<llvm::Value*> EmitExpm1(PrimitiveType prim_type,
                                    llvm::Value* value) override;
 
+  StatusOr<llvm::Value*> EmitSqrt(PrimitiveType prim_type,
+                                  llvm::Value* value) override;
+
+  StatusOr<llvm::Value*> EmitRsqrt(PrimitiveType prim_type,
+                                   llvm::Value* value) override;
+
   StatusOr<llvm::Value*> EmitPow(PrimitiveType prim_type, llvm::Value* lhs,
                                  llvm::Value* rhs) override;
 

@@ -464,7 +464,8 @@ Status GetGraphAndRets(const string& function_name, AttrSlice attrs,
                        const FunctionDef* fdef,
                        const FunctionLibraryDefinition* lib_def,
                        std::unique_ptr<Graph>* graph,
-                       std::vector<string>* ret_node_names) {
+                       std::vector<string>* ret_node_names,
+                       std::vector<string>* control_ret_node_names) {
   auto get_func_sig = [lib_def](const string& op, const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };
@@ -483,6 +484,10 @@ Status GetGraphAndRets(const string& function_name, AttrSlice attrs,
   ret_node_names->reserve(fbody->ret_nodes.size());
   for (const Node* node : fbody->ret_nodes) {
     ret_node_names->push_back(node->name());
+  }
+  control_ret_node_names->reserve(fbody->control_ret_nodes.size());
+  for (const Node* node : fbody->control_ret_nodes) {
+    control_ret_node_names->push_back(node->name());
   }
   return Status::OK();
 }
@@ -522,9 +527,11 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   std::unique_ptr<Graph> graph;
   std::vector<string> ret_node_names;
+  std::vector<string> control_ret_node_names;
 
   TF_RETURN_IF_ERROR(GetGraphAndRets(function_name, attrs, fdef, lib_def,
-                                     &graph, &ret_node_names));
+                                     &graph, &ret_node_names,
+                                     &control_ret_node_names));
 
   if (options.graph_collector != nullptr) {
     GraphDef def;
@@ -584,9 +591,9 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   if (options.optimize_graph_fn) {
     DumpGraph("Before running graph optimization fn", graph.get());
-    Status status = options.optimize_graph_fn(std::move(ret_node_names),
-                                              &data->overlay_lib_, device_set,
-                                              cpu_device, &graph);
+    Status status = options.optimize_graph_fn(
+        std::move(ret_node_names), std::move(control_ret_node_names),
+        &data->overlay_lib_, device_set, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();

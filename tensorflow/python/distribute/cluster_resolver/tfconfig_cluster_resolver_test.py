@@ -183,6 +183,40 @@ class TFConfigClusterResolverTest(test.TestCase):
     self.assertEqual(1, cluster_resolver.task_id)
     self.assertEqual('test', cluster_resolver.rpc_layer)
 
+  def testTaskTypeCastToString(self):
+    os.environ['TF_CONFIG'] = """
+    {
+      "cluster": {
+        "123456": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+      },
+      "rpc_layer": "grpc",
+      "task": {
+        "type": 123456,
+        "index": 0
+      }
+    }
+    """
+    cluster_resolver = TFConfigClusterResolver()
+    self.assertEqual('123456', cluster_resolver.task_type)
+
+  def testTaskIndexCastToInteger(self):
+    os.environ['TF_CONFIG'] = """
+    {
+      "cluster": {
+        "ps": ["ps0:2222", "ps1:2222"],
+        "worker": ["worker0:2222", "worker1:2222", "worker2:2222"]
+      },
+      "rpc_layer": "grpc",
+      "task": {
+        "type": "ps",
+        "index": "1"
+      }
+    }
+    """
+    cluster_resolver = TFConfigClusterResolver()
+    self.assertEqual(1, cluster_resolver.task_id)
+
   def testZeroItemsInClusterSpecMasterRead(self):
     os.environ['TF_CONFIG'] = """
     {}

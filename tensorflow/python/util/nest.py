@@ -79,7 +79,7 @@ def _get_attrs_items(obj):
 def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
-    return sorted(_six.iterkeys(dict_))
+    return sorted(dict_)
   except TypeError:
     raise TypeError("nest only supports dicts with sortable keys.")
 
@@ -124,7 +124,7 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
+    return type(instance)((key, result[key]) for key in instance)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):

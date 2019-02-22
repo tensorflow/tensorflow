@@ -111,9 +111,9 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 
     options.optimize_graph_fn = std::bind(
         grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
-        std::placeholders::_3, std::placeholders::_4, config_proto,
-        function_def->signature().name(), optimization_options,
-        std::placeholders::_5);
+        std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
+        config_proto, function_def->signature().name(), optimization_options,
+        std::placeholders::_6);
   }
 #endif
   options.graph_collector = graph_collector;
@@ -147,9 +147,11 @@ void UpdateStats(OpKernelContext* context,
     memory->set_peak_bytes(std::get<1>(sizes));
     memory->set_live_bytes(std::get<2>(sizes));
 
-    AllocatorStats allocator_stats;
-    allocator_pair.first->GetStats(&allocator_stats);
-    memory->set_allocator_bytes_in_use(allocator_stats.bytes_in_use);
+    absl::optional<AllocatorStats> allocator_stats =
+        allocator_pair.first->GetStats();
+    if (stats) {
+      memory->set_allocator_bytes_in_use(allocator_stats->bytes_in_use);
+    }
     allocator_pair.second->GetRecordsAndUnRef();
   }
   auto* ms = stats->mutable_memory_stats();

@@ -535,7 +535,12 @@ stylesheet=<
     }
   }
 
-  return StrFormat(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
+  // Browsers require that we URI-encode the contents of our data URI.  (It
+  // seems this was a relatively recent change?) In practice, this means that we
+  // need to escape '#'.
+  return StrFormat(
+      fmt, graph_label,
+      absl::StrReplaceAll(StrJoin(edge_css_rules, "\n"), {{"#", "%23"}}));
 }
 
 string HloDotDumper::Footer() { return StrCat(StrJoin(edges_, "\n"), "\n}"); }
@@ -948,6 +953,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -956,6 +962,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
       // De-emphasize scalar-shaped elementwise ops -- they're generally

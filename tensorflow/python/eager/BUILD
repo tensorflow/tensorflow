@@ -58,6 +58,7 @@ py_library(
         ":function",
         ":graph_only_ops",
         ":profiler",
+        ":profiler_client",
         ":tape",
         ":test",
         ":wrap_function",
@@ -110,7 +111,17 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
-        "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
+        "//tensorflow/core/profiler:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "profiler_client",
+    srcs = ["profiler_client.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
