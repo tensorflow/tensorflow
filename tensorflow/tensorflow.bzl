@@ -418,7 +418,7 @@ def tf_cc_shared_object(
         srcs = srcs + framework_so,
         deps = deps,
         linkshared = 1,
-        data = data + tf_binary_dynamic_kernel_dsos(),
+        data = data,
         linkopts = linkopts + _rpath_linkopts(name) + select({
             clean_dep("//tensorflow:darwin"): [
                 "-Wl,-install_name,@rpath/" + name.split("/")[-1],
