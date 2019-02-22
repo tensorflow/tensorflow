@@ -801,6 +801,7 @@ def categorical_hinge(y_true, y_pred):
   return math_ops.maximum(0., neg - pos + 1.)
 
 
+@keras_export('keras.losses.logloss')
 def logloss(y_true, y_pred):
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
@@ -810,6 +811,8 @@ def logloss(y_true, y_pred):
   return K.mean(-losses, axis=-1)
 
 
+@keras_export('keras.losses.huber',
+              'keras.losses.huber_loss')
 def huber_loss(y_true, y_pred, delta=1.0):
   """Computes Huber loss value.
 
