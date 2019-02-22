@@ -2540,7 +2540,7 @@ class ConcatenateDataset(DatasetV2):
           "Two datasets to concatenate have different types %s and %s" %
           (output_types, get_legacy_output_types(dataset_to_concatenate)))
 
-    output_classes = input_dataset.output_classes
+    output_classes = get_legacy_output_classes(input_dataset)
     if output_classes != get_legacy_output_classes(dataset_to_concatenate):
       raise TypeError(
           "Two datasets to concatenate have different classes %s and %s" %
@@ -3209,7 +3209,7 @@ class WindowDataset(UnaryDataset):
     self._drop_remainder = ops.convert_to_tensor(
         drop_remainder, dtype=dtypes.bool, name="drop_remainder")
     nest_of_structures = nest.pack_sequence_as(
-        input_dataset.output_classes,
+        get_legacy_output_classes(input_dataset),
         [
             DatasetStructure(structure_lib.convert_legacy_structure(
                 output_type, output_shape, output_class))
