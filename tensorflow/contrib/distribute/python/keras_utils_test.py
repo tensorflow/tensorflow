@@ -34,6 +34,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.ops import math_ops
 from tensorflow.python.training import gradient_descent
 
 
@@ -317,6 +318,99 @@ class TestDistributionStrategyErrorCases(test.TestCase, parameterized.TestCase):
             steps_per_epoch=2,
             verbose=0,
             callbacks=[keras.callbacks.ReduceLROnPlateau()])
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[combinations.one_device_strategy], mode=['graph']))
+  def test_distribution_strategy_with_add_metric_add_loss(self, distribution):
+    with distribution.scope():
+      x = keras.layers.Input(shape=(1,))
+      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
+
+      err_msg = (
+          'We currently do not support compiling the model with distribution '
+          r'strategy if `model.add_loss\(tensor\)` or '
+          r'`model.add_metric\(tensor\)` has been called.')
+
+      # Test with add_metric.
+      model = keras.models.Model(x, y)
+      model.add_metric(
+          math_ops.reduce_sum(y), name='metric_1', aggregation='mean')
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.compile('sgd',)
+
+      # Test with add_loss.
+      model = keras.models.Model(x, y)
+      model.add_loss(math_ops.reduce_mean(y))
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.compile('sgd',)
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[combinations.one_device_strategy], mode=['eager']))
+  def test_distribution_strategy_with_run_eagerly(self, distribution):
+    with distribution.scope():
+      x = keras.layers.Input(shape=(1,))
+      y = keras.layers.Dense(1, kernel_initializer='ones')(x)
+      model = keras.models.Model(x, y)
+
+      err_msg = ('We currently do not support enabling `run_eagerly` with '
+                 'distribution strategy.')
+      with self.assertRaisesRegex(ValueError, err_msg):
+        model.compile('sgd', run_eagerly=True)
+
+  # TODO(b/124377929): Remove error assertions once subclassed models
+  # are supported in DistributedStrategy.
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              combinations.mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
+  def test_distribution_strategy_on_subclassed_model(self, distribution):
+    with distribution.scope():
+
+      class _SimpleMLP(keras.Model):
+
+        def __init__(self, num_labels):
+          super(_SimpleMLP, self).__init__()
+          self.dense = keras.layers.Dense(num_labels)
+
+        def call(self, inputs):
+          return self.dense(inputs)
+
+      model = _SimpleMLP(3)
+
+      with self.assertRaisesRegexp(
+          ValueError,
+          'We currently do not support distribution strategy with a '
+          '`Sequential` model that is created without '
+          '`input_shape`/`input_dim` set in its first layer or '
+          'a subclassed model.'):
+        model.compile('sgd')
+
+  @combinations.generate(
+      combinations.combine(
+          distribution=[
+              combinations.mirrored_strategy_with_gpu_and_cpu,
+              combinations.core_mirrored_strategy_with_gpu_and_cpu
+          ],
+          mode=['graph', 'eager']))
+  def test_distribution_strategy_on_deferred_sequential_model(
+      self, distribution):
+    with distribution.scope():
+      model = keras.models.Sequential()
+      model.add(keras.layers.Dense(16, activation='relu'))
+      model.add(keras.layers.Dense(3, activation='softmax'))
+
+      with self.assertRaisesRegexp(
+          ValueError,
+          'We currently do not support distribution strategy with a '
+          '`Sequential` model that is created without '
+          '`input_shape`/`input_dim` set in its first layer or '
+          'a subclassed model.'):
+        model.compile('sgd')
 
 
 class TestDistributionStrategyWithLossMasking(test.TestCase,
