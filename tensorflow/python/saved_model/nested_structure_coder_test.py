@@ -20,12 +20,12 @@ from __future__ import print_function
 
 import collections
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import nested_structure_coder
-from tensorflow.python.saved_model import struct_pb2
 
 
 class NestedStructureTest(test.TestCase):

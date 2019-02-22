@@ -23,7 +23,7 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
-from tensorflow.python.distribute import distribute_lib
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,12 +32,13 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
@@ -67,7 +68,7 @@ def set_weights(distribution_strategy, dist_model, weights):
     weights = weights[num_param:]
 
   if not ops.executing_eagerly_outside_functions():
-    K.get_session().run(assign_ops)
+    K.get_session(assign_ops).run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
@@ -104,7 +105,7 @@ def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
                                         grouped_inputs)
   if with_loss_tensor:
     # reduce loss tensor before adding it to the list of fetches
-    loss = distribution_strategy.reduce(distribute_lib.get_loss_reduction(),
+    loss = distribution_strategy.reduce(reduce_util.ReduceOp.SUM,
                                         grouped_outputs[0])
     all_outputs = flatten_perdevice_values(distribution_strategy,
                                            grouped_outputs[1:])
@@ -196,14 +197,14 @@ def validate_callbacks(input_callbacks, optimizer):
       # features of the callback that involve accessing model attributes and
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
-        if callback.__getattribute__('histogram_freq'):
+        if getattr(callback, 'histogram_freq', False):
           logging.warning(
               UserWarning(
                   '`histogram_freq` in the TensorBoard callback is not '
                   'supported when using DistributionStrategy. Setting '
                   '`histogram_freq` to `0`.'))
           callback.histogram_freq = 0
-        if callback.__getattribute__('write_grads'):
+        if getattr(callback, 'write_grads', False):
           logging.warning(
               UserWarning(
                   '`write_grads` in the TensorBoard callback is not supported '
@@ -522,7 +523,7 @@ def initialize_iterator(iterator, distribution_strategy):
   with distribution_strategy.scope():
     init_op = control_flow_ops.group(iterator.initialize())
     if not context.executing_eagerly():
-      K.get_session().run(init_op)
+      K.get_session((init_op,)).run(init_op)
 
 
 def _get_input_from_iterator(iterator, model):
@@ -563,6 +564,11 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
+  # Expand 1-dimensional inputs.
+  # TODO(b/124535720): Remove once this standarize data logic is shared with
+  # main flow.
+  inputs, targets = nest.map_structure(training_utils.standardize_single_array,
+                                       (inputs, targets))
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
@@ -723,21 +729,46 @@ def clone_model_on_replicas(model, strategy, mode, inputs=None, targets=None):
 
 
 def _make_execution_function(model, mode):
-  """Makes function to run one step of distributed model execution."""
-  if context.executing_eagerly():
-    return _make_eager_execution_function(model, mode)
-
+  """Makes or reuses function to run one step of distributed model execution."""
   strategy = model._distribution_strategy
-  if not get_distributed_model(model, mode):
-    if model._compile_distribution:
-      clone_model_on_replicas(model, strategy, mode)
-    else:
-      _build_distributed_network(model, strategy, mode)
+
+  distributed_model = get_distributed_model(model, mode)
+  # If distributed model for a particular `mode` is already built, use the
+  # `_distribution_function` on that distributed model.
+  if distributed_model:
+    return distributed_model._distributed_function
+
+  # If distributed_model is not built, create one for `mode`.
+  if model._compile_distribution:
+    clone_model_on_replicas(model, strategy, mode)
+  else:
+    _build_distributed_network(model, strategy, mode)
+
+  # We've just created the distributed model. So `distributed_model` should be
+  # not None.
+  distributed_model = get_distributed_model(model, mode)
+  assert distributed_model
+
+  # Also create an execution fuction on that distributed model.
+  if context.executing_eagerly():
+    distributed_function = _make_eager_execution_function(model, mode)
+  else:
+    distributed_function = _make_graph_execution_function(model, mode)
+
+  # We cache the distributed execution function on the model since creating
+  # distributed models and exection functions are expensive.
+  distributed_model._distributed_function = distributed_function
+  return distributed_function
+
+
+def _make_graph_execution_function(model, mode):
+  """Makes function to run one step of distributed model in graph mode."""
 
   def _per_device_function(model):
     f = model._make_execution_function(mode)
     return (f.inputs, f.outputs, f.updates_op, f.session_kwargs)
 
+  strategy = model._distribution_strategy
   with strategy.scope():
     # Create train ops on each of the devices when we call
     # `_per_device_fit_function`.
@@ -773,35 +804,38 @@ def _make_execution_function(model, mode):
 
 def _make_eager_execution_function(model, mode):
   """Makes function to run one step of distributed model eager execution."""
-  strategy = model._distribution_strategy
-  if not get_distributed_model(model, mode):
-    if model._compile_distribution:
-      clone_model_on_replicas(model, strategy, mode)
-    else:
-      _build_distributed_network(model, strategy, mode)
-
   def _per_device_function(model):
     f = model._make_execution_function(mode)
     return (f.inputs, f.outputs)
 
   # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
   # the global one.
-  with K.get_graph().as_default(), strategy.scope():
-    # Create train ops on each of the devices when we call
-    # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs) = strategy.extended.call_for_each_replica(
-        _per_device_function, args=(get_distributed_model(model, mode),))
+  strategy = model._distribution_strategy
+  global_graph = K.get_graph()
 
-    # Unwrap all the per device values returned from `call_for_each_replica`.
-    # Unwrapping per device values gives you a list of values that can be
-    # used to construct a new train function that is composed of inptus/outputs
-    # on all the devices over which the model is distributed.
-    (all_inputs, all_outputs, _, _) = unwrap_values(
-        strategy,
-        grouped_inputs,
-        grouped_outputs,
-        with_loss_tensor=(mode != ModeKeys.PREDICT))
+  with global_graph.as_default(), strategy.scope():
+    # First we gather the relevant portions of the model across all replicas.
+    # `K._scratch_graph(global_graph)` signals to Keras that it should not
+    # lift to a separate graph when creating the per-replica functions.
+    with K._scratch_graph(global_graph):
+      # Create train ops on each of the devices when we call
+      # `_per_device_fit_function`.
+      grouped = strategy.extended.call_for_each_replica(
+          _per_device_function, args=(get_distributed_model(model, mode),))
+      grouped_inputs, grouped_outputs = grouped
 
+      # Unwrap all the per device values returned from `call_for_each_replica`.
+      # Unwrapping per device values gives you a list of values that can be
+      # used to construct a new train function that is composed of
+      # inputs/outputs on all the devices over which the model is distributed.
+      (all_inputs, all_outputs, _, _) = unwrap_values(
+          strategy,
+          grouped_inputs,
+          grouped_outputs,
+          with_loss_tensor=(mode != ModeKeys.PREDICT))
+
+    # Finally, a joint Keras function is created; this one will be created in
+    # a separate FuncGraph.
     return K.function(
         all_inputs,
         all_outputs,
@@ -869,3 +903,38 @@ def _generate_cache_key(mode):
 def distributed_scope(strategy, learning_phase):
   with strategy.scope(), K.learning_phase_scope(learning_phase):
     yield
+
+
+def filter_distributed_callbacks(callbacks_list):
+  """Filter Callbacks based on the worker context when running multi-worker.
+
+  Arguments:
+    callbacks_list: A list of `Callback` instances.
+
+  Returns:
+    The list of `Callback` instances that should be run on this worker.
+  """
+
+  if not K.in_multi_worker_mode():
+    raise ValueError(
+        'filter_distributed_callbacks() should only be called when Keras '
+        'is in multi worker mode.')
+
+  worker_context = dc_context.get_current_worker_context()
+  callbacks_list = callbacks_list or []
+  if not [
+      c for c in callbacks_list if isinstance(c, callbacks.ModelCheckpoint)
+  ]:
+    # TODO(rchao): Consider providing a ModelCheckpoint here if the user
+    # fails to.
+    logging.warning('ModelCheckpoint callback is not provided. '
+                    'Workers will need to restart training if any fails.')
+  # TODO(rchao): Add similar warning for restoring callback (to be designed).
+
+  if callbacks_list is None or worker_context.is_chief:
+    return callbacks_list
+
+  # Some Callbacks should only run on the chief worker.
+  return [
+      callback for callback in callbacks_list if not callback._chief_worker_only
+  ]  # pylint: disable=protected-access

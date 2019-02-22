@@ -26,7 +26,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 # Pattern to remove all non alpha numeric from a string.
 _PATTERN = re.compile(r"[\W_]+")

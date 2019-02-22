@@ -575,18 +575,29 @@ class _GraphTensorArrayV2(object):
   def stack(self, name=None):
     """See TensorArray."""
     with ops.name_scope(name, "TensorArrayV2Stack", [self._flow]):
+      if self._element_shape:
+        element_shape = self._element_shape[0]
+      else:
+        element_shape = tensor_shape.TensorShape(None)
       value = list_ops.tensor_list_stack(
-          input_handle=self._flow, element_dtype=self._dtype)
+          input_handle=self._flow,
+          element_dtype=self._dtype,
+          element_shape=element_shape)
       if self._element_shape and self._element_shape[0].dims is not None:
         value.set_shape([None] + self._element_shape[0].dims)
       return value
 
   def gather(self, indices, name=None):
     """See TensorArray."""
+    if self._element_shape:
+      element_shape = self._element_shape[0]
+    else:
+      element_shape = tensor_shape.TensorShape(None)
     value = list_ops.tensor_list_gather(
         input_handle=self._flow,
         indices=indices,
         element_dtype=self._dtype,
+        element_shape=element_shape,
         name=name)
     if self._element_shape and self._element_shape[0].dims is not None:
       value.set_shape([None] + self._element_shape[0].dims)
@@ -627,7 +638,7 @@ class _GraphTensorArrayV2(object):
         self._merge_element_shape(value.shape[1:])
       element_shape = self._element_shape[0] if self._element_shape else None
       flow_out = list_ops.tensor_list_scatter(
-          tensor=value, indices=indices, element_shape=element_shape)
+          tensor=value, indices=indices, input_handle=self._flow)
       return build_ta_with_new_flow(self, flow_out)
 
   @tf_should_use.should_use_result
@@ -825,7 +836,7 @@ class _EagerTensorArray(object):
     if self._infer_shape:
       if self._element_shape is None:
         self._element_shape = value.shape
-      elif self._element_shape != value.shape:
+      elif not self._element_shape.is_compatible_with(value.shape):
         raise ValueError("Incompatible shape for value (%s), expected (%s)" %
                          (value.shape.as_list(), self._element_shape.as_list()))
 
@@ -860,7 +871,9 @@ class _EagerTensorArray(object):
   def gather(self, indices, name=None):
     """See TensorArray."""
     del name  # not meaningful when executing eagerly.
-    return array_ops.stack([self._maybe_zero(i) for i in indices.numpy()])
+    if isinstance(indices, ops.EagerTensor):
+      indices = indices.numpy()
+    return array_ops.stack([self._maybe_zero(i) for i in indices])
 
   def concat(self, name=None):
     """See TensorArray."""
@@ -893,7 +906,9 @@ class _EagerTensorArray(object):
   def scatter(self, indices, value, name=None):
     """See TensorArray."""
     del name  # not meaningful when executing eagerly.
-    for index, val in zip(indices.numpy(), array_ops.unstack(value)):
+    if isinstance(indices, ops.EagerTensor):
+      indices = indices.numpy()
+    for index, val in zip(indices, array_ops.unstack(value)):
       self._write(index, val)  # pylint: disable=protected-access
     return self.parent()
 

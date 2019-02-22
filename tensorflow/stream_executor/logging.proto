@@ -15,6 +15,18 @@ message ComputeCapability {
   int32 minor = 2;
 }
 
+// NOTE: this proto is temporarily duplicated in other places, outside of
+// stream_executor. The plan is to move all custom logging (tensorflow::Logger
+// related) behavior out of StreamExecutor. There are two reasons:
+// * Technical: stream_executor is part of libtensorflow_framework.so. It's
+//   extremely hard to have a single definition of the protos in the .so, and
+//   let the callers call into those definitions. The complication lives in
+//   cc_proto_library where we have a header-only version and impl version.
+// * Functional: we want to log autotuning stats from the callers. The
+//   autotuning stats are not available in SE.
+//
+// TODO(timshen): remove this proto once both XLA and TF log autotuning
+// results.
 message CudaInfo {
   CudnnVersion cudnn_version = 1;
   ComputeCapability compute_capability = 2;

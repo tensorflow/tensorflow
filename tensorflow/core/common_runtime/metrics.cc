@@ -32,6 +32,10 @@ auto* graph_run_time_usecs = monitoring::Counter<0>::New(
 auto* tf_data_autotune_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/autotune", "tf.data autotuning", "name");
 
+auto* tf_data_bytes_read_counter = monitoring::Counter<1>::New(
+    "/tensorflow/data/bytes_read",
+    "The number of bytes read by tf.data Dataset sources.", "name");
+
 auto* tf_data_elements_counter = monitoring::Counter<1>::New(
     "/tensorflow/data/elements", "tf.data elements", "name");
 
@@ -59,6 +63,10 @@ auto* build_graph_time_usecs = monitoring::Counter<0>::New(
 
 void RecordTFDataAutotune(const string& name) {
   tf_data_autotune_counter->GetCell(name)->IncrementBy(1);
+}
+
+void RecordTFDataBytesRead(const string& name, int64 num_bytes) {
+  tf_data_bytes_read_counter->GetCell(name)->IncrementBy(num_bytes);
 }
 
 void RecordTFDataElements(const string& name, int64 num_elements) {

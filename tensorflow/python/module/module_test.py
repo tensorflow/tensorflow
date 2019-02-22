@@ -18,11 +18,14 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import collections
 
 from absl.testing import parameterized
+import six
 
 from tensorflow.python.compat import v2_compat
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.module import module
 from tensorflow.python.ops import variables
@@ -84,6 +87,20 @@ class TestModuleNaming(test.TestCase):
     # `foo` is not a method so we do not re-enter the name scope.
     self.assertEqual(mod.foo(), "")
 
+  def test_property(self):
+    mod = PropertyModule()
+    mod.some_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.some_property
+    self.assertEqual(getter_scope_name, "property_module/")
+    self.assertEqual(setter_scope_name, "property_module/")
+
+  def test_property_no_name_scope(self):
+    mod = PropertyModule()
+    mod.no_name_scope_property = None, None  # None, None for the linter.
+    getter_scope_name, setter_scope_name = mod.no_name_scope_property
+    self.assertEqual(getter_scope_name, "")
+    self.assertEqual(setter_scope_name, "")
+
   def test_invalid_name(self):
     msg = ".* is not a valid module name"
     with self.assertRaisesRegexp(ValueError, msg):
@@ -133,6 +150,34 @@ class TestModuleNaming(test.TestCase):
 
     self.assertEqual("", get_name_scope())
 
+  def test_get_attr_doesnt_enter_name_scope(self):
+    scope_names = []
+
+    class GetAttrModule(module.Module):
+
+      def __getattr__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttrModule, self).__getattr__(name)
+
+    mod = GetAttrModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
+
+  def test_get_attribute_doesnt_enter_name_scope(self):
+    scope_names = []
+
+    class GetAttributeModule(module.Module):
+
+      def __getattribute__(self, name):
+        scope_names.append((name, get_name_scope()))
+        return super(GetAttributeModule, self).__getattribute__(name)
+
+    mod = GetAttributeModule()
+    with self.assertRaises(AttributeError):
+      mod.does_not_exist  # pylint: disable=pointless-statement
+    self.assertIn(("does_not_exist", ""), scope_names)
+
 
 class VariableNamingTest(test.TestCase):
 
@@ -151,12 +196,6 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(m.child.variables, (m.child.w, m.child.child.w))
     self.assertEqual(m.child.child.variables, (m.child.child.w,))
 
-  def test_owned_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_variables, (m.w,))
-    self.assertEqual(m.child.owned_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_variables, (m.child.child.w,))
-
   def test_trainable_variables(self):
     m = RecursiveModule(3)
     self.assertEqual(m.trainable_variables,
@@ -171,27 +210,8 @@ class VariableTrackingTest(test.TestCase):
     self.assertEqual(len(m.child.trainable_variables), 0)
     self.assertEqual(len(m.child.child.trainable_variables), 0)
 
-  def test_owned_trainable_variables(self):
-    m = RecursiveModule(3)
-    self.assertEqual(m.owned_trainable_variables, (m.w,))
-    self.assertEqual(m.child.owned_trainable_variables, (m.child.w,))
-    self.assertEqual(m.child.child.owned_trainable_variables,
-                     (m.child.child.w,))
-
-  def test_owned_trainable_variables_ignores_non_trainable(self):
-    m = RecursiveModule(3, trainable=False)
-    self.assertEqual(len(m.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.owned_trainable_variables), 0)
-    self.assertEqual(len(m.child.child.owned_trainable_variables), 0)
-
 
 class ModuleTrackingTest(test.TestCase):
-
-  def test_owned_submodules(self):
-    m = RecursiveModule(3)
-    self.assertEqual(list(m.owned_submodules), [m.child])
-    self.assertEqual(list(m.child.owned_submodules), [m.child.child])
-    self.assertEqual(list(m.child.child.owned_submodules), [])
 
   def test_submodules(self):
     m = RecursiveModule(3)
@@ -225,6 +245,43 @@ class CommonErrorsTest(test.TestCase):
         CallsMethodBeforeSuperConstructorModule(allowed_method=True))
 
 
+class ForwardMethodsTest(test.TestCase):
+
+  def testFunctionType(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertTrue(isinstance(mod.forward, def_function.Function))
+    self.assertTrue(isinstance(mod.forward_ag, def_function.Function))
+
+  def testEntersNameScope_call(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(mod.forward().numpy(),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(mod.forward_ag().numpy(),
+                     b"module_with_function_annotated_call/")
+
+  def testEntersNameScope_concreteFunction(self):
+    mod = ModuleWithFunctionAnnotatedCall()
+    self.assertEqual(mod.forward.get_concrete_function()().numpy(),
+                     b"module_with_function_annotated_call/")
+    self.assertEqual(mod.forward_ag.get_concrete_function()().numpy(),
+                     b"module_with_function_annotated_call/")
+
+
+class AbcTest(test.TestCase):
+
+  def testAbstract(self):
+    msg = "Can't instantiate .* abstract methods"
+    with self.assertRaisesRegexp(TypeError, msg):
+      AbstractModule()  # pylint: disable=abstract-class-instantiated
+
+  def testConcrete(self):
+    mod = ConcreteModule()
+    x, scope_name = mod(2.)
+    self.assertEqual(x, 4.)
+    self.assertEqual(scope_name, "concrete_module/")
+    self.assertEqual(get_name_scope(), "")
+
+
 def get_name_scope():
   with ops.name_scope("x") as ns:
     return ns[:-2]
@@ -254,6 +311,20 @@ class RecursiveModule(module.Module):
     if depth > 1:
       self.child = RecursiveModule(depth - 1, trainable=trainable)
     self.w = variables.Variable(1.0, trainable=trainable, name="mushroom")
+
+
+@six.add_metaclass(abc.ABCMeta)
+class AbstractModule(module.Module):
+
+  @abc.abstractmethod
+  def __call__(self, x):
+    pass
+
+
+class ConcreteModule(AbstractModule):
+
+  def __call__(self, x):
+    return x ** 2, get_name_scope()
 
 
 class TreeModule(module.Module):
@@ -320,24 +391,109 @@ class CallsMethodBeforeSuperConstructorModule(module.Module):
   def with_name_scope(self):
     pass
 
+
+class ModuleWithFunctionAnnotatedCall(module.Module):
+
+  @def_function.function(autograph=False)
+  def forward(self):
+    return get_name_scope()
+
+  @def_function.function(autograph=True)
+  def forward_ag(self):
+    return get_name_scope()
+
+
+class PropertyModule(module.Module):
+
+  def __init__(self):
+    super(PropertyModule, self).__init__()
+    self._setter_scope_name = None
+
+  @property
+  def some_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
+
+  @some_property.setter
+  def some_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
+
+  @property
+  @module.Module.no_name_scope
+  def no_name_scope_property(self):
+    getter_scope_name = get_name_scope()
+    return getter_scope_name, self._setter_scope_name
+
+  @no_name_scope_property.setter
+  @module.Module.no_name_scope
+  def no_name_scope_property(self, my_property):
+    self._setter_scope_name = get_name_scope()
+
 NamedPair = collections.namedtuple("NamedPair", ("first", "second"))
 mk_index_dict = lambda v: dict(enumerate(v))
 
 
-class WalkTest(parameterized.TestCase, test.TestCase):
+class FlattenTest(parameterized.TestCase, test.TestCase):
 
   @parameterized.parameters(lambda v: NamedPair(*v), list, tuple, mk_index_dict)
-  def test_walk(self, container_type):
+  def test_flatten(self, container_type):
     parent = SimpleModule(container_type=container_type)
     child = parent.c
 
     self.assertEqual(
-        list(module.walk(parent, predicate=IS_MEMBER)),
+        list(parent._flatten(recursive=False, predicate=IS_MEMBER)),
         [parent.a[0], parent.a[1], parent.z])
 
     self.assertEqual(
-        list(module.walk(parent, recurse_if=IS_MODULE, predicate=IS_MEMBER)),
+        list(parent._flatten(predicate=IS_MEMBER)),
         [parent.a[0], parent.a[1], parent.z, child.a[0], child.a[1], child.z])
+
+  def test_attribute_traversal_key(self):
+    mod = LayerModule()
+    self.assertEqual(
+        mod.variables,
+        mod._trainable_variables + mod._non_trainable_variables + [mod._bonus])
+
+  def test_with_path(self):
+    mod = module.Module()
+    mod.w = variables.Variable(1.)
+    mod.encoder = module.Module()
+    mod.encoder.w = [({"k": mod.w}, {"k": mod.w})]
+    mod.decoder = mod.encoder
+
+    state_dict = dict(
+        mod._flatten(with_path=True, predicate=module._IS_VARIABLE))
+
+    self.assertEqual(state_dict,
+                     {("w",): mod.w,
+                      ("encoder", "w", 0, 0, "k"): mod.encoder.w[0][0]["k"],
+                      ("encoder", "w", 0, 1, "k"): mod.encoder.w[0][1]["k"],
+                      ("decoder", "w", 0, 0, "k"): mod.decoder.w[0][0]["k"],
+                      ("decoder", "w", 0, 1, "k"): mod.decoder.w[0][1]["k"]},)
+
+
+class LayerModule(module.Module):
+
+  def __init__(self):
+    super(LayerModule, self).__init__()
+    self._trainable_variables = [
+        variables.Variable(1., name="a"),
+        variables.Variable(2., name="b"),
+    ]
+    self._non_trainable_variables = [
+        variables.Variable(3., name="c"),
+        variables.Variable(4., name="d"),
+    ]
+    self._bonus = variables.Variable(5., name="e")
+
+  @property
+  def variables(self):
+    def key_function(name):
+      indexes = {"_trainable_variables": 0, "_non_trainable_variables": 1}
+      return indexes.get(name, 2), name
+
+    return list(self._flatten(predicate=module._IS_VARIABLE,
+                              attribute_traversal_key=key_function))
 
 
 class MemberType(object):
@@ -357,6 +513,43 @@ class SimpleModule(module.Module):
 
 IS_MEMBER = lambda v: isinstance(v, MemberType)
 IS_MODULE = lambda v: isinstance(v, module.Module)
+
+
+class CustomMetaclass(type):
+
+  TAG = "__custom_metaclass__"
+
+  def __new__(mcs, name, bases, clsdict):
+    new_type = super(CustomMetaclass, mcs).__new__(mcs, name, bases, clsdict)
+    setattr(new_type, CustomMetaclass.TAG, True)
+    return new_type
+
+
+class CombiningMetaclass(module.ModuleMetaclass, CustomMetaclass):
+
+  TAG = "__combining_metaclass__"
+
+  def __new__(mcs, name, bases, clsdict):
+    new_type = super(CombiningMetaclass, mcs).__new__(mcs, name, bases, clsdict)
+    setattr(new_type, CombiningMetaclass.TAG, True)
+    return new_type
+
+
+@six.add_metaclass(CombiningMetaclass)
+class ModuleWithCustomMetaclass(module.Module):
+
+  def __init__(self):
+    super(ModuleWithCustomMetaclass, self).__init__()
+    self.init_name_scope = get_name_scope()
+
+
+class CustomMetaclassTest(test.TestCase):
+
+  def testSupportsCustomMetaclass(self):
+    m = ModuleWithCustomMetaclass()
+    self.assertEqual(m.init_name_scope, "module_with_custom_metaclass/")
+    self.assertTrue(getattr(ModuleWithCustomMetaclass, CombiningMetaclass.TAG))
+    self.assertTrue(getattr(ModuleWithCustomMetaclass, CustomMetaclass.TAG))
 
 if __name__ == "__main__":
   v2_compat.enable_v2_behavior()

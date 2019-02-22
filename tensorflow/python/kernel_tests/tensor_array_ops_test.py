@@ -1430,6 +1430,19 @@ class TensorArrayTest(test.TestCase):
       self.assertAllEqual([1.0, -1.0], read_val)
       self.assertAllEqual([[2.0, 3.0], [0.0, 0.0]], grad_val)
 
+  def testScatterIntoExistingList(self):
+    ta = tensor_array_ops.TensorArray(
+        dtype=dtypes.float32, tensor_array_name="foo", size=5)
+
+    ta = ta.scatter(indices=[3, 4], value=array_ops.ones([2]))
+    self.assertAllEqual(ta.stack(), [0., 0., 0., 1., 1.])
+
+    ta = ta.scatter(indices=[1], value=array_ops.ones([1]))
+    self.assertAllEqual(ta.stack(), [0., 1., 0., 1., 1.])
+
+    ta = ta.scatter(indices=[0, 2], value=[5., 6.])
+    self.assertAllEqual(ta.stack(), [5., 1., 6., 1., 1.])
+
   @test_util.run_v1_only("b/118890905")
   def testTensorArrayWriteGatherAndGradients(self):
     with self.session(use_gpu=True) as session:
@@ -1513,7 +1526,7 @@ class TensorArrayTest(test.TestCase):
       if "/task:1/" in d:
         self.assertTrue(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
-      else:
+      elif "/host:CPU" not in d:
         self.assertFalse(
             [s for s in dev_stats[d] if "/TensorArray" in s.node_name])
 

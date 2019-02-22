@@ -48,6 +48,25 @@ void VerifyGraphsEqual(const GraphDef& original_graph,
   }
 }
 
+bool NodeHasControllingFanins(const NodeDef& node,
+                              const absl::flat_hash_set<string>& expected) {
+  absl::flat_hash_set<string> actual;
+  for (const string& fanin : node.input()) {
+    if (IsControlInput(fanin)) {
+      actual.insert(fanin);
+    }
+  }
+  if (actual.size() != expected.size()) {
+    return false;
+  }
+  for (const auto& expected_fanin : expected) {
+    if (!actual.contains(expected_fanin)) {
+      return false;
+    }
+  }
+  return true;
+}
+
 TEST_F(DependencyOptimizerTest, NoOp) {
   // This trivial graph is so basic there's nothing to optimize.
   TrivialTestGraphInputYielder fake_input(4, 1, 10, false, {"CPU:0"});
@@ -484,8 +503,7 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity) {
     if (node.name() == "b_a") {
       ASSERT_EQ(node.input_size(), 3);
       EXPECT_EQ(node.input(0), "x");
-      EXPECT_EQ(node.input(1), "^y");
-      EXPECT_EQ(node.input(2), "^z");
+      EXPECT_TRUE(NodeHasControllingFanins(node, {"^y", "^z"}));
       ++found;
     }
     if (node.name() == "c_a") {
@@ -497,8 +515,7 @@ TEST_F(DependencyOptimizerTest, RemoveIdentity) {
     if (node.name() == "c_b") {
       ASSERT_EQ(node.input_size(), 3);
       EXPECT_EQ(node.input(0), "z");
-      EXPECT_EQ(node.input(1), "^x");
-      EXPECT_EQ(node.input(2), "^y");
+      EXPECT_TRUE(NodeHasControllingFanins(node, {"^x", "^y"}));
       ++found;
     }
   }
@@ -781,7 +798,6 @@ TEST_F(DependencyOptimizerTest, IdentityDeviceCrossingConsumerOnSameDevice) {
   for (const auto& node : output.node()) {
     EXPECT_NE(node.name(), "x_on_2");
     if (node.name() == "result") {
-      LOG(INFO) << node.DebugString();
       ASSERT_EQ(node.input_size(), 2);
       EXPECT_EQ(node.input(0), "x_on_1");
       EXPECT_EQ(node.input(1), "one_on_2");

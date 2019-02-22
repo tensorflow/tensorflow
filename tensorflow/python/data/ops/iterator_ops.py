@@ -31,8 +31,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.training.checkpointable import base as checkpointable
 from tensorflow.python.training.saver import BaseSaverBuilder
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -68,7 +68,7 @@ def _device_stack_is_empty():
 
 
 @tf_export(v1=["data.Iterator"])
-class Iterator(checkpointable.Checkpointable):
+class Iterator(trackable.Trackable):
   """Represents the state of iterating through a `Dataset`."""
 
   def __init__(self, iterator_resource, initializer, output_types,
@@ -491,7 +491,7 @@ def _generate_shared_name(prefix):
   return "{}{}".format(prefix, uid)
 
 
-class EagerIterator(checkpointable.Checkpointable):
+class EagerIterator(trackable.Trackable):
   """An iterator producing tf.Tensor objects from a tf.data.Dataset."""
 
   def __init__(self, dataset):
@@ -641,7 +641,7 @@ class EagerIterator(checkpointable.Checkpointable):
     return {"ITERATOR": _saveable_factory}
 
 
-# TODO(b/71645805): Expose checkpointable stateful objects from dataset
+# TODO(b/71645805): Expose trackable stateful objects from dataset
 # attributes(potential).
 class _IteratorSaveable(BaseSaverBuilder.SaveableObject):
   """SaveableObject for saving/restoring iterator state."""

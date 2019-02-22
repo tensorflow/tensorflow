@@ -5,9 +5,9 @@ ifeq ($(TARGET), apollo3evb)
   TARGET_TOOLCHAIN_PREFIX := arm-none-eabi-
   # Download the Ambiq Apollo3 SDK and set this variable to find the header
   # files:
-  APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/Apollo3-SDK-2018.08.13
+  APOLLO3_SDK := $(MAKEFILE_DIR)/downloads/AmbiqSuite-Rel2.0.0
   # Need a pointer to the GNU ARM toolchain for crtbegin.o for the fp functions
-  # with the softfp interfaces.
+  # with the hard interfaces.
   GCC_ARM := $(MAKEFILE_DIR)/downloads/gcc_embedded/
 
   PLATFORM_FLAGS = \
@@ -31,7 +31,7 @@ ifeq ($(TARGET), apollo3evb)
     -mcpu=cortex-m4 \
     -mthumb \
     -mfpu=fpv4-sp-d16 \
-    -mfloat-abi=softfp \
+    -mfloat-abi=hard \
     -std=gnu++11 \
     -Wvla \
     -Wall \
@@ -49,7 +49,7 @@ ifeq ($(TARGET), apollo3evb)
   CXXFLAGS += $(PLATFORM_FLAGS)
   CCFLAGS += $(PLATFORM_FLAGS)
   LDFLAGS += \
-    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=softfp \
+    -mthumb -mcpu=cortex-m4 -mfpu=fpv4-sp-d16 -mfloat-abi=hard \
     -nostartfiles -static \
     -Wl,--gc-sections -Wl,--entry,Reset_Handler \
     -Wl,--start-group -lm -lc -lgcc -Wl,--end-group \
@@ -61,7 +61,7 @@ ifeq ($(TARGET), apollo3evb)
   MICROLITE_LIBS := \
     $(APOLLO3_SDK)/boards/apollo3_evb/bsp/gcc/bin/libam_bsp.a \
     $(APOLLO3_SDK)/mcu/apollo3/hal/gcc/bin/libam_hal.a \
-    $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/softfp/crtbegin.o \
+    $(GCC_ARM)/lib/gcc/arm-none-eabi/7.3.1/thumb/v7e-m/fpv4-sp/hard/crtbegin.o \
     -lm
   INCLUDES += \
     -isystem$(MAKEFILE_DIR)/downloads/cmsis/CMSIS/Core/Include/ \

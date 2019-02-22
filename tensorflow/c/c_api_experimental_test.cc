@@ -446,5 +446,29 @@ TEST_F(AddEagerOpToGraphTest, ListAttributesArePreserved) {
   TFE_DeleteOp(squeeze);
 }
 
+TEST_F(AddEagerOpToGraphTest, ListInputsAreAddedCorrectly) {
+  TFE_TensorHandle* scalar = TestScalarTensorHandle();
+  TFE_Op* identityn = TFE_NewOp(eager_ctx_, "IdentityN", status_);
+  CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+  constexpr size_t kNumInputs = 3;
+  for (size_t i = 0; i < kNumInputs; ++i) {
+    TFE_OpAddInput(identityn, scalar, status_);
+  }
+  TF_DataType types[kNumInputs] = {TF_FLOAT, TF_FLOAT, TF_FLOAT};
+  TFE_OpSetAttrTypeList(identityn, "T", types, kNumInputs);
+  AddEagerOpToGraphAndCheck(
+      identityn, [this, kNumInputs](TF_Operation* graph_op) {
+        EXPECT_EQ(TF_OperationNumInputs(graph_op), kNumInputs);
+        EXPECT_EQ(TF_OperationInputListLength(graph_op, "input", status_),
+                  kNumInputs);
+        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+        EXPECT_EQ(TF_OperationOutputListLength(graph_op, "output", status_),
+                  kNumInputs);
+        CHECK_EQ(TF_OK, TF_GetCode(status_)) << TF_Message(status_);
+      });
+  TFE_DeleteTensorHandle(scalar);
+  TFE_DeleteOp(identityn);
+}
+
 }  // namespace
 }  // namespace tensorflow

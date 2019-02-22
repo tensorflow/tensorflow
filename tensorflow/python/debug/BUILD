@@ -569,6 +569,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -657,6 +658,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -816,6 +818,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["notsan"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -833,6 +836,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -850,6 +854,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -975,6 +980,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["no_windows"],  # TODO: needs investigation on Windows
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -1015,6 +1021,13 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "manual",
+        "no_pip",
+        "no_windows",
+        "notap",
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -1042,6 +1055,7 @@ cuda_py_test(
         "notsan",
         "oss_serial",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -1067,6 +1081,7 @@ cuda_py_test(
         "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 # TODO(cais): Run the test in OSS, perhaps through a sh_test.
@@ -1095,6 +1110,7 @@ cuda_py_test(
         "no_windows",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(

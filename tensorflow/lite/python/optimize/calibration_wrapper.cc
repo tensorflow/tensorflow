@@ -22,27 +22,12 @@ limitations under the License.
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/model.h"
+#include "tensorflow/lite/python/interpreter_wrapper/numpy.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_error_reporter.h"
 #include "tensorflow/lite/python/interpreter_wrapper/python_utils.h"
-#include "tensorflow/lite/tools/optimize/calibration_reader.h"
-#include "tensorflow/lite/tools/optimize/calibrator.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibration_reader.h"
+#include "tensorflow/lite/tools/optimize/calibration/calibrator.h"
 #include "tensorflow/lite/tools/optimize/quantize_model.h"
-
-// Disallow Numpy 1.7 deprecated symbols.
-#define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
-
-#include <Python.h>
-
-#include "numpy/arrayobject.h"
-#include "numpy/ufuncobject.h"
-
-#if PY_MAJOR_VERSION >= 3
-#define PY_TO_CPPSTRING PyBytes_AsStringAndSize
-#define CPP_TO_PYSTRING PyBytes_FromStringAndSize
-#else
-#define PY_TO_CPPSTRING PyString_AsStringAndSize
-#define CPP_TO_PYSTRING PyString_FromStringAndSize
-#endif
 
 #define TFLITE_PY_CHECK(x)               \
   if ((x) != kTfLiteOk) {                \
@@ -60,9 +45,7 @@ namespace calibration_wrapper {
 
 namespace {
 
-struct PyDecrefDeleter {
-  void operator()(PyObject* p) const { Py_DECREF(p); }
-};
+using python_utils::PyDecrefDeleter;
 
 std::unique_ptr<tflite::ModelT> CreateMutableModel(const tflite::Model& model) {
   std::unique_ptr<tflite::ModelT> copied_model =
@@ -185,7 +168,8 @@ PyObject* CalibrationWrapper::QuantizeModel() {
     error_reporter_->exception();
     return nullptr;
   }
-  return CPP_TO_PYSTRING(
+
+  return python_utils::ConvertToPyString(
       reinterpret_cast<const char*>(builder.GetCurrentBufferPointer()),
       builder.GetSize());
 }
@@ -196,7 +180,8 @@ PyObject* CalibrationWrapper::QuantizeModel() {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
-  if (PY_TO_CPPSTRING(data, &buf, &length) == -1) {
+
+  if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;
   }
   std::unique_ptr<tflite::FlatBufferModel> model =

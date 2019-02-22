@@ -36,14 +36,17 @@ namespace tensorflow {
 namespace {
 
 static void CheckStats(Allocator* a, int64 num_allocs, int64 bytes_in_use,
-                       int64 max_bytes_in_use, int64 max_alloc_size) {
-  AllocatorStats stats;
-  a->GetStats(&stats);
-  LOG(INFO) << "Alloc stats: " << std::endl << stats.DebugString();
-  EXPECT_EQ(stats.bytes_in_use, bytes_in_use);
-  EXPECT_EQ(stats.max_bytes_in_use, max_bytes_in_use);
-  EXPECT_EQ(stats.num_allocs, num_allocs);
-  EXPECT_EQ(stats.max_alloc_size, max_alloc_size);
+                       int64 peak_bytes_in_use, int64 largest_alloc_size) {
+  absl::optional<AllocatorStats> stats = a->GetStats();
+  EXPECT_TRUE(stats);
+  if (!stats) {
+    return;
+  }
+  LOG(INFO) << "Alloc stats: " << std::endl << stats->DebugString();
+  EXPECT_EQ(stats->bytes_in_use, bytes_in_use);
+  EXPECT_EQ(stats->peak_bytes_in_use, peak_bytes_in_use);
+  EXPECT_EQ(stats->num_allocs, num_allocs);
+  EXPECT_EQ(stats->largest_alloc_size, largest_alloc_size);
 }
 
 TEST(GPUBFCAllocatorTest, NoDups) {
@@ -291,9 +294,10 @@ TEST(GPUBFCAllocatorTest, AllocationsAndDeallocationsWithGrowth) {
     a.DeallocateRaw(existing_ptrs[i]);
   }
 
-  AllocatorStats stats;
-  a.GetStats(&stats);
-  LOG(INFO) << "Alloc stats: \n" << stats.DebugString();
+  absl::optional<AllocatorStats> stats = a.GetStats();
+  if (stats) {
+    LOG(INFO) << "Alloc stats: \n" << stats->DebugString();
+  }
 }
 
 TEST(GPUBFCAllocatorTest, DISABLED_AllocatorReceivesZeroMemory) {

@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/trt_resource_manager.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/framework/node_def.pb.h"  // NOLINT
 #include "tensorflow/core/framework/node_def_builder.h"
@@ -94,7 +93,6 @@ bool IsEngineOutput(absl::string_view name) {
 namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
-using ::tensorflow::str_util::Split;
 
 inline tensorflow::Status ConvertDType(tensorflow::DataType tf_dtype,
                                        nvinfer1::DataType* trt_dtype) {
@@ -193,6 +191,15 @@ Status ValidateTensorProperties(const string& producer_node_type,
   }
   *trt_dims = TensorShapeToTrtDims(shape, /*ignore_first_dim=*/true);
   *batch_size = shape.dim_size(0);
+
+  // Don't convert empty tensors (dim value of 0).
+  for (int d = 1; d < shape.dims(); ++d) {
+    if (shape.dim_size(d) == 0) {
+      return errors::Unimplemented(
+          "Input tensor with shape ", shape.DebugString(),
+          " is an empty tensor, which is not supported by TRT");
+    }
+  }
 
   if (validation_only) return Status::OK();
   // Following are validations at runtime.
@@ -297,8 +304,8 @@ Status Converter::GetTrtBroadcastShape(
 
   const int max_nb_dims = nvinfer1::Dims::MAX_DIMS + 1;
   auto compute_output_dims =
-      [max_nb_dims](const TRT_TensorOrWeights& input, int broadcast_num_dims,
-                    int* output_dims_array, nvinfer1::Dims* output_dims) {
+      [](const TRT_TensorOrWeights& input, int broadcast_num_dims,
+         int* output_dims_array, nvinfer1::Dims* output_dims) {
         const nvinfer1::Dims input_dims = input.GetTrtDims();
         std::fill(output_dims_array, output_dims_array + max_nb_dims, 1);
         std::copy(input_dims.d, input_dims.d + input_dims.nbDims,
@@ -380,6 +387,32 @@ tensorflow::Status CreateBroadcastableScalarConstant(
   return Status::OK();
 }
 
+// Convert an axis from TF format to TRT format while validating. TF format
+// includes the batch dimension, while TRT does not. TF can also use negative
+// indices.
+// TODO(tmorris): Use this method in more ops.
+tensorflow::Status ConvertAxis(int tf_axis, int trt_nb_dims,
+                               absl::string_view node_name, int* trt_axis) {
+  const int tf_nb_dims = trt_nb_dims + 1;
+  // Check bounds.
+  if (tf_axis < -tf_nb_dims || tf_axis >= tf_nb_dims) {
+    return tensorflow::errors::InvalidArgument(
+        "Axis value of ", tf_axis, " is out of bounds, must be in range [",
+        -tf_nb_dims, ", ", tf_nb_dims, "), at ", node_name);
+  }
+  // Make negative axis positive.
+  if (tf_axis < 0) tf_axis += tf_nb_dims;
+  // Don't allow axis to be the batch dimension.
+  if (tf_axis == 0) {
+    return tensorflow::errors::Unimplemented(
+        "TensorRT does not allow manipulation of the batch dimension, at ",
+        node_name);
+  }
+  // Remove batch dimension.
+  *trt_axis = tf_axis - 1;
+  return Status::OK();
+}
+
 inline bool DimsEqual(const nvinfer1::Dims& dim_l,
                       const nvinfer1::Dims& dim_r) {
   if (dim_l.nbDims != dim_r.nbDims) {
@@ -389,6 +422,15 @@ inline bool DimsEqual(const nvinfer1::Dims& dim_l,
     if (dim_l.d[i] != dim_r.d[i]) {
       return false;
     }
+  }
+  return true;
+}
+
+bool AllLengthsEqual(const std::vector<std::vector<int>>& inputs) {
+  if (inputs.size() == 0) return true;
+  int length = inputs.at(0).size();
+  for (int i = 1; i < inputs.size(); i++) {
+    if (inputs.at(i).size() != length) return false;
   }
   return true;
 }
@@ -528,6 +570,16 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   bool setDynamicRange(float min, float max) override { return true; }
 
   float getDynamicRange() const override { return 0; }
+#endif
+
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  bool dynamicRangeIsSet() const override { return true; }
+
+  void resetDynamicRange() override {}
+
+  float getDynamicRangeMin() const override { return 0.f; }
+
+  float getDynamicRangeMax() const override { return 0.f; }
 #endif
 
  private:
@@ -921,7 +973,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
   for (size_t i = 0; i < outputs.size(); ++i) {
     TRT_TensorOrWeights& output = outputs[i];
     string output_name = node_def.name();
-    if (i != 0) output_name = StrCat(output_name, ":", i);
+    if (i != 0) absl::StrAppend(&output_name, ":", i);
     // We need to check the name before setting it. If the input is one of the
     // engine input, setting the name here will overwrite engine input
     // bindings which will cause runtime error.
@@ -2107,7 +2159,7 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
   auto squeeze_dims = attrs.get<std::vector<int>>("squeeze_dims");
-  if (squeeze_dims.size() == 0) {
+  if (squeeze_dims.empty()) {
     return tensorflow::errors::Unimplemented(
         "Squeeze is only implemented for explicit dims, at ", node_def.name());
   }
@@ -2152,100 +2204,73 @@ tensorflow::Status ConvertSqueeze(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-// Gets the bounds (start or end) from the weights of a StridedSlice op.
-tensorflow::Status GetStridedSliceBound(const std::vector<int>& input_dims,
-                                        const TRT_ShapedWeights& bound_weights,
-                                        int mask, bool begin, string node_name,
-                                        std::vector<int>* output_bound) {
-  const string bound_name = (begin) ? "begin" : "end";
-  const int* weights_ptr = static_cast<int*>(bound_weights.GetValues());
-  *output_bound =
-      std::vector<int>(weights_ptr, weights_ptr + bound_weights.count());
-  if (output_bound->size() != input_dims.size()) {
-    return tensorflow::errors::InvalidArgument(
-        "StridedSlice \"", bound_name, "\" specified ",
-        std::to_string(output_bound->size()), " dimensions, but input rank is ",
-        std::to_string(input_dims.size()), ", at ", node_name);
-  }
-  for (int i = 0; i < output_bound->size(); i++) {
-    if ((1 << i) & mask) {
-      // Apply mask.
-      (*output_bound)[i] = (begin) ? 0 : input_dims[i];
-      // Masked bound will always result in a valid, non-negative bound, so we
-      // don't need the following checks. For the common case of using masks on
-      // a undefined batch dim (-1), we specifically don't want to do the
-      // following checks because they will erroneously detect an out of range
-      // bound or try to correct the negative value.
-      continue;
-    }
-    // Make sure bound is valid.
-    if (((*output_bound)[i] < -input_dims[i]) ||
-        ((*output_bound)[i] > input_dims[i])) {
-      return tensorflow::errors::InvalidArgument(
-          bound_name, " value of ", std::to_string((*output_bound)[i]),
-          " for StridedSlice is invalid, must be in the range "
-          "[-dim_size(i), dim_size(i)], at ",
-          node_name);
-    }
-    // Convert negative values to their positive equivalent.
-    if ((*output_bound)[i] < 0) {
-      (*output_bound)[i] += input_dims[i];
-    }
-  }
-  return tensorflow::Status::OK();
-}
-
-tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
-  const auto& inputs = params->inputs;
+tensorflow::Status ConvertStridedSliceHelper(OpConverterParams* params,
+                                             const TRT_TensorOrWeights& input,
+                                             std::vector<int> begin,
+                                             std::vector<int> size,
+                                             const std::vector<int>& stride) {
   const auto& node_def = params->node_def;
-  TF_RETURN_IF_ERROR(CheckInputsWeights(
-      *params,
-      {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
   // Get input dims.
-  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  nvinfer1::Dims dims = input.GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
-  if (inputs.at(0).is_tensor()) {
-    // Temporarily add batch dimension so that indexes line up properly.
-    input_dims.insert(input_dims.begin(), inputs.at(0).batch_size());
-  }
-  if (input_dims.size() > 4) {
-    return tensorflow::errors::Unimplemented(
-        "StridedSlice is not implemented for tensors with rank > 4, at ",
-        node_def.name());
-  }
-  TFAttrs attrs(node_def);
-  // Get begin and end bounds per axis.
-  std::vector<int> begin, end;
-  TF_RETURN_IF_ERROR(GetStridedSliceBound(input_dims, inputs.at(1).weights(),
-                                          attrs.get<int>("begin_mask"), true,
-                                          node_def.name(), &begin));
-  TF_RETURN_IF_ERROR(GetStridedSliceBound(input_dims, inputs.at(2).weights(),
-                                          attrs.get<int>("end_mask"), false,
-                                          node_def.name(), &end));
-  // Get strides per axis (must all be 1).
-  TRT_ShapedWeights stride_weights = inputs.at(3).weights();
-  const int* stride_weights_ptr = static_cast<int*>(stride_weights.GetValues());
-  std::vector<int> strides(stride_weights_ptr,
-                           stride_weights_ptr + stride_weights.count());
-  for (int x : strides) {
-    if (x != 1) {
-      return tensorflow::errors::Unimplemented(
-          "StridedSlice is only implemented for stride of 1, at ",
+  // Temporarily add batch dimension so that indexes line up properly.
+  input_dims.insert(input_dims.begin(), -1);
+  // Check bounds.
+  for (int i = 1; i < input_dims.size(); i++) {
+    if (begin[i] < 0 || begin[i] > input_dims[i]) {
+      return tensorflow::errors::InvalidArgument(
+          "\"begin\" for dimension ", std::to_string(i), " in ", node_def.op(),
+          " is out of range, at ", node_def.name());
+    }
+    const int end = begin[i] + size[i];
+    if (end < 0 || end > input_dims[i]) {
+      return tensorflow::errors::InvalidArgument(
+          "\"begin\" + \"size\" for dimension ", std::to_string(i), " in ",
+          node_def.op(), " is out of range, at ", node_def.name());
+    }
+    if (size[i] <= 0) {
+      return tensorflow::errors::InvalidArgument(
+          "\"size\" cannot be negative or zero for ", node_def.op(), ", at ",
           node_def.name());
     }
   }
-  // Unsupported mask options.
-  for (const string& attr :
-       {"ellipsis_mask", "new_axis_mask", "shrink_axis_mask"}) {
-    int attr_val = attrs.get<int>(attr);
-    if (attr_val != 0) {
+// TRT 5.1 adds a slice layer. For older versions, we attempt to use the
+// padding layer with negative padding.
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  // Use ISliceLayer.
+  nvinfer1::Dims begin_dims, size_dims, stride_dims;
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(begin, &begin_dims,
+                                               /*ignore_first_dim=*/true));
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(size, &size_dims,
+                                               /*ignore_first_dim=*/true));
+  TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(stride, &stride_dims,
+                                               /*ignore_first_dim=*/true));
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::ISliceLayer* layer = params->converter->network()->addSlice(
+      *const_cast<nvinfer1::ITensor*>(input.tensor()), begin_dims, size_dims,
+      stride_dims);
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return tensorflow::Status::OK();
+#else
+  // Use IPaddingLayer.
+  // Strides must be 1 in this case.
+  for (int x : stride) {
+    if (x != 1) {
       return tensorflow::errors::Unimplemented(
-          attr, " is not supported for StridedSlice, at ", node_def.name());
+          "Strides other than 1 are not supported with this version of TRT, "
+          "at ",
+          node_def.name());
     }
   }
-
-  nvinfer1::ITensor* tensor =
-      const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
+  // Rank must be 2, 3 or 4.
+  if (input_dims.size() > 4) {
+    return tensorflow::errors::Unimplemented(node_def.op(),
+                                             " for tensors with rank > 4 is "
+                                             "not supported in this version of "
+                                             "TRT, at ",
+                                             node_def.name());
+  }
   // Reshape if necessary to 4-D, since IPaddingLayer requires a 4-D input.
   const bool need_reshape = (input_dims.size() != 4);
   int reshape_dims_added = 0;
@@ -2255,7 +2280,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     while (input_dims.size() < 4) {
       input_dims.insert(input_dims.begin() + 1, 1);
       begin.insert(begin.begin() + 1, 0);
-      end.insert(end.begin() + 1, 1);
+      size.insert(size.begin() + 1, 1);
       reshape_dims_added++;
     }
     TF_RETURN_IF_ERROR(TensorShapeArrayToTrtDims(input_dims, &reshape_dims,
@@ -2263,23 +2288,22 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   }
   // Find dimensions which need to be sliced.
   std::vector<int> pad_dims;
-  for (int i = 0; i < input_dims.size(); i++) {
-    if ((begin[i] != 0) || (end[i] != input_dims[i])) {
-      if (i == 0) {
-        return tensorflow::errors::Unimplemented(
-            "StridedSlice can't modify batch dim, at ", node_def.name());
-      } else if ((end[i] - begin[i]) < 0) {
-        return tensorflow::errors::InvalidArgument(
-            "New size of sliced dimension is negative, at ", node_def.name());
-      }
+  for (int i = 1; i < input_dims.size(); i++) {
+    if ((begin[i] != 0) || (begin[i] + size[i] != input_dims[i])) {
       pad_dims.push_back(i);
     }
   }
-  if (pad_dims.size() == 0) {
-    // No dimensions are changed. We could create a padding layer anyway with
-    // values of 0.
+  if (pad_dims.empty()) {
+    // No dimensions are changed, so this is a no-op. We could just return the
+    // input without creating a new layer. TRT will crash if an empty engine
+    // with no layers is attempted to be created, so we add a no-op shuffle to
+    // prevent our unit tests from breaking.
+    // TODO(tmorris): Allow empty engines in the unit tests and return the input
+    // as output here.
     if (params->validation_only) return Status::OK();
-    params->outputs->push_back(inputs.at(0));
+    nvinfer1::IShuffleLayer* layer = params->converter->network()->addShuffle(
+        *const_cast<nvinfer1::ITensor*>(input.tensor()));
+    params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
     return tensorflow::Status::OK();
   } else if (pad_dims.size() == 1) {
     // Only one dim is modified but we have to have 2, mark a second dim which
@@ -2292,16 +2316,19 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     }
   } else if (pad_dims.size() > 2) {
     return tensorflow::errors::Unimplemented(
-        "StridedSlice can only modify 2 dimensions, at ", node_def.name());
+        node_def.op(),
+        " can only modify up to 2 dimensions in this version of TRT, at ",
+        node_def.name());
   }
   std::sort(pad_dims.begin(), pad_dims.end());
   // Convert to pre/post padding values. Since TRT does not have a StridedSlice
-  // or Slice layer, we instead create an IPaddingLayer with negative padding.
+  // or Slice layer prior to 5.1, we instead create an IPaddingLayer with
+  // negative padding.
   nvinfer1::DimsHW pre_padding, post_padding;
   for (int i = 0; i < pad_dims.size(); i++) {
     const int axis = pad_dims[i];
     pre_padding.d[i] = -begin[axis];
-    post_padding.d[i] = end[axis] - input_dims[axis];
+    post_padding.d[i] = (begin[axis] + size[axis]) - input_dims[axis];
   }
 
   // IPaddingLayer will always apply the padding to dims 2,3 (input format is
@@ -2321,10 +2348,11 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   if (params->validation_only) return Status::OK();
 
   // Start conversion.
+  nvinfer1::ITensor* tensor = const_cast<nvinfer1::ITensor*>(input.tensor());
   if (need_reshape) {
     const nvinfer1::ITensor* output_tensor = nullptr;
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        inputs.at(0), reshape_dims, &output_tensor));
+        input, reshape_dims, &output_tensor));
     tensor = const_cast<nvinfer1::ITensor*>(output_tensor);
   }
   if (need_transpose) {
@@ -2333,7 +2361,6 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
         tensor, transpose_order, &output_tensor));
     tensor = const_cast<nvinfer1::ITensor*>(output_tensor);
   }
-
   // Add padding layer
   nvinfer1::IPaddingLayer* layer = params->converter->network()->addPadding(
       *const_cast<nvinfer1::ITensor*>(tensor), pre_padding, post_padding);
@@ -2341,7 +2368,6 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   params->converter->MarkQuantizationRangesAsInferrable(tensor,
                                                         layer->getOutput(0));
   tensor = layer->getOutput(0);
-
   // Restore transpose
   if (need_transpose) {
     const nvinfer1::ITensor* output_tensor = nullptr;
@@ -2354,7 +2380,7 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
     // Calculate output dimensions
     for (int i = 0; i < pad_dims.size(); i++) {
       const int axis = pad_dims[i];
-      input_dims[axis] = end[axis] - begin[axis];
+      input_dims[axis] = size[axis];
     }
     // Remove added 1 dimensions
     for (int i = 0; i < reshape_dims_added; i++) {
@@ -2378,6 +2404,135 @@ tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(tensor)));
   return tensorflow::Status::OK();
+#endif
+}
+
+tensorflow::Status ConvertSlice(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params, {{"input", false}, {"begin", true}, {"size", true}}));
+  std::vector<int> begin = inputs.at(1).weights().ToVector<int>();
+  std::vector<int> size = inputs.at(2).weights().ToVector<int>();
+  // Get input dims.
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  // Add batch dimension so that indexes line up properly.
+  input_dims.insert(input_dims.begin(), inputs.at(0).batch_size());
+  if (!AllLengthsEqual({input_dims, begin, size})) {
+    return tensorflow::errors::InvalidArgument(
+        "Length of begin and size arguments must equal rank of input for "
+        "Slice, at ",
+        node_def.name());
+  }
+  // Check that batch dimension is unmodified.
+  const bool begin_is_modified = begin[0] != 0;
+  // If size[0]s is not -1, we can only know if the batch dimension is
+  // unmodified when the batch size is defined. When the batch size is
+  // undefined, we don't convert to be safe.
+  const bool batch_size_is_defined = input_dims[0] > 0;
+  const bool size_is_modified =
+      size[0] != -1 && (!batch_size_is_defined ||
+                        (batch_size_is_defined && size[0] != input_dims[0]));
+  if (begin_is_modified || size_is_modified) {
+    return tensorflow::errors::Unimplemented(
+        "TensorRT does not allow modifications to the batch dimension, at ",
+        node_def.name());
+  }
+  // Size of -1 signifies to take all remaining elements.
+  for (int i = 1; i < input_dims.size(); i++) {
+    if (size[i] == -1) {
+      size[i] = input_dims[i] - begin[i];
+    }
+  }
+  // Stride is 1 for all dims.
+  std::vector<int> stride(begin.size(), 1);
+  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, stride);
+}
+
+tensorflow::Status ConvertStridedSlice(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params,
+      {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
+  // Get input dims.
+  nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
+  std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
+  // Add batch dimension so that indexes line up properly.
+  input_dims.insert(input_dims.begin(), inputs.at(0).batch_size());
+  // Get begin and end bounds per axis.
+  std::vector<int> begin = inputs.at(1).weights().ToVector<int>();
+  std::vector<int> end = inputs.at(2).weights().ToVector<int>();
+  std::vector<int> stride = inputs.at(3).weights().ToVector<int>();
+  if (!AllLengthsEqual({input_dims, begin, end, stride})) {
+    return tensorflow::errors::InvalidArgument(
+        "Length of begin, end, and stride arguments must equal rank of input "
+        "for StridedSlice, at ",
+        node_def.name());
+  }
+  // Unsupported mask options.
+  TFAttrs attrs(node_def);
+  for (const string& attr :
+       {"ellipsis_mask", "new_axis_mask", "shrink_axis_mask"}) {
+    int attr_val = attrs.get<int>(attr);
+    if (attr_val != 0) {
+      return tensorflow::errors::Unimplemented(
+          attr, " is not supported for StridedSlice, at ", node_def.name());
+    }
+  }
+  const int begin_mask = attrs.get<int>("begin_mask");
+  const int end_mask = attrs.get<int>("end_mask");
+  // Check that batch dimension is unmodified.
+  const bool begin_is_modified = !(begin_mask & 1) && begin[0] != 0;
+  const bool stride_is_modified = stride[0] != 1;
+  // If the batch size is -1 and the end mask is not set, we can only know if
+  // the batch dimension is unmodified when the batch size is defined. When the
+  // batch size is undefined, we don't convert to be safe.
+  const bool batch_size_is_defined = input_dims[0] > 0;
+  const bool end_is_modified =
+      !(end_mask & 1) && (!batch_size_is_defined ||
+                          (batch_size_is_defined && end[0] != input_dims[0]));
+  if (begin_is_modified || stride_is_modified || end_is_modified) {
+    return tensorflow::errors::Unimplemented(
+        "TensorRT does not allow modifications to the batch dimension, at ",
+        node_def.name());
+  }
+  // Standarize begin and end bounds by applying masks, making negative values
+  // positive, and correcting out of bounds ranges (StridedSlice does this
+  // silently).
+  for (int i = 1; i < input_dims.size(); i++) {
+    // Begin
+    if ((1 << i) & begin_mask) {
+      begin[i] = 0;
+    } else if (begin[i] < 0) {
+      begin[i] += input_dims[i];
+    }
+    begin[i] = std::max(0, std::min(begin[i], input_dims[i]));
+    // End
+    if ((1 << i) & end_mask) {
+      end[i] = input_dims[i];
+    } else if (end[i] < 0) {
+      end[i] += input_dims[i];
+    }
+    end[i] = std::max(0, std::min(end[i], input_dims[i]));
+  }
+  // Negative or zero strides currently not supported.
+  for (int i = 0; i < input_dims.size(); i++) {
+    if (stride[i] <= 0) {
+      return tensorflow::errors::Unimplemented(
+          "Negative or zero stride values are not supported for StridedSlice, "
+          "at ",
+          node_def.name());
+    }
+  }
+  // TRT Slice layer uses (begin, size) instead of (begin, end)
+  std::vector<int> size(input_dims.size());
+  for (int i = 0; i < input_dims.size(); i++) {
+    // Divide by stride (round up)
+    size[i] = (end[i] - begin[i] + stride[i] - 1) / stride[i];
+  }
+  return ConvertStridedSliceHelper(params, inputs.at(0), begin, size, stride);
 }
 
 tensorflow::Status ConvertConv2D(OpConverterParams* params) {
@@ -2947,58 +3102,104 @@ Status ConvertBinary(OpConverterParams* params) {
   return status;
 }
 
+tensorflow::Status ConvertRsqrt(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // TODO(tmorris): params->converter is null during validation. Allow
+  // precision_mode and use_calibration to be accessed during validation and
+  // include this check in validation.
+  // We will need a quantization range for intermediate tensor if not using
+  // calibration.
+  //
+  //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
+  //                     ^
+  //               need range here
+  if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
+      !params->converter->use_calibration()) {
+    return errors::Unimplemented(
+        "Intermediate quantization range cannot be determined without"
+        " calibration for Rsqrt, consider replacing with "
+        "Sqrt -> FakeQuant -> Reciprocal ops, at ",
+        node_def.name());
+  }
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  // Sqrt
+  nvinfer1::IUnaryLayer* sqrt_layer = params->converter->network()->addUnary(
+      *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::UnaryOperation::kSQRT);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(sqrt_layer, node_def.name());
+  // Recip
+  nvinfer1::IUnaryLayer* recip_layer = params->converter->network()->addUnary(
+      *sqrt_layer->getOutput(0), nvinfer1::UnaryOperation::kRECIP);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(recip_layer, node_def.name());
+  params->outputs->push_back(TRT_TensorOrWeights(recip_layer->getOutput(0)));
+  return tensorflow::Status::OK();
+}
+
+const std::unordered_map<string, nvinfer1::UnaryOperation>*
+UnaryOperationMap() {
+  static auto* const m =
+      new std::unordered_map<string, nvinfer1::UnaryOperation>({
+        {"Neg", nvinfer1::UnaryOperation::kNEG},
+            {"Exp", nvinfer1::UnaryOperation::kEXP},
+            {"Log", nvinfer1::UnaryOperation::kLOG},
+            {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
+            {"Abs", nvinfer1::UnaryOperation::kABS},
+            {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+            {"Sin", nvinfer1::UnaryOperation::kSIN},
+            {"Cos", nvinfer1::UnaryOperation::kCOS},
+            {"Tan", nvinfer1::UnaryOperation::kTAN},
+            {"Sinh", nvinfer1::UnaryOperation::kSINH},
+            {"Cosh", nvinfer1::UnaryOperation::kCOSH},
+            {"Asin", nvinfer1::UnaryOperation::kASIN},
+            {"Acos", nvinfer1::UnaryOperation::kACOS},
+            {"Atan", nvinfer1::UnaryOperation::kATAN},
+            {"Asinh", nvinfer1::UnaryOperation::kASINH},
+            {"Acosh", nvinfer1::UnaryOperation::kACOSH},
+            {"Atanh", nvinfer1::UnaryOperation::kATANH},
+            {"Ceil", nvinfer1::UnaryOperation::kCEIL},
+            {"Floor", nvinfer1::UnaryOperation::kFLOOR},
+#endif
+      });
+  return m;
+}
+
 tensorflow::Status ConvertUnary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  static const std::unordered_map<string, nvinfer1::UnaryOperation> ops{
-      {"Neg", nvinfer1::UnaryOperation::kNEG},
-      {"Exp", nvinfer1::UnaryOperation::kEXP},
-      {"Log", nvinfer1::UnaryOperation::kLOG},
-      {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
-      {"Abs", nvinfer1::UnaryOperation::kABS},
-      {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-  };
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-
-  // TODO(jie): check type
-  const nvinfer1::ITensor* tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), inputs.at(0).GetTrtDims(), &tensor));
-
-  nvinfer1::IUnaryLayer* layer;
-  if (node_def.op() == "Rsqrt") {
-    // We will need a quantization range for intermediate tensor if not using
-    // calibration.
-    //
-    //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
-    //                     ^
-    //               need range here
-    if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
-        !params->converter->use_calibration()) {
-      return errors::Unimplemented(
-          "Intermediate quantization range cannot be determined without"
-          " calibration for Rsqrt, consider replacing with "
-          "Sqrt -> FakeQuant -> Reciprocal ops, at ",
-          node_def.name());
-    }
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::UnaryOperation::kSQRT);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-    tensor = layer->getOutput(0);
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::UnaryOperation::kRECIP);
-  } else if (ops.count(node_def.op()) != 0) {
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor), ops.at(node_def.op()));
-  } else {
-    return tensorflow::errors::InvalidArgument(
-        "Binary op: ", node_def.op(), " not supported, at ", node_def.name());
+  auto op_pair = UnaryOperationMap()->find(node_def.op());
+  if (op_pair == UnaryOperationMap()->end()) {
+    return tensorflow::errors::Unimplemented(
+        "Unary op: ", node_def.op(), " not supported at: ", node_def.name());
   }
+  if (params->validation_only) return tensorflow::Status::OK();
 
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  nvinfer1::IUnaryLayer* layer = params->converter->network()->addUnary(
+      *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  // Set quantization ranges.
+  if (node_def.op() == "Sin" || node_def.op() == "Cos") {
+    params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
+  } else if (node_def.op() == "Asin" || node_def.op() == "Atan") {
+    params->converter->ProvideQuantizationRange(output_tensor, -M_PI_2, M_PI_2);
+  } else if (node_def.op() == "Acos") {
+    params->converter->ProvideQuantizationRange(output_tensor, 0.0f, M_PI);
+  } else if (node_def.op() == "Neg" || node_def.op() == "Abs") {
+    // Neg and Abs will have same range as input since TRT uses symmetric
+    // quantization.
+    // TODO(tmorris): Should we infer ranges for Ceil and Floor as well?
+    params->converter->MarkQuantizationRangesAsInferrable(
+        const_cast<nvinfer1::ITensor*>(tensor), output_tensor);
+  }
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
@@ -3139,7 +3340,7 @@ tensorflow::Status ConvertPad(OpConverterParams* params) {
   }
 
   // No padding at all, we should exit
-  if (pad_index.size() == 0) {
+  if (pad_index.empty()) {
     params->outputs->push_back(inputs.at(0));
     return tensorflow::Status::OK();
   }
@@ -3329,7 +3530,7 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   TRT_ShapedWeights dummy_power_weights(parameter_type);
   size_t nweight = 0;
   for (int i = 1; i < 5; i++) {
-    nweight = std::max(nweight, (size_t)inputs.at(i).weights().count());
+    nweight = std::max<size_t>(nweight, inputs.at(i).weights().count());
   }
   TRT_ShapedWeights* ptr_shape_weights = nullptr;
   for (int i = 1; i < 5; i++) {
@@ -3412,6 +3613,29 @@ tensorflow::Status ConvertFusedBatchNorm(OpConverterParams* params) {
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return tensorflow::Status::OK();
+}
+
+tensorflow::Status ConvertGather(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(
+      *params, {{"params", false}, {"indices", false}, {"axis", true}}));
+  absl::Span<const int> axis = inputs.at(2).weights().GetSpan<int>();
+  if (axis.size() != 1) {
+    return tensorflow::errors::InvalidArgument(
+        "Axis for GatherV2 must be a scalar, at ", node_def.name());
+  }
+  int trt_axis = 0;
+  TF_RETURN_IF_ERROR(ConvertAxis(axis[0], inputs.at(0).GetTrtDims().nbDims,
+                                 node_def.name(), &trt_axis));
+  if (params->validation_only) return Status::OK();
+
+  nvinfer1::IGatherLayer* layer = params->converter->network()->addGather(
+      *const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor()),
+      *const_cast<nvinfer1::ITensor*>(inputs.at(1).tensor()), trt_axis);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
+  params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
+  return Status::OK();
 }
 
 tensorflow::Status ConvertMatMulHelper(OpConverterParams* params,
@@ -3644,11 +3868,14 @@ static void RegisterValidatableOpConverters(
   (*registration)["Conv2DBackpropInput"] = ConvertConv2DBackpropInput;
   (*registration)["DepthwiseConv2dNative"] = ConvertConv2DDepthwise;
   (*registration)["ExpandDims"] = ConvertExpandDims;
+  (*registration)["GatherV2"] = ConvertGather;
   (*registration)["LeakyRelu"] = ConvertLeakyRelu;
   (*registration)["MatMul"] = ConvertMatMul;
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
+  (*registration)["Rsqrt"] = ConvertRsqrt;
+  (*registration)["Slice"] = ConvertSlice;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
@@ -3673,6 +3900,9 @@ static void RegisterValidatableOpConverters(
   for (auto normalization_op_type : {"FusedBatchNorm", "FusedBatchNormV2"}) {
     (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
   }
+  for (auto unary_op_pair : *UnaryOperationMap()) {
+    (*registration)[unary_op_pair.first] = ConvertUnary;
+  }
 }
 
 void TrtNodeValidator::RegisterOpValidators() {
@@ -3684,14 +3914,6 @@ void Converter::RegisterOpConverters() {
   // TODO(ben,jie): this is a temp hack.
   op_registry_["Identity"] = ConvertIdentity;  // Identity should be removed
   op_registry_["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
-
-  op_registry_["Rsqrt"] = ConvertUnary;
-  op_registry_["Reciprocal"] = ConvertUnary;
-  op_registry_["Exp"] = ConvertUnary;
-  op_registry_["Log"] = ConvertUnary;
-  op_registry_["Sqrt"] = ConvertUnary;
-  op_registry_["Abs"] = ConvertUnary;
-  op_registry_["Neg"] = ConvertUnary;
 
   op_registry_["Sum"] = ConvertReduce;
   op_registry_["Prod"] = ConvertReduce;
@@ -3722,8 +3944,12 @@ tensorflow::Status ConvertGraphDefToEngine(
   builder->setMaxWorkspaceSize(max_workspace_size_bytes);
   builder->setGpuAllocator(allocator);
   if (precision_mode == TrtPrecisionMode::FP16) {
-    builder->setHalf2Mode(true);
+    builder->setFp16Mode(true);
   } else if (precision_mode == TrtPrecisionMode::INT8) {
+    // Setting FP16 mode as well allows TRT to also consider FP16 kernels and
+    // use them in situations where they are faster than INT8 or where INT8 is
+    // not supported for a given layer.
+    builder->setFp16Mode(true);
     builder->setInt8Mode(true);
     if (use_calibration) {
       builder->setInt8Calibrator(calibrator);
@@ -3899,7 +4125,7 @@ tensorflow::Status ConvertSegmentToGraphDef(
     local_scope = GetCommonNameScope(local_scope, node->name());
     old_to_new_id_map[node->id()] = segment_def->node_size();
     auto snode = segment_def->add_node();
-    snode->CopyFrom(node->def());
+    *snode = node->def();
     VLOG(2) << "Copying " << snode->name() << " to subgraph";
   }
   // Update the inputs of the new input nodes to point to placeholder nodes.

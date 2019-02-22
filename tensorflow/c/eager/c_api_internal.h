@@ -107,9 +107,14 @@ struct TFE_Op {
   tensorflow::EagerOperation operation;
 };
 
+struct TFE_ProfilerContext {
+  tensorflow::ProfilerContext profiler_context;
+};
+
 struct TFE_Profiler {
-  TFE_Profiler(TFE_Context* ctx)
-      : profiler(tensorflow::ProfilerSession::Create(&ctx->context)) {}
+  TFE_Profiler(TFE_ProfilerContext* ctx) {
+    profiler = tensorflow::ProfilerSession::Create(&ctx->profiler_context);
+  }
 
   std::unique_ptr<tensorflow::ProfilerSession> profiler;
 };

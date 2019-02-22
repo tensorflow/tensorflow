@@ -71,7 +71,7 @@ class GeneratorDatasetOp::Dataset : public DatasetBase {
         : DatasetIterator<Dataset>(params) {}
 
     ~Iterator() override {
-      if (!finalized_) {
+      if (!finalized_ && initialized_) {
         std::vector<Tensor> ignored;
         Status s =
             instantiated_finalize_func_->RunInstantiated(state_, &ignored);

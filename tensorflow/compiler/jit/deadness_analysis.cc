@@ -113,7 +113,11 @@ class Predicate {
   enum class Kind { kAnd, kOr, kNot, kAndRecurrence, kSymbol };
 
   virtual string ToString() const = 0;
-  int64 hash() const { return hash_; }
+
+  // An ID assigned to the Predicate at construction time.  Conceptually like a
+  // pointer, except that it is stable across runs.
+  int64 id() const { return id_; }
+
   virtual absl::Span<Predicate* const> GetOperands() const = 0;
 
   virtual Kind kind() const = 0;
@@ -126,29 +130,19 @@ class Predicate {
   static void Visit(Predicate* p, const FunctionTy& func);
 
  protected:
-  explicit Predicate(int64 hash) : hash_(hash) {}
+  explicit Predicate(int64 id) : id_(id) {}
 
  private:
-  const int64 hash_;
+  const int64 id_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(Predicate);
 };
 
-int64 HashPredicateSequence(Predicate::Kind kind,
-                            absl::Span<Predicate* const> preds) {
-  int64 hash = ::tensorflow::hash<Predicate::Kind>()(kind);
-  for (Predicate* pred : preds) {
-    hash = Hash64Combine(hash, pred->hash());
-  }
-  return hash;
-}
-
 // Represents a logical conjunction of a set of predicates.
 class AndPredicate : public Predicate {
  public:
-  explicit AndPredicate(std::vector<Predicate*> operands)
-      : Predicate(HashPredicateSequence(Kind::kAnd, operands)),
-        operands_(std::move(operands)) {}
+  explicit AndPredicate(int64 id, std::vector<Predicate*> operands)
+      : Predicate(id), operands_(std::move(operands)) {}
 
   string ToString() const override {
     if (operands().empty()) {
@@ -177,9 +171,8 @@ class AndPredicate : public Predicate {
 // Represents a logical disjunction of a set of predicates.
 class OrPredicate : public Predicate {
  public:
-  explicit OrPredicate(std::vector<Predicate*> operands)
-      : Predicate(HashPredicateSequence(Kind::kOr, operands)),
-        operands_(std::move(operands)) {}
+  explicit OrPredicate(int64 id, std::vector<Predicate*> operands)
+      : Predicate(id), operands_(std::move(operands)) {}
 
   string ToString() const override {
     if (operands().empty()) {
@@ -207,9 +200,8 @@ class OrPredicate : public Predicate {
 // Represents a logical negation of a set of predicates.
 class NotPredicate : public Predicate {
  public:
-  explicit NotPredicate(Predicate* operand)
-      : Predicate(HashPredicateSequence(Kind::kNot, {operand})),
-        operands_({operand}) {}
+  explicit NotPredicate(int64 id, Predicate* operand)
+      : Predicate(id), operands_({operand}) {}
 
   string ToString() const override {
     return absl::StrCat("~", operand()->ToString());
@@ -246,11 +238,9 @@ class NotPredicate : public Predicate {
 // iterations).
 class AndRecurrencePredicate : public Predicate {
  public:
-  explicit AndRecurrencePredicate(Predicate* start, Predicate* step,
+  explicit AndRecurrencePredicate(int64 id, Predicate* start, Predicate* step,
                                   std::vector<string> frame)
-      : Predicate(Hash(start, step, frame)),
-        operands_({start, step}),
-        frame_(std::move(frame)) {}
+      : Predicate(id), operands_({start, step}), frame_(std::move(frame)) {}
 
   Predicate* start() const { return operands_[0]; }
   Predicate* step() const { return operands_[1]; }
@@ -270,16 +260,6 @@ class AndRecurrencePredicate : public Predicate {
  private:
   std::array<Predicate*, 2> operands_;
   std::vector<string> frame_;
-
-  static int64 Hash(Predicate* start, Predicate* step,
-                    const std::vector<string>& frame) {
-    uint64 frame_hash = 0;
-    for (const string& sub_frame : frame) {
-      frame_hash = Hash64Combine(Hash64(sub_frame), frame_hash);
-    }
-    return Hash64Combine(
-        HashPredicateSequence(Kind::kAndRecurrence, {start, step}), frame_hash);
-  }
 };
 
 // Represents an uninterpreted symbol in a logical predicate.
@@ -289,8 +269,8 @@ class AndRecurrencePredicate : public Predicate {
 // symbols.
 class SymbolPredicate : public Predicate {
  public:
-  explicit SymbolPredicate(TensorId tensor_id, bool must_be_true)
-      : Predicate(Hash(tensor_id, must_be_true)),
+  explicit SymbolPredicate(int64 id, TensorId tensor_id, bool must_be_true)
+      : Predicate(id),
         tensor_id_(std::move(tensor_id)),
         must_be_true_(must_be_true) {}
 
@@ -313,13 +293,6 @@ class SymbolPredicate : public Predicate {
  private:
   TensorId tensor_id_;
   bool must_be_true_;
-
-  static int64 Hash(const TensorId tensor_id, bool must_be_true) {
-    return Hash64Combine(
-        ::tensorflow::hash<bool>()(must_be_true),
-        Hash64Combine(::tensorflow::hash<Predicate::Kind>()(Kind::kSymbol),
-                      TensorId::Hasher{}(tensor_id)));
-  }
 };
 
 template <typename FunctionTy>
@@ -477,8 +450,11 @@ class PredicateFactory {
 
   template <typename PredicateT, typename... Args>
   std::unique_ptr<Predicate> Make(Args&&... args) {
+    // If we ever expose the Predicate class outside this .cc file then we may
+    // want to make this hard to misuse (by accidentally passing in an arbitrary
+    // integer to the Predicate constructor for instance).
     return std::unique_ptr<PredicateT>(
-        new PredicateT(std::forward<Args>(args)...));
+        new PredicateT(id_counter_++, std::forward<Args>(args)...));
   }
 
   Predicate* MakeAndOrImpl(absl::Span<Predicate* const> operands, bool is_and);
@@ -559,6 +535,7 @@ class PredicateFactory {
   absl::flat_hash_map<SignatureForSymbol, std::unique_ptr<Predicate>,
                       HashSignatureForSymbol>
       interned_symbol_instances_;
+  int64 id_counter_ = 0;
   int stack_depth_ = 0;
 };
 
@@ -566,7 +543,7 @@ Predicate* PredicateFactory::MakeInternedAndOr(
     std::vector<Predicate*> simplified_ops, Predicate::Kind pred_kind) {
   std::stable_sort(
       simplified_ops.begin(), simplified_ops.end(),
-      [](Predicate* a, Predicate* b) { return a->hash() < b->hash(); });
+      [](Predicate* a, Predicate* b) { return a->id() < b->id(); });
 
   auto it = interned_and_or_instances_.find({pred_kind, simplified_ops});
   if (it != interned_and_or_instances_.end()) {

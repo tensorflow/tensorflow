@@ -27,6 +27,8 @@ import time
 import six
 
 from tensorflow.core.framework import graph_pb2
+from tensorflow.core.framework import summary_pb2
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -45,11 +47,6 @@ from tensorflow.python.util import tf_contextlib
 from tensorflow.python.util.tf_export import tf_export
 
 
-# Dictionary mapping graph keys to a boolean Tensor (or callable returning
-# a boolean Tensor) indicating whether we should record summaries for the
-# graph identified by the key of the dictionary.
-_SHOULD_RECORD_SUMMARIES = {}
-
 # A global dictionary mapping graph keys to a list of summary writer init ops.
 _SUMMARY_WRITER_INIT_OP = {}
 
@@ -61,10 +58,8 @@ _USER_NAME_PATTERNS = re.compile(r"^[a-z]([-a-z0-9]{0,29}[a-z0-9])?$", re.I)
 def _should_record_summaries_internal():
   """Returns boolean Tensor if summaries should/shouldn't be recorded, or None.
   """
-  global _SHOULD_RECORD_SUMMARIES
-  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  should = _SHOULD_RECORD_SUMMARIES.get(key)
-  return should() if callable(should) else should
+  condition = context.context().recording_summaries
+  return condition() if callable(condition) else condition
 
 
 def _should_record_summaries_v2():
@@ -83,32 +78,28 @@ def should_record_summaries():
   return False if result is None else result
 
 
+@tf_export("summary.record_if", v1=[])
 @tf_contextlib.contextmanager
-def _record_summaries(boolean=True):
+def record_if(condition):
   """Sets summary recording on or off per the provided boolean value.
 
   The provided value can be a python boolean, a scalar boolean Tensor, or
   or a callable providing such a value; if a callable is passed it will be
-  invoked each time should_record_summaries() is called to determine whether
-  summary writing should be enabled.
+  invoked on-demand to determine whether summary writing will occur.
 
   Args:
-    boolean: can be True, False, a bool Tensor, or a callable providing such.
-      Defaults to True.
+    condition: can be True, False, a bool Tensor, or a callable providing such.
 
   Yields:
     Returns a context manager that sets this value on enter and restores the
     previous value on exit.
   """
-  # TODO(nickfelt): make this threadlocal
-  global _SHOULD_RECORD_SUMMARIES
-  key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-  old = _SHOULD_RECORD_SUMMARIES.setdefault(key, None)
+  old = context.context().recording_summaries
   try:
-    _SHOULD_RECORD_SUMMARIES[key] = boolean
+    context.context().recording_summaries = condition
     yield
   finally:
-    _SHOULD_RECORD_SUMMARIES[key] = old
+    context.context().recording_summaries = old
 
 
 # TODO(apassos) consider how to handle local step here.
@@ -120,17 +111,17 @@ def record_summaries_every_n_global_steps(n, global_step=None):
     should = lambda: math_ops.equal(global_step % n, 0)
     if not context.executing_eagerly():
       should = should()
-  return _record_summaries(should)
+  return record_if(should)
 
 
 def always_record_summaries():
   """Sets the should_record_summaries Tensor to always true."""
-  return _record_summaries(True)
+  return record_if(True)
 
 
 def never_record_summaries():
   """Sets the should_record_summaries Tensor to always false."""
-  return _record_summaries(False)
+  return record_if(False)
 
 
 @tf_export("summary.SummaryWriter", v1=[])
@@ -195,16 +186,19 @@ class SummaryWriter(object):
       return self._close()
 
 
+@tf_export(v1=["summary.initialize"])
 def initialize(
     graph=None,  # pylint: disable=redefined-outer-name
     session=None):
   """Initializes summary writing for graph execution mode.
 
+  This operation is a no-op when executing eagerly.
+
   This helper method provides a higher-level alternative to using
   `tf.contrib.summary.summary_writer_initializer_op` and
   `tf.contrib.summary.graph`.
 
-  Most users will also want to call `tf.train.create_global_step`
+  Most users will also want to call `tf.compat.v1.train.create_global_step`
   which can happen before or after this function is called.
 
   Args:
@@ -739,3 +733,72 @@ def _choose_step(step):
   if not isinstance(step, ops.Tensor):
     return ops.convert_to_tensor(step, dtypes.int64)
   return step
+
+
+def run_metadata(name, data, step):
+  """Writes entire RunMetadata summary.
+
+  A RunMetadata can contain DeviceStats, partition graphs, and function graphs.
+  Please refer to the proto for definition of each field.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A RunMetadata proto to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_run_metadata"
+  # version number = 1
+  summary_metadata.plugin_data.content = "1"
+
+  with summary_scope(name,
+                     "graph_run_metadata_summary",
+                     [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(
+            data.SerializeToString(), dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)
+
+
+def run_metadata_graphs(name, data, step):
+  """Writes graphs from a RunMetadata summary.
+
+  Args:
+    name: A name for this summary. The summary tag used for TensorBoard will be
+      this name prefixed by any active name scopes.
+    data: A RunMetadata proto to write.
+    step: Required `int64`-castable monotonic step value.
+
+  Returns:
+    True on success, or false if no summary was written because no default
+    summary writer was available.
+  """
+  summary_metadata = summary_pb2.SummaryMetadata()
+  # Hard coding a plugin name. Please refer to go/tb-plugin-name-hardcode for
+  # the rationale.
+  summary_metadata.plugin_data.plugin_name = "graph_run_metadata_graph"
+  # version number = 1
+  summary_metadata.plugin_data.content = "1"
+
+  data = config_pb2.RunMetadata(
+      function_graphs=data.function_graphs,
+      partition_graphs=data.partition_graphs)
+
+  with summary_scope(name,
+                     "graph_run_metadata_graph_summary",
+                     [data, step]) as (tag, _):
+    return write(
+        tag=tag,
+        tensor=constant_op.constant(
+            data.SerializeToString(), dtype=dtypes.string),
+        step=step,
+        metadata=summary_metadata)

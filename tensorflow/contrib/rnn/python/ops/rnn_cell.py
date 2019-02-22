@@ -3153,7 +3153,7 @@ class IndyGRUCell(rnn_cell_impl.LayerRNNCell):
   r"""Independently Gated Recurrent Unit cell.
 
   Based on IndRNNs (https://arxiv.org/abs/1803.04831) and similar to GRUCell,
-  yet with the \(U_r\), \(U_z\), and \(U\) matrices in equations 5, 6, and
+  yet with the \\(U_r\\), \\(U_z\\), and \\(U\\) matrices in equations 5, 6, and
   8 of http://arxiv.org/abs/1406.1078 respectively replaced by diagonal
   matrices, i.e. a Hadamard product with a single vector:
 
@@ -3164,11 +3164,9 @@ class IndyGRUCell(rnn_cell_impl.LayerRNNCell):
     $$\tilde{h}^{(t)}_j = \phi\left([\mathbf W \mathbf x]_j +
       [\mathbf u \circ \mathbf r \circ \mathbf h_{(t-1)}]_j\right)$$
 
-  where \(\circ\) denotes the Hadamard operator. This means that each IndyGRU
+  where \\(\circ\\) denotes the Hadamard operator. This means that each IndyGRU
   node sees only its own state, as opposed to seeing all states in the same
   layer.
-
-  TODO(gonnet): Write a paper describing this and add a reference here.
 
   Args:
     num_units: int, The number of units in the GRU cell.
@@ -3254,7 +3252,7 @@ class IndyGRUCell(rnn_cell_impl.LayerRNNCell):
     self.built = True
 
   def call(self, inputs, state):
-    """Gated recurrent unit (GRU) with nunits cells."""
+    """Recurrently independent Gated Recurrent Unit (GRU) with nunits cells."""
 
     gate_inputs = math_ops.matmul(inputs, self._gate_kernel_w) + (
         gen_array_ops.tile(state, [1, 2]) * self._gate_kernel_u)
@@ -3278,10 +3276,9 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
   r"""Basic IndyLSTM recurrent network cell.
 
   Based on IndRNNs (https://arxiv.org/abs/1803.04831) and similar to
-  BasicLSTMCell, yet with the \(U_f\), \(U_i\), \(U_o\) and \(U_c\)
-  matrices in
-  https://en.wikipedia.org/wiki/Long_short-term_memory#LSTM_with_a_forget_gate
-  replaced by diagonal matrices, i.e. a Hadamard product with a single vector:
+  BasicLSTMCell, yet with the \\(U_f\\), \\(U_i\\), \\(U_o\\) and \\(U_c\\)
+  matrices in the regular LSTM equations replaced by diagonal matrices, i.e. a
+  Hadamard product with a single vector:
 
     $$f_t = \sigma_g\left(W_f x_t + u_f \circ h_{t-1} + b_f\right)$$
     $$i_t = \sigma_g\left(W_i x_t + u_i \circ h_{t-1} + b_i\right)$$
@@ -3289,8 +3286,8 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
     $$c_t = f_t \circ c_{t-1} +
             i_t \circ \sigma_c\left(W_c x_t + u_c \circ h_{t-1} + b_c\right)$$
 
-  where \(\circ\) denotes the Hadamard operator. This means that each IndyLSTM
-  node sees only its own state \(h\) and \(c\), as opposed to seeing all
+  where \\(\circ\\) denotes the Hadamard operator. This means that each IndyLSTM
+  node sees only its own state \\(h\\) and \\(c\\), as opposed to seeing all
   states in the same layer.
 
   We add forget_bias (default: 1) to the biases of the forget gate in order to
@@ -3298,11 +3295,6 @@ class IndyLSTMCell(rnn_cell_impl.LayerRNNCell):
 
   It does not allow cell clipping, a projection layer, and does not
   use peep-hole connections: it is the basic baseline.
-
-  For advanced models, please use the full `tf.nn.rnn_cell.LSTMCell`
-  that follows.
-
-  TODO(gonnet): Write a paper describing this and add a reference here.
   """
 
   def __init__(self,

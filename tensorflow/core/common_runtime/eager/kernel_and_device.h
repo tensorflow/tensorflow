@@ -151,7 +151,7 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Device* OutputResourceDevice(int idx) const override;
 
   DataType input_type(int i) const override;
-  const DataTypeVector& output_dtypes() const {
+  const DataTypeVector& output_dtypes() const override {
     return kernel_->output_types();
   }
   int num_inputs() const override { return kernel_->num_inputs(); }

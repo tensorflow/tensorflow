@@ -85,12 +85,6 @@ struct ConversionParams {
   std::vector<int> cached_engine_batches;  // list of cached engines
 };
 
-// This method extracts calibration information from the resource managers
-// and puts them in to engine nodedefs.
-tensorflow::Status ConvertCalibGraphToInferGraph(
-    const tensorflow::GraphDef& graph_def, tensorflow::GraphDef* new_graph_def,
-    bool is_dyn_op);
-
 // - max_batch_size: maximum batch size which can be used for inference for
 //   optimization targets inference run with max batch size.
 // - max_workspace_size_bytes: The upper bound of memory allowance for engine

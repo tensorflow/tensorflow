@@ -317,6 +317,11 @@ xla_test(
     name = "conv_depthwise_backprop_filter_test",
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
+    # these backends do not natively handle batch group counts.
+    blacklisted_backends = [
+        "gpu",
+        "cpu",
+    ],
     shard_count = 6,
     deps = [
         "//tensorflow/compiler/xla:execution_options_util",
@@ -676,7 +681,7 @@ xla_test(
     tags = [
         "optonly",
         # This is a big test that we skip for capacity reasons in OSS testing.
-        "nooss",
+        "no_oss",
     ],
     deps = [
         ":client_library_test_base",
@@ -1141,7 +1146,7 @@ xla_test(
 xla_test(
     name = "reduce_test",
     srcs = ["reduce_test.cc"],
-    shard_count = 40,
+    shard_count = 31,
     tags = [
         "optonly",
     ],
@@ -1389,8 +1394,8 @@ xla_test(
 )
 
 xla_test(
-    name = "fmax_test",
-    srcs = ["fmax_test.cc"],
+    name = "fmax_fmin_test",
+    srcs = ["fmax_fmin_test.cc"],
     deps = [
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -2153,5 +2158,28 @@ xla_test(
         ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:test",
+    ],
+)
+
+xla_test(
+    name = "triangular_solve_test",
+    srcs = ["triangular_solve_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+        "noasan",  # sometimes times out, http://b/78650012
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )

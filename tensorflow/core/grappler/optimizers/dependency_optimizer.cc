@@ -74,23 +74,26 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
     return false;
   } else if (IsSwitch(*input)) {
     // Don't turn Identity nodes following Switch into NoOp or remove them
-    // if it requires anchoring a control dependencies the Switch node, which
+    // if it requires anchoring a control dependencies to the Switch node, which
     // is not valid.
     MutableGraphView::OutputPort control_port(const_cast<NodeDef*>(&node),
                                               Graph::kControlSlot);
-    if (!graph_view_->GetFanout(control_port).empty()) {
+    auto control_fanouts = graph_view_->GetFanout(control_port);
+    if (!control_fanouts.empty()) {
       return false;
     }
   }
   bool node_has_multiple_inputs =
       graph_view_->NumFanins(node, /*include_controlling_nodes=*/true) > 1;
-  for (auto consumer :
-       graph_view_->GetFanouts(node, /*include_controlled_nodes=*/true)) {
-    if (node_has_multiple_inputs && IsMerge(*consumer.node)) {
+
+  auto fanouts =
+      graph_view_->GetFanouts(node, /*include_controlled_nodes=*/true);
+  for (auto fanout : fanouts) {
+    if (node_has_multiple_inputs && IsMerge(*fanout.node)) {
       return false;
     }
     if (IsSwitch(*input)) {
-      if (graph_view_->HasFanin(*consumer.node,
+      if (graph_view_->HasFanin(*fanout.node,
                                 {node.name(), Graph::kControlSlot})) {
         return false;
       }
@@ -134,22 +137,21 @@ bool DependencyOptimizer::SafeToConvertToNoOp(const NodeDef& node) const {
 }
 
 int DependencyOptimizer::NumEdgesIfBypassed(
-    const NodeDef& node,
-    const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges) const {
+    const NodeDef& node, int num_controlling_fanins,
+    const absl::flat_hash_set<MutableGraphView::Edge>& fanin_edges,
+    const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges,
+    int num_unique_fanout_nodes) const {
   const bool is_multi_input_identity_n =
       IsIdentityN(node) && !IsIdentityNSingleInput(node);
-  const int num_fanins = node.input_size();
-  const int num_fanouts = fanout_edges.size();
+  const int num_fanins = fanin_edges.size();
 
   if (is_multi_input_identity_n) {
     // multi-input identity_n with input/output control dependencies will likely
     // increase number of edges after optimization.
-    int num_edges_if_bypassed(0);
-    int num_non_controlling_fanins =
-        graph_view_->NumFanins(node, /*include_controlling_nodes=*/false);
+    int num_edges_if_bypassed = 0;
+    int num_non_controlling_fanins = num_fanins - num_controlling_fanins;
     num_edges_if_bypassed += num_non_controlling_fanins;
-    num_edges_if_bypassed +=
-        (num_fanins - num_non_controlling_fanins) * num_fanouts;
+    num_edges_if_bypassed += num_controlling_fanins * num_unique_fanout_nodes;
 
     for (const auto& fanout : fanout_edges) {
       if (fanout.dst.port_id == Graph::kControlSlot) {
@@ -160,31 +162,35 @@ int DependencyOptimizer::NumEdgesIfBypassed(
     }
     return num_edges_if_bypassed;
   } else {
-    return num_fanins * num_fanouts;
+    return num_fanins * num_unique_fanout_nodes;
   }
 }
 
 bool DependencyOptimizer::BypassingNodeIsBeneficial(
-    const NodeDef& node,
+    const NodeDef& node, int num_controlling_fanins,
+    const absl::flat_hash_set<MutableGraphView::Edge>& fanin_edges,
     const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges) const {
   const bool is_identity = IsIdentity(node) || IsIdentityNSingleInput(node);
   const bool is_multi_input_identity_n =
       IsIdentityN(node) && !IsIdentityNSingleInput(node);
-  const int num_fanins = node.input_size();
-  const int num_fanouts = fanout_edges.size();
+  const int num_fanins = fanin_edges.size();
+  absl::flat_hash_set<NodeDef*> unique_fanout_nodes;
+  for (const auto& fanout_edge : fanout_edges) {
+    unique_fanout_nodes.insert(fanout_edge.dst.node);
+  }
+  const int num_unique_fanout_nodes = unique_fanout_nodes.size();
 
-  if (NumEdgesIfBypassed(node, fanout_edges) > num_fanins + num_fanouts) {
+  if (NumEdgesIfBypassed(node, num_controlling_fanins, fanin_edges,
+                         fanout_edges, num_unique_fanout_nodes) >
+      num_fanins + num_unique_fanout_nodes) {
     return false;
   }
 
-  auto fanin_edges =
-      graph_view_->GetFaninEdges(node, /*include_controlling_edges=*/true);
-
   // Make sure that we don't increase the number of edges that cross
   // device boundaries.
-  if ((num_fanins == 1 && num_fanouts > 1 &&
+  if ((num_fanins == 1 && num_unique_fanout_nodes > 1 &&
        fanin_edges.begin()->src.node->device() != node.device()) ||
-      (num_fanins > 1 && num_fanouts == 1 &&
+      (num_fanins > 1 && num_unique_fanout_nodes == 1 &&
        fanout_edges.begin()->dst.node->device() != node.device())) {
     return false;
   }
@@ -198,17 +204,17 @@ bool DependencyOptimizer::BypassingNodeIsBeneficial(
     num_cross_in += static_cast<int>(fanin.src.node->device() != node_dev);
   }
   int num_cross_out = 0;
-  for (const auto& fanout : fanout_edges) {
-    num_cross_out += static_cast<int>(fanout.dst.node->device() != node_dev);
+  for (const auto& fanout : unique_fanout_nodes) {
+    num_cross_out += static_cast<int>(fanout->device() != node_dev);
   }
 
   // Make sure we do not increase the number of device crossings.
   const int num_cross_before = num_cross_in + num_cross_out;
   int num_cross_after = 0;
   for (const auto& fanin : fanin_edges) {
-    for (const auto& fanout : fanout_edges) {
-      num_cross_after += static_cast<int>(fanin.src.node->device() !=
-                                          fanout.dst.node->device());
+    for (const auto& fanout : unique_fanout_nodes) {
+      num_cross_after +=
+          static_cast<int>(fanin.src.node->device() != fanout->device());
     }
   }
   if (num_cross_after > num_cross_before) {
@@ -239,8 +245,9 @@ Status DependencyOptimizer::OptimizeNode(
   // In this case we then can prune all their output control dependencies.
   if (IsConstant(*node) &&
       graph_view_->NumFanins(*node, /*include_controlling_nodes=*/true) == 0) {
-    for (const auto& fanout :
-         graph_view_->GetFanouts(*node, /*include_controlled_nodes=*/true)) {
+    MutableGraphView::OutputPort control_port(node, Graph::kControlSlot);
+    auto control_fanouts = graph_view_->GetFanout(control_port);
+    for (const auto& fanout : control_fanouts) {
       TF_RETURN_IF_ERROR(
           graph_view_->RemoveControllingFanin(fanout.node->name(), node_name));
       nodes_to_simplify->PushBack(fanout.node->name());
@@ -251,14 +258,14 @@ Status DependencyOptimizer::OptimizeNode(
         fetch_nodes_known_ &&
         nodes_to_preserve_.find(node_name) == nodes_to_preserve_.end()) {
       // Mark the node for deletion.
-      nodes_to_delete->insert(node->name());
+      nodes_to_delete->insert(node_name);
     }
     return Status::OK();
   }
 
   // Change ops that only have control dependencies as outputs to NoOps.
   if (!is_noop && SafeToConvertToNoOp(*node)) {
-    VLOG(1) << "***** Replacing  " << node_name << " (" << node->op()
+    VLOG(1) << "***** Replacing " << node_name << " (" << node->op()
             << ") with NoOp.";
     // The outputs of this node are not consumed. Replace its inputs with
     // control dependencies and replace the op itself with the NoOp op.
@@ -271,11 +278,11 @@ Status DependencyOptimizer::OptimizeNode(
     TF_RETURN_IF_ERROR(
         graph_view_->UpdateAllRegularFaninsToControlling(node_name));
     TF_RETURN_IF_ERROR(
-        graph_view_->UpdateNode(node->name(), "NoOp", node->device(), {}));
-    nodes_to_simplify->PushBack(node->name());
+        graph_view_->UpdateNode(node_name, "NoOp", node->device(), {}));
     for (const string& regular_fanin_name : regular_fanin_names) {
       nodes_to_simplify->PushBack(regular_fanin_name);
     }
+    nodes_to_simplify->PushBack(node_name);
     return Status::OK();
   }
 
@@ -329,76 +336,69 @@ Status DependencyOptimizer::OptimizeNode(
 
   if (is_noop || ((is_identity || is_multi_input_identity) &&
                   SafeToRemoveIdentity(*node))) {
+    auto fanin_edges =
+        graph_view_->GetFaninEdges(*node, /*include_controlling_edges=*/true);
+    std::vector<NodeDef*> controlling_fanins;
+    controlling_fanins.reserve(fanin_edges.size());
+    for (const auto& fanin_edge : fanin_edges) {
+      if (fanin_edge.src.port_id == Graph::kControlSlot) {
+        controlling_fanins.push_back(fanin_edge.src.node);
+      }
+    }
     auto fanout_edges =
         graph_view_->GetFanoutEdges(*node, /*include_controlled_edges=*/true);
-    if (!BypassingNodeIsBeneficial(*node, fanout_edges)) {
+    if (!BypassingNodeIsBeneficial(*node, controlling_fanins.size(),
+                                   fanin_edges, fanout_edges)) {
       return Status::OK();
     }
 
-    if (!fanout_edges.empty()) {
-      const int num_regular_fanins =
-          graph_view_->NumFanins(*node, /*include_controlling_nodes=*/false);
-      std::vector<TensorId> regular_fanin_ids;
-      regular_fanin_ids.reserve(num_regular_fanins);
-      for (int i = 0; i < num_regular_fanins; ++i) {
-        regular_fanin_ids.push_back(ParseTensorName(node->input(i)));
-      }
+    VLOG(1) << "***** Rerouting input around\n" << node->DebugString();
 
-      absl::flat_hash_set<NodeDef*> processed_consumers;
-      VLOG(1) << "***** Rerouting input around\n" << node->DebugString();
-      // Now remove the node and re-wire its inputs to its outputs.
-      for (auto fanout_edge : fanout_edges) {
-        NodeDef* consumer = fanout_edge.dst.node;
-        VLOG(1) << "consumer before:\n" << consumer->DebugString();
-        if (fanout_edge.src.port_id == Graph::kControlSlot) {
-          TF_RETURN_IF_ERROR(
-              graph_view_->RemoveControllingFanin(consumer->name(), node_name));
-          // Add all non controlling fanins of node as controlling fanins to
-          // consumer.
-          for (const TensorId& regular_fanin_id : regular_fanin_ids) {
-            TF_RETURN_IF_ERROR(graph_view_->AddControllingFanin(
-                consumer->name(), regular_fanin_id));
-            nodes_to_simplify->PushBack(string(regular_fanin_id.node()));
-          }
-        } else {
-          TF_RETURN_IF_ERROR(graph_view_->UpdateRegularFaninByPort(
-              consumer->name(), fanout_edge.dst.port_id,
-              ParseTensorName(node->input(fanout_edge.src.port_id))));
-        }
-        processed_consumers.insert(consumer);
-        VLOG(1) << "consumer after:\n" << consumer->DebugString();
+    absl::flat_hash_set<NodeDef*> processed_nodes;
+    for (const auto& fanout_edge : fanout_edges) {
+      NodeDef* consumer = fanout_edge.dst.node;
+      const int src_port = fanout_edge.src.port_id;
+      if ((is_identity && src_port == 0) ||
+          (is_multi_input_identity && src_port > Graph::kControlSlot)) {
+        // Identity regular fanins.
+        const string& input_to_forwards = node->input(src_port);
+        TF_RETURN_IF_ERROR(graph_view_->UpdateRegularFaninByPort(
+            consumer->name(), fanout_edge.dst.port_id,
+            ParseTensorName(input_to_forwards)));
+      } else if (is_identity || is_multi_input_identity) {
+        // Identity control dependency.
+        // TODO(lyandy): Handle IdentityN properly here by adding all regular
+        // fanins as controlling fanins.
+        const string& node_first_input = node->input(0);
+        TF_RETURN_IF_ERROR(graph_view_->UpdateFanin(
+            consumer->name(), {node_name, Graph::kControlSlot},
+            {ParseTensorName(node_first_input).node(), Graph::kControlSlot}));
+      } else {
+        // NoOp.
+        TF_RETURN_IF_ERROR(
+            graph_view_->RemoveControllingFanin(consumer->name(), node_name));
       }
-
-      std::vector<TensorId> controlling_fanin_ids;
-      controlling_fanin_ids.reserve(node->input_size() - num_regular_fanins);
-      for (int i = num_regular_fanins; i < node->input_size(); ++i) {
-        controlling_fanin_ids.push_back(ParseTensorName(node->input(i)));
-      }
-
-      for (NodeDef* consumer : processed_consumers) {
-        // Forward all controlling fanins of node to consumer.
-        VLOG(1) << "consumer before:\n" << consumer->DebugString();
-        for (const TensorId& controlling_fanin_id : controlling_fanin_ids) {
-          TF_RETURN_IF_ERROR(graph_view_->AddControllingFanin(
-              consumer->name(), controlling_fanin_id));
-        }
-        nodes_to_simplify->PushBack(consumer->name());
-        VLOG(1) << "consumer after:\n" << consumer->DebugString();
-      }
-      for (const TensorId& controlling_fanin_id : controlling_fanin_ids) {
-        nodes_to_simplify->PushBack(string(controlling_fanin_id.node()));
+      processed_nodes.insert(consumer);
+      nodes_to_simplify->PushBack(consumer->name());
+    }
+    for (const auto& processed_node : processed_nodes) {
+      // Forward dependency from input to consumer if it doesn't already
+      // depend on it.
+      for (const auto& controlling_fanin : controlling_fanins) {
+        TF_RETURN_IF_ERROR(graph_view_->AddControllingFanin(
+            processed_node->name(),
+            {controlling_fanin->name(), Graph::kControlSlot}));
+        nodes_to_simplify->PushBack(controlling_fanin->name());
       }
     }
 
     if (fetch_nodes_known_ &&
         nodes_to_preserve_.find(node_name) == nodes_to_preserve_.end()) {
+      // Disconnect the node from its inputs to enable further optimizations.
+      TF_RETURN_IF_ERROR(graph_view_->RemoveAllFanins(
+          node_name, /*keep_controlling_fanins=*/false));
       // Mark the node for deletion.
       nodes_to_delete->insert(node_name);
-
-      // Disconnect the node from its inputs to enable further optimizations.
-      TF_RETURN_IF_ERROR(
-          graph_view_->RemoveAllFanins(node_name,
-                                       /*keep_controlling_fanins=*/false));
     }
   }
   return Status::OK();
@@ -442,16 +442,14 @@ Status DependencyOptimizer::TransitiveReduction() {
   // highest index of a target of any control output from each node.
   int num_controls = 0;
   std::vector<gtl::InlinedVector<int, 4>> inputs(num_nodes);
-  std::vector<gtl::InlinedVector<std::pair<int, int>, 2>> control_outputs(
-      num_nodes);
+  std::vector<gtl::InlinedVector<int, 2>> control_outputs(num_nodes);
   for (int node_idx = 0; node_idx < num_nodes; ++node_idx) {
     const NodeDef& node = graph->node(node_idx);
     if (ModifiesFrameInfo(node) || !HasOpDef(node)) {
       // Ignore function nodes and nodes that modify frame info.
       continue;
     }
-    for (int input_slot = 0; input_slot < node.input_size(); ++input_slot) {
-      const string& input = node.input(input_slot);
+    for (const string& input : node.input()) {
       const NodeDef* input_node = graph_view_->GetNode(NodeName(input));
       if (ModifiesFrameInfo(*input_node) || IsMerge(*input_node)) {
         // Ignore edges from nodes that modify frame info and from Merge nodes,
@@ -462,7 +460,7 @@ Status DependencyOptimizer::TransitiveReduction() {
       inputs[node_idx].push_back(input_node_idx);
       if (IsControlInput(input)) {
         ++num_controls;
-        control_outputs[input_node_idx].emplace_back(node_idx, input_slot);
+        control_outputs[input_node_idx].emplace_back(node_idx);
       }
     }
   }
@@ -477,14 +475,12 @@ Status DependencyOptimizer::TransitiveReduction() {
   // such that when we swap them out so we don't clobber the
   // node(target).input() repeated field.
   typedef std::pair<int, int> InputSlotAndSource;
-  absl::flat_hash_map<
-      int, std::set<InputSlotAndSource, std::greater<InputSlotAndSource>>>
-      control_edges_to_remove;
+  absl::flat_hash_map<int, absl::flat_hash_set<int>> control_edges_to_remove;
   for (int source = 0; source < num_nodes; ++source) {
     int highest_control_target = -1;
     for (const auto& control_output : control_outputs[source]) {
-      if (control_output.first > highest_control_target) {
-        highest_control_target = control_output.first;
+      if (control_output > highest_control_target) {
+        highest_control_target = control_output;
       }
     }
     if (highest_control_target <= source) {
@@ -514,10 +510,9 @@ Status DependencyOptimizer::TransitiveReduction() {
     // longer than 1, there exists an alternate path, and we can eliminate the
     // redundant direct control dependency.
     for (const auto& control_output : control_outputs[source]) {
-      const int target = control_output.first;
+      const int target = control_output;
       if (longest_distance[target] > 1) {
-        const int input_slot = control_output.second;
-        control_edges_to_remove[target].emplace(input_slot, source);
+        control_edges_to_remove[target].emplace(source);
       }
     }
   }
@@ -526,11 +521,10 @@ Status DependencyOptimizer::TransitiveReduction() {
     const int target = it.first;
     const NodeDef& target_node = graph->node(target);
     const string target_node_name = target_node.name();
-    for (const InputSlotAndSource& slot_and_source : it.second) {
-      const int input_slot = slot_and_source.first;
-      const TensorId tensor_id = ParseTensorName(target_node.input(input_slot));
-      TF_RETURN_IF_ERROR(graph_view_->RemoveControllingFanin(target_node_name,
-                                                             tensor_id.node()));
+    for (const int& source : it.second) {
+      const NodeDef& source_node = graph->node(source);
+      TF_RETURN_IF_ERROR(graph_view_->RemoveControllingFanin(
+          target_node_name, source_node.name()));
       ++num_controls_removed;
     }
   }

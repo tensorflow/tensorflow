@@ -23,7 +23,6 @@ import contextlib
 import warnings
 
 import numpy as np
-import six
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -912,7 +911,7 @@ def _MultiDeviceAddN(tensor_list, gradient_uid):
   def DeviceKey(dev):
     return "" if dev is None else dev
 
-  for dev in sorted(six.iterkeys(tensors_on_device), key=DeviceKey):
+  for dev in sorted(tensors_on_device, key=DeviceKey):
     tensors = tensors_on_device[dev]
     with ops._colocate_with_for_gradient(  # pylint: disable=protected-access
         tensors[0].op,

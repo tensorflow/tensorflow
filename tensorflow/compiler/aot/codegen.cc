@@ -168,12 +168,12 @@ Status GenArgMethods(const tf2xla::Config& config,
                      const xla::ProgramShapeProto& ps,
                      const CompileResult& compile_result, string* methods) {
   size_t num_args = ps.parameters_size();
-  if (config.feed_size() != num_args) {
-    return errors::InvalidArgument("mismatch between feed_size(",
-                                   config.feed_size(), ") and num_args(",
-                                   num_args, ")");
+  if (config.feed_size() + config.variable_size() != num_args) {
+    return errors::InvalidArgument(
+        "mismatch between feed_size(", config.feed_size(), ")+variable_size(",
+        config.variable_size(), ") and num_args(", num_args, ")");
   }
-  for (int i = 0; i < num_args; ++i) {
+  for (int i = 0; i < config.feed_size(); ++i) {
     std::vector<std::pair<string, string>> rewrites;
     TF_RETURN_IF_ERROR(
         AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
@@ -212,12 +212,14 @@ Status GenResultMethods(const tf2xla::Config& config,
     // tuple result, and we rely on this to simplify code generation.
     return errors::Internal("codegen requires the XLA result to be a tuple");
   }
-  if (config.fetch_size() != ps.result().tuple_shapes_size()) {
+  size_t num_results = ps.result().tuple_shapes_size();
+  if (config.fetch_size() + config.variable_size() != num_results) {
     return errors::InvalidArgument("mismatch between fetch_size(",
-                                   config.feed_size(), ") and tuple_size(",
+                                   config.fetch_size(), ")+variable_size(",
+                                   config.variable_size(), ") and tuple_size(",
                                    ps.result().tuple_shapes_size(), ")");
   }
-  for (int i = 0; i < ps.result().tuple_shapes_size(); ++i) {
+  for (int i = 0; i < config.fetch_size(); ++i) {
     std::vector<std::pair<string, string>> rewrites;
     TF_RETURN_IF_ERROR(AddRewritesForShape(
         i, xla::Shape(ps.result().tuple_shapes(i)), &rewrites));
@@ -241,6 +243,51 @@ Status GenResultMethods(const tf2xla::Config& config,
     if (!config.fetch(i).name().empty()) {
       *methods += RewriteWithName("_" + config.fetch(i).name(), code, rewrites);
     }
+  }
+  return Status::OK();
+}
+
+// Generate methods for variables.
+Status GenVariableMethods(const tf2xla::Config& config,
+                          const xla::ProgramShapeProto& ps, string* methods) {
+  size_t num_args = ps.parameters_size();
+  for (int i = config.feed_size(); i < num_args; ++i) {
+    std::vector<std::pair<string, string>> rewrites;
+    TF_RETURN_IF_ERROR(
+        AddRewritesForShape(i, xla::Shape(ps.parameters(i)), &rewrites));
+    const string code = R"(
+  void set_var_{{NAME}}_input_data({{TYPE}}* data) {
+    set_arg_data({{I}}, data);
+  }
+)";
+    const tf2xla::Variable& var = config.variable(i - config.feed_size());
+    *methods += RewriteWithName(
+        var.name().empty() ? var.node_name() : var.name(), code, rewrites);
+  }
+  size_t num_results = ps.result().tuple_shapes_size();
+  for (int i = config.fetch_size(); i < num_results; ++i) {
+    std::vector<std::pair<string, string>> rewrites;
+    TF_RETURN_IF_ERROR(AddRewritesForShape(
+        i, xla::Shape(ps.result().tuple_shapes(i)), &rewrites));
+    string code = R"(
+  {{TYPE}}* var_{{NAME}}_result_data() {
+    return static_cast<{{TYPE}}*>(result_data({{I}}));
+  }
+  {{TYPE}}& var_{{NAME}}_result({{DIM_VARS}}) {
+    return (*static_cast<{{TYPE}}(*){{DIM_SIZES}}>(
+        result_data({{I}}))){{INDICES}};
+  }
+  const {{TYPE}}* var_{{NAME}}_result_data() const {
+    return static_cast<const {{TYPE}}*>(result_data({{I}}));
+  }
+  const {{TYPE}}& var_{{NAME}}_result({{DIM_VARS}}) const {
+    return (*static_cast<const {{TYPE}}(*){{DIM_SIZES}}>(
+        result_data({{I}}))){{INDICES}};
+  }
+)";
+    const tf2xla::Variable& var = config.variable(i - config.fetch_size());
+    *methods += RewriteWithName(
+        var.name().empty() ? var.node_name() : var.name(), code, rewrites);
   }
   return Status::OK();
 }
@@ -291,6 +338,14 @@ Status ValidateFeedFetchCppNames(const tf2xla::Config& config) {
       TF_RETURN_IF_ERROR(ValidateCppIdent(fetch.name(), "fetch name"));
     }
   }
+  for (const tf2xla::Variable& variable : config.variable()) {
+    if (!variable.name().empty()) {
+      TF_RETURN_IF_ERROR(ValidateCppIdent(variable.name(), "variable name"));
+    } else {
+      TF_RETURN_IF_ERROR(
+          ValidateCppIdent(variable.node_name(), "variable name"));
+    }
+  }
   return Status::OK();
 }
 
@@ -339,9 +394,10 @@ Status GenerateHeader(const CodegenOpts& opts, const tf2xla::Config& config,
   std::vector<BufferInfo> buffer_infos_for_temps =
       ExtractTempBufferInfos(buffer_infos);
   const xla::ProgramShapeProto& ps = compile_result.program_shape;
-  string methods_arg, methods_result;
+  string methods_arg, methods_result, methods_variable;
   TF_RETURN_IF_ERROR(GenArgMethods(config, ps, compile_result, &methods_arg));
   TF_RETURN_IF_ERROR(GenResultMethods(config, ps, &methods_result));
+  TF_RETURN_IF_ERROR(GenVariableMethods(config, ps, &methods_variable));
   const size_t arg_bytes_aligned = cpu_function_runtime::AlignedBufferBytes(
       buffer_infos_for_args.data(), buffer_infos_for_args.size(),
       /*allocate_entry_params=*/true);
@@ -523,6 +579,21 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
   // buffers are managed internally, and may change after each call to Run.
 {{METHODS_RESULT}}
 
+  // Methods for managing variable buffers. Buffers are in row-major order. The
+  // input and output buffers may or may not be identical.
+  //
+  // void set_var_X_data(T* data)
+  //   Sets the buffer for variable X.
+  //
+  // T* var_X_data()
+  //   Returns the buffer of type T for variable X.
+  //
+  // T& var_X(...dim indices...)
+  //   Returns a reference to the value of type T for variable X,
+  //   with dim indices specifying which value. No bounds checking is performed
+  //   on dim indices.
+{{METHODS_VARIABLE}}
+
  private:
   // Number of buffers for the compiled computation.
   static constexpr size_t kNumBuffers = {{NUM_BUFFERS}};
@@ -589,6 +660,7 @@ class {{CLASS}} final : public tensorflow::XlaCompiledCpuFunction {
        include_hlo_profile_printer_data_proto},
       {"{{METHODS_ARG}}\n", methods_arg},
       {"{{METHODS_RESULT}}\n", methods_result},
+      {"{{METHODS_VARIABLE}}\n", methods_variable},
       {"{{NS_END}}\n", ns_end},
       {"{{NS_START}}\n", ns_start},
       {"{{PROGRAM_SHAPE}}", xla::ShapeUtil::HumanString(xla::ProgramShape(ps))},

@@ -1,0 +1,12 @@
+path: "tensorflow.lite.Optimize"
+tf_class {
+  is_instance: "<enum \'Optimize\'>"
+  member {
+    name: "OPTIMIZE_FOR_LATENCY"
+    mtype: "<enum \'Optimize\'>"
+  }
+  member {
+    name: "OPTIMIZE_FOR_SIZE"
+    mtype: "<enum \'Optimize\'>"
+  }
+}

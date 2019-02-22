@@ -654,6 +654,27 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], self.evaluate(r))
 
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCond_Device(self):
+    x = constant_op.constant(-10)
+
+    # True branch function defined outside of device scope
+    def true_fn():
+      return math_ops.exp(x)
+
+    with ops.device("CPU:0"):
+      r = control_flow_ops.cond(
+          constant_op.constant(True), true_fn, lambda: 0.)
+      self.assertIn("cpu", r.device.lower())
+
+    with session.Session() as sess:
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(r, options=options, run_metadata=run_metadata)
+      # We expect that everything runs on CPU, even if GPU is available.
+      self.assertEqual(len(run_metadata.partition_graphs), 1)
+
   def testCondListOutput(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)
@@ -1016,6 +1037,31 @@ class ControlFlowTest(test.TestCase):
 
     r = control_flow_ops.cond(foo()[1], lambda: 1.0, lambda: 2.0)
     self.assertEqual(self.evaluate(r), 1.0)
+
+  @test_util.run_v1_only("Tests Session.run() pruning logic.")
+  def testCondFeedConstantPredicate(self):
+    with self.cached_session() as sess:
+      value = constant_op.constant(37.0)
+      predicate = constant_op.constant(True)
+      cond_output = control_flow_ops.cond(
+          predicate, lambda: constant_op.constant(0.0), lambda: value)
+      result = array_ops.identity(cond_output)
+      self.assertEqual(37.0, sess.run(result, feed_dict={predicate: False}))
+      self.assertEqual(0.0, sess.run(result, feed_dict={predicate: True}))
+      self.assertEqual(0.0, sess.run(result))
+
+  @test_util.run_v1_only("Tests Session.run() pruning logic.")
+  def testCondFeedPlaceholderWithDefaultPredicate(self):
+    with self.cached_session() as sess:
+      value = constant_op.constant(37.0)
+      predicate = array_ops.placeholder_with_default(
+          constant_op.constant(True), [])
+      cond_output = control_flow_ops.cond(
+          predicate, lambda: constant_op.constant(0.0), lambda: value)
+      result = array_ops.identity(cond_output)
+      self.assertAllEqual(37.0, sess.run(result, feed_dict={predicate: False}))
+      self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
+      self.assertAllEqual(0.0, sess.run(result))
 
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
@@ -1503,6 +1549,26 @@ class ControlFlowTest(test.TestCase):
       result = r[2]
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)
 
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testWhile_Device(self):
+
+    # Body function defined outside of device scope
+    def body(x):
+      return math_ops.exp(x)
+
+    with ops.device("CPU:0"):
+      r = control_flow_ops.while_loop(
+          lambda x: x < 10, body, [constant_op.constant(-10.)])
+      self.assertIn("cpu", r.device.lower())
+
+    with session.Session() as sess:
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(r, options=options, run_metadata=run_metadata)
+      # We expect that everything runs on CPU, even if GPU is available.
+      self.assertEqual(len(run_metadata.partition_graphs), 1)
+
   @test_util.disable_control_flow_v2("b/116338794 (buffer_reuse)")
   @test_util.run_v1_only("b/120545219")
   def testBufferForwarding(self):
@@ -1744,6 +1810,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensor(self):
+    if context.executing_eagerly():
+      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
     c = lambda i, _: i < 10
@@ -1787,6 +1855,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensorRaggedRank2(self):
+    if context.executing_eagerly():
+      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[[1, 2], [3], [4, 5, 6]],
                                      [[], [8, 9, 10]]])
@@ -2769,8 +2839,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
-  @test_util.disable_xla("This test never passed for XLA"
-                        )  # Resource variable issue for ControlFlowV2
   @test_util.run_gpu_only
   def testGpuResourceAccess(self):
     with ops.device(test.gpu_device_name()):
