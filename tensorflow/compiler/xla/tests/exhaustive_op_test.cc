@@ -394,27 +394,9 @@ XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
   Run(Sqrt, std::sqrt);
 }
 
-XLA_TEST_P(ExhaustiveOpTest, Tanh) {
-  // TODO(jlebar): Enable this test for (b)f16.
-  if (ty_ == F16 || ty_ == BF16) {
-    return;
-  }
-  Run(Tanh, std::tanh);
-}
-XLA_TEST_P(ExhaustiveOpTest, Erf) {
-  // TODO(jlebar): Enable this test for (b)f16.
-  if (ty_ == F16 || ty_ == BF16) {
-    return;
-  }
-  Run(Erf, std::erf);
-}
-XLA_TEST_P(ExhaustiveOpTest, Erfc) {
-  // TODO(jlebar): Enable this test for (b)f16.
-  if (ty_ == F16 || ty_ == BF16) {
-    return;
-  }
-  Run(Erfc, std::erfc);
-}
+XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
+XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
+XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
 
 std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
   // We break up the 2^32-element space into small'ish chunks to keep peak

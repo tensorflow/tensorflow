@@ -27,6 +27,26 @@ limitations under the License.
 
 namespace xla {
 
+// Returns operation(operand), except if `operand` is BF16, first converts it to
+// F32, and then converts the result down to BF16.
+static XlaOp DoWithBF16Upcast(XlaOp operand,
+                              const std::function<XlaOp(XlaOp)>& operation) {
+  auto& b = *operand.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(auto shape, b.GetShape(operand));
+    bool is_bf16 = shape.element_type() == BF16;
+
+    if (is_bf16) {
+      operand = ConvertElementType(operand, F32);
+    }
+    XlaOp result = operation(operand);
+    if (is_bf16) {
+      result = ConvertElementType(result, BF16);
+    }
+    return result;
+  });
+}
+
 // TODO(jlebar): Use this function in more places in this file to restrict the
 // domain of other functions.
 static Status EnsureOperandIsRealFp(absl::string_view op_name, XlaOp operand) {
@@ -183,11 +203,17 @@ XlaOp Erfc(XlaOp x) {
   auto& b = *x.builder();
   return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Erfc", x));
+
     // erfc(x) =
     //   erfc_impl(x)           if x > 1
     //   1 - erf_impl(x)        otherwise
-    return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl(x),
-                  ScalarLike(x, 1) - ErfImpl(x));
+    //
+    // Erf(c)Impl don't have enough precision when run with bf16 intermediates
+    // (not surprising!), so upcast to f32 in this case.
+    return DoWithBF16Upcast(x, [](XlaOp x) {
+      return Select(Gt(Abs(x), ScalarLike(x, 1)), ErfcImpl(x),
+                    ScalarLike(x, 1) - ErfImpl(x));
+    });
   });
 }
 
@@ -198,8 +224,13 @@ XlaOp Erf(XlaOp x) {
     // erf(x) =
     //   erf_impl(x)            if x < 1
     //   1 - erfc_impl(x)       otherwise
-    return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl(x),
-                  ScalarLike(x, 1) - ErfcImpl(x));
+    //
+    // Erf(c)Impl don't have enough precision when run with bf16 intermediates
+    // (not surprising!), so upcast to f32 in this case.
+    return DoWithBF16Upcast(x, [](XlaOp x) {
+      return Select(Lt(Abs(x), ScalarLike(x, 1)), ErfImpl(x),
+                    ScalarLike(x, 1) - ErfcImpl(x));
+    });
   });
 }
 
