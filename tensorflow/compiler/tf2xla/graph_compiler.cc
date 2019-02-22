@@ -56,9 +56,9 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   auto client = ctx->compiler()->client();
   std::vector<bool> arg_must_be_compile_time_constant(expressions.size());
 
-  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-      *graph, &arg_must_be_compile_time_constant,
-      /*compile_time_const_nodes=*/nullptr, ctx->function_library()));
+  TF_RETURN_IF_ERROR(
+      BackwardsConstAnalysis(*graph, &arg_must_be_compile_time_constant,
+                             /*compile_time_const_nodes=*/nullptr));
 
   args->resize(expressions.size());
   for (int i = 0; i < args->size(); ++i) {
@@ -284,7 +284,6 @@ void GraphCompiler::PartiallySetupParams(OpKernelContext::Params* params) {
   params->inputs = &tensor_inputs_;
   params->step_container = step_container_;
   params->resource_manager = device_->resource_manager();
-  params->function_library = flib_;
 }
 
 }  // namespace tensorflow
