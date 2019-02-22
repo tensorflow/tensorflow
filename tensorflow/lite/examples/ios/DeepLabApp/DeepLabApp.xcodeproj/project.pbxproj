@@ -1,0 +1,399 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 50;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		CD84CB0A2216BB4F0076AC39 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB002216BB4F0076AC39 /* Assets.xcassets */; };
+		CD84CB0B2216BB4F0076AC39 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB012216BB4F0076AC39 /* LaunchScreen.storyboard */; };
+		CD84CB0C2216BB4F0076AC39 /* Main.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB032216BB4F0076AC39 /* Main.storyboard */; };
+		CD84CB0D2216BB4F0076AC39 /* ViewController.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD84CB072216BB4F0076AC39 /* ViewController.swift */; };
+		CD84CB0E2216BB4F0076AC39 /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = CD84CB092216BB4F0076AC39 /* AppDelegate.swift */; };
+		CD84CB112216BC280076AC39 /* labels.txt in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB0F2216BC280076AC39 /* labels.txt */; };
+		CD84CB122216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite in Resources */ = {isa = PBXBuildFile; fileRef = CD84CB102216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite */; };
+		CD84CB192216BD0E0076AC39 /* DeepLabModel.mm in Sources */ = {isa = PBXBuildFile; fileRef = CD84CB172216BD0E0076AC39 /* DeepLabModel.mm */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		CD84CAEA2216BB000076AC39 /* DeepLabApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DeepLabApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		CD84CAF92216BB010076AC39 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		CD84CB002216BB4F0076AC39 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		CD84CB022216BB4F0076AC39 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		CD84CB042216BB4F0076AC39 /* Base */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; name = Base; path = Base.lproj/Main.storyboard; sourceTree = "<group>"; };
+		CD84CB072216BB4F0076AC39 /* ViewController.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = ViewController.swift; sourceTree = "<group>"; };
+		CD84CB092216BB4F0076AC39 /* AppDelegate.swift */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = sourcecode.swift; path = AppDelegate.swift; sourceTree = "<group>"; };
+		CD84CB0F2216BC280076AC39 /* labels.txt */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text; path = labels.txt; sourceTree = "<group>"; };
+		CD84CB102216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite */ = {isa = PBXFileReference; lastKnownFileType = file; path = deeplabv3_257_mv_gpu.tflite; sourceTree = "<group>"; };
+		CD84CB162216BD0D0076AC39 /* DeepLabApp-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "DeepLabApp-Bridging-Header.h"; sourceTree = "<group>"; };
+		CD84CB172216BD0E0076AC39 /* DeepLabModel.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = DeepLabModel.mm; sourceTree = "<group>"; };
+		CD84CB182216BD0E0076AC39 /* DeepLabModel.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = DeepLabModel.h; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		CD84CAE72216BB000076AC39 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		CD84CAE12216BB000076AC39 = {
+			isa = PBXGroup;
+			children = (
+				CD84CAEC2216BB000076AC39 /* DeepLabApp */,
+				CD84CAEB2216BB000076AC39 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		CD84CAEB2216BB000076AC39 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				CD84CAEA2216BB000076AC39 /* DeepLabApp.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		CD84CAEC2216BB000076AC39 /* DeepLabApp */ = {
+			isa = PBXGroup;
+			children = (
+				CD84CB052216BB4F0076AC39 /* Classes */,
+				CD84CAFF2216BB4F0076AC39 /* Resources */,
+				CD84CAF92216BB010076AC39 /* Info.plist */,
+			);
+			path = DeepLabApp;
+			sourceTree = "<group>";
+		};
+		CD84CAFF2216BB4F0076AC39 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				CD84CB102216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite */,
+				CD84CB0F2216BC280076AC39 /* labels.txt */,
+				CD84CB002216BB4F0076AC39 /* Assets.xcassets */,
+				CD84CB012216BB4F0076AC39 /* LaunchScreen.storyboard */,
+				CD84CB032216BB4F0076AC39 /* Main.storyboard */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		CD84CB052216BB4F0076AC39 /* Classes */ = {
+			isa = PBXGroup;
+			children = (
+				CD84CB062216BB4F0076AC39 /* UI */,
+				CD84CB082216BB4F0076AC39 /* Controllers */,
+			);
+			path = Classes;
+			sourceTree = "<group>";
+		};
+		CD84CB062216BB4F0076AC39 /* UI */ = {
+			isa = PBXGroup;
+			children = (
+				CD84CB072216BB4F0076AC39 /* ViewController.swift */,
+			);
+			path = UI;
+			sourceTree = "<group>";
+		};
+		CD84CB082216BB4F0076AC39 /* Controllers */ = {
+			isa = PBXGroup;
+			children = (
+				CD84CB092216BB4F0076AC39 /* AppDelegate.swift */,
+				CD84CB172216BD0E0076AC39 /* DeepLabModel.mm */,
+				CD84CB182216BD0E0076AC39 /* DeepLabModel.h */,
+				CD84CB162216BD0D0076AC39 /* DeepLabApp-Bridging-Header.h */,
+			);
+			path = Controllers;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		CD84CAE92216BB000076AC39 /* DeepLabApp */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CD84CAFC2216BB010076AC39 /* Build configuration list for PBXNativeTarget "DeepLabApp" */;
+			buildPhases = (
+				CD84CAE62216BB000076AC39 /* Sources */,
+				CD84CAE72216BB000076AC39 /* Frameworks */,
+				CD84CAE82216BB000076AC39 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = DeepLabApp;
+			productName = DeepLabApp;
+			productReference = CD84CAEA2216BB000076AC39 /* DeepLabApp.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		CD84CAE22216BB000076AC39 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				LastSwiftUpdateCheck = 1010;
+				LastUpgradeCheck = 1010;
+				ORGANIZATIONNAME = TensorFlow;
+				TargetAttributes = {
+					CD84CAE92216BB000076AC39 = {
+						CreatedOnToolsVersion = 10.1;
+						LastSwiftMigration = 1010;
+					};
+				};
+			};
+			buildConfigurationList = CD84CAE52216BB000076AC39 /* Build configuration list for PBXProject "DeepLabApp" */;
+			compatibilityVersion = "Xcode 9.3";
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = CD84CAE12216BB000076AC39;
+			productRefGroup = CD84CAEB2216BB000076AC39 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				CD84CAE92216BB000076AC39 /* DeepLabApp */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		CD84CAE82216BB000076AC39 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD84CB0C2216BB4F0076AC39 /* Main.storyboard in Resources */,
+				CD84CB0A2216BB4F0076AC39 /* Assets.xcassets in Resources */,
+				CD84CB0B2216BB4F0076AC39 /* LaunchScreen.storyboard in Resources */,
+				CD84CB122216BC280076AC39 /* deeplabv3_257_mv_gpu.tflite in Resources */,
+				CD84CB112216BC280076AC39 /* labels.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		CD84CAE62216BB000076AC39 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CD84CB0E2216BB4F0076AC39 /* AppDelegate.swift in Sources */,
+				CD84CB192216BD0E0076AC39 /* DeepLabModel.mm in Sources */,
+				CD84CB0D2216BB4F0076AC39 /* ViewController.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		CD84CB012216BB4F0076AC39 /* LaunchScreen.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				CD84CB022216BB4F0076AC39 /* Base */,
+			);
+			name = LaunchScreen.storyboard;
+			sourceTree = "<group>";
+		};
+		CD84CB032216BB4F0076AC39 /* Main.storyboard */ = {
+			isa = PBXVariantGroup;
+			children = (
+				CD84CB042216BB4F0076AC39 /* Base */,
+			);
+			name = Main.storyboard;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		CD84CAFA2216BB010076AC39 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		CD84CAFB2216BB010076AC39 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		CD84CAFD2216BB010076AC39 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
+				INFOPLIST_FILE = DeepLabApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.tensorflow.DeepLabApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "DeepLabApp/Classes/Controllers/DeepLabApp-Bridging-Header.h";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		CD84CAFE2216BB010076AC39 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_ENABLE_MODULES = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = "";
+				FRAMEWORK_SEARCH_PATHS = "$(inherited)";
+				INFOPLIST_FILE = DeepLabApp/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 12.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = org.tensorflow.DeepLabApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_OBJC_BRIDGING_HEADER = "DeepLabApp/Classes/Controllers/DeepLabApp-Bridging-Header.h";
+				SWIFT_VERSION = 4.2;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		CD84CAE52216BB000076AC39 /* Build configuration list for PBXProject "DeepLabApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CD84CAFA2216BB010076AC39 /* Debug */,
+				CD84CAFB2216BB010076AC39 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		CD84CAFC2216BB010076AC39 /* Build configuration list for PBXNativeTarget "DeepLabApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CD84CAFD2216BB010076AC39 /* Debug */,
+				CD84CAFE2216BB010076AC39 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = CD84CAE22216BB000076AC39 /* Project object */;
+}
