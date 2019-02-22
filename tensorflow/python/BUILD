@@ -3303,6 +3303,7 @@ py_library(
         ":smart_cond",
         ":summary_op_util",
         ":summary_ops_gen",
+        ":tensor_util",
         ":training_util",
         ":util",
         "//tensorflow/core:protos_all_py",
