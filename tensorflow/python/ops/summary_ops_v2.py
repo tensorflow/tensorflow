@@ -448,9 +448,9 @@ def write(tag, tensor, step, metadata=None, name=None):
     if context.context().summary_writer_resource is None:
       return constant_op.constant(False)
     if metadata is None:
-      serialized_metadata = constant_op.constant(b"")
+      serialized_metadata = b""
     elif hasattr(metadata, "SerializeToString"):
-      serialized_metadata = constant_op.constant(metadata.SerializeToString())
+      serialized_metadata = metadata.SerializeToString()
     else:
       serialized_metadata = metadata
 
