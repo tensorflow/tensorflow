@@ -28,6 +28,21 @@ namespace tensorflow {
 bool SerializeToStringDeterministic(const protobuf::MessageLite& msg,
                                     string* result);
 
+// As above, but takes a pre-allocated buffer wrapped by result.
+// PRECONDITION: size == msg.ByteSizeLong() && size <= INT_MAX.
+bool SerializeToBufferDeterministic(const protobuf::MessageLite& msg,
+                                    char* buffer, size_t size);
+
+// Returns true if serializing x and y using
+// SerializeToBufferDeterministic() yields identical strings.
+bool AreSerializedProtosEqual(const protobuf::MessageLite& x,
+                              const protobuf::MessageLite& y);
+
+// Computes Hash64 of the output of SerializeToBufferDeterministic().
+uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto);
+uint64 DeterministicProtoHash64(const protobuf::MessageLite& proto,
+                                uint64 seed);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_LIB_STRINGS_PROTO_SERIALIZATION_H_

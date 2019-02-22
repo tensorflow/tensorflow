@@ -72,7 +72,7 @@ py_test(
 
 tf_xla_py_test(
     name = "adadelta_test",
-    size = "large",
+    size = "medium",
     srcs = ["adadelta_test.py"],
     deps = [
         ":xla_test",
@@ -230,6 +230,7 @@ tf_xla_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:standard_ops",
     ],
 )
 
@@ -242,9 +243,33 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",
+        "//tensorflow/python:map_fn",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:training",
+    ],
+)
+
+tf_xla_py_test(
+    name = "self_adjoint_eig_op_test",
+    size = "medium",
+    srcs = ["self_adjoint_eig_op_test.py"],
+    # TODO(kuny): remove it after b/124377352 is fixed.
+    disabled_backends = [
+        "cpu",
+        "gpu",
+        "cpu_ondemand",
+    ],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 
@@ -277,10 +302,9 @@ tf_xla_py_test(
     ],
 )
 
-# This test is large because occasionally the cpu test is long for testConcatLargeNumberOfTensors
 tf_xla_py_test(
     name = "concat_ops_test",
-    size = "large",
+    size = "medium",
     srcs = ["concat_ops_test.py"],
     deps = [
         ":xla_test",
@@ -406,7 +430,7 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "eager_test",
-    size = "large",
+    size = "medium",
     srcs = ["eager_test.py"],
     deps = [
         ":xla_test",
@@ -677,6 +701,7 @@ tf_xla_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",
         "//tensorflow/python:random_ops",
+        "//tensorflow/python:standard_ops",
     ],
 )
 
@@ -826,6 +851,7 @@ tf_xla_py_test(
         ":xla_test",
         "//tensorflow/python:framework",
         "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
         "//tensorflow/python:stateless_random_ops",
     ],
 )
@@ -1188,11 +1214,18 @@ tf_xla_py_test(
 
 tf_xla_py_test(
     name = "quantized_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["quantized_ops_test.py"],
+    disabled_backends = [
+        "cpu",
+        "cpu_ondemand",
+    ],
     deps = [
         ":xla_test",
+        "//tensorflow/compiler/tf2xla/python:xla",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:bitwise_ops",
+        "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform_test",

@@ -29,12 +29,10 @@ class MatchingFilesDataset(dataset_ops.DatasetSource):
   """A `Dataset` that list the files according to the input patterns."""
 
   def __init__(self, patterns):
-    super(MatchingFilesDataset, self).__init__()
     self._patterns = ops.convert_to_tensor(
         patterns, dtype=dtypes.string, name="patterns")
-
-  def _as_variant_tensor(self):
-    return ged_ops.experimental_matching_files_dataset(self._patterns)
+    variant_tensor = ged_ops.experimental_matching_files_dataset(self._patterns)
+    super(MatchingFilesDataset, self).__init__(variant_tensor)
 
   @property
   def _element_structure(self):

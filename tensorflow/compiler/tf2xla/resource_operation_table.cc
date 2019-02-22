@@ -65,6 +65,7 @@ CreateResourceOpInfoMap() {
   add("ResourceApplyFtrlV2"                  , kReadWrite, kVariable);
   add("ResourceApplyGradientDescent"         , kReadWrite, kVariable);
   add("ResourceApplyMomentum"                , kReadWrite, kVariable);
+  add("ResourceApplyKerasMomentum"           , kReadWrite, kVariable);
   add("ResourceApplyPowerSign"               , kReadWrite, kVariable);
   add("ResourceApplyProximalAdagrad"         , kReadWrite, kVariable);
   add("ResourceApplyProximalGradientDescent" , kReadWrite, kVariable);
@@ -76,6 +77,7 @@ CreateResourceOpInfoMap() {
   add("ResourceScatterMin"                   , kReadWrite, kVariable);
   add("ResourceScatterMul"                   , kReadWrite, kVariable);
   add("ResourceScatterNdAdd"                 , kReadWrite, kVariable);
+  add("ResourceScatterNdSub"                 , kReadWrite, kVariable);
   add("ResourceScatterNdUpdate"              , kReadWrite, kVariable);
   add("ResourceScatterSub"                   , kReadWrite, kVariable);
   add("ResourceScatterUpdate"                , kReadWrite, kVariable);

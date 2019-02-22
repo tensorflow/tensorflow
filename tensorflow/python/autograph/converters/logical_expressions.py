@@ -38,28 +38,28 @@ from tensorflow.python.autograph.pyct import templates
 SAFE_BOOLEAN_OPERAND = 'SAFE_BOOLEAN_OPERAND'
 
 
+OP_MAPPING = {
+    gast.And: 'ag__.and_',
+    gast.Eq: 'ag__.eq',
+    gast.NotEq: 'ag__.not_eq',
+    gast.Lt: 'ag__.lt',
+    gast.LtE: 'ag__.lt_e',
+    gast.Gt: 'ag__.gt',
+    gast.GtE: 'ag__.gt_e',
+    gast.Is: 'ag__.is_',
+    gast.IsNot: 'ag__.is_not',
+    gast.In: 'ag__.in_',
+    gast.Not: 'ag__.not_',
+    gast.NotIn: 'ag__.not_in',
+    gast.Or: 'ag__.or_',
+    gast.UAdd: 'ag__.u_add',
+    gast.USub: 'ag__.u_sub',
+    gast.Invert: 'ag__.invert',
+}
+
+
 class LogicalExpressionTransformer(converter.Base):
   """Converts logical expressions to corresponding TF calls."""
-
-  def __init__(self, ctx):
-    super(LogicalExpressionTransformer, self).__init__(ctx)
-    # TODO(mdan): For completeness and consistency, overload everything.
-    self.op_mapping = {
-        gast.And: 'ag__.and_',
-        gast.Eq: 'ag__.eq',
-        gast.NotEq: 'ag__.not_eq',
-        gast.Lt: 'ag__.lt',
-        gast.LtE: 'ag__.lt_e',
-        gast.Gt: 'ag__.gt',
-        gast.GtE: 'ag__.gt_e',
-        gast.Is: 'ag__.is_',
-        gast.IsNot: 'ag__.is_not',
-        gast.In: 'ag__.in_',
-        gast.Not: 'ag__.not_',
-        gast.NotIn: 'ag__.not_in',
-        gast.Or: 'ag__.or_',
-        gast.USub: 'ag__.u_sub',
-    }
 
   def _expect_simple_symbol(self, operand):
     if isinstance(operand, gast.Name):
@@ -74,11 +74,11 @@ class LogicalExpressionTransformer(converter.Base):
 
   def _has_matching_func(self, operator):
     op_type = type(operator)
-    return op_type in self.op_mapping
+    return op_type in OP_MAPPING
 
   def _matching_func(self, operator):
     op_type = type(operator)
-    return self.op_mapping[op_type]
+    return OP_MAPPING[op_type]
 
   def _as_function(self, func_name, args, args_as_lambda=False):
     if args_as_lambda:

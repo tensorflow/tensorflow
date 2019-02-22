@@ -23,9 +23,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import traceback
 
 from tensorflow.python.platform import tf_logging as logging
+
+ENABLE_CONTROL_FLOW_V2 = (os.getenv("TF_ENABLE_CONTROL_FLOW_V2", "0") != "0" or
+                          os.getenv("TF_ENABLE_COND_V2", "0") != "0" or
+                          os.getenv("TF_ENABLE_WHILE_V2", "0") != "0" or
+                          os.getenv("TF_ENABLE_TENSOR_ARRAY_V2", "0") != "0")
+
+
+def EnableControlFlowV2(graph):
+  """Returns whether control flow v2 should be used in `graph`."""
+  # Enable new control flow in FuncGraphs (but not legacy _FuncGraphs).
+  # TODO(skyewm): do something better than hasattr without messing up imports.
+  return ENABLE_CONTROL_FLOW_V2 or (
+      graph.building_function and not hasattr(graph, "_captured"))
 
 
 def IsInXLAContext(op):
@@ -41,6 +55,15 @@ def IsInXLAContext(op):
 def InXlaContext(graph):
   ctxt = graph._get_control_flow_context()  # pylint: disable=protected-access
   return GetContainingXLAContext(ctxt) is not None
+
+
+def GraphOrParentsInXlaContext(graph):
+  while True:
+    if InXlaContext(graph): return True
+    try:
+      graph = graph.outer_graph
+    except AttributeError:
+      return False
 
 
 def IsInWhileLoop(op):
@@ -308,7 +331,7 @@ def CheckInputFromValidContext(op, input_op):
     if while_ctxt:
       error_msg = (
           "Cannot use '%s' as input to '%s' because they are in different while"
-          " loops." % (op.name, input_op.name))
+          " loops." % (input_op.name, op.name))
     else:
       error_msg = (
           "Cannot use '%s' as input to '%s' because '%s' is in a while loop."

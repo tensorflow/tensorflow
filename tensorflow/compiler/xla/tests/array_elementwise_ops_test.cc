@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -1443,6 +1442,27 @@ XLA_TEST_F(ArrayElementwiseOpTest, PowNonIntegerF32s) {
                              error_spec_);
 }
 
+XLA_TEST_F(ArrayElementwiseOpTest, PowC64s) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto lhs =
+      ConstantR1<complex64>(&builder, {-2.0f, -0.6f, -0.6f, 0.0f, 0.0f, 0.0f});
+  auto rhs =
+      ConstantR1<complex64>(&builder, {0.5f, 0.6f, -0.6f, 0.5f, 0.6f, 0.0f});
+  Pow(lhs, rhs);
+
+  ComputeAndCompareR1<complex64>(&builder,
+                                 {
+                                     {0, 1.41421356},
+                                     {-2.27443288e-01, 0.69999846},
+                                     {-4.19847531e-01, -1.29215783},
+                                     {0, 0},
+                                     {0, 0},
+                                     {1, 0},
+                                 },
+                                 {}, error_spec_);
+}
+
 XLA_TEST_F(ArrayElementwiseOpTest, PowZeroElementF32s) {
   XlaBuilder builder(TestName());
   auto lhs = ConstantR1<float>(&builder, {});
@@ -2044,6 +2064,19 @@ XLA_TEST_F(ArrayElementwiseOpTest, NonNanClampF32) {
   Clamp(minimum, argument, maximum);
 
   ComputeAndCompareR1<float>(&builder, {2.0f, 0.5f, 1.0f, 2.25f, 10.0f}, {},
+                             error_spec_);
+}
+
+XLA_TEST_F(ArrayElementwiseOpTest, ClampF32) {
+  SetFastMathDisabled(true);
+  XlaBuilder builder(TestName());
+  auto minimum = ConstantR1<float>(&builder, {1.0f, -6.5f, 1.0f, 2.25f, NAN});
+  auto argument =
+      ConstantR1<float>(&builder, {2.0f, 10.0f, -5.0f, 1.0f, 10.0f});
+  auto maximum = ConstantR1<float>(&builder, {3.0f, 0.5f, 25.5f, NAN, 123.0f});
+  Clamp(minimum, argument, maximum);
+
+  ComputeAndCompareR1<float>(&builder, {2.0f, 0.5f, 1.0f, NAN, NAN}, {},
                              error_spec_);
 }
 

@@ -349,7 +349,7 @@ Status GetDatasetFromVariantTensor(const Tensor& tensor,
 }
 
 Status StoreDatasetInVariantTensor(DatasetBase* dataset, Tensor* tensor) {
-  if (!(tensor->dtype() == DT_VARIANT ||
+  if (!(tensor->dtype() == DT_VARIANT &&
         TensorShapeUtils::IsScalar(tensor->shape()))) {
     return errors::InvalidArgument(
         "Dataset tensor must be a scalar of dtype DT_VARIANT.");

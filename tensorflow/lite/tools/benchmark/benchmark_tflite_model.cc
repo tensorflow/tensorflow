@@ -316,17 +316,12 @@ void BenchmarkTfLiteModel::Init() {
   tflite::ops::builtin::BuiltinOpResolver resolver;
 #endif
 
-  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
+  const int32_t num_threads = params_.Get<int32_t>("num_threads");
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter, num_threads);
   if (!interpreter) {
     TFLITE_LOG(FATAL) << "Failed to construct interpreter";
   }
   profiling_listener_.SetInterpreter(interpreter.get());
-
-  const int32_t num_threads = params_.Get<int32_t>("num_threads");
-
-  if (num_threads != -1) {
-    interpreter->SetNumThreads(num_threads);
-  }
 
   bool use_nnapi = params_.Get<bool>("use_nnapi");
 
@@ -361,8 +356,20 @@ void BenchmarkTfLiteModel::Init() {
     }
   }
 
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
+  // Don't allocate tensors if we have delegates.
+  if (delegates_.empty() && interpreter->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
+  }
+}
+
+void BenchmarkTfLiteModel::ApplyDelegates() {
+  for (int i = 0; i < delegates_.size(); ++i) {
+    if (interpreter->ModifyGraphWithDelegate(delegates_[i].get()) !=
+        kTfLiteOk) {
+      TFLITE_LOG(FATAL) << "Failed to apply delegate # " << i;
+    } else {
+      TFLITE_LOG(INFO) << "Applied Delegate # " << i;
+    }
   }
 }
 

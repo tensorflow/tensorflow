@@ -91,9 +91,10 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
       : NcclReduceOpBase(c) {}
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
-    const Tensor* in_t = &c->input(0);
-    Tensor* out_t;
-    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, in_t->shape(), &out_t), done);
+    const Tensor* input = &c->input(0);
+    Tensor* output;
+    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, input->shape(), &output),
+                         done);
 
     auto actual_done = [c, done](Status s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
@@ -102,10 +103,17 @@ class NcclAllReduceOpKernel : public NcclReduceOpBase {
 
     auto* compute_stream = c->op_device_context()->stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        compute_stream->parent(), compute_stream, gpu_info->event_mgr,
+        gpu_info->gpu_id, input, output, /*global_rank=*/-1,
+        std::move(actual_done));
     NcclManager::instance()->AddToAllReduce(
-        num_devices(), GetCollectiveKey(c), reduction_op(),
-        compute_stream->parent(), gpu_info->gpu_id, gpu_info->event_mgr,
-        compute_stream, in_t, out_t, std::move(actual_done));
+        std::move(participant),
+        {GetCollectiveKey(c),
+         /*num_local_devices=*/num_devices(),
+         /*num_global_devices=*/num_devices(),
+         /*communicator_key=*/""},
+        reduction_op());
   }
 };
 REGISTER_KERNEL_BUILDER(Name("NcclAllReduce").Device(DEVICE_GPU),
@@ -127,10 +135,17 @@ class NcclReduceSendKernel : public NcclReduceOpBase {
 
     auto* compute_stream = c->op_device_context()->stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        compute_stream->parent(), compute_stream, gpu_info->event_mgr,
+        gpu_info->gpu_id, &c->input(0), /*output=*/nullptr, /*global_rank=*/-1,
+        std::move(actual_done));
     NcclManager::instance()->AddReduceSend(
-        num_devices(), GetCollectiveKey(c), reduction_op(),
-        compute_stream->parent(), gpu_info->gpu_id, gpu_info->event_mgr,
-        compute_stream, &c->input(0), std::move(actual_done));
+        std::move(participant),
+        {GetCollectiveKey(c),
+         /*num_local_devices=*/num_devices(),
+         /*num_global_devices=*/num_devices(),
+         /*communicator_key=*/""},
+        reduction_op());
   }
 };
 REGISTER_KERNEL_BUILDER(Name("_NcclReduceSend").Device(DEVICE_GPU),
@@ -145,9 +160,10 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
       : NcclReduceOpBase(c) {}
 
   void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
-    const Tensor& in_t = c->input(0);
-    Tensor* out_t;
-    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, in_t.shape(), &out_t), done);
+    const Tensor* input = &c->input(0);
+    Tensor* output;
+    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, input->shape(), &output),
+                         done);
 
     auto actual_done = [c, done](Status s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
@@ -156,10 +172,17 @@ class NcclReduceRecvKernel : public NcclReduceOpBase {
 
     auto* compute_stream = c->op_device_context()->stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        compute_stream->parent(), compute_stream, gpu_info->event_mgr,
+        gpu_info->gpu_id, input, output, /*global_rank=*/-1,
+        std::move(actual_done));
     NcclManager::instance()->AddReduceRecv(
-        num_devices(), GetCollectiveKey(c), reduction_op(),
-        compute_stream->parent(), gpu_info->gpu_id, gpu_info->event_mgr,
-        compute_stream, &in_t, out_t, std::move(actual_done));
+        std::move(participant),
+        {GetCollectiveKey(c),
+         /*num_local_devices=*/num_devices(),
+         /*num_global_devices=*/num_devices(),
+         /*communicator_key=*/""},
+        reduction_op());
   }
 
  private:
@@ -184,10 +207,15 @@ class NcclBroadcastSendKernel : public NcclAsyncOpBase {
 
     auto* compute_stream = c->op_device_context()->stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
-    NcclManager::instance()->AddBroadcastSend(
-        num_devices(), GetCollectiveKey(c), compute_stream->parent(),
-        gpu_info->gpu_id, gpu_info->event_mgr, compute_stream, &c->input(0),
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        compute_stream->parent(), compute_stream, gpu_info->event_mgr,
+        gpu_info->gpu_id, &c->input(0), /*output=*/nullptr, /*global_rank=*/-1,
         std::move(actual_done));
+    NcclManager::instance()->AddBroadcastSend(
+        std::move(participant), {GetCollectiveKey(c),
+                                 /*num_local_devices=*/num_devices(),
+                                 /*num_global_devices=*/num_devices(),
+                                 /*communicator_key=*/""});
   }
 };
 REGISTER_KERNEL_BUILDER(Name("_NcclBroadcastSend").Device(DEVICE_GPU),
@@ -206,8 +234,8 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
     TensorShape shape;
     OP_REQUIRES_OK_ASYNC(
         c, TensorShapeUtils::MakeShape(shape_t.vec<int32>(), &shape), done);
-    Tensor* out_t;
-    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape, &out_t), done);
+    Tensor* output;
+    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape, &output), done);
 
     auto actual_done = [c, done](Status s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
@@ -216,10 +244,15 @@ class NcclBroadcastRecvKernel : public NcclAsyncOpBase {
 
     auto* compute_stream = c->op_device_context()->stream();
     auto* gpu_info = c->device()->tensorflow_gpu_device_info();
-    NcclManager::instance()->AddBroadcastRecv(
-        num_devices(), GetCollectiveKey(c), compute_stream->parent(),
-        gpu_info->gpu_id, gpu_info->event_mgr, compute_stream, out_t,
+    auto participant = absl::make_unique<NcclManager::Participant>(
+        compute_stream->parent(), compute_stream, gpu_info->event_mgr,
+        gpu_info->gpu_id, /*input=*/nullptr, output, /*global_rank=*/-1,
         std::move(actual_done));
+    NcclManager::instance()->AddBroadcastSend(
+        std::move(participant), {GetCollectiveKey(c),
+                                 /*num_local_devices=*/num_devices(),
+                                 /*num_global_devices=*/num_devices(),
+                                 /*communicator_key=*/""});
   }
 };
 REGISTER_KERNEL_BUILDER(

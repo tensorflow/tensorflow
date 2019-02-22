@@ -64,8 +64,8 @@ class FilterByLastComponentDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<Iterator>(new Iterator(
-          {this, strings::StrCat(prefix, "::FilterByLastComponent")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::FilterByLastComponent")});
     }
 
     const DataTypeVector& output_dtypes() const override {

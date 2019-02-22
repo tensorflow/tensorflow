@@ -16,6 +16,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
+    argspec: "args=[\'self\', \'variant_tensor\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "apply"
@@ -88,6 +89,10 @@ tf_class {
   member_method {
     name: "repeat"
     argspec: "args=[\'self\', \'count\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "shard"
+    argspec: "args=[\'self\', \'num_shards\', \'index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "shuffle"

@@ -70,6 +70,9 @@ PlatformUtil::GetSupportedPlatforms() {
   for (se::Platform* platform : all_platforms) {
     auto compiler_status = Compiler::GetForPlatform(platform);
     if (compiler_status.ok()) {
+      if (!platform->Initialized()) {
+        TF_RETURN_IF_ERROR(platform->Initialize({}));
+      }
       platforms.push_back(platform);
     } else {
       LOG(INFO) << "platform " << platform->Name() << " present but no "
@@ -205,7 +208,9 @@ static bool IsDeviceSupported(se::StreamExecutor* executor) {
 }
 
 /* static */ StatusOr<std::vector<se::StreamExecutor*>>
-PlatformUtil::GetStreamExecutors(se::Platform* platform) {
+PlatformUtil::GetStreamExecutors(
+    se::Platform* platform,
+    const absl::optional<std::set<int>>& allowed_devices) {
   int device_count = platform->VisibleDeviceCount();
   if (device_count <= 0) {
     return NotFound("no %s devices found", platform->Name());
@@ -226,6 +231,17 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     tensorflow::thread::ThreadPool thread_pool(
         tensorflow::Env::Default(), "device_initialization", device_count);
     for (int i = 0; i < device_count; ++i) {
+      // Once a stream executor is instantiated it will cause allocations on
+      // the device, for example for GPUs cuda context, cudnn handles etc. will
+      // be constructed. By constructing stream executors only on the
+      // allowed_devices, we don't make any allocations on other devices.
+      // This helps in multi-process executions on the same host like horovod or
+      // shared hosts.
+      if (allowed_devices && allowed_devices->count(i) == 0) {
+        VLOG(1) << "Not initializing StreamExecutor for device " << i
+                << " since it is not in the visible device list";
+        continue;
+      }
       thread_pool.Schedule([platform, i, &stream_executors]() {
         VLOG(1) << "Started device init " << i;
         se::StreamExecutorConfig config;
@@ -247,8 +263,8 @@ PlatformUtil::GetStreamExecutors(se::Platform* platform) {
     // Block here in thread_pool destructor until all devices are initialized.
   }
   VLOG(1) << "Device initialization complete";
-  if (std::all_of(stream_executors.begin(), stream_executors.end(),
-                  [](se::StreamExecutor* s) { return s == nullptr; })) {
+  if (absl::c_all_of(stream_executors,
+                     [](se::StreamExecutor* s) { return s == nullptr; })) {
     return InternalError("no supported devices found for platform %s",
                          platform->Name());
   }

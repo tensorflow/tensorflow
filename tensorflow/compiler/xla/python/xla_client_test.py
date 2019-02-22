@@ -18,16 +18,18 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import functools
 import itertools
 import threading
 
 import numpy as np
 
+from tensorflow.compiler.xla.python import custom_call_for_test
 from tensorflow.compiler.xla.python import xla_client
 import unittest
 
 
-class LocalComputationTest(unittest.TestCase):
+class ComputationTest(unittest.TestCase):
   """Base class for running an XLA Computation through the local client."""
 
   def _NewComputation(self, name=None):
@@ -51,9 +53,11 @@ class LocalComputationTest(unittest.TestCase):
   def _ExecuteAndCompareExact(self, c, arguments=(), expected=None):
     self._ExecuteAndAssertWith(np.testing.assert_equal, c, arguments, expected)
 
-  def _ExecuteAndCompareClose(self, c, arguments=(), expected=None):
-    self._ExecuteAndAssertWith(np.testing.assert_allclose, c, arguments,
-                               expected)
+  def _ExecuteAndCompareClose(self, c, arguments=(), expected=None, rtol=1e-7,
+                              atol=0):
+    self._ExecuteAndAssertWith(
+        functools.partial(np.testing.assert_allclose, rtol=rtol, atol=atol),
+        c, arguments, expected)
 
 
 def NumpyArrayF32(*args, **kwargs):
@@ -81,8 +85,34 @@ def NumpyArrayBool(*args, **kwargs):
   return np.array(*args, dtype=np.bool, **kwargs)
 
 
-class ComputationsWithConstantsTest(LocalComputationTest):
+class ComputationPrinting(unittest.TestCase):
+
+  def ExampleComputation(self):
+    builder = xla_client.ComputationBuilder("acomputation")
+    p0 = builder.ParameterFromNumpy(np.float32(0))
+    p1 = builder.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder.Mul(p0, p1)
+    return builder.Build()
+
+  def testComputationToHloText(self):
+    computation = self.ExampleComputation()
+    hlo_text = computation.GetHloText()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+
+  def testComputationToHloGraph(self):
+    computation = self.ExampleComputation()
+    hlo_dot_graph = computation.GetHloDotGraph()
+    self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+
+class ComputationsWithConstantsTest(ComputationTest):
   """Tests focusing on Constant ops."""
+
+  def testConstantScalarSumS8(self):
+    c = self._NewComputation()
+    root = c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
+    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    self._ExecuteAndCompareExact(c, expected=np.int8(3))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
@@ -142,6 +172,17 @@ class ComputationsWithConstantsTest(LocalComputationTest):
     c = self._NewComputation()
     c.Pow(c.Constant(NumpyArrayF64([1.5, 2.5, 3.0])), c.ConstantF64Scalar(2.))
     self._ExecuteAndCompareClose(c, expected=[2.25, 6.25, 9.])
+
+  def testIota(self):
+    c = self._NewComputation()
+    c.Iota(np.float32, 10)
+    self._ExecuteAndCompareExact(c, expected=np.arange(10, dtype=np.float32))
+
+  def testBroadcastedIota(self):
+    c = self._NewComputation()
+    c.BroadcastedIota(np.int64, (2, 3), 1)
+    expected = np.array([[0, 1, 2], [0, 1, 2]], dtype=np.int64)
+    self._ExecuteAndCompareExact(c, expected=expected)
 
   def testBooleanAnd(self):
     c = self._NewComputation()
@@ -268,8 +309,22 @@ class ComputationsWithConstantsTest(LocalComputationTest):
         c.Constant(NumpyArrayF64([100, -100, 200, -200])))
     self._ExecuteAndCompareClose(c, expected=[104.4, -93.4, 208.8, -189])
 
+  def testCustomCall(self):
+    c = self._NewComputation()
+    for name, fn in custom_call_for_test.cpu_custom_call_targets.items():
+      xla_client.register_cpu_custom_call_target(name, fn)
+    c.CustomCall(
+        b"test_subtract_f32",
+        operands=(c.ConstantF32Scalar(1.25), c.ConstantF32Scalar(0.5)),
+        shape_with_layout=xla_client.Shape.array_shape(np.float32, (), ()),
+        operand_shapes_with_layout=(
+            xla_client.Shape.array_shape(np.float32, (), ()),
+            xla_client.Shape.array_shape(np.float32, (), ()),
+        ))
+    self._ExecuteAndCompareClose(c, expected=0.75)
 
-class ParametersTest(LocalComputationTest):
+
+class ParametersTest(ComputationTest):
   """Tests focusing on Parameter ops and argument-passing."""
 
   def setUp(self):
@@ -349,7 +404,7 @@ class ParametersTest(LocalComputationTest):
         expected=[-4.3, 1.3, -6.3, 3.3])
 
 
-class LocalBufferTest(LocalComputationTest):
+class LocalBufferTest(ComputationTest):
   """Tests focusing on execution with LocalBuffers."""
 
   def _Execute(self, c, arguments):
@@ -447,7 +502,7 @@ class LocalBufferTest(LocalComputationTest):
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
 
-class SingleOpTest(LocalComputationTest):
+class SingleOpTest(ComputationTest):
   """Tests for single ops.
 
   The goal here is smoke testing - to exercise the most basic functionality of
@@ -524,6 +579,18 @@ class SingleOpTest(LocalComputationTest):
       for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
         _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
 
+  # TODO(b/123523486): re-enable when shape check is resolved
+  def DISABLED_testAllToAllOneReplica(self):
+    samples = [
+        NumpyArrayF32([97.0]),
+        NumpyArrayF32([64.0, 117.0]),
+        NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]]),
+    ]
+    for lhs in samples[:1]:
+      c = self._NewComputation()
+      c.AllToAll(c.Constant(lhs), 0, 0)
+      self._ExecuteAndCompareExact(c, expected=lhs)
+
   def testCrossReplicaSumOneReplica(self):
     samples = [
         NumpyArrayF32(42.0),
@@ -534,6 +601,18 @@ class SingleOpTest(LocalComputationTest):
     for lhs in samples:
       c = self._NewComputation()
       c.CrossReplicaSum(c.Constant(lhs))
+      self._ExecuteAndCompareExact(c, expected=lhs)
+
+  def testCrossReplicaSumOneReplicaWithSingletonGroup(self):
+    samples = [
+        NumpyArrayF32(42.0),
+        NumpyArrayF32([97.0]),
+        NumpyArrayF32([64.0, 117.0]),
+        NumpyArrayF32([[2.0, 3.0], [4.0, 5.0]]),
+    ]
+    for lhs in samples:
+      c = self._NewComputation()
+      c.CrossReplicaSum(c.Constant(lhs), [[0]])
       self._ExecuteAndCompareExact(c, expected=lhs)
 
   def testDotMatrixVectorF32(self):
@@ -697,6 +776,12 @@ class SingleOpTest(LocalComputationTest):
     arr = NumpyArrayBool([True, False, True])
     c.Not(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=~arr)
+
+  def testCountLeadingZeros(self):
+    c = self._NewComputation()
+    arr = NumpyArrayS32([0x7FFF, 0x12345678])
+    c.Clz(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=[17, 3])
 
   def testExp(self):
     c = self._NewComputation()
@@ -1057,6 +1142,38 @@ class SingleOpTest(LocalComputationTest):
     self.assertTrue(np.all(lo <= result))
     self.assertTrue(np.all(result < hi))
 
+  def testCholesky(self):
+    l = np.array([[4, 0, 0, 0], [6, 5, 0, 0], [2, 14, 16, 0], [3, 6, 1, 4]],
+                 dtype=np.float32)
+    c = self._NewComputation()
+    c.Cholesky(c.Constant(np.dot(l, l.T)))
+    self._ExecuteAndCompareClose(c, expected=l, rtol=1e-4)
+
+  def testQR(self):
+    a = np.array(
+        [[4, 6, 8, 10], [6, 45, 54, 63], [8, 54, 146, 166], [10, 63, 166, 310]],
+        dtype=np.float32)
+    c = self._NewComputation()
+    c.QR(c.Constant(a), full_matrices=True)
+    q, r = self._Execute(c, ())
+    np.testing.assert_allclose(np.dot(q, r), a, rtol=1e-4)
+
+  def testTriangularSolve(self):
+    a_vals = np.array(
+        [[2, 0, 0, 0], [3, 6, 0, 0], [4, 7, 9, 0], [5, 8, 10, 11]],
+        dtype=np.float32)
+    b_vals = np.array([[1, 2, 3, 4], [5, 6, 7, 8], [9, 10, 11, 12]],
+                      dtype=np.float32)
+
+    c = self._NewComputation()
+    c.TriangularSolve(c.Constant(a_vals), c.Constant(b_vals), left_side=False,
+                      lower=True, transpose_a=True)
+    self._ExecuteAndCompareClose(c, expected=np.array([
+        [0.5, 0.08333334, 0.04629629, 0.03367003],
+        [2.5, -0.25, -0.1388889, -0.1010101],
+        [4.5, -0.58333331, -0.32407406, -0.23569024],
+    ], dtype=np.float32), rtol=1e-4)
+
   def testIsConstant(self):
     c = self._NewComputation()
     a = c.ConstantS32Scalar(3)
@@ -1068,8 +1185,23 @@ class SingleOpTest(LocalComputationTest):
     self.assertFalse(c.IsConstant(non_const_expr))
     # self.assertTrue(c.IsConstant(c.Sub(c.Add(x, a), x)))  # TODO(b/77245564)
 
+  def testGather(self):
+    a = np.arange(9).astype(np.int32).reshape((3, 3))
+    indices = np.array([[[0, 2], [2, 1]], [[1, 2], [2, 0]]], dtype=np.int32)
+    dnums = xla_client.xla_data_pb2.GatherDimensionNumbers()
+    dnums.offset_dims.append(1)
+    dnums.offset_dims.append(2)
+    dnums.start_index_map.append(0)
+    dnums.start_index_map.append(1)
+    dnums.index_vector_dim = 2
+    c = self._NewComputation()
+    c.Gather(c.Constant(a), c.Constant(indices), dnums, slice_sizes=[1, 1])
+    g = self._Execute(c, ())
+    expected = np.array([[[[2, 7]]], [[[5, 6]]]], dtype=np.int32)
+    np.testing.assert_allclose(g, expected, rtol=1e-4)
 
-class EmbeddedComputationsTest(LocalComputationTest):
+
+class EmbeddedComputationsTest(ComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""
 
   def _CreateConstantS32Computation(self):
@@ -1123,6 +1255,14 @@ class EmbeddedComputationsTest(LocalComputationTest):
     """Computation (f64) -> f64 that multiplies its parameter by 2."""
     c = self._NewComputation("mul_f64_by2")
     c.Mul(c.ParameterFromNumpy(NumpyArrayF64(0)), c.ConstantF64Scalar(2.0))
+    return c.Build()
+
+  def _CreateBinaryAddS32Computation(self):
+    """Computation (s32, s32) -> s32 that adds its two parameters."""
+    c = self._NewComputation("add_param0_by_param1")
+    c.Add(
+        c.ParameterFromNumpy(NumpyArrayS32(0)),
+        c.ParameterFromNumpy(NumpyArrayS32(0)))
     return c.Build()
 
   def _CreateBinaryAddF32Computation(self):
@@ -1507,8 +1647,25 @@ class EmbeddedComputationsTest(LocalComputationTest):
       execution.join()
       self.assertEqual(want, got)
 
+  def testScatter(self):
+    a = np.arange(9).astype(np.int32).reshape((3, 3))
+    scatter_indices = np.array([0, 2], dtype=np.int32)
+    updates = np.array([[10, 20, 30], [70, 80, 90]], dtype=np.int32)
 
-class ErrorTest(LocalComputationTest):
+    dnums = xla_client.xla_data_pb2.ScatterDimensionNumbers()
+    dnums.update_window_dims.append(1)
+    dnums.inserted_window_dims.append(0)
+    dnums.scatter_dims_to_operand_dims.append(0)
+    dnums.index_vector_dim = 1
+
+    c = self._NewComputation()
+    c.Scatter(c.Constant(a), c.Constant(scatter_indices), c.Constant(updates),
+              self._CreateBinaryAddS32Computation(), dnums)
+    expected = np.array([[10, 21, 32], [3, 4, 5], [76, 87, 98]], dtype=np.int32)
+    self._ExecuteAndCompareClose(c, expected=expected)
+
+
+class ErrorTest(ComputationTest):
 
   def setUp(self):
     self.f32_scalar_2 = NumpyArrayF32(2.0)
@@ -1525,7 +1682,7 @@ class ErrorTest(LocalComputationTest):
         lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
 
 
-class ComputationRootTest(LocalComputationTest):
+class ComputationRootTest(ComputationTest):
   """Tests related to setting the root of the computation."""
 
   def testComputationRootDifferentFromLastOp(self):

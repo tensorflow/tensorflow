@@ -35,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -730,7 +731,7 @@ Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
   ::grpc::ChannelArguments args;
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
   channel_ = ::grpc::CreateCustomChannel(
       server_stream_addr_, ::grpc::InsecureChannelCredentials(), args);
   if (!channel_->WaitForConnected(

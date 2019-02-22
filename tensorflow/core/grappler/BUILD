@@ -1,7 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
-load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library")
 
 cc_library(
     name = "op_types",
@@ -27,6 +26,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
     ],
 )
@@ -44,6 +44,7 @@ tf_cc_test(
         "//tensorflow/core:tensor_testutil",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "@com_google_absl//absl/strings",
     ],
 )
 
@@ -59,6 +60,35 @@ tf_cuda_library(
     deps = [
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
+    ],
+)
+
+cc_library(
+    name = "graph_topology_view",
+    srcs = ["graph_topology_view.cc"],
+    hdrs = ["graph_topology_view.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":graph_view",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:inlined_vector",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:optional",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+tf_cc_test(
+    name = "graph_topology_view_test",
+    srcs = ["graph_topology_view_test.cc"],
+    deps = [
+        ":graph_topology_view",
+        ":graph_view",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
     ],
 )
 
@@ -176,12 +206,17 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":graph_view",
-        ":grappler_item",
+        ":op_types",
         ":utils",
+        "//tensorflow/core:framework",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -191,10 +226,15 @@ tf_cc_test(
     deps = [
         ":grappler_item",
         ":mutable_graph_view",
+        ":utils",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/core:graph",
+        "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )

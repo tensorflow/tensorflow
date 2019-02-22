@@ -730,6 +730,7 @@ class PoolingTest(test.TestCase):
         t = nn_ops.max_pool(
             t, ksize=ksize, strides=strides, padding="SAME").eval()
 
+  @test_util.disable_xla("b/123338077")  # Passes with XLA
   def testDepthwiseMaxPoolInvalidConfigs(self):
     self._testDepthwiseMaxPoolInvalidConfig(
         [1, 2, 2, 4], [1, 2, 2, 2], [1, 1, 1, 2],
@@ -1351,6 +1352,7 @@ class PoolingTest(test.TestCase):
             use_gpu=use_gpu,
             v2=v2)
 
+  @test_util.disable_xla("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_1(self):
     input_data = [float("nan")] * 16
     output_backprop = [11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 19.0, 20.0, 21.0]
@@ -1425,6 +1427,7 @@ class PoolingTest(test.TestCase):
     else:
       del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
+  @test_util.disable_xla("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_2(self):
     input_data = [float("nan")] * 16
     output_backprop = [
@@ -1818,6 +1821,7 @@ class PoolingTest(test.TestCase):
             padding="SAME")
 
   @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testOpEdgeCases(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
@@ -1893,9 +1897,18 @@ if __name__ == "__main__":
        padding_) in GetShrunkInceptionMaxPoolShapes():
     setattr(PoolingTest, "testMaxPoolFwd_" + name_,
             GetMaxPoolFwdTest(input_size_, filter_size_, stride_, padding_))
-    setattr(PoolingTest, "testMaxPoolGrad_" + name_,
-            GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
-                               padding_))
+    if name_ == "maxpool5":
+      setattr(
+          PoolingTest, "testMaxPoolGrad_" + name_,
+          test_util.disable_xla(
+              "b/123926014: incorrect output with only constants")(
+                  GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
+                                     stride_, padding_)))
+    else:
+      setattr(
+          PoolingTest, "testMaxPoolGrad_" + name_,
+          GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
+                             padding_))
     setattr(PoolingTest, "testMaxPoolGradGrad_" + name_,
             GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
                                    stride_, padding_))

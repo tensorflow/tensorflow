@@ -1205,6 +1205,16 @@ void ConvertFloorOperator(const Model& model, const FloorOperator& src_op,
   (*floor_op->mutable_attr())["T"].set_type(DT_FLOAT);
 }
 
+void ConvertCeilOperator(const Model& model, const CeilOperator& src_op,
+                         GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* ceil_op = tensorflow_graph->add_node();
+  ceil_op->set_op("Ceil");
+  ceil_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 1);
+  *ceil_op->add_input() = src_op.inputs[0];
+  (*ceil_op->mutable_attr())["T"].set_type(DT_FLOAT);
+}
+
 void ConvertGatherOperator(const Model& model, const GatherOperator& src_op,
                            GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* gather_op = tensorflow_graph->add_node();
@@ -1295,7 +1305,8 @@ void ConvertTensorFlowShapeOperator(const Model& model,
       GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
-void ConvertRankOperator(const Model& model, const RankOperator& src_op,
+void ConvertRankOperator(const Model& model,
+                         const TensorFlowRankOperator& src_op,
                          GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* rank_op = tensorflow_graph->add_node();
   rank_op->set_op("Rank");
@@ -2052,6 +2063,20 @@ void ConvertZerosLikeOperator(const Model& model,
   (*zeros_like_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertReverseV2Operator(const Model& model,
+                              const ReverseV2Operator& src_op,
+                              const char* op_name, GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* reverse_v2_op = tensorflow_graph->add_node();
+  reverse_v2_op->set_op(op_name);
+  reverse_v2_op->set_name(src_op.outputs[0]);
+  DCHECK_EQ(src_op.inputs.size(), 2);
+  *reverse_v2_op->add_input() = src_op.inputs[0];
+  *reverse_v2_op->add_input() = src_op.inputs[1];
+  const tensorflow::DataType data_type =
+      GetTensorFlowDataType(model, src_op.inputs[0]);
+  (*reverse_v2_op->mutable_attr())["T"].set_type(data_type);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -2169,6 +2194,9 @@ void ConvertOperator(const Model& model, const Operator& src_op,
   } else if (src_op.type == OperatorType::kFloor) {
     ConvertFloorOperator(model, static_cast<const FloorOperator&>(src_op),
                          tensorflow_graph);
+  } else if (src_op.type == OperatorType::kCeil) {
+    ConvertCeilOperator(model, static_cast<const CeilOperator&>(src_op),
+                        tensorflow_graph);
   } else if (src_op.type == OperatorType::kGather) {
     ConvertGatherOperator(model, static_cast<const GatherOperator&>(src_op),
                           tensorflow_graph);
@@ -2247,7 +2275,8 @@ void ConvertOperator(const Model& model, const Operator& src_op,
         model, static_cast<const TensorFlowShapeOperator&>(src_op),
         tensorflow_graph);
   } else if (src_op.type == OperatorType::kRank) {
-    ConvertRankOperator(model, static_cast<const RankOperator&>(src_op),
+    ConvertRankOperator(model,
+                        static_cast<const TensorFlowRankOperator&>(src_op),
                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kRange) {
     ConvertRangeOperator(model, static_cast<const RangeOperator&>(src_op),
@@ -2328,6 +2357,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertZerosLikeOperator(
         model, static_cast<const TensorFlowZerosLikeOperator&>(src_op),
         "ZerosLike", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kReverseV2) {
+    ConvertReverseV2Operator(model,
+                             static_cast<const ReverseV2Operator&>(src_op),
+                             "Reverse_V2", tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

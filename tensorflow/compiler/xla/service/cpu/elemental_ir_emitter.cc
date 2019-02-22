@@ -51,10 +51,11 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitAtan2(PrimitiveType prim_type,
       return Unimplemented("atan2");
   }
   // Create a function declaration.
-  llvm::Function* function =
-      llvm::cast<llvm::Function>(module_->getOrInsertFunction(
-          llvm_ir::AsStringRef(function_name), lhs->getType(), lhs->getType(),
-          rhs->getType()));
+  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
+                                lhs->getType(), lhs->getType(), rhs->getType())
+          .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
   function->setDoesNotAccessMemory();
@@ -85,9 +86,11 @@ StatusOr<llvm::Value*> CpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
       return Unimplemented("tanh");
   }
   // Create a function declaration.
-  llvm::Function* function = llvm::cast<llvm::Function>(
-      module_->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
-                                   value->getType(), value->getType()));
+  llvm::Function* function = llvm::dyn_cast<llvm::Function>(
+      module_
+          ->getOrInsertFunction(llvm_ir::AsStringRef(function_name),
+                                value->getType(), value->getType())
+          .getCallee());
   function->setCallingConv(llvm::CallingConv::C);
   function->setDoesNotThrow();
   function->setDoesNotAccessMemory();

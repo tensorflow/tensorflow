@@ -24,11 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_types.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -42,8 +42,10 @@ enum class OperatorType : uint8 {
   kAveragePool,
   kBatchMatMul,
   kBatchNormalization,
+  kCeil,
   kConv,
   kConcatenation,
+  kCos,
   kDepthwiseConv,
   kDepthToSpace,
   kSpaceToDepth,
@@ -157,7 +159,15 @@ enum class OperatorType : uint8 {
   kResizeNearestNeighbor,
   kLeakyRelu,
   kAbs,
-  kMirrorPad
+  kMirrorPad,
+  kUnique,
+  kUnidirectionalSequenceRnn,
+  kBidirectionalSequenceLstm,
+  kReverseV2,
+  kBidirectionalSequenceRnn,
+  kGatherNd,
+  kWhere,
+  kElu
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -376,7 +386,7 @@ struct Operator {
   // Output activation arrays. Same comments as for inputs apply here too.
   std::vector<string> outputs;
 
-  // If true, the array has more outputs than are listed in the 'outputs'
+  // If true, the operator has more outputs than are listed in the 'outputs'
   // member. These need to be resolved by some graph transformation.
   // This flag is only here to indicate that an operator should not be
   // discarded as unused, even if from its 'outputs' member alone it
@@ -647,6 +657,18 @@ struct UnidirectionalSequenceLstmOperator : Operator {
       : Operator(OperatorType::kUnidirectionalSequenceLstm) {}
 };
 
+struct BidirectionalSequenceLstmOperator : Operator {
+  BidirectionalSequenceLstmOperator()
+      : Operator(OperatorType::kBidirectionalSequenceLstm) {}
+  bool merge_outputs;
+};
+
+struct BidirectionalSequenceRnnOperator : Operator {
+  BidirectionalSequenceRnnOperator()
+      : Operator(OperatorType::kBidirectionalSequenceRnn) {}
+  bool merge_outputs;
+};
+
 // Element-wise multiplication operator.
 //
 // Inputs:
@@ -667,6 +689,17 @@ struct MulOperator : Operator {
 // TensorFlow equivalent: Relu
 struct AbsOperator : Operator {
   AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
+// Elu
+//   f(x) -> exp(x) - 1 for x < 0, x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Elu
+struct EluOperator : Operator {
+  EluOperator() : Operator(OperatorType::kElu) {}
 };
 
 // Element-wise Relu operator:
@@ -946,6 +979,8 @@ struct TensorFlowIdentityOperator : Operator {
 // TensorFlow equivalent: MatMul
 struct BatchMatMulOperator : Operator {
   BatchMatMulOperator() : Operator(OperatorType::kBatchMatMul) {}
+  bool adj_x = false;
+  bool adj_y = false;
 };
 
 // General matrix multiplication operator. We don't want to support general
@@ -1148,6 +1183,17 @@ struct ExpOperator : Operator {
   ExpOperator() : Operator(OperatorType::kExp) {}
 };
 
+// Given a tensor input, this operation calculates element-wise exponential
+// (y = cos(x)).
+//
+// Inputs:
+//   inputs[0]: required: input tensor
+//
+// TensorFlow equivalent: Cos
+struct CosOperator : Operator {
+  CosOperator() : Operator(OperatorType::kCos) {}
+};
+
 // Given a tensor input, this operation inserts a dimension of 1 at the
 // dimension index axis of input's shape. The dimension index axis starts at
 // zero; if you specify a negative number for axis it is counted backward from
@@ -1226,13 +1272,12 @@ struct RangeOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// This operation outputs a 0-D integer tensor representing the rank of
-// the input.
+// This operation outputs a 0-D int32 Tensor representing the rank of input.
 //
-// TensorFlow equivalent: Rank.  We currently assume that the output is int32
-// and not int64.  The output type could be stored herein.
-struct RankOperator : Operator {
-  RankOperator() : Operator(OperatorType::kRank) {}
+// TensorFlow equivalent: Rank.
+struct TensorFlowRankOperator : Operator {
+  TensorFlowRankOperator() : Operator(OperatorType::kRank) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt32;
 };
 
 // Element-wise negation (-x) operator.
@@ -1658,6 +1703,16 @@ struct FloorOperator : Operator {
   FloorOperator() : Operator(OperatorType::kFloor) {}
 };
 
+// Ceil operator.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Ceil
+struct CeilOperator : Operator {
+  CeilOperator() : Operator(OperatorType::kCeil) {}
+};
+
 // Gather operator. It gathers slices from params according to indices.
 // Only 1-D indices are supported at the moment.
 //
@@ -1679,10 +1734,22 @@ struct GatherOperator : Operator {
   int input_rank = 0;
 };
 
+// GatherNd operator. It gathers slices from params according to indices.
+//
+// Inputs:
+//   inputs[0]: required: the params array
+//   inputs[1]: required: the indices to gather
+//
+// TensorFlow equivalent: GatherNd
+struct GatherNdOperator : Operator {
+  GatherNdOperator() : Operator(OperatorType::kGatherNd) {}
+};
+
 // ArgMax operator. It returns the index of the maximum value along axis.
 //
 // Inputs:
 //   inputs[0]: required: the input tensor
+//   inputs[1]: optional: 0-D (scalar) axis
 //
 // TensorFlow equivalent: ArgMax
 struct ArgMaxOperator : Operator {
@@ -1694,6 +1761,7 @@ struct ArgMaxOperator : Operator {
 //
 // Inputs:
 //   inputs[0]: required: the input tensor
+//   inputs[1]: optional: 0-D (scalar) axis
 //
 // TensorFlow equivalent: ArgMin
 struct ArgMinOperator : Operator {
@@ -1936,6 +2004,16 @@ struct TensorFlowZerosLikeOperator : Operator {
   TensorFlowZerosLikeOperator() : Operator(OperatorType::kZerosLike) {}
 };
 
+// ReverseV2 operator:
+//
+// Inputs:
+// Inputs[0]: required: the input array.
+//
+// TensorFlow equivalent: ReverseV2.
+struct ReverseV2Operator : Operator {
+  ReverseV2Operator() : Operator(OperatorType::kReverseV2) {}
+};
+
 enum class MirrorPadMode { kNone, kSymmetric, kReflect };
 
 // MirrorPad Operator:
@@ -1951,6 +2029,36 @@ struct MirrorPadOperator : Operator {
   MirrorPadOperator() : Operator(OperatorType::kMirrorPad) {}
   // mode is either SYMMETRIC or REFLECT.
   MirrorPadMode mode;
+};
+
+// Unique Operator:
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Unique
+struct UniqueOperator : Operator {
+  UniqueOperator() : Operator(OperatorType::kUnique) {}
+  ArrayDataType idx_out_type = ArrayDataType::kInt32;
+};
+
+struct UnidirectionalSequenceRnnOperator : Operator {
+  UnidirectionalSequenceRnnOperator()
+      : Operator(OperatorType::kUnidirectionalSequenceRnn) {}
+  bool time_major;
+  FusedActivationFunctionType fused_activation_function;
+};
+
+// Where Operator:
+// Return the coordinates of the true values in condition tensor in row-major
+// order.
+//
+// Inputs:
+//  inputs[0]: required: boolean condition tensor
+//
+//  TensorFlow equivalent: Where
+struct WhereOperator : Operator {
+  WhereOperator() : Operator(OperatorType::kWhere) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval
@@ -2207,6 +2315,16 @@ class Model {
   // The Operator's refer to these Array's by their name strings, not by their
   // addresses. See Operator::inputs, Operator::outputs.
   std::unordered_map<string, std::unique_ptr<Array>> arrays;
+};
+
+// OperatorSignature contains the information required to making versioning
+// decisions.
+struct OperatorSignature {
+  // The operator.
+  const Operator* op;
+
+  // The model in which the operator resides.
+  const Model* model;
 };
 }  // namespace toco
 

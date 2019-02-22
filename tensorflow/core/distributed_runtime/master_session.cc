@@ -292,8 +292,8 @@ class MasterSession::ReffedClientGraph : public core::RefCounted {
     if (tot >= 0.1 * 1048576.0) {
       bytes = strings::Printf("[%.1fMB] ", tot / 1048576.0);
     }
-    return strings::StrCat(bytes, stats.node_name(), " = ",
-                           details.type_string, details.detail_text);
+    return strings::StrCat(bytes, stats.node_name(), " = ", details.type_string,
+                           details.detail_text);
   }
 
   // Send/Recv nodes that are the result of client-added
@@ -512,25 +512,25 @@ class RunManyGraphs {
     if (resp->status_code() != error::Code::OK) {
       // resp->status_code will only be non-OK if s.ok().
       mutex_lock l(mu_);
-      UpdateStatusLocked(
+      ReportBadStatus(
           Status(resp->status_code(), resp->status_error_message()));
     } else if (!s.ok()) {
       mutex_lock l(mu_);
-      UpdateStatusLocked(s);
+      ReportBadStatus(s);
     }
     pending_.DecrementCount();
   }
 
   void StartCancel() {
     mutex_lock l(mu_);
-    UpdateStatusLocked(errors::Cancelled("RunManyGraphs"));
+    ReportBadStatus(errors::Cancelled("RunManyGraphs"));
   }
 
   void Wait() { pending_.Wait(); }
 
   Status status() const {
     mutex_lock l(mu_);
-    return status_;
+    return status_group_.as_status();
   }
 
  private:
@@ -538,15 +538,17 @@ class RunManyGraphs {
 
   BlockingCounter pending_;
   mutable mutex mu_;
-  Status status_ GUARDED_BY(mu_);
+  StatusGroup status_group_ GUARDED_BY(mu_);
 
-  void UpdateStatusLocked(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
-    if (status_.ok()) {
-      status_ = s;
+  void ReportBadStatus(const Status& s) EXCLUSIVE_LOCKS_REQUIRED(mu_) {
+    // Start cancellation if we aren't already in an error state.
+    if (status_group_.ok()) {
       for (Call& call : calls_) {
         call.opts.StartCancel();
       }
     }
+
+    status_group_.Update(s);
   }
 
   TF_DISALLOW_COPY_AND_ASSIGN(RunManyGraphs);
@@ -1079,17 +1081,18 @@ void CopyAndSortStrings(size_t size,
 }  // namespace
 
 void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
+                            const ConfigProto& config,
                             BuildGraphOptions* opts) {
   CallableOptions* callable_opts = &opts->callable_options;
-  CopyAndSortStrings(req.num_feeds(),
-                     [&req](size_t i) { return req.feed_name(i); },
-                     callable_opts->mutable_feed());
-  CopyAndSortStrings(req.num_fetches(),
-                     [&req](size_t i) { return req.fetch_name(i); },
-                     callable_opts->mutable_fetch());
-  CopyAndSortStrings(req.num_targets(),
-                     [&req](size_t i) { return req.target_name(i); },
-                     callable_opts->mutable_target());
+  CopyAndSortStrings(
+      req.num_feeds(), [&req](size_t i) { return req.feed_name(i); },
+      callable_opts->mutable_feed());
+  CopyAndSortStrings(
+      req.num_fetches(), [&req](size_t i) { return req.fetch_name(i); },
+      callable_opts->mutable_fetch());
+  CopyAndSortStrings(
+      req.num_targets(), [&req](size_t i) { return req.target_name(i); },
+      callable_opts->mutable_target());
 
   if (!req.options().debug_options().debug_tensor_watch_opts().empty()) {
     *callable_opts->mutable_run_options()->mutable_debug_options() =
@@ -1098,19 +1101,25 @@ void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
 
   opts->collective_graph_key =
       req.options().experimental().collective_graph_key();
+  if (config.experimental().collective_deterministic_sequential_execution()) {
+    opts->collective_order = GraphCollectiveOrder::kEdges;
+  } else if (config.experimental().collective_nccl()) {
+    opts->collective_order = GraphCollectiveOrder::kAttrs;
+  }
 }
 
 void BuildBuildGraphOptions(const PartialRunSetupRequest& req,
                             BuildGraphOptions* opts) {
   CallableOptions* callable_opts = &opts->callable_options;
-  CopyAndSortStrings(req.feed_size(), [&req](size_t i) { return req.feed(i); },
-                     callable_opts->mutable_feed());
-  CopyAndSortStrings(req.fetch_size(),
-                     [&req](size_t i) { return req.fetch(i); },
-                     callable_opts->mutable_fetch());
-  CopyAndSortStrings(req.target_size(),
-                     [&req](size_t i) { return req.target(i); },
-                     callable_opts->mutable_target());
+  CopyAndSortStrings(
+      req.feed_size(), [&req](size_t i) { return req.feed(i); },
+      callable_opts->mutable_feed());
+  CopyAndSortStrings(
+      req.fetch_size(), [&req](size_t i) { return req.fetch(i); },
+      callable_opts->mutable_fetch());
+  CopyAndSortStrings(
+      req.target_size(), [&req](size_t i) { return req.target(i); },
+      callable_opts->mutable_target());
 
   // TODO(cais): Add TFDBG support to partial runs.
 }
@@ -1850,7 +1859,7 @@ Status MasterSession::DoRunWithLocalExecution(
 
   // Prepare.
   BuildGraphOptions bgopts;
-  BuildBuildGraphOptions(req, &bgopts);
+  BuildBuildGraphOptions(req, session_opts_.config, &bgopts);
   ReffedClientGraph* rcg = nullptr;
   int64 count;
   TF_RETURN_IF_ERROR(StartStep(bgopts, false, &rcg, &count));

@@ -18,6 +18,7 @@ limitations under the License.
 
 #include <functional>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -52,7 +53,7 @@ class ServiceOptions {
   ServiceOptions& set_platform(se::Platform* platform);
   se::Platform* platform() const;
 
-  // Set the number of replicas to use when compiling replicated
+  // Set the default number of replicas to use when compiling replicated
   // programs.
   ServiceOptions& set_number_of_replicas(int number_of_replicas);
   int number_of_replicas() const;
@@ -61,10 +62,17 @@ class ServiceOptions {
   ServiceOptions& set_intra_op_parallelism_threads(int num_threads);
   int intra_op_parallelism_threads() const;
 
+  // Sets the allowed_devices set for selectively constructing stream executors
+  // on the platform.
+  ServiceOptions& set_allowed_devices(
+      const absl::optional<std::set<int>>& allowed_devices);
+  const absl::optional<std::set<int>>& allowed_devices() const;
+
  private:
   se::Platform* platform_ = nullptr;
   int number_of_replicas_ = 1;
   int intra_op_parallelism_threads_ = -1;
+  absl::optional<std::set<int>> allowed_devices_;
 };
 
 // The XLA service object, which is the same across all platforms. It maintains
@@ -242,8 +250,9 @@ class Service : public ServiceInterface {
   // ExecutionProfile object which will be filled in with profile data.
   StatusOr<GlobalDataHandle> ExecuteAndRegisterResult(
       Executable* executable,
-      const absl::Span<const std::vector<const ShapedBuffer*>> arguments,
-      Backend* backend, const string& result_tag, ExecutionProfile* profile);
+      absl::Span<const std::vector<const ShapedBuffer*>> arguments,
+      Backend* backend, const DeviceHandle& device_handle,
+      const string& result_tag, ExecutionProfile* profile);
 
   // Runs the given executables with the given arguments and register the result
   // from each executable in the allocation tracker. The handles of the result

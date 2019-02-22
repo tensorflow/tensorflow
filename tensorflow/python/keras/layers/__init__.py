@@ -110,6 +110,10 @@ from tensorflow.python.keras.layers.noise import GaussianDropout
 
 # Normalization layers.
 from tensorflow.python.keras.layers.normalization import BatchNormalization
+from tensorflow.python.keras.layers.normalization import LayerNormalization
+
+# Kernelized layers.
+from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures
 
 # Pooling layers.
 from tensorflow.python.keras.layers.pooling import MaxPooling1D
@@ -149,6 +153,7 @@ from tensorflow.python.keras.layers.recurrent import PeepholeLSTMCell
 from tensorflow.python.keras.layers.recurrent import SimpleRNN
 from tensorflow.python.keras.layers.recurrent import GRU
 from tensorflow.python.keras.layers.recurrent import LSTM
+from tensorflow.python.keras.layers.recurrent import UnifiedGRU
 from tensorflow.python.keras.layers.recurrent import UnifiedLSTM
 
 # Convolutional-recurrent layers.

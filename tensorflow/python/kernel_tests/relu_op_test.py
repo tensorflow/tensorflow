@@ -86,6 +86,7 @@ class ReluTest(test.TestCase):
     self.assertAllClose(np_relu, tf_relu)
     self.assertShapeEqual(np_relu, tf_relu)
 
+  @test_util.disable_xla("b/123338077")  # Passes with XLA
   def testReluInt8x4BadShape(self):
     if not test.is_gpu_available(cuda_only=True):
       self.skipTest("No GPU available")

@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=wildcard-import
+from tensorflow.contrib.opt.python.training.adam_gs_optimizer import *
 from tensorflow.contrib.opt.python.training.adamax import *
 from tensorflow.contrib.opt.python.training.addsign import *
 from tensorflow.contrib.opt.python.training.agn_optimizer import *
@@ -28,6 +29,7 @@ from tensorflow.contrib.opt.python.training.external_optimizer import *
 from tensorflow.contrib.opt.python.training.lars_optimizer import *
 from tensorflow.contrib.opt.python.training.ggt import *
 from tensorflow.contrib.opt.python.training.lazy_adam_optimizer import *
+from tensorflow.contrib.opt.python.training.lazy_adam_gs_optimizer import *
 from tensorflow.contrib.opt.python.training.model_average_optimizer import *
 from tensorflow.contrib.opt.python.training.moving_average_optimizer import *
 from tensorflow.contrib.opt.python.training.multitask_optimizer_wrapper import *
@@ -44,12 +46,14 @@ from tensorflow.python.util.all_util import remove_undocumented
 
 _allowed_symbols = [
     'AdaMaxOptimizer',
+    'AdamGSOptimizer',
     'PowerSignOptimizer',
     'AddSignOptimizer',
     'DelayCompensatedGradientDescentOptimizer',
     'DropStaleGradientOptimizer',
     'ExternalOptimizerInterface',
     'LARSOptimizer',
+    'LazyAdamGSOptimizer',
     'LazyAdamOptimizer',
     'NadamOptimizer',
     'MovingAverageOptimizer',

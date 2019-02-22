@@ -104,7 +104,8 @@ class ReductionUnknownShape(test.TestCase):
       for dtype, reductions in [(dtypes.float32,
                                  (math_ops.reduce_sum, math_ops.reduce_mean,
                                   math_ops.reduce_prod, math_ops.reduce_max,
-                                  math_ops.reduce_min)),
+                                  math_ops.reduce_min,
+                                  math_ops.reduce_euclidean_norm)),
                                 (dtypes.bool, (math_ops.reduce_all,
                                                math_ops.reduce_any))]:
         for reduction in reductions:
@@ -485,6 +486,79 @@ class MeanReductionTest(BaseReductionTest):
         y = math_ops.reduce_mean(x, [0]).eval()
         self.assertEqual(y.shape, (9938,))
         self.assertTrue(np.all(np.isnan(y)))
+
+
+class EuclideanNormReductionTest(BaseReductionTest):
+
+  def _tf_reduce(self, x, reduction_axes, keepdims):
+    return math_ops.reduce_euclidean_norm(x, reduction_axes, keepdims)
+
+  def _np_reduce(self, x, reduction_axes, keepdims):
+    if isinstance(reduction_axes, list) or isinstance(reduction_axes,
+                                                      np.ndarray):
+      reduction_axes = tuple(reduction_axes)
+    if reduction_axes is None or reduction_axes != tuple():
+      np_fro = np.sqrt(
+          np.sum(x * np.conj(x), axis=reduction_axes, keepdims=keepdims))
+    else:
+      np_fro = x
+    if np.issubdtype(x.dtype, np.integer):
+      np_fro = np.floor(np_fro)
+    return np_fro
+
+  @test_util.run_deprecated_v1
+  def testAxesType(self):
+    for dtype in [dtypes.int64, dtypes.int32]:
+      with self.cached_session(use_gpu=True):
+        v = math_ops.reduce_mean([0, 0], constant_op.constant(0, dtype=dtype))
+        tf_v = self.evaluate(v)
+      self.assertAllEqual(tf_v, 0)
+
+  @test_util.run_deprecated_v1
+  def testInfinity(self):
+    for dtype in [np.float32, np.float64]:
+      for special_value_x in [-np.inf, np.inf]:
+        for special_value_y in [-np.inf, np.inf]:
+          np_arr = np.array([special_value_x, special_value_y]).astype(dtype)
+          self._compareAll(np_arr, None)
+
+  @test_util.run_deprecated_v1
+  def testInt32(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.int32)
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testFloat32(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float32)
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testFloat64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.float64)
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testComplex64(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex64)
+      self._compareAllAxes(np_arr)
+
+  @test_util.run_deprecated_v1
+  def testComplex128(self):
+    for rank in range(1, _MAX_RANK + 1):
+      np_arr = self._makeIncremental((2,) * rank, dtypes.complex128)
+      self._compareAllAxes(np_arr)
+
+    with self.session(use_gpu=True):
+      for dtype in (dtypes.float16, dtypes.float32, dtypes.float64):
+        # A large number is needed to get Eigen to die
+        x = array_ops.zeros((0, 9938), dtype=dtype)
+        y = math_ops.reduce_euclidean_norm(x, [0]).eval()
+        self.assertEqual(y.shape, (9938,))
+        self.assertAllEqual(y, np.zeros(9938))
 
 
 class ProdReductionTest(BaseReductionTest):

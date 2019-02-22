@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
 #include "tensorflow/core/platform/types.h"
@@ -34,7 +35,7 @@ class PoolAllocator;
 
 // Singleton that manages per-process state, e.g. allocation of
 // shared resources.
-class ProcessState {
+class ProcessState : public ProcessStateInterface {
  public:
   static ProcessState* singleton();
 
@@ -129,7 +130,7 @@ class RecordingAllocator : public Allocator {
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
   size_t RequestedSize(const void* p) override { return a_->RequestedSize(p); }
   size_t AllocatedSize(const void* p) override { return a_->AllocatedSize(p); }
-  void GetStats(AllocatorStats* stats) override { a_->GetStats(stats); }
+  absl::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
   void ClearStats() override { a_->ClearStats(); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned

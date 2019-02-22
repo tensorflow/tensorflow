@@ -57,4 +57,4 @@ class TFRecordWriter(object):
           "produces shape {0} and types {1}".format(dataset.output_shapes,
                                                     dataset.output_types))
     return gen_experimental_dataset_ops.experimental_dataset_to_tf_record(
-        dataset._as_variant_tensor(), self._filename, self._compression_type)  # pylint: disable=protected-access
+        dataset._variant_tensor, self._filename, self._compression_type)  # pylint: disable=protected-access

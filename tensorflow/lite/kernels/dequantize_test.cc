@@ -12,8 +12,11 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include <cstdint>
+
 #include <gtest/gtest.h>
 #include "tensorflow/lite/interpreter.h"
+#include "tensorflow/lite/kernels/internal/types.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
 #include "tensorflow/lite/model.h"
@@ -27,13 +30,7 @@ class DequantizeOpModel : public SingleOpModel {
  public:
   DequantizeOpModel(TensorType type, std::initializer_list<int> shape,
                     float scale, int32_t zero_point) {
-    TensorData input_tensor_data;
-    input_tensor_data.type = type;
-    input_tensor_data.shape = shape;
-    input_tensor_data.min = 0;
-    input_tensor_data.max = 0;
-    input_tensor_data.scale = scale;
-    input_tensor_data.zero_point = zero_point;
+    const TensorData input_tensor_data = {type, shape, 0, 0, scale, zero_point};
     input_ = AddInput(input_tensor_data);
     output_ = AddOutput({TensorType_FLOAT32, shape});
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
@@ -58,7 +55,7 @@ TEST(DequantizeOpTest, UINT8) {
   // [-63.5, 64] -> scale=0.5 zero_point=127 for UINT8
   DequantizeOpModel m(TensorType_UINT8, {2, 5}, 0.5, 127);
 
-  m.SetInput<uint8>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
+  m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
@@ -69,7 +66,7 @@ TEST(DequantizeOpTest, INT8) {
   // [-63.5, 64] -> scale=0.5, zero_point=1 for INT8
   DequantizeOpModel m(TensorType_INT8, {2, 5}, 0.5, -1);
 
-  m.SetInput<int8>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
+  m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(

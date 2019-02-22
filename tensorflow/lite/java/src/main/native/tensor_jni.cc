@@ -35,6 +35,7 @@ class TensorHandle {
       : interpreter_(interpreter), tensor_index_(tensor_index) {}
 
   TfLiteTensor* tensor() const { return interpreter_->tensor(tensor_index_); }
+  int index() const { return tensor_index_; }
 
  private:
   tflite::Interpreter* const interpreter_;
@@ -48,6 +49,15 @@ TfLiteTensor* GetTensorFromHandle(JNIEnv* env, jlong handle) {
     return nullptr;
   }
   return reinterpret_cast<TensorHandle*>(handle)->tensor();
+}
+
+int GetTensorIndexFromHandle(JNIEnv* env, jlong handle) {
+  if (handle == 0) {
+    throwException(env, kIllegalArgumentException,
+                   "Internal error: Invalid handle to TfLiteTensor.");
+    return -1;
+  }
+  return reinterpret_cast<TensorHandle*>(handle)->index();
 }
 
 size_t ElementByteSize(TfLiteType data_type) {
@@ -398,4 +408,21 @@ JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_numBytes(JNIEnv* env,
   const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
   if (tensor == nullptr) return 0;
   return static_cast<jint>(tensor->bytes);
+}
+
+JNIEXPORT jboolean JNICALL
+Java_org_tensorflow_lite_Tensor_hasDelegateBufferHandle(JNIEnv* env,
+                                                        jclass clazz,
+                                                        jlong handle) {
+  const TfLiteTensor* tensor = GetTensorFromHandle(env, handle);
+  if (tensor == nullptr) return false;
+  return tensor->delegate && (tensor->buffer_handle != kTfLiteNullBufferHandle)
+             ? JNI_TRUE
+             : JNI_FALSE;
+}
+
+JNIEXPORT jint JNICALL Java_org_tensorflow_lite_Tensor_index(JNIEnv* env,
+                                                             jclass clazz,
+                                                             jlong handle) {
+  return GetTensorIndexFromHandle(env, handle);
 }

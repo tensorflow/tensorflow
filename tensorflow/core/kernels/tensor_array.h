@@ -261,7 +261,7 @@ class TensorArray : public ResourceBase {
     return Status::OK();
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     mutex_lock l(mu_);
     CHECK(!closed_);
     return strings::StrCat("TensorArray[", tensors_.size(), "]");
@@ -376,7 +376,7 @@ class TensorArray : public ResourceBase {
   const DataType dtype_;
   Tensor handle_;
 
-  mutex mu_;
+  mutable mutex mu_;
 
   // Marks that the tensor_array_ has been cleared.
   bool closed_ GUARDED_BY(mu_);

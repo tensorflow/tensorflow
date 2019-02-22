@@ -1,0 +1,5 @@
+op {
+  graph_op_name: "CollectiveGather"
+  summary: "Mutually accumulates multiple tensors of identical type and shape."
+  visibility: HIDDEN
+}

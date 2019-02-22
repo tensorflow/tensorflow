@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/noop_elimination.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -70,21 +71,24 @@ bool IsNoOp(const NodeDef& node, const MutableGraphView& graph) {
 
 }  // namespace
 
-Status NoOpElimination::Optimize(Cluster* cluster, const GrapplerItem& item,
-                                 GraphDef* output) {
+Status NoOpElimination::OptimizeAndCollectStats(Cluster* cluster,
+                                                const GrapplerItem& item,
+                                                GraphDef* output,
+                                                OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
   for (const NodeDef& node : item.graph.node()) {
     if (!IsNoOp(node, graph)) continue;
 
     NodeDef* const parent = graph_utils::GetInputNode(node, graph);
-    graph.UpdateFanouts(node.name(), parent->name());
+    TF_RETURN_IF_ERROR(graph.UpdateFanouts(node.name(), parent->name()));
 
     nodes_to_delete.insert(node.name());
+    stats->num_changes++;
   }
 
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 
@@ -95,5 +99,5 @@ void NoOpElimination::Feedback(Cluster* cluster, const GrapplerItem& item,
 
 REGISTER_GRAPH_OPTIMIZER_AS(NoOpElimination, "noop_elimination");
 
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace grappler
+}  // namespace tensorflow

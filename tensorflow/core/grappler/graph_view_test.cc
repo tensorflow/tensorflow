@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/inputs/trivial_test_graph_input_yielder.h"
+#include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/platform/test.h"
 
 namespace tensorflow {
@@ -42,26 +43,24 @@ TEST_F(GraphViewTest, OpPortIdToArgIdShapeN) {
 
   const OpDef* a_op_def = nullptr;
   const OpDef* b_op_def = nullptr;
-  EXPECT_TRUE(
-      OpRegistry::Global()->LookUpOpDef(a_node_def.op(), &a_op_def).ok());
-  EXPECT_TRUE(
-      OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+  TF_EXPECT_OK(OpRegistry::Global()->LookUpOpDef(a_node_def.op(), &a_op_def));
+  TF_EXPECT_OK(OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def));
 
   // Const has 0 inputs, 1 output.
-  EXPECT_EQ(-1, OpInputPortIdToArgId(a_node_def, *a_op_def, 0));
-  EXPECT_EQ(0, OpOutputPortIdToArgId(a_node_def, *a_op_def, 0));
-  EXPECT_EQ(-1, OpOutputPortIdToArgId(a_node_def, *a_op_def, 1));
+  EXPECT_EQ(OpInputPortIdToArgId(a_node_def, *a_op_def, 0), -1);
+  EXPECT_EQ(OpOutputPortIdToArgId(a_node_def, *a_op_def, 0), 0);
+  EXPECT_EQ(OpOutputPortIdToArgId(a_node_def, *a_op_def, 1), -1);
 
   // ShapeN has N=3 inputs and outputs.
-  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
-  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
-  EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
-  EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
-  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 0));
-  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 1));
-  EXPECT_EQ(0, OpOutputPortIdToArgId(b_node_def, *b_op_def, 2));
-  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 3));
-  EXPECT_EQ(-1, OpOutputPortIdToArgId(b_node_def, *b_op_def, 4));
+  EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 0), 0);
+  EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 1), 0);
+  EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 2), 0);
+  EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 3), -1);
+  EXPECT_EQ(OpOutputPortIdToArgId(b_node_def, *b_op_def, 0), 0);
+  EXPECT_EQ(OpOutputPortIdToArgId(b_node_def, *b_op_def, 1), 0);
+  EXPECT_EQ(OpOutputPortIdToArgId(b_node_def, *b_op_def, 2), 0);
+  EXPECT_EQ(OpOutputPortIdToArgId(b_node_def, *b_op_def, 3), -1);
+  EXPECT_EQ(OpOutputPortIdToArgId(b_node_def, *b_op_def, 4), -1);
 }
 
 TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
@@ -76,22 +75,21 @@ TEST_F(GraphViewTest, OpPortIdToArgIdSparseSplit) {
 
     const NodeDef& b_node_def = *graph_view.GetNode("b");
     const OpDef* b_op_def = nullptr;
-    EXPECT_TRUE(
-        OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def).ok());
+    TF_EXPECT_OK(OpRegistry::Global()->LookUpOpDef(b_node_def.op(), &b_op_def));
 
     // We have 4 inputs.
-    EXPECT_EQ(0, OpInputPortIdToArgId(b_node_def, *b_op_def, 0));
-    EXPECT_EQ(1, OpInputPortIdToArgId(b_node_def, *b_op_def, 1));
-    EXPECT_EQ(2, OpInputPortIdToArgId(b_node_def, *b_op_def, 2));
-    EXPECT_EQ(3, OpInputPortIdToArgId(b_node_def, *b_op_def, 3));
-    EXPECT_EQ(-1, OpInputPortIdToArgId(b_node_def, *b_op_def, 4));
+    EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 0), 0);
+    EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 1), 1);
+    EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 2), 2);
+    EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 3), 3);
+    EXPECT_EQ(OpInputPortIdToArgId(b_node_def, *b_op_def, 4), -1);
 
     for (int port_id = 0; port_id <= num_splits * 3; ++port_id) {
       int arg_id = -1;
       if (port_id < num_splits * 3) {
         arg_id = port_id / num_splits;
       }
-      EXPECT_EQ(arg_id, OpOutputPortIdToArgId(b_node_def, *b_op_def, port_id));
+      EXPECT_EQ(OpOutputPortIdToArgId(b_node_def, *b_op_def, port_id), arg_id);
     }
   }
 }
@@ -110,18 +108,17 @@ TEST_F(GraphViewTest, ParseSingleExample) {
   const NodeDef& c_node_def = *graph_view.GetNode("c");
 
   const OpDef* c_op_def = nullptr;
-  EXPECT_TRUE(
-      OpRegistry::Global()->LookUpOpDef(c_node_def.op(), &c_op_def).ok());
+  TF_EXPECT_OK(OpRegistry::Global()->LookUpOpDef(c_node_def.op(), &c_op_def));
 
-  EXPECT_EQ(0, OpOutputPortIdToArgId(c_node_def, *c_op_def, 0));
-  EXPECT_EQ(0, OpOutputPortIdToArgId(c_node_def, *c_op_def, 1));
-  EXPECT_EQ(1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 2));
-  EXPECT_EQ(1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 3));
-  EXPECT_EQ(2, OpOutputPortIdToArgId(c_node_def, *c_op_def, 4));
-  EXPECT_EQ(2, OpOutputPortIdToArgId(c_node_def, *c_op_def, 5));
-  EXPECT_EQ(3, OpOutputPortIdToArgId(c_node_def, *c_op_def, 6));
-  EXPECT_EQ(3, OpOutputPortIdToArgId(c_node_def, *c_op_def, 7));
-  EXPECT_EQ(-1, OpOutputPortIdToArgId(c_node_def, *c_op_def, 8));
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 0), 0);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 1), 0);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 2), 1);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 3), 1);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 4), 2);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 5), 2);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 6), 3);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 7), 3);
+  EXPECT_EQ(OpOutputPortIdToArgId(c_node_def, *c_op_def, 8), -1);
 }
 
 TEST_F(GraphViewTest, BasicGraph) {
@@ -132,26 +129,26 @@ TEST_F(GraphViewTest, BasicGraph) {
   GraphView graph(&item.graph);
 
   GraphView::InputPort input = graph.GetInputPort("AddN", 0);
-  EXPECT_EQ("AddN", input.node->name());
-  EXPECT_EQ(0, input.port_id);
+  EXPECT_EQ(input.node->name(), "AddN");
+  EXPECT_EQ(input.port_id, 0);
   GraphView::OutputPort fanin = graph.GetRegularFanin(input);
-  EXPECT_EQ("Square", fanin.node->name());
-  EXPECT_EQ(0, fanin.port_id);
+  EXPECT_EQ(fanin.node->name(), "Square");
+  EXPECT_EQ(fanin.port_id, 0);
 
   input = graph.GetInputPort("AddN", 1);
-  EXPECT_EQ("AddN", input.node->name());
-  EXPECT_EQ(1, input.port_id);
+  EXPECT_EQ(input.node->name(), "AddN");
+  EXPECT_EQ(input.port_id, 1);
   fanin = graph.GetRegularFanin(input);
-  EXPECT_EQ("Square_1", fanin.node->name());
-  EXPECT_EQ(0, fanin.port_id);
+  EXPECT_EQ(fanin.node->name(), "Square_1");
+  EXPECT_EQ(fanin.port_id, 0);
 
   GraphView::OutputPort output = graph.GetOutputPort("AddN", 0);
-  EXPECT_EQ("AddN", output.node->name());
-  EXPECT_EQ(0, output.port_id);
-  EXPECT_EQ(2, graph.GetFanout(output).size());
+  EXPECT_EQ(output.node->name(), "AddN");
+  EXPECT_EQ(output.port_id, 0);
+  EXPECT_EQ(graph.GetFanout(output).size(), 2);
   for (auto fanout : graph.GetFanout(output)) {
     if (fanout.node->name() == "AddN_2" || fanout.node->name() == "AddN_3") {
-      EXPECT_EQ(0, fanout.port_id);
+      EXPECT_EQ(fanout.port_id, 0);
     } else {
       // Invalid fanout
       EXPECT_FALSE(true);
@@ -159,7 +156,7 @@ TEST_F(GraphViewTest, BasicGraph) {
   }
 
   const NodeDef* add_node = graph.GetNode("AddN");
-  EXPECT_NE(nullptr, add_node);
+  EXPECT_NE(add_node, nullptr);
 
   absl::flat_hash_set<string> fanouts;
   absl::flat_hash_set<string> expected_fanouts = {"AddN_2:0", "AddN_3:0"};
@@ -190,44 +187,106 @@ TEST_F(GraphViewTest, ControlDependencies) {
   GraphView graph(&item.graph);
 
   GraphView::OutputPort output = graph.GetOutputPort("a", -1);
-  EXPECT_EQ("a", output.node->name());
-  EXPECT_EQ(-1, output.port_id);
+  EXPECT_EQ(output.node->name(), "a");
+  EXPECT_EQ(output.port_id, -1);
   auto fanout = graph.GetFanout(output);
-  EXPECT_EQ(1, fanout.size());
-  EXPECT_EQ("d", (*fanout.begin()).node->name());
-  EXPECT_EQ(-1, (*fanout.begin()).port_id);
+  EXPECT_EQ(fanout.size(), 1);
+  EXPECT_EQ((*fanout.begin()).node->name(), "d");
+  EXPECT_EQ((*fanout.begin()).port_id, -1);
 
   output = graph.GetOutputPort("a", 0);
-  EXPECT_EQ("a", output.node->name());
-  EXPECT_EQ(0, output.port_id);
+  EXPECT_EQ(output.node->name(), "a");
+  EXPECT_EQ(output.port_id, 0);
   fanout = graph.GetFanout(output);
-  EXPECT_EQ(1, fanout.size());
-  EXPECT_EQ("b", (*fanout.begin()).node->name());
-  EXPECT_EQ(0, (*fanout.begin()).port_id);
+  EXPECT_EQ(fanout.size(), 1);
+  EXPECT_EQ((*fanout.begin()).node->name(), "b");
+  EXPECT_EQ((*fanout.begin()).port_id, 0);
 
   GraphView::InputPort input = graph.GetInputPort("d", -1);
-  EXPECT_EQ("d", input.node->name());
-  EXPECT_EQ(-1, input.port_id);
+  EXPECT_EQ(input.node->name(), "d");
+  EXPECT_EQ(input.port_id, -1);
   auto fanin = graph.GetFanin(input);
-  EXPECT_EQ(1, fanin.size());
-  EXPECT_EQ("a", (*fanin.begin()).node->name());
-  EXPECT_EQ(-1, (*fanin.begin()).port_id);
+  EXPECT_EQ(fanin.size(), 1);
+  EXPECT_EQ((*fanin.begin()).node->name(), "a");
+  EXPECT_EQ((*fanin.begin()).port_id, -1);
 
   input = graph.GetInputPort("d", 0);
-  EXPECT_EQ("d", input.node->name());
-  EXPECT_EQ(0, input.port_id);
+  EXPECT_EQ(input.node->name(), "d");
+  EXPECT_EQ(input.port_id, 0);
   fanin = graph.GetFanin(input);
-  EXPECT_EQ(1, fanin.size());
-  EXPECT_EQ("b", (*fanin.begin()).node->name());
-  EXPECT_EQ(0, (*fanin.begin()).port_id);
+  EXPECT_EQ(fanin.size(), 1);
+  EXPECT_EQ((*fanin.begin()).node->name(), "b");
+  EXPECT_EQ((*fanin.begin()).port_id, 0);
 
   input = graph.GetInputPort("d", 1);
-  EXPECT_EQ("d", input.node->name());
-  EXPECT_EQ(1, input.port_id);
+  EXPECT_EQ(input.node->name(), "d");
+  EXPECT_EQ(input.port_id, 1);
   fanin = graph.GetFanin(input);
-  EXPECT_EQ(1, fanin.size());
-  EXPECT_EQ("c", (*fanin.begin()).node->name());
-  EXPECT_EQ(0, (*fanin.begin()).port_id);
+  EXPECT_EQ(fanin.size(), 1);
+  EXPECT_EQ((*fanin.begin()).node->name(), "c");
+  EXPECT_EQ((*fanin.begin()).port_id, 0);
+}
+
+TEST_F(GraphViewTest, HasNode) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphView graph(&item.graph);
+
+  EXPECT_EQ(graph.HasNode("a"), true);
+  EXPECT_EQ(graph.HasNode("b"), false);
+}
+
+TEST_F(GraphViewTest, HasFanin) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output b = ops::Square(s.WithOpName("b"), {a});
+  Output c = ops::Sqrt(s.WithOpName("c"), {b});
+  Output d = ops::AddN(s.WithOpName("d").WithControlDependencies(a), {b, c});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphView graph(&item.graph);
+
+  const NodeDef* d_node = graph.GetNode("d");
+  EXPECT_NE(d_node, nullptr);
+
+  EXPECT_EQ(graph.HasFanin(*d_node, {"a", Graph::kControlSlot}), true);
+  EXPECT_EQ(graph.HasFanin(*d_node, {"a", 0}), false);
+  EXPECT_EQ(graph.HasFanin(*d_node, {"b", 0}), true);
+  EXPECT_EQ(graph.HasFanin(*d_node, {"b", Graph::kControlSlot}), false);
+  EXPECT_EQ(graph.HasFanin(*d_node, {"c", 0}), true);
+  EXPECT_EQ(graph.HasFanin(*d_node, {"c", Graph::kControlSlot}), false);
+}
+
+TEST_F(GraphViewTest, GetRegularFaninPortOutOfBounds) {
+  tensorflow::Scope s = tensorflow::Scope::NewRootScope();
+  Output a = ops::Const(s.WithOpName("a"), 0.0f, {10, 10});
+  Output b = ops::Square(s.WithOpName("b"), {});
+  Output c = ops::Sqrt(s.WithOpName("c"), {b});
+  Output d = ops::AddN(s.WithOpName("d").WithControlDependencies(a), {b, c});
+
+  GrapplerItem item;
+  TF_CHECK_OK(s.ToGraphDef(&item.graph));
+  GraphView graph(&item.graph);
+
+  const NodeDef* b_node = graph.GetNode("b");
+  EXPECT_NE(b_node, nullptr);
+  const NodeDef* c_node = graph.GetNode("c");
+  EXPECT_NE(c_node, nullptr);
+  const NodeDef* d_node = graph.GetNode("d");
+  EXPECT_NE(d_node, nullptr);
+
+  auto d_output_0 = graph.GetRegularFanin({d_node, 0});
+  EXPECT_EQ(d_output_0, GraphView::OutputPort(b_node, 0));
+  auto d_output_1 = graph.GetRegularFanin({d_node, 1});
+  EXPECT_EQ(d_output_1, GraphView::OutputPort(c_node, 0));
+  auto d_output_2 = graph.GetRegularFanin({d_node, 2});
+  EXPECT_EQ(d_output_2, GraphView::OutputPort());
+  auto d_output_control = graph.GetRegularFanin({d_node, Graph::kControlSlot});
+  EXPECT_EQ(d_output_control, GraphView::OutputPort());
 }
 
 }  // namespace

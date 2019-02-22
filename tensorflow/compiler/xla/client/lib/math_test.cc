@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -29,6 +30,138 @@ class MathTest : public ClientLibraryTestBase {
  public:
   ErrorSpec error_spec_{0.0001};
 };
+
+// Write TYPED_TESTs within the class definition so that we don't have to litter
+// "this->" everywhere.
+template <typename T>
+class MathTypedTest : public MathTest {
+ public:
+  void TestLogEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}}), &b));
+    ComputeAndCompareR1<T>(&b,
+                           {-std::numeric_limits<T>::infinity(),
+                            -std::numeric_limits<T>::infinity()},
+                           {}, error_spec_);
+  }
+
+  void TestLog1pEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    Log1p(AddParam(LiteralUtil::CreateR1<T>({T{0.0}, T{-0.0}, T{-1.0}}), &b));
+    ComputeAndCompareR1<T>(
+        &b, {T{0.0}, T{-0.0}, -std::numeric_limits<T>::infinity()}, {},
+        error_spec_);
+  }
+
+  void TestIsInfOrNan() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    auto x =
+        ConstantR1<T>(&b, {
+                              T{0},
+                              T{100},
+                              T{-1000},
+                              T{std::numeric_limits<T>::max()},
+                              T{std::numeric_limits<T>::lowest()},
+                              T{std::numeric_limits<float>::infinity()},
+                              T{-std::numeric_limits<float>::infinity()},
+                              T{std::numeric_limits<float>::quiet_NaN()},
+                              T{std::numeric_limits<float>::signaling_NaN()},
+                          });
+    Tuple(&b, {IsFinite(x), IsInf(x), IsPosInf(x), IsNegInf(x), IsNan(x)});
+
+    auto expected = LiteralUtil::MakeTupleOwned(
+        LiteralUtil::CreateR1<bool>(
+            {true, true, true, true, true, false, false, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, true, true, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, true, false, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, false, true, false, false}),
+        LiteralUtil::CreateR1<bool>(
+            {false, false, false, false, false, false, false, true, true}));
+    ComputeAndCompareLiteral(&b, expected, {});
+  }
+
+  void TestIsNegZero() {
+    SetFastMathDisabled(true);
+    XlaBuilder b(TestName());
+    T inf(std::numeric_limits<float>::infinity());
+    T nan(std::numeric_limits<float>::quiet_NaN());
+    IsNegZero(AddParam(
+        LiteralUtil::CreateR1<T>({T{-0.0}, T{0}, T{1}, T{-1}, inf, -inf, nan}),
+        &b));
+
+    ComputeAndCompareLiteral(
+        &b,
+        LiteralUtil::CreateR1<bool>(
+            {true, false, false, false, false, false, false}),
+        {}, error_spec_);
+  }
+};
+
+// TODO(b/123355973): Add bfloat16 to TestTypes once it's working.
+#ifdef XLA_BACKEND_DOES_NOT_SUPPORT_FLOAT16
+using TestTypes = ::testing::Types<float>;
+#else
+using TestTypes = ::testing::Types<float, Eigen::half>;
+#endif
+
+TYPED_TEST_CASE(MathTypedTest, TestTypes);
+
+XLA_TYPED_TEST(MathTypedTest, LogEdgeCases) { this->TestLogEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, Log1pEdgeCases) { this->TestLog1pEdgeCases(); }
+XLA_TYPED_TEST(MathTypedTest, IsInfOrNan) { this->TestIsInfOrNan(); }
+XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
+
+// Check that certain ops only support real, floating-point inputs.
+//
+// TODO(jlebar): Expand this test to cover more ops.
+XLA_TEST_F(MathTest, RealFpOnlyOps) {
+  for (int64 i = PrimitiveType_MIN; i <= PrimitiveType_MAX; ++i) {
+    auto ty = static_cast<PrimitiveType>(i);
+    SCOPED_TRACE(PrimitiveType_Name(ty));
+    Shape shape;
+    if (primitive_util::IsArrayType(ty)) {
+      shape = ShapeUtil::MakeShape(ty, {42});
+    } else if (ty == PrimitiveType::TUPLE) {
+      shape = ShapeUtil::MakeTupleShape({});
+    } else if (ty == PrimitiveType::OPAQUE) {
+      shape = ShapeUtil::MakeOpaqueShape();
+    } else if (ty == PrimitiveType::TOKEN) {
+      shape = ShapeUtil::MakeTokenShape();
+    } else {
+      continue;
+    }
+
+    for (const auto& test :
+         std::vector<std::pair<std::function<XlaOp(XlaOp)>, string>>({
+             {IsFinite, "is_finite"},
+             {IsInf, "is_inf"},
+             {IsPosInf, "is_pos_inf"},
+             {IsNegInf, "is_neg_inf"},
+             {IsNan, "is_nan"},
+             {Erf, "erf"},
+             {Erfc, "erfc"},
+             {Lgamma, "lgamma"},
+             {Digamma, "digamma"},
+             {RoundToEven, "round_to_even"},
+         })) {
+      SCOPED_TRACE(test.second);
+      XlaBuilder b(TestName());
+      XlaOp p = Parameter(&b, 0, shape, "p0");
+      test.first(p);
+
+      EXPECT_EQ(b.first_error().ok(), primitive_util::IsFloatingPointType(ty));
+    }
+  }
+}
 
 XLA_TEST_F(MathTest, SqrtF32) {
   XlaBuilder builder(TestName());
@@ -106,6 +239,27 @@ XLA_TEST_F(MathTest, Lgamma) {
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
 }
 
+XLA_TEST_F(MathTest, LgammaF16) {
+  SetFastMathDisabled(true);
+
+  XlaBuilder b(TestName());
+
+  // These seemingly arbitrary inputs came from debugging the lgamma
+  // implementation against a test which tried all possible f16 values.
+  auto x = ConstantR1<half>(&b, {
+                                    half(-7360.0),
+                                    half(-4066.0),
+                                    half(-5.9605e-08),
+                                });
+  Lgamma(x);
+  std::vector<half> expected = {
+      std::numeric_limits<half>::infinity(),
+      std::numeric_limits<half>::infinity(),
+      half(16.64),
+  };
+  ComputeAndCompareR1<half>(&b, expected, {}, ErrorSpec{0.1});
+}
+
 XLA_TEST_F(MathTest, Digamma) {
   XlaBuilder builder(TestName());
   auto x = ConstantR1<float>(&builder, {1.0, 0.5, 1 / 3.0, 0.25, 1 / 6.0, 0.125,
@@ -146,6 +300,41 @@ XLA_TEST_F(MathTest, RoundToEven) {
                                  0.0,  2.0,  2.0,  4.0,  4.0};
 
   ComputeAndCompareR1<float>(&builder, expected, {}, error_spec_);
+}
+
+XLA_TEST_F(MathTest, ErfRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erf(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, ErfcRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Erfc(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, LgammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Lgamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, DigammaRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  Digamma(x);
+  EXPECT_FALSE(b.Build().status().ok());
+}
+
+XLA_TEST_F(MathTest, RoundToEvenRejectsComplexInputs) {
+  XlaBuilder b(TestName());
+  auto x = ConstantR1<std::complex<float>>(&b, {{0, 0}});
+  RoundToEven(x);
+  EXPECT_FALSE(b.Build().status().ok());
 }
 
 }  // namespace

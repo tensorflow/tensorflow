@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
 
+#include <memory>
 #include <string>
 
 #include "absl/memory/memory.h"
@@ -40,8 +41,9 @@ constexpr char kInterpreter[] = "interpreter";
 
 // Wrapper function that creates a nicer error message (than a bare
 // ValueOrDie()) if the platform we intend to test is not available.
-Client* GetOrCreateLocalClientOrDie(const LocalClientOptions& client_options) {
-  StatusOr<Client*> result =
+LocalClient* GetOrCreateLocalClientOrDie(
+    const LocalClientOptions& client_options) {
+  StatusOr<LocalClient*> result =
       ClientLibrary::GetOrCreateLocalClient(client_options);
   TF_CHECK_OK(result.status()) << " could not create local client for testing";
   return result.ValueOrDie();
@@ -74,6 +76,9 @@ ClientLibraryTestBase::ClientLibraryTestBase(
   // default.
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
+
+  execution_options_.mutable_debug_options()
+      ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
 ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
@@ -88,6 +93,9 @@ ClientLibraryTestBase::ClientLibraryTestBase(se::Platform* platform)
 
   execution_options_.mutable_debug_options()->add_xla_disable_hlo_passes(
       "constant_folding");
+
+  execution_options_.mutable_debug_options()
+      ->set_xla_hlo_evaluator_use_fast_path(true);
 }
 
 string ClientLibraryTestBase::TestName() const {
@@ -184,7 +192,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllOutputLayouts(
   verify_output(actual, "");
 
   // Try with all output layouts.
-  std::vector<int64> minor_to_major(ShapeUtil::Rank(expected.shape()));
+  std::vector<int64> minor_to_major(expected.shape().rank());
   std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
   do {
     auto layout = ShapeUtil::MakeShapeWithLayout(
@@ -217,7 +225,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
       TF_ASSIGN_OR_RETURN(auto literal,
                           client_->Transfer(*arguments[index], nullptr));
       // Skip tuples because they don't have a rank.
-      if (ShapeUtil::IsTuple(literal.shape())) {
+      if (literal.shape().IsTuple()) {
         layout_strings.push_back(
             ShapeUtil::HumanStringWithLayout(literal.shape()));
         arguments_with_layout.push_back(arguments[index]);
@@ -227,7 +235,7 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithAllInputLayouts(
         return Status::OK();
       }
 
-      std::vector<int64> minor_to_major(ShapeUtil::Rank(literal.shape()));
+      std::vector<int64> minor_to_major(literal.shape().rank());
       std::iota(minor_to_major.begin(), minor_to_major.end(), 0);
       do {
         auto literal_relayout =
@@ -273,9 +281,10 @@ StatusOr<Literal> ClientLibraryTestBase::ComputeAndTransfer(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      owning_arguments.push_back(
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
-              .ValueOrDie());
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<GlobalData> owned_argument,
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+      owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
   }
@@ -296,9 +305,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      owning_arguments.push_back(
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
-              .ValueOrDie());
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<GlobalData> owned_argument,
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+      owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
   }
@@ -356,9 +366,10 @@ Status ClientLibraryTestBase::ComputeAndCompareLiteralWithStatus(
   if (!arguments_.empty()) {
     CHECK(arguments.empty());
     for (const auto& argument : arguments_) {
-      owning_arguments.push_back(
-          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument))
-              .ValueOrDie());
+      TF_ASSIGN_OR_RETURN(
+          std::unique_ptr<GlobalData> owned_argument,
+          client_->TransferToServer(MaybeConvertLiteralToBfloat16(argument)));
+      owning_arguments.push_back(std::move(owned_argument));
       arguments.push_back(owning_arguments.back().get());
     }
   }

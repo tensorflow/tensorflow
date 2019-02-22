@@ -131,7 +131,8 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
                                     sequence_length=None,
                                     parallel_iterations=None,
                                     time_major=False,
-                                    scope=None):
+                                    scope=None,
+                                    swap_memory=False):
   """Creates a dynamic bidirectional recurrent neural network.
 
   Stacks several bidirectional rnn layers. The combined forward and backward
@@ -171,6 +172,10 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
       data is batch-major, so by default this function accepts input and emits
       output in batch-major form.
     scope: VariableScope for the created subgraph; defaults to None.
+    swap_memory: Transparently swap the tensors produced in forward inference
+      but needed for back prop from GPU to CPU.  This allows training RNNs
+      which would typically not fit on a single GPU, with very minimal (or no)
+      performance penalty.
 
   Returns:
     A tuple (outputs, output_state_fw, output_state_bw) where:
@@ -230,6 +235,7 @@ def stack_bidirectional_dynamic_rnn(cells_fw,
             sequence_length=sequence_length,
             parallel_iterations=parallel_iterations,
             dtype=dtype,
+            swap_memory=swap_memory,
             time_major=time_major)
         # Concat the outputs to create the new input.
         prev_layer = array_ops.concat(outputs, 2)
