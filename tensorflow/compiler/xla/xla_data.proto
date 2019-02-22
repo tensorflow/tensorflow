@@ -545,6 +545,26 @@ enum RandomDistribution {
   // Next: 4
 }
 
+message TriangularSolveOptions {
+  // If true, solves ax = b. If false, solves xa = b.
+  bool left_side = 1;
+
+  // If true, 'a' is lower triangular. If false, 'a' is upper triangular.
+  bool lower = 2;
+
+  // If true, the diagonal elements of 'a' are assumed to be 1 and not accessed.
+  bool unit_diagonal = 3;
+
+  // Should we transpose or use the adjoint of 'a'?
+  enum Transpose {
+    TRANSPOSE_INVALID = 0;
+    NO_TRANSPOSE = 1;  // Don't transpose 'a'.
+    TRANSPOSE = 2;     // Transpose 'a'.
+    ADJOINT = 3;       // Complex conjugate and transpose 'a'.
+  };
+  Transpose transpose_a = 4;
+}
+
 message OpSharding {
   enum Type {
     // This sharding is replicated across all devices (implies maximal,
@@ -603,4 +623,16 @@ message PrecisionConfig {
   repeated Precision operand_precision = 1;
 
   // Next: 2
+}
+
+// Describes whether all data-parallelism replicas will receive the same
+// parameter data at each buffer.
+message ParameterReplication {
+  // A list of boolean values for the flattened leaf buffers. Each value
+  // indicates whether the corresponding leaf buffer is replicated.
+  //
+  // If this field is empty, it means no buffer is replicated. Otherwise, the
+  // number of elements in this field must match the number of leaf buffers in
+  // the HLO instruction's shape.
+  repeated bool replicated_at_leaf_buffers = 1;
 }

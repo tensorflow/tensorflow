@@ -51,6 +51,12 @@ class SubgraphQuantizer {
   TfLiteStatus AsymmetricQuantizeSingleInputOutputOp(BuiltinOperator op_code,
                                                      OperatorT* op);
 
+  // Asymmetric quantizes inputs and outputs of an Softmax Op.
+  // Input is quantized with the min-max range and output is hardcoded to have
+  // 1/256 as scale and -128 as zero point.
+  TfLiteStatus AsymmetricQuantizeSoftmax(BuiltinOperator op_code,
+                                         OperatorT* op);
+
   TfLiteStatus AsymmetricQuantizeTensor(BuiltinOperator op_code,
                                         int32_t tensor_idx);
 

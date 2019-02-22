@@ -33,6 +33,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "CriticalSection"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DType"
     mtype: "<type \'type\'>"
   }
@@ -135,6 +139,10 @@ tf_module {
   member {
     name: "MetaGraphDef"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
+  }
+  member {
+    name: "Module"
+    mtype: "<class \'tensorflow.python.module.module.ModuleMetaclass\'>"
   }
   member {
     name: "NameAttrList"
@@ -1459,6 +1467,10 @@ tf_module {
   member_method {
     name: "is_strictly_increasing"
     argspec: "args=[\'x\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "is_tensor"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "is_variable_initialized"

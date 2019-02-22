@@ -590,7 +590,9 @@ TF_Function* TF_GraphToFunction_wrapper(
     const TF_Graph* fn_body, const char* fn_name, bool append_hash_to_fn_name,
     const std::vector<TF_Operation*>* opers,
     const std::vector<TF_Output>& inputs, const std::vector<TF_Output>& outputs,
-    const NameVector& output_names, const TF_FunctionOptions* opts,
+    const NameVector& output_names,
+    const std::vector<TF_Operation*>* control_outputs,
+    const NameVector& control_output_names, const TF_FunctionOptions* opts,
     const char* description, TF_Status* out_status) {
   if (!output_names.empty() && output_names.size() != outputs.size()) {
     Set_TF_Status_from_Status(
@@ -613,10 +615,18 @@ TF_Function* TF_GraphToFunction_wrapper(
       output_names.empty() ? nullptr
                            : const_cast<const char**>(output_names.data());
 
-  return TF_GraphToFunction(fn_body, fn_name, append_hash_to_fn_name, nopers,
-                            opers_array, inputs.size(), inputs.data(),
-                            outputs.size(), outputs.data(), output_names_ptr,
-                            opts, description, out_status);
+  const char** control_output_names_ptr =
+      control_output_names.empty()
+          ? nullptr
+          : const_cast<const char**>(control_output_names.data());
+
+  return TF_GraphToFunctionWithControlOutputs(
+      fn_body, fn_name, append_hash_to_fn_name, nopers, opers_array,
+      inputs.size(), inputs.data(), outputs.size(), outputs.data(),
+      output_names_ptr,
+      control_outputs == nullptr ? 0 : control_outputs->size(),
+      control_outputs == nullptr ? nullptr : control_outputs->data(),
+      control_output_names_ptr, opts, description, out_status);
 }
 
 void TF_GraphSetOutputHandleShapesAndTypes_wrapper(

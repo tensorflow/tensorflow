@@ -65,6 +65,19 @@ ENTRY %axpy.v5 (alpha: f32[], x: f32[2,4], y: f32[2,4]) -> f32[2,4] {
 
 )"
 },
+// parameter replication
+{
+"ParamReplication",
+R"(HloModule param_replication_module
+
+ENTRY %param_replication (a: f32[], b: (f32[2,4], (f32[2,4]))) -> (f32[], (f32[2,4], (f32[2,4]))) {
+  %a = f32[] parameter(0), parameter_replication={true}
+  %b = (f32[2,4]{1,0}, (f32[2,4]{1,0})) parameter(1), parameter_replication={false,true}
+  ROOT %tuple = (f32[], (f32[2,4]{1,0}, (f32[2,4]{1,0}))) tuple(f32[] %a, (f32[2,4]{1,0}, (f32[2,4]{1,0})) %b)
+}
+
+)"
+},
 // pred constant
 {
 "ConstantPred",
@@ -1047,9 +1060,15 @@ ENTRY ReducePrecision {
 "SortKey",
 R"(HloModule sort
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   x = f32[1024]{0} parameter(0)
-  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1059,10 +1078,18 @@ ENTRY Sort {
 "SortKeyValue",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1072,9 +1099,15 @@ ENTRY Sort {
 "SortKeyR2",
 R"(HloModule sort
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   x = f32[1024,16]{0,1} parameter(0)
-  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}
+  ROOT sorted = f32[1024,16]{0,1} sort(x), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1084,10 +1117,18 @@ ENTRY Sort {
 "SortKeyValueR2",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024,16]{0,1} parameter(0)
   values = s32[1024,16]{0,1} parameter(1)
-  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1097,12 +1138,42 @@ ENTRY Sort {
 "SortManyValues",
 R"(HloModule sort
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.2.lhs = u32[] parameter(4)
+  p.2.rhs = u32[] parameter(5)
+  p.3.lhs = f32[] parameter(6)
+  p.3.rhs = f32[] parameter(7)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024,16]{0,1} parameter(0)
   values.0 = s32[1024,16]{0,1} parameter(1)
   values.1 = u32[1024,16]{0,1} parameter(2)
   values.2 = f32[1024,16]{0,1} parameter(3)
-  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}
+  ROOT sorted = (f32[1024,16]{0,1}, s32[1024,16]{0,1}, u32[1024,16]{0,1}, f32[1024,16]{0,1}) sort(keys, values.0, values.1, values.2), dimensions={0}, to_apply=compare
+}
+
+)"
+},
+// Sort (Key) is_stable=true
+{
+"SortKeyStable",
+R"(HloModule sort
+
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
+ENTRY Sort {
+  x = f32[1024]{0} parameter(0)
+  ROOT sorted = f32[1024]{0} sort(x), dimensions={0}, is_stable=true, to_apply=compare
 }
 
 )"
@@ -1282,6 +1353,17 @@ ENTRY CollectivePermute {
 
 )"
 },
+// replica-id
+{
+"ReplicaId",
+R"(HloModule replica-id
+
+ENTRY Replica-id {
+  ROOT replica-id = u32[] replica-id()
+}
+
+)"
+},
 // Iota
 {
 "Iota",
@@ -1309,10 +1391,18 @@ ENTRY Computation {
 "ScheduledModule",
 R"(HloModule scheduled_module, is_scheduled=true
 
+compare {
+  p.1.lhs = s32[] parameter(2)
+  p.1.rhs = s32[] parameter(3)
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lhs = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY Sort {
   keys = f32[1024]{0} parameter(0)
   values = s32[1024]{0} parameter(1)
-  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}
+  ROOT sorted = (f32[1024]{0}, s32[1024]{0}) sort(keys, values), dimensions={0}, to_apply=compare
 }
 
 )"
@@ -1396,7 +1486,7 @@ class HloParameterizedParserTest
  protected:
   // Expects "ToString(ParseHloString(string)) == string", that is, parses the
   // string, asserts that it succeeded, stringifies the parsed module, and
-  // checks that the it equals the original string.
+  // checks that it equals the original string.
   void ExpectEqual() {
     const string& original = GetParam().module_string;
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
@@ -2515,6 +2605,60 @@ TEST_F(HloParserTest, ParseShapeStringWithLayout) {
       << "actual:   " << ShapeUtil::HumanString(actual);
 }
 
+TEST_F(HloParserTest, ParseShapeStringWithTilingLayout) {
+  // One tile.
+  string shape_string = "f32[123,456]{0,1:T(2,128)}";
+  TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
+  Shape expected =
+      ShapeUtil::MakeShapeWithLayout(F32, {123, 456}, {0, 1}, {Tile({2, 128})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Tile with negative dimension size for combining dimensions.
+  shape_string = "f32[123,456,789]{0,1,2:T(2, * , 128)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected =
+      ShapeUtil::MakeShapeWithLayout(F32, {123, 456, 789}, {0, 1, 2},
+                                     {Tile({2, Tile::kCombineDimension, 128})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Two tiles.
+  shape_string = "bf16[123,456,789]{2,1,0:T(2,*,128)(2,1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(
+      BF16, {123, 456, 789}, {2, 1, 0},
+      {Tile({2, Tile::kCombineDimension, 128}), Tile({2, 1})});
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Tile with element size in bits.
+  shape_string = "pred[123,456]{1,0:T(2,128)E(1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0},
+                                            {Tile({2, 128})}, 1);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Element size in bits without tile.
+  shape_string = "pred[123,456]{1,0:E(1)}";
+  TF_ASSERT_OK_AND_ASSIGN(actual, ParseShape(shape_string));
+  expected = ShapeUtil::MakeShapeWithLayout(PRED, {123, 456}, {1, 0}, {}, 1);
+  EXPECT_EQ(expected, actual)
+      << "expected: " << ShapeUtil::HumanStringWithLayout(expected)
+      << "actual:   " << ShapeUtil::HumanStringWithLayout(actual);
+
+  // Wrong minor_to_major.
+  shape_string = "f32[123,456,789]{1:T(2, * , 128)}";
+  auto result = ParseShape(shape_string);
+  ExpectHasSubstr(result.status().error_message(),
+                  "Dimensions size is 3, but minor to major size is 1.");
+}
+
 TEST_F(HloParserTest, ParseShapeStringWithSparseLayout) {
   string shape_string = "f32[123,456]sparse{10}";
   TF_ASSERT_OK_AND_ASSIGN(Shape actual, ParseShape(shape_string));
@@ -2577,6 +2721,17 @@ TEST_F(HloParserTest, NegativeParameterNumber) {
   ASSERT_FALSE(result.status().ok());
   EXPECT_THAT(result.status().error_message(),
               ::testing::HasSubstr("parameter number must be >= 0"));
+}
+
+TEST_F(HloParserTest, WrongNumberOfParameterLeafBuffersInReplication) {
+  const string hlo_string =
+      "par0 = (f32[3,5], f32[]) parameter(0), "
+      "parameter_replication={true,false,true}";
+  auto result = ParseHloString(hlo_string);
+  ASSERT_FALSE(result.status().ok());
+  EXPECT_THAT(result.status().error_message(),
+              ::testing::HasSubstr("parameter has 2 leaf buffers, but "
+                                   "parameter_replication has 3 elements"));
 }
 
 }  // namespace

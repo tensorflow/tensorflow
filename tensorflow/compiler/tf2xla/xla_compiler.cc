@@ -43,6 +43,8 @@ limitations under the License.
 #include "tensorflow/core/graph/algorithm.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/graph/node_builder.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
@@ -183,9 +185,10 @@ Status BuildComputation(
   std::vector<xla::XlaOp> elems;
   elems.reserve(retvals.size());
 
-  // Keeps track of which retvals have layout to update. The first element is
-  // the output index, second element is the new layout.
-  std::vector<std::pair<int64, xla::Layout>> retval_to_update_layout;
+  // Keeps track of the layout of each retval. If a retval is not in this list,
+  // a descending layout is used. The first element is the output index, second
+  // element is the new layout.
+  std::vector<std::pair<int64, xla::Layout>> retval_index_and_layout;
   for (int i = 0; i < retvals.size(); ++i) {
     XlaCompiler::OutputDescription& output = (*outputs)[i];
     const XlaExpression& retval = retvals[i];
@@ -214,7 +217,7 @@ Status BuildComputation(
           TF_ASSIGN_OR_RETURN(xla::Shape shape, shape_representation_fn(
                                                     output.shape, output.type));
           value = xla::Reshape(value, xla::AsInt64Slice(shape.dimensions()));
-          retval_to_update_layout.emplace_back(elems.size(), shape.layout());
+          retval_index_and_layout.emplace_back(elems.size(), shape.layout());
         } else if (it != retval_cores.end()) {
           // Apply the sharding to the output, if there is a core assignment.
           value = identity_op(value);
@@ -287,6 +290,11 @@ Status BuildComputation(
       // Ensures the correct sharding is applied to the output.
       handle = identity_op(handle);
 
+      // Set layout of the retval to device representation layout.
+      if (resource->representation_shape().has_value()) {
+        retval_index_and_layout.emplace_back(
+            elems.size(), resource->representation_shape()->layout());
+      }
       elems.push_back(handle);
     }
   }
@@ -316,15 +324,15 @@ Status BuildComputation(
                       computation->GetProgramShape());
   *output_shape = program_shape.result();
   // Update the output layout to the layout of retval.
-  for (auto& update : retval_to_update_layout) {
+  for (auto& index_and_layout : retval_index_and_layout) {
     if (!always_return_tuple && elems.size() == 1) {
-      *output_shape->mutable_layout() = update.second;
+      *output_shape->mutable_layout() = index_and_layout.second;
       continue;
     }
 
-    xla::Shape* output_sub_shape =
-        xla::ShapeUtil::GetMutableSubshape(output_shape, {update.first});
-    *output_sub_shape->mutable_layout() = update.second;
+    xla::Shape* output_sub_shape = xla::ShapeUtil::GetMutableSubshape(
+        output_shape, {index_and_layout.first});
+    *output_sub_shape->mutable_layout() = index_and_layout.second;
   }
   return Status::OK();
 }
@@ -1108,8 +1116,17 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
   result->outputs.resize(context->retvals().size());
   std::vector<XlaExpression> retvals = context->retvals();
   if (options.resolve_compile_time_constants) {
-    TF_RETURN_IF_ERROR(ResolveConstantExpressionsToConstants(
-        client(), absl::Span<XlaExpression>(retvals)));
+    Status status = ResolveConstantExpressionsToConstants(
+        client(), absl::Span<XlaExpression>(retvals));
+
+    // If the HloEvaluator has not implemented an expression, just evaluate it
+    // at runtime.
+    if (status.code() == error::UNIMPLEMENTED) {
+      ConvertConstantsToExpressions(&builder,
+                                    absl::Span<XlaExpression>(retvals));
+    } else {
+      TF_RETURN_IF_ERROR(status);
+    }
   } else {
     ConvertConstantsToExpressions(&builder, absl::Span<XlaExpression>(retvals));
   }

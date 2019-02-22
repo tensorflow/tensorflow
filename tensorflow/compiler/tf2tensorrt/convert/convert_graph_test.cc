@@ -75,7 +75,7 @@ TEST(TrtCandidateSelector, Basics) {
                                          feed, const_1, matmul_attrs);
 
   // Unsupported op.
-  auto unsupported_op = ops::Sin(s.WithOpName("sin"), feed);
+  auto unsupported_op = ops::Erf(s.WithOpName("sin"), feed);
 
   // Incompatible input.
   auto incompatible_feed = ops::Placeholder(s.WithOpName("feed"), DT_DOUBLE);
@@ -108,7 +108,7 @@ TEST(TrtCandidateSelector, Basics) {
         "transpose_a is not supported for TensorRT FullyConnected "
         "(op: MatMul), at: incompatible_matmul");
     ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node()),
-                 error::UNIMPLEMENTED, "Op type Sin is not supported");
+                 error::UNIMPLEMENTED, "Op type Erf is not supported");
     ExpectStatus(
         selector.IsTensorRTCandidate(
             matmul_with_incompatible_input.operation.node()),

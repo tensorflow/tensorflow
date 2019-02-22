@@ -29,11 +29,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(josh11b): Replace asserts in this file with if ...: raise ...
 
 
+@tf_export("distribute.OneDeviceStrategy")
 class OneDeviceStrategy(distribute_lib.DistributionStrategy):
   """A distribution strategy for running on a single device."""
   # TODO(josh11b): Do we wrap values in types to generate errors if you are
@@ -50,7 +52,6 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
   def __init__(self, container_strategy, device):
     super(OneDeviceExtended, self).__init__(container_strategy)
     self._device = device
-    self._default_device = device
     self._input_device = device_util.canonicalize("/device:CPU:0")
     worker_device_pairs = [(self._input_device, [self._device])]
     device_map = values.SingleDeviceMap(device)
@@ -62,8 +63,12 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
     if colocate_with is None:
       with ops.device(self._device):
         return next_creator(*args, **kwargs)
-    with ops.colocate_with(colocate_with):
-      return next_creator(*args, **kwargs)
+    elif isinstance(colocate_with, numpy_dataset.SingleDevice):
+      with ops.device(colocate_with.device):
+        return next_creator(*args, **kwargs)
+    else:
+      with ops.colocate_with(colocate_with):
+        return next_creator(*args, **kwargs)
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate(colocate_with_variable, self)
@@ -83,7 +88,7 @@ class OneDeviceExtended(distribute_lib.DistributionStrategyExtended):
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
-        numpy_input, self._input_device, session)
+        numpy_input, numpy_dataset.SingleDevice(self._input_device), session)
 
   def _broadcast_to(self, tensor, destinations):
     del destinations

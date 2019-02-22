@@ -82,6 +82,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/reduce_precision_insertion.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
+#include "tensorflow/compiler/xla/service/stable_sort_expander.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
@@ -118,6 +119,9 @@ std::vector<string> GetCudaRootCandidates(
     const HloModuleConfig& hlo_module_config) {
   std::vector<string> potential_cuda_roots = tensorflow::CandidateCudaRoots();
 
+  // "." is our last resort, even though it probably won't work.
+  potential_cuda_roots.push_back(".");
+
   // CUDA location explicitly specified by user via --xla_gpu_cuda_data_dir has
   // highest priority.
   string xla_gpu_cuda_data_dir =
@@ -129,9 +133,23 @@ std::vector<string> GetCudaRootCandidates(
   return potential_cuda_roots;
 }
 
+void PrintCantFindCudaMessage(absl::string_view msg,
+                              const HloModuleConfig& hlo_module_config) {
+  LOG(WARNING) << msg;
+  LOG(WARNING) << "Searched in the following directories:";
+  for (const auto& dir : GetCudaRootCandidates(hlo_module_config)) {
+    LOG(WARNING) << "  " << dir;
+  }
+  LOG(WARNING)
+      << "You can choose the search directory by setting xla_gpu_cuda_data_dir "
+         "in HloModule's DebugOptions.  For most apps, setting the environment "
+         "variable XLA_FLAGS=--xla_gpu_cuda_data_dir=/path/to/cuda will work.";
+}
+
 // Returns the directory containing nvvm libdevice files.
 string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
-  for (const string& cuda_root : GetCudaRootCandidates(hlo_module_config)) {
+  const auto& candidate_dirs = GetCudaRootCandidates(hlo_module_config);
+  for (const string& cuda_root : candidate_dirs) {
     string libdevice_dir =
         tensorflow::io::JoinPath(cuda_root, "nvvm", "libdevice");
     VLOG(2) << "Looking for libdevice at " << libdevice_dir;
@@ -140,8 +158,14 @@ string GetLibdeviceDir(const HloModuleConfig& hlo_module_config) {
       return libdevice_dir;
     }
   }
-  LOG(WARNING) << "Unable to find libdevice dir. Using '.'";
-  // Last resort: maybe in the current folder.
+  PrintCantFindCudaMessage(
+      "Can't find directory containing CUDA libevice.  This may result in "
+      "compilation or runtime failures, if the program we try to run uses "
+      "routines from libdevice.",
+      hlo_module_config);
+
+  // GetCudaRotCandidates always inclues ".", but but if everything fails, we
+  // return it anyway.  Better than returning the empty string.
   return ".";
 }
 
@@ -172,6 +196,8 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
     pipeline.AddPass<ConvolutionGroupConverter>(
         cost_model,
         /*convert_batch_groups_only=*/true);
+    // Expand the sort op to support stable sorting if required.
+    pipeline.AddPass<StableSortExpander>();
     // Convert BF16 operations to F32 operations so that the GPU backend can
     // support BF16 operations without directly implementing a BF16 lowering for
     // most ops.
@@ -772,14 +798,19 @@ StatusOr<std::unique_ptr<Executable>> NVPTXCompiler::RunBackend(
   std::unique_ptr<HloProfileIndexMap> profile_index_map;
   std::unique_ptr<HloProfilePrinterData> profile_printer;
 
-  if (module->config().hlo_profiling_enabled()) {
+  if (module->config().hlo_profiling_enabled() || VLOG_IS_ON(1)) {
     HloCostAnalysis cost_analysis(ShapeSizeBytesFunction());
     cost_analysis.set_bytes_per_second(
         stream_exec->GetDeviceDescription().memory_bandwidth());
     TF_RETURN_IF_ERROR(module->entry_computation()->Accept(&cost_analysis));
-    profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
-    profile_printer = CreateHloProfilePrinterData(
-        *profile_index_map, cost_analysis, entry_computation->name());
+    VLOG(1) << "HLO memory read+written: "
+            << tensorflow::strings::HumanReadableNumBytes(
+                   cost_analysis.bytes_accessed());
+    if (module->config().hlo_profiling_enabled()) {
+      profile_index_map = absl::make_unique<HloProfileIndexMap>(*module);
+      profile_printer = CreateHloProfilePrinterData(
+          *profile_index_map, cost_analysis, entry_computation->name());
+    }
   }
 
   auto* gpu_executable = new GpuExecutable(
@@ -843,10 +874,11 @@ std::vector<uint8> NVPTXCompiler::CompilePtxOrGetCachedResult(
             log_warning = !warning_done.exchange(true);
           }
           if (log_warning) {
-            LOG(WARNING)
-                << "Failed to compile ptx to cubin.  Will attempt to let "
-                   "GPU driver compile the ptx. "
-                << maybe_cubin.status();
+            PrintCantFindCudaMessage(
+                "Can't find ptxas binary.  Will back to the GPU driver "
+                "for PTX -> sass compilation.  This is OK so long as you don't "
+                "see a warning below about an out-of-date driver version.",
+                hlo_module_config);
           }
 
           // We're going to use the driver to JIT our PTX->SASS, so warn if

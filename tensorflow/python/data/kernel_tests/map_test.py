@@ -84,6 +84,7 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
   return dataset, coordination_events
 
 
+# TODO(jsimsa): Add tests for `map_with_legacy_function`.
 @test_util.run_all_in_graph_and_eager_modes
 class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -313,8 +314,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       if context.executing_eagerly():
         captured_iterator = iter(dataset_ops.Dataset.range(10))
       else:
-        captured_iterator = dataset_ops.Dataset.range(
-            10).make_initializable_iterator()
+        captured_iterator = dataset_ops.make_initializable_iterator(
+            dataset_ops.Dataset.range(10))
       ds = _build_ds(captured_iterator)
       return captured_iterator, ds
 
@@ -351,6 +352,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  @test_util.run_v1_only("b/123904513")
   def testCaptureQueue(self):
     elements = np.random.randint(100, size=[200])
     queue = data_flow_ops.FIFOQueue(200, dtypes.int64, shapes=[])
@@ -392,11 +394,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
-  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerCaptureConstantsWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
       with ops.device("/device:CPU:0"):
         a = constant_op.constant(3.0)
@@ -410,12 +411,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       expected_output = [8.0] * 10
       self.assertDatasetProduces(dataset, expected_output=expected_output)
 
-  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
-  @test_util.run_v1_only(
-      "defun will convert RefVariables to ResourceVariables.")
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
+  @test_util.run_v1_only("b/121264236")
   def testSkipEagerRefVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
       def func(_):
@@ -425,7 +424,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           b = variables.VariableV1(5.0)
         return math_ops.add(a, b)
 
-      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
+      # Use the legacy function implementation as eager function will convert
+      # RefVariables to ResourceVariables.
+      dataset = dataset_ops.Dataset.from_tensors(0).repeat(10)
+      dataset = dataset.map_with_legacy_function(func)
       self.evaluate(variables.global_variables_initializer())
       expected_output = [8.0] * 10
       self.assertDatasetProduces(
@@ -433,11 +435,10 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
           expected_output=expected_output,
           requires_initialization=True)
 
-  # TODO(b/121264236): add eager mode coverage when we have mutli-device setup.
+  # TODO(b/121264236): add eager mode coverage when we have multi-device setup.
   @test_util.run_v1_only("b/121264236")
   def testSkipEagerResourceVariablesWithConflictingDevices(self):
-    config = config_pb2.ConfigProto(
-        device_count={"CPU": 3}, log_device_placement=True)
+    config = config_pb2.ConfigProto(device_count={"CPU": 3})
     with self.cached_session(config=config):
 
       def func(_):
@@ -453,7 +454,8 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
       dataset = dataset_ops.Dataset.from_tensors(0).repeat(10).map(func)
       expected_error = (
           errors.InvalidArgumentError,
-          "Could not colocate node with its resource and reference inputs")
+          "Cannot place the graph because a reference or resource edge "
+          "connects colocation groups with incompatible assigned devices")
       self.assertDatasetProduces(
           dataset, expected_error=expected_error, requires_initialization=True)
 
@@ -705,6 +707,13 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 
+  def testNestedListMapDataset(self):
+    dataset = dataset_ops.Dataset.from_tensors(
+        [0, 1, 2]).repeat(10).map(lambda a: ([a[1], a[0] + a[2]], a[1]))
+
+    expected_output = [(np.array([1, 2]), 1)] * 10
+    self.assertDatasetProduces(dataset, expected_output=expected_output)
+
   def testPrefetch(self):
     # We will use this event to test that `_map_py_func()` has been
     # invoked a certain number of times (6 times, to be exact) after
@@ -812,6 +821,7 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         dataset,
         expected_output=[self.evaluate(_check(_sparse(i))) for i in range(10)])
 
+  @test_util.run_v1_only("b/123904513")
   def testParallelMapOutOfRangeError(self):
     def raising_py_func(i):
       if i == 100:
@@ -1021,6 +1031,18 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
 
+  # NOTE: collection test is specific to graph mode only, no eager coverage.
+  @test_util.run_v1_only("graph specific test")
+  def testSkipEagerCollectionCopy(self):
+    w = variable_scope.get_variable("w", [])
+    self.assertIn(w, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+
+    def func(x):
+      self.assertIn(w, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+      return x
+
+    dataset = dataset_ops.Dataset.from_tensors(constant_op.constant(1.0))
+    dataset.map(func)
 
 if __name__ == "__main__":
   test.main()

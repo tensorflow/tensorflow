@@ -126,8 +126,8 @@ def clip_by_norm(t, clip_norm, axes=None, name=None):
   In this case, the L2-norm of the output tensor is `clip_norm`.
 
   As another example, if `t` is a matrix and `axes == [1]`, then each row
-  of the output will have L2-norm equal to `clip_norm`. If `axes == [0]`
-  instead, each column of the output will be clipped.
+  of the output will have L2-norm less than or equal to `clip_norm`. If
+  `axes == [0]` instead, each column of the output will be clipped.
 
   This operation is typically used to clip gradients before applying them with
   an optimizer.

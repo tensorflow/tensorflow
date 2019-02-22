@@ -23,6 +23,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":xla",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],

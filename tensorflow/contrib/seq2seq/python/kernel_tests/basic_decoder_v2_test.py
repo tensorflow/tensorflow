@@ -127,7 +127,7 @@ class BasicDecoderTest(keras_parameterized.TestCase):
           np.argmax(eval_result["step_outputs"].rnn_output, -1),
           eval_result["step_outputs"].sample_id)
 
-  def testStepWithGreedyEmbeddingHelper(self):
+  def DISABLED_testStepWithGreedyEmbeddingHelper(self):
     batch_size = 5
     vocabulary_size = 7
     cell_depth = vocabulary_size  # cell's logits must match vocabulary size

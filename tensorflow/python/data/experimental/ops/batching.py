@@ -27,6 +27,7 @@ from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
@@ -38,6 +39,7 @@ from tensorflow.python.ops import gen_array_ops
 from tensorflow.python.ops import gen_experimental_dataset_ops as ged_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -549,12 +551,15 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
   """A `Dataset` that maps a function over a batch of elements."""
 
   def __init__(self, input_dataset, map_func, batch_size, num_parallel_calls,
-               drop_remainder):
+               drop_remainder, use_legacy_function=False):
     """See `Dataset.map()` for details."""
     self._input_dataset = input_dataset
 
     self._map_func = dataset_ops.StructuredFunctionWrapper(
-        map_func, "tf.data.experimental.map_and_batch()", dataset=input_dataset)
+        map_func,
+        "tf.data.experimental.map_and_batch()",
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
     self._batch_size_t = ops.convert_to_tensor(
         batch_size, dtype=dtypes.int64, name="batch_size")
     self._num_parallel_calls_t = ops.convert_to_tensor(
@@ -587,6 +592,62 @@ class _MapAndBatchDataset(dataset_ops.UnaryDataset):
   @property
   def _element_structure(self):
     return self._structure
+
+
+@deprecation.deprecated(None, "Use `tf.data.experimental.map_and_batch()")
+@tf_export(v1=["data.experimental.map_and_batch_with_legacy_function"])
+def map_and_batch_with_legacy_function(map_func,
+                                       batch_size,
+                                       num_parallel_batches=None,
+                                       drop_remainder=False,
+                                       num_parallel_calls=None):
+  """Fused implementation of `map` and `batch`.
+
+  NOTE: This is an escape hatch for existing uses of `map_and_batch` that do not
+  work with V2 functions. New uses are strongly discouraged and existing uses
+  should migrate to `map_and_batch` as this method will not be removed in V2.
+
+  Args:
+    map_func: A function mapping a nested structure of tensors to another
+      nested structure of tensors.
+    batch_size: A `tf.int64` scalar `tf.Tensor`, representing the number of
+      consecutive elements of this dataset to combine in a single batch.
+    num_parallel_batches: (Optional.) A `tf.int64` scalar `tf.Tensor`,
+      representing the number of batches to create in parallel. On one hand,
+      higher values can help mitigate the effect of stragglers. On the other
+      hand, higher values can increase contention if CPU is scarce.
+    drop_remainder: (Optional.) A `tf.bool` scalar `tf.Tensor`, representing
+      whether the last batch should be dropped in case its size is smaller than
+      desired; the default behavior is not to drop the smaller batch.
+    num_parallel_calls: (Optional.) A `tf.int32` scalar `tf.Tensor`,
+      representing the number of elements to process in parallel. If not
+      specified, `batch_size * num_parallel_batches` elements will be processed
+      in parallel. If the value `tf.data.experimental.AUTOTUNE` is used, then
+      the number of parallel calls is set dynamically based on available CPU.
+
+  Returns:
+    A `Dataset` transformation function, which can be passed to
+    `tf.data.Dataset.apply`.
+
+  Raises:
+    ValueError: If both `num_parallel_batches` and `num_parallel_calls` are
+      specified.
+  """
+
+  if num_parallel_batches is None and num_parallel_calls is None:
+    num_parallel_calls = batch_size
+  elif num_parallel_batches is not None and num_parallel_calls is None:
+    num_parallel_calls = batch_size * num_parallel_batches
+  elif num_parallel_batches is not None and num_parallel_calls is not None:
+    raise ValueError("The `num_parallel_batches` and `num_parallel_calls` "
+                     "arguments are mutually exclusive.")
+
+  def _apply_fn(dataset):
+    return _MapAndBatchDataset(dataset, map_func, batch_size,
+                               num_parallel_calls, drop_remainder,
+                               use_legacy_function=True)
+
+  return _apply_fn
 
 
 @tf_export("data.experimental.map_and_batch")
@@ -652,18 +713,24 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset, num_workers):
     self._input_dataset = input_dataset
-    output_shapes = input_dataset.output_shapes
-    if len(output_shapes) < 1:
-      raise ValueError("Input shape should have at least one dimension.")
-    if not output_shapes.dims[0].value:
-      raise ValueError("Cannot rebatch unknown batch size datasets.")
-    if output_shapes.dims[0].value % num_workers != 0:
-      raise ValueError(
-          "First dim of input shape: %d is not divisible by num_workers: %d" %
-          (output_shapes[0], num_workers))
-    output_dims = [d for d in output_shapes.dims]
-    output_dims[0] = output_dims[0] // num_workers
-    output_shapes = tensor_shape.TensorShapeV1(output_dims)
+
+    def recalculate_output_shapes(output_shapes):
+      """Recalculates the output_shapes after dividing it by num_workers."""
+      if len(output_shapes) < 1:
+        raise ValueError("Input shape should have at least one dimension.")
+      if (tensor_shape.dimension_value(output_shapes[0]) and
+          tensor_shape.dimension_value(output_shapes[0]) % num_workers != 0):
+        raise errors.InvalidArgumentError(
+            None, None,
+            "First dim of input shape: %d is not divisible by num_workers: %d" %
+            (output_shapes[0], num_workers))
+      output_dims = [d for d in output_shapes.dims]
+      output_dims[0] = output_dims[0] // num_workers
+      return tensor_shape.TensorShape(output_dims)
+
+    output_shapes = nest.map_structure(recalculate_output_shapes,
+                                       input_dataset.output_shapes)
+
     self._structure = structure.convert_legacy_structure(
         self._input_dataset.output_types, output_shapes,
         self._input_dataset.output_classes)

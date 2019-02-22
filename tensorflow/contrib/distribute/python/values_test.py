@@ -656,7 +656,8 @@ class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
   def _save_replica_local_sum(self, distribution):
     """Save variables with mirroring, returns save_path."""
     with self.session(graph=ops.Graph()) as sess:
-      v, replica_local = _make_replica_local("sum", distribution)
+      v, replica_local = _make_replica_local(
+          variable_scope.VariableAggregation.SUM, distribution)
 
       # Overwrite the initial values.
       self._assign_replica_local(_devices, v, [1.5, 2.])

@@ -149,6 +149,9 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
   if (output->type == kTfLiteUInt8) {
     qmin = std::numeric_limits<uint8_t>::min();
     qmax = std::numeric_limits<uint8_t>::max();
+  } else if (output->type == kTfLiteInt8) {
+    qmin = std::numeric_limits<int8_t>::min();
+    qmax = std::numeric_limits<int8_t>::max();
   } else if (output->type == kTfLiteInt16) {
     qmin = std::numeric_limits<int16_t>::min();
     qmax = std::numeric_limits<int16_t>::max();

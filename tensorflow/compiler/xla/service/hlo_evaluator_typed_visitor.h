@@ -17,6 +17,7 @@ limitations under the License.
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_EVALUATOR_TYPED_VISITOR_H_
 
 #include <cmath>
+#include <type_traits>
 
 #include "absl/algorithm/container.h"
 #include "absl/base/casts.h"
@@ -42,46 +43,6 @@ namespace xla {
 template <typename T>
 using is_complex_t =
     absl::disjunction<std::is_same<T, complex64>, std::is_same<T, complex128>>;
-
-// It's UB to use std::sort with std::less<float>, because of NaNs. Define
-// "safe" less functions which are actually strict weak orders. -NaN and NaN
-// should appear at the beginning and end of the ordering, and -0.0 should
-// appear before 0.0.
-template <
-    typename NativeT,
-    typename std::enable_if<std::is_integral<NativeT>::value>::type* = nullptr>
-bool SafeLess(const NativeT& a, const NativeT& b) {
-  return a < b;
-}
-
-template <typename NativeT, typename std::enable_if<std::is_floating_point<
-                                NativeT>::value>::type* = nullptr>
-bool SafeLess(const NativeT& a, const NativeT& b) {
-  bool lhs_is_negative = std::signbit(a);
-  bool rhs_is_negative = std::signbit(b);
-  // If the signs are different, we can just compare the signs.
-  if (lhs_is_negative != rhs_is_negative) {
-    return lhs_is_negative && !rhs_is_negative;
-  }
-  bool lhs_nan = std::isnan(a);
-  bool rhs_nan = std::isnan(b);
-  // Exactly one number is nan?
-  if (lhs_nan != rhs_nan) {
-    if (lhs_nan) {
-      return lhs_is_negative;
-    }
-    return !rhs_is_negative;
-  }
-  return a < b;
-}
-
-template <typename NativeT,
-          typename std::enable_if<
-              std::is_same<NativeT, bfloat16>::value ||
-              std::is_same<NativeT, Eigen::half>::value>::type* = nullptr>
-bool SafeLess(const NativeT& a, const NativeT& b) {
-  return SafeLess(static_cast<float>(a), static_cast<float>(b));
-}
 
 // ToArithmeticSafeType(T t):
 //  - converts `t` to the bitwise-equivalent `unsigned T` if T is a signed
@@ -462,14 +423,31 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleNegate<ReturnT>(negate);
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  template <typename NativeT,
+            typename std::enable_if<std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleSign(HloInstruction* sign) {
     TF_ASSIGN_OR_RETURN(parent_->evaluated_[sign],
                         ElementWiseUnaryOp(sign, [](ElementwiseT elem_operand) {
                           return (ElementwiseT(0) < elem_operand) -
                                  (elem_operand < ElementwiseT(0));
+                        }));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<
+                std::is_same<NativeT, bfloat16>::value ||
+                std::is_same<NativeT, Eigen::half>::value ||
+                std::is_floating_point<NativeT>::value>::type* = nullptr>
+  Status HandleSign(HloInstruction* sign) {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[sign],
+                        ElementWiseUnaryOp(sign, [](ElementwiseT elem_operand) {
+                          return std::isnan(elem_operand)
+                                     ? elem_operand
+                                     : std::copysign(
+                                           elem_operand != ElementwiseT(0),
+                                           elem_operand);
                         }));
     return Status::OK();
   }
@@ -916,9 +894,29 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     return HandleShiftRightLogical<ElementwiseT>(shrl);
   }
 
-  template <
-      typename NativeT,
-      typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
+  // Special case for integral type due to MSVC's std::isnan being unable to
+  // handle integral type.
+  template <typename NativeT,
+            typename std::enable_if<!is_complex_t<NativeT>::value &&
+                                    std::is_integral<NativeT>::value>::type* =
+                nullptr>
+  Status HandleClamp(HloInstruction* clamp) {
+    std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
+        clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
+          return static_cast<ElementwiseT>(
+              std::min(high, std::max(value, low)));
+        };
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[clamp],
+        ElementwiseTernaryOp(clamp,
+                             std::move(ConvertTernaryFunction(clamp_op))));
+    return Status::OK();
+  }
+
+  template <typename NativeT,
+            typename std::enable_if<!is_complex_t<NativeT>::value &&
+                                    !std::is_integral<NativeT>::value>::type* =
+                nullptr>
   Status HandleClamp(HloInstruction* clamp) {
     std::function<ElementwiseT(ElementwiseT, ElementwiseT, ElementwiseT)>
         clamp_op = [](ElementwiseT low, ElementwiseT value, ElementwiseT high) {
@@ -926,7 +924,7 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
             return static_cast<ElementwiseT>(NAN);
           }
           return static_cast<ElementwiseT>(
-              std::fmin(high, std::fmax(value, low)));
+              std::min<NativeT>(high, std::max<NativeT>(value, low)));
         };
     TF_ASSIGN_OR_RETURN(
         parent_->evaluated_[clamp],
@@ -2693,12 +2691,25 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
         const Literal& high =
             parent_->GetEvaluatedLiteralFor(random->operand(1));
 
-        std::uniform_real_distribution<NativeT> generator(
-            low.Get<NativeT>({}), high.Get<NativeT>({}));
-
+        // std::uniform_real_distribution(a, b) can sometimes return a value
+        // equal to b.  Unclear if this is a spec bug or an implementation bug
+        // or WAI [0] [1] [2].  Anyway for our purposes we want a half-open
+        // interval, so we have to re-sample if we get `b` out.
+        //
+        // [0] https://gcc.gnu.org/bugzilla/show_bug.cgi?id=63176
+        // [1] https://bugs.llvm.org/show_bug.cgi?id=18767
+        // [2] http://open-std.org/JTC1/SC22/WG21/docs/lwg-active.html#2524
+        auto low_val = low.Get<NativeT>({});
+        auto high_val = high.Get<NativeT>({});
+        std::uniform_real_distribution<NativeT> generator(low_val, high_val);
         TF_RETURN_IF_ERROR(
             result.Populate<NativeT>([&](absl::Span<const int64> /*indexes*/) {
-              return generator(parent_->engine_);
+              while (true) {
+                NativeT v = generator(parent_->engine_);
+                if (v != high_val) {
+                  return v;
+                }
+              }
             }));
         break;
       }
@@ -2832,21 +2843,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
       absl::Span<HloInstruction* const> start_indices,
       const Shape& result_shape) {
     std::vector<int64> start;
-    // TODO(b/118437727): Remove the R1 code-path. Note that to distinguish
-    // between the cases, this currently assumes there is at least 1 index. That
-    // is wrong in the general case, because for scalar indices, if the operand
-    // is scalar, then there are no indices. This problem with resolve itself.
-    const HloInstruction* first_index = start_indices[0];
-    if (first_index->shape().rank() == 1) {
-      auto start_indices_typed =
-          parent_->GetEvaluatedLiteralFor(first_index).data<IndexT>();
-      start = std::vector<int64>(start_indices_typed.begin(),
-                                 start_indices_typed.end());
-    } else {
-      for (HloInstruction* index : start_indices) {
-        start.push_back(
-            parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
-      }
+
+    for (HloInstruction* index : start_indices) {
+      start.push_back(
+          parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
     }
 
     // Clamp the start indices so the slice is in-bounds w.r.t the operand.
@@ -2879,22 +2879,11 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
     auto result = operand_literal.Clone();
     const auto rank = result.shape().rank();
     std::vector<int64> start;
-    // TODO(b/118437727): Remove the R1 code-path. Note that to distinguish
-    // between the cases, this currently assumes there is at least 1 index. That
-    // is wrong in the general case, because for scalar indices, if the operand
-    // is scalar, then there are no indices. This problem with resolve itself.
-    const HloInstruction* first_index = start_indices[0];
-    if (first_index->shape().rank() == 1) {
-      auto start_indices_typed =
-          parent_->GetEvaluatedLiteralFor(first_index).data<IndexT>();
-      start = std::vector<int64>(start_indices_typed.begin(),
-                                 start_indices_typed.end());
-    } else {
-      for (HloInstruction* index : start_indices) {
-        start.push_back(
-            parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
-      }
+    for (HloInstruction* index : start_indices) {
+      start.push_back(
+          parent_->GetEvaluatedLiteralFor(index).GetFirstElement<IndexT>());
     }
+
     // Clamp the update start indices so the slice is in-bounds w.r.t the
     // operand.
     for (int64 i = 0; i < rank; ++i) {

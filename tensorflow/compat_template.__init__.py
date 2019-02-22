@@ -19,13 +19,19 @@ from __future__ import division as _division
 from __future__ import print_function as _print_function
 
 import os as _os
+import sys as _sys
 
 # pylint: disable=g-bad-import-order
-from tensorflow.python import pywrap_tensorflow  # pylint: disable=unused-import
 
 # API IMPORTS PLACEHOLDER
 
 from tensorflow.python.tools import component_api_helper as _component_api_helper
+_component_api_helper.package_hook(
+    parent_package_str=__name__,
+    child_package_str=('tensorboard.summary._tf.summary'),
+    error_msg=(
+        "Limited tf.compat.v2.summary API due to missing TensorBoard "
+        "installation"))
 _component_api_helper.package_hook(
     parent_package_str=__name__,
     child_package_str=(
@@ -41,3 +47,10 @@ _component_api_helper.package_hook(
 #
 # This make this one symbol available directly.
 from tensorflow.python.compat.v2_compat import enable_v2_behavior  # pylint: disable=g-import-not-at-top
+
+# Add module aliases
+_current_module = _sys.modules[__name__]
+if hasattr(_current_module, 'keras'):
+  losses = keras.losses
+  metrics = keras.metrics
+  optimizers = keras.optimizers

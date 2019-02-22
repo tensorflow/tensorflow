@@ -67,6 +67,23 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "c_api",
+    hdrs = ["c_api.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_no_xla",
+        ":c_api_internal",
+    ] + select({
+        "//tensorflow:with_xla_support": [
+            "//tensorflow/compiler/tf2xla:xla_compiler",
+            "//tensorflow/compiler/jit",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+tf_cuda_library(
+    name = "c_api_no_xla",
     srcs = [
         "c_api.cc",
         "c_api_function.cc",
@@ -75,14 +92,12 @@ tf_cuda_library(
         "c_api.h",
     ],
     copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = select({
+    visibility = ["//tensorflow/c:__subpackages__"],
+    deps = [":c_api_internal"] + select({
         "//tensorflow:android": [
-            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api_internal",
             "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
@@ -97,13 +112,8 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
+            "//tensorflow/core/kernels:logging_ops",
         ],
-    }) + select({
-        "//tensorflow:with_xla_support": [
-            "//tensorflow/compiler/tf2xla:xla_compiler",
-            "//tensorflow/compiler/jit",
-        ],
-        "//conditions:default": [],
     }),
 )
 
@@ -156,8 +166,8 @@ tf_cuda_library(
     hdrs = ["tf_status_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":c_api",
         ":c_api_internal",
+        ":c_api_no_xla",
         "//tensorflow/core:lib",
     ],
 )
@@ -213,13 +223,13 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api",
+            ":c_api_no_xla",
             ":c_api_internal",
             ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api",
+            ":c_api_no_xla",
             ":c_api_internal",
             ":tf_status_helper",
             "//tensorflow/core:framework",
@@ -346,6 +356,7 @@ tf_cc_test(
     srcs = ["c_api_function_test.cc"],
     deps = [
         ":c_api",
+        ":c_api_internal",
         ":c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",

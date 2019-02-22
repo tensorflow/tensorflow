@@ -46,8 +46,9 @@ from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # p
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables as tf_variables
-from tensorflow.python.training.checkpointable import base as checkpointable
-from tensorflow.python.training.checkpointable import layer_utils as checkpointable_layer_utils
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.training.tracking import data_structures
+from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -57,7 +58,7 @@ from tensorflow.tools.docs import doc_controls
 
 
 @keras_export('keras.layers.Layer')
-class Layer(checkpointable.Checkpointable):
+class Layer(trackable.Trackable):
   """Base layer class.
 
   This is the class from which all layers inherit.
@@ -110,7 +111,7 @@ class Layer(checkpointable.Checkpointable):
       constraints on inputs that can be accepted by the layer.
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, trainable=True, name=None, dtype=None, dynamic=False,
                **kwargs):
     # These properties should be set by the user via keyword arguments.
@@ -244,8 +245,8 @@ class Layer(checkpointable.Checkpointable):
 
   @doc_controls.for_subclass_implementers
   def add_weight(self,
-                 name,
-                 shape,
+                 name=None,
+                 shape=None,
                  dtype=None,
                  initializer=None,
                  regularizer=None,
@@ -259,8 +260,8 @@ class Layer(checkpointable.Checkpointable):
     """Adds a new variable to the layer.
 
     Arguments:
-      name: variable name.
-      shape: variable shape.
+      name: Variable name.
+      shape: Variable shape. Defaults to scalar if unspecified.
       dtype: The type of the variable. Defaults to `self.dtype` or `float32`.
       initializer: initializer instance (callable).
       regularizer: regularizer instance (callable).
@@ -272,7 +273,7 @@ class Layer(checkpointable.Checkpointable):
         marked as non-trainable. `trainable` defaults to `True` unless
         `synchronization` is set to `ON_READ`.
       constraint: constraint instance (callable).
-      partitioner: Partitioner to be passed to the `Checkpointable` API.
+      partitioner: Partitioner to be passed to the `Trackable` API.
       use_resource: Whether to use `ResourceVariable`.
       synchronization: Indicates when a distributed a variable will be
         aggregated. Accepted values are constants defined in the class
@@ -297,6 +298,7 @@ class Layer(checkpointable.Checkpointable):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
+    shape = shape or ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections']:
@@ -344,9 +346,9 @@ class Layer(checkpointable.Checkpointable):
         name=name,
         shape=shape,
         # TODO(allenl): a `make_variable` equivalent should be added as a
-        # `Checkpointable` method.
+        # `Trackable` method.
         getter=getter or base_layer_utils.make_variable,
-        # Manage errors in Layer rather than Checkpointable.
+        # Manage errors in Layer rather than Trackable.
         overwrite=True,
         initializer=initializer,
         dtype=dtype,
@@ -363,8 +365,10 @@ class Layer(checkpointable.Checkpointable):
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
       # should be variable attributes.
-      self._handle_weight_regularization(name, variable, regularizer)
-
+      name_in_scope = variable.name[:variable.name.find(':')]
+      self._handle_weight_regularization(name_in_scope,
+                                         variable,
+                                         regularizer)
     if trainable:
       self._trainable_weights.append(variable)
     else:
@@ -532,8 +536,6 @@ class Layer(checkpointable.Checkpointable):
       # framework.
       if base_layer_utils.needs_keras_history(inputs):
         base_layer_utils.create_keras_history(inputs)
-      # Do not track these Tensors in any sublayers invoked during `call`.
-      base_layer_utils.mark_checked(inputs)
 
     # Handle Keras mask propagation from previous layer to current layer.
     previous_mask = None
@@ -548,22 +550,28 @@ class Layer(checkpointable.Checkpointable):
         # pass to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
-    with ops.name_scope(self._name_scope()):
-      if not self.built:
-        # Build layer if applicable (if the `build` method has been overridden).
-        self._maybe_build(inputs)
-        # We must set self.built since user defined build functions are not
-        # constrained to set self.built.
-        self.built = True
-
+    with base_layer_utils.call_context():
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
         # Symbolic execution on symbolic tensors. We will attempt to build
         # the corresponding TF subgraph inside `backend.get_graph()`
-        input_spec.assert_input_compatibility(
-            self.input_spec, inputs, self.name)
+        input_spec.assert_input_compatibility(self.input_spec, inputs,
+                                              self.name)
         graph = backend.get_graph()
-        with graph.as_default():
+        with graph.as_default(), ops.name_scope(self._name_scope()):
+          # Build layer if applicable (if the `build` method has been
+          # overridden).
+          self._maybe_build(inputs)
+          # Explicitly pass the learning phase placeholder to `call` if
+          # the `training` argument was left unspecified by the user.
+          # This behavior is restricted to the managed Keras FuncGraph.
+          learning_phase_passed_by_framework = False
+          if (self._expects_training_arg and
+              not base_layer_utils.training_arg_passed_to_call(
+                  tf_inspect.getfullargspec(self.call), args, kwargs) and
+              getattr(graph, 'name', None) == 'keras_graph'):
+            learning_phase_passed_by_framework = True
+            kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
               outputs = self.call(inputs, *args, **kwargs)
@@ -593,6 +601,8 @@ class Layer(checkpointable.Checkpointable):
                              'Tensor or a list of Tensors, not None '
                              '(layer: ' + self.name + ').')
           if base_layer_utils.have_all_keras_metadata(inputs):
+            if learning_phase_passed_by_framework:
+              kwargs.pop('training')
             inputs, outputs = self._set_connectivity_metadata_(
                 inputs, outputs, args, kwargs)
           self._handle_activity_regularization(inputs, outputs)
@@ -606,9 +616,11 @@ class Layer(checkpointable.Checkpointable):
             self._set_inputs(inputs, outputs)
       else:
         # Eager execution on data tensors.
-        outputs = self.call(inputs, *args, **kwargs)
-        self._handle_activity_regularization(inputs, outputs)
-        self._set_mask_metadata(inputs, outputs, previous_mask)
+        with ops.name_scope(self._name_scope()):
+          self._maybe_build(inputs)
+          outputs = self.call(inputs, *args, **kwargs)
+          self._handle_activity_regularization(inputs, outputs)
+          self._set_mask_metadata(inputs, outputs, previous_mask)
 
     if not context.executing_eagerly():
       # Optionally load weight values specified at layer instantiation.
@@ -685,7 +697,12 @@ class Layer(checkpointable.Checkpointable):
       A list of tensors.
     """
     collected_losses = []
-    if context.executing_eagerly():
+
+    # If any eager losses are present, we assume the model to be part of an
+    # eager training loop (either a custom one or the one used when
+    # `run_eagerly=True`), and so we always return just the eager losses in that
+    # case.
+    if self._eager_losses:
       collected_losses.extend(self._eager_losses)
     else:
       collected_losses.extend(self._losses)
@@ -716,6 +733,7 @@ class Layer(checkpointable.Checkpointable):
     Arguments:
       losses: Loss tensor, or list/tuple of tensors. Rather than tensors, losses
         may also be zero-argument callables which create a loss tensor.
+        Other types of input are ignored.
       inputs: Ignored when executing eagerly. If anything other than None is
         passed, it signals the losses are conditional on some of the layer's
         inputs, and thus they should only be run where these inputs are
@@ -741,10 +759,13 @@ class Layer(checkpointable.Checkpointable):
         self._callable_losses.append(
             functools.partial(_tag_unconditional, loss))
       else:
-        if context.executing_eagerly():
-          self._eager_losses.append(_tag_unconditional(loss))
-        else:
+        if not tensor_util.is_tensor(loss):
+          # Ignoring constant values as this does not affect the gradients.
+          return
+        if tf_utils.is_symbolic_tensor(loss):
           self._losses.append(_tag_unconditional(loss))
+        else:
+          self._eager_losses.append(_tag_unconditional(loss))
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -757,7 +778,7 @@ class Layer(checkpointable.Checkpointable):
         already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
         y_pred))`. If aggregation='mean', the given metric tensor will be
         sample-wise reduced using `mean` function. eg, `model.add_metric(
-        tf.reduce_mean(outputs), name='output_mean', aggregation='mean')`.
+        tf.reduce_sum(outputs), name='output_mean', aggregation='mean')`.
       name: String metric name.
 
     Raises:
@@ -768,8 +789,25 @@ class Layer(checkpointable.Checkpointable):
           'We currently support only `mean` sample-wise metric aggregation. '
           'You provided aggregation=`%s`' % aggregation)
 
-    if tf_utils.is_symbolic_tensor(value):
-      self._symbolic_add_metric(value, aggregation, name)
+    is_symbolic = tf_utils.is_symbolic_tensor(value)
+    if name is None and (not is_symbolic or not hasattr(value, '_metric_obj')):
+      # Eg. `self.add_metric(math_ops.reduce_sum(x), aggregation='mean')`
+      # In eager mode, we use metric name to lookup a metric. Without a name,
+      # a new Mean metric wrapper will be created on every model/layer call.
+      # So, we raise an error when no name is provided.
+      # We will do the same for symbolic mode for consistency although a name
+      # will be generated if no name is provided.
+
+      # We will not raise this error in the foll use case for the sake of
+      # consistency as name in provided in the metric constructor.
+      # model.add_metric(metrics.Mean(name='my_metric')(outputs))
+      raise ValueError('Please provide a name for your metric like '
+                       '`self.add_metric(tf.reduce_sum(inputs), '
+                       'name=\'mean_activation\', aggregation=\'mean\')`')
+
+    if is_symbolic:
+      with backend.get_graph().as_default():
+        self._symbolic_add_metric(value, aggregation, name)
     else:
       self._eager_add_metric(value, aggregation, name)
 
@@ -1291,9 +1329,10 @@ class Layer(checkpointable.Checkpointable):
       match(value)  # Update the metric state.
       return
     else:
-      if aggregation is None:
-        raise ValueError('We do not support adding an aggregated metric tensor '
-                         'in `call` in eager execution.')
+      # Aggregation will always be set in this use case. If not we will raise
+      # error on model/layer call in graph function mode when model/layer is
+      # created.
+      assert aggregation is not None
       metric_obj, _ = base_layer_utils.create_mean_metric(value, name)
       self._metrics.append(metric_obj)
 
@@ -1312,10 +1351,20 @@ class Layer(checkpointable.Checkpointable):
         else:
           raise ValueError(
               'We currently do not support reusing a metric instance.')
-      else:
+      elif hasattr(value, '_metric_obj'):
         # We track the instance using the metadata on the result tensor.
         result_tensor = value
         metric_obj = result_tensor._metric_obj
+      else:
+        raise ValueError(
+            'We do not support adding an aggregated metric result tensor that '
+            'is not the output of a `tf.keras.metrics.Metric` metric instance. '
+            'Without having access to the metric instance we cannot reset the '
+            'state of a metric after every epoch during training. You can '
+            'create a `tf.keras.metrics.Metric` instance and pass the result '
+            'here or pass an un-aggregated result with `aggregation` parameter '
+            'set as `mean`. For example: `self.add_metric(tf.reduce_sum(inputs)'
+            ', name=\'mean_activation\', aggregation=\'mean\')`')
     else:
       # If a non-aggregated tensor is given as input (ie. `aggregation` is
       # explicitly set to `mean`), we wrap the tensor in `Mean` metric.
@@ -1355,32 +1404,35 @@ class Layer(checkpointable.Checkpointable):
           self.add_loss(mean_activity_loss, inputs=inputs)
 
   def _set_mask_metadata(self, inputs, outputs, previous_mask):
-    if getattr(self, '_compute_output_and_mask_jointly', False):
-      # Mask is already computed for Keras Graph Networks.
-      return
-
     flat_outputs = nest.flatten(outputs)
-    if all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs):
-      # Mask is already computed by sublayers.
-      return
+    mask_already_computed = (
+        getattr(self, '_compute_output_and_mask_jointly', False) or
+        all(getattr(x, '_keras_mask', None) is not None for x in flat_outputs))
 
-    if hasattr(self, 'compute_mask'):
-      output_masks = self.compute_mask(inputs, previous_mask)
-      # `compute_mask` can return a single `None` even when a Layer
-      # has multiple outputs.
-      if output_masks is None:
-        flat_masks = [None for _ in flat_outputs]
+    if not mask_already_computed:
+      if hasattr(self, 'compute_mask'):
+        output_masks = self.compute_mask(inputs, previous_mask)
+        # `compute_mask` can return a single `None` even when a Layer
+        # has multiple outputs.
+        if output_masks is None:
+          flat_masks = [None for _ in flat_outputs]
+        else:
+          flat_masks = nest.flatten(output_masks)
       else:
-        flat_masks = nest.flatten(output_masks)
-    else:
-      flat_masks = [None for _ in flat_outputs]
+        flat_masks = [None for _ in flat_outputs]
 
-    for output, mask in zip(flat_outputs, flat_masks):
-      try:
-        output._keras_mask = mask
-      except AttributeError:
-        # C Type such as np.ndarray.
-        pass
+      for output, mask in zip(flat_outputs, flat_masks):
+        try:
+          output._keras_mask = mask
+        except AttributeError:
+          # C Type such as np.ndarray.
+          pass
+
+    if tf_utils.are_all_symbolic_tensors(flat_outputs):
+      for output in flat_outputs:
+        if getattr(output, '_keras_mask', None) is not None:
+          # Do not track masks for `TensorFlowOpLayer` construction.
+          output._keras_mask._keras_history_checked = True
 
   def _set_connectivity_metadata_(self, inputs, outputs, args, kwargs):
     call_convention = getattr(
@@ -1575,6 +1627,9 @@ class Layer(checkpointable.Checkpointable):
 
   def _maybe_build(self, inputs):
     # Check input assumptions set before layer building, e.g. input rank.
+    if self.built:
+      return
+
     input_spec.assert_input_compatibility(
         self.input_spec, inputs, self.name)
     input_list = nest.flatten(inputs)
@@ -1589,6 +1644,9 @@ class Layer(checkpointable.Checkpointable):
     # Only call `build` if the user has manually overridden the build method.
     if not hasattr(self.build, '_is_default'):
       self.build(input_shapes)
+    # We must set self.built since user defined build functions are not
+    # constrained to set self.built.
+    self.built = True
 
   def _symbolic_call(self, inputs):
     input_shapes = nest.map_structure(lambda x: x.shape, inputs)
@@ -1607,12 +1665,16 @@ class Layer(checkpointable.Checkpointable):
       super(Layer, self).__setattr__(name, value)
       return
 
+    # Keep track of trackable objects, for the needs of `Network.save_weights`.
+    value = data_structures.sticky_attribute_assignment(
+        trackable=self, value=value, name=name)
+
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
-        checkpointable_layer_utils.has_weights(value)):
+        trackable_layer_utils.has_weights(value)):
       # Initialize `_layers` here in case `__init__` has not yet been called.
       if not hasattr(self, '_layers'):
-        self._layers = []
+        super(Layer, self).__setattr__('_layers', [])
       # We need to check object identity to avoid de-duplicating empty
       # container types which compare equal.
       if not any((layer is value for layer in self._layers)):
@@ -1623,18 +1685,23 @@ class Layer(checkpointable.Checkpointable):
           value._use_resource_variables = True
 
     # Append value to list of trainable / non-trainable weights if relevant
-    if isinstance(value, tf_variables.Variable):
-      # Users may add extra weights/variables
-      # simply by assigning them to attributes (invalid for graph networks)
-      if not hasattr(self, '_trainable_weights'):
-        self._trainable_weights = []
-      if not hasattr(self, '_non_trainable_weights'):
-        self._non_trainable_weights = []
-      if value not in self._trainable_weights + self._non_trainable_weights:
-        if value.trainable:
-          self._trainable_weights.append(value)
-        else:
-          self._non_trainable_weights.append(value)
+    # TODO(b/125122625): This won't pick up on any variables added to a
+    # list/dict after creation.
+    for val in nest.flatten(value):
+      if isinstance(val, tf_variables.Variable):
+        # Users may add extra weights/variables
+        # simply by assigning them to attributes (invalid for graph networks)
+        if not hasattr(self, '_trainable_weights'):
+          super(Layer, self).__setattr__('_trainable_weights', [])
+        if not hasattr(self, '_non_trainable_weights'):
+          super(Layer, self).__setattr__('_non_trainable_weights', [])
+        if val not in self._trainable_weights + self._non_trainable_weights:
+          if val.trainable:
+            self._trainable_weights.append(val)
+          else:
+            self._non_trainable_weights.append(val)
+          backend.track_variable(val)
+
     super(Layer, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
@@ -1646,7 +1713,7 @@ class Layer(checkpointable.Checkpointable):
     return []
 
   # This is a hack so that the is_layer (within
-  # training/checkpointable/layer_utils.py) check doesn't get the weights attr.
+  # training/trackable/layer_utils.py) check doesn't get the weights attr.
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
@@ -1812,6 +1879,9 @@ class TensorFlowOpLayer(Layer):
         name=name, trainable=trainable, dtype=dtype)
     self.node_def = node_def_pb2.NodeDef.FromString(node_def)
     self.constants = constants or {}
+    # Layer uses original op unless it is called on new inputs.
+    # This means `built` is not set in `__call__`.
+    self.built = True
 
   def call(self, inputs):
     if context.executing_eagerly():
@@ -1827,6 +1897,10 @@ class TensorFlowOpLayer(Layer):
         inputs.insert(index, constant)
 
       self.node_def.name = graph.unique_name(self.node_def.name)
+      # Check for case where first input should be a list of Tensors.
+      if 'N' in self.node_def.attr:
+        num_tensors = self.node_def.attr['N'].i
+        inputs = [inputs[:num_tensors]] + inputs[num_tensors:]
       c_op = ops._create_c_op(graph, self.node_def, inputs, control_inputs=[])
       op = graph._create_op_from_tf_operation(c_op)
 

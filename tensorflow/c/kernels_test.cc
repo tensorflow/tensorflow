@@ -36,6 +36,15 @@ static void* MyCreateFunc(TF_OpKernelConstruction* ctx) {
   struct MyCustomKernel* s = new struct MyCustomKernel;
   s->created = true;
   s->compute_called = false;
+
+  // Exercise attribute reads.
+  TF_DataType type;
+  TF_Status* status = TF_NewStatus();
+  TF_OpKernelConstruction_GetAttrType(ctx, "SomeDataTypeAttr", &type, status);
+  EXPECT_EQ(TF_OK, TF_GetCode(status));
+  EXPECT_EQ(TF_FLOAT, type);
+  TF_DeleteStatus(status);
+
   return s;
 }
 
@@ -43,17 +52,7 @@ static void MyComputeFunc(void* kernel, TF_OpKernelContext* ctx) {
   struct MyCustomKernel* s = static_cast<struct MyCustomKernel*>(kernel);
   s->compute_called = true;
   if (ctx != nullptr) {
-    TF_Status* status = TF_NewStatus();
-
     EXPECT_EQ(43, TF_StepId(ctx));
-
-    // Exercise attribute reads.
-    TF_DataType type;
-    TF_OpKernelContext_GetAttrType(ctx, "SomeDataTypeAttr", &type, status);
-    EXPECT_EQ(TF_OK, TF_GetCode(status));
-    EXPECT_EQ(TF_FLOAT, type);
-
-    TF_DeleteStatus(status);
   }
 }
 

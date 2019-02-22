@@ -2399,6 +2399,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
         self.assertAllEqual(img_shape, newshape)
         self.assertAllClose(resized, img_np, atol=1e-5)
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   def testResizeDown(self):
     # This test is also conducted with int8, so 127 is the maximum
     # value that can be used.
@@ -2430,6 +2431,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   def testResizeUpAlignCornersFalse(self):
     img_shape = [1, 3, 2, 1]
     data = [64, 32, 32, 64, 50, 100]
@@ -2553,6 +2555,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       resized = self.evaluate(y)
       self.assertAllClose(resized, expected, atol=1)
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   def testCompareNearestNeighbor(self):
     if test.is_gpu_available():
       input_shape = [1, 5, 6, 3]
@@ -3612,7 +3615,8 @@ class TotalVariationTest(test_util.TensorFlowTestCase):
     # If we negate all pixel-values then the total variation is unchanged.
     self._test(-a, tot_var)
 
-    # Scale the pixel-values by a float. This scales the total variation as well.
+    # Scale the pixel-values by a float. This scales the total variation as
+    # well.
     b = 1.1 * a
     self._test(b, 1.1 * tot_var)
 

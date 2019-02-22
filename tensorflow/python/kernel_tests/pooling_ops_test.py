@@ -730,7 +730,7 @@ class PoolingTest(test.TestCase):
         t = nn_ops.max_pool(
             t, ksize=ksize, strides=strides, padding="SAME").eval()
 
-  @test_util.disable_xla("b/123338077")
+  @test_util.disable_xla("b/123338077")  # Passes with XLA
   def testDepthwiseMaxPoolInvalidConfigs(self):
     self._testDepthwiseMaxPoolInvalidConfig(
         [1, 2, 2, 4], [1, 2, 2, 2], [1, 1, 1, 2],
@@ -1234,7 +1234,6 @@ class PoolingTest(test.TestCase):
                      [1, window_rows, window_cols, 1],
                      [1, row_stride, col_stride, 1], padding)
 
-  @test_util.disable_xla("This test never passed for XLA")
   def _testMaxPoolGradDirect(self, input_data, output_backprop,
                              expected_input_backprop, input_sizes, output_sizes,
                              window_rows, window_cols, row_stride, col_stride,
@@ -1376,6 +1375,7 @@ class PoolingTest(test.TestCase):
             use_gpu=use_gpu,
             v2=v2)
 
+  @test_util.disable_xla("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_1(self):
     input_data = [float("nan")] * 16
     output_backprop = [11.0, 12.0, 13.0, 15.0, 16.0, 17.0, 19.0, 20.0, 21.0]
@@ -1450,6 +1450,7 @@ class PoolingTest(test.TestCase):
     else:
       del os.environ["TF_ENABLE_MAXPOOL_NANPROP"]
 
+  @test_util.disable_xla("b/123923733")  # NaNs handled differently
   def _testMaxPoolGradDirectWithNans2_2(self):
     input_data = [float("nan")] * 16
     output_backprop = [
@@ -1650,7 +1651,6 @@ class PoolingTest(test.TestCase):
           use_gpu=use_gpu)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testMaxPoolGradGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testMaxPoolGradGradValidPadding1_1(data_format, use_gpu)
@@ -1685,7 +1685,6 @@ class PoolingTest(test.TestCase):
         [1, row_stride, col_stride, 1], padding)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testAvgPoolGrad(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self._testAvgPoolGradValidPadding1_1(data_format, use_gpu)
@@ -1845,7 +1844,7 @@ class PoolingTest(test.TestCase):
             padding="SAME")
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testOpEdgeCases(self):
     with self.session(use_gpu=test.is_gpu_available()) as sess:
       pool_funcs = [nn_ops.max_pool, nn_ops.avg_pool]
@@ -1924,9 +1923,10 @@ if __name__ == "__main__":
     if name_ == "maxpool5":
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,
-          test_util.disable_xla("maxpool5 fails while all others pass")(
-              GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
-                                 stride_, padding_)))
+          test_util.disable_xla(
+              "b/123926014: incorrect output with only constants")(
+                  GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
+                                     stride_, padding_)))
     else:
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,

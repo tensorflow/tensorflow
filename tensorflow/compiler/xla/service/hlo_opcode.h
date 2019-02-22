@@ -137,6 +137,7 @@ namespace xla {
   V(kTanh, "tanh")                                           \
   V(kTrace, "trace")                                         \
   V(kTranspose, "transpose")                                 \
+  V(kTriangularSolve, "triangular-solve")                    \
   V(kTuple, "tuple", kHloOpcodeIsVariadic)                   \
   V(kTupleSelect, "tuple-select")                            \
   V(kWhile, "while")                                         \

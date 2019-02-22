@@ -29,7 +29,7 @@ from tensorflow.compiler.xla.python import xla_client
 import unittest
 
 
-class LocalComputationTest(unittest.TestCase):
+class ComputationTest(unittest.TestCase):
   """Base class for running an XLA Computation through the local client."""
 
   def _NewComputation(self, name=None):
@@ -85,8 +85,34 @@ def NumpyArrayBool(*args, **kwargs):
   return np.array(*args, dtype=np.bool, **kwargs)
 
 
-class ComputationsWithConstantsTest(LocalComputationTest):
+class ComputationPrinting(unittest.TestCase):
+
+  def ExampleComputation(self):
+    builder = xla_client.ComputationBuilder("acomputation")
+    p0 = builder.ParameterFromNumpy(np.float32(0))
+    p1 = builder.ParameterFromNumpy(np.zeros((4,), np.float32))
+    builder.Mul(p0, p1)
+    return builder.Build()
+
+  def testComputationToHloText(self):
+    computation = self.ExampleComputation()
+    hlo_text = computation.GetHloText()
+    self.assertTrue(hlo_text.startswith("HloModule acomputation"))
+
+  def testComputationToHloGraph(self):
+    computation = self.ExampleComputation()
+    hlo_dot_graph = computation.GetHloDotGraph()
+    self.assertTrue(hlo_dot_graph.startswith("digraph "))
+
+
+class ComputationsWithConstantsTest(ComputationTest):
   """Tests focusing on Constant ops."""
+
+  def testConstantScalarSumS8(self):
+    c = self._NewComputation()
+    root = c.Add(c.Constant(np.int8(1)), c.Constant(np.int8(2)))
+    self.assertEqual(c.GetShape(root), c.GetReturnValueShape())
+    self._ExecuteAndCompareExact(c, expected=np.int8(3))
 
   def testConstantScalarSumF32(self):
     c = self._NewComputation()
@@ -298,7 +324,7 @@ class ComputationsWithConstantsTest(LocalComputationTest):
     self._ExecuteAndCompareClose(c, expected=0.75)
 
 
-class ParametersTest(LocalComputationTest):
+class ParametersTest(ComputationTest):
   """Tests focusing on Parameter ops and argument-passing."""
 
   def setUp(self):
@@ -378,7 +404,7 @@ class ParametersTest(LocalComputationTest):
         expected=[-4.3, 1.3, -6.3, 3.3])
 
 
-class LocalBufferTest(LocalComputationTest):
+class LocalBufferTest(ComputationTest):
   """Tests focusing on execution with LocalBuffers."""
 
   def _Execute(self, c, arguments):
@@ -476,7 +502,7 @@ class LocalBufferTest(LocalComputationTest):
     self.assertEqual(np.dtype(xla_shape.element_type()), np.dtype(np.float32))
 
 
-class SingleOpTest(LocalComputationTest):
+class SingleOpTest(ComputationTest):
   """Tests for single ops.
 
   The goal here is smoke testing - to exercise the most basic functionality of
@@ -750,6 +776,12 @@ class SingleOpTest(LocalComputationTest):
     arr = NumpyArrayBool([True, False, True])
     c.Not(c.Constant(arr))
     self._ExecuteAndCompareClose(c, expected=~arr)
+
+  def testCountLeadingZeros(self):
+    c = self._NewComputation()
+    arr = NumpyArrayS32([0x7FFF, 0x12345678])
+    c.Clz(c.Constant(arr))
+    self._ExecuteAndCompareClose(c, expected=[17, 3])
 
   def testExp(self):
     c = self._NewComputation()
@@ -1169,7 +1201,7 @@ class SingleOpTest(LocalComputationTest):
     np.testing.assert_allclose(g, expected, rtol=1e-4)
 
 
-class EmbeddedComputationsTest(LocalComputationTest):
+class EmbeddedComputationsTest(ComputationTest):
   """Tests for XLA graphs with embedded computations (such as maps)."""
 
   def _CreateConstantS32Computation(self):
@@ -1633,7 +1665,7 @@ class EmbeddedComputationsTest(LocalComputationTest):
     self._ExecuteAndCompareClose(c, expected=expected)
 
 
-class ErrorTest(LocalComputationTest):
+class ErrorTest(ComputationTest):
 
   def setUp(self):
     self.f32_scalar_2 = NumpyArrayF32(2.0)
@@ -1650,7 +1682,7 @@ class ErrorTest(LocalComputationTest):
         lambda: c.Build().CompileWithExampleArguments([self.f32_scalar_2]))
 
 
-class ComputationRootTest(LocalComputationTest):
+class ComputationRootTest(ComputationTest):
   """Tests related to setting the root of the computation."""
 
   def testComputationRootDifferentFromLastOp(self):

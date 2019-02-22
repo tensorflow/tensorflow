@@ -208,6 +208,36 @@ Status SvdShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// The first input is [...,3,M] and second input is [...,M,K].
+// Output is [...,M,K].
+Status TridiagonalSolveShapeFn(InferenceContext* c) {
+  ShapeHandle lhs;
+  ShapeHandle rhs;
+  // Check that rank is at least 2.
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &lhs));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
+
+  // Extract batch dimensions and check they are the same.
+  ShapeHandle lhs_batch_shape;
+  ShapeHandle rhs_batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &rhs_batch_shape));
+  TF_RETURN_IF_ERROR(
+      c->Merge(lhs_batch_shape, rhs_batch_shape, &lhs_batch_shape));
+
+  // Check that "M" is the same in both inputs.
+  DimensionHandle m_lhs = c->Dim(lhs, -1);
+  DimensionHandle m_rhs = c->Dim(rhs, -2);
+  TF_RETURN_IF_ERROR(c->Merge(m_lhs, m_rhs, &m_lhs));
+
+  // Check that next-to-last dimension of the first input is 3.
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(lhs, -2), 3, &m_lhs));
+
+  // The output shape is the same as rhs shape.
+  c->set_output(0, rhs);
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("MatrixDeterminant")
@@ -378,6 +408,13 @@ REGISTER_OP("Svd")
     .Attr("full_matrices: bool = False")
     .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(SvdShapeFn);
+
+REGISTER_OP("TridiagonalSolve")
+    .Input("diagonals: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(TridiagonalSolveShapeFn);
 
 // Deprecated op registrations:
 

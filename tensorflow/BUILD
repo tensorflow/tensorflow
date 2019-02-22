@@ -95,6 +95,12 @@ config_setting(
 )
 
 config_setting(
+    name = "emscripten",
+    values = {"crosstool_top": "//external:android/emscripten"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "raspberry_pi_armeabi",
     values = {
         "crosstool_top": "@local_config_arm_compiler//:toolchain",
@@ -456,8 +462,7 @@ tf_cc_shared_object(
         "//tensorflow:darwin": [],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow:tf_framework_version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
         ],
     }),
     linkstatic = 1,
@@ -491,15 +496,13 @@ tf_cc_shared_object(
     name = "libtensorflow.so",
     linkopts = select({
         "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow/c:exported_symbols.lds)",
+            "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow/c:version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         ],
     }),
     visibility = ["//visibility:public"],
@@ -517,14 +520,12 @@ tf_cc_shared_object(
     name = "libtensorflow_cc.so",
     linkopts = select({
         "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow:tf_exported_symbols.lds)",
+            "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow:tf_version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
     }),
     visibility = ["//visibility:public"],

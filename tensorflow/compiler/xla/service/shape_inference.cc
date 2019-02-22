@@ -534,6 +534,10 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
                     p.edge_padding_high() +
                     std::max<int64>(operand_shape.dimensions(i) - 1, 0LL) *
                         p.interior_padding();
+    if (dimensions[i] < 0) {
+      return InvalidArgument("Padding result in negative size for dimension %d",
+                             i);
+    }
     is_dynamic[i] = operand_shape.is_dynamic_dimension(i);
   }
 
@@ -832,7 +836,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(larger_shape));
     }
     if (small_is_dynamic != large_is_dynamic) {
-      if ((small_dimension_size == 1 && !small_is_dynamic) ||
+      if (small_dimension_size == large_dimension_size ||
+          (small_dimension_size == 1 && !small_is_dynamic) ||
           (large_dimension_size == 1 && !large_is_dynamic)) {
         // Do nothing. It's OK when the size-1 dimension is not static.
       } else {
@@ -1858,6 +1863,9 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
               fft_length[i]);
         }
       }
+      if (ShapeUtil::IsZeroElementArray(in)) {
+        return in;
+      }
       Shape result = ShapeUtil::ChangeElementType(in, C64);
       result.set_dimensions(result.dimensions_size() - 1,
                             fft_length[fft_rank - 1] / 2 + 1);
@@ -1897,6 +1905,49 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
       LOG(FATAL) << "Unexpected fft_type: " << fft_type;
   }
 #undef RET_CHECK_RANK
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferTriangularSolveShape(
+    const Shape& a, const Shape& b, const TriangularSolveOptions& options) {
+  if (a.rank() < 2) {
+    return InvalidArgument(
+        "The 'a' argument to TriangularSolve must have rank >= 2, got shape %s",
+        a.ToString());
+  }
+  if (b.rank() != a.rank()) {
+    return InvalidArgument(
+        "Arguments to triangular solve must have equal rank; got %s and %s.",
+        b.ToString(), a.ToString());
+  }
+  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+    return InvalidArgument(
+        "The two minor dimensions of 'a' must have equal size, got %s.",
+        a.ToString());
+  }
+  if (a.dimensions(a.rank() - 1) !=
+      b.dimensions(b.rank() - (options.left_side() ? 2 : 1))) {
+    return InvalidArgument(
+        "The shared dimension of 'a' and 'b' does not match, got shapes %s and "
+        "%s",
+        a.ToString(), b.ToString());
+  }
+  absl::Span<const int64> a_batch_dims(a.dimensions());
+  absl::Span<const int64> b_batch_dims(b.dimensions());
+  a_batch_dims.remove_suffix(2);
+  b_batch_dims.remove_suffix(2);
+  if (a_batch_dims != b_batch_dims) {
+    return InvalidArgument(
+        "The leading batch dimensions of the arguments to triangular solve "
+        "must be equal; got %s and %s.",
+        b.ToString(), a.ToString());
+  }
+  if (!TriangularSolveOptions_Transpose_IsValid(options.transpose_a()) ||
+      options.transpose_a() == TriangularSolveOptions::TRANSPOSE_INVALID) {
+    return InvalidArgument(
+        "Invalid transpose option value for triangular solve (%d).\n",
+        options.transpose_a());
+  }
+  return b;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
@@ -2345,8 +2396,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
     if (operand_shape.rank() != number_of_indices) {
       return InvalidArgument(
-          "Dynamic update slice start number of dimensions %d must match rank "
-          "%d of slice input (%s).",
+          "Dynamic update slice start number of dimensions %d must match "
+          "rank %d of slice input (%s).",
           number_of_indices, operand_shape.rank(),
           ShapeUtil::HumanString(operand_shape));
     }
@@ -2433,7 +2484,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(arg));
   }
 
-  if (index >= arg.tuple_shapes_size()) {
+  if (index < 0 || index >= arg.tuple_shapes_size()) {
     return InvalidArgument(
         "Cannot infer shape: attempt to index out of tuple bounds: %d "
         ">= %d in shape %s.",
@@ -2582,7 +2633,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         operand_shape.dimensions(i) != 1) {
       return InvalidArgument(
           "Input dimension should be either 1 or equal to the output dimension "
-          "it's broadcasting into; the %lldth operand dimension is %lld, the "
+          "it is broadcasting into; the %lldth operand dimension is %lld, the "
           "%lldth output dimension is %lld.",
           i, operand_shape.dimensions(i), broadcast_dimensions[i],
           output_shape.dimensions(broadcast_dimensions[i]));
@@ -2650,11 +2701,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  std::vector<int64> indices(operand.rank());
-  std::iota(indices.begin(), indices.end(), 0);
-  if (dimensions.size() != operand.rank() ||
-      !std::is_permutation(dimensions.begin(), dimensions.end(),
-                           indices.begin())) {
+  if (!IsPermutation(dimensions, operand.rank())) {
     return InvalidArgument(
         "Transpose dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",

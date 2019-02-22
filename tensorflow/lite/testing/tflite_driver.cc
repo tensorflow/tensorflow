@@ -22,6 +22,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/register_ref.h"
 #include "tensorflow/lite/string_util.h"
+#include "tensorflow/lite/testing/join.h"
 #include "tensorflow/lite/testing/split.h"
 
 namespace tflite {
@@ -381,6 +382,35 @@ bool TfLiteDriver::CheckResults() {
 
 void TfLiteDriver::ResetLSTMStateTensors() {
   interpreter_->ResetVariableTensors();
+}
+
+string TfLiteDriver::ReadOutput(int id) {
+  auto* tensor = interpreter_->tensor(id);
+  int num_elements = 1;
+
+  for (int i = 0; i < tensor->dims->size; ++i) {
+    num_elements *= tensor->dims->data[i];
+  }
+
+  switch (tensor->type) {
+    case kTfLiteFloat32:
+      return JoinDefault(tensor->data.f, num_elements, ",");
+    case kTfLiteInt32:
+      return JoinDefault(tensor->data.i32, num_elements, ",");
+    case kTfLiteInt64:
+      return JoinDefault(tensor->data.i64, num_elements, ",");
+    case kTfLiteUInt8:
+      return Join(tensor->data.uint8, num_elements, ",");
+    case kTfLiteInt8:
+      return JoinDefault(tensor->data.int8, num_elements, ",");
+    case kTfLiteBool:
+      return JoinDefault(tensor->data.b, num_elements, ",");
+    default:
+      Invalidate(absl::StrCat("Unsupported tensor type ",
+                              TfLiteTypeGetName(tensor->type),
+                              " in TfLiteDriver::ReadOutput"));
+      return "";
+  }
 }
 
 }  // namespace testing

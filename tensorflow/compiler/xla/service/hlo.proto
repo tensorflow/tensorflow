@@ -34,7 +34,7 @@ import "tensorflow/compiler/xla/xla_data.proto";
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 59
+// Next ID: 62
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -175,6 +175,9 @@ message HloInstructionProto {
   // partners.
   bool is_host_transfer = 47;
 
+  // Whether this Sort instruction should be stable.
+  bool is_stable = 60;
+
   xla.ScatterDimensionNumbers scatter_dimension_numbers = 48;
 
   // Precision configuration for the instruction. Has backend-specific meaning.
@@ -193,6 +196,12 @@ message HloInstructionProto {
   // operand.
   bool constrain_layout = 56;
   repeated xla.ShapeProto operand_shapes_with_layout = 57;
+
+  // Options for TriangularSolve
+  xla.TriangularSolveOptions triangular_solve_options = 59;
+
+  // Describes how parameters behave with regards to replicas.
+  xla.ParameterReplication parameter_replication = 61;
 }
 
 // Serialization of HloComputation.

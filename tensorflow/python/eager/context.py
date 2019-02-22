@@ -44,6 +44,7 @@ default_execution_mode = EAGER_MODE if tf2.enabled() else GRAPH_MODE
 # Note that we do not protect this with a lock and instead rely on python's GIL
 # and the idempotent nature of writes to provide thread safety.
 _device_parsing_cache = {}
+_starting_device_spec = pydev.DeviceSpec.from_string("")
 
 _MAXINT32 = 2**31 - 1
 
@@ -135,26 +136,52 @@ class _EagerContext(threading.local):
 
   def __init__(self, config=None):
     super(_EagerContext, self).__init__()
-    self.device_spec = pydev.DeviceSpec.from_string("")
-    self.device_name = self.device_spec.to_string()
+    self.device_spec = _starting_device_spec
+    self.device_name = ""
     self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.recording_summaries = False
     self.summary_writer_resource = None
+    self.recording_summaries = None
     self.scalar_cache = {}
-    self.ones_rank_cache = _EagerTensorCache()
-    self.zeros_cache = _EagerTensorCache()
+    self._ones_rank_cache = None
+    self._zeros_cache = None
     self.execution_mode = None
 
     # Default rewriter config corresponds to turning all default grappler
     # optimizations on.
-    base_config = config_pb2.ConfigProto()
+    self._config = config
 
-    if config is not None:
-      base_config.MergeFrom(config)
+    self._function_call_options = None
 
-    self.function_call_options = FunctionCallOptions(config_proto=base_config)
+  @property
+  def function_call_options(self):
+    if self._function_call_options is None:
+      base_config = config_pb2.ConfigProto()
+      if self._config is not None:
+        base_config.MergeFrom(self._config)
+      self._config = None
+      self._function_call_options = FunctionCallOptions(
+          config_proto=base_config)
+
+    return self._function_call_options
+
+  @function_call_options.setter
+  def function_call_options(self, function_call_options):
+    self._function_call_options = function_call_options
+    self._config = None
+
+  @property
+  def ones_rank_cache(self):
+    if not self._ones_rank_cache:
+      self._ones_rank_cache = _EagerTensorCache()
+    return self._ones_rank_cache
+
+  @property
+  def zeros_cache(self):
+    if not self._zeros_cache:
+      self._zeros_cache = _EagerTensorCache()
+    return self._zeros_cache
 
 
 ContextSwitch = collections.namedtuple(
@@ -494,6 +521,16 @@ class Context(object):
     self._eager_context.summary_writer_resource = resource
 
   @property
+  def recording_summaries(self):
+    """Returns summary recording condition."""
+    return self._eager_context.recording_summaries
+
+  @recording_summaries.setter
+  def recording_summaries(self, condition):
+    """Sets summary recording condition."""
+    self._eager_context.recording_summaries = condition
+
+  @property
   def device_name(self):
     """Returns the device name for the current thread."""
     return self._eager_context.device_name
@@ -688,14 +725,6 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
-  def enable_run_metadata(self):
-    """Enables tracing of op execution via RunMetadata.
-
-    To retrieve the accumulated metadata call context.export_run_metadata()
-    and to stop tracing call context.disable_run_metadata().
-    """
-    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
-
   @tf_contextlib.contextmanager
   def device_policy(self, policy):
     handle = self._handle
@@ -708,11 +737,33 @@ class Context(object):
       pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
           handle, old)
 
+  def enable_run_metadata(self):
+    """Enables tracing of op execution via RunMetadata.
+
+    To retrieve the accumulated metadata call context.export_run_metadata()
+    and to stop tracing call context.disable_run_metadata().
+    """
+    pywrap_tensorflow.TFE_ContextEnableRunMetadata(self._handle)
+
   def disable_run_metadata(self):
     """Disables tracing of op execution via RunMetadata."""
     if not self._context_handle:
       return
     pywrap_tensorflow.TFE_ContextDisableRunMetadata(self._context_handle)
+
+  def enable_graph_collection(self):
+    """Enables graph collection of executed functions.
+
+    To retrieve the accumulated graphs call context.export_run_metadata()
+    and to stop collecting graphs call context.disable_graph_collection().
+    """
+    pywrap_tensorflow.TFE_ContextEnableGraphCollection(self._handle)
+
+  def disable_graph_collection(self):
+    """Disables graph collections of executed functions."""
+    if not self._context_handle:
+      return
+    pywrap_tensorflow.TFE_ContextDisableGraphCollection(self._context_handle)
 
   def export_run_metadata(self):
     """Returns a RunMetadata proto with accumulated information.
@@ -870,6 +921,7 @@ def device(name):
   return context().device(name)
 
 
+@tf_export("config.experimental_list_devices")
 def list_devices():
   """List the names of the available devices.
 
@@ -939,6 +991,20 @@ def enable_run_metadata():
 def disable_run_metadata():
   """Disables tracing of op execution via RunMetadata."""
   context().disable_run_metadata()
+
+
+def enable_graph_collection():
+  """Enables tracing of op execution via RunMetadata.
+
+  To retrieve the accumulated metadata call context.export_run_metadata()
+  and to stop tracing call context.disable_run_metadata().
+  """
+  context().enable_graph_collection()
+
+
+def disable_graph_collection():
+  """Disables tracing of op execution via RunMetadata."""
+  context().disable_graph_collection()
 
 
 def export_run_metadata():

@@ -22,7 +22,6 @@ import shutil
 import tempfile
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.optimizer_v2 import adagrad
@@ -117,7 +116,7 @@ class DNNLinearCombinedClassifierIntegrationTest(test.TestCase,
       scores = estimator.evaluate(eval_input_fn)
 
     self.assertEqual(num_steps, scores[ops.GraphKeys.GLOBAL_STEP])
-    self.assertIn('loss', six.iterkeys(scores))
+    self.assertIn('loss', scores)
 
     predictions = np.array([
         x[prediction_keys.PredictionKeys.PREDICTIONS]

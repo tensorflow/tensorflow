@@ -109,7 +109,7 @@ $(wildcard tensorflow/lite/*test.cc) \
 $(wildcard tensorflow/lite/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*test.cc) \
 $(wildcard tensorflow/lite/*/*/*/*test.cc) \
-$(wildcard tensorflow/lite/kernels/test_util.cc) \
+$(wildcard tensorflow/lite/kernels/*test_util.cc) \
 $(MINIMAL_SRCS)
 
 ifeq ($(BUILD_TYPE),micro)
@@ -129,6 +129,14 @@ ifeq ($(BUILD_WITH_NNAPI),true)
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate_disabled.cc
 else
 	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/nnapi_delegate.cc
+endif
+
+ifeq ($(TARGET),ios)
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_default.cc
+else
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_android.cc
+	CORE_CC_EXCLUDE_SRCS += tensorflow/lite/minimal_logging_ios.cc
 endif
 
 

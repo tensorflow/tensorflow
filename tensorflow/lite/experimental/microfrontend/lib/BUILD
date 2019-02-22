@@ -6,6 +6,11 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
+load(
+    "//tensorflow/lite/experimental/micro/testing:micro_test.bzl",
+    "tflite_micro_cc_test",
+)
+
 cc_library(
     name = "bits",
     hdrs = ["bits.h"],
@@ -117,72 +122,65 @@ cc_library(
     ],
 )
 
-cc_test(
+tflite_micro_cc_test(
     name = "fft_test",
-    size = "small",
     srcs = ["fft_test.cc"],
     deps = [
         ":fft",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
-cc_test(
+tflite_micro_cc_test(
     name = "filterbank_test",
-    size = "small",
     srcs = ["filterbank_test.cc"],
     deps = [
         ":filterbank",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
-cc_test(
+tflite_micro_cc_test(
     name = "frontend_test",
-    size = "small",
     srcs = ["frontend_test.cc"],
     deps = [
         ":frontend",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
-cc_test(
+tflite_micro_cc_test(
     name = "log_scale_test",
-    size = "small",
     srcs = ["log_scale_test.cc"],
     deps = [
         ":log_scale",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
-cc_test(
+tflite_micro_cc_test(
     name = "noise_reduction_test",
-    size = "small",
     srcs = ["noise_reduction_test.cc"],
     deps = [
         ":noise_reduction",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
-cc_test(
+tflite_micro_cc_test(
     name = "pcan_gain_control_test",
-    size = "small",
     srcs = ["pcan_gain_control_test.cc"],
     deps = [
         ":pcan_gain_control",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )
 
-cc_test(
+tflite_micro_cc_test(
     name = "window_test",
-    size = "small",
     srcs = ["window_test.cc"],
     deps = [
         ":window",
-        "@com_google_googletest//:gtest_main",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
     ],
 )

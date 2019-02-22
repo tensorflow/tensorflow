@@ -18,43 +18,66 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import abc
 import re
 import sys
 
 import six
 
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import variables
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
 
+NO_MODULE_NAME_SCOPE = "__no_module_name_scope__"
 
-class ModuleMetaclass(type):
+
+class ModuleMetaclass(abc.ABCMeta):
   """Metaclass for `tf.Module`."""
 
   def __new__(mcs, name, bases, clsdict):
+    methods = []
+
     for key, value in clsdict.items():
-      if key in ("__init__", "name_scope"):
+      if key == "name_scope":
+        continue
+
+      elif key.startswith("__") and key != "__call__":
+        # Don't patch methods like `__getattr__` or `__del__`.
         continue
 
       elif tf_inspect.isfunction(value):
-        if getattr(value, "_no_module_name_scope", False):
-          # The function has been annotated to say that no autoscoping should
-          # be applied, so do not patch it.
-          continue
-        clsdict[key] = with_name_scope(value)
+        # We defer patching methods until after the type is created such that we
+        # can trigger the descriptor binding them to the class.
+        methods.append(key)
 
       elif isinstance(value, property):
+        # TODO(tomhennigan) Preserve the type of property subclasses.
         clsdict[key] = property(
             value.fget if not value.fget else with_name_scope(value.fget),
             value.fset if not value.fset else with_name_scope(value.fset),
             value.fdel if not value.fdel else with_name_scope(value.fdel),
             doc=value.__doc__)
 
-    return type.__new__(mcs, name, bases, clsdict)
+    cls = super(ModuleMetaclass, mcs).__new__(mcs, name, bases, clsdict)
+
+    for method_name in methods:
+      # Note: the below is quite subtle, we need to ensure that we're wrapping
+      # the method bound to the class. In some cases (e.g. `wrapt`) this is
+      # important since the method can trigger different behavior when it is
+      # bound (e.g. in wrapt `FunctionWrapper.__get__(None, cls)` produces a
+      # `BoundFunctionWrapper` which in turn populates the `instance` argument
+      # to decorator functions using args[0]).
+      # Equivalent to: `cls.__dict__[method_name].__get__(None, cls)`
+      method = getattr(cls, method_name)
+      method = with_name_scope(method)
+      setattr(cls, method_name, method)
+
+    return cls
 
   def __call__(cls, *args, **kwargs):
     # Call new such that we have an un-initialized module instance that we can
@@ -91,7 +114,7 @@ class ModuleMetaclass(type):
     return module
 
 
-def with_name_scope(unbound_method):
+def wrap_with_name_scope(unbound_method):
   """Patches the given method so it enters the modules name scope."""
   def enter_name_scope(self, *args, **kwargs):
     """Decorator that calls the given function in the module name scope.
@@ -118,11 +141,37 @@ def with_name_scope(unbound_method):
       # for a particular method annotate it with `@no_module_name_scope`.
       return unbound_method(self, *args, **kwargs)
 
-  return tf_decorator.make_decorator(unbound_method, enter_name_scope)
+  return enter_name_scope
 
 
-@tf_export("experimental.Module")
-class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
+def wrap_with_name_scope_no_exception(unbound_method):
+  """Patches the given method so it enters the modules name scope."""
+  def enter_name_scope(self, *args, **kwargs):
+    with self.name_scope:
+      # tf.Module enters the module name scope for all methods. To disable this
+      # for a particular method annotate it with `@no_module_name_scope`.
+      return unbound_method(self, *args, **kwargs)
+  return enter_name_scope
+
+
+def with_name_scope(unbound_method):
+  """Patches the given method so it enters the modules name scope."""
+  if getattr(unbound_method, NO_MODULE_NAME_SCOPE, False):
+    # The function has been annotated to say that no autoscoping should be
+    # applied, so do not patch it.
+    return unbound_method
+
+  if isinstance(unbound_method, def_function.Function):
+    # Autograph cannot convert functions that have try/catch.
+    unbound_method._decorate(wrap_with_name_scope_no_exception)  # pylint: disable=protected-access
+    return unbound_method
+  else:
+    return tf_decorator.make_decorator(unbound_method,
+                                       wrap_with_name_scope(unbound_method))
+
+
+@tf_export("Module")
+class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
   """Base neural network module class.
 
   A module is a named container for `tf.Variable`s, other `tf.Module`s and
@@ -131,7 +180,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   >>> class Dense(tf.Module):
   ...   def __init__(self, in_features, output_features):
-  ...     super(Linear, self).__init__()
+  ...     super(Dense, self).__init__()
   ...     self.w = tf.Variable(
   ...         tf.random_normal([input_features, output_features]), name='w')
   ...     self.b = tf.Variable(tf.zeros([output_features]), name='b')
@@ -150,7 +199,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
   By subclassing `tf.Module` instead of `object` any variables created inside
   the module are automatically created within the modules name scope:
 
-  >> d.w.name
+  >>> d.w.name
   "dense/w:0"
 
   In eager mode this is useful for debugging, and when used with `@tf.function`
@@ -199,92 +248,44 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
 
   @property
   def variables(self):
-    """Collection of variables owned by this module and it's submodules.
+    """Sequence of variables owned by this module and it's submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result
     of calling this method if you don't expect the return value to change.
 
     Returns:
-      A collection of variables for the current module (sorted by attribute
-      name) followed by variables from all submodules recursively (depth first).
+      A sequence of variables for the current module (sorted by attribute
+      name) followed by variables from all submodules recursively (breadth
+      first).
     """
-    return tuple(walk(self, recurse_if=_IS_MODULE, predicate=_IS_VARIABLE))
-
-  @property
-  def owned_variables(self):
-    """Collection of variables that are attributes of the current module.
-
-    See `variables` for a property which returns all variables from the current
-    module and all it's submodules recursively.
-
-    Returns:
-      A collection of variables which are attributes of the current module. Will
-      yield variables inside nested structures (lists etc) but not in other
-      modules.
-    """
-    return tuple(walk(self, predicate=_IS_VARIABLE))
+    return tuple(self._flatten(predicate=_IS_VARIABLE))
 
   @property
   def trainable_variables(self):
-    """Collection of variables owned by this module and it's submodules.
+    """Sequence of variables owned by this module and it's submodules.
 
     Note: this method uses reflection to find variables on the current instance
     and submodules. For performance reasons you may wish to cache the result
     of calling this method if you don't expect the return value to change.
 
     Returns:
-      A collection of variables for the current module (sorted by attribute
-      name) followed by variables from all submodules recursively (depth first).
+      A sequence of variables for the current module (sorted by attribute
+      name) followed by variables from all submodules recursively (breadth
+      first).
     """
-    return tuple(
-        walk(self, recurse_if=_IS_MODULE, predicate=_IS_TRAINABLE_VARIABLE))
-
-  @property
-  def owned_trainable_variables(self):
-    """Collection of variables that are attributes of the current module.
-
-    See `variables` for a property which returns all variables from the current
-    module and all it's submodules recursively.
-
-    Returns:
-      A collection of variables which are attributes of the current module. Will
-      yield variables inside nested structures (lists etc) but not in other
-      modules.
-    """
-    return tuple(walk(self, predicate=_IS_TRAINABLE_VARIABLE))
-
-  @property
-  def owned_submodules(self):
-    """Collection of immediate child modules.
-
-    Child modules are modules which are found as properties of the current
-    module.
-
-    >>> a = tf.experimental.Module()
-    >>> b = tf.experimental.Module()
-    >>> c = tf.experimental.Module()
-    >>> a.b = b
-    >>> b.c = c
-    >>> assert list(a.owned_submodules) == [b]
-    >>> assert list(b.owned_submodules) == [c]
-    >>> assert list(c.owned_submodules) == []
-
-    Returns:
-      A collection of all child modules.
-    """
-    return tuple(walk(self, predicate=_IS_MODULE))
+    return tuple(self._flatten(predicate=_IS_TRAINABLE_VARIABLE))
 
   @property
   def submodules(self):
-    """Collection of all sub-modules.
+    """Sequence of all sub-modules.
 
     Submodules are modules which are properties of this module, or found as
     properties of modules which are properties of this module (and so on).
 
-    >>> a = tf.experimental.Module()
-    >>> b = tf.experimental.Module()
-    >>> c = tf.experimental.Module()
+    >>> a = tf.Module()
+    >>> b = tf.Module()
+    >>> c = tf.Module()
     >>> a.b = b
     >>> b.c = c
     >>> assert list(a.submodules) == [b, c]
@@ -292,9 +293,71 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     >>> assert list(c.submodules) == []
 
     Returns:
-      A collection of all submodules.
+      A sequence of all submodules.
     """
-    return tuple(walk(self, recurse_if=_IS_MODULE, predicate=_IS_MODULE))
+    return tuple(self._flatten(predicate=_IS_MODULE))
+
+  def _flatten(self,
+               recursive=True,
+               predicate=None,
+               attribute_traversal_key=None,
+               with_path=False):
+    """Flattened attribute values in sorted order by attribute name.
+
+    Modules are flattened by first walking their attributes in name order.
+    Each attribute value is then flattened to find leaf values. If flatten is
+    to be applied `recursive`ly then if the leaf is a `Module` it will also be
+    flattened to find leaves. Finally every leaf value is optionally tested
+    against the given `predicate` and finally yielded.
+
+    >>> class Foo(tf.Module):
+    ...   def __init__(self):
+    ...     super(Foo, self).__init__()
+    ...     self.x = [tf.constant('a'), tf.constant('b')]
+    ...     self.y = {'i': tf.constant('c'), 'j': tf.constant('d')}
+    ...     self.z = tf.constant('e')
+    ...
+    ...   @property
+    ...   def tensors(self):
+    ...     return tuple(self._flatten(predicate=is_tensor, with_path=True))
+
+    >>> foo = Foo()
+    >>> foo.tensors
+    ((('x', 0),   <tf.Tensor: ...'a'>),
+     (('x', 1),   <tf.Tensor: ...'b'>),
+     (('y', 'i'), <tf.Tensor: ...'c'>),
+     (('y', 'j'), <tf.Tensor: ...'d'>),
+     (('z',),     <tf.Tensor: ...'e'>))
+
+    `attribute_traversal_key` controls the order object properties are visited.
+    If not set objects are visited in ascending order by name.
+
+    Args:
+      recursive: Whether to recurse into child modules or not.
+      predicate: (Optional) If set then only values matching predicate are
+        yielded. A value of `None` (the default) means no items will be
+        filtered.
+      attribute_traversal_key: (Optional) Method to rekey object attributes
+        before they are sorted. Contract is the same as `key` argument to
+        builtin `sorted` and only applies to object properties.
+      with_path: (Optional) Whether to include the path to the object as well
+        as the object itself. If `with_path` is `True` then leaves will not be
+        de-duplicated (e.g. if the same leaf instance is reachable via multiple
+        modules then it will be yielded multiple times with different paths).
+
+    Returns:
+      Flat generator for leaves of the current module and optionally all
+      submodules.
+    """
+    if predicate is None:
+      predicate = lambda _: True
+
+    return _flatten_module(
+        self,
+        recursive=recursive,
+        predicate=predicate,
+        attribute_traversal_key=attribute_traversal_key,
+        with_path=with_path)
 
   @classmethod
   def no_name_scope(cls, method):
@@ -316,7 +379,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoCheckpointable)):
     Returns:
       The method, with a flag indicating no name scope wrapping should occur.
     """
-    setattr(method, "_no_module_name_scope", True)
+    setattr(method, NO_MODULE_NAME_SCOPE, True)
     return method
 
 _IS_VARIABLE = lambda o: isinstance(o, variables.Variable)
@@ -334,77 +397,61 @@ def camel_to_snake(value):
   return _CAMEL_TO_SNAKE_R.sub(r"_\1", value).lower()
 
 
-def walk(o, recurse_if=None, predicate=None):
-  """Flattened attributes of `o` in sorted order by attribute name.
-
-  >>> class Foo(object):
-  ...   def __init__(self, prefix=''):
-  ...     self.z = prefix + 'c'
-  ...     self.a = [prefix + 'a', prefix + 'b']
-
-  >>> tuple(walk(Foo()))
-  ('a', 'b', 'c')
-
-  If `predicate` is not None, then only values matching predicate are returned:
-
-  >>> tuple(walk(Foo(), predicate=lambda v: v != 'a'))
-  ('b', 'c')
-
-  If `recurse_if` is not None then it should be a callable which tests if the
-  given leaf should be expanded:
-
-  >>> is_string = lambda v: isinstance(v, str)
-  >>> is_foo = lambda l: isinstance(l, Foo)
-  >>> o = Foo(prefix='root_')
-  >>> o.b = Foo(prefix='child_')
-  >>> tuple(walk(o, predicate=is_string))
-  ('root_a', 'root_b', 'root_c')
-  >>> tuple(walk(o, recurse_if=is_foo, predicate=is_string))
-  ('root_a', 'root_b', 'root_c', 'child_a', 'child_b', 'child_c')
-
-  Args:
-    o: An object who's attributes are walked.
-    recurse_if: (Optional) Visited items of this type will be walked to extract
-      more leaves. If `None`, it will not recurse into leaves.
-    predicate: (Optional) If set then only values matching predicate are
-      yielded.
-
-  Returns:
-    Attributes of `o` in name order. If `recurse_if` is not `None` then
-    attributes for which `recurse_if(attribute) == True` will be walked
-    recursively. If `predicate` is not `None` then only attributes for which
-    `predicate(attribute) == True` will be yielded.
-  """
-  if predicate is None:
-    predicate = lambda _: True
-  return _walk_internal(
-      o, recurse_if=recurse_if, predicate=predicate, seen=set())
+# AutoTrackable adds object attributes that users will not expect us to
+# include when flattening (these reference dependencies reachable via other
+# object attributes).
+AUTO_CHECKPOINTABLE_ATTRS = ("_unconditional_checkpoint_dependencies",
+                             "_unconditional_dependency_names")
 
 
-def _walk_internal(o, recurse_if, predicate, seen):
-  """Implementation of `walk`."""
+def _flatten_module(module,
+                    recursive,
+                    predicate,
+                    attribute_traversal_key,
+                    with_path,
+                    module_path=(),
+                    seen=None):
+  """Implementation of `flatten`."""
   if seen is None:
-    seen = set([id(o)])
+    seen = set([id(module)])
 
-  o_dict = vars(o)
-  to_walk = []
+  module_dict = vars(module)
+  submodules = []
 
-  for key in sorted(o_dict):
-    values = nest.flatten(o_dict[key])
-    for value in values:
-      value_id = id(value)
-      if value_id in seen:
-        continue
+  for key in sorted(module_dict, key=attribute_traversal_key):
+    if key in AUTO_CHECKPOINTABLE_ATTRS:
+      continue
 
-      seen.add(value_id)
-      if predicate(value):
-        yield value
+    for leaf_path, leaf in nest.flatten_with_tuple_paths(module_dict[key]):
+      leaf_path = (key,) + leaf_path
 
-      if recurse_if is not None and recurse_if(value):
+      # TODO(tomhennigan) Handle cycles for `with_path=True` (e.g. `a.a = a`).
+      if not with_path:
+        leaf_id = id(leaf)
+        if leaf_id in seen:
+          continue
+        seen.add(leaf_id)
+
+      if predicate(leaf):
+        if with_path:
+          yield module_path + leaf_path, leaf
+        else:
+          yield leaf
+
+      if recursive and isinstance(leaf, Module):
         # Walk direct properties first then recurse.
-        to_walk.append(value)
+        submodules.append((module_path + leaf_path, leaf))
 
-  for value in to_walk:
-    for subvalue in _walk_internal(value, recurse_if, predicate, seen):
+  for submodule_path, submodule in submodules:
+    subvalues = _flatten_module(
+        submodule,
+        recursive=recursive,
+        predicate=predicate,
+        attribute_traversal_key=attribute_traversal_key,
+        with_path=with_path,
+        module_path=submodule_path,
+        seen=seen)
+
+    for subvalue in subvalues:
       # Predicate is already tested for these values.
       yield subvalue

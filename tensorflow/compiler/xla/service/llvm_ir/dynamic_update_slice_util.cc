@@ -113,20 +113,10 @@ Status EmitDynamicUpdateSliceInPlace(absl::Span<const IrArray> operand_arrays,
   Shape output_shape = output_array.GetShape();
   Shape update_shape = update_array.GetShape();
 
-  IndexGenerator start_indices_generator;
-  // TODO(b/118437727): Remove the R1 path, and rename the variables.
-  if (start_indices_array.GetShape().rank() == 1) {
-    start_indices_generator = [&](int64 index) {
-      return start_indices_array.EmitReadArrayElement(
-          IrArray::Index({b->getInt64(index)}), b);
-    };
-  } else {
-    start_indices_generator = [&](int64 index) {
-      return operand_arrays[2 + index].EmitReadArrayElement(
-          IrArray::Index(b->getInt64Ty()), b);
-    };
-  }
-
+  IndexGenerator start_indices_generator = [&](int64 index) {
+    return operand_arrays[2 + index].EmitReadArrayElement(
+        IrArray::Index(b->getInt64Ty()), b);
+  };
   ElementGenerator update_array_generator = [&](const IrArray::Index& index) {
     return update_array.EmitReadArrayElement(index, b);
   };
@@ -178,21 +168,11 @@ static Status EmitFusedDynamicUpdateSliceInPlaceImpl(
   TF_RETURN_IF_ERROR(dynamic_update_slice->Accept(&fused_emitter));
   ElementGenerator update_array_generator = fused_emitter.GetGenerator(update);
 
-  // TODO(b/118437727): Remove the R1 path, and rename the variables.
-  IndexGenerator start_indices_generator;
-  if (start_indices->shape().rank() == 1) {
-    start_indices_generator = [&](int64 index) {
-      return fused_emitter.GetGenerator(start_indices)(
-          IrArray::Index({b->getInt64(index)}));
-    };
-  } else {
-    start_indices_generator = [&](int64 index) {
-      ElementGenerator element_generator =
-          fused_emitter.GetGenerator(dynamic_update_slice->operand(2 + index));
-      return element_generator(IrArray::Index(b->getInt64Ty()));
-    };
-  }
-
+  IndexGenerator start_indices_generator = [&](int64 index) {
+    ElementGenerator element_generator =
+        fused_emitter.GetGenerator(dynamic_update_slice->operand(2 + index));
+    return element_generator(IrArray::Index(b->getInt64Ty()));
+  };
   bool is_signed = ShapeUtil::ElementIsSigned(start_indices->shape());
   return EmitDynamicUpdateSliceInPlaceImpl(
       update_shape, start_indices_generator, is_signed, update_array_generator,

@@ -32,6 +32,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops.variables import global_variables_initializer as _global_variables_initializer
 from tensorflow.python.platform import gfile
@@ -131,13 +132,13 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     input_details = interpreter.get_input_details()
     self.assertEqual(1, len(input_details))
     self.assertEqual('Placeholder', input_details[0]['name'])
-    self.assertEqual(np.object_, input_details[0]['dtype'])
+    self.assertEqual(np.string_, input_details[0]['dtype'])
     self.assertTrue(([4] == input_details[0]['shape']).all())
 
     output_details = interpreter.get_output_details()
     self.assertEqual(1, len(output_details))
     self.assertEqual('Reshape', output_details[0]['name'])
-    self.assertEqual(np.object_, output_details[0]['dtype'])
+    self.assertEqual(np.string_, output_details[0]['dtype'])
     self.assertTrue(([2, 2] == output_details[0]['shape']).all())
     # TODO(b/122659643): Test setting/getting string data via the python
     # interpreter API after support has been added.
@@ -481,6 +482,29 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     self.assertTrue(([1, 16, 16, 3] == output_details[0]['shape']).all())
     self.assertTrue(output_details[0]['quantization'][0] > 0)  # scale
 
+  def testPostTrainingQuantizeDeprecatedAttribute(self):
+    in_tensor_1 = array_ops.placeholder(
+        shape=[33, 33], dtype=dtypes.float32, name='inputA')
+    in_tensor_2 = constant_op.constant(
+        np.random.uniform(low=-10., high=10., size=(33, 33)),
+        shape=[33, 33],
+        dtype=dtypes.float32,
+        name='inputB')
+    out_tensor = math_ops.matmul(in_tensor_1, in_tensor_2, name='output')
+    sess = session.Session()
+
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [in_tensor_1], [out_tensor])
+    self.assertFalse(quantized_converter.post_training_quantize)
+
+    quantized_converter.post_training_quantize = True
+    self.assertTrue(quantized_converter.post_training_quantize)
+    self.assertEqual(quantized_converter.optimizations,
+                     [lite.Optimize.OPTIMIZE_FOR_SIZE])
+
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
   def testPostTrainingQuantize(self):
     np.random.seed(0)
     # We need the tensor to have more than 1024 elements for quantize_weights
@@ -504,7 +528,53 @@ class FromSessionTest(test_util.TensorFlowTestCase):
     # Convert quantized weights model.
     quantized_converter = lite.TFLiteConverter.from_session(
         sess, [in_tensor_1], [out_tensor])
-    quantized_converter.post_training_quantize = True
+    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
+    quantized_tflite = quantized_converter.convert()
+    self.assertTrue(quantized_tflite)
+
+    # Ensure that the quantized weights tflite model is smaller.
+    self.assertTrue(len(quantized_tflite) < len(float_tflite))
+
+  def testPostTrainingCalibrateAndQuantize(self):
+    np.random.seed(0)
+    # Create a mobilenet like model.
+    output_channel = 16
+    depth_multiplier = 1
+    inp = array_ops.placeholder(dtype=dtypes.float32, shape=(1, 5, 5, 3))
+    conv = nn_ops.conv2d(
+        inp,
+        filter=array_ops.zeros([3, 3, 3, output_channel]),
+        strides=[1, 1, 1, 1],
+        padding='SAME')
+    dconv = nn_ops.depthwise_conv2d_native(
+        conv,
+        filter=array_ops.zeros(
+            [16, 16, output_channel, output_channel * depth_multiplier]),
+        strides=[1, 1, 1, 1],
+        padding='SAME')
+    pool = nn_ops.pool(
+        dconv, window_shape=[2, 2], pooling_type='AVG', padding='SAME')
+    max_pool = nn_ops.pool(
+        pool, window_shape=[2, 2], pooling_type='MAX', padding='SAME')
+    output = nn_ops.softmax(max_pool)
+
+    def calibration_gen():
+      for _ in range(10):
+        yield np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)
+
+    sess = session.Session()
+
+    # Convert float model.
+    float_converter = lite.TFLiteConverter.from_session(sess, [inp], [output])
+    float_tflite = float_converter.convert()
+    self.assertTrue(float_tflite)
+
+    # Convert quantized weights model.
+    quantized_converter = lite.TFLiteConverter.from_session(
+        sess, [inp], [output])
+    quantized_converter.optimizations = [lite.Optimize.OPTIMIZE_FOR_SIZE]
+    quantized_converter.representative_dataset = lite.RepresentativeDataset(
+        calibration_gen)
     quantized_tflite = quantized_converter.convert()
     self.assertTrue(quantized_tflite)
 
