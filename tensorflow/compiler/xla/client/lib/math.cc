@@ -402,9 +402,7 @@ XlaOp Lgamma(XlaOp input) {
 
     // lgamma(+/-inf) = +inf.
     XlaOp inf_bcast = FullLike(input, std::numeric_limits<float>::infinity());
-    return Select(Or(IsFinite(input),                           // is finite, or
-                     Not(Or(Lt(input, one), Ge(input, one)))),  // is nan
-                  result, inf_bcast);
+    return Select(IsInf(input), inf_bcast, result);
   };
 
   auto& b = *input.builder();
