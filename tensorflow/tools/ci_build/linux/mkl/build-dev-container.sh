@@ -45,7 +45,7 @@ TF_DOCKER_BUILD_TYPE="MKL" \
   TF_DOCKER_BUILD_IMAGE_NAME="${TF_DOCKER_BUILD_IMAGE_NAME}" \
   TF_DOCKER_BUILD_VERSION="${TF_DOCKER_BUILD_VERSION}" \
   TF_BAZEL_BUILD_OPTIONS="${TF_BAZEL_BUILD_OPTIONS}" \
-  ${WORKSPACE}/tensorflow/tools/docker/parameterized_docker_build.sh 
+  ${WORKSPACE}/tensorflow/tools/docker/parameterized_docker_build.sh
 
 # build the python 3 container and whl
 TF_DOCKER_BUILD_TYPE="MKL" \
@@ -79,7 +79,7 @@ TF_DOCKER_BUILD_TYPE="MKL" \
   TF_DOCKER_BUILD_IMAGE_NAME="${TF_DOCKER_BUILD_IMAGE_NAME}" \
   TF_DOCKER_BUILD_VERSION="${TF_DOCKER_BUILD_VERSION}-avx2" \
   TF_BAZEL_BUILD_OPTIONS="${TF_BAZEL_BUILD_OPTIONS}" \
-  ${WORKSPACE}/tensorflow/tools/docker/parameterized_docker_build.sh 
+  ${WORKSPACE}/tensorflow/tools/docker/parameterized_docker_build.sh
 
 # build the python 3 container and whl
 TF_DOCKER_BUILD_TYPE="MKL" \
