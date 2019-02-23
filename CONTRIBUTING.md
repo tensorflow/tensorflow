@@ -70,7 +70,7 @@ TensorFlow coding style.
   contribution must be compared against the cost of maintaining the feature.
 * Full new features (e.g., a new op implementing a cutting-edge algorithm)
   typically will live in
-  [tensorflow/contrib](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/contrib)
+  [tensorflow/addons](https://github.com/tensorflow/addons)
   to get some airtime before decision is made regarding whether they are to be
   migrated to the core.
 
