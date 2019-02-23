@@ -87,94 +87,6 @@ TrtCandidateSelector::TrtCandidateSelector(
     : graph_properties_(graph_properties), precision_mode_(precision_mode) {}
 
 Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
-  // TODO(laigd): move this set to TrtNodeValidator where it should belong.
-  // LINT.IfChange
-  static const auto* candidate_ops = new std::set<string>{
-      "Abs",
-      "Acos",
-      "Acosh",
-      "Add",
-      "Asin",
-      "Asinh",
-      "Atan",
-      "Atanh",
-      "AvgPool",
-      "BatchMatMul",
-      "BiasAdd",
-      "Ceil",
-      "ConcatV2",
-      "Const",
-      "Conv2D",
-      "Conv2DBackpropInput",
-      "Cos",
-      "Cosh",
-      "DepthwiseConv2dNative",
-      "Div",
-      "Exp",
-      "ExpandDims",
-      "Floor",
-      "FusedBatchNorm",
-      "FusedBatchNormV2",
-      "GatherV2",
-      "Identity",
-      "LeakyRelu",
-      "Log",
-      "MatMul",
-      "Max",
-      "Maximum",
-      "MaxPool",
-      "Mean",
-      "Min",
-      "Minimum",
-      "Mul",
-      "Neg",
-      "Pad",
-      "Prod",
-      "RealDiv",
-      "Reciprocal",
-      "Relu",
-      "Relu6",
-      "Reshape",
-      "Rsqrt",
-      "Sigmoid",
-      "Sin",
-      "Sinh",
-      "Slice",
-      "Snapshot",
-      "Softmax",
-      "Sqrt",
-      "Square",
-      "Squeeze",
-      "StridedSlice",
-      "Sub",
-      "Sum",
-      "Tan",
-      "Tanh",
-      "TopKV2",
-      "Transpose",
-  };
-  bool is_supported_op_type =
-      (candidate_ops->count(node->type_string()) ||
-       PluginFactoryTensorRT::GetInstance()->IsPlugin(node->type_string()));
-  static const auto* quantize_ops = new std::set<string>{
-      "QuantizeAndDequantizeV2",
-      "QuantizeAndDequantizeV3",
-      "FakeQuantWithMinMaxVars",
-      "FakeQuantWithMinMaxArgs",
-  };
-  // In INT8 mode, we will always apply the quantization ranges provided by
-  // these ops to the relevant tensors. This happens regardless of the value of
-  // use_calibration.
-  if (precision_mode_ == TrtPrecisionMode::INT8 &&
-      quantize_ops->count(node->type_string())) {
-    is_supported_op_type = true;
-  }
-  // LINT.ThenChange(//tensorflow/compiler/tf2tensorrt/convert/convert_nodes.cc)
-  if (!is_supported_op_type) {
-    return errors::Unimplemented("Op type ", node->type_string(),
-                                 " is not supported");
-  }
-
   std::vector<const Edge*> input_edges;
   TF_RETURN_IF_ERROR(node->input_edges(&input_edges));
   std::vector<std::pair<const NodeDef*, int>> input_node_and_ports;
@@ -184,7 +96,7 @@ Status TrtCandidateSelector::IsTensorRTCandidate(const tensorflow::Node* node) {
                                       input_edge->src_output());
   }
   return validator_.ValidateNode(node->def(), input_node_and_ports,
-                                 graph_properties_);
+                                 precision_mode_, graph_properties_);
 }
 
 namespace {
