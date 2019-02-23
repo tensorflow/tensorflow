@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/jit/build_xla_ops_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_subgraphs_pass.h"
 #include "tensorflow/compiler/jit/encapsulate_xla_computations_pass.h"
+#include "tensorflow/compiler/jit/increase_dynamism_for_auto_jit_pass.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/partially_decluster_pass.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -44,17 +45,20 @@ REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 10,
                       MarkForCompilationPass);
 
 REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 20,
+                      IncreaseDynamismForAutoJitPass);
+
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 30,
                       PartiallyDeclusterPass);
 
 // The EncapsulateSubgraphs pass must run after the MarkForCompilationPass. We
 // also need to run it after the graph been rewritten to have _Send nodes added
 // for fetches. Before the _Send nodes are added, fetch nodes are identified by
 // name, and encapsulation might remove that node from the graph.
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 30,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 40,
                       EncapsulateSubgraphsPass);
 
 // Must run after EncapsulateSubgraphsPass.
-REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 40,
+REGISTER_OPTIMIZATION(OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, 50,
                       BuildXlaOpsPass);
 
 }  // namespace tensorflow

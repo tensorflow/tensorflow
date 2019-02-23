@@ -39,7 +39,7 @@ class GpuFtzTest : public GpuCodegenTest {
         /* parameter_number=*/1, param_shape, "y"));
     builder.AddInstruction(HloInstruction::CreateBinary(param_shape, op, x, y));
 
-    auto hlo_module = CreateNewModuleWithFTZ(ftz_);
+    auto hlo_module = CreateNewUnverifiedModuleWithFTZ(ftz_);
     hlo_module->AddEntryComputation(builder.Build());
     return hlo_module;
   }
@@ -54,7 +54,7 @@ class GpuFtzTest : public GpuCodegenTest {
         /* parameter_number=*/0, param_shape, "x"));
     builder.AddInstruction(HloInstruction::CreateUnary(param_shape, op, x));
 
-    auto hlo_module = CreateNewModuleWithFTZ(ftz_);
+    auto hlo_module = CreateNewUnverifiedModuleWithFTZ(ftz_);
     hlo_module->AddEntryComputation(builder.Build());
     return hlo_module;
   }
@@ -75,16 +75,16 @@ class GpuFtzDisabledTest : public GpuFtzTest {
 // Check that we emit mul.ftz.f32 when in ftz mode, and plain mul.f32 otherwise.
 TEST_F(GpuFtzEnabledTest, MultiplyFtz) {
   CompileAndVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
-    CHECK-NOT: mul.f32
-    CHECK: mul.ftz.f32
-    CHECK-NOT: mul.f32
+    CHECK-NOT: mul.rn.f32
+    CHECK: mul.rn.ftz.f32
+    CHECK-NOT: mul.rn.f32
   )");
 }
 TEST_F(GpuFtzDisabledTest, MultiplyFtz) {
   CompileAndVerifyPtx(CreateBinaryOpModule(HloOpcode::kMultiply), R"(
-    CHECK-NOT: mul.ftz.f32
-    CHECK: mul.f32
-    CHECK-NOT: mul.ftz.f32
+    CHECK-NOT: mul.rn.ftz.f32
+    CHECK: mul.rn.f32
+    CHECK-NOT: mul.rn.ftz.f32
   )");
 }
 

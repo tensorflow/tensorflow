@@ -25,6 +25,7 @@ from six.moves import zip_longest
 
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import ctc_ops
 from tensorflow.python.platform import test
@@ -57,7 +58,7 @@ class CTCGreedyDecoderTest(test.TestCase):
     # from a len time python list of [batch_size x depth] tensors
     inputs_t = array_ops.stack(inputs_t)
 
-    with self.test_session(use_gpu=False) as sess:
+    with self.cached_session(use_gpu=False) as sess:
       decoded_list, log_probability = decoder(
           inputs_t, sequence_length=seq_lens, **decoder_args)
       decoded_unwrapped = list(
@@ -94,6 +95,7 @@ class CTCGreedyDecoderTest(test.TestCase):
         with self.assertRaisesOpError(expected_err_re):
           sess.run(decoded_unwrapped + [log_probability])
 
+  @test_util.run_deprecated_v1
   def testCTCGreedyDecoder(self):
     """Test two batch entries - best path decoder."""
     max_time_steps = 6
@@ -170,6 +172,7 @@ class CTCGreedyDecoderTest(test.TestCase):
     self._testCTCDecoder(ctc_ops.ctc_greedy_decoder, inputs, seq_lens,
                          log_prob_truth, decode_truth)
 
+  @test_util.run_deprecated_v1
   def testCTCDecoderBeamSearch(self):
     """Test one batch, two beams - hibernating beam search."""
     # max_time_steps == 8

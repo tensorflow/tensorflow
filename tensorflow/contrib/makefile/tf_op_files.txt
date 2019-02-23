@@ -42,6 +42,7 @@ tensorflow/core/kernels/conv_grad_filter_ops.cc
 tensorflow/core/kernels/conv_grad_input_ops.cc
 tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/conv_ops.cc
+tensorflow/core/kernels/conv_ops_3d.cc
 tensorflow/core/kernels/conv_ops_fused.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/crop_and_resize_op.cc
@@ -52,6 +53,8 @@ tensorflow/core/kernels/cwise_op_add_2.cc
 tensorflow/core/kernels/cwise_op_bitwise_and.cc
 tensorflow/core/kernels/cwise_op_bitwise_or.cc
 tensorflow/core/kernels/cwise_op_bitwise_xor.cc
+tensorflow/core/kernels/cwise_op_cos.cc
+tensorflow/core/kernels/cwise_op_cosh.cc
 tensorflow/core/kernels/cwise_op_div.cc
 tensorflow/core/kernels/cwise_op_equal_to_1.cc
 tensorflow/core/kernels/cwise_op_equal_to_2.cc
@@ -86,10 +89,13 @@ tensorflow/core/kernels/cwise_op_rsqrt.cc
 tensorflow/core/kernels/cwise_op_select.cc
 tensorflow/core/kernels/cwise_op_sigmoid.cc
 tensorflow/core/kernels/cwise_op_sign.cc
+tensorflow/core/kernels/cwise_op_sin.cc
+tensorflow/core/kernels/cwise_op_sinh.cc
 tensorflow/core/kernels/cwise_op_sqrt.cc
 tensorflow/core/kernels/cwise_op_square.cc
 tensorflow/core/kernels/cwise_op_squared_difference.cc
 tensorflow/core/kernels/cwise_op_sub.cc
+tensorflow/core/kernels/cwise_op_tan.cc
 tensorflow/core/kernels/cwise_op_tanh.cc
 tensorflow/core/kernels/cwise_op_xdivy.cc
 tensorflow/core/kernels/cwise_op_xlogy.cc
@@ -113,6 +119,7 @@ tensorflow/core/kernels/fake_quant_ops.cc
 tensorflow/core/kernels/fifo_queue.cc
 tensorflow/core/kernels/fifo_queue_op.cc
 tensorflow/core/kernels/fill_functor.cc
+tensorflow/core/kernels/fft_ops.cc
 tensorflow/core/kernels/function_ops.cc
 tensorflow/core/kernels/fused_batch_norm_op.cc
 tensorflow/core/kernels/gather_functor.cc
@@ -151,14 +158,15 @@ tensorflow/core/kernels/mirror_pad_op_cpu_impl_2.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_3.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_4.cc
 tensorflow/core/kernels/mirror_pad_op_cpu_impl_5.cc
+tensorflow/core/kernels/multinomial_op.cc
 tensorflow/core/kernels/no_op.cc
 tensorflow/core/kernels/non_max_suppression_op.cc
 tensorflow/core/kernels/one_hot_op.cc
-tensorflow/core/kernels/ops_util.cc
 tensorflow/core/kernels/pack_op.cc
 tensorflow/core/kernels/pad_op.cc
 tensorflow/core/kernels/padding_fifo_queue.cc
 tensorflow/core/kernels/padding_fifo_queue_op.cc
+tensorflow/core/kernels/pooling_ops_3d.cc
 tensorflow/core/kernels/pooling_ops_common.cc
 tensorflow/core/kernels/population_count_op.cc
 tensorflow/core/kernels/quantization_utils.cc
@@ -244,7 +252,9 @@ tensorflow/core/kernels/spectrogram_op.cc
 tensorflow/core/kernels/split_lib_cpu.cc
 tensorflow/core/kernels/split_op.cc
 tensorflow/core/kernels/split_v_op.cc
+tensorflow/core/kernels/stack.cc
 tensorflow/core/kernels/stack_ops.cc
+tensorflow/core/kernels/stateless_random_ops.cc
 tensorflow/core/kernels/strided_slice_op.cc
 tensorflow/core/kernels/strided_slice_op_inst_0.cc
 tensorflow/core/kernels/strided_slice_op_inst_1.cc

@@ -13,12 +13,11 @@ py_library(
     name = "stateless",
     srcs = [
         "__init__.py",
-        "python/stateless_ops.py",
     ],
     srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/python:framework_ops",
-        "//tensorflow/python:stateless_random_ops_gen",
+        "//tensorflow/python:stateless_random_ops",
         "//tensorflow/python:util",
     ],
 )
@@ -28,10 +27,6 @@ cuda_py_test(
     srcs = ["python/kernel_tests/stateless_random_ops_test.py"],
     additional_deps = [
         ":stateless",
-        "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:random_ops",
     ],
 )

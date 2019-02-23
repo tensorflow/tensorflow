@@ -195,11 +195,11 @@ class LinearOperatorLowerTriangular(linear_operator.LinearOperator):
         self._tril, x, adjoint_a=adjoint, adjoint_b=adjoint_arg)
 
   def _determinant(self):
-    return math_ops.reduce_prod(self._diag, reduction_indices=[-1])
+    return math_ops.reduce_prod(self._diag, axis=[-1])
 
   def _log_abs_determinant(self):
     return math_ops.reduce_sum(
-        math_ops.log(math_ops.abs(self._diag)), reduction_indices=[-1])
+        math_ops.log(math_ops.abs(self._diag)), axis=[-1])
 
   def _solve(self, rhs, adjoint=False, adjoint_arg=False):
     rhs = linalg.adjoint(rhs) if adjoint_arg else rhs

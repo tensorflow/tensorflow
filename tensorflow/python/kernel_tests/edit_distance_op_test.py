@@ -49,11 +49,11 @@ class EditDistanceTest(test.TestCase):
 
     if expected_err_re is None:
       self.assertEqual(edit_distance.get_shape(), expected_shape)
-      output = edit_distance.eval()
+      output = self.evaluate(edit_distance)
       self.assertAllClose(output, expected_output)
     else:
       with self.assertRaisesOpError(expected_err_re):
-        edit_distance.eval()
+        self.evaluate(edit_distance)
 
   def _testEditDistance(self,
                         hypothesis,
@@ -68,7 +68,7 @@ class EditDistanceTest(test.TestCase):
     ]
 
     # SparseTensorValue inputs.
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       # hypothesis and truth are (index, value, shape) tuples
       self._testEditDistanceST(
           hypothesis_st=sparse_tensor.SparseTensorValue(
@@ -81,7 +81,7 @@ class EditDistanceTest(test.TestCase):
           expected_err_re=expected_err_re)
 
     # SparseTensor inputs.
-    with ops.Graph().as_default() as g, self.test_session(g):
+    with ops.Graph().as_default() as g, self.session(g):
       # hypothesis and truth are (index, value, shape) tuples
       self._testEditDistanceST(
           hypothesis_st=sparse_tensor.SparseTensor(

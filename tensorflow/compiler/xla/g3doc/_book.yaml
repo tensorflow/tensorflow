@@ -1,0 +1,37 @@
+upper_tabs:
+# Tabs left of dropdown menu
+- include: /_upper_tabs_left.yaml
+- include: /api_docs/_upper_tabs_api.yaml
+# Dropdown menu
+- name: Resources
+  path: /resources
+  is_default: true
+  menu:
+  - include: /resources/_menu_toc.yaml
+  lower_tabs:
+    # Subsite tabs
+    other:
+    - name: Guide & Tutorials
+      contents:
+      - title: XLA overview
+        path: /xla/overview
+      - title: Broadcasting semantics
+        path: /xla/broadcasting
+      - title: Developing a new backend for XLA
+        path: /xla/developing_new_backend
+      - title: Using JIT compilation
+        path: /xla/jit
+      - title: Operation semantics
+        path: /xla/operation_semantics
+      - title: Shapes and layout
+        path: /xla/shapes
+      - title: Tiled layout
+        path: /xla/tiled_layout
+      - title: Using AOT compilation
+        path: /xla/tfcompile
+      - heading: Tutorials
+      - title: XLA compile API
+        path: /xla/tutorials/xla_compile
+        status: experimental
+
+- include: /_upper_tabs_right.yaml

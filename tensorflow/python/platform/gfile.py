@@ -37,7 +37,7 @@ from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export('gfile.GFile', 'gfile.Open')
+@tf_export('io.gfile.GFile', v1=['gfile.GFile', 'gfile.Open', 'io.gfile.GFile'])
 class GFile(_FileIO):
   """File I/O wrappers without thread locking.
 
@@ -52,7 +52,7 @@ class GFile(_FileIO):
     super(GFile, self).__init__(name=name, mode=mode)
 
 
-@tf_export('gfile.FastGFile')
+@tf_export(v1=['gfile.FastGFile'])
 class FastGFile(_FileIO):
   """File I/O wrappers without thread locking.
 

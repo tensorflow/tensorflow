@@ -26,7 +26,7 @@ cc_library(
 
 # This test is set to manual because it requires downloading the Hadoop
 # distribution to run. To run this test:
-# 1. Ensure $JAVA_HOME is set.
+# 1. Ensure $JAVA_HOME is set to the location of a JDK 8 installation.
 # 2. Download the binary Hadoop distribution from:
 #    http://hadoop.apache.org/releases.html
 # 3. Extract the Hadoop distribution and run:

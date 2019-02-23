@@ -1,7 +1,7 @@
 path: "tensorflow.estimator.export.TensorServingInputReceiver"
 tf_class {
-  is_instance: "<class \'tensorflow.python.estimator.export.export.TensorServingInputReceiver\'>"
-  is_instance: "<class \'tensorflow.python.estimator.export.export.TensorServingInputReceiver\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.export.export.TensorServingInputReceiver\'>"
+  is_instance: "<class \'tensorflow_estimator.python.estimator.export.export.TensorServingInputReceiver\'>"
   is_instance: "<type \'tuple\'>"
   member {
     name: "features"

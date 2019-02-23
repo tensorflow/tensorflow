@@ -26,6 +26,28 @@ namespace tensorflow {
 
 class GraphOptimizer {
  public:
+  using NodePredicate = std::function<bool(const Node*)>;
+
+  struct Options {
+    // If not null it maps from nodes in graph to partially-known
+    // shapes of their outputs, and may be used, e.g., in the constant folding
+    // pass. The use of shape_map implies that the mapping from node name to the
+    // vector of partial shapes of its outputs is stable, i.e., no optimization
+    // pass may replace a node with a different node of the same name that has a
+    // different number of outputs, or outputs with different known shapes.
+    // TODO(b/65453533) introduce a unique way to name nodes in a graph.
+    std::unordered_map<string, std::vector<PartialTensorShape>>* shape_map =
+        nullptr;
+
+    // If not null then only nodes for which cse_consider_fn returns true will
+    // be considered for CSE.
+    NodePredicate cse_consider_fn = nullptr;
+
+    // If not null then only nodes for which cf_consider_fn returns true will be
+    // considered for CF.
+    NodePredicate cf_consider_fn = nullptr;
+  };
+
   GraphOptimizer(const OptimizerOptions& opts);
   ~GraphOptimizer();
 
@@ -34,26 +56,17 @@ class GraphOptimizer {
   // on which the 'graph' will execute. It's passed to the optimizers
   // so that they can respect constraints if any, that should be
   // respected.
-  //
-  // If shape_map is not null it maps from nodes in graph to partially-known
-  // shapes of their outputs, and may be used, e.g., in the constant folding
-  // pass. The use of shape_map implies that the mapping from node name to the
-  // vector of partial shapes of its outputs is stable, i.e., no optimization
-  // pass may replace a node with a different node of the same name that has a
-  // different number of outputs, or outputs with different known shapes.
-  // TODO(b/65453533) introduce a unique way to name nodes in a graph.
-  //
-  // If cse_consider_fn is not null then only nodes for which cse_consider_fn
-  // returns true will be considered for CSE.
-  // If cf_consider_fn is not null then only nodes for which cf_consider_fn
-  // returns true will be considered for CF.
+  void Optimize(FunctionLibraryRuntime* runtime, Env* env, Device* device,
+                std::unique_ptr<Graph>* graph,
+                const Options& graph_optimizer_options);
+  // DEPRECATED: Consider passing a GraphOptimizer::Options object instead.
   void Optimize(
       FunctionLibraryRuntime* runtime, Env* env, Device* device,
       std::unique_ptr<Graph>* graph,
       const std::unordered_map<string, std::vector<PartialTensorShape>>*
           shape_map,
-      const std::function<bool(const Node*)>& cse_consider_fn = nullptr,
-      const std::function<bool(const Node*)>& cf_consider_fn = nullptr);
+      const NodePredicate& cse_consider_fn = nullptr,
+      const NodePredicate& cf_consider_fn = nullptr);
 
   const OptimizerOptions& options() { return opts_; }
 

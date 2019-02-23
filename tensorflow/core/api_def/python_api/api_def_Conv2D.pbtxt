@@ -1,6 +1,4 @@
 op {
   graph_op_name: "Conv2D"
-  endpoint {
-    name: "nn.conv2d"
-  }
+  visibility: HIDDEN
 }

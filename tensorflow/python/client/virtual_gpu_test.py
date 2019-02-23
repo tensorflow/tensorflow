@@ -216,7 +216,7 @@ class VirtualGpuTest(test_util.TensorFlowTestCase):
       for d in self._util.devices:
         with ops.device(d):
           var = variables.Variable(random_ops.random_uniform(mat_shape))
-          sess.run(var.initializer)
+          self.evaluate(var.initializer)
           data.append(var)
       s = data[0]
       for i in range(1, len(data)):

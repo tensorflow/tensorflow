@@ -123,6 +123,17 @@ Node* Assign(Graph* g, Node* var, Node* val) {
   return ret;
 }
 
+Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive, bool reverse) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cumsum")
+                  .Input(data)
+                  .Input(axes)
+                  .Attr("exclusive", exclusive)
+                  .Attr("reverse", reverse)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
              bool keep_dims) {
   Node* ret;

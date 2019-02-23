@@ -19,9 +19,11 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python import keras
+from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 
 
+@tf_test_util.run_all_in_graph_and_eager_modes
 class LayerSerializationTest(test.TestCase):
 
   def test_serialize_deserialize(self):
@@ -36,6 +38,17 @@ class LayerSerializationTest(test.TestCase):
                      keras.initializers.Ones)
     self.assertEqual(new_layer.units, 3)
 
+  def test_serialize_deserialize_batchnorm(self):
+    layer = keras.layers.BatchNormalization(
+        momentum=0.9, beta_initializer='zeros', gamma_regularizer='l2')
+    config = keras.layers.serialize(layer)
+    self.assertEqual(config['class_name'], 'BatchNormalization')
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.momentum, 0.9)
+    self.assertEqual(new_layer.beta_initializer.__class__,
+                     keras.initializers.Zeros)
+    self.assertEqual(new_layer.gamma_regularizer.__class__,
+                     keras.regularizers.L1L2)
 
 if __name__ == '__main__':
   test.main()

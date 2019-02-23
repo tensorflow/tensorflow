@@ -24,6 +24,7 @@ from tensorflow.contrib.image.python.ops import interpolate_spline
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 
 
@@ -76,7 +77,7 @@ def _add_zero_flow_controls_at_boundary(control_point_locations,
     merged_control_point_flows: augmented set of control point flows
   """
 
-  batch_size = control_point_locations.get_shape()[0].value
+  batch_size = tensor_shape.dimension_value(control_point_locations.shape[0])
 
   boundary_point_locations = _get_boundary_locations(image_height, image_width,
                                                      boundary_points_per_edge)

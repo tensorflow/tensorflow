@@ -6,7 +6,7 @@ package(
 
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "py_test")
+load("//tensorflow:tensorflow.bzl", "tf_py_test")
 
 py_library(
     name = "feature_column_py",
@@ -32,17 +32,17 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
     ],
 )
 
-py_test(
+tf_py_test(
     name = "sequence_feature_column_test",
     srcs = ["python/feature_column/sequence_feature_column_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    deps = [
+    additional_deps = [
         ":sequence_feature_column",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -51,25 +51,23 @@ py_test(
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:training",
-        "//tensorflow/python/feature_column",
-        "//third_party/py/numpy",
-        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/feature_column:feature_column_py",
     ],
+    tags = ["no_pip"],
 )
 
-py_test(
+tf_py_test(
     name = "sequence_feature_column_integration_test",
     srcs = ["python/feature_column/sequence_feature_column_integration_test.py"],
-    srcs_version = "PY2AND3",
-    tags = ["no_pip"],
-    deps = [
+    additional_deps = [
         ":sequence_feature_column",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:parsing_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
-        "//tensorflow/python/feature_column",
+        "//tensorflow/python/feature_column:feature_column_py",
         "//tensorflow/python/keras:layers",
     ],
+    tags = ["no_pip"],
 )

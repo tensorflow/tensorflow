@@ -60,7 +60,7 @@ def _registered_kl(type_a, type_b):
     "should update all references to use `tfp.distributions` "
     "instead of `tf.distributions`.",
     warn_once=True)
-@tf_export("distributions.kl_divergence")
+@tf_export(v1=["distributions.kl_divergence"])
 def kl_divergence(distribution_a, distribution_b,
                   allow_nan_stats=True, name=None):
   """Get the KL-divergence KL(distribution_a || distribution_b).
@@ -161,7 +161,7 @@ def cross_entropy(ref, other,
         ref, other, allow_nan_stats=allow_nan_stats)
 
 
-@tf_export("distributions.RegisterKL")
+@tf_export(v1=["distributions.RegisterKL"])
 class RegisterKL(object):
   """Decorator to register a KL divergence implementation function.
 

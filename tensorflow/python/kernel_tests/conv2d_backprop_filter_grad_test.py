@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import nn_ops
@@ -31,6 +32,7 @@ from tensorflow.python.platform import test
 
 class Conv2DBackpropFilterGradTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     with self.cached_session():
       for padding in ["SAME", "VALID"]:
@@ -66,7 +68,7 @@ class Conv2DBackpropFilterGradTest(test.TestCase):
 
   def testGradientDilatedConv(self):
     if test.is_gpu_available(cuda_only=True):
-      with self.test_session(use_gpu=True):
+      with self.session(use_gpu=True):
         for padding in ["SAME", "VALID"]:
           for stride in [1, 2]:
             np.random.seed(1)

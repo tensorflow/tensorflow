@@ -29,7 +29,7 @@ SparseIndexArray::SparseIndexArray(int64 max_indices, int64 rank,
   CHECK_GT(rank_, 0);
   CHECK_EQ(indices_.size() % rank_, 0)
       << "indices_.size(): " << indices_.size() << ", rank_: " << rank_;
-  CHECK_LT(index_count(), max_indices_);
+  CHECK_LE(index_count(), max_indices_);
 }
 
 SparseIndexArray::SparseIndexArray(int64 max_indices, int64 rank,
@@ -79,7 +79,7 @@ void SparseIndexArray::Resize(int64 num_indices) {
 }
 
 bool SparseIndexArray::Validate(const Shape& shape) const {
-  if (rank_ == 0 || rank_ != ShapeUtil::Rank(shape)) {
+  if (rank_ == 0 || rank_ != shape.rank()) {
     return false;
   }
   int64 num_indices = index_count();

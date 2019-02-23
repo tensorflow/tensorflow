@@ -50,14 +50,14 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
     ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
     # Fetch params to validate initial values
-    self.assertAllClose([0.0, 0.0], var0.eval())
-    self.assertAllClose([0.0, 0.0], var1.eval())
+    self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+    self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
     # Run Ftrl for a few steps
     for _ in range(steps):
       ftrl_update.run()
 
-    return var0.eval(), var1.eval()
+    return self.evaluate(var0), self.evaluate(var1)
 
   def equivAdagradTest_AdagradPart(self, steps, dtype):
     var0, var1, grads0, grads1 = self.initVariableAndGradient(dtype)
@@ -65,14 +65,14 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
     adagrad_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
     # Fetch params to validate initial values
-    self.assertAllClose([0.0, 0.0], var0.eval())
-    self.assertAllClose([0.0, 0.0], var1.eval())
+    self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+    self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
     # Run Adagrad for a few steps
     for _ in range(steps):
       adagrad_update.run()
 
-    return var0.eval(), var1.eval()
+    return self.evaluate(var0), self.evaluate(var1)
 
   def equivGradientDescentTest_FtrlPart(self, steps, dtype):
     var0, var1, grads0, grads1 = self.initVariableAndGradient(dtype)
@@ -85,14 +85,14 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
     ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
     # Fetch params to validate initial values
-    self.assertAllClose([0.0, 0.0], var0.eval())
-    self.assertAllClose([0.0, 0.0], var1.eval())
+    self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+    self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
     # Run Ftrl for a few steps
     for _ in range(steps):
       ftrl_update.run()
 
-    return var0.eval(), var1.eval()
+    return self.evaluate(var0), self.evaluate(var1)
 
   def equivGradientDescentTest_GradientDescentPart(self, steps, dtype):
     var0, var1, grads0, grads1 = self.initVariableAndGradient(dtype)
@@ -100,14 +100,14 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
     sgd_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
     # Fetch params to validate initial values
-    self.assertAllClose([0.0, 0.0], var0.eval())
-    self.assertAllClose([0.0, 0.0], var1.eval())
+    self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+    self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
     # Run GradientDescent for a few steps
     for _ in range(steps):
       sgd_update.run()
 
-    return var0.eval(), var1.eval()
+    return self.evaluate(var0), self.evaluate(var1)
 
   def testFtrlwithoutRegularization(self):
     for dtype in self.float_types:
@@ -124,8 +124,8 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([0.0, 0.0], var0.eval())
-        self.assertAllClose([0.0, 0.0], var1.eval())
+        self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+        self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
         # Run 3 steps FTRL
         for _ in range(3):
@@ -134,12 +134,12 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         # Validate updated params
         self.assertAllCloseAccordingToType(
             np.array([-2.60260963, -4.29698515]),
-            var0.eval(),
-            float_rtol=1e-5,
+            self.evaluate(var0),
+            float_rtol=1e-4,
             half_rtol=1e-2)
         self.assertAllCloseAccordingToType(
             np.array([-0.28432083, -0.56694895]),
-            var1.eval(),
+            self.evaluate(var1),
             float_rtol=1e-5,
             half_rtol=1e-2)
 
@@ -158,8 +158,8 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([4.0, 3.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
         # Run 3 steps FTRL
         for _ in range(3):
@@ -167,9 +167,14 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-2.55607247, -3.98729396]), var0.eval(), 1e-5, 1e-5)
+            np.array([-2.55607247, -3.98729396]),
+            self.evaluate(var0),
+            1e-5,
+            1e-5,
+            float_rtol=1e-4)
         self.assertAllCloseAccordingToType(
-            np.array([-0.28232238, -0.56096673]), var1.eval(), 1e-5, 1e-5)
+            np.array([-0.28232238, -0.56096673]), self.evaluate(var1), 1e-5,
+            1e-5)
 
   def testFtrlWithL1(self):
     for dtype in self.float_types:
@@ -186,8 +191,8 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([4.0, 3.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
         # Run 10 steps FTRL
         for _ in range(10):
@@ -196,12 +201,14 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         # Validate updated params
         self.assertAllCloseAccordingToType(
             np.array([-7.66718769, -10.91273689]),
-            var0.eval(),
+            self.evaluate(var0),
             rtol=1e-4,
             bfloat16_rtol=1e-1,
             bfloat16_atol=1e-1)
         self.assertAllCloseAccordingToType(
-            np.array([-0.93460727, -1.86147261]), var1.eval(), rtol=1e-4)
+            np.array([-0.93460727, -1.86147261]),
+            self.evaluate(var1),
+            rtol=1e-4)
 
   def testFtrlWithL1_L2(self):
     for dtype in self.float_types:
@@ -218,8 +225,8 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([4.0, 3.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
         # Run 10 steps FTRL
         for _ in range(10):
@@ -227,9 +234,13 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-0.24059935, -0.46829352]), var0.eval(), rtol=1e-5)
+            np.array([-0.24059935, -0.46829352]),
+            self.evaluate(var0),
+            rtol=1e-5)
         self.assertAllCloseAccordingToType(
-            np.array([-0.02406147, -0.04830509]), var1.eval(), rtol=1e-5)
+            np.array([-0.02406147, -0.04830509]),
+            self.evaluate(var1),
+            rtol=1e-5)
 
   def testFtrlWithL1_L2_L2Shrinkage(self):
     """Test the new FTRL op with support for l2 shrinkage.
@@ -253,8 +264,8 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         ftrl_update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
-        self.assertAllCloseAccordingToType([4.0, 3.0], var1.eval())
+        self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
+        self.assertAllCloseAccordingToType([4.0, 3.0], self.evaluate(var1))
 
         # Run 10 steps FTRL
         for _ in range(10):
@@ -262,9 +273,13 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
         # Validate updated params
         self.assertAllCloseAccordingToType(
-            np.array([-0.22578996, -0.44345799]), var0.eval(), rtol=1e-4)
+            np.array([-0.22578996, -0.44345799]),
+            self.evaluate(var0),
+            rtol=1e-4)
         self.assertAllCloseAccordingToType(
-            np.array([-0.14378493, -0.13229476]), var1.eval(), rtol=1e-4)
+            np.array([-0.14378493, -0.13229476]),
+            self.evaluate(var1),
+            rtol=1e-4)
 
   def testFtrlWithL2ShrinkageDoesNotChangeLrSchedule(self):
     """Verifies that l2 shrinkage in FTRL does not change lr schedule."""
@@ -290,8 +305,8 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
         update1 = opt1.apply_gradients([(grads1, var1)])
         variables.global_variables_initializer().run()
 
-        self.assertAllCloseAccordingToType([1.0, 2.0], var0.eval())
-        self.assertAllCloseAccordingToType([1.0, 2.0], var1.eval())
+        self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var0))
+        self.assertAllCloseAccordingToType([1.0, 2.0], self.evaluate(var1))
 
         # Run 10 steps FTRL
         for _ in range(10):
@@ -300,7 +315,7 @@ class FtrlOptimizerTest(xla_test.XLATestCase):
 
         # var0 is experiencing L2 shrinkage so it should be smaller than var1
         # in magnitude.
-        self.assertTrue((var0.eval()**2 < var1.eval()**2).all())
+        self.assertTrue((var0.eval()**2 < self.evaluate(var1)**2).all())
         accum0 = list(opt0._slots["accum"].values())[0].eval()
         accum1 = list(opt1._slots["accum"].values())[0].eval()
         # L2 shrinkage should not change how we update grad accumulator.

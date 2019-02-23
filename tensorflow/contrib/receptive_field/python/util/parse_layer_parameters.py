@@ -27,7 +27,8 @@ from tensorflow.python.platform import tf_logging as logging
 _UNCHANGED_RF_LAYER_OPS = [
     "Add", "BiasAdd", "Cast", "Ceil", "ConcatV2", "Const", "Floor",
     "FusedBatchNorm", "Identity", "Log", "Mul", "Pow", "RealDiv", "Relu",
-    "Relu6", "Round", "Rsqrt", "Softplus", "Sub", "VariableV2", "LRN"
+    "Relu6", "Round", "Rsqrt", "Softplus", "Sub", "VariableV2", "LRN",
+    "GreaterEqual"
 ]
 
 # Different ways in which padding modes may be spelled.
@@ -276,11 +277,11 @@ def get_layer_params(node, name_to_node, input_resolution=None, force=False):
     kernel_size_x, kernel_size_y = _conv_kernel_size(node, name_to_node)
     # Compute the padding for this node separately for each direction.
     total_padding_x, padding_x = _padding_size_conv_pool(
-        node, kernel_size_x, stride_x, input_resolution[1]
-        if input_resolution is not None else None)
+        node, kernel_size_x, stride_x,
+        input_resolution[1] if input_resolution is not None else None)
     total_padding_y, padding_y = _padding_size_conv_pool(
-        node, kernel_size_y, stride_y, input_resolution[0]
-        if input_resolution is not None else None)
+        node, kernel_size_y, stride_y,
+        input_resolution[0] if input_resolution is not None else None)
   elif node.op == "Pad":
     # Kernel and stride are simply 1 in this case.
     kernel_size_x = 1
@@ -294,11 +295,11 @@ def get_layer_params(node, name_to_node, input_resolution=None, force=False):
     kernel_size_x, kernel_size_y = _pool_kernel_size(node, name_to_node)
     # Compute the padding for this node separately for each direction.
     total_padding_x, padding_x = _padding_size_conv_pool(
-        node, kernel_size_x, stride_x, input_resolution[1]
-        if input_resolution is not None else None)
+        node, kernel_size_x, stride_x,
+        input_resolution[1] if input_resolution is not None else None)
     total_padding_y, padding_y = _padding_size_conv_pool(
-        node, kernel_size_y, stride_y, input_resolution[0]
-        if input_resolution is not None else None)
+        node, kernel_size_y, stride_y,
+        input_resolution[0] if input_resolution is not None else None)
   elif node.op in _UNCHANGED_RF_LAYER_OPS:
     # These nodes do not modify the RF parameters.
     kernel_size_x = 1
@@ -320,7 +321,7 @@ def get_layer_params(node, name_to_node, input_resolution=None, force=False):
       total_padding_y = None
       padding_y = None
     else:
-      raise ValueError("Unknown layer for operation '%s': %s" % (node.name,
-                                                                 node.op))
+      raise ValueError(
+          "Unknown layer for operation '%s': %s" % (node.name, node.op))
   return (kernel_size_x, kernel_size_y, stride_x, stride_y, padding_x,
           padding_y, total_padding_x, total_padding_y)

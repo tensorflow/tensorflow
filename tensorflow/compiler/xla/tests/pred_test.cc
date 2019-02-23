@@ -87,8 +87,8 @@ TEST_F(PredTest, ConstantR2Pred) {
   XlaBuilder builder(TestName());
   ConstantR2<bool>(&builder, {{false, true, true}, {true, false, false}});
   const string expected = R"(pred[2,3] {
-  { 011 },
-  { 100 }
+  { 0, 1, 1 },
+  { 1, 0, 0 }
 })";
   EXPECT_EQ(expected, ExecuteToString(&builder, {}));
 }

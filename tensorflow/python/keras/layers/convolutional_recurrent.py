@@ -26,15 +26,15 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _generate_dropout_mask
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
 class ConvRNN2D(RNN):
@@ -391,10 +391,6 @@ class ConvRNN2D(RNN):
     else:
       output = last_output
 
-    # Properly set learning phase
-    if getattr(last_output, '_uses_learning_phase', False):
-      output._uses_learning_phase = True
-
     if self.return_state:
       if not isinstance(states, (list, tuple)):
         states = [states]
@@ -723,11 +719,6 @@ class ConvLSTM2DCell(Layer):
     c = f * c_tm1 + i * self.activation(x_c + h_c)
     o = self.recurrent_activation(x_o + h_o)
     h = o * self.activation(c)
-
-    if 0 < self.dropout + self.recurrent_dropout:
-      if training is None:
-        h._uses_learning_phase = True
-
     return h, [h, c]
 
   def input_conv(self, x, w, b=None, padding='valid'):
@@ -779,7 +770,7 @@ class ConvLSTM2DCell(Layer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-@tf_export('keras.layers.ConvLSTM2D')
+@keras_export('keras.layers.ConvLSTM2D')
 class ConvLSTM2D(ConvRNN2D):
   """Convolutional LSTM.
 

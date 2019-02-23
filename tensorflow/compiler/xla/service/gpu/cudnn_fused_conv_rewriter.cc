@@ -226,6 +226,7 @@ StatusOr<std::unique_ptr<HloInstruction>> TryRewriteToCudnnForwardRelu(
   new_conv->set_window(conv->window());
   new_conv->set_convolution_dimension_numbers(
       conv->convolution_dimension_numbers());
+  new_conv->set_metadata(conv->metadata());
   TF_ASSIGN_OR_RETURN(CudnnConvBackendConfig config,
                       conv->backend_config<CudnnConvBackendConfig>());
   config.set_activation_mode(

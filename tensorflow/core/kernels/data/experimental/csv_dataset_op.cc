@@ -12,8 +12,6 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-
-// See docs in ../ops/parsing_ops.cc.
 #include "tensorflow/core/framework/common_shape_fns.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op.h"
@@ -159,8 +157,8 @@ class CSVDatasetOp : public DatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<IteratorBase>(
-          new Iterator({this, strings::StrCat(prefix, "::CSV")}));
+      return absl::make_unique<Iterator>(
+          Iterator::Params{this, strings::StrCat(prefix, "::CSV")});
     }
 
     const DataTypeVector& output_dtypes() const override { return out_type_; }
@@ -263,6 +261,11 @@ class CSVDatasetOp : public DatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeSourceNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(writer->WriteScalar(full_name("current_file_index"),
@@ -640,7 +643,8 @@ class CSVDatasetOp : public DatasetOpKernel {
                                          " fields but have more in record");
         }
         const DataType& dtype = dataset()->out_type_[output_idx];
-        Tensor component(ctx->allocator({}), dtype, {});
+        out_tensors->emplace_back(ctx->allocator({}), dtype, TensorShape({}));
+        Tensor& component = out_tensors->back();
         if ((field.empty() || field == dataset()->na_value_) &&
             dataset()->record_defaults_[output_idx].NumElements() != 1) {
           // If the field is empty or NA value, and default is not given,
@@ -726,7 +730,6 @@ class CSVDatasetOp : public DatasetOpKernel {
                                            " not supported in field ",
                                            output_idx);
         }
-        out_tensors->push_back(std::move(component));
         return Status::OK();
       }
 

@@ -43,7 +43,7 @@ __all__ = [
 ]
 
 
-@tf_export("distributions.Laplace")
+@tf_export(v1=["distributions.Laplace"])
 class Laplace(distribution.Distribution):
   """The Laplace distribution with location `loc` and `scale` parameters.
 

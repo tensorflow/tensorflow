@@ -21,9 +21,10 @@ from __future__ import print_function
 import contextlib
 import re
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.platform import tf_logging
-from tensorflow.python.training import distribution_strategy_context
 
 
 def collect(val, collections, default_collections):
@@ -44,13 +45,27 @@ _INVALID_TAG_CHARACTERS = re.compile(r'[^-/\w\.]')
 
 
 def skip_summary():
-  # If using multiple towers in distributed strategy, skip summaries on all
-  # towers except the first one (tower_id=0).
+  """Determines if summary should be skipped.
+
+  If using multiple replicas in distributed strategy, skip summaries on all
+  replicas except the first one (replica_id=0).
+
+  Returns:
+    True if the summary is skipped; False otherwise.
+  """
+
   # TODO(priyag): Add a new optional argument that will provide multiple
-  # alternatives to override default behavior. (e.g. run on last tower,
-  # compute sum or mean across towers).
-  tower_context = distribution_strategy_context.get_tower_context()
-  return tower_context and tower_context.tower_id > 0
+  # alternatives to override default behavior. (e.g. run on last replica,
+  # compute sum or mean across replicas).
+  replica_context = distribution_strategy_context.get_replica_context()
+  if not replica_context:
+    return False
+  # TODO(b/118385803): when replica_id of _TPUReplicaContext is properly
+  # initialized, remember to change here as well.
+  replica_id = replica_context.replica_id_in_sync_group
+  if isinstance(replica_id, ops.Tensor):
+    replica_id = tensor_util.constant_value(replica_id)
+  return replica_id and replica_id > 0
 
 
 def clean_tag(name):

@@ -1,14 +1,15 @@
 # Description:
 #   contains parts of TensorFlow that are experimental or unstable and which are not supported.
 
-licenses(["notice"])  # Apache 2.0
-
-exports_files(["LICENSE"])
-
 package(default_visibility = [
     "//learning/brain:__subpackages__",
     "//tensorflow:__subpackages__",
+    "//tensorflow_model_optimization:__subpackages__",
 ])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
 
 load("//tensorflow:tensorflow.bzl", "py_test")
 load("//tensorflow:tensorflow.bzl", "tf_custom_op_library")
@@ -31,7 +32,6 @@ tf_custom_op_py_library(
         "python/ops/arg_scope.py",
         "python/ops/audio_ops.py",
         "python/ops/checkpoint_ops.py",
-        "python/ops/critical_section_ops.py",
         "python/ops/ops.py",
         "python/ops/prettyprint_ops.py",
         "python/ops/script_ops.py",
@@ -46,6 +46,13 @@ tf_custom_op_py_library(
         ":variable_ops_op_lib",
     ],
     srcs_version = "PY2AND3",
+    visibility = [
+        "//learning/brain:__subpackages__",
+        "//tensorflow:__subpackages__",
+        "//tensorflow_estimator:__subpackages__",
+        "//tensorflow_model_optimization:__subpackages__",
+        "//video/youtube/personalization:__subpackages__",
+    ],
     deps = [
         ":gen_variable_ops",
         "//tensorflow/contrib/util:util_py",
@@ -65,6 +72,7 @@ tf_custom_op_py_library(
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python:script_ops",
         "//tensorflow/python:smart_cond",
+        "//tensorflow/python:sort_ops",
         "//tensorflow/python:sparse_tensor",
         "//tensorflow/python:state_ops",
         "//tensorflow/python:state_ops_gen",
@@ -160,26 +168,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-    ],
-)
-
-cuda_py_test(
-    name = "critical_section_test",
-    size = "medium",
-    srcs = ["python/ops/critical_section_test.py"],
-    additional_deps = [
-        "//tensorflow/python:client_testlib",
-        ":framework_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:platform_test",
-        "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python/data/ops:dataset_ops",
-        "//tensorflow/python/eager:context",
     ],
 )
 
@@ -307,20 +295,6 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
-        "//third_party/py/numpy",
-    ],
-)
-
-py_test(
-    name = "sort_ops_test",
-    size = "medium",
-    srcs = ["python/ops/sort_ops_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":framework_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:random_ops",
         "//third_party/py/numpy",
     ],
 )

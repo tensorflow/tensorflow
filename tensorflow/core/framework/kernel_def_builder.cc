@@ -66,6 +66,11 @@ KernelDefBuilder& KernelDefBuilder::Label(const char* label) {
   return *this;
 }
 
+KernelDefBuilder& KernelDefBuilder::Priority(int32 priority) {
+  kernel_def_->set_priority(priority);
+  return *this;
+}
+
 const KernelDef* KernelDefBuilder::Build() {
   KernelDef* r = kernel_def_;
   kernel_def_ = nullptr;

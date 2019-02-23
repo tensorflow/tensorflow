@@ -13,7 +13,9 @@
 # limitations under the License.
 
 package(default_visibility = ["//visibility:public"])
+
 licenses(["notice"])  # Apache 2.0
+
 exports_files(["LICENSE"])
 
 load("@protobuf_archive//:protobuf.bzl", "cc_proto_library")
@@ -21,6 +23,9 @@ load("@protobuf_archive//:protobuf.bzl", "cc_proto_library")
 cc_proto_library(
     name = "bigtable_protos",
     srcs = [
+        "google/api/annotations.proto",
+        "google/api/auth.proto",
+        "google/api/http.proto",
         "google/bigtable/admin/v2/bigtable_instance_admin.proto",
         "google/bigtable/admin/v2/bigtable_table_admin.proto",
         "google/bigtable/admin/v2/common.proto",
@@ -31,15 +36,12 @@ cc_proto_library(
         "google/iam/v1/iam_policy.proto",
         "google/iam/v1/policy.proto",
         "google/longrunning/operations.proto",
-        "google/rpc/status.proto",
         "google/rpc/error_details.proto",
-        "google/api/annotations.proto",
-        "google/api/auth.proto",
-        "google/api/http.proto",
+        "google/rpc/status.proto",
     ],
     include = ".",
-    protoc = "@protobuf_archive//:protoc",
     default_runtime = "@protobuf_archive//:protobuf",
-    deps = ["@protobuf_archive//:cc_wkt_protos"],
+    protoc = "@protobuf_archive//:protoc",
     use_grpc_plugin = True,
+    deps = ["@protobuf_archive//:cc_wkt_protos"],
 )

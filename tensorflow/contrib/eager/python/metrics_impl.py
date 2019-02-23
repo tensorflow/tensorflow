@@ -24,6 +24,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import smart_cond
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -31,12 +32,12 @@ from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 
 _to_replace = re.compile("[^A-Za-z0-9.]")
 
 
-class Metric(checkpointable.CheckpointableBase):
+class Metric(trackable.Trackable):
   """A metric holds state for aggregating statistics over an evaluation run.
 
   Example use with eager execution:
@@ -268,7 +269,7 @@ class Metric(checkpointable.CheckpointableBase):
       else:
         collections = [ops.GraphKeys.LOCAL_VARIABLES]
       collections += [ops.GraphKeys.METRIC_VARIABLES]
-    # Variables are Checkpointable dependencies of Metrics regardless of the
+    # Variables are Trackable dependencies of Metrics regardless of the
     # global/local distinction. Users can avoid saving variables by not adding a
     # dependency on the Metric.
     v = self._add_variable_with_custom_getter(
@@ -281,7 +282,7 @@ class Metric(checkpointable.CheckpointableBase):
         use_resource=True,
         getter=variable_scope.get_variable,
         # Raise duplicate variable exceptions from get_variable rather than
-        # Checkpointable.
+        # Trackable.
         overwrite=True)
     self._vars.append(v)
     if context.executing_eagerly():
@@ -347,16 +348,17 @@ class Mean(Metric):
     Raises:
       ValueError: if the optional argument is not bool
     """
-     # Convert the boolean to tensor for tf.cond, if it is not.
+    # Convert the boolean to tensor for tf.cond, if it is not.
     if not isinstance(write_summary, ops.Tensor):
       write_summary = ops.convert_to_tensor(write_summary)
     t = self.numer / self.denom
     def write_summary_f():
       summary_ops.scalar(name=self.name, tensor=t)
       return t
-    control_flow_ops.cond(write_summary,
+    smart_cond.smart_cond(write_summary,
                           write_summary_f,
-                          lambda: t)
+                          lambda: t,
+                          name="")
     return t
 
 
@@ -487,6 +489,8 @@ class BinaryAccuracy(Mean):
         message="Shapes of labels and predictions are unequal")
     predictions = ops.convert_to_tensor(predictions)
     predictions = predictions > self.threshold
+    # Convert labels to bool to match predictions.
+    labels = math_ops.cast(labels, dtypes.bool)
     matches = math_ops.equal(labels, predictions)
     matches = math_ops.cast(matches, self.dtype)
     super(BinaryAccuracy, self).call(matches, weights=weights)

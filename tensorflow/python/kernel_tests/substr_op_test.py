@@ -22,6 +22,7 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
 
@@ -51,7 +52,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(3, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -71,7 +72,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(3, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     # Full string
@@ -83,7 +84,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(5, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, test_string)
 
     # Full string (Negative)
@@ -95,7 +96,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(5, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, test_string)
 
     # Length is larger in magnitude than a negative position
@@ -111,7 +112,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(5, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_string)
 
   @parameterized.parameters(
@@ -138,7 +139,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     length = np.array(3, dtype)
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -173,7 +174,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     position = np.array(-3, dtype)
@@ -188,7 +189,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -229,7 +230,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -271,7 +272,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     # Broadcast input string onto pos/len
@@ -294,7 +295,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
     # Test 1D broadcast
@@ -310,7 +311,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     }[unit]
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
-      substr = substr_op.eval()
+      substr = self.evaluate(substr_op)
       self.assertAllEqual(substr, expected_value)
 
   @parameterized.parameters(
@@ -319,6 +320,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testBadBroadcast(self, dtype, unit):
     test_string = [[b"ten", b"eleven", b"twelve"],
                    [b"thirteen", b"fourteen", b"fifteen"],
@@ -338,6 +340,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, -6, "UTF8_CHAR"),
       (np.int64, -6, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_Scalar(self, dtype, pos, unit):
     # Scalar/Scalar
     test_string = {
@@ -349,7 +352,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, 4, "BYTE"),
@@ -361,6 +364,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, -4, "UTF8_CHAR"),
       (np.int64, -4, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_VectorScalar(self, dtype, pos, unit):
     # Vector/Scalar
     test_string = {
@@ -373,7 +377,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, "BYTE"),
@@ -381,6 +385,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_MatrixMatrix(self, dtype, unit):
     # Matrix/Matrix
     test_string = {
@@ -398,7 +403,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
     # Matrix/Matrix (with negative)
     position = np.array([[1, 2, -3], [1, 2, -4], [1, 2, -3]], dtype)
@@ -406,7 +411,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, "BYTE"),
@@ -414,6 +419,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testOutOfRangeError_Broadcast(self, dtype, unit):
     # Broadcast
     test_string = {
@@ -428,7 +434,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
     # Broadcast (with negative)
     position = np.array([-1, -2, -4], dtype)
@@ -436,7 +442,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     substr_op = string_ops.substr(test_string, position, length, unit=unit)
     with self.cached_session():
       with self.assertRaises(errors_impl.InvalidArgumentError):
-        substr_op.eval()
+        self.evaluate(substr_op)
 
   @parameterized.parameters(
       (np.int32, "BYTE"),
@@ -444,6 +450,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       (np.int32, "UTF8_CHAR"),
       (np.int64, "UTF8_CHAR"),
   )
+  @test_util.run_deprecated_v1
   def testMismatchPosLenShapes(self, dtype, unit):
     test_string = {
         "BYTE": [[b"ten", b"eleven", b"twelve"],
@@ -471,6 +478,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
     with self.assertRaises(ValueError):
       string_ops.substr(test_string, position, length)
 
+  @test_util.run_deprecated_v1
   def testWrongDtype(self):
     with self.cached_session():
       with self.assertRaises(TypeError):
@@ -478,6 +486,7 @@ class SubstrOpTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(TypeError):
         string_ops.substr(b"test", 3, 1.0)
 
+  @test_util.run_deprecated_v1
   def testInvalidUnit(self):
     with self.cached_session():
       with self.assertRaises(ValueError):

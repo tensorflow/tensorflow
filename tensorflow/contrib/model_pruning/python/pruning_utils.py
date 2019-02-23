@@ -25,15 +25,11 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import clip_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import init_ops
-from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope
-
-_NBINS = 256
 
 
 def weight_mask_variable(var, scope):
@@ -165,130 +161,6 @@ def expand_tensor(tensor, block_dims):
   return expanded_tensor
 
 
-def _histogram(values, value_range, nbins=100, dtype=dtypes.int32, name=None):
-  """Return histogram of values.
-
-  Given the tensor `values`, this operation returns a rank 1 histogram counting
-  the number of entries in `values` that fell into every bin.  The bins are
-  equal width and determined by the arguments `value_range` and `nbins`.
-
-  Args:
-    values:  Numeric `Tensor`.
-    value_range:  Shape [2] `Tensor` of same `dtype` as `values`.
-      values <= value_range[0] will be mapped to hist[0],
-      values >= value_range[1] will be mapped to hist[-1].
-    nbins:  Scalar `int32 Tensor`.  Number of histogram bins.
-    dtype:  dtype for returned histogram.
-    name:  A name for this operation (defaults to 'histogram').
-
-  Returns:
-    A 1-D `Tensor` holding histogram of values.
-
-  """
-  with ops.name_scope(name, 'histogram', [values, value_range, nbins]) as scope:
-    values = ops.convert_to_tensor(values, name='values')
-    values = array_ops.reshape(values, [-1])
-    value_range = ops.convert_to_tensor(value_range, name='value_range')
-    nbins_float = np.float32(nbins)
-
-    # Map tensor values that fall within value_range to [0, 1].
-    scaled_values = math_ops.truediv(
-        values - value_range[0],
-        value_range[1] - value_range[0],
-        name='scaled_values')
-
-    # map tensor values within the open interval value_range to {0,.., nbins-1},
-    # values outside the open interval will be zero or less, or nbins or more.
-    indices = math_ops.floor(nbins_float * scaled_values, name='indices')
-
-    # Clip edge cases (e.g. value = value_range[1]) or "outliers."
-    indices = math_ops.cast(
-        clip_ops.clip_by_value(indices, 0, nbins_float - 1), dtypes.int32)
-
-    return math_ops.unsorted_segment_sum(
-        array_ops.ones_like(indices, dtype=dtype), indices, nbins, name=scope)
-
-
-def compute_cdf_from_histogram(values, value_range, **kwargs):
-  """Returns the normalized cumulative distribution of the given values tensor.
-
-  Computes the histogram and uses tf.cumsum to arrive at cdf
-
-  Args:
-    values:  Numeric `Tensor`.
-    value_range:  Shape [2] `Tensor` of same `dtype` as `values`.
-    **kwargs: keyword arguments: nbins, name
-
-  Returns:
-    A 1-D `Tensor` holding normalized cdf of values.
-
-  """
-  nbins = kwargs.get('nbins', _NBINS)
-  name = kwargs.get('name', None)
-  with ops.name_scope(name, 'cdf', [values, value_range, nbins]):
-    histogram = _histogram(
-        values, value_range, dtype=dtypes.float32, nbins=nbins)
-    cdf = math_ops.cumsum(histogram)
-    return math_ops.div(cdf, math_ops.reduce_max(cdf))
-
-
-def compute_cdf(values, value_range, **kwargs):
-  """Returns the normalized cumulative distribution of the given values tensor.
-
-  Uses tf.while_loop to directly compute the cdf of the values.
-
-  Args:
-    values:  Numeric `Tensor`.
-    value_range:  Shape [2] `Tensor` of same `dtype` as `values`
-    **kwargs: keyword arguments: nbins, name
-
-  Returns:
-    A 1-D `Tensor` holding normalized cdf of values.
-
-  """
-  nbins = kwargs.get('nbins', _NBINS)
-  name = kwargs.get('name', None)
-  with ops.name_scope(name, 'cdf', [values, value_range, nbins]):
-    values = ops.convert_to_tensor(values, name='values')
-    value_range = ops.convert_to_tensor(value_range, name='value_range')
-    nbins_float = np.float32(nbins)
-
-    # Map tensor values that fall within value_range to [0, 1].
-    scaled_values = math_ops.truediv(
-        values - value_range[0],
-        value_range[1] - value_range[0],
-        name='scaled_values')
-
-    # map tensor values within the open interval value_range to {0,.., nbins-1},
-    # values outside the open interval will be zero or less, or nbins or more.
-    indices = math_ops.floor(nbins_float * scaled_values, name='indices')
-
-    # Clip edge cases (e.g. value = value_range[1]) or "outliers."
-    indices = math_ops.cast(
-        clip_ops.clip_by_value(indices, 0, nbins_float - 1), dtypes.int32)
-
-    cdf = array_ops.zeros(nbins)
-    i = constant_op.constant(0)
-
-    def loop_cond(loop_count, _):
-      return math_ops.less(loop_count, nbins)
-
-    def loop_body(loop_count, cdf):
-      temp = math_ops.reduce_sum(
-          math_ops.cast(
-              math_ops.less_equal(indices, loop_count), dtypes.float32))
-      cdf = math_ops.add(
-          cdf,
-          array_ops.one_hot(
-              loop_count, depth=nbins, on_value=temp, off_value=0.0))
-      return [loop_count + 1, cdf]
-
-    _, cdf = control_flow_ops.while_loop(
-        loop_cond, loop_body, [i, cdf], maximum_iterations=nbins)
-
-    return math_ops.div(cdf, math_ops.reduce_max(cdf))
-
-
 def factorized_pool(input_tensor,
                     window_shape,
                     pooling_type,
@@ -336,7 +208,7 @@ def factorized_pool(input_tensor,
         padding=padding)
 
   return array_ops.squeeze(
-      array_ops.transpose(width_pooling, perm=[0, 1, 3, 2]))
+      array_ops.transpose(width_pooling, perm=[0, 1, 3, 2]), axis=[0, 1])
 
 
 def determine_partitioned_axis(partitioned_variable):

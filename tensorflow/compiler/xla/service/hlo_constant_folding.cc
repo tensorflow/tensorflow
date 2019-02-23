@@ -35,6 +35,34 @@ limitations under the License.
 
 namespace xla {
 
+// Checks whether instr is or transitively contains an instruction that we
+// shouldn't fold.
+//
+// Specifically, we don't fold kRng or kAfterAll instructions:
+//
+//  - kRng is already marked as side-effecting and so is skipped elsewhere, but
+//    we check for it here.  Even kRng weren't side-effecting and took an
+//    explicit seed, we *still* wouldn't want to constant-fold it, because the
+//    evaluator's handling of rng is not guaranteed to be identical to any
+//    particular backend's rng.
+//
+//  - kAfterAll needs to be skipped because a kAfterAll op with no args can
+//    currently materialize a token "out of thin air".  TODO(b/110532604):
+//    Remove this check once AfterAll requires at least one operand, in which
+//    case constant folding will be impossible.
+static bool IsOrContainsIllegalInstr(const HloInstruction* instr) {
+  if (instr->opcode() == HloOpcode::kAfterAll ||
+      instr->opcode() == HloOpcode::kRng) {
+    return true;
+  }
+  for (const HloComputation* c : instr->called_computations()) {
+    if (absl::c_any_of(c->instructions(), IsOrContainsIllegalInstr)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
   // Limit the constant folding to 0 iterations to skip folding loops. This
   // retains the behavior from before while loop support in HloEvaluator and may
@@ -52,19 +80,21 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
           computation->root_instruction() != instruction) {
         continue;
       }
-      // Skip Constant, Parameter, and AfterAll operation.
-      // TODO(b/64407269): Enable Tuple once the timeout issue is resolved.
-      // TODO(b/110532604): Enable AfterAll once AfterAll requires at least one
-      // operand in which case constant folding will be impossible and this
-      // special case is not necessary.
-      if (instruction->opcode() == HloOpcode::kParameter ||
-          instruction->opcode() == HloOpcode::kConstant ||
-          instruction->opcode() == HloOpcode::kTuple ||
-          instruction->opcode() == HloOpcode::kAfterAll) {
-        continue;
-      }
+
       // Skip instructions with non-constant operands.
       if (!hlo_query::AllOperandsAreConstants(*instruction)) {
+        continue;
+      }
+
+      // Don't fold Constant, Parameter, and Tuple instructions.  Tuple
+      // constants are not directly supported by any backends, hence folding
+      // Tuple is not useful and would in fact be expanded back into kTuple by
+      // Algebraic Simplifier.
+      //
+      // (We do allow folding subcomputations that contain these instructions.)
+      if (instruction->opcode() == HloOpcode::kParameter ||
+          instruction->opcode() == HloOpcode::kConstant ||
+          instruction->opcode() == HloOpcode::kTuple) {
         continue;
       }
 
@@ -76,12 +106,23 @@ StatusOr<bool> HloConstantFolding::Run(HloModule* module) {
         continue;
       }
 
+      // Check for instructions that we can't fold even if they appear inside of
+      // a subcomputation (e.g. a kCall).
+      if (IsOrContainsIllegalInstr(instruction)) {
+        continue;
+      }
+
+      // Don't constant-fold side-effecting instructions or instructions which
+      // contain side-effecting instructions.
+      if (instruction->HasSideEffect()) {
+        continue;
+      }
+
       // Don't constant fold unless it's a net positive or the output is small.
-      if (ShapeUtil::IsArray(instruction->shape())) {
+      if (instruction->shape().IsArray()) {
         int64 elements_in_removed_operands = 0;
         for (HloInstruction* operand : instruction->operands()) {
-          if (operand->user_count() == 1 &&
-              ShapeUtil::IsArray(operand->shape())) {
+          if (operand->user_count() == 1 && operand->shape().IsArray()) {
             elements_in_removed_operands +=
                 ShapeUtil::ElementsIn(operand->shape());
           }

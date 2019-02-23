@@ -696,8 +696,8 @@ class GridRNNCellTest(test.TestCase):
 
     for out, inp in zip(outputs, inputs):
       self.assertEqual(len(out), 1)
-      self.assertTrue(out[0].get_shape()[0].value is None)
-      self.assertEqual(out[0].get_shape()[1], num_units)
+      self.assertTrue(out[0].get_shape().dims[0].value is None)
+      self.assertEqual(out[0].get_shape().dims[1], num_units)
       self.assertEqual(out[0].dtype, inp.dtype)
 
     with self.cached_session() as sess:

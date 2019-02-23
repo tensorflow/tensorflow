@@ -260,19 +260,19 @@ class FakeQuantWithMinMaxVarsGradOp : public XlaOpKernel {
     xla::XlaOp below_min = xla::Lt(input, nudged_input_min);
     xla::XlaOp select1 = xla::Select(below_min, gradient, zeroes);
     xla::XlaOp reduce1 = xla::ReduceAll(
-        XlaHelpers::ConvertElementType(b, select1, accumulation_type),
+        XlaHelpers::ConvertElementType(select1, accumulation_type),
         XlaHelpers::Zero(b, accumulation_type),
         *ctx->GetOrCreateAdd(accumulation_type));
-    xla::XlaOp output1 = XlaHelpers::ConvertElementType(b, reduce1, data_type);
+    xla::XlaOp output1 = XlaHelpers::ConvertElementType(reduce1, data_type);
     ctx->SetOutput(1, output1);
 
     xla::XlaOp above_max = xla::Gt(input, nudged_input_max);
     xla::XlaOp select2 = xla::Select(above_max, gradient, zeroes);
     xla::XlaOp reduce2 = xla::ReduceAll(
-        XlaHelpers::ConvertElementType(b, select2, accumulation_type),
+        XlaHelpers::ConvertElementType(select2, accumulation_type),
         XlaHelpers::Zero(b, accumulation_type),
         *ctx->GetOrCreateAdd(accumulation_type));
-    xla::XlaOp output2 = XlaHelpers::ConvertElementType(b, reduce2, data_type);
+    xla::XlaOp output2 = XlaHelpers::ConvertElementType(reduce2, data_type);
     ctx->SetOutput(2, output2);
   }
 

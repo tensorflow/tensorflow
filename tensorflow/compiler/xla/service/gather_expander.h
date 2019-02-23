@@ -16,20 +16,22 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_EXPANDER_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GATHER_EXPANDER_H_
 
-#include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
+#include "tensorflow/compiler/xla/service/op_expander_pass.h"
 
 namespace xla {
 
 // This pass rewrites gather operations into (roughly) while loops of dynamic
 // slices.  This lets backends that don't support gather directly to
 // nevertheless have a minimum level of support.
-class GatherExpander : public HloModulePass {
+class GatherExpander : public OpExpanderPass {
  public:
   absl::string_view name() const override { return "gather_expander"; }
-  StatusOr<bool> Run(HloModule* module) override;
 
- private:
-  StatusOr<HloInstruction*> ExpandGather(HloInstruction* gather_instr);
+ protected:
+  bool InstructionMatchesPattern(HloInstruction* instruction) override;
+
+  StatusOr<HloInstruction*> ExpandInstruction(
+      HloInstruction* gather_inst) override;
 };
 
 }  // namespace xla

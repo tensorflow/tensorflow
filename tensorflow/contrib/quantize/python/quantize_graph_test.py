@@ -295,6 +295,30 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
     self._AssertOutputGoesToOps(conv_out_identity, graph,
                                 ['test/BatchNorm/FusedBatchNorm'])
 
+  def testActivationQuantization(self):
+    self._RunTestOverAllRewrites(self._TestActivationQuantization)
+
+  def _TestActivationQuantization(self, rewrite_fn):
+    graph = ops.Graph()
+    with graph.as_default():
+      _ = self._LayerWithActivationProcessing()
+
+    rewrite_fn(graph)
+    # Check if outputs of multipliers and adds are quantized.
+
+    mul_op = graph.get_operation_by_name('test/Mul')
+    self._AssertOutputGoesToOps(
+        mul_op, graph,
+        ['test/Mul/activation_Mul_quant/FakeQuantWithMinMaxVars'])
+    mul_op = graph.get_operation_by_name('test/Mul_1')
+    self._AssertOutputGoesToOps(
+        mul_op, graph,
+        ['test/Mul_1/activation_Mul_quant/FakeQuantWithMinMaxVars'])
+    add_op = graph.get_operation_by_name('test/add')
+    self._AssertOutputGoesToOps(
+        add_op, graph,
+        ['test/add/activation_Add_quant/FakeQuantWithMinMaxVars'])
+
   def testRewriteWithScope(self):
     self._RunTestOverExperimentalRewritesWithScope(
         self._TestRewriteWithScope, 'scope1')
@@ -333,6 +357,46 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
 
     # No ops should be inserted or removed.
     self.assertEqual(op_names_before_rewrite, op_names_after_rewrite)
+
+  def testActivationRewriteWithScope(self):
+    self._RunTestOverExperimentalRewritesWithScope(
+        self._TestActivationRewriteWithScope, 'scope1')
+
+  def _TestActivationRewriteWithScope(self, rewrite_fn):
+    graph = ops.Graph()
+    with graph.as_default():
+      output = self._LayerWithIdentity(scope='scope1')
+      with ops.name_scope('scope2'):
+        output = nn_ops.relu6(output)
+        scaled_output1 = math_ops.mul(2.0, output)
+        scaled_output2 = math_ops.mul(3.0, output)
+        output = scaled_output1 + scaled_output2
+      rewrite_fn(graph)
+
+      op_names = [op.name for op in graph.get_operations()]
+      # The weights and activation of scope1 is quantized, but not scope2.
+      self.assertTrue(any('scope1/Conv/act_quant' in name for name in op_names))
+      self.assertTrue(
+          any('scope1/Conv/weights_quant' in name for name in op_names))
+
+      for op_name in op_names:
+        if op_name.startswith('scope2'):
+          self.assertTrue('FakeQuant' not in op_name)
+
+  def testActivationRewriteWithNonMatchingScope(self):
+    self._RunTestOverExperimentalRewritesWithScope(
+        self._TestActivationRewriteWithNonMatchingScope, 'NonExistingScope')
+
+  def _TestActivationRewriteWithNonMatchingScope(self, rewrite_fn):
+    graph = ops.Graph()
+    with graph.as_default():
+      self._LayerWithActivationProcessing()
+
+    rewrite_fn(graph)
+    op_types_after_rewrite = set([op.type for op in graph.get_operations()])
+    self.assertFalse(
+        op_types_after_rewrite.intersection('FakeQuantWithMinMaxVars'))
+    # No fake quant ops should be inserted.
 
   def testWithSharedWeights(self):
 
@@ -418,6 +482,34 @@ class QuantizeGraphTest(test_util.TensorFlowTestCase):
       output = array_ops.identity(output, name='bn_out')
       if post_activation_bypass:
         output += input_tensor
+    return output
+
+  def _LayerWithActivationProcessing(self,
+                                     input_tensor=None,
+                                     scope='test',
+                                     post_activation_bypass=False):
+
+    batch_size, height, width, depth = 5, 128, 128, 3
+    if input_tensor is None:
+      input_tensor = array_ops.zeros((batch_size, height, width, depth))
+    weight_init = init_ops.truncated_normal_initializer
+    with ops.name_scope(scope):
+      output = layers.conv2d(
+          input_tensor,
+          depth, [5, 5],
+          padding='SAME',
+          weights_initializer=weight_init(0.09),
+          activation_fn=None,
+          normalizer_fn=None,
+          biases_initializer=None)
+
+      output = layers.batch_norm(
+          output, center=True, scale=True, decay=1.0 - 0.003, fused=True)
+
+      output = nn_ops.relu6(output)
+      scaled_output1 = math_ops.mul(2.0, output)
+      scaled_output2 = math_ops.mul(3.0, output)
+      output = scaled_output1 + scaled_output2
     return output
 
   def _AssertInputOpsAre(self, op, in_op_names):

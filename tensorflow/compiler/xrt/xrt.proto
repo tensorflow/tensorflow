@@ -3,8 +3,27 @@ syntax = "proto3";
 package xrt;
 
 import "tensorflow/compiler/tf2xla/host_compute_metadata.proto";
+import "tensorflow/compiler/xla/xla.proto";
 import "tensorflow/compiler/xla/xla_data.proto";
 import "tensorflow/compiler/xla/service/hlo.proto";
+
+message DeviceAssignment {
+  message ComputationDevice {
+    message DeviceMeshCoordinates {
+      // The mesh coordinates for the device. Usually (X, Y, Core), in the order
+      // in which they are returned in the TopologyProto.
+      //  X    = value(0)
+      //  Y    = value(1)
+      //  Core = value(2)
+      repeated int32 value = 1;
+    }
+    // As many replicas as there are in the replicated computation.
+    repeated DeviceMeshCoordinates replica_devices = 1;
+  }
+  // As many ComputationDevice as many there are computations (number
+  // of cores per replica).
+  repeated ComputationDevice computation_devices = 1;
+}
 
 // Options for an XLA compilation.
 message XLAComputationConfig {
@@ -18,11 +37,18 @@ message XLAComputationConfig {
   tensorflow.tf2xla.HostComputeMetadata host_compute_metadata = 3;
 
   // The arg/result shapes for the whole computation.
-  xla.ProgramShape program_shape = 4;
+  xla.ProgramShapeProto program_shape = 4;
   // The arg/result shapes for each core of a model-parallel
   // computation. per_core_args_and_result_shapes is optional for a
   // single-core computation.
-  repeated xla.ProgramShape per_core_program_shape = 5;
+  repeated xla.ProgramShapeProto per_core_program_shape = 5;
+  // Describes how replicated computation instances should be assigned to
+  // devices. There are num_cores_per_replica computations, and each one will be
+  // sent and executed to the set of replica device numbers described in the
+  // DeviceAssignment proto.
+  DeviceAssignment device_assignment = 6;
+  // The debugging options to be passed to the XLA compilation process.
+  xla.DebugOptions debug_options = 7;
 }
 
 // Options and XLA computation for a compilation.
@@ -33,7 +59,7 @@ message XLAComputation {
 
 // Literal to allocate space for, and transfer to, device memory.
 message XLAAllocation {
-  int32 device_ordinal = 1;
+  reserved 1;
   xla.LiteralProto value = 2;
 }
 
@@ -75,4 +101,8 @@ message XRTExecutionConfig {
   bool release_input_handles = 5;
   // If true, release the handle to the computation after running.
   bool release_compilation_handle = 6;
+  // If set to true, and the result shape is a tuple, then instead of returning
+  // a single tuple allocation the execution will return a vector of
+  // allocations, one for each of the first-level elements of the result tuple.
+  bool return_exploded_tuple = 7;
 }

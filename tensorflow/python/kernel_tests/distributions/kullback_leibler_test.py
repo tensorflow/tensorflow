@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import normal
@@ -45,6 +46,7 @@ class KLTest(test.TestCase):
     a = MyDist(loc=0.0, scale=1.0)
     self.assertEqual("OK", kullback_leibler.kl_divergence(a, a, name="OK"))
 
+  @test_util.run_deprecated_v1
   def testDomainErrorExceptions(self):
 
     class MyDistException(normal.Normal):
@@ -63,17 +65,17 @@ class KLTest(test.TestCase):
       kl = kullback_leibler.kl_divergence(a, a, allow_nan_stats=False)
       with self.assertRaisesOpError(
           "KL calculation between .* and .* returned NaN values"):
-        kl.eval()
+        self.evaluate(kl)
       with self.assertRaisesOpError(
           "KL calculation between .* and .* returned NaN values"):
         a.kl_divergence(a).eval()
       a = MyDistException(loc=0.0, scale=1.0, allow_nan_stats=True)
       kl_ok = kullback_leibler.kl_divergence(a, a)
-      self.assertAllEqual([float("nan")], kl_ok.eval())
+      self.assertAllEqual([float("nan")], self.evaluate(kl_ok))
       self_kl_ok = a.kl_divergence(a)
-      self.assertAllEqual([float("nan")], self_kl_ok.eval())
+      self.assertAllEqual([float("nan")], self.evaluate(self_kl_ok))
       cross_ok = a.cross_entropy(a)
-      self.assertAllEqual([float("nan")], cross_ok.eval())
+      self.assertAllEqual([float("nan")], self.evaluate(cross_ok))
 
   def testRegistrationFailures(self):
 

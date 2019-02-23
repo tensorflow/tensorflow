@@ -5,10 +5,10 @@ op {
   }
   endpoint {
     name: "manip.reverse"
-    deprecated: true
+    deprecation_version: 2
   }
   endpoint {
     name: "reverse_v2"
-    deprecated: true
+    deprecation_version: 2
   }
 }

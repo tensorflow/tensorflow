@@ -281,6 +281,13 @@ class ImageOpsTest(test_util.TensorFlowTestCase):
             value.eval(),
             np.array([[4, 4], [4, 4]]).astype(dtype.as_numpy_dtype()))
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_transform_eager(self):
+    image = constant_op.constant([[1., 2.], [3., 4.]])
+    value = image_ops.transform(image, [1] * 8)
+    with self.test_session(use_gpu=True):
+      self.assertAllEqual(self.evaluate(value), np.array([[4, 4], [4, 4]]))
+
 
 class BipartiteMatchTest(test_util.TensorFlowTestCase):
 

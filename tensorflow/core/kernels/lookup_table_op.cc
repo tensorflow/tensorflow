@@ -774,7 +774,7 @@ class MutableDenseHashTable final : public LookupInterface {
   uint64 empty_key_hash_;
   PersistentTensor deleted_key_;
   uint64 deleted_key_hash_;
-};  // namespace lookup
+};
 
 }  // namespace lookup
 
