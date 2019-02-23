@@ -31,6 +31,7 @@ from tensorflow.core.lib.core import error_codes_pb2  # pylint: disable=unused-i
 from tensorflow.python import pywrap_tensorflow as py_tf
 from tensorflow.python.lib.io import file_io
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -83,7 +84,8 @@ def load_op_library(library_filename):
   return module
 
 
-@tf_export('load_file_system_library')
+@deprecation.deprecated(date=None, instructions='Use tf.load_library instead.')
+@tf_export(v1=['load_file_system_library'])
 def load_file_system_library(library_filename):
   """Loads a TensorFlow plugin, containing file system implementation.
 

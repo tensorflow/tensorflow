@@ -18,13 +18,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.distribute import distribution_strategy_context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import metrics_impl
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.training import distribution_strategy_context
 
 # TODO(nsilberman): move into metrics/python/ops/
 
@@ -167,15 +167,15 @@ def f1_score(labels, predictions, weights=None, num_thresholds=200,
           (precision_at_t + recall_at_t + epsilon))
       return math_ops.reduce_max(f1_at_thresholds)
 
-    def f1_across_towers(_, values):
+    def f1_across_replicas(_, values):
       best_f1 = compute_best_f1_score(tp=values['tp'], fp=values['fp'],
                                       fn=values['fn'], name='value')
       if metrics_collections:
         ops.add_to_collections(metrics_collections, best_f1)
       return best_f1
 
-    best_f1 = distribution_strategy_context.get_tower_context().merge_call(
-        f1_across_towers, values)
+    best_f1 = distribution_strategy_context.get_replica_context().merge_call(
+        f1_across_replicas, args=(values,))
 
     update_op = compute_best_f1_score(tp=update_ops['tp'], fp=update_ops['fp'],
                                       fn=update_ops['fn'], name='update')

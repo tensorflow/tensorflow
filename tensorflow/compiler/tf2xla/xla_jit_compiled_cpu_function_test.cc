@@ -116,13 +116,13 @@ TEST(XlaJitCompiledCpuFunction, Sum) {
   // Check program shape.
   using xla::ShapeUtil;
   const xla::Shape s32 = ShapeUtil::MakeShape(xla::S32, {});
-  const xla::ProgramShape* program_shape = function.ProgramShape();
-  ASSERT_TRUE(program_shape != nullptr);
-  ASSERT_EQ(program_shape->parameters_size(), 2);
-  EXPECT_TRUE(ShapeUtil::Compatible(program_shape->parameters(0), s32));
-  EXPECT_TRUE(ShapeUtil::Compatible(program_shape->parameters(1), s32));
+  ASSERT_TRUE(function.ProgramShape() != nullptr);
+  const xla::ProgramShape program_shape(*function.ProgramShape());
+  ASSERT_EQ(program_shape.parameters_size(), 2);
+  EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(0), s32));
+  EXPECT_TRUE(ShapeUtil::Compatible(program_shape.parameters(1), s32));
 
-  const xla::Shape& result = program_shape->result();
+  const xla::Shape& result = program_shape.result();
   ASSERT_EQ(result.element_type(), xla::TUPLE);
   ASSERT_EQ(ShapeUtil::TupleElementCount(result), 1);
   const xla::Shape& result0 = ShapeUtil::GetTupleElementShape(result, 0);

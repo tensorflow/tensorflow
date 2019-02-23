@@ -42,8 +42,8 @@ void ComputationLayout::SetToDefaultLayout() {
 }
 
 bool ComputationLayout::LayoutIsSet() const {
-  return std::all_of(parameter_layouts_.begin(), parameter_layouts_.end(),
-                     [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
          result_layout_.LayoutIsSet();
 }
 
@@ -54,6 +54,16 @@ string ComputationLayout::ToString() const {
   }
   return absl::StrCat("(", absl::StrJoin(params, ", "), ") => ",
                       result_layout_.ToString());
+}
+
+ProgramShape ComputationLayout::ComputeProgramShape() const {
+  ProgramShape program_shape;
+  for (int64 i = 0; i < parameter_layouts_.size(); ++i) {
+    *program_shape.add_parameters() = parameter_layouts_[i].shape();
+    *program_shape.add_parameter_names() = absl::StrCat("p", i);
+  }
+  *program_shape.mutable_result() = result_layout_.shape();
+  return program_shape;
 }
 
 }  // namespace xla

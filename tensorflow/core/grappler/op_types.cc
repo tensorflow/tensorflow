@@ -47,6 +47,12 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMaxPool(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
@@ -72,6 +78,17 @@ bool IsBiasAddGrad(const NodeDef& node) { return node.op() == "BiasAddGrad"; }
 bool IsBitcast(const NodeDef& node) { return node.op() == "Bitcast"; }
 
 bool IsCast(const NodeDef& node) { return node.op() == "Cast"; }
+
+bool IsCastLike(const NodeDef& node) {
+  static const gtl::FlatSet<string>* const kCastLikeOps =
+      CHECK_NOTNULL((new gtl::FlatSet<string>{
+          "Angle", "Bucketize", "Cast", "CompareAndBitpack", "Dequantize",
+          "HistogramFixedWidth", "Imag", "IsFinite", "IsInf", "IsNan",
+          "Quantize", "QuantizeDownAndShrinkRange", "QuantizeV2",
+          "QuantizedInstanceNorm", "QuantizedRelu", "QuantizedRelu6",
+          "QuantizedReluX", "Real", "Requantize"}));
+  return kCastLikeOps->count(node.op()) > 0;
+}
 
 bool IsCheckNumerics(const NodeDef& node) {
   return node.op() == "CheckNumerics";
@@ -153,18 +170,13 @@ bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   static const gtl::FlatSet<string>* const kMonotonicNonDecreasingOps =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Asinh", "Atanh",   "Ceil",  "Elu",  "Erf",  "Exp",   "Expm1",
-          "Floor", "Log",     "Log1p", "Relu", "Relu", "Relu6", "Rint",
-          "Selu",  "Sigmoid", "Sign",  "Sinh", "Sqrt", "Tanh",
+          "Acosh", "Asin", "Asinh",    "Atan",     "Atanh", "Ceil",
+          "Elu",   "Erf",  "Exp",      "Expm1",    "Floor", "Log",
+          "Log1p", "Relu", "Relu6",    "Rint",     "Selu",  "Sigmoid",
+          "Sign",  "Sinh", "Softsign", "Softplus", "Sqrt",  "Tanh",
       }));
   static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Inv",
-          "Reciprocal",
-          "Erfc",
-          "Rsqrt",
-          "Neg",
-      }));
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
   if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = true;
@@ -195,11 +207,18 @@ bool IsExit(const NodeDef& node) {
 
 bool IsExp(const NodeDef& node) { return node.op() == "Exp"; }
 
+bool IsFakeParam(const NodeDef& node) { return node.op() == "FakeParam"; }
+
 bool IsFill(const NodeDef& node) { return node.op() == "Fill"; }
 
 bool IsFloorDiv(const NodeDef& node) { return node.op() == "FloorDiv"; }
 
 bool IsFloorMod(const NodeDef& node) { return node.op() == "FloorMod"; }
+
+bool IsFusedBatchNorm(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "FusedBatchNorm" || op == "FusedBatchNormV2";
+}
 
 bool IsFusedBatchNormGrad(const NodeDef& node) {
   const auto& op = node.op();
@@ -210,15 +229,14 @@ bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
 
+bool IsHostConstant(const NodeDef& node) { return node.op() == "HostConst"; }
+
 bool IsHistogramSummary(const NodeDef& node) {
   return node.op() == "HistogramSummary";
 }
 
 bool IsIdentity(const NodeDef& node) {
   const auto& op = node.op();
-  if (op == "IdentityN" && node.attr().at("T").list().type_size() == 1) {
-    return true;
-  }
   return op == "Identity" || op == "RefIdentity";
 }
 
@@ -227,11 +245,25 @@ bool IsIdentityN(const NodeDef& node) {
   return op == "IdentityN";
 }
 
+bool IsIdentityNSingleInput(const NodeDef& node) {
+  return IsIdentityN(node) && node.attr().count("T") != 0 &&
+         node.attr().at("T").list().type_size() == 1;
+}
+
+bool IsIf(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "If" || op == "StatelessIf";
+}
+
 bool IsIgamma(const NodeDef& node) { return node.op() == "Igamma"; }
 
 bool IsIgammac(const NodeDef& node) { return node.op() == "Igammac"; }
 
 bool IsImag(const NodeDef& node) { return node.op() == "Imag"; }
+
+bool IsImmutableConst(const NodeDef& node) {
+  return node.op() == "ImmutableConst";
+}
 
 bool IsInvGrad(const NodeDef& node) { return node.op() == "InvGrad"; }
 
@@ -249,8 +281,8 @@ bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
 bool IsMatMul(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
-         op == "SparseMatMul";
+  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
+         IsQuantizedMatMul(node);
 }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
@@ -291,11 +323,17 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
+bool IsOnesLike(const NodeDef& node) { return node.op() == "OnesLike"; }
+
 bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Pad" || op == "PadV2";
+}
+
+bool IsPartitionedCall(const NodeDef& node) {
+  return node.op() == "PartitionedCall";
 }
 
 bool IsPlaceholder(const NodeDef& node) {
@@ -308,9 +346,15 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
-bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+bool IsPrint(const NodeDef& node) {
+  return node.op() == "Print" || node.op() == "PrintV2";
+}
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
+bool IsQuantizedMatMul(const NodeDef& node) {
+  return node.op() == "QuantizedMatMul" || node.op() == "QuantizedMatMulV2";
+}
 
 bool IsQueue(const NodeDef& node) {
   return str_util::EndsWith(node.op(), "QueueV2");
@@ -321,6 +365,10 @@ bool IsRandomShuffle(const NodeDef& node) {
 }
 
 bool IsRank(const NodeDef& node) { return node.op() == "Rank"; }
+
+bool IsReadVariableOp(const NodeDef& node) {
+  return node.op() == "ReadVariableOp";
+}
 
 bool IsReal(const NodeDef& node) { return node.op() == "Real"; }
 
@@ -339,6 +387,8 @@ bool IsReduction(const NodeDef& node) {
   return op == "Sum" || op == "Prod" || op == "Min" || op == "Max" ||
          op == "Mean" || op == "Any" || op == "All";
 }
+
+bool IsRelu(const NodeDef& node) { return node.op() == "Relu"; }
 
 bool IsReluGrad(const NodeDef& node) { return node.op() == "ReluGrad"; }
 
@@ -416,6 +466,10 @@ bool IsStackPopOp(const NodeDef& node) {
   return node.op() == "StackPop" || node.op() == "StackPopV2";
 }
 
+bool IsStatefulPartitionedCall(const NodeDef& node) {
+  return node.op() == "StatefulPartitionedCall";
+}
+
 bool IsStopGradient(const NodeDef& node) {
   const auto& op = node.op();
   return op == "StopGradient" || op == "PreventGradient";
@@ -490,6 +544,13 @@ bool IsVariable(const NodeDef& node) {
          op == "VarHandleOp" || op == "ReadVariableOp";
 }
 
+bool IsWhile(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "While" || op == "StatelessWhile";
+}
+
+bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
+
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 
 namespace {
@@ -499,7 +560,7 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }  // namespace
 
 bool IsPersistent(const NodeDef& node) {
-  return IsConstant(node) || IsVariable(node);
+  return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
 bool MaybeHasRefInput(const NodeDef& node) {
@@ -517,14 +578,38 @@ bool MaybeHasRefInput(const NodeDef& node) {
   return false;
 }
 
-bool IsFreeOfSideEffect(const NodeDef& node) {
+bool IsDataset(const NodeDef& node) {
+  const string& op = node.op();
+  // See `GetNodeClassForOp` in core/graph/graph.cc.
+  return op == "IteratorGetNext" || op == "IteratorGetNextSync" ||
+         op == "DatasetToSingleElement" || op == "ReduceDataset";
+}
+
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry) {
+  const OpDef* op_def = nullptr;
+  const string& op_name = node.op();
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
+  if (!status.ok()) {
+    LOG(WARNING) << "Failed to lookup OpDef for " << op_name
+                 << ". Error: " << status.error_message();
+    return false;
+  }
+  return op_def->is_stateful();
+}
+
+bool IsStateful(const NodeDef node) {
+  return IsStateful(node, OpRegistry::Global());
+}
+
+bool IsFreeOfSideEffect(const NodeDef& node,
+                        const OpRegistryInterface* op_registry) {
   // Placeholders must be preserved to keep the graph feedable.
   if (IsPlaceholder(node)) {
     return false;
   }
   const OpDef* op_def = nullptr;
   const string& op_name = node.op();
-  Status status = OpRegistry::Global()->LookUpOpDef(op_name, &op_def);
+  Status status = op_registry->LookUpOpDef(op_name, &op_def);
   if (!status.ok()) {
     return false;
   }
@@ -541,7 +626,15 @@ bool IsFreeOfSideEffect(const NodeDef& node) {
   if (node.op().find("Queue") != string::npos) {
     return false;
   }
+  // Sending a tensor via a network is a side effect.
+  if (IsSend(node)) {
+    return false;
+  }
   return !ModifiesInputsInPlace(node);
+}
+
+bool IsFreeOfSideEffect(const NodeDef& node) {
+  return IsFreeOfSideEffect(node, OpRegistry::Global());
 }
 
 bool ModifiesInputsInPlace(const NodeDef& node) {
@@ -630,8 +723,15 @@ bool IsValuePreserving(const NodeDef& node) {
       CHECK_NOTNULL((new gtl::FlatSet<string>{
           "InvertPermutation",
           "Reverse",
+          "ReverseV2",
           "Roll",
           "Transpose",
+          "DepthToSpace",
+          "SpaceToDepth",
+          "BatchToSpace",
+          "BatchToSpaceND",
+          "SpaceToBatch",
+          "SpaceToBatchND",
       }));
   return IsValueAndOrderPreserving(node) ||
          kValuePreservingOps->count(node.op()) > 0;
@@ -646,7 +746,6 @@ bool IsUnaryElementWise(const NodeDef& node) {
           "Asin",
           "Asinh",
           "Atan",
-          "Atan2",
           "Atanh",
           "Ceil",
           "ComplexAbs",

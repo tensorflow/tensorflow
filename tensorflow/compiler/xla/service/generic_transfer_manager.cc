@@ -26,7 +26,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
@@ -83,7 +82,7 @@ Status GenericTransferManager::TransferLiteralFromDeviceInternal(
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_host_shape(),
       [&](const Shape& subshape, const ShapeIndex& index) -> Status {
-        if (ShapeUtil::IsArray(subshape)) {
+        if (subshape.IsArray()) {
           TF_RETURN_IF_ERROR(executor->SynchronousMemcpyD2H(
               /*source=*/device_buffer.buffer(index),
               /*size=*/GetByteSizeRequirement(subshape),
@@ -120,7 +119,7 @@ Status GenericTransferManager::TransferLiteralToDeviceAsync(
       device_buffer.on_host_shape(),
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
         se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
-        if (ShapeUtil::IsArray(device_subshape)) {
+        if (device_subshape.IsArray()) {
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
                        device_memory.size());
           // Element is array-shaped: transfer array data to device buffer.

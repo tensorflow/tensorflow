@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/process_state.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -33,11 +34,24 @@ namespace tensorflow {
 
 class Allocator;
 class PoolAllocator;
+class SharedCounter;
 
 // Singleton that manages per-process state when GPUs are present.
 class GPUProcessState {
  public:
-  static GPUProcessState* singleton();
+  // If ps == nullptr, returns pointer to the single instance of this class to
+  // be used within this process.
+  //
+  // If ps != nullptrs, accepts a value to be returned by all subsequent calls.
+  // A non-null ps may ONLY be provided during program static storage
+  // initialization.  Must not be called more than once with a non-null ps.
+  //
+  // If a derived class of GPUProcessState is ever used in a process, it must
+  // always be used in place of this class.  In order to ensure that existing
+  // calls to GPUProcessState::singleton() all resolve to the derived instance
+  // instead, this function must be called once during startup, supplying the
+  // derived instance value, prior to any accessor call to this function.
+  static GPUProcessState* singleton(GPUProcessState* ps = nullptr);
 
   // Query whether any GPU device has been created so far.
   // Disable thread safety analysis since a race is benign here.
@@ -96,8 +110,14 @@ class GPUProcessState {
   // Returns bus_id for the given GPU id.
   virtual int BusIdForGPU(TfGpuId tf_gpu_id);
 
+  SharedCounter* GPUAllocatorCounter(TfGpuId tf_gpu_id);
+
  protected:
+  // GPUProcessState is a singleton that should not normally be deleted except
+  // at process shutdown.
   GPUProcessState();
+  virtual ~GPUProcessState() {}
+  friend class GPUDeviceTest;
 
   // Helper method for unit tests to reset the ProcessState singleton by
   // cleaning up everything. Never use in production.
@@ -116,6 +136,7 @@ class GPUProcessState {
 
   struct AllocatorParts {
     std::unique_ptr<Allocator> allocator;
+    std::unique_ptr<SharedCounter> counter;
     SubAllocator* sub_allocator;  // owned by allocator
     std::unique_ptr<Allocator> recording_allocator;
   };
@@ -127,10 +148,6 @@ class GPUProcessState {
       GUARDED_BY(mu_);
   std::vector<std::vector<SubAllocator::Visitor>> cuda_host_free_visitors_
       GUARDED_BY(mu_);
-
-  virtual ~GPUProcessState();
-
-  friend class GPUDeviceTest;
 };
 
 }  // namespace tensorflow

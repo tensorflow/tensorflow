@@ -35,6 +35,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/base/casts.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/png.h"
 #include "tensorflow/core/platform/types.h"
@@ -68,7 +69,7 @@ bool DecodeHeader(StringPiece png_string, int* width, int* height,
 // DecodeContext context;
 // CHECK(CommonInitDecode(png_string, 3 /*RGB*/, 8 /*uint8*/, &context));
 // char* image_buffer = new char[3*context.width*context.height];
-// CHECK(CommonFinishDecode(bit_cast<png_byte*>(image_buffer),
+// CHECK(CommonFinishDecode(absl::bit_cast<png_byte*>(image_buffer),
 //       3*context.width /*stride*/, &context));
 //
 // desired_channels may be 0 to detected it from the input.

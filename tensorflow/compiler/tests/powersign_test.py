@@ -91,8 +91,8 @@ class PowerSignTest(xla_test.XLATestCase):
 
         variables.global_variables_initializer().run()
         # Fetch params to validate initial values
-        self.assertAllClose([1.0, 2.0], var0.eval())
-        self.assertAllClose([3.0, 4.0], var1.eval())
+        self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+        self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
         # Run 7 steps of powersign
         # first 4 steps with positive gradient
@@ -125,8 +125,8 @@ class PowerSignTest(xla_test.XLATestCase):
           )
 
           # Validate updated params
-          self.assertAllCloseAccordingToType(var0_np, var0.eval())
-          self.assertAllCloseAccordingToType(var1_np, var1.eval())
+          self.assertAllCloseAccordingToType(var0_np, self.evaluate(var0))
+          self.assertAllCloseAccordingToType(var1_np, self.evaluate(var1))
 
   def testDense(self):
     decay_steps = 10

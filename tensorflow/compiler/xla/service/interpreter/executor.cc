@@ -78,9 +78,14 @@ port::Status XlaInterpreterExecutor::SynchronousMemcpy(
   return port::Status::OK();
 }
 
-bool XlaInterpreterExecutor::HostCallback(Stream *stream,
-                                          std::function<void()> callback) {
-  AsExecutorStream(stream)->EnqueueTask(callback);
+bool XlaInterpreterExecutor::HostCallback(
+    Stream *stream, std::function<port::Status()> callback) {
+  AsExecutorStream(stream)->EnqueueTask([callback]() {
+    port::Status s = callback();
+    if (!s.ok()) {
+      LOG(WARNING) << "Host callback failed: " << s;
+    }
+  });
   return true;
 }
 

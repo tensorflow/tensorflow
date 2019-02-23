@@ -138,7 +138,7 @@ def LastValueQuantize(inputs,
     if per_channel:
       if input_dim >= 2:
         batch_min = math_ops.reduce_min(
-            inputs, reduction_indices=reduce_dims, name='BatchMin')
+            inputs, axis=reduce_dims, name='BatchMin')
       else:
         batch_min = inputs
     else:
@@ -147,7 +147,7 @@ def LastValueQuantize(inputs,
     if per_channel:
       if input_dim >= 2:
         batch_max = math_ops.reduce_max(
-            inputs, reduction_indices=reduce_dims, name='BatchMax')
+            inputs, axis=reduce_dims, name='BatchMax')
       else:
         batch_max = inputs
     else:
@@ -224,8 +224,8 @@ def MovingAvgQuantize(inputs,
       None, default_name=name_prefix, values=[inputs], reuse=reuse) as scope:
     scope.set_partitioner(None)
     input_shape = inputs.get_shape()
-    input_dim = len(input_shape)
     if per_channel:
+      input_dim = len(input_shape)
       # Only support quantizing 1-, 2- and 4-dimensional tensors.
       assert input_dim in [1, 2, 4], ('Expected 1D, 2D or 4D input, was: %s in '
                                       ' scope: %s' % (input_shape, name_prefix))
@@ -263,7 +263,7 @@ def MovingAvgQuantize(inputs,
     if per_channel:
       if input_dim >= 2:
         batch_min = math_ops.reduce_min(
-            inputs, reduction_indices=reduce_dims, name='BatchMin')
+            inputs, axis=reduce_dims, name='BatchMin')
       else:
         batch_min = inputs
     else:
@@ -272,7 +272,7 @@ def MovingAvgQuantize(inputs,
     if per_channel:
       if input_dim >= 2:
         batch_max = math_ops.reduce_max(
-            inputs, reduction_indices=reduce_dims, name='BatchMax')
+            inputs, axis=reduce_dims, name='BatchMax')
       else:
         batch_max = inputs
     else:

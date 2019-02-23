@@ -24,6 +24,7 @@ from tensorflow.contrib.timeseries.python.timeseries import math_utils
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -35,7 +36,7 @@ def transition_power_test_template(test_case, model, num_steps):
   transition_matrix = ops.convert_to_tensor(
       model.get_state_transition(), dtype=model.dtype)
   step_number = array_ops.placeholder(shape=[], dtype=dtypes.int64)
-  state_dimension = transition_matrix.get_shape()[0].value
+  state_dimension = tensor_shape.dimension_value(transition_matrix.shape[0])
   previous_matrix = array_ops.placeholder(
       shape=[state_dimension, state_dimension], dtype=transition_matrix.dtype)
   true_single_step_update = math_ops.matmul(previous_matrix,
@@ -63,8 +64,8 @@ def noise_accumulator_test_template(test_case, model, num_steps):
       model.get_state_transition(), dtype=model.dtype)
   noise_transform = ops.convert_to_tensor(
       model.get_noise_transform(), dtype=model.dtype)
-  state_dimension = transition_matrix.get_shape()[0].value
-  state_noise_dimension = noise_transform.get_shape()[1].value
+  state_dimension = tensor_shape.dimension_value(transition_matrix.shape[0])
+  state_noise_dimension = tensor_shape.dimension_value(noise_transform.shape[1])
   gen_noise_addition = math_utils.sign_magnitude_positive_definite(
       raw=random_ops.random_normal(
           shape=[state_noise_dimension, state_noise_dimension],

@@ -5,5 +5,6 @@ op {
   }
   endpoint {
     name: "log"
+    deprecation_version: 2
   }
 }

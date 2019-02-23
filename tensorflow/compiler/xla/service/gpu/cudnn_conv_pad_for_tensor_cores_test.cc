@@ -19,7 +19,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/status_macros.h"
-#include "tensorflow/compiler/xla/tests/hlo_verified_test_base.h"
+#include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
@@ -29,7 +29,7 @@ namespace {
 namespace op = xla::testing::opcode_matchers;
 using ::testing::_;
 
-class CudnnConvPadForTensorCoresTest : public HloVerifiedTestBase {};
+class CudnnConvPadForTensorCoresTest : public HloTestBase {};
 
 TEST_F(CudnnConvPadForTensorCoresTest, PadF16ForwardConvInputChannels) {
   auto module = ParseAndReturnVerifiedModule(R"(

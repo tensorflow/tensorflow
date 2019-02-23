@@ -65,7 +65,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   auto sub = builder.AddInstruction(
       HloInstruction::CreateBinary(vec, HloOpcode::kSubtract, add, negate));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
 
   HloMemoryScheduler scheduler([](const BufferValue& buffer) {
@@ -78,7 +78,7 @@ TEST_F(HloSchedulingTest, LastUseScheduledFirst) {
   TF_ASSERT_OK(module->schedule().Verify());
 
   // Verify that all instructions are in the sequence.
-  const std::vector<const HloInstruction*>& sequence =
+  const std::vector<HloInstruction*>& sequence =
       module->schedule().sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
@@ -124,9 +124,9 @@ ENTRY root {
   };
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, size_fn, ListMemoryScheduler));
+      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
   // Verify that all instructions are in the sequence.
-  const std::vector<const HloInstruction*>& sequence =
+  const std::vector<HloInstruction*>& sequence =
       schedule.sequence(module->entry_computation()).instructions();
   EXPECT_EQ(module->entry_computation()->instruction_count(), sequence.size());
 
@@ -172,15 +172,16 @@ TEST_F(HloSchedulingTest, TuplesAreAccountedCorrectly) {
   builder.AddInstruction(HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd,
                                                       tuple_elm, abs_abs2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   module->AddEntryComputation(builder.Build());
   TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
-                          ScheduleModule(*module,
-                                         [](const BufferValue& buffer) {
-                                           return ShapeUtil::ByteSizeOf(
-                                               buffer.shape(), TUPLE_SIZE);
-                                         },
-                                         ListMemoryScheduler));
+                          ScheduleModule(
+                              module.get(),
+                              [](const BufferValue& buffer) {
+                                return ShapeUtil::ByteSizeOf(buffer.shape(),
+                                                             TUPLE_SIZE);
+                              },
+                              ListMemoryScheduler));
 
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),
@@ -218,19 +219,19 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
   builder.AddInstruction(
       HloInstruction::CreateBinary(r1f32, HloOpcode::kAdd, tuple_elm, exp));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto* computation = module->AddEntryComputation(builder.Build());
 
   auto fusion = computation->CreateFusionInstruction(
       {tuple, mul, add}, HloInstruction::FusionKind::kLoop);
 
   TF_ASSERT_OK_AND_ASSIGN(HloSchedule schedule,
-                          ScheduleModule(*module,
-                                         [](const BufferValue& buffer) {
-                                           return ShapeUtil::ByteSizeOf(
-                                               buffer.shape(), 2);
-                                         },
-                                         ListMemoryScheduler));
+                          ScheduleModule(
+                              module.get(),
+                              [](const BufferValue& buffer) {
+                                return ShapeUtil::ByteSizeOf(buffer.shape(), 2);
+                              },
+                              ListMemoryScheduler));
 
   // Verify that all instructions are in the sequence.
   EXPECT_EQ(module->entry_computation()->instruction_count(),
@@ -242,7 +243,7 @@ TEST_F(HloSchedulingTest, MultiOutputFusionAccountedCorrectly) {
 }
 
 TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   const Shape r1f32 = ShapeUtil::MakeShape(F32, {4});
 
   // param != 0
@@ -252,7 +253,7 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
       HloInstruction::CreateParameter(0, r1f32, "cond_param"));
   HloInstruction* zero_vector =
       cond_builder.AddInstruction(HloInstruction::CreateConstant(
-          LiteralUtil::CreateR2<float>({{0, 0, 0, 0}})));
+          LiteralUtil::CreateR1<float>({0, 0, 0, 0})));
   cond_builder.AddInstruction(HloInstruction::CreateBinary(
       ShapeUtil::MakeShape(PRED, {}), HloOpcode::kNe, cond_param, zero_vector));
   auto cond_computation = module->AddEmbeddedComputation(cond_builder.Build());
@@ -284,7 +285,7 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
   };
   TF_ASSERT_OK_AND_ASSIGN(
       HloSchedule schedule,
-      ScheduleModule(*module, size_fn, ListMemoryScheduler));
+      ScheduleModule(module.get(), size_fn, ListMemoryScheduler));
   // Verify that all instructions are in the sequence.
   auto entry_computation = module->entry_computation();
   EXPECT_EQ(module->entry_computation()->instruction_count(),
@@ -307,6 +308,41 @@ TEST_F(HloSchedulingTest, HeapSimulatorAccountsForSubcomputations) {
                     *entry_computation, schedule.sequence(entry_computation),
                     *points_to_analysis, size_fn, &memory_by_computation)
                     .ValueOrDie());
+}
+
+TEST_F(HloSchedulingTest, TrivialScheduler) {
+  const char* const hlo_string = R"(
+HloModule ModuleWithWhile
+
+body {
+  param.b = (s32[], s32[]) parameter(0)
+  gte.0 = s32[] get-tuple-element(param.b), index=0
+  gte.1 = s32[] get-tuple-element(param.b), index=1
+  add = s32[] add(gte.0, gte.1)
+  ROOT tuple = (s32[], s32[]) tuple(gte.0, add)
+}
+
+cond {
+  param.c = (s32[], s32[]) parameter(0)
+  ROOT constant = pred[] constant(true)
+}
+
+ENTRY main {
+  init = (s32[], s32[]) parameter(0)
+  ROOT while = (s32[], s32[]) while(init), condition=cond, body=body
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseHloString(hlo_string));
+  EXPECT_FALSE(module->has_schedule());
+  TF_ASSERT_OK(HloTrivialScheduler().Run(module.get()).status());
+  ASSERT_TRUE(module->has_schedule());
+  TF_ASSERT_OK(module->schedule().Verify());
+
+  // Verify that a clone of the module also has a schedule.
+  std::unique_ptr<HloModule> clone = module->Clone();
+  ASSERT_TRUE(clone->has_schedule());
+  TF_ASSERT_OK(clone->schedule().Verify());
 }
 
 }  // namespace

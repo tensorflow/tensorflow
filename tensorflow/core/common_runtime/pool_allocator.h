@@ -99,8 +99,6 @@ class PoolAllocator : public Allocator {
     return pool_size_limit_;
   }
 
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
-
  private:
   struct PtrRecord {
     void* ptr;
@@ -150,7 +148,6 @@ class Pow2Rounder : public RoundUpInterface {
 
 class BasicCPUAllocator : public SubAllocator {
  public:
-  // Argument numa_node is currently ignored.
   BasicCPUAllocator(int numa_node, const std::vector<Visitor>& alloc_visitors,
                     const std::vector<Visitor>& free_visitors)
       : SubAllocator(alloc_visitors, free_visitors), numa_node_(numa_node) {}

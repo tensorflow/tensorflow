@@ -132,6 +132,7 @@ class BijectorTestEventNdims(test.TestCase):
     with self.assertRaisesRegexp(ValueError, "Expected scalar"):
       bij.inverse_log_det_jacobian(1., event_ndims=(1, 2))
 
+  @test_util.run_deprecated_v1
   def testBijectorDynamicEventNdims(self):
     bij = BrokenBijector(validate_args=True)
     event_ndims = array_ops.placeholder(dtype=np.int32, shape=None)
@@ -301,6 +302,7 @@ class BijectorReduceEventDimsTest(test.TestCase):
         8.,
         self.evaluate(bij.inverse_log_det_jacobian(x, event_ndims=2)))
 
+  @test_util.run_deprecated_v1
   def testHandlesNonStaticEventNdims(self):
     x_ = [[[1., 2.], [3., 4.]]]
     x = array_ops.placeholder_with_default(x_, shape=None)

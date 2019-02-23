@@ -18,21 +18,17 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.keras.optimizer_v2 import adadelta
-from tensorflow.python.util import deprecation
+from tensorflow.contrib.optimizer_v2 import optimizer_v2
+from tensorflow.python.training import training_ops
 
 
-class AdadeltaOptimizer(adadelta.Adadelta):
+class AdadeltaOptimizer(optimizer_v2.OptimizerV2):
   """Optimizer that implements the Adadelta algorithm.
 
   See [M. D. Zeiler](http://arxiv.org/abs/1212.5701)
   ([pdf](http://arxiv.org/pdf/1212.5701v1.pdf))
   """
 
-  @deprecation.deprecated_args(
-      "2018-10-01",
-      "`use_locking = True` is no longer supported and will be ignored.",
-      ("use_locking", [False]))
   def __init__(self, learning_rate=0.001, rho=0.95, epsilon=1e-8,
                use_locking=False, name="Adadelta"):
     """Construct a new Adadelta optimizer.
@@ -52,5 +48,66 @@ class AdadeltaOptimizer(adadelta.Adadelta):
       name: Optional name prefix for the operations created when applying
         gradients.  Defaults to "Adadelta".
     """
-    super(AdadeltaOptimizer, self).__init__(
-        learning_rate=learning_rate, rho=rho, epsilon=epsilon, name=name)
+    super(AdadeltaOptimizer, self).__init__(use_locking, name)
+    self._set_hyper("learning_rate", learning_rate)
+    self._set_hyper("rho", rho)
+    self._set_hyper("epsilon", epsilon)
+
+  def _create_vars(self, var_list, state):
+    for v in var_list:
+      state.zeros_slot(v, "accum")
+      state.zeros_slot(v, "accum_update")
+
+  def _apply_dense(self, grad, var, state):
+    accum = state.get_slot(var, "accum")
+    accum_update = state.get_slot(var, "accum_update")
+    return training_ops.apply_adadelta(
+        var,
+        accum,
+        accum_update,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        state.get_hyper("rho", var.dtype.base_dtype),
+        state.get_hyper("epsilon", var.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking)
+
+  def _resource_apply_dense(self, grad, var, state):
+    accum = state.get_slot(var, "accum")
+    accum_update = state.get_slot(var, "accum_update")
+    return training_ops.resource_apply_adadelta(
+        var.handle,
+        accum.handle,
+        accum_update.handle,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        state.get_hyper("rho", var.dtype.base_dtype),
+        state.get_hyper("epsilon", var.dtype.base_dtype),
+        grad,
+        use_locking=self._use_locking)
+
+  def _apply_sparse(self, grad, var, state):
+    accum = state.get_slot(var, "accum")
+    accum_update = state.get_slot(var, "accum_update")
+    return training_ops.sparse_apply_adadelta(
+        var,
+        accum,
+        accum_update,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        state.get_hyper("rho", var.dtype.base_dtype),
+        state.get_hyper("epsilon", var.dtype.base_dtype),
+        grad.values,
+        grad.indices,
+        use_locking=self._use_locking)
+
+  def _resource_apply_sparse(self, grad, var, indices, state):
+    accum = state.get_slot(var, "accum")
+    accum_update = state.get_slot(var, "accum_update")
+    return training_ops.resource_sparse_apply_adadelta(
+        var.handle,
+        accum.handle,
+        accum_update.handle,
+        state.get_hyper("learning_rate", var.dtype.base_dtype),
+        state.get_hyper("rho", var.dtype.base_dtype),
+        state.get_hyper("epsilon", var.dtype.base_dtype),
+        grad,
+        indices,
+        use_locking=self._use_locking)

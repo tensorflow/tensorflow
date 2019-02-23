@@ -93,7 +93,7 @@ Status ThreadPoolDevice::MakeTensorFromProto(
     Tensor* tensor) {
   if (tensor_proto.dtype() > 0 && tensor_proto.dtype() <= DataType_MAX) {
     Tensor parsed(tensor_proto.dtype());
-    if (parsed.FromProto(cpu_allocator(), tensor_proto)) {
+    if (parsed.FromProto(allocator_, tensor_proto)) {
       *tensor = std::move(parsed);
       return Status::OK();
     }

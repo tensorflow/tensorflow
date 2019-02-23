@@ -35,7 +35,7 @@ namespace {
 // Traverses users of tuple shape, adding leaf instructions to 'instructions'.
 void MaybeResolveTupleElements(HloInstruction* instruction,
                                std::vector<HloInstruction*>* instructions) {
-  if (ShapeUtil::IsTuple(instruction->shape())) {
+  if (instruction->shape().IsTuple()) {
     for (auto tuple_user : instruction->users()) {
       MaybeResolveTupleElements(tuple_user, instructions);
     }
@@ -229,7 +229,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
                (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-                (user->fusion_kind() == HloInstruction::FusionKind::kInput &&
+                (IsReduceInputFusion(*user) &&
                  LayoutsAreReduceInputFusionFriendly(*fusion, *user)));
       })) {
     VLOG(3) << "Not merging " << fusion->name()

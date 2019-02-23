@@ -24,19 +24,10 @@ from __future__ import division
 from __future__ import print_function
 
 import gast
-import six
 
 from tensorflow.python.autograph.pyct import anno
+from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import transformer
-
-
-# TODO(aqj): Do we need this? Do other builtins fail in similar ways
-# See b/114389775 for a related bug in pyct
-# These symbols are legal in Python, but don't appear in the namespace.
-_SPECIAL_SYMBOLS = {'range': range, 'print': print}
-
-if six.PY2:
-  _SPECIAL_SYMBOLS['xrange'] = xrange
 
 
 class LiveValueResolver(transformer.Base):
@@ -48,7 +39,8 @@ class LiveValueResolver(transformer.Base):
 
   def visit_ClassDef(self, node):
     self.generic_visit(node)
-    anno.setanno(node, 'live_val', self.entity_info.namespace[node.name])
+    anno.setanno(
+        node, 'live_val', self.ctx.info.namespace[node.name])
     return node
 
   def visit_Name(self, node):
@@ -62,8 +54,8 @@ class LiveValueResolver(transformer.Base):
       if not is_defined:
         if node.id in self.literals:
           anno.setanno(node, 'live_val', self.literals[node.id])
-        elif node.id in self.entity_info.namespace:
-          obj = self.entity_info.namespace[node.id]
+        elif node.id in self.ctx.info.namespace:
+          obj = self.ctx.info.namespace[node.id]
           anno.setanno(node, 'live_val', obj)
           if hasattr(obj, '__name__'):
             anno.setanno(node, 'fqn', (obj.__name__,))
@@ -75,10 +67,11 @@ class LiveValueResolver(transformer.Base):
             # If the symbol value is for example a primitive, then it will not
             # have a name.
             pass
-        elif node.id in _SPECIAL_SYMBOLS:
+        elif node.id in inspect_utils.SPECIAL_BUILTINS:
           # Note: if the user redefined any of these symbols, then they would
           # be visible in the namespace and we would never reach this branch.
-          anno.setanno(node, 'live_val', _SPECIAL_SYMBOLS[node.id])
+          anno.setanno(
+              node, 'live_val', inspect_utils.SPECIAL_BUILTINS[node.id])
         else:
           pass
           # TODO(mdan): Should we raise an error here?
@@ -94,8 +87,8 @@ class LiveValueResolver(transformer.Base):
         def_, = defs
         # Note: param_of is a weakref.
         if def_.param_of and def_.param_of() is self.enclosing_entities[0]:
-          if node.id in self.entity_info.arg_values:
-            obj = self.entity_info.arg_values[node.id]
+          if node.id in self.ctx.info.arg_values:
+            obj = self.ctx.info.arg_values[node.id]
             anno.setanno(node, 'live_val', obj)
             anno.setanno(node, 'fqn', (obj.__class__.__name__,))
     return node

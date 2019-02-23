@@ -87,9 +87,8 @@ class HloRematerialization : public HloModulePass {
   // peak memory is the maximum total size of all live HLO instruction values at
   // any program point. 'order' is the order in which the HLO instructions will
   // be emitted which is used to determine lifespans of HLO values.
-  StatusOr<int64> ComputePeakMemory(
-      const HloComputation* computation,
-      const std::vector<const HloInstruction*>& order) const;
+  StatusOr<int64> ComputePeakMemory(const HloComputation* computation,
+                                    const HloInstructionSequence& order) const;
 
   // Returns the peak memory usage of the called computations for the given
   // instruction. Zero is returned if the instruction calls no computations.

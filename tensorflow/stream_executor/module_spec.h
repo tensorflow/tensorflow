@@ -17,7 +17,6 @@ limitations under the License.
 #define TENSORFLOW_STREAM_EXECUTOR_MODULE_SPEC_H_
 
 #include "tensorflow/stream_executor/lib/array_slice.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 

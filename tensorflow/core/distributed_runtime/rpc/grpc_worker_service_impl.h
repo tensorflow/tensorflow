@@ -88,6 +88,7 @@ enum class GrpcWorkerMethod {
   kCompleteInstance,
   kGetStepSequence,
 };
+
 static const int kGrpcNumWorkerMethods =
     static_cast<int>(GrpcWorkerMethod::kGetStepSequence) + 1;
 

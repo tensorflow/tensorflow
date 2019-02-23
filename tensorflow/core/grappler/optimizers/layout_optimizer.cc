@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/core/grappler/grappler_item.h"
 #include "tensorflow/core/grappler/op_types.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
-#include "tensorflow/core/grappler/utils.h"
 #include "tensorflow/core/grappler/utils/frame.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
@@ -119,6 +118,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "Exit",
                                           "Exp",
                                           "Expm1",
+                                          "FakeQuantWithMinMaxVars",
+                                          "FakeQuantWithMinMaxArgs",
                                           "Fill",
                                           "Floor",
                                           "FloorDiv",
@@ -161,6 +162,8 @@ std::set<string> GetOpsFormatAgnostic() {
                                           "PreventGradient",
                                           "Prod",
                                           "Polygamma",
+                                          "QuantizeAndDequantizeV2",
+                                          "QuantizeAndDequantizeV3",
                                           "Pow",
                                           "Real",
                                           "RealDiv",
@@ -500,6 +503,7 @@ class NodeProcessor : public GraphProcessor {
       UpdateAttrKSize();
       UpdateAttrStrides();
       UpdateAttrDilations();
+      UpdateAttrExplicitPaddings();
       UpdateAttrShape();
       TF_RETURN_IF_ERROR(AddLayoutTransposeToInputs());
       TF_RETURN_IF_ERROR(AddLayoutTransposeToOutputs());
@@ -747,6 +751,28 @@ class NodeProcessor : public GraphProcessor {
     if (node_->attr().find("dilations") != node_->attr().end()) {
       auto list = node_->mutable_attr()->at("dilations").mutable_list();
       UpdateTuple(list);
+    }
+  }
+
+  void UpdateAttrExplicitPaddings() {
+    if (node_->attr().find("explicit_paddings") != node_->attr().end()) {
+      auto list = node_->mutable_attr()->at("explicit_paddings").mutable_list();
+      int size = list->i_size();
+      if (size == 8) {
+        int64 height_before = list->i(2);
+        int64 height_after = list->i(3);
+        int64 width_before = list->i(4);
+        int64 width_after = list->i(5);
+        list->set_i(2, 0);
+        list->set_i(3, 0);
+        list->set_i(4, height_before);
+        list->set_i(5, height_after);
+        list->set_i(6, width_before);
+        list->set_i(7, width_after);
+      } else if (size != 0) {
+        LOG(ERROR) << "Cannot handle explicit_paddings attribute of size "
+                   << size;
+      }
     }
   }
 
@@ -1965,9 +1991,9 @@ class DataLayoutOptimizer : GraphProcessor {
   // Expand all nodes which is in NHWC, but supports NCHW or is layout agnostic.
   Status Expand() {
     int node_size_original = graph_->node_size();
-    std::unordered_map<const NodeDef*, std::vector<int>> frames;
-    int num_frames;
-    TF_RETURN_IF_ERROR(IdentifyFrames(*graph_, &frames, &num_frames));
+
+    FrameView frame_view;
+    TF_RETURN_IF_ERROR(frame_view.InferFromGraph(*graph_));
 
     // This is the first pass where we expand the nodes which support NCHW.
     std::set<string> ops_format_supported = GetOpsFormatSupported();
@@ -1979,7 +2005,7 @@ class DataLayoutOptimizer : GraphProcessor {
       if (ops_format_supported.find(graph_->node(i).op()) !=
           ops_format_supported.end()) {
         auto node = graph_->mutable_node(i);
-        bool is_in_frame = !frames[node].empty();
+        bool is_in_frame = frame_view.IsInFrame(*node);
         OptimizeContext opt_cxt(graph_, node, node_map_, graph_properties_,
                                 virtual_placer_, nodes_to_preserve_,
                                 is_in_frame);
@@ -2029,7 +2055,7 @@ class DataLayoutOptimizer : GraphProcessor {
         if (ops_format_agnostic.find(graph_->node(i).op()) !=
             ops_format_agnostic.end()) {
           auto node = graph_->mutable_node(i);
-          bool is_in_frame = !frames[node].empty();
+          bool is_in_frame = frame_view.IsInFrame(*node);
           OptimizeContext opt_cxt(graph_, node, node_map_, graph_properties_,
                                   virtual_placer_, nodes_to_preserve_,
                                   is_in_frame);

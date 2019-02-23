@@ -30,9 +30,7 @@ from tensorflow.python.ops.linalg import linalg_impl as linalg
 from tensorflow.python.ops.linalg import linear_operator
 from tensorflow.python.util.tf_export import tf_export
 
-__all__ = [
-    "LinearOperatorKronecker",
-]
+__all__ = ["LinearOperatorKronecker"]
 
 
 def _vec(x):
@@ -73,7 +71,7 @@ class LinearOperatorKronecker(linear_operator.LinearOperator):
   `op1 x op2 x .. opJ` (we omit parentheses as the Kronecker product is
   associative).
 
-  If `opj` has shape `batch_shape_j` + [M_j, N_j`, then the composed operator
+  If `opj` has shape `batch_shape_j + [M_j, N_j]`, then the composed operator
   will have shape equal to `broadcast_batch_shape + [prod M_j, prod N_j]`,
   where the product is over all operators.
 

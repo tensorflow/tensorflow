@@ -30,9 +30,11 @@ namespace xla {
 class HumanReadableProfileBuilder {
  public:
   explicit HumanReadableProfileBuilder(absl::string_view computation_name,
+                                       bool is_entry_computation,
                                        int64 total_cycles,
                                        double clock_rate_ghz)
       : computation_name_(computation_name),
+        is_entry_computation_(is_entry_computation),
         total_cycles_(total_cycles),
         clock_rate_ghz_(clock_rate_ghz) {
     CHECK_GE(clock_rate_ghz, 1e-9);
@@ -75,6 +77,7 @@ class HumanReadableProfileBuilder {
   }
 
   string computation_name_;
+  bool is_entry_computation_;
   int64 total_cycles_;
   double clock_rate_ghz_;
   std::vector<OpInfo> op_infos_;

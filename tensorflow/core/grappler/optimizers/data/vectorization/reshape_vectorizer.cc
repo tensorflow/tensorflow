@@ -47,23 +47,18 @@ Output GetVectorizedShape(Scope* s, Output tensor, Output original_shape) {
 class ReshapeVectorizer : public Vectorizer {
  public:
   Status Vectorize(const Node& node, Graph* outer_scope,
-                   std::vector<WrappedTensor>&& inputs,
-                   std::vector<WrappedTensor>* outputs) override {
-    if (!inputs[0].stacked || inputs[1].stacked) {
-      return errors::InvalidArgument(
-          "Expecting input 0 (`tensor`) to be stacked and input 1 (`shape`) to "
-          "be unstacked.");
-    }
-
+                   VectorizerInput&& inputs,
+                   VectorizerOutput* outputs) override {
     Status status;
     Scope parent = NewInternalScope(outer_scope, &status, nullptr);
     Scope s = parent.NewSubScope(kReshapePrefix);
 
-    Output tensor = {inputs[0].node, inputs[0].output_index};
+    Output tensor, shape;
+    TF_RETURN_IF_ERROR(inputs.stacked(0, &tensor));
+    TF_RETURN_IF_ERROR(inputs.unstacked(1, &shape));
+
     Output vectorized_reshape =
-        ops::Reshape(s, tensor,
-                     GetVectorizedShape(
-                         &s, tensor, {inputs[1].node, inputs[1].output_index}));
+        ops::Reshape(s, tensor, GetVectorizedShape(&s, tensor, shape));
 
     TF_RETURN_IF_ERROR(status);
 

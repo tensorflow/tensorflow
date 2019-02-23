@@ -404,7 +404,6 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
   Users should not instantiate or subclass this class. Instead, use an
   `Estimator`.
   """
-  __metaclass__ = abc.ABCMeta
 
   # Note that for Google users, this is overridden with
   # learn_runner.EstimatorConfig.
@@ -1067,11 +1066,11 @@ class BaseEstimator(sklearn.BaseEstimator, evaluable.Evaluable,
       chief_hooks = []
       if (self._config.save_checkpoints_secs or
           self._config.save_checkpoints_steps):
-        saver_hook_exists = any([
+        saver_hook_exists = any(
             isinstance(h, basic_session_run_hooks.CheckpointSaverHook)
             for h in (all_hooks + model_fn_ops.training_hooks + chief_hooks +
                       model_fn_ops.training_chief_hooks)
-        ])
+        )
         if not saver_hook_exists:
           chief_hooks = [
               basic_session_run_hooks.CheckpointSaverHook(
@@ -1433,13 +1432,12 @@ class Estimator(BaseEstimator):
                            'must specify no transforms.')
         untransformed_tags = graph_rewrite_specs[0].tags
 
-        # TODO(soergel): switch to main_op or otherwise update when dust settles
         builder.add_meta_graph_and_variables(
             session,
             untransformed_tags,
             signature_def_map=signature_def_map,
             assets_collection=ops.get_collection(ops.GraphKeys.ASSET_FILEPATHS),
-            legacy_init_op=init_op,
+            main_op=init_op,
             strip_default_attrs=strip_default_attrs)
 
     # pylint: disable=protected-access
@@ -1495,7 +1493,7 @@ class Estimator(BaseEstimator):
 # pylint: disable=protected-access
 class SKCompat(sklearn.BaseEstimator):
   """Scikit learn wrapper for TensorFlow Learn Estimator.
-  
+
   THIS CLASS IS DEPRECATED. See
   [contrib/learn/README.md](https://www.tensorflow.org/code/tensorflow/contrib/learn/README.md)
   for general migration instructions.

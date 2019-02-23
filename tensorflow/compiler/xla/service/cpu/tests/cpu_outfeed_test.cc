@@ -28,12 +28,11 @@ HloModule Outfeed
 
 ENTRY main {
   const_a = f32[2,3,2] constant(
-  f32[2,3,2]
     {{{1, 2}, {1001, 1002}, {2001, 2002}},
      {{2, 1}, {2001, 3002}, {2001, 2002}}})
 
-  token = token[] after-all()
-  outfeed = token[] outfeed(f32[2,3,2] const_a, token)
+  token0 = token[] after-all()
+  outfeed = token[] outfeed(f32[2,3,2] const_a, token0)
   ROOT root = () tuple()
 }
 )";

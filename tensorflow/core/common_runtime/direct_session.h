@@ -247,8 +247,10 @@ class DirectSession : public Session {
                                    ExecutorsAndKeys* executors_and_keys,
                                    RunMetadata* run_metadata);
 
-  // Returns whether inter-op execution uses a global pool.
-  bool ShouldUseRunHandlerPool() const;
+  // Returns whether inter-op execution uses a global pool or the input
+  // `run_options` requests being run on inter_op_thread_pool = 0 in case
+  // multiple pools are configured.
+  bool ShouldUseRunHandlerPool(const RunOptions& run_options) const;
 
   ::tensorflow::Status ExtendLocked(const GraphDef& graph)
       EXCLUSIVE_LOCKS_REQUIRED(graph_state_lock_);
@@ -315,6 +317,7 @@ class DirectSession : public Session {
   std::vector<Device*> devices_;  // not owned
   DeviceSet device_set_;
 
+  // Unique session identifier.
   string session_handle_;
   mutex graph_state_lock_;
   bool graph_created_ GUARDED_BY(graph_state_lock_) = false;

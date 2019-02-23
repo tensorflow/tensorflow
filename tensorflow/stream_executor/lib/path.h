@@ -16,8 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_STREAM_EXECUTOR_LIB_PATH_H_
 #define TENSORFLOW_STREAM_EXECUTOR_LIB_PATH_H_
 
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/lib/io/path.h"
-#include "tensorflow/stream_executor/lib/stringpiece.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -28,7 +28,7 @@ using tensorflow::io::Dirname;
 namespace internal {
 // TODO(rspringer): Move to cc/implementation file.
 // Not part of the public API.
-string JoinPathImpl(std::initializer_list<port::StringPiece> paths);
+string JoinPathImpl(std::initializer_list<absl::string_view> paths);
 }  // namespace internal
 
 // Join multiple paths together.
@@ -44,7 +44,7 @@ string JoinPathImpl(std::initializer_list<port::StringPiece> paths);
 // All paths will be treated as relative paths, regardless of whether or not
 // they start with a leading '/'.  That is, all paths will be concatenated
 // together, with the appropriate path separator inserted in between.
-// Arguments must be convertible to port::StringPiece.
+// Arguments must be convertible to absl::string_view.
 //
 // Usage:
 // string path = file::JoinPath("/var/log", dirname, filename);

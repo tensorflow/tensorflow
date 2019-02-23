@@ -20,9 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.converters import control_flow
 from tensorflow.python.autograph.core import converter_testing
-from tensorflow.python.autograph.pyct import transformer
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
@@ -33,9 +33,9 @@ class ControlFlowTest(converter_testing.TestCase):
       inputs = (inputs,)
     with self.converted(test_fn, control_flow, {},
                         constant_op.constant) as result:
-      with self.cached_session() as sess:
-        self.assertEqual(sess.run(result.test_fn(*inputs)), expected)
+      self.assertEqual(self.evaluate(result.test_fn(*inputs)), expected)
 
+  @test_util.run_deprecated_v1
   def test_while_basic(self):
 
     def test_fn(n):
@@ -48,6 +48,7 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), (10, 5, 5))
 
+  @test_util.run_deprecated_v1
   def test_while_nested(self):
 
     def test_fn(n):
@@ -66,6 +67,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(5),
                                  (25, 5, 0, 5))
 
+  @test_util.run_deprecated_v1
   def test_while_single_output(self):
 
     def test_fn(n):
@@ -75,17 +77,34 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(5), 0)
 
-  def test_while_variable_defined_in_body(self):
-    def bad_while_loop(n):
+  @test_util.run_deprecated_v1
+  def test_while_dispatches_by_cond_only(self):
+
+    class TensorIncompatibleNumeric(object):
+      """Works in arithmetic expression, but errors out with TF ops."""
+
+      def __init__(self, val):
+        self.val = val
+
+      def __add__(self, other):
+        return TensorIncompatibleNumeric(self.val + other)
+
+    def test_fn(n, s):
       while n > 0:
         n -= 1
-        s = n
+        s += n
       return s
 
-    node, ctx = self.prepare(bad_while_loop, {})
-    with self.assertRaises(NameError):
-      control_flow.transform(node, ctx)
+    self.assertTransformedResult(test_fn, (constant_op.constant(5), 0), 10)
+    with self.converted(test_fn, control_flow, {}) as result:
+      # n alone controls the staging. When the loop is not staged, Python
+      # knows how to add the two objects. But when staged, tf.while_loop will
+      # not know how to deal with the TensorIncompatibleNumeric object.
+      self.assertEqual(result.test_fn(5, TensorIncompatibleNumeric(0)).val, 10)
+      with self.assertRaises(TypeError):
+        result.test_fn(constant_op.constant(5), TensorIncompatibleNumeric(0))
 
+  @test_util.run_deprecated_v1
   def test_if_basic(self):
 
     def test_fn(n):
@@ -100,6 +119,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(1), (-1, 0))
     self.assertTransformedResult(test_fn, constant_op.constant(-1), (0, -2))
 
+  @test_util.run_deprecated_v1
   def test_if_complex_outputs(self):
 
     class TestClass(object):
@@ -118,12 +138,12 @@ class ControlFlowTest(converter_testing.TestCase):
       return obj
 
     with self.converted(test_fn, control_flow, {}) as result:
-      with self.cached_session() as sess:
-        res_obj = result.test_fn(constant_op.constant(1), TestClass(0, 0))
-        self.assertEqual(sess.run((res_obj.a, res_obj.b)), (-1, 0))
-        res_obj = result.test_fn(constant_op.constant(-1), TestClass(0, 0))
-        self.assertEqual(sess.run((res_obj.a, res_obj.b)), (0, -2))
+      res_obj = result.test_fn(constant_op.constant(1), TestClass(0, 0))
+      self.assertEqual(self.evaluate((res_obj.a, res_obj.b)), (-1, 0))
+      res_obj = result.test_fn(constant_op.constant(-1), TestClass(0, 0))
+      self.assertEqual(self.evaluate((res_obj.a, res_obj.b)), (0, -2))
 
+  @test_util.run_deprecated_v1
   def test_if_single_output(self):
 
     def test_fn(n):
@@ -133,6 +153,7 @@ class ControlFlowTest(converter_testing.TestCase):
 
     self.assertTransformedResult(test_fn, constant_op.constant(1), -1)
 
+  @test_util.run_deprecated_v1
   def test_if_semi(self):
 
     def test_fn(n):
@@ -143,6 +164,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(2), 3)
     self.assertTransformedResult(test_fn, constant_op.constant(-3), -3)
 
+  @test_util.run_deprecated_v1
   def test_if_local_var(self):
 
     def test_fn(n):
@@ -154,6 +176,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(1), 5)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
 
+  @test_util.run_deprecated_v1
   def test_if_no_outputs(self):
 
     def test_fn(n):
@@ -166,17 +189,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(test_fn, constant_op.constant(1), 1)
     self.assertTransformedResult(test_fn, constant_op.constant(-1), -1)
 
-  def test_if_imbalanced_outputs(self):
-
-    def test_fn(n):
-      if n > 0:
-        b = 4
-      return b
-
-    node, ctx = self.prepare(test_fn, {})
-    with self.assertRaises(transformer.AutographParseError):
-      control_flow.transform(node, ctx)
-
+  @test_util.run_deprecated_v1
   def test_simple_for(self):
 
     def test_fn(l):
@@ -191,6 +204,7 @@ class ControlFlowTest(converter_testing.TestCase):
     empty_vector = constant_op.constant([], shape=(0,), dtype=dtypes.int32)
     self.assertTransformedResult(test_fn, empty_vector, (0, 0))
 
+  @test_util.run_deprecated_v1
   def test_for_single_output(self):
 
     def test_fn(l):
@@ -225,16 +239,7 @@ class ControlFlowTest(converter_testing.TestCase):
       self.assertEqual(result.test_fn(5), 10)
       self.assertEqual(eval_count[0], 1)
 
-  def test_for_variable_defined_in_body(self):
-    def bad_for_loop(n):
-      for i in range(n):
-        s = i
-      return s
-
-    node, ctx = self.prepare(bad_for_loop, {})
-    with self.assertRaises(NameError):
-      control_flow.transform(node, ctx)
-
+  @test_util.run_deprecated_v1
   def test_for_tuple_unpacking(self):
     def test_fn(x_list):
       z = tf.constant(0)  # pylint:disable=undefined-variable
@@ -243,5 +248,7 @@ class ControlFlowTest(converter_testing.TestCase):
       return z
 
     self.assertTransformedResult(test_fn, [3, 3], 7)
+
+
 if __name__ == '__main__':
   test.main()

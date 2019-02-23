@@ -1,11 +1,10 @@
 path: "tensorflow.zeros_initializer"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.init_ops.Zeros\'>"
-  is_instance: "<class \'tensorflow.python.ops.init_ops.Initializer\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Zeros\'>"
+  is_instance: "<class \'tensorflow.python.ops.init_ops_v2.Initializer\'>"
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'dtype\'], varargs=None, keywords=None, defaults=[\"<dtype: \'float32\'>\"], "
   }
   member_method {
     name: "from_config"

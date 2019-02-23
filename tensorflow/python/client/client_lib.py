@@ -15,7 +15,7 @@
 
 """Support for launching graphs and executing operations.
 
-See the [Client](https://tensorflow.org/api_guides/python/client) guide.
+See the [Client](https://www.tensorflow.org/guide/graphs) guide.
 """
 
 from __future__ import absolute_import

@@ -26,7 +26,6 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow/contrib/distribute/python:collective_all_reduce_strategy",
-        "//tensorflow/contrib/distribute/python:cross_tower_ops",
         "//tensorflow/contrib/distribute/python:mirrored_strategy",
         "//tensorflow/contrib/distribute/python:monitor",
         "//tensorflow/contrib/distribute/python:one_device_strategy",
@@ -35,6 +34,7 @@ py_library(
         "//tensorflow/contrib/distribute/python:tpu_strategy",
         "//tensorflow/python:training",
         "//tensorflow/python:util",
+        "//tensorflow/python/distribute:cross_device_ops",
         "//tensorflow/python/distribute:distribute_config",
         "//tensorflow/python/distribute:distribute_coordinator",
     ],

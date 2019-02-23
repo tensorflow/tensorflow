@@ -434,10 +434,9 @@ struct TransformFilters {
         tile_spatial_size, base_filter_spatial_size, transform_matrix);
 
     auto shard = [&ctx, &args, &transform, &base_filter_rows, &base_filter_cols,
-                  &num_filters_transform, &in_depth, &out_depth,
-                  &filter_shards_row, &filter_shards_col, &tile_spatial_size,
-                  &filter_in, &transform_matrix,
-                  &filter_out](int64 start, int64 limit) {
+                  &num_filters_transform, &in_depth, &filter_shards_row,
+                  &filter_shards_col, &tile_spatial_size, &filter_in,
+                  &transform_matrix, &filter_out](int64 start, int64 limit) {
       // Allocate buffer for pre-processed filter:
       //   [base_filter_rows, base_filter_cols, num_filters_transform, in_depth]
       //
@@ -500,8 +499,9 @@ class GemmFilterPacker {
   typedef Eigen::internal::const_blas_data_mapper<T, int64, Eigen::RowMajor>
       LhsMapper;
   typedef Eigen::internal::gebp_traits<T, T> Traits;
-  Eigen::internal::gemm_pack_lhs<T, int64, LhsMapper, Traits::mr,
-                                 Traits::LhsProgress, Eigen::RowMajor>
+  Eigen::internal::gemm_pack_lhs<
+      T, int64, LhsMapper, Traits::mr, Traits::LhsProgress,
+      typename Traits::LhsPacket4Packing, Eigen::RowMajor>
       pack_lhs;
 
   GemmFilterPacker(const int64 rows, const int64 depth, const T* lhs_input,
@@ -532,9 +532,9 @@ struct PackFilters {
     const int64 out_depth = args.out_depth;
     const int64 num_filters = filter_shards_row * filter_shards_col * out_depth;
 
-    auto shard = [&ctx, &packed_filters, &filter_transform_data,
-                  &tile_spatial_size, &in_depth, &out_depth, &filter_shards_row,
-                  &filter_shards_col, &num_filters](int64 start, int64 limit) {
+    auto shard = [&ctx, &packed_filters, &filter_transform_data, &in_depth,
+                  &out_depth, &filter_shards_row, &filter_shards_col,
+                  &num_filters](int64 start, int64 limit) {
       const int64 filter_coord_stride = num_filters * in_depth;
       for (int64 i = start; i < limit; ++i) {
         // Allocate filter buffer [out_depth, shard_rows, shard_cols, in_depth].
@@ -787,7 +787,7 @@ struct TransformOutputTile {
             const int64 shard_base = sr * filter_shards_col + sc;
             const int64 out_buf_base = tile_base + out_depth_base + shard_base;
 
-            // Calcuate output indices and outputs to drop (if needed).
+            // Calculate output indices and outputs to drop (if needed).
             const int64 out_r_start =
                 in_r + args.pad_rows - sr * tile_stride_rows;
             // NOTE: The index 't' for 'num_tiles is used in index calculation
@@ -1003,9 +1003,9 @@ struct DeepConv2D<CPUDevice, T> {
         out_tile_spatial_size, tile_spatial_size, output_transform_matrix);
 
     auto shard = [&ctx, &args, &transform, &packed_filters, &in_depth,
-                  out_depth, tile_rows, tile_cols, out_tile_rows, out_tile_cols,
-                  filter_shards_row, filter_shards_col, tile_spatial_size,
-                  &input, &tile_transform_matrix, &output_transform_matrix,
+                  out_depth, out_tile_rows, out_tile_cols, filter_shards_row,
+                  filter_shards_col, tile_spatial_size, &input,
+                  &tile_transform_matrix, &output_transform_matrix,
                   &output](int64 batch_start, int64 batch_limit) {
       const int64 row_tiles =
           (args.out_rows + out_tile_rows - 1) / out_tile_rows +

@@ -250,7 +250,7 @@ def conv(lhs,
     rhs_dilation: dilation to apply between kernel elements
     dimension_numbers: a `ConvolutionDimensionNumbers` proto.
     feature_group_count: number of feature groups for grouped convolution.
-    precision_config: a `PrecisionConfigProto` proto.
+    precision_config: a `xla.PrecisionConfig` proto.
     name: an optional name for the operator
 
   Returns:
@@ -289,6 +289,10 @@ def dot_general(lhs, rhs, dimension_numbers, precision_config=None, name=None):
       dimension_numbers=dimension_numbers.SerializeToString(),
       precision_config=precision_config_proto,
       name=name)
+
+
+def self_adjoint_eig(a, lower, max_iter, epsilon):
+  return gen_xla_ops.xla_self_adjoint_eig(a, lower, max_iter, epsilon)
 
 
 dynamic_slice = gen_xla_ops.xla_dynamic_slice
@@ -386,3 +390,4 @@ def slice(x, start_dims, limit_dims, strides):
 sort = gen_xla_ops.xla_sort
 key_value_sort = gen_xla_ops.xla_key_value_sort
 while_loop = gen_xla_ops.xla_while
+dequantize = gen_xla_ops.xla_dequantize

@@ -1,3 +1,3 @@
 # K-FAC: Kronecker-Factored Approximate Curvature
 
-## KFAC moved to third_party/tensorflow_kfac.
+## KFAC moved to https://github.com/tensorflow/kfac.

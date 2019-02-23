@@ -84,6 +84,12 @@ class WindowsEnv : public Env {
     return new StdThread(thread_options, name, fn);
   }
 
+  int32 GetCurrentThreadId() override {
+    return static_cast<int32>(::GetCurrentThreadId());
+  }
+
+  bool GetCurrentThreadName(string* name) override { return false; }
+
   static VOID CALLBACK SchedClosureCallback(PTP_CALLBACK_INSTANCE Instance,
                                             PVOID Context, PTP_WORK Work) {
     CloseThreadpoolWork(Work);
@@ -164,7 +170,7 @@ class WindowsEnv : public Env {
     string bin_path = this->GetExecutablePath();
     string runfiles_path = bin_path + ".runfiles\\org_tensorflow";
     Status s = this->IsDirectory(runfiles_path);
-    if (!s.ok()) {
+    if (s.ok()) {
       return runfiles_path;
     } else {
       return bin_path.substr(0, bin_path.find_last_of("/\\"));

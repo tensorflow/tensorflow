@@ -60,8 +60,6 @@ class XlaCompilationAllocator : public Allocator {
   // buffers, so they get ids to track.
   bool ShouldAllocateEmptyTensors() override { return true; }
 
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
-
  private:
   // Don't run any constructors or destructors for complex objects,
   // since there is no backing store for the tensor to run them
@@ -92,7 +90,7 @@ Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
 void XlaCompilationDevice::Compute(OpKernel* op_kernel,
                                    OpKernelContext* context) {
   VLOG(4) << "XlaCompilationDevice::Compute "
-          << SummarizeNodeDef(op_kernel->def());
+          << FormatNodeDefForError(op_kernel->def());
   auto* b = XlaContext::Get(context).builder();
   xla::OpMetadata metadata;
   metadata.set_op_type(op_kernel->type_string());
@@ -122,15 +120,6 @@ Status XlaCompilationDevice::MakeTensorFromProto(
     Tensor* tensor) {
   return errors::InvalidArgument(
       "XLACompilationDevice::MakeTensorFromProto should not be called");
-}
-
-XlaExpression::XlaExpression() = default;
-
-void XlaExpression::set_handle(const xla::XlaOp& h) { handle_ = h; }
-
-void XlaExpression::set_constant_value(Tensor value) {
-  has_constant_value_ = true;
-  constant_value_ = std::move(value);
 }
 
 }  // namespace tensorflow

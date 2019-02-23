@@ -96,7 +96,7 @@ class SymbolicGradientBuilder {
   // Used to identify nodes at which to stop backprop.
   std::unordered_set<int> GetStopBackpropNodes(
       const std::vector<bool>& reachable_nodes,
-      std::unordered_set<int> output_nodes);
+      const std::unordered_set<int>& output_nodes);
 
   const Scope& scope_;
   const ops::GradOpRegistry* registry_;
@@ -167,7 +167,6 @@ Status SymbolicGradientBuilder::BackpropAlongEdge(const Output& dst_grad,
 std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
   std::vector<bool> reachable_nodes(scope_.graph()->num_node_ids(), false);
   std::deque<Node*> queue;
-  std::vector<bool> visited(scope_.graph()->num_node_ids(), false);
   for (const Output& out : outputs_) {
     if (!reachable_nodes[out.node()->id()]) {
       queue.push_back(out.node());
@@ -180,10 +179,10 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
     queue.pop_front();
     for (const Edge* e : n->in_edges()) {
       if (e->IsControlEdge()) continue;
-      if (visited[e->src()->id()]) continue;
-      queue.push_back(e->src());
-      reachable_nodes[e->src()->id()] = true;
-      visited[e->src()->id()] = true;
+      if (!reachable_nodes[e->src()->id()]) {
+        queue.push_back(e->src());
+        reachable_nodes[e->src()->id()] = true;
+      }
     }
   }
   return reachable_nodes;
@@ -191,7 +190,7 @@ std::vector<bool> SymbolicGradientBuilder::GetReachableNodes() {
 
 std::unordered_set<int> SymbolicGradientBuilder::GetStopBackpropNodes(
     const std::vector<bool>& reachable_nodes,
-    std::unordered_set<int> output_nodes) {
+    const std::unordered_set<int>& output_nodes) {
   // Output nodes that get transitively consumed by other `outputs_` are stored
   // in `internal_outputs`.
   std::unordered_set<int> internal_outputs;

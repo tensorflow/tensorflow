@@ -26,17 +26,14 @@ limitations under the License.
 #include <fcntl.h>
 #include <rdma/rdma_cma.h>
 #include <rdma/rdma_verbs.h>
-#include <sys/epoll.h>
 
 #include "tensorflow/contrib/gdr/gdr.pb.h"
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
-#include "tensorflow/core/common_runtime/process_state.h"
-#if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_process_state.h"
-#include "tensorflow/core/common_runtime/gpu/gpu_util.h"
-#endif  // GOOGLE_CUDA
+#include "tensorflow/core/common_runtime/process_state.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/numa.h"
@@ -76,15 +73,14 @@ int TryToReadNumaNode(ibv_device* device) {
 
   std::ifstream ifs(filename.c_str());
   string content;
-  CHECK(std::getline(ifs, content));
+  const auto& ret = std::getline(ifs, content);
+  if (!ret) {
+    return port::kNUMANoAffinity;
+  }
 
   int32 value;
   if (strings::safe_strto32(content, &value)) {
     if (value < 0) {
-      LOG(INFO) << "Successful NUMA node read from SysFS had negative value ("
-                << value
-                << "), but there must be at least one NUMA node"
-                   ", so returning NUMA node zero";
       return port::kNUMANoAffinity;
     }
     LOG(INFO) << "NUMA node for device: " << device->name << " is " << value;
@@ -114,7 +110,7 @@ class GdrMemoryManager : public RemoteMemoryManager {
  public:
   GdrMemoryManager(const string& host, const string& port);
 
-  virtual ~GdrMemoryManager();
+  virtual ~GdrMemoryManager() {}
 
   virtual Status Init() override;
 
@@ -140,7 +136,7 @@ class GdrMemoryManager : public RemoteMemoryManager {
     return ptr < reinterpret_cast<char*>(other->addr) + other->length;
   }
 
-  ibv_mr* FindMemoryRegion(void* addr, size_t length);
+  ibv_mr* FindMemoryRegion(const Tensor* tensor);
 
   void InsertMemoryRegion(void* addr, size_t length,
                           const std::string& allocator_name);
@@ -152,7 +148,6 @@ class GdrMemoryManager : public RemoteMemoryManager {
   const string port_;
   RdmaEndpointPtr listening_;
   std::atomic<bool> stopped_;
-  int epfd_;
   int numa_node_;
 
   // Server side endpoints
@@ -163,14 +158,18 @@ class GdrMemoryManager : public RemoteMemoryManager {
   std::atomic<TensorKey> next_key_;
 
   // Server side on-the-fly tensor buffers
-  mutex server_mu_;
-  std::map<TensorKey, const TensorBuffer*> tensor_buffers_
-      GUARDED_BY(server_mu_);
+  mutex buf_mu_;
+  std::map<TensorKey, const TensorBuffer*> tensor_buffers_ GUARDED_BY(buf_mu_);
 
   // Client side endpoints
   mutex client_mu_;
   std::map<std::pair<string, string>, RdmaEndpointPtr> clients_
       GUARDED_BY(client_mu_);
+
+  // Client side callbacks
+  mutex callback_mu_;
+  std::map<TensorKey, StatusCallback> tensor_callbacks_
+      GUARDED_BY(callback_mu_);
 
   // Managed memory regions
   mutex alloc_mu_;
@@ -184,16 +183,9 @@ GdrMemoryManager::GdrMemoryManager(const string& host, const string& port)
       port_(port),
       listening_(nullptr, EndpointDeleter),
       stopped_(true),
-      next_key_(0) {}
-
-GdrMemoryManager::~GdrMemoryManager() { close(epfd_); }
+      next_key_(static_cast<uint32_t>(random::New64())) {}
 
 Status GdrMemoryManager::Init() {
-  epfd_ = epoll_create1(0);
-  if (epfd_ == -1) {
-    return errors::Unavailable(strerror(errno), ": ", "epoll_create");
-  }
-
   rdma_addrinfo* addrinfo;
   rdma_addrinfo hints = {};
   hints.ai_port_space = RDMA_PS_TCP;
@@ -206,7 +198,7 @@ Status GdrMemoryManager::Init() {
 
   ibv_qp_init_attr init_attr = {};
   init_attr.qp_type = IBV_QPT_RC;
-  init_attr.cap.max_recv_wr = 32;
+  init_attr.cap.max_recv_wr = 1024;
   init_attr.cap.max_send_wr = 1;
   init_attr.cap.max_recv_sge = 1;
   init_attr.cap.max_send_sge = 1;
@@ -239,14 +231,6 @@ Status GdrMemoryManager::Init() {
                                "cannot set server to non-blocking mode");
   }
 
-  epoll_event event = {};
-  event.events = EPOLLIN | EPOLLPRI;
-  event.data.ptr = listening_.get();
-  if (epoll_ctl(epfd_, EPOLL_CTL_ADD, listening_->channel->fd, &event)) {
-    return errors::Unavailable(strerror(errno), ": ",
-                               "cannot add server to epoll");
-  }
-
   numa_node_ = TryToReadNumaNode(listening_->verbs->device);
 
   SubAllocator::Visitor alloc_visitor = [this](void* ptr, int numa_node,
@@ -265,23 +249,23 @@ Status GdrMemoryManager::Init() {
   ProcessState::singleton()->AddCPUFreeVisitor(free_visitor);
   LOG(INFO) << "Instrumenting CPU allocator(s)";
 
-#if GOOGLE_CUDA
-  if (IsGDRAvailable()) {
-    int bus_id = numa_node_ + 1;
+  for (int numa_idx = 0; numa_idx < port::NUMANumNodes(); ++numa_idx) {
+    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(numa_idx,
+                                                          alloc_visitor);
+    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(numa_idx,
+                                                         free_visitor);
+  }
 
+  if (IsGDRAvailable()) {
     SubAllocator::Visitor cuda_alloc_visitor = [this](void* ptr, int gpu_id,
                                                       size_t num_bytes) {
       VLOG(2) << "Registering RDMA capable memory region on GPU " << gpu_id;
       InsertMemoryRegion(ptr, num_bytes, strings::StrCat("GPU:", gpu_id));
     };
-    GPUProcessState::singleton()->AddGPUAllocVisitor(bus_id,
+    GPUProcessState::singleton()->AddGPUAllocVisitor(numa_node_,
                                                      cuda_alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostAllocVisitor(bus_id,
-                                                          alloc_visitor);
-    GPUProcessState::singleton()->AddCUDAHostFreeVisitor(bus_id, free_visitor);
-    LOG(INFO) << "Instrumenting GPU allocator(s) with bus_id " << bus_id;
+    LOG(INFO) << "Instrumenting GPU allocator for NUMA " << numa_node_;
   }
-#endif  // GOOGLE_CUDA
 
   return Status::OK();
 }
@@ -289,95 +273,90 @@ Status GdrMemoryManager::Init() {
 void GdrMemoryManager::Run() {
   stopped_ = false;
   while (!stopped_) {
-    epoll_event events[32];
-    int ret = epoll_wait(epfd_, events, 32, 1);
-    if (ret == -1) {
-      LOG(ERROR) << "epoll_wait: " << strerror(errno);
-      return;
-    }
-    for (int i = 0; i < ret; i++) {
-      rdma_cm_id* id = static_cast<rdma_cm_id*>(events[i].data.ptr);
-      if (id == listening_.get()) {
-        // Accept incoming connections
-        if (!rdma_get_request(listening_.get(), &id)) {
-          if (!rdma_accept(id, nullptr)) {
-            LOG(INFO) << "Accepted new RDMA connection";
-            if (ibv_req_notify_cq(id->recv_cq, 0)) {
-              LOG(ERROR) << strerror(errno) << ": ibv_req_notify_cq failed";
-              EndpointDeleter(id);
-              continue;
-            }
-            for (int i = 0; i < 32; i++) {
-              if (rdma_post_recvv(id, nullptr, nullptr, 0)) {
-                LOG(ERROR) << strerror(errno) << ": rdma_post_recvv failed";
-                EndpointDeleter(id);
-                continue;
-              }
-            }
-            int flags = fcntl(id->recv_cq_channel->fd, F_GETFL, 0);
-            if (fcntl(id->recv_cq_channel->fd, F_SETFL, flags | O_NONBLOCK)) {
-              LOG(ERROR) << strerror(errno)
-                         << ": cannot set server_client to non-blocking mode";
-              EndpointDeleter(id);
-              continue;
-            }
-            epoll_event event = {};
-            event.events = EPOLLIN | EPOLLPRI;
-            event.data.ptr = id;
-            if (epoll_ctl(epfd_, EPOLL_CTL_ADD, id->recv_cq_channel->fd,
-                          &event)) {
-              LOG(ERROR) << strerror(errno)
-                         << ": cannot add server client to epoll";
-              EndpointDeleter(id);
-              continue;
-            }
-            server_clients_.push_back({id, EndpointDeleter});
+    rdma_cm_id* id = nullptr;
+    // Accept incoming connections
+    if (!rdma_get_request(listening_.get(), &id)) {
+      if (!rdma_accept(id, nullptr)) {
+        LOG(INFO) << "Accepted new RDMA connection";
+        for (int i = 0; i < 1024; i++) {
+          if (rdma_post_recvv(id, nullptr, nullptr, 0)) {
+            LOG(ERROR) << strerror(errno) << ": rdma_post_recvv failed";
+            EndpointDeleter(id);
+            continue;
           }
         }
-      } else {
-        // Polling work completions
-        ibv_cq* cq;
-        void* context;
-        if (!ibv_get_cq_event(id->recv_cq_channel, &cq, &context)) {
-          ibv_ack_cq_events(id->recv_cq, 1);
-          if (ibv_req_notify_cq(id->recv_cq, 0)) {
-            LOG(ERROR) << strerror(errno) << ": ibv_req_notify_cq failed";
-            continue;
+        server_clients_.push_back({id, EndpointDeleter});
+      }
+    }
+    // Polling server side work completions
+    for (const auto& client : server_clients_) {
+      ibv_wc wc[32];
+      int ret = ibv_poll_cq(client->recv_cq, 32, wc);
+      if (ret < 0) {
+        LOG(ERROR) << "ibv_poll_cq failed";
+        continue;
+      }
+      for (int i = 0; i < ret; i++) {
+        if (wc[i].opcode != IBV_WC_RECV_RDMA_WITH_IMM) {
+          LOG(ERROR) << "Received unknown operation " << wc[i].opcode;
+        }
+        if (wc[i].status != 0) {
+          LOG(ERROR) << ibv_wc_status_str(wc[i].status);
+        }
+        TensorKey tensor_key = ntohl(wc[i].imm_data);
+
+        if (rdma_post_recvv(client.get(), nullptr, nullptr, 0)) {
+          perror("rdma_post_recvv");
+          LOG(ERROR) << "rdma_post_recvv failed";
+        }
+
+        mutex_lock l(buf_mu_);
+        auto iter = tensor_buffers_.find(tensor_key);
+        if (iter == std::end(tensor_buffers_)) {
+          LOG(ERROR) << "Cannot find tensor buffer for tensor key "
+                     << tensor_key;
+        } else {
+          const TensorBuffer* buffer = iter->second;
+          buffer->Unref();
+          tensor_buffers_.erase(iter);
+        }
+      }
+    }
+    // Polling client side work completions
+    if (client_mu_.try_lock()) {
+      for (const auto& client : clients_) {
+        ibv_wc wc[32];
+        int ret = ibv_poll_cq(client.second->send_cq, 32, wc);
+        for (int i = 0; i < ret; i++) {
+          Status s;
+          if (wc[i].status) {
+            s = errors::Unavailable(ibv_wc_status_str(wc[i].status));
+          } else {
+            s = Status::OK();
           }
-          ibv_wc wc[32];
-          int ret = ibv_poll_cq(id->recv_cq, 32, wc);
-          if (ret < 0) {
-            LOG(ERROR) << "ibv_poll_cq failed";
-            continue;
+          TensorKey key = wc[i].wr_id;
+
+          ibv_send_wr wr = {};
+          wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
+          wr.imm_data = htonl(key);
+          ibv_send_wr* bad_wr;
+          if (ibv_post_send(client.second->qp, &wr, &bad_wr)) {
+            LOG(ERROR) << strerror(errno)
+                       << ": ibv_post_send failed for tensor_key " << key;
           }
-          for (int i = 0; i < ret; i++) {
-            if (wc[i].opcode != IBV_WC_RECV_RDMA_WITH_IMM) {
-              LOG(ERROR) << "Received unknown operation " << wc[i].opcode;
-            }
-            if (wc[i].status != 0) {
-              LOG(ERROR) << ibv_wc_status_str(wc[i].status);
-            }
-            TensorKey tensor_key = ntohl(wc[i].imm_data);
-            {
-              mutex_lock l(server_mu_);
-              auto iter = tensor_buffers_.find(tensor_key);
-              if (iter == std::end(tensor_buffers_)) {
-                LOG(ERROR) << "Cannot find tensor buffer for tensor key "
-                           << tensor_key;
-              } else {
-                const TensorBuffer* buffer = iter->second;
-                buffer->Unref();
-                tensor_buffers_.erase(iter);
-              }
-            }
-            if (rdma_post_recvv(id, nullptr, nullptr, 0)) {
-              perror("rdma_post_recvv");
-              LOG(ERROR) << "rdma_post_recvv failed";
-              continue;
-            }
+
+          mutex_lock l(callback_mu_);
+          auto iter = tensor_callbacks_.find(key);
+          if (iter != std::end(tensor_callbacks_)) {
+            iter->second(s);
+            tensor_callbacks_.erase(iter);
+          } else {
+            LOG(WARNING) << "Cannot find client callback with tensor key "
+                         << key;
           }
         }
       }
+      client_mu_.unlock();
     }
   }
 }
@@ -388,116 +367,58 @@ void GdrMemoryManager::TransportOptionsFromTensor(
     ::google::protobuf::Any* mutable_transport_options, const Tensor& tensor,
     Device* device, DeviceContext* device_context, bool on_host,
     StatusCallback done) {
-  auto buffer = DMAHelper::buffer(&tensor);
-  void* addr = buffer->data();
-  size_t length = buffer->size();
-  if (length == 0) {
-    done(errors::Unavailable("Cannot register tensor buffer of size 0"));
-    return;
-  }
+  ibv_mr* mr = FindMemoryRegion(&tensor);
+  const TensorBuffer* buffer = DMAHelper::buffer(&tensor);
 
-  ibv_mr* mr = FindMemoryRegion(addr, length);
-
-#if GOOGLE_CUDA
-  if (device->tensorflow_gpu_device_info() && !on_host) {
-    Allocator* alloc = GPUProcessState::singleton()->GetCUDAHostAllocator(0);
-    Tensor* host_copy = new Tensor(alloc, tensor.dtype(), tensor.shape());
-    GPUUtil::CopyGPUTensorToCPU(
-        device, device_context, &tensor, host_copy,
-        [done, host_copy, mutable_transport_options, this](const Status& s) {
-          if (!s.ok()) {
-            done(s);
-            delete host_copy;
-            return;
-          }
-          auto buffer = DMAHelper::buffer(host_copy);
-          void* addr = buffer->data();
-          size_t length = buffer->size();
-          ibv_mr* mr = FindMemoryRegion(addr, length);
-
-          if (mr == nullptr) {
-            done(errors::Unavailable("Cannot find pinned memory region"));
-            delete host_copy;
-            return;
-          }
-
-          buffer->Ref();
-          TensorKey tensor_key = next_key_++;
-          {
-            mutex_lock l(server_mu_);
-            tensor_buffers_.insert(std::make_pair(tensor_key, buffer));
-          }
-
-          uint64_t checksum = 0;
-          if (VLOG_IS_ON(2)) {
-            checksum = GPUUtil::Checksum(*host_copy);
-          }
-
-          RemoteMemoryRegion remote_mr;
-          remote_mr.set_host(host_);
-          remote_mr.set_port(port_);
-          remote_mr.set_addr(reinterpret_cast<uint64_t>(addr));
-          remote_mr.set_rkey(mr->rkey);
-          remote_mr.set_tensor_key(tensor_key);
-          remote_mr.set_checksum(checksum);
-          mutable_transport_options->PackFrom(remote_mr);
-
-          done(Status::OK());
-          delete host_copy;
-        });
-    return;
-  }
-#endif
+  Tensor* copy = nullptr;
 
   if (mr == nullptr) {
-    Allocator* alloc = ProcessState::singleton()->GetCPUAllocator(numa_node_);
-    Tensor host_copy(alloc, tensor.dtype(), tensor.shape());
+    AllocatorAttributes alloc_attrs;
+    alloc_attrs.set_gpu_compatible(true);
+    alloc_attrs.set_nic_compatible(true);
+    alloc_attrs.set_on_host(true);
+    Allocator* alloc = device->GetAllocator(alloc_attrs);
+    copy = new Tensor(alloc, tensor.dtype(), tensor.shape());
 
-    std::memcpy(DMAHelper::buffer(&host_copy)->data(), buffer->data(), length);
-    VLOG(2) << "Copying " << length << " bytes unpinned tensor buffer";
-
-    buffer = DMAHelper::buffer(&host_copy);
-    addr = buffer->data();
-    length = buffer->size();
-
-    mr = FindMemoryRegion(addr, length);
+    mr = FindMemoryRegion(copy);
+    buffer = DMAHelper::buffer(copy);
     if (mr == nullptr) {
       done(errors::Unavailable("Cannot find pinned memory region"));
+      delete copy;
       return;
     }
-
-    buffer->Ref();
-  } else {
-    buffer->Ref();
   }
 
   TensorKey tensor_key = next_key_++;
+  buffer->Ref();
   {
-    mutex_lock l(server_mu_);
+    mutex_lock l(buf_mu_);
     tensor_buffers_.insert(std::make_pair(tensor_key, buffer));
-  }
-
-  uint64_t checksum = 0;
-  if (VLOG_IS_ON(2)) {
-#ifdef GOOGLE_CUDA
-    if (device->tensorflow_gpu_device_info() && !on_host) {
-      checksum = GPUUtil::Checksum(device, device_context, tensor);
-    } else {
-      checksum = GPUUtil::Checksum(tensor);
-    }
-#endif
   }
 
   RemoteMemoryRegion remote_mr;
   remote_mr.set_host(host_);
   remote_mr.set_port(port_);
-  remote_mr.set_addr(reinterpret_cast<uint64_t>(addr));
+  remote_mr.set_addr(reinterpret_cast<uint64_t>(buffer->data()));
   remote_mr.set_rkey(mr->rkey);
   remote_mr.set_tensor_key(tensor_key);
-  remote_mr.set_checksum(checksum);
   mutable_transport_options->PackFrom(remote_mr);
 
-  done(Status::OK());
+  if (copy && device->tensorflow_gpu_device_info() && !on_host) {
+    device_context->CopyDeviceTensorToCPU(&tensor, "" /* tensor_name */, device,
+                                          copy, [done, copy](const Status& s) {
+                                            done(s);
+                                            delete copy;
+                                          });
+    return;
+  } else if (copy) {
+    std::memcpy(buffer->data(), DMAHelper::buffer(&tensor)->data(),
+                buffer->size());
+    done(Status::OK());
+    delete copy;  // OK to delete; we have reffed the underlying TensorBuffer
+  } else {
+    done(Status::OK());
+  }
 }
 
 void GdrMemoryManager::TensorFromTransportOptions(
@@ -510,42 +431,10 @@ void GdrMemoryManager::TensorFromTransportOptions(
     return;
   }
 
-  auto buffer = DMAHelper::buffer(tensor);
-  void* addr = buffer->data();
-  size_t length = buffer->size();
-  ibv_mr* mr = FindMemoryRegion(addr, length);
-
-  Tensor host_copy;
-#if GOOGLE_CUDA
-  if (mr == nullptr && !on_host) {
-    Allocator* alloc =
-        GPUProcessState::singleton()->GetCUDAHostAllocator(numa_node_);
-    host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
-    buffer = DMAHelper::buffer(&host_copy);
-    addr = buffer->data();
-    length = buffer->size();
-    mr = FindMemoryRegion(addr, length);
-  }
-#endif  // GOOGLE_CUDA
-
-  if (mr == nullptr) {
-    Allocator* alloc = ProcessState::singleton()->GetCPUAllocator(numa_node_);
-    host_copy = Tensor(alloc, tensor->dtype(), tensor->shape());
-
-    buffer = DMAHelper::buffer(&host_copy);
-    addr = buffer->data();
-    length = buffer->size();
-
-    mr = FindMemoryRegion(addr, length);
-    if (mr == nullptr) {
-      done(errors::Unavailable("Cannot find pinned memory region"));
-      return;
-    }
-  }
-
-  decltype(clients_)::iterator iter;
-  bool success;
+  rdma_cm_id* id = nullptr;
   {
+    decltype(clients_)::iterator iter;
+    bool success;
     mutex_lock l(client_mu_);
     std::tie(iter, success) = clients_.insert(
         std::make_pair(std::make_pair(remote_mr.host(), remote_mr.port()),
@@ -558,93 +447,94 @@ void GdrMemoryManager::TensorFromTransportOptions(
         return;
       }
     }
+    id = iter->second.get();
   }
-  rdma_cm_id* id = iter->second.get();
+
+  ibv_mr* mr = FindMemoryRegion(tensor);
+  const TensorBuffer* buffer = DMAHelper::buffer(tensor);
+
+  const Tensor* copy = nullptr;
+
+  if (mr == nullptr) {
+    AllocatorAttributes alloc_attrs;
+    alloc_attrs.set_gpu_compatible(true);
+    alloc_attrs.set_nic_compatible(true);
+    alloc_attrs.set_on_host(true);
+    Allocator* alloc = device->GetAllocator(alloc_attrs);
+    copy = new Tensor(alloc, tensor->dtype(), tensor->shape());
+
+    mr = FindMemoryRegion(copy);
+    buffer = DMAHelper::buffer(copy);
+    if (mr == nullptr) {
+      done(errors::Unavailable("Cannot find pinned memory region"));
+      delete copy;
+      return;
+    }
+  }
 
   uint64_t start = Env::Default()->NowMicros();
 
-  if (rdma_post_read(id, nullptr, buffer->data(), buffer->size(), mr, 0,
-                     remote_mr.addr(), remote_mr.rkey())) {
-    done(errors::Unavailable(strerror(errno), ": ", "rdma_post_read failed"));
-    return;
-  }
+  TensorKey tensor_key = remote_mr.tensor_key();
 
-  ibv_send_wr wr = {};
-  wr.opcode = IBV_WR_RDMA_WRITE_WITH_IMM;
-  wr.imm_data = htonl(remote_mr.tensor_key());
-  wr.send_flags = IBV_SEND_SIGNALED;
-  ibv_send_wr* bad_wr;
-  if (ibv_post_send(id->qp, &wr, &bad_wr)) {
-    done(errors::Unavailable(strerror(errno), ": ", "ibv_post_send failed"));
-    return;
-  }
-
-  ibv_wc wc = {};
-  int ret;
-  while ((ret = ibv_poll_cq(id->send_cq, 1, &wc)) == 0)
-    ;
-  if (ret < 0 || wc.status) {
-    done(errors::Unavailable(ibv_wc_status_str(wc.status)));
-    return;
-  }
-
-#if GOOGLE_CUDA
-  if (device->tensorflow_gpu_device_info() && !on_host &&
-      host_copy.NumElements() > 0) {
-    uint64_t checksum = 0;
-    if (VLOG_IS_ON(2)) {
-      checksum = GPUUtil::Checksum(host_copy);
-      CHECK(checksum == remote_mr.checksum())
-          << "Checksum mismatch: " << checksum << "!=" << remote_mr.checksum();
+  StatusCallback callback = [done, copy, device, device_context, on_host,
+                             tensor, start, tensor_key](const Status& s) {
+    if (!s.ok()) {
+      done(s);
+      if (copy) {
+        delete copy;
+      }
+      return;
     }
-    Tensor* ref = new Tensor;
-    std::swap(host_copy, *ref);
-    GPUUtil::CopyCPUTensorToGPU(
-        ref, device_context, device, tensor,
-        [ref, done, buffer, remote_mr, start](const Status& s) {
-          if (!s.ok()) {
-            done(s);
-            delete ref;
-            return;
-          }
-          uint64_t end = Env::Default()->NowMicros();
 
-          VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
-                  << " of size " << buffer->size() << " with tensor key "
-                  << remote_mr.tensor_key() << " took " << (end - start)
-                  << " micros";
-          done(Status::OK());
-          delete ref;
-        });
-    return;
-  }
-#endif  // GOOGLE_CUDA
+    VLOG(2) << "RDMA of tensor " << tensor_key << " of size "
+            << DMAHelper::buffer(tensor)->size() << " took "
+            << (Env::Default()->NowMicros() - start) << " micros";
 
-  if ((on_host || !device->tensorflow_gpu_device_info()) &&
-      host_copy.NumElements() > 0) {
-    std::memcpy(DMAHelper::buffer(tensor)->data(), addr, length);
-    VLOG(2) << "Copying " << length << " bytes unpinned tensor buffer";
-  }
-
-  uint64_t end = Env::Default()->NowMicros();
-
-  VLOG(2) << "RDMA from remote memory region " << remote_mr.rkey()
-          << " of size " << buffer->size() << " with tensor key "
-          << remote_mr.tensor_key() << " took " << (end - start) << " micros";
-
-  uint64_t checksum = 0;
-  if (VLOG_IS_ON(2)) {
-#ifdef GOOGLE_CUDA
-    if (device->tensorflow_gpu_device_info() && !on_host) {
-      checksum = GPUUtil::Checksum(device, device_context, *tensor);
+    if (copy && device->tensorflow_gpu_device_info() && !on_host) {
+      device_context->CopyCPUTensorToDevice(copy, device, tensor,
+                                            [done, copy](const Status& s) {
+                                              done(s);
+                                              delete copy;
+                                            });
+    } else if (copy) {
+      std::memcpy(DMAHelper::buffer(tensor)->data(),
+                  DMAHelper::buffer(copy)->data(),
+                  DMAHelper::buffer(copy)->size());
+      done(s);
+      delete copy;
     } else {
-      checksum = GPUUtil::Checksum(*tensor);
+      done(s);
     }
-    CHECK(checksum == remote_mr.checksum())
-        << "Checksum mismatch: " << checksum << "!=" << remote_mr.checksum();
-#endif
+  };
+
+  {
+    mutex_lock l(callback_mu_);
+    if (tensor_callbacks_.find(tensor_key) == std::end(tensor_callbacks_)) {
+      tensor_callbacks_.insert(std::make_pair(tensor_key, std::move(callback)));
+    } else {
+      done(errors::Unavailable("Received duplicated tensor key"));
+      if (copy) {
+        delete copy;
+      }
+      return;
+    }
   }
-  done(Status::OK());
+
+  if (rdma_post_read(id, reinterpret_cast<void*>(tensor_key), buffer->data(),
+                     buffer->size(), mr, IBV_SEND_SIGNALED, remote_mr.addr(),
+                     remote_mr.rkey())) {
+    done(errors::Unavailable(strerror(errno), ": ", "rdma_post_read failed"));
+    {
+      mutex_lock l(callback_mu_);
+      auto iter = tensor_callbacks_.find(tensor_key);
+      if (iter != std::end(tensor_callbacks_)) {
+        tensor_callbacks_.erase(iter);
+      }
+    }
+    if (copy) {
+      delete copy;
+    }
+  }
 }
 
 Status GdrMemoryManager::CreateEndpoint(const string& host, const string& port,
@@ -661,7 +551,7 @@ Status GdrMemoryManager::CreateEndpoint(const string& host, const string& port,
   ibv_qp_init_attr init_attr = {};
   init_attr.qp_type = IBV_QPT_RC;
   init_attr.cap.max_recv_wr = 1;
-  init_attr.cap.max_send_wr = 32;
+  init_attr.cap.max_send_wr = 1024;
   init_attr.cap.max_recv_sge = 1;
   init_attr.cap.max_send_sge = 1;
 
@@ -685,8 +575,8 @@ Status GdrMemoryManager::CreateEndpoint(const string& host, const string& port,
   return Status::OK();
 }
 
-ibv_mr* GdrMemoryManager::FindMemoryRegion(void* addr, size_t length) {
-  if (length == 0) return nullptr;
+ibv_mr* GdrMemoryManager::FindMemoryRegion(const Tensor* tensor) {
+  const void* addr = DMAHelper::buffer(tensor)->data();
   mutex_lock l(alloc_mu_);
   auto iter = std::upper_bound(mrs_.begin(), mrs_.end(), addr, &Comparator);
   if (iter == std::end(mrs_) || iter->get()->addr > addr) {

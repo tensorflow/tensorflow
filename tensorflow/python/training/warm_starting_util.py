@@ -28,11 +28,11 @@ from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_ops
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training import saver
+from tensorflow.python.training.saving import saveable_object_util
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.VocabInfo")
+@tf_export(v1=["train.VocabInfo"])
 class VocabInfo(
     collections.namedtuple("VocabInfo", [
         "new_vocab",
@@ -139,29 +139,26 @@ def _infer_var_name(var):
   Returns:
     Name of the `var`
   """
-  name_to_var_dict = saver.BaseSaverBuilder.OpListToDict(var)
+  name_to_var_dict = saveable_object_util.op_list_to_dict(var)
   if len(name_to_var_dict) > 1:
     raise TypeError("`var` = %s passed as arg violates the constraints.  "
                     "name_to_var_dict = %s" % (var, name_to_var_dict))
   return list(name_to_var_dict.keys())[0]
 
 
-def _warm_start_var(var, prev_ckpt, prev_tensor_name=None):
-  """Warm-starts given variable from `prev_tensor_name` tensor in `prev_ckpt`.
+def _get_var_info(var, prev_tensor_name=None):
+  """Helper method for standarizing Variable and naming.
 
   Args:
     var: Current graph's variable that needs to be warm-started (initialized).
-      Can be either of the following:
-      (i) `Variable`
-      (ii) `ResourceVariable`
+      Can be either of the following: (i) `Variable` (ii) `ResourceVariable`
       (iii) list of `Variable`: The list must contain slices of the same larger
-        variable.
-      (iv) `PartitionedVariable`
-    prev_ckpt: A string specifying the directory with checkpoint file(s) or path
-      to checkpoint. The given checkpoint must have tensor with name
-      `prev_tensor_name` (if not None) or tensor with name same as given `var`.
+        variable. (iv) `PartitionedVariable`
     prev_tensor_name: Name of the tensor to lookup in provided `prev_ckpt`. If
       None, we lookup tensor with same name as given `var`.
+
+  Returns:
+    A tuple of the Tensor name and var.
   """
   if checkpoint_utils._is_variable(var):  # pylint: disable=protected-access
     current_var_name = _infer_var_name([var])
@@ -178,7 +175,8 @@ def _warm_start_var(var, prev_ckpt, prev_tensor_name=None):
   if not prev_tensor_name:
     # Assume tensor name remains the same.
     prev_tensor_name = current_var_name
-  checkpoint_utils.init_from_checkpoint(prev_ckpt, {prev_tensor_name: var})
+
+  return prev_tensor_name, var
 
 
 # pylint: disable=protected-access
@@ -250,7 +248,7 @@ def _warm_start_var_with_vocab(var,
     prev_tensor_name = _infer_var_name(var)
 
   # TODO(eddz): Fix functionality for rank-1 Variables (like FC biases).
-  total_v_first_axis = sum([v.get_shape().as_list()[0] for v in var])
+  total_v_first_axis = sum(v.get_shape().as_list()[0] for v in var)
   for v in var:
     v_shape = v.get_shape().as_list()
     slice_info = v._get_save_slice_info()
@@ -335,12 +333,12 @@ def _get_grouped_variables(vars_to_warm_start):
         ops.GraphKeys.TRAINABLE_VARIABLES,
         scope=vars_to_warm_start)
   elif isinstance(vars_to_warm_start, list):
-    if all([isinstance(v, str) for v in vars_to_warm_start]):
+    if all(isinstance(v, str) for v in vars_to_warm_start):
       list_of_vars = []
       for v in vars_to_warm_start:
         list_of_vars += ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES,
                                            scope=v)
-    elif all([checkpoint_utils._is_variable(v) for v in vars_to_warm_start]):  # pylint: disable=protected-access
+    elif all(checkpoint_utils._is_variable(v) for v in vars_to_warm_start):  # pylint: disable=protected-access
       list_of_vars = vars_to_warm_start
     else:
       raise ValueError("If `vars_to_warm_start` is a list, it must be all "
@@ -362,7 +360,7 @@ def _get_grouped_variables(vars_to_warm_start):
   return grouped_variables
 
 
-@tf_export("train.warm_start")
+@tf_export(v1=["train.warm_start"])
 def warm_start(ckpt_to_initialize_from,
                vars_to_warm_start=".*",
                var_name_to_vocab_info=None,
@@ -380,23 +378,32 @@ def warm_start(ckpt_to_initialize_from,
 
       - A regular expression (string) that captures which variables to
         warm-start (see tf.get_collection).  This expression will only consider
-        variables in the TRAINABLE_VARIABLES collection.
-      - A list of Variables to warm-start.
-      - A list of strings, each representing a full variable name to warm-start.
+        variables in the TRAINABLE_VARIABLES collection -- if you need to
+        warm-start non_TRAINABLE vars (such as optimizer accumulators or batch
+        norm statistics), please use the below option.
+      - A list of Variables to warm-start.  If you do not have access to the
+        `Variable` objects at the call site, please use the below option.
+      - A list of strings, each a regex scope provided to tf.get_collection with
+        GLOBAL_VARIABLES (please see tf.get_collection).  For backwards
+        compatibility reasons, this is separate from the single-string argument
+        type.
       - `None`, in which case only variables specified in
         `var_name_to_vocab_info` will be warm-started.
 
       Defaults to `'.*'`, which warm-starts all variables in the
-      TRAINABLE_VARIABLES collection.  Note that this excludes variables such as
-      accumulators and moving statistics from batch norm.
+      TRAINABLE_VARIABLES collection.  Note that this excludes variables such
+      as accumulators and moving statistics from batch norm.
     var_name_to_vocab_info: [Optional] Dict of variable names (strings) to
-      VocabInfo. The variable names should be "full" variables, not the names
-      of the partitions.  If not explicitly provided, the variable is assumed to
-      have no vocabulary.
+      `tf.estimator.VocabInfo`. The variable names should be "full" variables,
+      not the names of the partitions.  If not explicitly provided, the variable
+      is assumed to have no (changes to) vocabulary.
     var_name_to_prev_var_name: [Optional] Dict of variable names (strings) to
       name of the previously-trained variable in `ckpt_to_initialize_from`. If
       not explicitly provided, the name of the variable is assumed to be same
-      between previous checkpoint and current model.
+      between previous checkpoint and current model.  Note that this has no
+      effect on the set of variables that is warm-started, and only controls
+      name mapping (use `vars_to_warm_start` for controlling what variables to
+      warm-start).
   Raises:
     ValueError: If the WarmStartSettings contains prev_var_name or VocabInfo
       configuration for variable names that are not used.  This is to ensure
@@ -418,6 +425,8 @@ def warm_start(ckpt_to_initialize_from,
   prev_var_name_used = set()
   vocab_info_used = set()
 
+  # Group the vocabless vars into one call to init_from_checkpoint.
+  vocabless_vars = {}
   for var_name, variable in six.iteritems(grouped_variables):
     prev_var_name = var_name_to_prev_var_name.get(var_name)
     if prev_var_name:
@@ -460,8 +469,10 @@ def warm_start(ckpt_to_initialize_from,
         # for init_from_checkpoint logic to work correctly.
         if len(variable) == 1:
           variable = variable[0]
-        _warm_start_var(variable, ckpt_to_initialize_from, prev_var_name)
+        prev_tensor_name, var = _get_var_info(variable, prev_var_name)
+        vocabless_vars[prev_tensor_name] = var
 
+  checkpoint_utils.init_from_checkpoint(ckpt_to_initialize_from, vocabless_vars)
   prev_var_name_not_used = set(
       var_name_to_prev_var_name.keys()) - prev_var_name_used
   vocab_info_not_used = set(var_name_to_vocab_info.keys()) - vocab_info_used

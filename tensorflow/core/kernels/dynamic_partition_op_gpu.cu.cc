@@ -40,11 +40,11 @@ limitations under the License.
 #include "third_party/cub/iterator/constant_input_iterator.cuh"
 #include "third_party/cub/thread/thread_operators.cuh"
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/fill_functor.h"
 #include "tensorflow/core/kernels/gather_functor_gpu.cu.h"
 #include "tensorflow/core/util/cuda_kernel_helper.h"
@@ -79,9 +79,9 @@ template <typename T>
 void RangeInit(const GPUDevice& d, const T start, const T delta,
                const int32 size, typename TTypes<T>::Flat out) {
   CudaLaunchConfig config = GetCudaLaunchConfig(size, d);
-  RangeInitKernel<T>
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          start, delta, size, out.data());
+  CudaLaunchKernel(RangeInitKernel<T>, config.block_count,
+                   config.thread_per_block, 0, d.stream(), start, delta, size,
+                   out.data());
 }
 
 // Given *num_runs pairs (key, value), this function moves the value
@@ -103,10 +103,9 @@ void CallGatherKernel(const GPUDevice& d, const T* params, const int32* indices,
                       T* out, int64 gather_dim_size, int64 indices_size,
                       int64 slice_size, int64 out_size) {
   CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
-  GatherOpKernel<T, int32, true>
-      <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          params, indices, out, gather_dim_size, indices_size, slice_size,
-          out_size);
+  CudaLaunchKernel(GatherOpKernel<T, int32, true>, config.block_count,
+                   config.thread_per_block, 0, d.stream(), params, indices, out,
+                   gather_dim_size, indices_size, slice_size, out_size);
 }
 
 struct IdentityOp {

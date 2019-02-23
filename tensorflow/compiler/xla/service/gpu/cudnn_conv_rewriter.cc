@@ -40,7 +40,8 @@ HloInstruction* CreateCudnnConv(const char* call_target, const Shape& shape,
                                 HloInstruction* lhs, HloInstruction* rhs,
                                 const Window& window,
                                 const ConvolutionDimensionNumbers& dnums,
-                                int64 feature_group_count) {
+                                int64 feature_group_count,
+                                const OpMetadata& metadata) {
   HloComputation* computation = lhs->parent();
 
   // This call returns a tuple of (conv_result, scratch_memory), where
@@ -59,6 +60,7 @@ HloInstruction* CreateCudnnConv(const char* call_target, const Shape& shape,
   custom_call->set_window(window);
   custom_call->set_convolution_dimension_numbers(dnums);
   custom_call->set_feature_group_count(feature_group_count);
+  custom_call->set_metadata(metadata);
   return custom_call;
 }
 
@@ -75,7 +77,11 @@ bool CanImplementAsCudnnForwardConv(HloInstruction* conv) {
     return false;
   }
 
-  if (window_util::HasWindowReversal(conv->window())) {
+  // CuDNN can perform either cross correlation (no reversal),
+  // or convolution (all dimensions reversed).
+  if (dnums.input_spatial_dimensions_size() == 2
+          ? !window_util::AllOrNoneReversed(conv->window())
+          : window_util::HasWindowReversal(conv->window())) {
     return false;
   }
   return true;
@@ -165,6 +171,8 @@ std::tuple<bool, Window, ConvolutionDimensionNumbers> MatchBackwardFilter(
     // The window's low padding is the same as the low padding of the
     // activations.
     dim->set_padding_low(conv->window().dimensions(i).padding_low());
+    dim->set_base_dilation(1);
+    dim->set_window_dilation(1);
 
     int64 input_size =
         conv->operand(0)->shape().dimensions(input_spatial_dims[i]);
@@ -250,7 +258,7 @@ MatchBackwardInput(HloInstruction* conv) {
   const auto no_match_result =
       std::make_tuple(false, Window(), ConvolutionDimensionNumbers(), nullptr);
 
-  // TODO(b/31709653): Theoretically cuDNN supports grouped convolutions also
+  // TODO(b/119479517): Theoretically cuDNN supports grouped convolutions also
   // for the backward input convolution, but at least for now with version 7.1.4
   // it is slower. This needs to be re-evaluated for future cuDNN versions.
   // Note that we already have the necessary code down below, the only thing to
@@ -333,6 +341,7 @@ MatchBackwardInput(HloInstruction* conv) {
     // = the base dilation factor of the forward convolution
     auto dim = new_window.mutable_dimensions(i);
     dim->set_stride(old_window.dimensions(i).base_dilation());
+    dim->set_base_dilation(1);
 
     // The low padding = kernel_size - 1 - low padding on the gradients
     // Make sure the low padding is not negative.
@@ -499,22 +508,24 @@ StatusOr<bool> RunOnInstruction(HloInstruction* conv) {
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardFilterCallTarget, conv->shape(),
                              conv->mutable_operand(0), conv->mutable_operand(1),
-                             window, dnums, conv->feature_group_count());
+                             window, dnums, conv->feature_group_count(),
+                             conv->metadata());
     }
 
     std::tie(match, window, dnums, rhs) = MatchBackwardInput(conv);
     if (match) {
       return CreateCudnnConv(kCudnnConvBackwardInputCallTarget, conv->shape(),
                              conv->mutable_operand(0), rhs, window, dnums,
-                             conv->feature_group_count());
+                             conv->feature_group_count(), conv->metadata());
     }
 
     // If all else fails, try a forward convolution.
     if (CanImplementAsCudnnForwardConv(conv)) {
-      return CreateCudnnConv(
-          kCudnnConvForwardCallTarget, conv->shape(), conv->mutable_operand(0),
-          conv->mutable_operand(1), conv->window(),
-          conv->convolution_dimension_numbers(), conv->feature_group_count());
+      return CreateCudnnConv(kCudnnConvForwardCallTarget, conv->shape(),
+                             conv->mutable_operand(0), conv->mutable_operand(1),
+                             conv->window(),
+                             conv->convolution_dimension_numbers(),
+                             conv->feature_group_count(), conv->metadata());
     }
 
     return nullptr;

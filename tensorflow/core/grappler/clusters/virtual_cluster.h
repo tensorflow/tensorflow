@@ -34,8 +34,8 @@ class VirtualCluster : public Cluster {
  public:
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices);
   VirtualCluster(const std::unordered_map<string, DeviceProperties>& devices,
-                 OpLevelCostEstimator* node_estimator,
-                 ReadyNodeManager* node_manager);
+                 std::unique_ptr<OpLevelCostEstimator> node_estimator,
+                 std::unique_ptr<ReadyNodeManager> node_manager);
   VirtualCluster(const DeviceSet* device_set);
 
   ~VirtualCluster() override;
