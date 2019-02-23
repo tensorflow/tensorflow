@@ -803,6 +803,10 @@ def categorical_hinge(y_true, y_pred):
 
 @keras_export('keras.losses.logloss')
 def logloss(y_true, y_pred):
+  """Computes the log loss between `y_true` and `y_pred`.
+
+  `logloss = - y_true * log(y_pred) - (1 - y_true) * log(1 - y_pred)`
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   losses = math_ops.multiply(y_true, math_ops.log(y_pred + K.epsilon()))
