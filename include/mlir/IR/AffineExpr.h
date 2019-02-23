@@ -33,7 +33,6 @@ namespace mlir {
 class MLIRContext;
 class AffineMap;
 class IntegerSet;
-class FlatAffineConstraints;
 
 namespace detail {
 
@@ -272,25 +271,19 @@ AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
 /// AffineExprFlattener on how mod's and div's are flattened.
 bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
                             unsigned numSymbols,
-                            llvm::SmallVectorImpl<int64_t> *flattenedExpr,
-                            FlatAffineConstraints *cst = nullptr);
+                            llvm::SmallVectorImpl<int64_t> *flattenedExpr);
 
 /// Flattens the result expressions of the map to their corresponding flattened
 /// forms and set in 'flattenedExprs'. Returns true on success or false
 /// if any expression in the map could not be flattened (i.e., semi-affine is
-/// not yet handled). 'cst' contains constraints that connect newly introduced
-/// local identifiers to existing dimensional and / symbolic identifiers. See
-/// documentation for AffineExprFlattener on how mod's and div's are flattened.
-/// For all affine expressions that share the same operands (like those of an
-/// affine map), this method should be used instead of repeatedly calling
-/// getFlattenedAffineExpr since local variables added to deal with div's and
-/// mod's will be reused across expressions.
+/// not yet handled).  For all affine expressions that share the same operands
+/// (like those of an affine map), this method should be used instead of
+/// repeatedly calling getFlattenedAffineExpr since local variables added to
+/// deal with div's and mod's will be reused across expressions.
 bool getFlattenedAffineExprs(
-    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
+    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs);
 bool getFlattenedAffineExprs(
-    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
-    FlatAffineConstraints *cst = nullptr);
+    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs);
 
 } // namespace mlir
 

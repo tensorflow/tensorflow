@@ -16,7 +16,6 @@
 // =============================================================================
 
 #include "mlir/AffineOps/AffineOps.h"
-#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -185,12 +184,6 @@ bool AffineApplyOp::verify() const {
     return emitOpError("mapping must produce one value");
 
   return false;
-}
-
-/// Returns an AffineValueMap representing this affine apply.
-AffineValueMap AffineApplyOp::getAsAffineValueMap() {
-  SmallVector<Value *, 8> operands(getOperands());
-  return AffineValueMap(getAffineMap(), operands, getResult());
 }
 
 // The result of the affine apply operation can be used as a dimension id if it
@@ -1033,112 +1026,6 @@ void mlir::extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
     ivs->push_back(forInst->getInductionVar());
 }
 
-bool mlir::addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
-                                FlatAffineConstraints *constraints) {
-  unsigned pos;
-  // Pre-condition for this method.
-  if (!constraints->findId(*forOp->getInductionVar(), &pos)) {
-    assert(0 && "Value not found");
-    return false;
-  }
-
-  if (forOp->getStep() != 1)
-    LLVM_DEBUG(llvm::dbgs()
-               << "Domain conservative: non-unit stride not handled\n");
-
-  int64_t step = forOp->getStep();
-
-  // Adds a lower or upper bound when the bounds aren't constant.
-  auto addLowerOrUpperBound = [&](bool lower) -> bool {
-    auto operands =
-        lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
-    for (const auto &operand : operands) {
-      unsigned pos;
-      if (!constraints->findId(*operand, &pos)) {
-        if (isValidSymbol(operand)) {
-          constraints->addSymbolId(constraints->getNumSymbolIds(),
-                                   const_cast<Value *>(operand));
-          pos = constraints->getNumDimAndSymbolIds() - 1;
-          // Check if the symbol is a constant.
-          if (auto *opInst = operand->getDefiningInst()) {
-            if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
-              constraints->setIdToConstant(*operand, constOp->getValue());
-            }
-          }
-        } else {
-          constraints->addDimId(constraints->getNumDimIds(),
-                                const_cast<Value *>(operand));
-          pos = constraints->getNumDimIds() - 1;
-          if (auto loop = getForInductionVarOwner(operand)) {
-            // Outer loop IVs could be used in forOp's bounds.
-            if (!addAffineForOpDomain(loop, constraints))
-              return false;
-          }
-        }
-      }
-    }
-    // Record positions of the operands in the constraint system.
-    SmallVector<unsigned, 8> positions;
-    for (const auto &operand : operands) {
-      unsigned pos;
-      if (!constraints->findId(*operand, &pos))
-        assert(0 && "expected to be found");
-      positions.push_back(pos);
-    }
-
-    auto boundMap =
-        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
-
-    FlatAffineConstraints localVarCst;
-    std::vector<SmallVector<int64_t, 8>> flatExprs;
-    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
-      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
-      return false;
-    }
-    if (localVarCst.getNumLocalIds() > 0) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "loop bounds with mod/floordiv expr's not yet supported\n");
-      return false;
-    }
-
-    for (const auto &flatExpr : flatExprs) {
-      SmallVector<int64_t, 4> ineq(constraints->getNumCols(), 0);
-      ineq[pos] = lower ? 1 : -1;
-      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
-        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
-      }
-      // Constant term.
-      ineq[constraints->getNumCols() - 1] =
-          lower ? -flatExpr[flatExpr.size() - 1]
-                // Upper bound in flattenedExpr is an exclusive one.
-                : flatExpr[flatExpr.size() - 1] - step;
-      constraints->addInequality(ineq);
-    }
-    return true;
-  };
-
-  if (forOp->hasConstantLowerBound()) {
-    constraints->addConstantLowerBound(pos, forOp->getConstantLowerBound());
-  } else {
-    // Non-constant lower bound case.
-    if (!addLowerOrUpperBound(/*lower=*/true))
-      return false;
-  }
-
-  if (forOp->hasConstantUpperBound()) {
-    constraints->addConstantUpperBound(pos,
-                                       forOp->getConstantUpperBound() - step);
-    return true;
-  }
-  // Non-constant upper bound case.
-  return addLowerOrUpperBound(/*lower=*/false);
-}
-
-/// Returns an AffineValueMap representing this bound.
-AffineValueMap AffineBound::getAsAffineValueMap() {
-  SmallVector<Value *, 8> operands(getOperands());
-  return AffineValueMap(getMap(), operands);
-}
 
 //===----------------------------------------------------------------------===//
 // AffineIfOp

@@ -22,9 +22,9 @@
 
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/AffineOps/AffineOps.h"
+#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/IR/AffineExprVisitor.h"
-#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instruction.h"
@@ -107,7 +107,7 @@ bool mlir::getIndexSet(MutableArrayRef<OpPointer<AffineForOp>> forOps,
   domain->reset(forOps.size(), /*numSymbols=*/0, /*numLocals=*/0, indices);
   for (auto forOp : forOps) {
     // Add constraints from forOp's bounds.
-    if (!addAffineForOpDomain(forOp, domain))
+    if (!domain->addAffineForOpDomain(forOp))
       return false;
   }
   return true;

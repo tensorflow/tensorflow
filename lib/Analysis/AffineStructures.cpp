@@ -19,7 +19,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#include "mlir/IR/AffineStructures.h"
+#include "mlir/Analysis/AffineStructures.h"
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/IR/AffineExprVisitor.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BuiltinOps.h"
@@ -34,6 +35,115 @@
 
 using namespace mlir;
 using namespace llvm;
+
+namespace {
+
+// See comments for SimpleAffineExprFlattener.
+// An AffineExprFlattener extends a SimpleAffineExprFlattener by recording
+// constraint information associated with mod's, floordiv's, and ceildiv's
+// in localVarCst.
+struct AffineExprFlattener : public SimpleAffineExprFlattener {
+public:
+  // Constraints connecting newly introduced local variables (for mod's and
+  // div's) to existing (dimensional and symbolic) ones. These are always
+  // inequalities.
+  FlatAffineConstraints localVarCst;
+
+  AffineExprFlattener(unsigned nDims, unsigned nSymbols, MLIRContext *ctx)
+      : SimpleAffineExprFlattener(nDims, nSymbols, ctx) {
+    localVarCst.reset(nDims, nSymbols, /*numLocals=*/0);
+  }
+
+private:
+  // Add a local identifier (needed to flatten a mod, floordiv, ceildiv expr).
+  // The local identifier added is always a floordiv of a pure add/mul affine
+  // function of other identifiers, coefficients of which are specified in
+  // dividend and with respect to a positive constant divisor. localExpr is the
+  // simplified tree expression (AffineExpr) corresponding to the quantifier.
+  void addLocalFloorDivId(ArrayRef<int64_t> dividend, int64_t divisor,
+                          AffineExpr localExpr) override {
+    SimpleAffineExprFlattener::addLocalFloorDivId(dividend, divisor, localExpr);
+    // Update localVarCst.
+    localVarCst.addLocalFloorDiv(dividend, divisor);
+  }
+};
+
+} // end anonymous namespace
+
+// Flattens the expressions in map. Returns true on success or false
+// if 'expr' was unable to be flattened (i.e., semi-affine expressions not
+// handled yet).
+static bool getFlattenedAffineExprs(
+    ArrayRef<AffineExpr> exprs, unsigned numDims, unsigned numSymbols,
+    std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *localVarCst) {
+  if (exprs.empty()) {
+    localVarCst->reset(numDims, numSymbols);
+    return true;
+  }
+
+  AffineExprFlattener flattener(numDims, numSymbols, exprs[0].getContext());
+  // Use the same flattener to simplify each expression successively. This way
+  // local identifiers / expressions are shared.
+  for (auto expr : exprs) {
+    if (!expr.isPureAffine())
+      return false;
+
+    flattener.walkPostOrder(expr);
+  }
+
+  assert(flattener.operandExprStack.size() == exprs.size());
+  flattenedExprs->clear();
+  flattenedExprs->assign(flattener.operandExprStack.begin(),
+                         flattener.operandExprStack.end());
+
+  if (localVarCst) {
+    localVarCst->clearAndCopyFrom(flattener.localVarCst);
+  }
+
+  return true;
+}
+
+// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
+// if 'expr' was unable to be flattened (semi-affine expressions not handled
+// yet).
+bool mlir::getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                                  unsigned numSymbols,
+                                  llvm::SmallVectorImpl<int64_t> *flattenedExpr,
+                                  FlatAffineConstraints *localVarCst) {
+  std::vector<SmallVector<int64_t, 8>> flattenedExprs;
+  bool ret = ::getFlattenedAffineExprs({expr}, numDims, numSymbols,
+                                       &flattenedExprs, localVarCst);
+  *flattenedExpr = flattenedExprs[0];
+  return ret;
+}
+
+/// Flattens the expressions in map. Returns true on success or false
+/// if 'expr' was unable to be flattened (i.e., semi-affine expressions not
+/// handled yet).
+bool mlir::getFlattenedAffineExprs(
+    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *localVarCst) {
+  if (map.getNumResults() == 0) {
+    localVarCst->reset(map.getNumDims(), map.getNumSymbols());
+    return true;
+  }
+  return ::getFlattenedAffineExprs(map.getResults(), map.getNumDims(),
+                                   map.getNumSymbols(), flattenedExprs,
+                                   localVarCst);
+}
+
+bool mlir::getFlattenedAffineExprs(
+    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *localVarCst) {
+  if (set.getNumConstraints() == 0) {
+    localVarCst->reset(set.getNumDims(), set.getNumSymbols());
+    return true;
+  }
+  return ::getFlattenedAffineExprs(set.getConstraints(), set.getNumDims(),
+                                   set.getNumSymbols(), flattenedExprs,
+                                   localVarCst);
+}
 
 //===----------------------------------------------------------------------===//
 // MutableAffineMap.
@@ -104,6 +214,16 @@ AffineValueMap::AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
                                ArrayRef<Value *> results)
     : map(map), operands(operands.begin(), operands.end()),
       results(results.begin(), results.end()) {}
+
+AffineValueMap::AffineValueMap(OpPointer<AffineApplyOp> applyOp)
+    : map(applyOp->getAffineMap()),
+      operands(applyOp->operand_begin(), applyOp->operand_end()) {
+  results.push_back(applyOp->getResult());
+}
+
+AffineValueMap::AffineValueMap(AffineBound bound)
+    : map(bound.getMap()),
+      operands(bound.operand_begin(), bound.operand_end()) {}
 
 void AffineValueMap::reset(AffineMap map, ArrayRef<Value *> operands,
                            ArrayRef<Value *> results) {
@@ -459,6 +579,104 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
   }
 
   return true;
+}
+
+bool FlatAffineConstraints::addAffineForOpDomain(
+    ConstOpPointer<AffineForOp> forOp) {
+  unsigned pos;
+  // Pre-condition for this method.
+  if (!findId(*forOp->getInductionVar(), &pos)) {
+    assert(0 && "Value not found");
+    return false;
+  }
+
+  if (forOp->getStep() != 1)
+    LLVM_DEBUG(llvm::dbgs()
+               << "Domain conservative: non-unit stride not handled\n");
+
+  int64_t step = forOp->getStep();
+
+  // Adds a lower or upper bound when the bounds aren't constant.
+  auto addLowerOrUpperBound = [&](bool lower) -> bool {
+    auto operands =
+        lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
+    for (const auto &operand : operands) {
+      unsigned pos;
+      if (!findId(*operand, &pos)) {
+        if (isValidSymbol(operand)) {
+          addSymbolId(getNumSymbolIds(), const_cast<Value *>(operand));
+          pos = getNumDimAndSymbolIds() - 1;
+          // Check if the symbol is a constant.
+          if (auto *opInst = operand->getDefiningInst()) {
+            if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
+              setIdToConstant(*operand, constOp->getValue());
+            }
+          }
+        } else {
+          addDimId(getNumDimIds(), const_cast<Value *>(operand));
+          pos = getNumDimIds() - 1;
+          if (auto loop = getForInductionVarOwner(operand)) {
+            // Outer loop IVs could be used in forOp's bounds.
+            if (!this->addAffineForOpDomain(loop))
+              return false;
+          }
+        }
+      }
+    }
+    // Record positions of the operands in the constraint system.
+    SmallVector<unsigned, 8> positions;
+    for (const auto &operand : operands) {
+      unsigned pos;
+      if (!findId(*operand, &pos))
+        assert(0 && "expected to be found");
+      positions.push_back(pos);
+    }
+
+    auto boundMap =
+        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
+
+    FlatAffineConstraints localVarCst;
+    std::vector<SmallVector<int64_t, 8>> flatExprs;
+    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
+      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
+      return false;
+    }
+    if (localVarCst.getNumLocalIds() > 0) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "loop bounds with mod/floordiv expr's not yet supported\n");
+      return false;
+    }
+
+    for (const auto &flatExpr : flatExprs) {
+      SmallVector<int64_t, 4> ineq(getNumCols(), 0);
+      ineq[pos] = lower ? 1 : -1;
+      for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
+        ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
+      }
+      // Constant term.
+      ineq[getNumCols() - 1] =
+          lower ? -flatExpr[flatExpr.size() - 1]
+                // Upper bound in flattenedExpr is an exclusive one.
+                : flatExpr[flatExpr.size() - 1] - step;
+      addInequality(ineq);
+    }
+    return true;
+  };
+
+  if (forOp->hasConstantLowerBound()) {
+    addConstantLowerBound(pos, forOp->getConstantLowerBound());
+  } else {
+    // Non-constant lower bound case.
+    if (!addLowerOrUpperBound(/*lower=*/true))
+      return false;
+  }
+
+  if (forOp->hasConstantUpperBound()) {
+    addConstantUpperBound(pos, forOp->getConstantUpperBound() - step);
+    return true;
+  }
+  // Non-constant upper bound case.
+  return addLowerOrUpperBound(/*lower=*/false);
 }
 
 // Searches for a constraint with a non-zero coefficient at 'colIdx' in

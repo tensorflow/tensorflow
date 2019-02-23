@@ -25,8 +25,8 @@
 #ifndef MLIR_ANALYSIS_UTILS_H
 #define MLIR_ANALYSIS_UTILS_H
 
+#include "mlir/Analysis/AffineStructures.h"
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/AffineStructures.h"
 #include "mlir/IR/Block.h"
 #include "mlir/IR/Location.h"
 #include "mlir/Support/LLVM.h"
@@ -176,7 +176,7 @@ struct MemRefRegion {
   Optional<int64_t>
   getConstantBoundOnDimSize(unsigned pos,
                             SmallVectorImpl<int64_t> *lb = nullptr,
-                            int64_t *lbDivisor = nullptr) const {
+                            int64_t *lbFloorDivisor = nullptr) const {
     assert(pos < getRank() && "invalid position");
     return cst.getConstantBoundOnDimSize(pos, lb);
   }

@@ -64,9 +64,6 @@ public:
     return getAttrOfType<AffineMapAttr>("map").getValue();
   }
 
-  /// Returns an AffineValueMap representing this affine apply.
-  AffineValueMap getAsAffineValueMap();
-
   /// Returns true if the result of this operation can be used as dimension id.
   bool isValidDim() const;
 
@@ -253,18 +250,6 @@ ConstOpPointer<AffineForOp> getForInductionVarOwner(const Value *val);
 void extractForInductionVars(ArrayRef<OpPointer<AffineForOp>> forInsts,
                              SmallVectorImpl<Value *> *ivs);
 
-/// Adds constraints (lower and upper bounds) for the specified 'for'
-/// instruction's Value using IR information stored in its bound maps. The
-/// right identifier is first looked up using forOp's Value. Returns
-/// false for the yet unimplemented/unsupported cases, and true if the
-/// information is successfully added. Asserts if the Value corresponding to
-/// the 'for' instruction isn't found in the constraint system. Any new
-/// identifiers that are found in the bound operands of the 'for' instruction
-/// are added as trailing identifiers (either dimensional or symbolic
-/// depending on whether the operand is a valid ML Function symbol).
-//  TODO(bondhugula): add support for non-unit strides.
-bool addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp,
-                          FlatAffineConstraints *constraints);
 
 /// AffineBound represents a lower or upper bound in the for instruction.
 /// This class does not own the underlying operands. Instead, it refers

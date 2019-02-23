@@ -19,15 +19,19 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_IR_AFFINE_STRUCTURES_H
-#define MLIR_IR_AFFINE_STRUCTURES_H
+#ifndef MLIR_ANALYSIS_AFFINE_STRUCTURES_H
+#define MLIR_ANALYSIS_AFFINE_STRUCTURES_H
 
 #include "mlir/IR/AffineExpr.h"
+#include "mlir/IR/OpDefinition.h"
 
 namespace mlir {
 
+class AffineApplyOp;
+class AffineBound;
 class AffineCondition;
 class AffineMap;
+class AffineForOp;
 class IntegerSet;
 class MLIRContext;
 class Value;
@@ -125,6 +129,9 @@ public:
   AffineValueMap(AffineMap map);
   AffineValueMap(AffineMap map, ArrayRef<Value *> operands,
                  ArrayRef<Value *> results = llvm::None);
+
+  explicit AffineValueMap(OpPointer<AffineApplyOp> applyOp);
+  explicit AffineValueMap(AffineBound bound);
 
   ~AffineValueMap();
 
@@ -368,6 +375,18 @@ public:
 
   AffineExpr toAffineExpr(unsigned idx, MLIRContext *context);
 
+  /// Adds constraints (lower and upper bounds) for the specified 'for'
+  /// instruction's Value using IR information stored in its bound maps. The
+  /// right identifier is first looked up using forOp's Value. Returns
+  /// false for the yet unimplemented/unsupported cases, and true if the
+  /// information is successfully added. Asserts if the Value corresponding to
+  /// the 'for' instruction isn't found in the constraint system. Any new
+  /// identifiers that are found in the bound operands of the 'for' instruction
+  /// are added as trailing identifiers (either dimensional or symbolic
+  /// depending on whether the operand is a valid ML Function symbol).
+  //  TODO(bondhugula): add support for non-unit strides.
+  bool addAffineForOpDomain(ConstOpPointer<AffineForOp> forOp);
+
   /// Computes the lower and upper bounds of the first 'num' dimensional
   /// identifiers as an affine map of the remaining identifiers (dimensional and
   /// symbolic). This method is able to detect identifiers as floordiv's
@@ -470,7 +489,7 @@ public:
   /// Sets the specified identifier to a constant and removes it.
   void setAndEliminate(unsigned pos, int64_t constVal);
 
-  /// Tries to fold the specified identifer to a constant using a trivial
+  /// Tries to fold the specified identifier to a constant using a trivial
   /// equality detection; if successful, the constant is substituted for the
   /// identifier everywhere in the constraint system and then removed from the
   /// system. Returns true if the folding happens, false otherwise.
@@ -570,7 +589,7 @@ public:
   Optional<int64_t>
   getConstantBoundOnDimSize(unsigned pos,
                             SmallVectorImpl<int64_t> *lb = nullptr,
-                            int64_t *lbDivisor = nullptr) const;
+                            int64_t *lbFloorDivisor = nullptr) const;
 
   /// Returns the constant lower bound for the pos^th identifier if there is
   /// one; None otherwise.
@@ -703,6 +722,40 @@ private:
   constexpr static unsigned kExplosionFactor = 32;
 };
 
+/// Simplify an affine expression by flattening and some amount of
+/// simple analysis. This has complexity linear in the number of nodes in
+/// 'expr'. Returns the simplified expression, which is the same as the input
+///  expression if it can't be simplified.
+AffineExpr simplifyAffineExpr(AffineExpr expr, unsigned numDims,
+                              unsigned numSymbols);
+
+/// Flattens 'expr' into 'flattenedExpr'. Returns true on success or false
+/// if 'expr' could not be flattened (i.e., semi-affine is not yet handled).
+/// 'cst' contains constraints that connect newly introduced local identifiers
+/// to existing dimensional and / symbolic identifiers. See documentation for
+/// AffineExprFlattener on how mod's and div's are flattened.
+bool getFlattenedAffineExpr(AffineExpr expr, unsigned numDims,
+                            unsigned numSymbols,
+                            llvm::SmallVectorImpl<int64_t> *flattenedExpr,
+                            FlatAffineConstraints *cst = nullptr);
+
+/// Flattens the result expressions of the map to their corresponding flattened
+/// forms and set in 'flattenedExprs'. Returns true on success or false
+/// if any expression in the map could not be flattened (i.e., semi-affine is
+/// not yet handled). 'cst' contains constraints that connect newly introduced
+/// local identifiers to existing dimensional and / symbolic identifiers. See
+/// documentation for AffineExprFlattener on how mod's and div's are flattened.
+/// For all affine expressions that share the same operands (like those of an
+/// affine map), this method should be used instead of repeatedly calling
+/// getFlattenedAffineExpr since local variables added to deal with div's and
+/// mod's will be reused across expressions.
+bool getFlattenedAffineExprs(
+    AffineMap map, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *cst = nullptr);
+bool getFlattenedAffineExprs(
+    IntegerSet set, std::vector<llvm::SmallVector<int64_t, 8>> *flattenedExprs,
+    FlatAffineConstraints *cst = nullptr);
+
 } // end namespace mlir.
 
-#endif // MLIR_IR_AFFINE_STRUCTURES_H
+#endif // MLIR_ANALYSIS_AFFINE_STRUCTURES_H
