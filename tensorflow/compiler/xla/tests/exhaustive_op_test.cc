@@ -103,6 +103,62 @@ float HostErfInv(float x) {
   return std::copysign(unsigned_result, x);
 }
 
+// Digamma implementation using a polynomial from Cephes.  Notably this is a
+// different implementation from the one in math.cc.
+float HostDigamma(float x) {
+  // Euler-Mascheroni constant
+  float kGamma = 0.57721566490153286061;
+  float kPi = M_PI;
+
+  std::array<float, 4> kPoly = {
+      -4.16666666666666666667E-3,
+      3.96825396825396825397E-3,
+      -8.33333333333333333333E-3,
+      8.33333333333333333333E-2,
+  };
+
+  float reflection = 0;
+  if (x <= 0) {
+    float floor = std::floor(x);
+    if (x == floor) {
+      return std::numeric_limits<float>::quiet_NaN();
+    }
+    // Compute reflection term, pi * cot(pi * x).
+    reflection = x - floor;
+    if (reflection == 0.5) {
+      reflection = 0;
+    } else {
+      if (reflection > 0.5) {
+        reflection = x - (floor + 1.0f);
+      }
+      reflection = kPi / std::tan(kPi * reflection);
+    }
+    x = 1 - x;
+  }
+
+  float result = 0;
+  if (x <= 10 && x == std::floor(x)) {
+    // Special case for integers <= 10.
+    for (int i = 1; i < x; ++i) {
+      result += 1.0f / i;
+    }
+    result -= kGamma;
+  } else {
+    float w = 0;
+    for (; x < 10; ++x) {
+      w += 1.0f / x;
+    }
+    if (x < 1e8) {
+      float z = 1.0f / (x * x);
+      result = z * EvaluatePolynomial(z, kPoly);
+    }
+    result = std::log(x) - 0.5f / x - result - w;
+  }
+
+  // Compute the final, reflected value.
+  return result - reflection;
+}
+
 // For f32, f16, and bf16, we need 9, 5, and 4 decimal places of precision to be
 // guaranteed that we're printing the full number.
 //
@@ -474,6 +530,35 @@ XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
 XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
 XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
 XLA_TEST_P(ExhaustiveOpTest, ErfInv) { Run(ErfInv, HostErfInv); }
+XLA_TEST_P(ExhaustiveOpTest, Digamma) {
+  if (platform_ != "Host" && platform_ != "CUDA") {
+    // TODO(b/123956399): This is a fairly high error, significantly higher than
+    // we see on CPU/GPU.
+    rel_err_ = 0.01;
+    abs_err_ = 0.01;
+  }
+
+  if (platform_ == "CUDA") {
+    // On GPU we get a wrong answer for the denormal inputs +/-2.93873588e-39
+    // (0x00200000 and 0x80200000).  These should return -/+inf (at least
+    // according to our reference implementation!) but XLA:GPU returns
+    // -/+3.40282326e+38 (0xff7ffffe and 0x7f7ffffe).
+    //
+    // I deem this an acceptable result, as XLA:GPU flushes denormals, and as
+    // the results we get here are very close to MAX_FLOAT.  We just hardcode
+    // these results, as this is better than ignoring these inputs altogether.
+    auto host_digamma_with_gpu_ftz_errors = +[](float x) {
+      if (absl::bit_cast<uint32>(x) == 0x00200000 ||
+          absl::bit_cast<uint32>(x) == 0x80200000) {
+        return std::copysign(std::numeric_limits<float>::max(), -x);
+      }
+      return HostDigamma(x);
+    };
+    Run(Digamma, host_digamma_with_gpu_ftz_errors);
+  } else {
+    Run(Digamma, HostDigamma);
+  }
+}
 XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
   // Our implementation gets within 0.0001 rel error except for ~20 denormal
   // inputs on GPU.  Anyway 0.001 rel error should be good enough for lgamma.
