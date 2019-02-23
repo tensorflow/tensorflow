@@ -37,7 +37,7 @@ def process_file(in_filename, out_filename, upgrader):
       ipynb.process_file(in_filename, out_filename, upgrader)
   else:
     raise NotImplementedError(
-      "Currently converter only supports python or ipynb")
+        "Currently converter only supports python or ipynb")
 
   return files_processed, report_text, errors
 
