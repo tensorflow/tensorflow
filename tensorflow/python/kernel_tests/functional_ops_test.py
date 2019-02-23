@@ -61,6 +61,31 @@ def simple_scoped_fn(a, x):
 class FunctionalOpsTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
+  def testFoldl_ShapeInvariants(self):
+    elems = tf.constant([1, 2, 3, 4, 5, 6])
+    cum_sum = foldl(
+        lambda a, x: tf.concat([a, tf.expand_dims(a[-1]+x, axis=-1)], axis=-1),
+        elems,
+        initializer=tf.zeros((1,), dtype=elems.dtype),
+        shape_invariants=tf.TensorShape((None,)))
+    self.assertAllEqual(self.evaluate(cum_sum), [0, 1, 3, 6, 10, 15, 21])
+
+    repeats = tf.constant([3, 2, 1], dtype=tf.int64)
+    values = tf.constant([1, 2, 3])
+
+    def accumulate_fn(red, elems):
+      value, repeat = elems
+      filled = tf.fill((repeat,), value)
+      return tf.concat((red, filled), axis=0)
+
+    repeated = foldl(
+      accumulate_fn, (values, repeats),
+      back_prop=False,
+      initializer=tf.zeros(shape=(0,), dtype=values.dtype),
+      shape_invariants=tf.TensorShape((None,)))
+    self.assertAllEqual(self.evaluate(repeated), [1, 1, 1, 2, 2, 3])
+
+  @test_util.run_in_graph_and_eager_modes
   def testFoldl_Simple(self):
     elems = constant_op.constant([1, 2, 3, 4, 5, 6], name="data")
 
@@ -121,6 +146,31 @@ class FunctionalOpsTest(test.TestCase):
         r = functional_ops.foldl(simple_scoped_fn, elems, initializer=10)
         self.assertEqual(len(variables.trainable_variables()), 1)
         self.assertAllEqual(880, self.evaluate(r))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testFoldr_ShapeInvariants(self):
+    elems = tf.constant([1, 2, 3, 4, 5, 6])
+    cum_sum = foldr(
+        lambda a, x: tf.concat([a, tf.expand_dims(a[-1]+x, axis=-1)], axis=-1),
+        elems,
+        initializer=tf.zeros((1,), dtype=elems.dtype),
+        shape_invariants=tf.TensorShape((None,)))
+    self.assertAllEqual(self.evaluate(cum_sum), [0, 6, 11, 15, 18, 20, 21])
+
+    repeats = tf.constant([3, 2, 1], dtype=tf.int64)
+    values = tf.constant([1, 2, 3])
+
+    def accumulate_fn(red, elems):
+      value, repeat = elems
+      filled = tf.fill((repeat,), value)
+      return tf.concat((red, filled), axis=0)
+
+    repeated = foldr(
+      accumulate_fn, (values, repeats),
+      back_prop=False,
+      initializer=tf.zeros(shape=(0,), dtype=values.dtype),
+      shape_invariants=tf.TensorShape((None,)))
+    self.assertAllEqual(self.evaluate(repeated), [3, 2, 2, 1, 1, 1])
 
   @test_util.run_in_graph_and_eager_modes
   def testFoldr_Simple(self):

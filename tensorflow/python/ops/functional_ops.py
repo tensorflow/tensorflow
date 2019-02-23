@@ -45,7 +45,7 @@ from tensorflow.python.util.tf_export import tf_export
 # TODO(yuanbyu, mrry): Handle stride to support sliding windows.
 @tf_export("foldl")
 def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
-          swap_memory=False, name=None):
+          swap_memory=False, name=None, shape_invariants=None):
   """foldl on the list of tensors unpacked from `elems` on dimension 0.
 
   This foldl operator repeatedly applies the callable `fn` to a sequence
@@ -56,7 +56,9 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   at least one element, and its first element is used as the initializer.
 
   Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
-  of the result tensor is fn(initializer, values[0]).shape`.
+  of the result tensor is `fn(initializer, values[0]).shape` by default. If
+  the output shape of `fn` varies across iterations (e.g. as the result of
+  concatenation) this must be specified by providing `shape_invariants`.
 
   This method also allows multi-arity `elems` and output of `fn`.  If `elems`
   is a (possibly nested) list or tuple of tensors, then each of these tensors
@@ -77,6 +79,12 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     back_prop: (optional) True enables support for back propagation.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
+    shape_invariants: (optional) If None, it is assumed that the shape of each
+      element of the accumulator structure is constant across iterations. This
+      allows the caller to specify a less specific shape invariant for each
+      accumulator element if the shape varies between iterations. If not None,
+      must have the same structure as `initializer` (or `values[0]` if
+      initializer is None) and each entry must be a `tf.TensorShape`.
 
   Returns:
     A tensor or (possibly nested) sequence of tensors, resulting from applying
@@ -91,6 +99,26 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems = tf.constant([1, 2, 3, 4, 5, 6])
     sum = foldl(lambda a, x: a + x, elems)
     # sum == 21
+    ```
+
+  Example requiring `shape_invariants`: emulating np.repeat
+    ```python
+    repeats = tf.constant([3, 2, 1], dtype=tf.int64)
+    values = tf.constant([1, 2, 3])
+
+    def accumulate_fn(red, elems):
+      value, repeat = elems
+      filled = tf.fill((repeat,), value)
+      return tf.concat((red, filled), axis=0)
+
+    repeated = foldl(
+      accumulate_fn, (values, repeats),
+      back_prop=False,
+      initializer=tf.zeros(shape=(0,), dtype=values.dtype),
+      shape_invariants=tf.TensorShape((None,)))
+
+    # repeated == [1, 1, 1, 2, 2, 3]
+    # i.e. 1 repeated 3x, 2 repeated 2x and 3 repeated 1x
     ```
   """
   if not callable(fn):
@@ -137,12 +165,16 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       a = fn(a, elem_i)
       return [i + 1, a]
 
+    if shape_invariants is not None:
+      shape_invariants = [tf.TensorShape(()), shape_invariants]
+
     _, r_a = control_flow_ops.while_loop(
         lambda i, a: i < n, compute, [i, a],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory,
-        maximum_iterations=n)
+        maximum_iterations=n,
+        shape_invariants=shape_invariants)
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
@@ -154,7 +186,7 @@ def foldl(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
 
 @tf_export("foldr")
 def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
-          swap_memory=False, name=None):
+          swap_memory=False, name=None, shape_invariants=None):
   """foldr on the list of tensors unpacked from `elems` on dimension 0.
 
   This foldr operator repeatedly applies the callable `fn` to a sequence
@@ -165,7 +197,9 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
   one element, and its first element is used as the initializer.
 
   Suppose that `elems` is unpacked into `values`, a list of tensors. The shape
-  of the result tensor is `fn(initializer, values[0]).shape`.
+  of the result tensor is `fn(initializer, values[0]).shape` by default. If
+  the output shape of `fn` varies across iterations (e.g. as the result of
+  concatenation) this must be specified by providing `shape_invariants`.
 
   This method also allows multi-arity `elems` and output of `fn`.  If `elems`
   is a (possibly nested) list or tuple of tensors, then each of these tensors
@@ -186,6 +220,12 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     back_prop: (optional) True enables support for back propagation.
     swap_memory: (optional) True enables GPU-CPU memory swapping.
     name: (optional) Name prefix for the returned tensors.
+    shape_invariants: (optional) If None, it is assumed that the shape of each
+      element of the accumulator structure is constant across iterations. This
+      allows the caller to specify a less specific shape invariant for each
+      accumulator element if the shape varies between iterations. If not None,
+      must have the same structure as `initializer` (or `values[0]` if
+      initializer is None) and each entry must be a `tf.TensorShape`.
 
   Returns:
     A tensor or (possibly nested) sequence of tensors, resulting from applying
@@ -200,6 +240,17 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
     elems = [1, 2, 3, 4, 5, 6]
     sum = foldr(lambda a, x: a + x, elems)
     # sum == 21
+    ```
+
+  Example requiring `shape_invariants`:
+    ```python
+    elems = tf.constant([1, 2, 3, 4, 5, 6])
+    cum_sum = foldl(
+      lambda a, x: tf.concat([a, tf.expand_dims(a[-1]+x, axis=-1)], axis=-1),
+      elems,
+      initializer=tf.zeros((1,), dtype=elems.dtype),
+      shape_invariants=tf.TensorShape((None,)))
+    # [ 0 6 11 15 18 20 21]
     ```
   """
   if not callable(fn):
@@ -247,13 +298,17 @@ def foldr(fn, elems, initializer=None, parallel_iterations=10, back_prop=True,
       a_out = fn(a, elem)
       return [i, a_out]
 
+    if shape_invariants is not None:
+      shape_invariants = [tf.TensorShape(()), shape_invariants]
+
     _, r_a = control_flow_ops.while_loop(
         lambda i, a: i > 0,
         compute, [i, a],
         parallel_iterations=parallel_iterations,
         back_prop=back_prop,
         swap_memory=swap_memory,
-        maximum_iterations=n)
+        maximum_iterations=n,
+        shape_invariants=shape_invariants)
 
     # TODO(akshayka): Remove the in_graph_mode check once caching devices are
     # supported in Eager
