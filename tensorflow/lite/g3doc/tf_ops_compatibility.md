@@ -822,6 +822,25 @@ Outputs {
 }
 ```
 
+**REVERSE_SEQUENCE**
+
+```
+Inputs {
+  0: a tensor
+  1: a 1-D tensor which specifies the length of sequence to be reversed in each
+  dim
+}
+Outputs {
+  0: a tensor with the same shape as the input tensor
+}
+Options {
+  seq_dim: a 0-D int tensor (scalar). The dimension which is partially
+  reversed.
+  batch_dim: a 0-D int tensor (scalar). Defaults to 0. The dimension along
+  which reversal is performed.
+}
+```
+
 **SHAPE**
 
 ```
