@@ -145,7 +145,7 @@ class DecodeCSVOp : public OpKernel {
               output[f]->flat<float>()(i) = record_defaults[f].flat<float>()(0);
             } else {
               float value;
-              OP_REQUIRES(ctx, strings::safe_strtof(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strtof(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid float: ", fields[f]));
@@ -165,7 +165,7 @@ class DecodeCSVOp : public OpKernel {
                   record_defaults[f].flat<double>()(0);
             } else {
               double value;
-              OP_REQUIRES(ctx, strings::safe_strtod(fields[f].c_str(), &value),
+              OP_REQUIRES(ctx, strings::safe_strtod(fields[f], &value),
                           errors::InvalidArgument(
                               "Field ", f, " in record ", i,
                               " is not a valid double: ", fields[f]));

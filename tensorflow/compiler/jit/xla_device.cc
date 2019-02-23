@@ -102,7 +102,8 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      absl::make_unique<XlaDeviceAllocator>();
+      absl::make_unique<XlaDeviceAllocator>(
+          backend->stream_executors()[device_ordinal]);
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
   return alloc_ptr;
@@ -479,6 +480,23 @@ bool XlaDevice::AllowsSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
+void XlaDevice::SetHandleDeviceErrorCallback(std::function<Status()> callback) {
+  mutex_lock lock(mu_);
+  device_error_callback_ = callback;
+}
+
+Status XlaDevice::HandleDeviceError() {
+  std::function<Status()> local_device_error_callback;
+  {
+    mutex_lock lock(mu_);
+    local_device_error_callback = device_error_callback_;
+  }
+  if (local_device_error_callback != nullptr) {
+    return local_device_error_callback();
+  }
+  return Status::OK();
+}
+
 Status XlaDevice::RefreshStatus() {
   std::shared_ptr<se::Stream> stream;
   {
@@ -488,8 +506,14 @@ Status XlaDevice::RefreshStatus() {
   if (!stream) {
     return Status::OK();
   }
-  // Stream status is XlaDevice status, no extra operations needed.
-  return stream->RefreshStatus();
+  Status status = stream->RefreshStatus();
+  if (!status.ok()) {
+    // Ignore errors from HandleDeviceError, since by definition the status is
+    // already non-ok, so there's nothing extra to report if HandleDeviceError
+    // itself returns an error.
+    HandleDeviceError().IgnoreError();
+  }
+  return status;
 }
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,

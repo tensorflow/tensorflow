@@ -1005,11 +1005,11 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
               op::Tuple(op::AllReduce(op::Add(
                             op::Add(op::Parameter(),
                                     op::Divide(op::Constant(), op::Constant())),
-                            op::Divide(op::AllReduce(), op::Constant()))),
+                            op::Parameter())),
                         op::AllReduce(op::Add(
                             op::Add(op::Parameter(),
                                     op::Divide(op::Constant(), op::Constant())),
-                            op::Divide(op::AllReduce(), op::Constant())))));
+                            op::Parameter()))));
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();
@@ -1093,15 +1093,17 @@ ENTRY %entrycomp (p: f32[]) -> (f32[], f32[]) {
   ArCrsCombiner combiner(2);
   auto changed = combiner.Run(module.get()).ValueOrDie();
   EXPECT_TRUE(changed);
-  EXPECT_THAT(module->entry_computation()->root_instruction(),
-              op::Tuple(op::AllReduce(op::Add(
-                            op::Parameter(),
-                            op::Divide(op::Add(op::AllReduce(), op::Constant()),
-                                       op::Constant()))),
-                        op::AllReduce(op::Add(
-                            op::Parameter(),
-                            op::Divide(op::Add(op::AllReduce(), op::Constant()),
-                                       op::Constant())))));
+  EXPECT_THAT(
+      module->entry_computation()->root_instruction(),
+      op::Tuple(op::AllReduce(op::Add(
+                    op::Parameter(),
+                    op::Add(op::Parameter(),
+                            op::Divide(op::Constant(), op::Constant())))),
+                op::AllReduce(op::Add(
+                    op::Parameter(),
+                    op::Add(op::Parameter(),
+                            op::Divide(op::Constant(), op::Constant()))))));
+
   auto crs_after =
       module->entry_computation()->root_instruction()->operands()[0];
   auto replica_groups_after = crs_after->replica_groups();

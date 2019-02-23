@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
+namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
@@ -59,5 +61,8 @@ tensorflow::Status SegmentGraph(
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_SEGMENT_SEGMENT_H_

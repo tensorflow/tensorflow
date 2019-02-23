@@ -175,8 +175,7 @@ message ProximalAdagradParameters {
 // them using the actual optimization algorithm). The extra message is to wrap
 // the enum for scoping.
 message GradientAccumulationStatus {
-  // Defaults to value of use_gradient_accumulation (temporary compatibility
-  // behavior).
+  // Defaults to ENABLED.
   enum Status {
     UNSPECIFIED = 0;
     ENABLED = 1;
@@ -210,10 +209,6 @@ message OptimizationParameters {
   // apply them using the actual optimization algorithm).
   GradientAccumulationStatus.Status gradient_accumulation_status = 17;
 
-  // Old gradient accumulation flag; overridden by gradient_accumulation_status
-  // when it is set.
-  bool use_gradient_accumulation = 15;
-
   // Optimization algorithm parameters; which field is selected determines which
   // algorithm to use.
   oneof parameters {
@@ -228,6 +223,8 @@ message OptimizationParameters {
     AdadeltaParameters adadelta = 12;
     ProximalAdagradParameters proximal_adagrad = 14;
   }
+
+  reserved 15;  // Old use_gradient_accumulation.
 }
 
 // Specification of an optimization algorithm's state variables (both the main

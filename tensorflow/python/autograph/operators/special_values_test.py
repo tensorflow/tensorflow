@@ -22,11 +22,17 @@ from tensorflow.python.autograph.operators import special_values
 from tensorflow.python.platform import test
 
 
-class PythonLangUtilsTest(test.TestCase):
+class SpecialValuesTest(test.TestCase):
 
   def test_undefined(self):
-    self.assertIs(special_values.UNDEFINED, special_values.UNDEFINED)
+    undefined_symbol = special_values.Undefined('name')
+    self.assertEqual(undefined_symbol.symbol_name, 'name')
 
+    undefined_symbol2 = special_values.Undefined('name')
+    self.assertNotEqual(undefined_symbol, undefined_symbol2)
+
+    self.assertTrue(special_values.is_undefined(undefined_symbol))
+    self.assertTrue(special_values.is_undefined(undefined_symbol2))
 
 if __name__ == '__main__':
   test.main()

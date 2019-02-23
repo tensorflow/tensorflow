@@ -27,7 +27,8 @@ namespace {
 using Eigen::half;
 
 struct Testcase {
-  Testcase(string name, XlaOp (*op)(XlaOp), float (*host_op)(float))
+  Testcase(string name, const std::function<XlaOp(XlaOp)>& op,
+           float (*host_op)(float))
       : name(name), op(op), host_op(host_op) {}
 
   Testcase& set_tolerance(float abs_err, float rel_err) {
@@ -68,7 +69,7 @@ struct Testcase {
   }
 
   string name;
-  XlaOp (*op)(XlaOp);
+  std::function<XlaOp(XlaOp)> op;
   float (*host_op)(float);
 
   ErrorSpec error{0.01, 0.01};

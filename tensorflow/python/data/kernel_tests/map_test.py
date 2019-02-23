@@ -84,6 +84,7 @@ def _make_coordinated_sloppy_dataset(num_elements, num_parallel_calls):
   return dataset, coordination_events
 
 
+# TODO(jsimsa): Add tests for `map_with_legacy_function`.
 @test_util.run_all_in_graph_and_eager_modes
 class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
@@ -1030,6 +1031,18 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
     with self.assertRaises(errors.InvalidArgumentError):
       self.evaluate(get_next())
 
+  # NOTE: collection test is specific to graph mode only, no eager coverage.
+  @test_util.run_v1_only("graph specific test")
+  def testSkipEagerCollectionCopy(self):
+    w = variable_scope.get_variable("w", [])
+    self.assertIn(w, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+
+    def func(x):
+      self.assertIn(w, ops.get_collection(ops.GraphKeys.GLOBAL_VARIABLES))
+      return x
+
+    dataset = dataset_ops.Dataset.from_tensors(constant_op.constant(1.0))
+    dataset.map(func)
 
 if __name__ == "__main__":
   test.main()

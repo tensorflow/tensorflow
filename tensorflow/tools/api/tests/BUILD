@@ -15,11 +15,7 @@ load("//tensorflow:tensorflow.bzl", "tf_cc_binary")
 
 py_test(
     name = "api_compatibility_test",
-    srcs = [
-        "api_compatibility_test.py",
-        "//tensorflow:tf_python_api_gen_v2",
-    ],
-    args = ["--only_test_core_api=true"],
+    srcs = ["api_compatibility_test.py"],
     data = [
         "//tensorflow/tools/api/golden:api_golden_v1",
         "//tensorflow/tools/api/golden:api_golden_v2",
@@ -27,6 +23,7 @@ py_test(
         "//tensorflow/tools/api/tests:README.txt",
     ],
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -35,6 +32,7 @@ py_test(
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@six_archive//:six",
     ],
 )
 

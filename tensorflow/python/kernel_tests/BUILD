@@ -131,6 +131,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     grpc_enabled = True,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1083,7 +1084,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "summary_ops_test",
     size = "small",
     srcs = ["summary_ops_test.py"],
@@ -1091,15 +1092,22 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary_ops_v2",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1147,6 +1155,19 @@ tf_py_test(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
     ],
+)
+
+tf_py_test(
+    name = "tridiagonal_solve_op_test",
+    size = "medium",
+    srcs = ["tridiagonal_solve_op_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:linalg_ops",
+    ],
+    shard_count = 5,
 )
 
 tf_py_test(
@@ -1675,6 +1696,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1851,7 +1873,7 @@ cuda_py_test(
 
 cuda_py_test(
     name = "functional_ops_test",
-    size = "small",
+    size = "medium",
     srcs = ["functional_ops_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
@@ -2186,7 +2208,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
-    shard_count = 4,
+    shard_count = 6,
     tags = ["no_windows_gpu"],
     xla_enable_strict_auto_jit = True,
 )
@@ -2202,12 +2224,12 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:math_ops",
     ],
+    shard_count = 3,
     tags = [
         "manual",
         "no_gpu",
         "nogpu",
         "noguitar",
-        "notap",
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -2592,6 +2614,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2751,6 +2774,7 @@ cuda_py_test(
     ],
     shard_count = 2,
     tags = [
+        "no_rocm",
         "optonly",  # flaky timeouts unless optimized
     ],
     xla_enable_strict_auto_jit = True,
@@ -2792,6 +2816,7 @@ cuda_py_test(
     ],
     shard_count = 4,
     tags = [
+        "no_rocm",
         "optonly",  # times out
     ],
     xla_enable_strict_auto_jit = True,
@@ -2855,6 +2880,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:nn_ops",
     ],
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2874,6 +2900,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops_gen",
     ],
     shard_count = 4,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -2902,6 +2929,34 @@ cuda_py_test(
         "//tensorflow/python:tensor_array_ops",
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:context",
+    ],
+    shard_count = 10,
+    xla_enable_strict_auto_jit = True,
+)
+
+cuda_py_test(
+    name = "rnn_cell_test",
+    size = "medium",
+    srcs = ["rnn_cell_test.py"],
+    additional_deps = [
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:gradients",
+        "//tensorflow/python:init_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:rnn",
+        "//tensorflow/python:rnn_cell",
+        "//tensorflow/python:tensor_array_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python:variable_scope",
+        "//tensorflow/python:variables",
     ],
     shard_count = 10,
     xla_enable_strict_auto_jit = True,
@@ -3057,6 +3112,7 @@ cuda_py_test(
         "//tensorflow/python:util",
         "//tensorflow/python:data_flow_ops",
     ],
+    tags = ["no_oss"],  # b/124474135
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3105,6 +3161,7 @@ cuda_py_test(
         "//tensorflow/python:nn_ops",
     ],
     shard_count = 30,
+    tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3243,8 +3300,11 @@ cuda_py_test(
     ],
     data = ["//tensorflow/python/kernel_tests/testdata:self_adjoint_eig_op_test_files"],
     shard_count = 20,
-    tags = ["no_windows"],
-    xla_enable_strict_auto_jit = True,
+    tags = [
+        "no_rocm",  # flaky test
+        "no_windows",
+    ],
+    # TODO(kuny): Add xla_enable_strict_auto_jit = True after b/124377352 is fixed.
 )
 
 cuda_py_test(

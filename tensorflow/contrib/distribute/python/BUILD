@@ -515,6 +515,7 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":multi_worker_test_base",
         ":mirrored_strategy",
@@ -538,6 +539,7 @@ py_library(
     srcs = [
         "keras_backward_compat_test.py",
         "keras_test.py",
+        "keras_utils_test.py",
     ],
     deps = [
         ":combinations",
@@ -566,6 +568,24 @@ distribute_py_test(
         "notsan",
     ],
     deps = [
+        ":keras_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_utils_test",
+    srcs = ["keras_utils_test.py"],
+    full_precision = True,
+    main = "keras_utils_test.py",
+    shard_count = 32,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_test",
         ":keras_test_lib",
     ],
 )
@@ -781,6 +801,6 @@ tf_xla_py_test(
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:util",
     ],
 )

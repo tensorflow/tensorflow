@@ -1305,7 +1305,8 @@ void ConvertTensorFlowShapeOperator(const Model& model,
       GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
-void ConvertRankOperator(const Model& model, const RankOperator& src_op,
+void ConvertRankOperator(const Model& model,
+                         const TensorFlowRankOperator& src_op,
                          GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* rank_op = tensorflow_graph->add_node();
   rank_op->set_op("Rank");
@@ -2274,7 +2275,8 @@ void ConvertOperator(const Model& model, const Operator& src_op,
         model, static_cast<const TensorFlowShapeOperator&>(src_op),
         tensorflow_graph);
   } else if (src_op.type == OperatorType::kRank) {
-    ConvertRankOperator(model, static_cast<const RankOperator&>(src_op),
+    ConvertRankOperator(model,
+                        static_cast<const TensorFlowRankOperator&>(src_op),
                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kRange) {
     ConvertRangeOperator(model, static_cast<const RangeOperator&>(src_op),

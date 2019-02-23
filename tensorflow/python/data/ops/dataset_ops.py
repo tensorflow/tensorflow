@@ -174,12 +174,12 @@ class DatasetV2(object):
     options = self.options()
     if options.experimental_threading is not None:
       t_options = options.experimental_threading
-      if t_options.private_threadpool_size is not None:
-        dataset = _PrivateThreadPoolDataset(dataset,
-                                            t_options.private_threadpool_size)
       if t_options.max_intra_op_parallelism is not None:
         dataset = _MaxIntraOpParallelismDataset(
             dataset, t_options.max_intra_op_parallelism)
+      if t_options.private_threadpool_size is not None:
+        dataset = _PrivateThreadPoolDataset(dataset,
+                                            t_options.private_threadpool_size)
     static_optimizations = options._static_optimizations()  # pylint: disable=protected-access
     if static_optimizations:
       if self._has_captured_ref():
@@ -749,6 +749,12 @@ class DatasetV2(object):
     samples elements from this buffer, replacing the selected elements with new
     elements. For perfect shuffling, a buffer size greater than or equal to the
     full size of the dataset is required.
+
+    For instance, if your dataset contains 10,000 elements but `buffer_size` is
+    set to 1,000, then `shuffle` will initially select a random element from
+    only the first 1,000 elements in the buffer. Once an element is selected,
+    its space in the buffer is replaced by the next (i.e. 1,001-st) element,
+    maintaining the 1,000 element buffer.
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the
@@ -1652,7 +1658,7 @@ class DatasetV1(DatasetV2):
 
     NOTE: This is an escape hatch for existing uses of `map` that do not work
     with V2 functions. New uses are strongly discouraged and existing uses
-    should migrate to `map` as this method will not be removed in V2.
+    should migrate to `map` as this method will be removed in V2.
 
     Args:
       map_func: A function mapping a nested structure of tensors (having shapes
@@ -1699,6 +1705,25 @@ class DatasetV1(DatasetV2):
   @functools.wraps(DatasetV2.filter)
   def filter(self, predicate):
     return DatasetV1Adapter(super(DatasetV1, self).filter(predicate))
+
+  @deprecation.deprecated(None, "Use `tf.data.Dataset.filter()")
+  def filter_with_legacy_function(self, predicate):
+    """Filters this dataset according to `predicate`.
+
+    NOTE: This is an escape hatch for existing uses of `filter` that do not work
+    with V2 functions. New uses are strongly discouraged and existing uses
+    should migrate to `filter` as this method will be removed in V2.
+
+    Args:
+      predicate: A function mapping a nested structure of tensors (having shapes
+        and types defined by `self.output_shapes` and `self.output_types`) to a
+        scalar `tf.bool` tensor.
+
+    Returns:
+      Dataset: The `Dataset` containing the elements of this dataset for which
+          `predicate` is `True`.
+    """
+    return FilterDataset(self, predicate, use_legacy_function=True)
 
   @functools.wraps(DatasetV2.apply)
   def apply(self, transformation_func):
@@ -3043,11 +3068,14 @@ class ParallelInterleaveDataset(UnaryDataset):
 class FilterDataset(UnaryUnchangedStructureDataset):
   """A `Dataset` that filters its input according to a predicate function."""
 
-  def __init__(self, input_dataset, predicate):
+  def __init__(self, input_dataset, predicate, use_legacy_function=False):
     """See `Dataset.filter()` for details."""
     self._input_dataset = input_dataset
     wrapped_func = StructuredFunctionWrapper(
-        predicate, self._transformation_name(), dataset=input_dataset)
+        predicate,
+        self._transformation_name(),
+        dataset=input_dataset,
+        use_legacy_function=use_legacy_function)
     if not wrapped_func.output_structure.is_compatible_with(
         structure_lib.TensorStructure(dtypes.bool, [])):
       raise ValueError("`predicate` must return a scalar boolean tensor.")

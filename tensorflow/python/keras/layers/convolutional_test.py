@@ -23,6 +23,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
@@ -420,6 +421,7 @@ class ZeroPaddingTest(keras_parameterized.TestCase):
       keras.layers.ZeroPadding3D(padding=None)
 
 
+@test_util.disable_all_xla('b/124289666')  # align_corners=False unimplemented
 @keras_parameterized.run_all_keras_modes
 class UpSamplingTest(keras_parameterized.TestCase):
 

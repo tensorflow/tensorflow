@@ -143,7 +143,6 @@ py_library(
         ":map_fn",
         ":math_ops",
         ":metrics",
-        ":mode_keys",
         ":nccl_ops",
         ":nn",
         ":ops",
@@ -174,11 +173,13 @@ py_library(
         "//tensorflow/lite/python:lite",
         "//tensorflow/python/compat",
         "//tensorflow/python/compat:v2_compat",
+        "//tensorflow/python/compiler",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:profiler",
+        "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
         "//tensorflow/python/module",
         "//tensorflow/python/ops/distributions",
@@ -278,7 +279,10 @@ tf_py_test(
     size = "small",
     srcs = ["platform/app_test.py"],
     additional_deps = [":platform"],
-    tags = ["notap"],
+    tags = [
+        "nomac",
+        "notap",
+    ],
 )
 
 cc_library(
@@ -679,6 +683,7 @@ py_library(
     deps = [
         ":common_shapes",
         ":composite_tensor",
+        ":convert_to_constants",
         ":cpp_shape_inference_proto_py",
         ":errors",
         ":framework_fast_tensor_util",
@@ -855,6 +860,22 @@ py_library(
 )
 
 py_library(
+    name = "convert_to_constants",
+    srcs = [
+        "framework/convert_to_constants.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":dtypes",
+        ":framework_ops",
+        ":platform",
+        ":tensor_util",
+        ":tf_optimizer",
+        "//tensorflow/core:protos_all_py",
+    ],
+)
+
+py_library(
     name = "kernels",
     srcs = [
         "framework/kernels.py",
@@ -971,6 +992,7 @@ tf_py_test(
     additional_deps = [
         ":auto_control_deps",
         ":client_testlib",
+        "//tensorflow/python/keras",
     ],
 )
 
@@ -1310,8 +1332,8 @@ py_library(
     ],
 )
 
-cuda_py_tests(
-    name = "framework_function_test",
+cuda_py_test(
+    name = "function_test",
     size = "medium",
     srcs = ["framework/function_test.py"],
     additional_deps = [
@@ -1341,6 +1363,7 @@ cuda_py_tests(
         "noasan",
         "optonly",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -1813,7 +1836,7 @@ tf_gen_op_wrapper_private_py(
     visibility = [
         "//learning/brain/python/ops:__pkg__",
         "//tensorflow/python/kernel_tests:__pkg__",
-        "//tensorflow/python/training/checkpointable:__pkg__",
+        "//tensorflow/python/training/tracking:__pkg__",
     ],
 )
 
@@ -1983,6 +2006,27 @@ tf_gen_op_wrapper_private_py(
         "//learning/brain/contrib/text:__pkg__",
         "//learning/brain/contrib/text/python/ragged:__pkg__",
         "//tensorflow/python/ops/ragged:__pkg__",
+    ],
+)
+
+tf_gen_op_wrapper_private_py(
+    name = "tpu_ops_gen",
+    visibility = [
+        "//smartass/brain/configure/python:__pkg__",
+        "//tensorflow/contrib/tpu:__pkg__",
+        "//tensorflow/python/tpu:__pkg__",
+    ],
+    deps = [
+        "//tensorflow/core:tpu_configuration_ops_op_lib",
+        "//tensorflow/core:tpu_cross_replica_ops_op_lib",
+        "//tensorflow/core:tpu_embedding_ops_op_lib",
+        "//tensorflow/core:tpu_functional_ops_op_lib",
+        "//tensorflow/core:tpu_heartbeat_ops_op_lib",
+        "//tensorflow/core:tpu_host_compute_ops_op_lib",
+        "//tensorflow/core:tpu_infeed_ops_op_lib",
+        "//tensorflow/core:tpu_ordinal_selector_ops_op_lib",
+        "//tensorflow/core:tpu_outfeed_ops_op_lib",
+        "//tensorflow/core:tpu_replication_ops_op_lib",
     ],
 )
 
@@ -3349,7 +3393,7 @@ py_library(
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -3402,6 +3446,7 @@ cuda_py_test(
         ":framework_test_lib",
     ],
     tags = ["no_windows"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3520,6 +3565,7 @@ cuda_py_test(
         ":image_ops",
         "//third_party/py/numpy",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3545,6 +3591,7 @@ cuda_py_test(
     ],
     data = ["//tensorflow/core:image_testdata"],
     shard_count = 5,
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3644,6 +3691,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     shard_count = 16,
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -3664,6 +3712,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     tags = ["no_windows"],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3694,6 +3743,7 @@ cuda_py_test(
         "//third_party/py/numpy",
     ],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = True,
 )
 
 py_library(
@@ -3702,7 +3752,7 @@ py_library(
         ["training/**/*.py"],
         exclude = [
             "**/*test*",
-            "training/checkpointable/**/*.py",
+            "training/tracking/**/*.py",
             "training/saving/**/*.py",
             # The following targets have their own build rules (same name as the
             # file):
@@ -3763,8 +3813,8 @@ py_library(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3844,9 +3894,9 @@ py_library(
         ":variables",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
         "//tensorflow/python/training/saving:saveable_object",
         "//tensorflow/python/training/saving:saveable_object_util",
+        "//tensorflow/python/training/tracking:base",
         "//third_party/py/numpy",
         "@six_archive//:six",
     ],
@@ -3927,6 +3977,7 @@ py_library(
     srcs_version = "PY2AND3",
     visibility = visibility + [
         "//tensorflow:__pkg__",
+        "//third_party/py/tf_agents:__subpackages__",
     ],
     deps = [
         "//third_party/py/numpy",
@@ -4719,6 +4770,7 @@ cuda_py_test(
         ":math_ops",
         "//tensorflow/core:protos_all_py",
     ],
+    xla_enable_strict_auto_jit = False,  # Graph structure is different with autojit
 )
 
 cuda_py_test(
@@ -4760,6 +4812,17 @@ tf_py_test(
         ":variable_scope",
         ":variables",
         "//tensorflow/core:protos_all_py",
+    ],
+)
+
+tf_py_test(
+    name = "convert_to_constants_test",
+    size = "small",
+    srcs = ["framework/convert_to_constants_test.py"],
+    additional_deps = [
+        ":convert_to_constants",
+        "client_testlib",
+        "framework_test_lib",
     ],
 )
 
@@ -5794,6 +5857,8 @@ cuda_py_test(
         "grappler",
         "no_pip",  # tf_optimizer is not available in pip.
     ],
+    # This test will not run on XLA because it primarily tests the TF Classic flow.
+    xla_enable_strict_auto_jit = False,
 )
 
 py_library(
@@ -5934,6 +5999,8 @@ cuda_py_test(
     tags = [
         "grappler",
     ],
+    # This test will not run on XLA because it primarily tests the TF Classic flow.
+    xla_enable_strict_auto_jit = False,
 )
 
 py_library(
@@ -5986,6 +6053,7 @@ tf_py_test(
         "grappler",
         "no_cuda_on_cpu_tap",
         "no_pip",
+        "nomac",
     ],
 )
 
@@ -6071,29 +6139,6 @@ py_binary(
     deps = [
         ":framework_for_generated_wrappers",
         ":pywrap_tensorflow_internal",
-    ],
-)
-
-py_library(
-    name = "mode_keys",
-    srcs = [
-        "training/mode_keys.py",
-    ],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":util",
-    ],
-)
-
-tf_py_test(
-    name = "mode_keys_test",
-    size = "small",
-    srcs = [
-        "training/mode_keys_test.py",
-    ],
-    additional_deps = [
-        ":client_testlib",
-        ":mode_keys",
     ],
 )
 

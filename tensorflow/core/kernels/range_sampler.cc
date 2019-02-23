@@ -294,7 +294,7 @@ Status FixedUnigramSampler::LoadFromFile(Env* env, const string& vocab_file,
     // Skip entries that do not belong to this shard.
     if (word_id % num_shards_ == shard_) {
       float w = 0.0;
-      if (!strings::safe_strtof(cols.at(cols.size() - 1).c_str(), &w)) {
+      if (!strings::safe_strtof(cols.at(cols.size() - 1), &w)) {
         return errors::InvalidArgument("Wrong vocabulary format at line: ",
                                        line);
       }
