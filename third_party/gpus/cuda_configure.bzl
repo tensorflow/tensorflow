@@ -1580,6 +1580,8 @@ cuda_configure = repository_rule(
         _TF_CUDA_CONFIG_REPO,
         "NVVMIR_LIBRARY_DIR",
         _PYTHON_BIN_PATH,
+        "TMP",
+        "TMPDIR",
     ],
 )
 
