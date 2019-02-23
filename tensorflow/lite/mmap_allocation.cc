@@ -14,7 +14,11 @@ limitations under the License.
 ==============================================================================*/
 
 #include <fcntl.h>
+#ifndef _WIN32
 #include <sys/mman.h>
+#else
+#include <windows.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
@@ -24,6 +28,52 @@ limitations under the License.
 
 namespace tflite {
 
+#ifdef _WIN32
+static constexpr void* MAP_FAILED = nullptr;
+
+MMAPAllocation::MMAPAllocation(const char* filename,
+                               ErrorReporter* error_reporter)
+    : Allocation(error_reporter)
+    , mmapped_buffer_(MAP_FAILED)
+    , file_handle_( nullptr )
+    , file_mapping_( nullptr ) {
+
+  file_handle_ = CreateFile(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, 0, 0);
+  if (file_handle_ == INVALID_HANDLE_VALUE) {
+    error_reporter_->Report("Could not open '%s'.", filename);
+    return;
+  }
+
+  buffer_size_bytes_ = GetFileSize( file_handle_, nullptr );
+
+  file_mapping_ = CreateFileMapping(file_handle_, NULL, PAGE_READONLY, 0, 0, NULL);
+  if (file_mapping_ == NULL)
+    return;
+
+  mmapped_buffer_ = MapViewOfFile(file_mapping_, FILE_MAP_READ, 0, 0, buffer_size_bytes_);
+
+  if (mmapped_buffer_ == MAP_FAILED) {
+    error_reporter_->Report("Mmap of '%s' failed.", filename);
+    return;
+  }
+}
+
+MMAPAllocation::~MMAPAllocation() {
+   if (valid()) {
+     UnmapViewOfFile( mmapped_buffer_ );
+   }
+
+   if (file_mapping_ != nullptr) {
+    CloseHandle( file_mapping_ );
+   }
+
+   if (file_handle_ != nullptr){
+    CloseHandle( file_handle_ );
+   }
+
+}
+
+#else
 MMAPAllocation::MMAPAllocation(const char* filename,
                                ErrorReporter* error_reporter)
     : Allocation(error_reporter), mmapped_buffer_(MAP_FAILED) {
@@ -49,6 +99,7 @@ MMAPAllocation::~MMAPAllocation() {
   }
   if (mmap_fd_ != -1) close(mmap_fd_);
 }
+#endif
 
 const void* MMAPAllocation::base() const { return mmapped_buffer_; }
 
