@@ -15,7 +15,9 @@ limitations under the License.
 
 #include "tensorflow/lite/nnapi_delegate.h"
 #include <fcntl.h>
-#include <sys/mman.h>
+#ifndef _WIN32
+# include <sys/mman.h>
+#endif
 #include <sys/stat.h>
 #include <sys/types.h>
 #include "tensorflow/lite/c/builtin_op_data.h"
@@ -26,6 +28,11 @@ limitations under the License.
 #ifdef __ANDROID__
 #include <android/log.h>
 #include <sys/system_properties.h>
+#endif
+
+#ifdef _WIN32
+static constexpr void* MAP_FAILED = nullptr;
+#define PROT_READ (0x1)
 #endif
 
 namespace tflite {

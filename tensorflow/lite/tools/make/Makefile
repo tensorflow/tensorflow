@@ -65,6 +65,10 @@ ARFLAGS := -r
 TARGET_TOOLCHAIN_PREFIX :=
 CC_PREFIX :=
 
+ifeq ($(HOST_OS),windows)
+CXXFLAGS += -fext-numeric-literals -D__LITTLE_ENDIAN__
+endif
+
 # This library is the main target for this makefile. It will contain a minimal
 # runtime that can be linked in to other programs.
 LIB_NAME := libtensorflow-lite.a
@@ -128,6 +132,9 @@ BUILD_WITH_NNAPI=true
 ifeq ($(BUILD_TYPE),micro)
 	BUILD_WITH_NNAPI=false
 endif
+ifeq ($(TARGET),windows)
+	BUILD_WITH_NNAPI=false
+endif
 ifeq ($(TARGET),ios)
 	BUILD_WITH_NNAPI=false
 endif
@@ -154,7 +161,9 @@ TF_LITE_CC_SRCS := $(filter-out $(CORE_CC_EXCLUDE_SRCS), $(CORE_CC_ALL_SRCS))
 
 # Benchmark sources
 BENCHMARK_SRCS_DIR := tensorflow/lite/tools/benchmark
-BENCHMARK_ALL_SRCS := $(TFLITE_CC_SRCS) \
+BENCHMARK_ALL_SRCS := $(TF_LITE_CC_SRCS) \
+	tensorflow/lite/testing/init_tensorflow.cc \
+	$(wildcard $(TESTING_SRCS_DIR)/*.cc) \
 	$(wildcard $(BENCHMARK_SRCS_DIR)/*.cc) \
 	$(PROFILE_SUMMARIZER_SRCS)
 
