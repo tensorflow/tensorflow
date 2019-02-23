@@ -211,9 +211,13 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
     const HloInstruction* target, const HloInstruction* operand,
     const HloInstruction* layout_producer) {
   const auto op_idx = target->operand_index(operand);
-  if (IsPopOpsElementwiseBinary(target)) {
+  // Some PopOps elementwise binary ops have more than two inputs (for example
+  // scaled inplace with a scalar) - we make sure that we only target the first
+  // two operands.
+  if (IsPopOpsElementwiseBinary(target) && op_idx < 2) {
     return op_idx;
   }
+
   switch (target->opcode()) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
