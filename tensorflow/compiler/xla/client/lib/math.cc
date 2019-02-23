@@ -423,10 +423,7 @@ XlaOp Lgamma(XlaOp input) {
 // A(z) = kBaseLanczosCoeff + sigma(k = 1, n, kLanczosCoefficients[i] / (z + k))
 // A'(z) = sigma(k = 1, n, kLanczosCoefficients[i] / (z + k) / (z + k))
 XlaOp Digamma(XlaOp input) {
-  auto& b = *input.builder();
-  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
-    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
-
+  auto do_it = [](XlaOp input) {
     XlaOp zero = ScalarLike(input, 0);
     XlaOp one_half = ScalarLike(input, 0.5);
     XlaOp one = ScalarLike(input, 1);
@@ -464,8 +461,28 @@ XlaOp Digamma(XlaOp input) {
                   Log1p(z / lanczos_gamma_plus_one_half);
 
     XlaOp y = log_t + num / denom - lanczos_gamma / t;
-    XlaOp reflection = y - pi * Cos(pi * input) / Sin(pi * input);
-    return Select(need_to_reflect, reflection, y);
+
+    // We need to be careful how we compute cot(pi * input) below: For
+    // near-integral values of `input`, pi * input can lose precision.
+    //
+    // Input is already known to be less than 0.5 (otherwise we don't have to
+    // reflect).  We shift values smaller than -0.5 into the range [-.5, .5] to
+    // increase precision of pi * input and the resulting cotangent.
+    XlaOp reduced_input = input + Abs(Floor(input + ScalarLike(input, 0.5)));
+    XlaOp reflection =
+        y - pi * Cos(pi * reduced_input) / Sin(pi * reduced_input);
+    XlaOp real_result = Select(need_to_reflect, reflection, y);
+
+    // Digamma has poles at negative integers and zero; return nan for those.
+    return Select(And(Le(input, zero), Eq(input, Floor(input))),
+                  FullLike(input, std::numeric_limits<float>::quiet_NaN()),
+                  real_result);
+  };
+
+  auto& b = *input.builder();
+  return b.ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_RETURN_IF_ERROR(EnsureOperandIsRealFp("Digamma", input));
+    return DoWithUpcastToF32(input, {BF16, F16}, do_it);
   });
 }
 

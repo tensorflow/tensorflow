@@ -151,11 +151,6 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
 //   Testcase{"round_to_even", RoundToEven,
 //            [](float x) { return std::nearbyint(x / 2) * 2; }},
 //
-// - No equivalent std function to compare with.
-//
-//   Testcase{"erfinv", ErfInv, std::erfinv},
-//   Testcase{"digamma", Digamma, std::digamma},
-//
 // - Needs a special test (function takes two args, and simply computing in f32
 //   and downcasting to f16 doesn't give the correct answer).
 //
@@ -164,7 +159,6 @@ XLA_TEST_P(MathExhaustiveTest, DISABLED_ON_INTERPRETER(F16)) {
 // TODO(b/123355973): Test math functions not from math.cc (e.g. log).
 // TODO(b/123355973): Test bf16 and f32.
 // TODO(b/123355973): Get rid of skip_infs / skip_neg_zero below if possible.
-// TODO(b/123355973): Reduce lgamma error if possible; it is very high.
 // TODO(b/123355973): Move these into exhaustive_op_test.
 INSTANTIATE_TEST_CASE_P(
     MathExhaustiveTest_Instantiation, MathExhaustiveTest,
