@@ -89,20 +89,21 @@ def tflite_jni_linkopts_unstripped():
 def tflite_linkopts():
     """Defines linker flags to reduce size of TFLite binary."""
     return tflite_linkopts_unstripped() + select({
-        "//tensorflow:android": [
-            "-s",  # Omit symbol table.
+        "//tensorflow:debug": [],
+        "//conditions:default": [
+            "-s",  # Omit symbol table, for all non debug builds
         ],
-        "//conditions:default": [],
     })
 
 def tflite_jni_linkopts():
     """Defines linker flags to reduce size of TFLite binary with JNI."""
-    return tflite_jni_linkopts_unstripped() + select({
-        "//tensorflow:android": [
-            "-s",  # Omit symbol table.
-            "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
+    return tflite_jni_linkopts_unstripped() + [
+        "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.]
+    ] + select({
+        "//tensorflow:debug": [],
+        "//conditions:default": [
+            "-s",  # Omit symbol table, for all non debug builds
         ],
-        "//conditions:default": [],
     })
 
 def tflite_jni_binary(
