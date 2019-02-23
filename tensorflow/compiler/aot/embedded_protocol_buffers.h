@@ -20,8 +20,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 #define TENSORFLOW_COMPILER_AOT_EMBEDDED_PROTOCOL_BUFFERS_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/statusor.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/protobuf.h"
 
 namespace tensorflow {
@@ -83,8 +83,8 @@ struct ProtobufToEmbed {
 // is stored in the object_file_data field in the returned
 // EmbeddedProtocolBuffers instance.
 StatusOr<EmbeddedProtocolBuffers> CreateEmbeddedProtocolBuffers(
-    StringPiece target_triple,
-    gtl::ArraySlice<ProtobufToEmbed> protobufs_to_embed);
+    absl::string_view target_triple,
+    absl::Span<const ProtobufToEmbed> protobufs_to_embed);
 
 }  // namespace tfcompile
 }  // namespace tensorflow

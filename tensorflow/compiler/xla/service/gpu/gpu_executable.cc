@@ -19,6 +19,7 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
@@ -50,7 +51,7 @@ GpuExecutable::GpuExecutable(
     const string& ptx, const std::vector<uint8>& cubin,
     std::pair<int, int> compute_capability,
     std::unique_ptr<const ThunkSchedule> thunk_schedule,
-    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<const BufferAssignment> assignment,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
@@ -160,7 +161,7 @@ Status GpuExecutable::ExecuteThunks(
     if (!block_status.ok()) {
       return InternalError(
           "Failed to complete all kernels launched on stream %p: %s",
-          main_stream, block_status.error_message().c_str());
+          main_stream, block_status.error_message());
     }
   }
 
@@ -197,7 +198,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
   }
   module_spec.AddCudaPtxInMemory(ptx().c_str());
 
-  tensorflow::gtl::FlatMap<int64, se::DeviceMemoryBase> globals;
+  absl::flat_hash_map<int64, se::DeviceMemoryBase> globals;
   se::ModuleHandle module_handle;
   executor->LoadModule(module_spec, &module_handle);
 
@@ -217,7 +218,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
 
       const Literal& literal =
           llvm_ir::LiteralForConstantAllocation(allocation);
-      CHECK(ShapeUtil::IsArray(literal.shape()));
+      CHECK(literal.shape().IsArray());
       if (!ShouldEmitLiteralInLlvmIr(literal)) {
         VLOG(3) << "H2D memcpy for constant with shape "
                 << ShapeUtil::HumanString(literal.shape());
@@ -234,7 +235,7 @@ GpuExecutable::ResolveConstantGlobals(se::StreamExecutor* executor) {
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   DeviceMemoryAllocator* memory_allocator = run_options->allocator();
 
@@ -260,10 +261,9 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
       if (buffer.is_null() && buffer.size() > 0) {
         return FailedPrecondition(
             "Cannot run XLA computation because pointer to (sub-)buffer at "
-            "index %s of parameter %lld was null.  All pointers to "
-            "(sub-)buffers must not be null, unless the (sub-)buffer has zero "
-            "elements.",
-            allocation.param_shape_index().ToString().c_str(), param_no);
+            "index %s of parameter %d was null.  All pointers to (sub-)buffers "
+            "must not be null, unless the (sub-)buffer has zero elements.",
+            allocation.param_shape_index().ToString(), param_no);
       }
 
       buffer_allocations_builder.RegisterBuffer(i, buffer);
@@ -310,12 +310,34 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
         TF_ASSIGN_OR_RETURN(
             const BufferAllocation::Slice slice,
             this->assignment_->GetUniqueSlice(src_hlo, sources[0]->index()));
-        CHECK(!slice.allocation()->is_entry_computation_parameter());
 
         se::DeviceMemoryBase src_base =
             buffer_allocations->GetDeviceAddress(slice.index());
         CHECK(!src_base.is_null() || src_base.size() == 0);
-        *device_memory = src_base;
+        if (!slice.allocation()->is_entry_computation_parameter()) {
+          // If the buffer coming out of the result is from a parameter, it
+          // means the caller aliased some parameter buffer to an output one
+          // (via the HloInputOutputAliasConfig API). If that is the case, the
+          // caller will receive a partially complete scoped shaped buffer,
+          // which they will have to fill up on return.
+          // Unfortunately the interface to the execute APIs are ShapedBuffer
+          // pointer based, which assumes caller ownership, and hence a buffer
+          // coming from there cannot be part of the new ScopedShapedBuffer we
+          // create for the result (which assumes ownership).
+          *device_memory = src_base;
+        } else {
+          const HloInputOutputAliasConfig& input_output_alias =
+              module().input_output_alias_config();
+          auto output_alias = input_output_alias.GetAliasedOutput(
+              slice.allocation()->parameter_number(),
+              slice.allocation()->param_shape_index());
+          CHECK(output_alias)
+              << "Ouput buffer is coming from parameter "
+              << slice.allocation()->parameter_number() << " at index "
+              << slice.allocation()->param_shape_index()
+              << ", but no alias exists";
+          CHECK_EQ(*output_alias, index);
+        }
         buffers_in_result.insert(src_base);
         return Status::OK();
       }));
@@ -326,7 +348,7 @@ StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteOnStream(
 
 StatusOr<ScopedShapedBuffer> GpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   // TODO(b/30671675): Implement asynchronous execution mode.
   return Unimplemented(
       "Asynchronous execution on stream is not yet supported on GPU.");

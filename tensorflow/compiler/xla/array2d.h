@@ -25,11 +25,10 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/lib/core/bits.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -105,7 +104,7 @@ std::unique_ptr<Array2D<NativeT>> MakeLinspaceArray2D(double from, double to,
   int64 count = n1 * n2;
   NativeT step =
       static_cast<NativeT>((count > 1) ? (to - from) / (count - 1) : 0);
-  auto set = [&array, n1, n2](int64 index, NativeT value) {
+  auto set = [&array, n2](int64 index, NativeT value) {
     (*array)(index / n2, index % n2) = value;
   };
   for (int64 i = 0; i < count - 1; ++i) {

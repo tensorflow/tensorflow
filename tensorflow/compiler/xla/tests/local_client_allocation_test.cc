@@ -45,7 +45,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
   TestAllocator* allocator = GetOrCreateAllocator(local_client_->platform());
 
   auto x_array =
-      LiteralToShapedBuffer(*LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f}));
+      LiteralToShapedBuffer(LiteralUtil::CreateR1<float>({0.0f, 1.0f, 2.0f}));
 
   int64 allocation_count_before = allocator_->allocation_count();
 
@@ -58,7 +58,7 @@ XLA_TEST_F(LocalClientAllocationTest, AddVectors) {
                           DefaultExecutableBuildOptions(), options);
 
   LiteralTestUtil::ExpectR1Near<float>(
-      {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(*result), error_spec_);
+      {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(*result), error_spec_);
 
   // At least one allocation should have been performed when executing the
   // computation.
@@ -92,7 +92,7 @@ XLA_TEST_F(LocalClientAllocationTest, RunOnDevices) {
         computation, {}, ExecutableBuildOptions().set_device_ordinal(d),
         ExecutableRunOptions().set_device_ordinal(d).set_allocator(allocator));
     LiteralTestUtil::ExpectR1Near<float>(
-        {2.0f, 4.0f, 6.0f}, *ShapedBufferToLiteral(result), error_spec_);
+        {2.0f, 4.0f, 6.0f}, ShapedBufferToLiteral(result), error_spec_);
 
     // At least one allocation should have been performed when executing the
     // computation.

@@ -22,7 +22,6 @@ import numpy as np
 from scipy import stats
 
 from tensorflow.contrib import distributions
-from tensorflow.contrib import linalg
 from tensorflow.contrib.distributions.python.ops import bijectors
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -30,6 +29,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops.linalg import linalg
 from tensorflow.python.platform import test
 
 bs = bijectors

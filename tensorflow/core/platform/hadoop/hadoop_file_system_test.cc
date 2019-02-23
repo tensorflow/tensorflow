@@ -75,9 +75,12 @@ TEST_F(HadoopFileSystemTest, RandomAccessFile) {
   std::unique_ptr<RandomAccessFile> reader;
   TF_EXPECT_OK(hdfs.NewRandomAccessFile(fname, &reader));
 
+  StringPiece result;
+  TF_EXPECT_OK(reader->Name(&result));
+  EXPECT_EQ(result, fname);
+
   string got;
   got.resize(content.size());
-  StringPiece result;
   TF_EXPECT_OK(
       reader->Read(0, content.size(), &result, gtl::string_as_array(&got)));
   EXPECT_EQ(content.size(), result.size());
@@ -94,7 +97,13 @@ TEST_F(HadoopFileSystemTest, WritableFile) {
   std::unique_ptr<WritableFile> writer;
   const string fname = TmpDir("WritableFile");
   TF_EXPECT_OK(hdfs.NewWritableFile(fname, &writer));
+  StringPiece result;
+  TF_EXPECT_OK(writer->Name(&result));
+  EXPECT_EQ(result, fname);
   TF_EXPECT_OK(writer->Append("content1,"));
+  int64 pos;
+  TF_EXPECT_OK(writer->Tell(&pos));
+  EXPECT_EQ(pos, 9);
   TF_EXPECT_OK(writer->Append("content2"));
   TF_EXPECT_OK(writer->Flush());
   TF_EXPECT_OK(writer->Sync());

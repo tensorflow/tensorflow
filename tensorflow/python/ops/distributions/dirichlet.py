@@ -30,6 +30,7 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -44,7 +45,7 @@ dtype `self.dtype` and be in the `(self.event_shape() - 1)`-simplex, i.e.,
 `self.batch_shape() + self.event_shape()`."""
 
 
-@tf_export("distributions.Dirichlet")
+@tf_export(v1=["distributions.Dirichlet"])
 class Dirichlet(distribution.Distribution):
   """Dirichlet distribution.
 
@@ -104,10 +105,13 @@ class Dirichlet(distribution.Distribution):
   #### Examples
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Create a single trivariate Dirichlet, with the 3rd class being three times
   # more frequent than the first. I.e., batch_shape=[], event_shape=[3].
   alpha = [1., 2, 3]
-  dist = tf.distributions.Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
 
   dist.sample([4, 5])  # shape: [4, 5, 3]
 
@@ -129,7 +133,7 @@ class Dirichlet(distribution.Distribution):
   # Create batch_shape=[2], event_shape=[3]:
   alpha = [[1., 2, 3],
            [4, 5, 6]]   # shape: [2, 3]
-  dist = tf.distributions.Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
 
   dist.sample([4, 5])  # shape: [4, 5, 2, 3]
 
@@ -144,7 +148,7 @@ class Dirichlet(distribution.Distribution):
 
   ```python
   alpha = tf.constant([1.0, 2.0, 3.0])
-  dist = tf.distributions.Dirichlet(alpha)
+  dist = tfd.Dirichlet(alpha)
   samples = dist.sample(5)  # Shape [5, 3]
   loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
   # Unbiased stochastic gradients of the loss function
@@ -153,6 +157,14 @@ class Dirichlet(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration,
                validate_args=False,
@@ -233,7 +245,7 @@ class Dirichlet(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return math_ops.reduce_sum((self.concentration - 1.) * math_ops.log(x), -1)
+    return math_ops.reduce_sum(math_ops.xlogy(self.concentration - 1., x), -1)
 
   def _log_normalization(self):
     return special_math_ops.lbeta(self.concentration)

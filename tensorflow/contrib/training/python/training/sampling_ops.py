@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -300,10 +301,11 @@ def _verify_data_inputs(tensor_list):
   """Verify that batched data inputs are well-formed."""
   for tensor in tensor_list:
     # Data tensor should have a batch dimension.
-    tensor_shape = tensor.get_shape().with_rank_at_least(1)
+    shape = tensor.get_shape().with_rank_at_least(1)
 
     # Data batch dimensions must be compatible.
-    tensor_shape[0].assert_is_compatible_with(tensor_list[0].get_shape()[0])
+    tensor_shape.dimension_at_index(shape, 0).assert_is_compatible_with(
+        tensor_list[0].get_shape()[0])
 
   return tensor_list
 
@@ -340,10 +342,11 @@ def _verify_input(tensor_list, labels, probs_list):
 
   for tensor in tensor_list:
     # Data tensor should have a batch dimension.
-    tensor_shape = tensor.get_shape().with_rank_at_least(1)
+    shape = tensor.get_shape().with_rank_at_least(1)
 
     # Data and label batch dimensions must be compatible.
-    tensor_shape[0].assert_is_compatible_with(labels.get_shape()[0])
+    tensor_shape.dimension_at_index(shape, 0).assert_is_compatible_with(
+        labels.get_shape()[0])
 
   # Data and labels must have the same, strictly positive batch size. Since we
   # can't assume we know the batch size at graph creation, add runtime checks.

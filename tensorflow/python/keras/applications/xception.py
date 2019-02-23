@@ -20,12 +20,25 @@ from __future__ import division
 from __future__ import print_function
 
 from keras_applications import xception
-from tensorflow.python.util.tf_export import tf_export
 
-Xception = xception.Xception
-decode_predictions = xception.decode_predictions
-preprocess_input = xception.preprocess_input
+from tensorflow.python.keras.applications import keras_modules_injection
+from tensorflow.python.util.tf_export import keras_export
 
-tf_export('keras.applications.xception.Xception',
-          'keras.applications.Xception')(Xception)
-tf_export('keras.applications.xception.preprocess_input')(preprocess_input)
+
+@keras_export('keras.applications.xception.Xception',
+              'keras.applications.Xception')
+@keras_modules_injection
+def Xception(*args, **kwargs):
+  return xception.Xception(*args, **kwargs)
+
+
+@keras_export('keras.applications.xception.decode_predictions')
+@keras_modules_injection
+def decode_predictions(*args, **kwargs):
+  return xception.decode_predictions(*args, **kwargs)
+
+
+@keras_export('keras.applications.xception.preprocess_input')
+@keras_modules_injection
+def preprocess_input(*args, **kwargs):
+  return xception.preprocess_input(*args, **kwargs)

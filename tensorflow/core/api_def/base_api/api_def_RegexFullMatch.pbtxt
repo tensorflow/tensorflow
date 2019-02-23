@@ -9,7 +9,7 @@ END
   in_arg {
     name: "pattern"
     description: <<END
-A 1-D string tensor of the regular expression to match the input.
+A scalar string tensor containing the regular expression to match the input.
 END
   }
   out_arg {

@@ -108,7 +108,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
   //    c
   //
   // Calls are made via kCall, kWhile, and kMap instructions.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation =
       module->AddEmbeddedComputation(MakeConditionComputation());
   HloComputation* c_computation =
@@ -149,7 +149,7 @@ TEST_F(FlattenCallGraphTest, ComplexGraph) {
 
 // Test corner case of a computation used as a body and a loop condition.
 TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* cond_computation;
   {
     HloComputation::Builder builder(TestName() + ".cond");
@@ -201,7 +201,7 @@ TEST_F(FlattenCallGraphTest, SharedWhileConditionAndBody) {
 //     C
 //
 TEST_F(FlattenCallGraphTest, FlattenCalls) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* c_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 
@@ -224,7 +224,7 @@ TEST_F(FlattenCallGraphTest, FlattenCalls) {
 }
 
 TEST_F(FlattenCallGraphTest, FlattenCallsInConditional) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation* sub_computation =
       module->AddEmbeddedComputation(MakeScalarComputation());
 

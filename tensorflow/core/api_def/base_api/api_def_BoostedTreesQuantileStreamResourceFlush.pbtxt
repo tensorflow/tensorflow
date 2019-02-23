@@ -1,0 +1,31 @@
+op {
+  graph_op_name: "BoostedTreesQuantileStreamResourceFlush"
+  visibility: HIDDEN
+  in_arg {
+    name: "quantile_stream_resource_handle"
+    description: <<END
+resource handle referring to a QuantileStreamResource.
+END
+  }
+  in_arg {
+    name: "num_buckets",
+    description: <<END
+int; approximate number of buckets unless using generate_quantiles.
+END
+  }
+  attr {
+    name: "generate_quantiles"
+    description: <<END
+bool; If True, the output will be the num_quantiles for each stream where the ith
+entry is the ith quantile of the input with an approximation error of epsilon.
+Duplicate values may be present.
+If False, the output will be the points in the histogram that we got which roughly
+translates to 1/epsilon boundaries and without any duplicates.
+Default to False.
+END
+  }
+  summary: "Flush the summaries for a quantile stream resource."
+  description: <<END
+An op that flushes the summaries for a quantile stream resource.
+END
+}

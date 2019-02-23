@@ -18,6 +18,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "tensorflow/core/framework/device_attributes.pb.h"
 #include "tensorflow/core/framework/device_base.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/lib/core/refcount.h"
@@ -30,7 +31,8 @@ class CompleteGroupRequest;
 class CompleteGroupResponse;
 class CompleteInstanceRequest;
 class CompleteInstanceResponse;
-class DeviceLocality;
+class Device;
+class DeviceMgr;
 class GetStepSequenceRequest;
 class GetStepSequenceResponse;
 class Op;
@@ -40,6 +42,7 @@ class Tensor;
 enum CollectiveType {
   REDUCTION_COLLECTIVE = 0,
   BROADCAST_COLLECTIVE,
+  GATHER_COLLECTIVE,
   UNDEFINED_COLLECTIVE,
 };
 
@@ -64,10 +67,12 @@ struct CollGroupParams {
 // interpretation.  On first execution the runtime will update this
 // structure with decisions that will guide all subsequent executions.
 struct CollImplDetails {
+  string collective_name;
   std::vector<std::vector<int>> subdiv_permutations;
   std::vector<int> subdiv_offsets;
-  // broadcast only: rank of source in each subdiv
-  std::vector<int> subdiv_source_rank;
+  std::vector<int> subdiv_source_rank;  // rank of source in each subdiv
+  std::vector<int32>
+      dependencies;  // collective instances on which this node depends
 };
 
 // Data common to all members of a collective instance.
@@ -83,6 +88,13 @@ struct CollInstanceParams {
   std::vector<string> task_names;
   // True if every task has the same number of devices.
   bool same_num_devices_per_task = false;
+  // Task -> number of devices on that task.
+  std::unordered_map<string, int32> num_devices_per_task;
+  // If passed in to GPUOptions in ConfigProto, defines a good ring order for
+  // GPUs.  Assumes same GPU configuration at each worker.
+  string gpu_ring_order = "";
+  // Valid when using a communicator-based collective mechanism, e.g. NCCL.
+  string communicator_key;
   CollImplDetails impl_details;
   string ToString() const;
   CollInstanceParams& operator=(const struct CollInstanceParams& other);
@@ -104,6 +116,7 @@ struct CollectiveParams {
   string name = "";        // node name used only for log or error messages
   int default_rank = -1;   // index of this op within device_names
   bool is_source = false;  // broadcast only
+  int source_rank = -1;    // broadcast only
   // Rank of this device in each subdivision permutation.
   std::vector<int> subdiv_rank;
   std::unique_ptr<OpKernel> merge_op;  // reduction only
@@ -256,10 +269,27 @@ class CollectiveExecutor : public PeerAccessInterface, public core::RefCounted {
   virtual void CompleteParamsAsync(const string& device, CollectiveParams* cp,
                                    CancellationManager* cancel_mgr,
                                    StatusCallback done) {
-    cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr, done);
+    done(errors::Internal(
+        "A collective Op has been called in a context in which "
+        "a CollectiveExecutor has not been provided."));
   }
 
   virtual PerStepCollectiveRemoteAccess* remote_access() { return nullptr; }
+
+  // `WaitForDependencies` and `Launched` are used for fine-grained control of
+  // execution order between collective instances.  These functions are intended
+  // to be called in `Run` function of collective implementations, and may be
+  // used to make part, or whole, of the collective execution ordered with
+  // respect to other collective instances.
+  //
+  // `WaitForDependencies` will block until it is safe to continue the callee's
+  // execution, where safety is defined as: ordered with respect to the
+  // collective instances defined in the callee's `wait_for` attribute.
+  virtual void WaitForDependencies(const CollectiveParams& col_params) {}
+  // `Launched` unblocks the dependent collective instances by recording that
+  // this callee device has completed the critical portion of the collective
+  // execution.
+  virtual void Launched(const CollectiveParams& col_params) {}
 
   // Used to designate an invalid group or instance key.
   static int64 kInvalidId;
@@ -305,6 +335,119 @@ class PerStepCollectiveRemoteAccess : public CollectiveRemoteAccess {
   virtual ~PerStepCollectiveRemoteAccess() {}
   virtual void StartAbort(const Status& s) = 0;
 };
+
+class CollectiveContext {
+ public:
+  CollectiveContext(CollectiveExecutor* col_exec, const DeviceMgr* dev_mgr,
+                    OpKernelContext* ctx, OpKernelContext::Params* op_params,
+                    const CollectiveParams& col_params, const string& exec_key,
+                    int64 step_id, const Tensor* input, Tensor* output);
+
+  virtual ~CollectiveContext() = default;
+
+  CollectiveExecutor* col_exec;        // Not owned
+  const DeviceMgr* dev_mgr;            // Not owned
+  OpKernelContext* op_ctx;             // Not owned
+  OpKernelContext::Params* op_params;  // Not owned
+  const CollectiveParams& col_params;
+  const string exec_key;
+  const int64 step_id;
+  const Tensor* input;  // Not owned
+  Tensor* output;       // Not owned
+  Device* device;       // The device for which this instance labors
+  const string device_name;
+  DeviceLocality device_locality;
+};
+
+// Interface of a Collective Op implementation.  Each specific CollectiveOp will
+// implement this interface and register the implementation via the
+// CollectiveRegistry detailed below.  See common_runtime/ring_reducer and
+// common_runtime/hierarchical_tree_broadcaster for examples.
+class CollectiveImplementationInterface {
+ public:
+  virtual ~CollectiveImplementationInterface() = default;
+
+  // Initializes the portions of `col_params` specific to this
+  // implementation.  Called exactly once for every Collective instance during
+  // the CollectiveParams resolution process when the graph is first executed,
+  // at the end of `CompleteInstanceLocal()`.
+  // NOTE(ayushd): This is effectively a static function because it modifies the
+  // `col_params` passed in and should not manipulate any data members.  However
+  // because it is virtual and needs to be implemented by every derived class we
+  // do not mark it as static.
+  virtual Status InitializeCollectiveParams(CollectiveParams* col_params) = 0;
+
+  // Prepares the CollectiveContext for executing this CollectiveImplementation.
+  // Called from CollectiveExecutor right before calling Run().  The
+  // CollectiveContext passed in must outlive the CollectiveImplementation
+  // object.
+  virtual Status InitializeCollectiveContext(CollectiveContext* col_ctx) = 0;
+
+  // Initializes instance params at the beginning of `CompleteInstanceLocal()`,
+  // unlike `InitializeCollectiveParams` which is called at the end.  This
+  // function is called before all devices in the instance are discovered, and
+  // may be used to broadcast data via the shared `InstanceRec` object in
+  // collective param resolution to all devices.
+  virtual Status InitializeInstanceBeforeGroupDiscovery(
+      CollectiveParams* col_params) = 0;
+
+  // Processes and moves data according to the logic of this Collective
+  // implementation.  Relies on appropriate initialization of op-specific
+  // CollectiveParams in InitializeCollectiveParams(), as well as appropriate
+  // context initialization in InitializeCollectiveContext().
+  virtual void Run(StatusCallback done) = 0;
+};
+
+// Static-methods only class for registering and looking up collective
+// implementations.
+class CollectiveRegistry {
+ public:
+  using Factory = std::function<CollectiveImplementationInterface*()>;
+  // Looks up a previously registered CollectiveImplementation under
+  // `collective_name`.  If found, creates an instance of the implementation and
+  // assign to `implementation`.
+  static Status Lookup(const string& collective_name,
+                       CollectiveImplementationInterface** implementation);
+
+  // Looks up a previously registered CollectiveImplementation under
+  // `collective_name`.  If found, returns the static instance of this
+  // implementation via `implementation`.  This instance should only be used to
+  // call InitializateCollectiveParams.
+  static Status LookupParamResolverInstance(
+      const string& collective_name,
+      CollectiveImplementationInterface** implementation);
+
+  // Returns all registered collective implementations.
+  static void GetAll(
+      std::vector<CollectiveImplementationInterface*>* implementations);
+
+ private:
+  friend class CollectiveRegistration;
+  // Registers a CollectiveImplementation with name `collective_name` and
+  // factory `factory`.  The latter is a function used to create instances of
+  // the CollectiveImplementation.  Also creates a static instance of the
+  // implementation - this instance is used during param resolution and should
+  // only be used to call InitializeCollectiveParams.
+  static Status Register(const string& collective_name, Factory factory);
+
+  static Status LookupHelper(const string& collective_name,
+                             CollectiveImplementationInterface** implementation,
+                             bool param_resolver);
+};
+
+// Class used to call CollectiveRegistry::Register.  This should only be used to
+// create a global static object.
+class CollectiveRegistration {
+ public:
+  CollectiveRegistration(const string& collective_name,
+                         CollectiveRegistry::Factory factory) {
+    TF_CHECK_OK(CollectiveRegistry::Register(collective_name, factory));
+  }
+};
+
+#define REGISTER_COLLECTIVE(name, implementation)             \
+  static CollectiveRegistration register_##name##_collective( \
+      #name, []() { return new implementation; });
 
 }  // namespace tensorflow
 

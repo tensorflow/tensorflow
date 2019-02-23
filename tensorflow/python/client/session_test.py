@@ -49,6 +49,8 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gen_control_flow_ops
+# Import gradients to resolve circular imports
+from tensorflow.python.ops import gradients  # pylint: disable=unused-import
 from tensorflow.python.ops import gradients_impl
 from tensorflow.python.ops import math_ops
 # Import resource_variable_ops for the variables-to-tensor implicit conversion.
@@ -58,6 +60,12 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+
+try:
+  import attr  # pylint:disable=g-import-not-at-top
+except ImportError:
+  attr = None
+
 
 # NOTE(mrry): Dummy shape registration for ops used in the tests, since they
 # don't have C++ op registrations on which to attach C++ shape fns.
@@ -112,11 +120,17 @@ class SessionTest(test_util.TensorFlowTestCase):
       inp = constant_op.constant(10.0, name='W1')
       self.assertAllEqual(inp.eval(), 10.0)
 
-      devices = sess.list_devices()
-      self.assertEqual(2, len(devices))
-      for device in devices:
-        self.assertEqual('CPU', framework_device_lib.DeviceSpec.from_string(
-            device.name).device_type)
+      num_cpu_devices = 0
+      num_gpu_devices = 0
+      for device in sess.list_devices():
+        device_type = framework_device_lib.DeviceSpec.from_string(
+            device.name).device_type
+        if device_type == 'CPU':
+          num_cpu_devices += 1
+        elif device_type == 'GPU':
+          num_gpu_devices += 1
+      self.assertEqual(2, num_cpu_devices)
+      self.assertEqual(0, num_gpu_devices)
 
   def testPerSessionThreads(self):
     with session.Session(
@@ -297,6 +311,84 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertEqual(42.0, res[3])
       self.assertEqual(None, res[2])
       self.assertEqual(44.0, res[1])
+
+  @test_util.run_v1_only('b/120545219')
+  def testFetchAttrs(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s
+    class SampleAttr(object):
+      field1 = attr.ib()
+      field2 = attr.ib()
+
+    val1 = np.array([1.2, 3.4, 5.6])
+    val2 = np.array([[1, 2], [4, 3]])
+    val3 = np.array([10, 20, 30])
+
+    t1 = constant_op.constant(val1)
+    t2 = constant_op.constant(val2)
+
+    sample = SampleAttr(t1, t2)
+    with session.Session() as sess:
+      result = sess.run(sample)
+      self.assertIsInstance(result, SampleAttr)
+      self.assertAllEqual(val1, result.field1)
+      self.assertAllEqual(val2, result.field2)
+
+      result = sess.run(sample, feed_dict={sample.field1: val3})
+      self.assertIsInstance(result, SampleAttr)
+      self.assertAllEqual(val3, result.field1)
+      self.assertAllEqual(val2, result.field2)
+
+  @test_util.run_v1_only('b/120545219')
+  def testFetchNestedAttrs(self):
+    if attr is None:
+      self.skipTest('attr module is unavailable.')
+
+    @attr.s
+    class SampleAttr(object):
+      field0 = attr.ib()
+      field1 = attr.ib()
+
+    v1 = 10
+    v2 = 20
+    v3 = np.float32(1.2)
+    v4 = np.float32(3.4)
+    v5 = np.float64(100.001)
+    v6 = np.float64(-23.451)
+    arr1 = np.array([1.2, 6.7, 3.4])
+    arr2 = np.array([7, 11, 3])
+    sample = SampleAttr(
+        SampleAttr(
+            SampleAttr(constant_op.constant(v1), constant_op.constant(v2)),
+            SampleAttr(constant_op.constant(arr1), constant_op.constant(arr2))),
+        {'A': SampleAttr(constant_op.constant(v3), constant_op.constant(v4)),
+         'B': [SampleAttr(constant_op.constant(v5), constant_op.constant(v6))]})
+
+    with session.Session() as sess:
+      result = sess.run(sample)
+      self.assertIsInstance(result, SampleAttr)
+      self.assertIsInstance(result.field0, SampleAttr)
+      self.assertIsInstance(result.field0.field0, SampleAttr)
+      self.assertIsInstance(result.field0.field1, SampleAttr)
+      self.assertIsInstance(result.field0.field1.field0, np.ndarray)
+      self.assertAllEqual(arr1, result.field0.field1.field0)
+      self.assertIsInstance(result.field0.field1.field1, np.ndarray)
+      self.assertAllEqual(arr2, result.field0.field1.field1)
+      self.assertIsInstance(result.field1, dict)
+      self.assertIn('A', result.field1)
+      self.assertIn('B', result.field1)
+      self.assertIsInstance(result.field1['A'], SampleAttr)
+      self.assertAllEqual(
+          [v3, v4],
+          [result.field1['A'].field0, result.field1['A'].field1])
+      self.assertIsInstance(result.field1['B'], list)
+      self.assertEqual(1, len(result.field1['B']))
+      self.assertIsInstance(result.field1['B'][0], SampleAttr)
+      self.assertAllEqual(
+          [v5, v6],
+          [result.field1['B'][0].field0, result.field1['B'][0].field1])
 
   def testFetchNestingEmptyOneLevel(self):
     with session.Session() as sess:
@@ -934,11 +1026,12 @@ class SessionTest(test_util.TensorFlowTestCase):
       fed_c_val = c.eval(feed_dict={a.name: [[4.0, 4.0]]})
       self.assertAllEqual([[16.0, 16.0, 16.0]], fed_c_val)
 
+  @test_util.run_v1_only('b/120545219')
   def testOperationRunMethod(self):
     with session.Session():
       a = constant_op.constant(1.0, shape=[1, 2])
       b = constant_op.constant(2.0, shape=[1, 2], name='b')
-      v = variables.Variable(a, a.dtype)
+      v = variables.VariableV1(a, a.dtype)
       assign_a_to_v = state_ops.assign(v, a)
 
       assign_a_to_v.eval()
@@ -1064,6 +1157,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         else:
           importer.import_graph_def(gdef, name='import')
 
+  @test_util.run_v1_only('b/120545219')
   def testParallelRunAndSingleBuild(self):
     with session.Session() as sess:
       c = constant_op.constant(5.0)
@@ -1084,6 +1178,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       for t in threads:
         t.join()
 
+  @test_util.run_v1_only('b/120545219')
   def testParallelRunAndParallelBuild(self):
     with session.Session() as sess:
       c = constant_op.constant(5.0)
@@ -1184,6 +1279,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaisesRegexp(RuntimeError, 'The Session graph is empty.'):
         sess.run({})
 
+  @test_util.run_v1_only('b/120545219')
   def testNotEntered(self):
     # pylint: disable=protected-access
     self.assertEqual(ops._default_session_stack.get_default(), None)
@@ -1199,6 +1295,7 @@ class SessionTest(test_util.TensorFlowTestCase):
           ValueError, lambda e: 'No default session is registered.' in str(e)):
         c_2.eval()
 
+  @test_util.run_v1_only('b/120545219')
   def testInteractive(self):
     with ops.device('/cpu:0'):
       sess = session.InteractiveSession()
@@ -1211,6 +1308,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[24.0]], e.eval())
       sess.close()
 
+  @test_util.run_v1_only('b/120545219')
   def testMultipleInteractiveSessionsWarning(self):
     # Reinitialize the global state to ensure that the expected warnings will
     # be emitted.
@@ -1238,6 +1336,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     sess2.close()
     sess.close()
 
+  @test_util.run_v1_only('b/120545219')
   def testInteractivePlacePrunedGraph(self):
     sess = session.InteractiveSession()
 
@@ -1259,6 +1358,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       a.eval()
     sess.close()
 
+  @test_util.run_v1_only('b/120545219')
   def testDefaultSessionPlacePrunedGraph(self):
     sess = session.Session()
 
@@ -1679,9 +1779,11 @@ class SessionTest(test_util.TensorFlowTestCase):
     sess.run(a, run_metadata=run_metadata)
     self.assertEqual(len(run_metadata.partition_graphs), 0)
 
+  @test_util.run_v1_only('b/120545219')
   def testOutputPartitionGraphsDirect(self):
     self.runTestOutputPartitionGraphs(session.Session())
 
+  @test_util.run_v1_only('b/120545219')
   def testOutputPartitionGraphsDistributed(self):
     server = server_lib.Server.create_local_server()
     self.runTestOutputPartitionGraphs(session.Session(server.target))
@@ -1706,6 +1808,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     del sess1
     del sess2
 
+  @test_util.run_v1_only('b/120545219')
   def testAsDefault(self):
     c = constant_op.constant(37)
     sess = session.Session()
@@ -1731,6 +1834,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesRegexp(TypeError, 'graph must be a tf.Graph'):
       session.Session(graph=37)
 
+  @test_util.run_v1_only('b/120545219')
   def testTimeoutWithShortOperations(self):
     num_epochs = 5
     q = data_flow_ops.FIFOQueue(capacity=50, dtypes=[dtypes.int32], shapes=[()])
@@ -1744,6 +1848,7 @@ class SessionTest(test_util.TensorFlowTestCase):
         sess.run(enqueue_op)
       self.assertEqual(sess.run(q.size()), num_epochs * 2)
 
+  @test_util.run_v1_only('b/120545219')
   def testRegisterFetchAndFeedConversionFunctions(self):
 
     class SquaredTensor(object):
@@ -1760,7 +1865,7 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaises(ValueError):
       session.register_session_run_conversion_functions(SquaredTensor, fetch_fn,
                                                         feed_fn1, feed_fn2)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       np1 = np.array([1.0, 1.5, 2.0, 2.5])
       np2 = np.array([3.0, 3.5, 4.0, 4.5])
       squared_tensor = SquaredTensor(np2)
@@ -1775,6 +1880,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       squared_eval = sess.partial_run(partial_run, squared_tensor)
       self.assertAllClose(np2 * np2, squared_eval)
 
+  @test_util.run_v1_only('b/120545219')
   def testDefaultLogDevicePlacement(self):
 
     class CaptureStderr(str):
@@ -1824,6 +1930,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in str(log),
                       str(log))
 
+  @test_util.run_v1_only('b/120545219')
   def testLocalMasterSessionTimeout(self):
     # Test that the timeout passed in a config to the session works correctly.
     config = config_pb2.ConfigProto(operation_timeout_in_ms=1000)
@@ -1837,6 +1944,7 @@ class SessionTest(test_util.TensorFlowTestCase):
       with self.assertRaises(errors.DeadlineExceededError):
         sess.run(dequeued_t)
 
+  @test_util.run_v1_only('b/120545219')
   def testDefaultServerTimeout(self):
     # Test that the default server config timeout gets used when no Session
     # config is provided.
@@ -1862,9 +1970,11 @@ class SessionTest(test_util.TensorFlowTestCase):
     with self.assertRaisesOpError('has inputs from different frames'):
       sess.run(res, feed_dict={data: 1.0})
 
+  @test_util.run_v1_only('b/120545219')
   def testBuildGraphErrorDirect(self):
     self.runTestBuildGraphError(session.Session())
 
+  @test_util.run_v1_only('b/120545219')
   def testBuildGraphErrorDist(self):
     server = server_lib.Server.create_local_server()
     self.runTestBuildGraphError(session.Session(server.target))
@@ -1903,9 +2013,11 @@ class SessionTest(test_util.TensorFlowTestCase):
       result = sess.run(f)
       self.assertEqual(result, 2.0)
 
+  @test_util.run_v1_only('b/120545219')
   def testAddFunctionToSession(self):
     self.runTestAddFunctionToSession()
 
+  @test_util.run_v1_only('b/120545219')
   def testAddFunctionToGrpcSession(self):
     server = server_lib.Server.create_local_server()
     self.runTestAddFunctionToSession(server.target)
@@ -1919,11 +2031,12 @@ class SessionTest(test_util.TensorFlowTestCase):
     with session.Session():
       pass
 
+  @test_util.run_v1_only('b/120545219')
   def testAutoConvertAndCheckData(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       a = array_ops.placeholder(dtype=dtypes.string)
       with self.assertRaisesRegexp(
-          TypeError, 'Type of feed value 1 with type <(\w+) \'int\'> is not'):
+          TypeError, r'Type of feed value 1 with type <(\w+) \'int\'> is not'):
         sess.run(a, feed_dict={a: 1})
 
 

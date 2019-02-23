@@ -23,16 +23,18 @@ import copy
 
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.keras import backend as K
-from tensorflow.python.keras.engine.base_layer import InputSpec
 from tensorflow.python.keras.engine.base_layer import Layer
+from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.training.tracking import base as trackable
+from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.layers.Wrapper')
+@keras_export('keras.layers.Wrapper')
 class Wrapper(Layer):
   """Abstract wrapper base class.
 
@@ -44,6 +46,7 @@ class Wrapper(Layer):
       layer: The layer to be wrapped.
   """
 
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
@@ -111,7 +114,7 @@ class Wrapper(Layer):
     return cls(layer, **config)
 
 
-@tf_export('keras.layers.TimeDistributed')
+@keras_export('keras.layers.TimeDistributed')
 class TimeDistributed(Wrapper):
   """This wrapper allows to apply a layer to every temporal slice of an input.
 
@@ -167,7 +170,7 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
-    self._track_checkpointable(layer, name='layer')
+    self._track_trackable(layer, name='layer')
 
   def _get_shape_tuple(self, init_tuple, tensor, start_idx, int_shape=None):
     """Finds non-specific dimensions in the static shapes.
@@ -203,8 +206,12 @@ class TimeDistributed(Wrapper):
 
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape).as_list()
-    assert len(input_shape) >= 3
-    self.input_spec = InputSpec(shape=input_shape)
+    if len(input_shape) < 3:
+      raise ValueError(
+          '`TimeDistributed` Layer should be passed an `input_shape ` '
+          'with at least 3 dimensions, received: ' + str(input_shape))
+    # Don't enforce the batch or time dimension.
+    self.input_spec = InputSpec(shape=[None, None] + input_shape[2:])
     child_input_shape = [input_shape[0]] + input_shape[2:]
     if not self.layer.built:
       # The base layer class calls a conversion function on the input shape to
@@ -229,17 +236,12 @@ class TimeDistributed(Wrapper):
     kwargs = {}
     if generic_utils.has_arg(self.layer.call, 'training'):
       kwargs['training'] = training
-    uses_learning_phase = False  # pylint: disable=redefined-outer-name
 
     input_shape = K.int_shape(inputs)
     if input_shape[0]:
       # batch size matters, use rnn-based implementation
       def step(x, _):
-        global uses_learning_phase  # pylint: disable=global-variable-undefined
         output = self.layer.call(x, **kwargs)
-        if hasattr(output, '_uses_learning_phase'):
-          uses_learning_phase = (output._uses_learning_phase or
-                                 uses_learning_phase)
         return output, []
 
       _, outputs, _ = K.rnn(
@@ -267,8 +269,6 @@ class TimeDistributed(Wrapper):
         inner_mask_shape = self._get_shape_tuple((-1,), mask, 2)
         kwargs['mask'] = K.reshape(mask, inner_mask_shape)
       y = self.layer.call(inputs, **kwargs)
-      if hasattr(y, '_uses_learning_phase'):
-        uses_learning_phase = y._uses_learning_phase
       # Shape: (num_samples, timesteps, ...)
       output_shape = self.compute_output_shape(input_shape).as_list()
       output_shape = self._get_shape_tuple(
@@ -280,9 +280,6 @@ class TimeDistributed(Wrapper):
         self.layer.activity_regularizer is not None):
       regularization_loss = self.layer.activity_regularizer(y)
       self.add_loss(regularization_loss, inputs)
-
-    if uses_learning_phase:
-      y._uses_learning_phase = True
     return y
 
   def compute_mask(self, inputs, mask=None):
@@ -360,7 +357,7 @@ class TimeDistributed(Wrapper):
     return output_mask
 
 
-@tf_export('keras.layers.Bidirectional')
+@keras_export('keras.layers.Bidirectional')
 class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
@@ -389,6 +386,7 @@ class Bidirectional(Wrapper):
   ```
   """
 
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
@@ -398,6 +396,10 @@ class Bidirectional(Wrapper):
       raise ValueError('Invalid merge mode. '
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
+    if getattr(layer, 'zero_output_for_mask', None) is not None:
+      # Force the zero_output_for_mask to be True if it presents.
+      layer.zero_output_for_mask = True
+
     self.forward_layer = copy.copy(layer)
     config = layer.get_config()
     config['go_backwards'] = not config['go_backwards']
@@ -417,8 +419,8 @@ class Bidirectional(Wrapper):
     self._num_constants = None
     super(Bidirectional, self).__init__(layer, **kwargs)
     self.input_spec = layer.input_spec
-    self._track_checkpointable(self.forward_layer, name='forward_layer')
-    self._track_checkpointable(self.backward_layer, name='backward_layer')
+    self._track_trackable(self.forward_layer, name='forward_layer')
+    self._track_trackable(self.backward_layer, name='backward_layer')
 
   @property
   def trainable(self):
@@ -517,7 +519,10 @@ class Bidirectional(Wrapper):
     if is_keras_tensor:
       # Compute the full input spec, including state
       full_input = [inputs] + additional_inputs
-      full_input_spec = self.input_spec + additional_specs
+      # The original input_spec is None since there could be a nested tensor
+      # input. Update the input_spec to match the inputs.
+      full_input_spec = [None for _ in range(len(nest.flatten(inputs)))
+                        ] + additional_specs
 
       # Perform the call with temporarily replaced input_spec
       original_input_spec = self.input_spec
@@ -545,11 +550,27 @@ class Bidirectional(Wrapper):
 
     if initial_state is not None and generic_utils.has_arg(
         self.layer.call, 'initial_state'):
-      forward_state = initial_state[:len(initial_state) // 2]
-      backward_state = initial_state[len(initial_state) // 2:]
-      y = self.forward_layer.call(inputs, initial_state=forward_state, **kwargs)
-      y_rev = self.backward_layer.call(
-          inputs, initial_state=backward_state, **kwargs)
+      forward_inputs = [inputs[0]]
+      backward_inputs = [inputs[0]]
+      pivot = len(initial_state) // 2 + 1
+      # add forward initial state
+      forward_state = inputs[1:pivot]
+      forward_inputs += forward_state
+      if self._num_constants is None:
+        # add backward initial state
+        backward_state = inputs[pivot:]
+        backward_inputs += backward_state
+      else:
+        # add backward initial state
+        backward_state = inputs[pivot:-self._num_constants]
+        backward_inputs += backward_state
+        # add constants for forward and backward layers
+        forward_inputs += inputs[-self._num_constants:]
+        backward_inputs += inputs[-self._num_constants:]
+      y = self.forward_layer.call(forward_inputs,
+                                  initial_state=forward_state, **kwargs)
+      y_rev = self.backward_layer.call(backward_inputs,
+                                       initial_state=backward_state, **kwargs)
     else:
       y = self.forward_layer.call(inputs, **kwargs)
       y_rev = self.backward_layer.call(inputs, **kwargs)
@@ -571,15 +592,9 @@ class Bidirectional(Wrapper):
       output = y * y_rev
     elif self.merge_mode is None:
       output = [y, y_rev]
-
-    # Properly set learning phase
-    if (getattr(y, '_uses_learning_phase', False) or
-        getattr(y_rev, '_uses_learning_phase', False)):
-      if self.merge_mode is None:
-        for out in output:
-          out._uses_learning_phase = True
-      else:
-        output._uses_learning_phase = True
+    else:
+      raise ValueError(
+          'Unrecognized value for `merge_mode`: %s' % (self.merge_mode))
 
     if self.return_state:
       if self.merge_mode is None:

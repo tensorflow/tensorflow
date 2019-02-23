@@ -51,6 +51,7 @@ class Monitor(object):
     else:
       if session is None:
         raise ValueError("Should provide a `session` in Graph mode.")
+      session.run(step_callable.initialize())
       self._run_step = session.make_callable(step_callable())
       session.run(variables.global_variables_initializer())
 

@@ -20,6 +20,10 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/service/hlo_buffer.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -28,15 +32,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 
-using ::tensorflow::str_util::Join;
-using ::tensorflow::strings::StrAppend;
-using ::tensorflow::strings::StrCat;
+using absl::StrAppend;
 
 // Data structure used to construct the alias analysis. Thrown away after alias
 // analysis is complete. This data structure keeps track of which sets of
@@ -59,8 +59,9 @@ class BufferValueMap {
   // construction process.
   using BufferNumber = int64;
 
-  explicit BufferValueMap(const HloDataflowAnalysis& dataflow)
-      : dataflow_(dataflow) {
+  explicit BufferValueMap(HloModule* module,
+                          const HloDataflowAnalysis& dataflow)
+      : module_(module), dataflow_(dataflow) {
     buffers_.reserve(dataflow_.values().size());
     value_to_buffer_number_.reserve(dataflow_.values().size());
     for (const HloValue* value : dataflow_.values()) {
@@ -116,12 +117,12 @@ class BufferValueMap {
     for (const auto& pair : buffers_) {
       buffer_numbers.push_back(pair.first);
     }
-    std::sort(buffer_numbers.begin(), buffer_numbers.end());
+    absl::c_sort(buffer_numbers);
     return buffer_numbers;
   }
 
   // Return a set of all the values in the given buffer.
-  const tensorflow::gtl::FlatSet<const HloValue*>& GetValuesInBuffer(
+  const absl::flat_hash_set<const HloValue*>& GetValuesInBuffer(
       BufferNumber buffer_number) const {
     return buffers_.at(buffer_number);
   }
@@ -144,7 +145,7 @@ class BufferValueMap {
   // Move the given value into the given buffer.
   void MoveValueToBuffer(const HloValue& value, BufferNumber buffer_number) {
     BufferNumber old_buffer_number = value_to_buffer_number_.at(&value);
-    tensorflow::gtl::FlatSet<const HloValue*>& old_value_set =
+    absl::flat_hash_set<const HloValue*>& old_value_set =
         buffers_.at(old_buffer_number);
     old_value_set.erase(&value);
     if (old_value_set.empty()) {
@@ -169,6 +170,41 @@ class BufferValueMap {
 
   BufferNumber GetBufferForValue(const HloValue& value) {
     return value_to_buffer_number_.at(&value);
+  }
+
+  void ComputeInputOutputAliasedBuffers(
+      const HloValue& value, std::vector<BufferNumber>* aliased_buffers) {
+    // Get parameter value from an aliased_input object.
+    const auto get_parameter_value =
+        [this](const HloInputOutputAliasConfig::Alias& aliased_input)
+        -> const HloValue& {
+      return dataflow_.GetUniqueValueAt(
+          module_->entry_computation()->parameter_instruction(
+              aliased_input.parameter_number),
+          aliased_input.parameter_index);
+    };
+
+    // If the value shows up in a root instruction, alias it with parameter
+    // intruction.
+    for (const HloPosition& pos : value.positions()) {
+      if (pos.instruction == module_->entry_computation()->root_instruction()) {
+        ShapeIndex output_index = pos.index;
+
+        auto aliased_input =
+            module_->input_output_alias_config().GetAliasedParameter(
+                output_index);
+        if (aliased_input) {
+          aliased_buffers->push_back(
+              GetBufferForValue(get_parameter_value(*aliased_input)));
+        }
+      }
+    }
+
+    // If the value is parameter instruction itself, alias it with itself.
+    if (value.instruction()->opcode() == HloOpcode::kParameter &&
+        value.instruction()->parent() == module_->entry_computation()) {
+      aliased_buffers->push_back(GetBufferForValue(value));
+    }
   }
 
   void ComputeWhileAliasedBuffers(const HloValue& value,
@@ -278,27 +314,28 @@ class BufferValueMap {
       VLOG(2) << "Use of value " << value.ToShortString() << ": " << use;
     }
     std::vector<BufferNumber> aliased_buffers;
+    ComputeInputOutputAliasedBuffers(value, &aliased_buffers);
     ComputeWhileAliasedBuffers(value, &aliased_buffers);
     ComputeConditionalAliasedBuffers(value, &aliased_buffers);
     // Uniquify aliased buffers.
-    std::sort(aliased_buffers.begin(), aliased_buffers.end());
+    absl::c_sort(aliased_buffers);
     aliased_buffers.erase(
         std::unique(aliased_buffers.begin(), aliased_buffers.end()),
         aliased_buffers.end());
     return aliased_buffers;
   }
 
+  HloModule* module_;
+
   // Dataflow analysis used to construct the buffer map.
   const HloDataflowAnalysis& dataflow_;
 
   // A map containing the set of values contained in each buffer.
-  tensorflow::gtl::FlatMap<BufferNumber,
-                           tensorflow::gtl::FlatSet<const HloValue*>>
+  absl::flat_hash_map<BufferNumber, absl::flat_hash_set<const HloValue*>>
       buffers_;
 
   // A map indicating which buffer each value is contained in.
-  tensorflow::gtl::FlatMap<const HloValue*, BufferNumber>
-      value_to_buffer_number_;
+  absl::flat_hash_map<const HloValue*, BufferNumber> value_to_buffer_number_;
 
   // The buffer number of the next buffer to be created.
   BufferNumber next_buffer_number_ = 0;
@@ -329,7 +366,7 @@ std::vector<const HloBuffer*> HloAliasAnalysis::ComputeBuffersAt(
   }
 
   // Sort and uniquify vector before returning.
-  std::sort(buffers.begin(), buffers.end(), HloBuffer::IdLessThan);
+  absl::c_sort(buffers, HloBuffer::IdLessThan);
   buffers.erase(std::unique(buffers.begin(), buffers.end()), buffers.end());
 
   return buffers;
@@ -354,7 +391,7 @@ bool HloAliasAnalysis::InstructionBuffersAreAmbiguous(
 
 bool HloAliasAnalysis::InstructionBuffersAreDistinct(
     const HloInstruction* instruction) const {
-  tensorflow::gtl::FlatSet<const HloBuffer*> buffers_seen;
+  absl::flat_hash_set<const HloBuffer*> buffers_seen;
   for (const auto& pair :
        dataflow_analysis_->GetInstructionValueSet(instruction)) {
     const HloValueSet& value_set = pair.second;
@@ -392,8 +429,7 @@ Status HloAliasAnalysis::Verify() const {
   for (const auto& pair : value_to_buffer_) {
     const HloValue* value = pair.first;
     const HloBuffer& buffer = *pair.second;
-    TF_RET_CHECK(std::find(buffer.values().begin(), buffer.values().end(),
-                           value) != buffer.values().end());
+    TF_RET_CHECK(absl::c_linear_search(buffer.values(), value));
   }
 
   for (HloBuffer::Id id = 0; id < buffers_.size(); ++id) {
@@ -414,12 +450,12 @@ Status HloAliasAnalysis::Verify() const {
 }
 
 string HloAliasAnalysis::ToString() const {
-  string out = StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
+  string out = absl::StrCat("HloAliasAnalysis, module ", module_->name(), "\n");
   StrAppend(&out, "  Buffers at each position:\n");
   for (const HloComputation* computation : module_->computations()) {
     for (const HloInstruction* instruction : computation->instructions()) {
       StrAppend(&out, "    ", instruction->name(), ":\n");
-      if (ShapeUtil::IsTuple(instruction->shape())) {
+      if (instruction->shape().IsTuple()) {
         ShapeUtil::ForEachSubshape(
             instruction->shape(),
             [&out, &instruction, this](const Shape&, const ShapeIndex& index) {
@@ -463,7 +499,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
                                                /*bitcast_defines_value=*/false,
                                                fusion_can_share_buffer));
 
-  BufferValueMap buffer_map(alias_analysis->dataflow_analysis());
+  BufferValueMap buffer_map(module, alias_analysis->dataflow_analysis());
   buffer_map.MergeAliasedBuffers();
 
   // Create a vector of HloBuffers, one for each set of values in the
@@ -477,7 +513,7 @@ StatusOr<std::unique_ptr<HloAliasAnalysis>> HloAliasAnalysis::Run(
     auto& value_set = buffer_map.GetValuesInBuffer(buffer_number);
     std::vector<const HloValue*> sorted_values(value_set.begin(),
                                                value_set.end());
-    std::sort(sorted_values.begin(), sorted_values.end(), HloValue::IdLessThan);
+    absl::c_sort(sorted_values, HloValue::IdLessThan);
     alias_analysis->buffers_.emplace_back(next_id++, sorted_values);
     for (const HloValue* value : sorted_values) {
       alias_analysis->value_to_buffer_[value] =
@@ -495,11 +531,11 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     const HloOrdering& ordering) const {
   for (const HloBuffer& buffer : buffers()) {
     CHECK(!buffer.values().empty());
-    if (ShapeUtil::IsToken(buffer.values().front()->shape())) {
+    if (buffer.values().front()->shape().IsToken()) {
       // Tokens have no on-device representation and cannot interfere.
       for (const HloValue* value : buffer.values()) {
         // If one of the values is a token, all values must be a token.
-        DCHECK(ShapeUtil::IsToken(value->shape()));
+        DCHECK(value->shape().IsToken());
       }
       continue;
     }
@@ -509,16 +545,15 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
     // tie-break using value ID. The tie-break is necessary because we need a
     // strict weak order for std::sort.
     std::vector<const HloValue*> values = buffer.values();
-    std::sort(values.begin(), values.end(),
-              [&ordering](const HloValue* a, const HloValue* b) {
-                if (ordering.IsDefinedBefore(*a, *b)) {
-                  return true;
-                } else if (ordering.IsDefinedBefore(*b, *a)) {
-                  return false;
-                } else {
-                  return a->id() < b->id();
-                }
-              });
+    absl::c_sort(values, [&ordering](const HloValue* a, const HloValue* b) {
+      if (ordering.IsDefinedBefore(*a, *b)) {
+        return true;
+      } else if (ordering.IsDefinedBefore(*b, *a)) {
+        return false;
+      } else {
+        return a->id() < b->id();
+      }
+    });
 
     // Walk through the ordered vector of values. First verify that the values
     // are totally ordered with respect to 'ordering', then check that no
@@ -537,10 +572,10 @@ bool HloAliasAnalysis::HasLiveRangeInterference(
       if (ordering.MayInterfere(*values[i - 1], *values[i],
                                 dataflow_analysis())) {
         VLOG(1) << "In buffer " << buffer.id() << " containing values:\n  "
-                << Join(values, ", ",
-                        [](string* out, const HloValue* value) {
-                          StrAppend(out, value->ToShortString());
-                        })
+                << absl::StrJoin(values, ", ",
+                                 [](string* out, const HloValue* value) {
+                                   StrAppend(out, value->ToShortString());
+                                 })
 
                 << "\nValue " << values[i - 1]->ToShortString()
                 << " may interfere with value " << values[i]->ToShortString();

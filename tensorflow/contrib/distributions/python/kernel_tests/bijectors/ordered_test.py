@@ -38,23 +38,22 @@ class OrderedBijectorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testBijectorVector(self):
-    with self.cached_session():
-      ordered = Ordered()
-      self.assertEqual("ordered", ordered.name)
-      x = np.asarray([[2., 3, 4], [4., 8, 13]])
-      y = [[2., 0, 0], [4., np.log(4.), np.log(5.)]]
-      self.assertAllClose(y, self.evaluate(ordered.forward(x)))
-      self.assertAllClose(x, self.evaluate(ordered.inverse(y)))
-      self.assertAllClose(
-          np.sum(np.asarray(y)[..., 1:], axis=-1),
-          self.evaluate(ordered.inverse_log_det_jacobian(y, event_ndims=1)),
-          atol=0.,
-          rtol=1e-7)
-      self.assertAllClose(
-          self.evaluate(-ordered.inverse_log_det_jacobian(y, event_ndims=1)),
-          self.evaluate(ordered.forward_log_det_jacobian(x, event_ndims=1)),
-          atol=0.,
-          rtol=1e-7)
+    ordered = Ordered()
+    self.assertEqual("ordered", ordered.name)
+    x = np.asarray([[2., 3, 4], [4., 8, 13]])
+    y = [[2., 0, 0], [4., np.log(4.), np.log(5.)]]
+    self.assertAllClose(y, self.evaluate(ordered.forward(x)))
+    self.assertAllClose(x, self.evaluate(ordered.inverse(y)))
+    self.assertAllClose(
+        np.sum(np.asarray(y)[..., 1:], axis=-1),
+        self.evaluate(ordered.inverse_log_det_jacobian(y, event_ndims=1)),
+        atol=0.,
+        rtol=1e-7)
+    self.assertAllClose(
+        self.evaluate(-ordered.inverse_log_det_jacobian(y, event_ndims=1)),
+        self.evaluate(ordered.forward_log_det_jacobian(x, event_ndims=1)),
+        atol=0.,
+        rtol=1e-7)
 
   def testBijectorUnknownShape(self):
     with self.cached_session():
@@ -84,18 +83,17 @@ class OrderedBijectorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testShapeGetters(self):
-    with self.cached_session():
-      x = tensor_shape.TensorShape([4])
-      y = tensor_shape.TensorShape([4])
-      bijector = Ordered(validate_args=True)
-      self.assertAllEqual(y, bijector.forward_event_shape(x))
-      self.assertAllEqual(y.as_list(),
-                          self.evaluate(bijector.forward_event_shape_tensor(
-                              x.as_list())))
-      self.assertAllEqual(x, bijector.inverse_event_shape(y))
-      self.assertAllEqual(x.as_list(),
-                          self.evaluate(bijector.inverse_event_shape_tensor(
-                              y.as_list())))
+    x = tensor_shape.TensorShape([4])
+    y = tensor_shape.TensorShape([4])
+    bijector = Ordered(validate_args=True)
+    self.assertAllEqual(y, bijector.forward_event_shape(x))
+    self.assertAllEqual(y.as_list(),
+                        self.evaluate(bijector.forward_event_shape_tensor(
+                            x.as_list())))
+    self.assertAllEqual(x, bijector.inverse_event_shape(y))
+    self.assertAllEqual(x.as_list(),
+                        self.evaluate(bijector.inverse_event_shape_tensor(
+                            y.as_list())))
 
   def testBijectiveAndFinite(self):
     with self.cached_session():

@@ -89,7 +89,9 @@ class InverseGamma(distribution.Distribution):
   #### Examples
 
   ```python
-  tfd = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   dist = tfd.InverseGamma(concentration=3.0, rate=2.0)
   dist2 = tfd.InverseGamma(concentration=[3.0, 4.0], rate=[2.0, 3.0])
   ```
@@ -247,9 +249,9 @@ class InverseGamma(distribution.Distribution):
       `self.allow_nan_stats` is `False`, an exception will be raised rather
       than returning `NaN`.""")
   def _variance(self):
-    var = (math_ops.square(self.rate)
-           / math_ops.square(self.concentration - 1.)
-           / (self.concentration - 2.))
+    var = (
+        math_ops.square(self.rate) / math_ops.squared_difference(
+            self.concentration, 1.) / (self.concentration - 2.))
     if self.allow_nan_stats:
       nan = array_ops.fill(
           self.batch_shape_tensor(),

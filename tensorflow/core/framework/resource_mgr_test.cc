@@ -32,7 +32,7 @@ class Resource : public ResourceBase {
   explicit Resource(const string& label) : label_(label) {}
   ~Resource() override {}
 
-  string DebugString() override { return strings::StrCat("R/", label_); }
+  string DebugString() const override { return strings::StrCat("R/", label_); }
 
  private:
   string label_;
@@ -43,7 +43,7 @@ class Other : public ResourceBase {
   explicit Other(const string& label) : label_(label) {}
   ~Other() override {}
 
-  string DebugString() override { return strings::StrCat("O/", label_); }
+  string DebugString() const override { return strings::StrCat("O/", label_); }
 
  private:
   string label_;
@@ -245,7 +245,7 @@ class StubDevice : public DeviceBase {
 // Empty stub resource for testing resource handles.
 class StubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
   int value_{0};
 };
 
@@ -305,7 +305,7 @@ TEST(ResourceHandleTest, DifferentDevice) {
 // Other stub resource to test type-checking of resource handles.
 class OtherStubResource : public ResourceBase {
  public:
-  string DebugString() override { return ""; }
+  string DebugString() const override { return ""; }
 };
 
 TEST(ResourceHandleTest, DifferentType) {

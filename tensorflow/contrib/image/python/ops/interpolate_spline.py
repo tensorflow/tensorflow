@@ -18,6 +18,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import linalg_ops
 from tensorflow.python.ops import math_ops
@@ -100,12 +101,12 @@ def _solve_interpolation(train_points, train_values, order,
   b, n, _ = array_ops.unstack(array_ops.shape(train_points), num=3)
 
   d = train_points.shape[-1]
-  if d.value is None:
+  if tensor_shape.dimension_value(d) is None:
     raise ValueError('The dimensionality of the input points (d) must be '
                      'statically-inferrable.')
 
   k = train_values.shape[-1]
-  if k.value is None:
+  if tensor_shape.dimension_value(k) is None:
     raise ValueError('The dimensionality of the output values (k) must be '
                      'statically-inferrable.')
 

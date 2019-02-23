@@ -16,14 +16,14 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_DFS_HLO_VISITOR_WITH_DEFAULT_H_
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -91,11 +91,20 @@ class DfsHloVisitorWithDefaultBase
   Status HandleFft(HloInstructionPtr fft) override {
     return DefaultAction(fft);
   }
-  Status HandleCrossReplicaSum(HloInstructionPtr crs) override {
+  Status HandleTriangularSolve(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleAllReduce(HloInstructionPtr crs) override {
     return DefaultAction(crs);
   }
-  Status HandleAllToAll(HloInstructionPtr crs) override {
-    return DefaultAction(crs);
+  Status HandleAllToAll(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleCollectivePermute(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
+  }
+  Status HandleReplicaId(HloInstructionPtr hlo) override {
+    return DefaultAction(hlo);
   }
   Status HandleRng(HloInstructionPtr random) override {
     return DefaultAction(random);
@@ -199,6 +208,12 @@ class DfsHloVisitorWithDefaultBase
   }
   Status HandleAfterAll(HloInstructionPtr token) override {
     return DefaultAction(token);
+  }
+  Status HandleGetDimensionSize(HloInstructionPtr get_size) override {
+    return DefaultAction(get_size);
+  }
+  Status HandleAddDependency(HloInstructionPtr add_dependency) override {
+    return DefaultAction(add_dependency);
   }
 
   // Invoked to inform the visitor that the traversal has completed, and that

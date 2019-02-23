@@ -38,7 +38,7 @@ void CollectiveRemoteAccessLocal::RecvFromPeer(
     return;
   }
   buf_rendezvous_.ConsumeBuf(
-      key, [this, to_tensor, to_device_ctx, to_device, to_alloc_attr,
+      key, [to_tensor, to_device_ctx, to_device, to_alloc_attr,
             dev_to_dev_stream_index,
             done](const Status& s, BufRendezvous::Hook* hook) {
         if (!s.ok()) {

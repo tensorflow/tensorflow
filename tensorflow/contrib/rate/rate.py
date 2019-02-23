@@ -108,13 +108,6 @@ class Rate(object):
   def variables(self):
     return self._vars
 
-  def _safe_div(self, numerator, denominator, name):
-    t = math_ops.truediv(numerator, denominator)
-    zero = array_ops.zeros_like(t, dtype=denominator.dtype)
-    condition = math_ops.greater(denominator, zero)
-    zero = math_ops.cast(zero, t.dtype)
-    return array_ops.where(condition, t, zero, name=name)
-
   def _add_variable(self, name, shape=None, dtype=None):
     """Private method for adding variables to the graph."""
     if self._built:
@@ -148,4 +141,6 @@ class Rate(object):
     state_ops.assign(self.prev_values, values)
     state_ops.assign(self.prev_denominator, denominator)
 
-    return self._safe_div(self.numer, self.denom, name="safe_rate")
+    return math_ops.div_no_nan(self.numer,
+                               math_ops.maximum(self.denom, 0),
+                               name="safe_rate")

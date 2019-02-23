@@ -20,7 +20,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
@@ -28,7 +27,6 @@ from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 rng = np.random.RandomState(0)
 
 
@@ -71,7 +69,8 @@ class BaseLinearOperatorLowRankUpdatetest(object):
     return linear_operator_test_util.random_uniform(
         diag_shape, minval=1e-4, maxval=1., dtype=dtype)
 
-  def _operator_and_matrix(self, build_info, dtype, use_placeholder):
+  def _operator_and_matrix(self, build_info, dtype, use_placeholder,
+                           ensure_self_adjoint_and_pd=False):
     # Recall A = L + UDV^H
     shape = list(build_info.shape)
     diag_shape = shape[:-1]
@@ -95,7 +94,7 @@ class BaseLinearOperatorLowRankUpdatetest(object):
     lin_op_v = v
 
     # D
-    if self._is_diag_update_positive:
+    if self._is_diag_update_positive or ensure_self_adjoint_and_pd:
       diag_update = self._gen_positive_diag(dtype, diag_update_shape)
     else:
       diag_update = linear_operator_test_util.random_normal(
@@ -180,6 +179,10 @@ class LinearOperatorLowRankUpdatetestWithDiagCannotUseCholesky(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UDU^H, D !> 0, L > 0 ==> A !> 0 and we cannot use a Cholesky."""
 
+  @property
+  def _tests_to_skip(self):
+    return ["cholesky"]
+
   _use_diag_update = True
   _is_diag_update_positive = False
   _use_v = False
@@ -218,6 +221,10 @@ class LinearOperatorLowRankUpdatetestNoDiagCannotUseCholesky(
     BaseLinearOperatorLowRankUpdatetest,
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """A = L + UV^H, L > 0 ==> A is not symmetric and we cannot use a Cholesky."""
+
+  @property
+  def _tests_to_skip(self):
+    return ["cholesky"]
 
   _use_diag_update = False
   _is_diag_update_positive = None

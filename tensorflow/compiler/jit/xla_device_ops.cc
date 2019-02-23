@@ -30,81 +30,43 @@ void XlaDeviceDummyOp::Compute(OpKernelContext* ctx) {
 }
 
 XlaAssignVariableOp::XlaAssignVariableOp(OpKernelConstruction* c)
-    : AsyncOpKernel(c) {
+    : OpKernel(c) {
   OP_REQUIRES_OK(c, c->GetAttr("dtype", &dtype_));
 }
 
-void XlaAssignVariableOp::ComputeAsync(OpKernelContext* context,
-                                       DoneCallback done) {
-  OP_REQUIRES_ASYNC(context, dtype_ == context->input(1).dtype(),
-                    errors::InvalidArgument(
-                        "Variable and value dtypes don't match; respectively, ",
-                        dtype_, " and ", context->input(1).dtype()),
-                    done);
+void XlaAssignVariableOp::Compute(OpKernelContext* context) {
+  OP_REQUIRES(context, dtype_ == context->input(1).dtype(),
+              errors::InvalidArgument(
+                  "Variable and value dtypes don't match; respectively, ",
+                  DataTypeString(dtype_), " and ",
+                  DataTypeString(context->input(1).dtype())));
   Var* variable = nullptr;
-  OP_REQUIRES_OK_ASYNC(
-      context,
-      LookupOrCreateResource<Var>(
-          context, HandleFromInput(context, 0), &variable,
-          [this, context](Var** ptr) {
-            *ptr = new Var(dtype_);
-            PersistentTensor unused;
-            Tensor* tmp;
-            AllocatorAttributes attr;
-            TF_RETURN_IF_ERROR(context->allocate_persistent(
-                dtype_, context->input(1).shape(), &unused, &tmp, attr));
-            *(*ptr)->tensor() = *tmp;
-            return Status::OK();
-          }),
-      done);
-  core::ScopedUnref s(variable);
-
-  OP_REQUIRES_ASYNC(context, variable->tensor()->dtype() == dtype_,
-                    errors::InvalidArgument(
-                        "Trying to assign variable with wrong dtype. Expected ",
-                        DataTypeString(variable->tensor()->dtype()), " got ",
-                        DataTypeString(dtype_)),
-                    done);
-
   const Tensor& value = context->input(1);
-  AllocatorAttributes attr;
-
-  // Copying is unnecessary if we are the last user of the value tensor, we can
-  // just adopt the input tensor's buffer instead.
-  std::unique_ptr<Tensor> input_alias = context->forward_input(
-      1, /*output_index=*/OpKernelContext::Params::kNoReservation, dtype_,
-      value.shape(), DEVICE_MEMORY, attr);
+  // Note: every resource-variable-manipulating op assumes copy-on-write
+  // semantics, and creates a copy of the variable's Tensor if its refcount is
+  // bigger than 1 when we try to modify it. This means we never need to copy
+  // the original tensor for AssignVariableOp; even if there are other live
+  // users of it we know none can modify it so this is always safe (even in
+  // esoteric cases where the same tensor is used to initialize multiple
+  // variables or the tensor is a constant this is safe, as future writes will
+  // trigger copies).
+  OP_REQUIRES_OK(context, LookupOrCreateResource<Var>(
+                              context, HandleFromInput(context, 0), &variable,
+                              [this, &value](Var** ptr) {
+                                *ptr = new Var(dtype_);
+                                *(*ptr)->tensor() = value;
+                                (*ptr)->is_initialized = true;
+                                return Status::OK();
+                              }));
+  core::ScopedUnref s(variable);
   mutex_lock ml(*variable->mu());
+  OP_REQUIRES(context, variable->tensor()->dtype() == dtype_,
+              errors::InvalidArgument(
+                  "Trying to assign variable with wrong dtype. Expected ",
+                  DataTypeString(variable->tensor()->dtype()), " got ",
+                  DataTypeString(dtype_)));
   variable->is_initialized = true;
-  if (input_alias) {
-    *variable->tensor() = *input_alias;
-    done();
-    return;
-  }
-
-  // Need to copy, but maybe we can re-use variable's buffer?
-  if (!XlaTensor::RefCountIsOne(*variable->tensor()) ||
-      !variable->tensor()->shape().IsSameSize(value.shape())) {
-    // Copy to new buffer
-    PersistentTensor unused;
-    Tensor* tmp;
-    OP_REQUIRES_OK_ASYNC(context,
-                         context->allocate_persistent(dtype_, value.shape(),
-                                                      &unused, &tmp, attr),
-                         done);
-    *variable->tensor() = *tmp;
-  }
-
-  XlaDeviceContext* device_context =
-      static_cast<XlaDeviceContext*>(context->op_device_context());
-
-  variable->Ref();
-  device_context->CopyDeviceTensorToDevice(
-      value, variable->tensor(), [context, variable, done](Status status) {
-        variable->Unref();
-        context->SetStatus(status);
-        done();
-      });
+  *variable->tensor() = value;
 }
 
 }  // namespace tensorflow

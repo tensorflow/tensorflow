@@ -17,6 +17,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.contrib.image.ops import gen_image_ops
 from tensorflow.contrib.util import loader
 from tensorflow.python.framework import common_shapes
@@ -39,6 +40,7 @@ _IMAGE_DTYPES = set(
 
 ops.RegisterShape("ImageConnectedComponents")(common_shapes.call_cpp_shape_fn)
 ops.RegisterShape("ImageProjectiveTransform")(common_shapes.call_cpp_shape_fn)
+ops.RegisterShape("ImageProjectiveTransformV2")(common_shapes.call_cpp_shape_fn)
 
 
 # TODO(ringwalt): Support a "reshape" (name used by SciPy) or "expand" (name
@@ -270,8 +272,11 @@ def transform(images,
       raise TypeError("Images should have rank between 2 and 4.")
 
     if output_shape is None:
-      output_shape = tensor_util.constant_value(
-          array_ops.shape(images)[1:3]) or array_ops.shape(images)[1:3]
+      output_shape = array_ops.shape(images)[1:3]
+      if not context.executing_eagerly():
+        output_shape_value = tensor_util.constant_value(output_shape)
+        if output_shape_value is not None:
+          output_shape = output_shape_value
 
     output_shape = ops.convert_to_tensor(
         output_shape, dtypes.int32, name="output_shape")
@@ -290,7 +295,7 @@ def transform(images,
     else:
       raise TypeError("Transforms should have rank 1 or 2.")
 
-    output = gen_image_ops.image_projective_transform(
+    output = gen_image_ops.image_projective_transform_v2(
         images,
         output_shape=output_shape,
         transforms=transforms,
@@ -391,7 +396,7 @@ def matrices_to_flat_transforms(transform_matrices):
     return transforms[:, :8]
 
 
-@ops.RegisterGradient("ImageProjectiveTransform")
+@ops.RegisterGradient("ImageProjectiveTransformV2")
 def _image_projective_transform_grad(op, grad):
   """Computes the gradient for ImageProjectiveTransform."""
   images = op.inputs[0]
@@ -415,7 +420,7 @@ def _image_projective_transform_grad(op, grad):
   transforms = flat_transforms_to_matrices(transforms=transforms)
   inverse = linalg_ops.matrix_inverse(transforms)
   transforms = matrices_to_flat_transforms(inverse)
-  output = gen_image_ops.image_projective_transform(
+  output = gen_image_ops.image_projective_transform_v2(
       images=grad,
       transforms=transforms,
       output_shape=array_ops.shape(image_or_images)[1:3],

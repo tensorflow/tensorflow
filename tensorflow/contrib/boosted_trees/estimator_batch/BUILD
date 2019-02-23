@@ -132,6 +132,7 @@ py_library(
     srcs = ["estimator.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":custom_loss_head",
         ":estimator_utils",
         ":model",
         "//tensorflow/contrib/boosted_trees:losses",
@@ -173,6 +174,7 @@ py_library(
 py_test(
     name = "dnn_tree_combined_estimator_test",
     size = "medium",
+    timeout = "long",
     srcs = ["dnn_tree_combined_estimator_test.py"],
     srcs_version = "PY2AND3",
     tags = [
@@ -191,8 +193,9 @@ py_test(
 
 py_test(
     name = "estimator_test",
-    size = "large",
+    size = "medium",
     srcs = ["estimator_test.py"],
+    shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
         "no_gpu",

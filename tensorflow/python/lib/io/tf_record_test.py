@@ -20,6 +20,8 @@ from __future__ import print_function
 
 import gzip
 import os
+import random
+import string
 import zlib
 
 import six
@@ -131,9 +133,6 @@ class TFCompressionTestCase(test.TestCase):
 
 class TFRecordWriterTest(TFCompressionTestCase):
 
-  def setUp(self):
-    super(TFRecordWriterTest, self).setUp()
-
   def _AssertFilesEqual(self, a, b, equal):
     for an, bn in zip(a, b):
       with open(an, "rb") as af, open(bn, "rb") as bf:
@@ -141,6 +140,37 @@ class TFRecordWriterTest(TFCompressionTestCase):
           self.assertEqual(af.read(), bf.read())
         else:
           self.assertNotEqual(af.read(), bf.read())
+
+  def _CompressionSizeDelta(self, records, options_a, options_b):
+    """Validate compression with options_a and options_b and return size delta.
+
+    Compress records with options_a and options_b. Uncompress both compressed
+    files and assert that the contents match the original records. Finally
+    calculate how much smaller the file compressed with options_a was than the
+    file compressed with options_b.
+
+    Args:
+      records: The records to compress
+      options_a: First set of options to compress with, the baseline for size.
+      options_b: Second set of options to compress with.
+
+    Returns:
+      The difference in file size when using options_a vs options_b. A positive
+      value means options_a was a better compression than options_b. A negative
+      value means options_b had better compression than options_a.
+
+    """
+
+    fn_a = self._WriteRecordsToFile(records, "tfrecord_a", options=options_a)
+    test_a = list(tf_record.tf_record_iterator(fn_a, options=options_a))
+    self.assertEqual(records, test_a, options_a)
+
+    fn_b = self._WriteRecordsToFile(records, "tfrecord_b", options=options_b)
+    test_b = list(tf_record.tf_record_iterator(fn_b, options=options_b))
+    self.assertEqual(records, test_b, options_b)
+
+    # Negative number => better compression.
+    return os.path.getsize(fn_a) - os.path.getsize(fn_b)
 
   def testWriteReadZLibFiles(self):
     # Write uncompressed then compress manually.
@@ -187,6 +217,76 @@ class TFRecordWriterTest(TFCompressionTestCase):
         for i, fn in enumerate(compressed_files)
     ]
     self._AssertFilesEqual(uncompressed_files, files, True)
+
+  def testNoCompressionType(self):
+    self.assertEqual(
+        "",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions()))
+
+    self.assertEqual(
+        "",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions("")))
+
+    with self.assertRaises(ValueError):
+      tf_record.TFRecordOptions(5)
+
+    with self.assertRaises(ValueError):
+      tf_record.TFRecordOptions("BZ2")
+
+  def testZlibCompressionType(self):
+    zlib_t = tf_record.TFRecordCompressionType.ZLIB
+
+    self.assertEqual(
+        "ZLIB",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions("ZLIB")))
+
+    self.assertEqual(
+        "ZLIB",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions(zlib_t)))
+
+    self.assertEqual(
+        "ZLIB",
+        tf_record.TFRecordOptions.get_compression_type_string(
+            tf_record.TFRecordOptions(tf_record.TFRecordOptions(zlib_t))))
+
+  def testCompressionOptions(self):
+    # Create record with mix of random and repeated data to test compression on.
+    rnd = random.Random(123)
+    random_record = compat.as_bytes(
+        "".join(rnd.choice(string.digits) for _ in range(10000)))
+    repeated_record = compat.as_bytes(_TEXT)
+    for _ in range(10000):
+      start_i = rnd.randint(0, len(_TEXT))
+      length = rnd.randint(10, 200)
+      repeated_record += _TEXT[start_i:start_i + length]
+    records = [random_record, repeated_record, random_record]
+
+    tests = [
+        ("compression_level", 2, -1),  # Lower compression is worse.
+        ("compression_level", 6, 0),  # Default compression_level is equal.
+        ("flush_mode", zlib.Z_FULL_FLUSH, 1),  # A few less bytes.
+        ("flush_mode", zlib.Z_NO_FLUSH, 0),  # NO_FLUSH is the default.
+        ("input_buffer_size", 4096, 0),  # Increases time not size.
+        ("output_buffer_size", 4096, 0),  # Increases time not size.
+        ("window_bits", 8, -1),  # Smaller than default window increases size.
+        ("compression_strategy", zlib.Z_HUFFMAN_ONLY, -1),  # Worse.
+        ("compression_strategy", zlib.Z_FILTERED, -1),  # Worse.
+    ]
+
+    compression_type = tf_record.TFRecordCompressionType.ZLIB
+    options_a = tf_record.TFRecordOptions(compression_type)
+    for prop, value, delta_sign in tests:
+      options_b = tf_record.TFRecordOptions(
+          compression_type=compression_type, **{prop: value})
+      delta = self._CompressionSizeDelta(records, options_a, options_b)
+      self.assertTrue(
+          delta == 0 if delta_sign == 0 else delta // delta_sign > 0,
+          "Setting {} = {}, file was {} smaller didn't match sign of {}".format(
+              prop, value, delta, delta_sign))
 
 
 class TFRecordWriterZlibTest(TFCompressionTestCase):
@@ -317,6 +417,7 @@ class TFRecordIteratorTest(TFCompressionTestCase):
     with self.assertRaises(errors_impl.DataLossError):
       for _ in tf_record.tf_record_iterator(fn_truncated):
         pass
+
 
 class TFRecordWriterCloseAndFlushTests(test.TestCase):
 

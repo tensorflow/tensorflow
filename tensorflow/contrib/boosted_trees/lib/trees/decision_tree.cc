@@ -81,9 +81,10 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
         const auto& split = current_node.categorical_id_binary_split();
         const auto& features =
             example.sparse_int_features[split.feature_column()];
-        node_id = features.find(split.feature_id()) != features.end()
-                      ? split.left_id()
-                      : split.right_id();
+        node_id = (std::find(features.begin(), features.end(),
+                             split.feature_id()) == features.end())
+                      ? split.right_id()
+                      : split.left_id();
         break;
       }
       case TreeNode::kCategoricalIdSetMembershipBinarySplit: {
@@ -106,6 +107,19 @@ int DecisionTree::Traverse(const DecisionTreeConfig& config,
         oblivious_leaf_idx <<= 1;
         if (example.dense_float_features[split.feature_column()] >
             split.threshold()) {
+          oblivious_leaf_idx++;
+        }
+        node_id++;
+        break;
+      }
+      case TreeNode::kObliviousCategoricalIdBinarySplit: {
+        const auto& split =
+            current_node.oblivious_categorical_id_binary_split();
+        oblivious_leaf_idx <<= 1;
+        const auto& features =
+            example.sparse_int_features[split.feature_column()];
+        if (std::find(features.begin(), features.end(), split.feature_id()) ==
+            features.end()) {
           oblivious_leaf_idx++;
         }
         node_id++;
@@ -181,6 +195,11 @@ void DecisionTree::LinkChildren(const std::vector<int32>& children,
           << "Not implemented for the ObliviousDenseFloatBinarySplit case.";
       break;
     }
+    case TreeNode::kObliviousCategoricalIdBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousCategoricalIdBinarySplit case.";
+      break;
+    }
     case TreeNode::NODE_NOT_SET: {
       LOG(QFATAL) << "A non-set node cannot have children.";
       break;
@@ -219,6 +238,11 @@ std::vector<int32> DecisionTree::GetChildren(const TreeNode& node) {
       LOG(QFATAL)
           << "Not implemented for the ObliviousDenseFloatBinarySplit case.";
       return {};
+    }
+    case TreeNode::kObliviousCategoricalIdBinarySplit: {
+      LOG(QFATAL)
+          << "Not implemented for the ObliviousCategoricalIdBinarySplit case.";
+      break;
     }
     case TreeNode::NODE_NOT_SET: {
       return {};

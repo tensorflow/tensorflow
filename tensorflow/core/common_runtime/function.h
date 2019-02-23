@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
@@ -78,6 +79,7 @@ struct FunctionBody {
   DataTypeVector ret_types;
   gtl::InlinedVector<Node*, 4> arg_nodes;
   gtl::InlinedVector<Node*, 4> ret_nodes;
+  gtl::InlinedVector<Node*, 4> control_ret_nodes;
 
   FunctionBody() {}
   FunctionBody(const FunctionDef& f, DataTypeSlice arg_types,
@@ -133,6 +135,8 @@ void DumpGraph(StringPiece label, const Graph* g);
 // OptimizeGraph mutates **g extensively and replaces '*g' with a
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
+                   const GraphOptimizer::Options& graph_optimizer_options);
 void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g);
 
 // Convert the Graph of a function to a GraphDef.
@@ -157,6 +161,8 @@ FunctionBody* SymbolicGradient(const FunctionBody& f);
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly. "override_device" specifies whether inlining should replace
 // explicitly specified devices inside fbody with the callee's device.
+//
+// TODO(ezhulenev): Return Status::error if function inlining failed.
 void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                         Node* caller, const FunctionBody* fbody,
                         bool override_device = true);

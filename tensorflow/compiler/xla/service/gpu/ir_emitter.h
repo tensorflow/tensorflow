@@ -22,6 +22,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/span.h"
 #include "llvm/IR/Function.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
@@ -35,13 +37,12 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/statusor.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -64,8 +65,12 @@ namespace gpu {
 // IrEmitterUnnested, but the code is generated using FusedIrEmitter, which is
 // not a subclass of gpu::IrEmitter, and in fact is better understood as an IR
 // generator generator.  See comments on that class.
-class IrEmitter : public DfsHloVisitorWithDefault {
+class IrEmitter : public DfsHloVisitorWithDefault,
+                  public IrBuilderMixin<IrEmitter> {
  public:
+  using GeneratorForOperandIrArrays =
+      std::function<std::vector<llvm_ir::IrArray>()>;
+
   IrEmitter(const IrEmitter&) = delete;
   IrEmitter& operator=(const IrEmitter&) = delete;
 
@@ -76,7 +81,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleDot(HloInstruction* dot) override;
   Status HandleConvolution(HloInstruction* convolution) override;
   Status HandleFft(HloInstruction* fft) override;
-  Status HandleCrossReplicaSum(HloInstruction* crs) override;
+  Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleInfeed(HloInstruction* infeed) override;
   Status HandleOutfeed(HloInstruction* outfeed) override;
   Status HandleSend(HloInstruction* send) override;
@@ -95,9 +100,11 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   Status HandleBatchNormInference(HloInstruction* batch_norm) override;
   Status HandleBatchNormTraining(HloInstruction* batch_norm) override;
   Status HandleBatchNormGrad(HloInstruction* batch_norm) override;
-  Status HandleIota(HloInstruction* iota) override;
+  Status HandleAddDependency(HloInstruction* add_dependency) override;
 
   Status FinishVisit(HloInstruction* root) override { return Status::OK(); }
+
+  llvm::IRBuilder<>* builder() { return &b_; }
 
  protected:
   // Constructs an IrEmitter with the given IrEmitter context.
@@ -121,6 +128,12 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   llvm::Value* GetBasePointer(const HloInstruction& inst) const {
     return bindings_.GetBasePointer(inst);
   }
+
+  // Generates the IrArray for each output of an hlo instruction and returns
+  // a vector containing such IrArrays.
+  std::vector<llvm_ir::IrArray> ConstructIrArrayForOutputs(
+      const HloInstruction& hlo);
+
   // A convenient helper for calling BufferAssignment::GetUniqueSlice.
   BufferAllocation::Slice GetAllocationSlice(
       const HloInstruction& hlo, const ShapeIndex& index = {}) const {
@@ -140,9 +153,9 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Emits a call in IR to the given nested computation with the given operands
   // and output. If no IR function has been previously emitted for the
   // computation, also emits such a function.
-  Status EmitCallToNestedComputation(
-      const HloComputation& nested_computation,
-      tensorflow::gtl::ArraySlice<llvm::Value*> operands, llvm::Value* output);
+  Status EmitCallToNestedComputation(const HloComputation& nested_computation,
+                                     absl::Span<llvm::Value* const> operands,
+                                     llvm::Value* output);
 
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`
@@ -170,6 +183,20 @@ class IrEmitter : public DfsHloVisitorWithDefault {
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
 
+ protected:
+  GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(
+      HloInstruction* fusion) {
+    return [=]() {
+      std::vector<llvm_ir::IrArray> ir_arrays;
+      ir_arrays.reserve(fusion->operand_count());
+      absl::c_transform(fusion->operands(), std::back_inserter(ir_arrays),
+                        [&](const HloInstruction* operand) {
+                          return GetIrArray(*operand, *fusion);
+                        });
+      return ir_arrays;
+    };
+  }
+
  private:
   // A helper method for EmitAtomicOperationForNestedComputation. Certain
   // computations, such as floating-point addition and integer maximization, can
@@ -196,7 +223,7 @@ class IrEmitter : public DfsHloVisitorWithDefault {
 
   StatusOr<llvm::Value*> ComputeNestedElement(
       const HloComputation& computation,
-      tensorflow::gtl::ArraySlice<llvm::Value*> parameter_elements);
+      absl::Span<llvm::Value* const> parameter_elements);
 
   // Emits an atomic operation that implements `nested_computation` in the
   // sequentially consistent memory model. `output_address` and `source_address`

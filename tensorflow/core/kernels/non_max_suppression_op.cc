@@ -24,12 +24,12 @@ limitations under the License.
 #include <vector>
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/platform/logging.h"
@@ -74,29 +74,57 @@ static inline void ParseAndCheckBoxSizes(OpKernelContext* context,
               errors::InvalidArgument("boxes must have 4 columns"));
 }
 
+static inline void CheckCombinedNMSScoreSizes(OpKernelContext* context,
+                                              int num_boxes,
+                                              const Tensor& scores) {
+  // The shape of 'scores' is [batch_size, num_boxes, num_classes]
+  OP_REQUIRES(context, scores.dims() == 3,
+              errors::InvalidArgument("scores must be 3-D",
+                                      scores.shape().DebugString()));
+  OP_REQUIRES(context, scores.dim_size(1) == num_boxes,
+              errors::InvalidArgument("scores has incompatible shape"));
+}
+
+static inline void ParseAndCheckCombinedNMSBoxSizes(OpKernelContext* context,
+                                                    const Tensor& boxes,
+                                                    int* num_boxes,
+                                                    const int num_classes) {
+  // The shape of 'boxes' is [batch_size, num_boxes, q, 4]
+  OP_REQUIRES(context, boxes.dims() == 4,
+              errors::InvalidArgument("boxes must be 4-D",
+                                      boxes.shape().DebugString()));
+
+  bool box_check = boxes.dim_size(2) == 1 || boxes.dim_size(2) == num_classes;
+  OP_REQUIRES(context, box_check,
+              errors::InvalidArgument(
+                  "third dimension of boxes must be either 1 or num classes"));
+  *num_boxes = boxes.dim_size(1);
+  OP_REQUIRES(context, boxes.dim_size(3) == 4,
+              errors::InvalidArgument("boxes must have 4 columns"));
+}
 // Return intersection-over-union overlap between boxes i and j
-static inline float IOUGreaterThanThreshold(
-    typename TTypes<float, 2>::ConstTensor boxes, int i, int j,
-    float iou_threshold) {
-  const float ymin_i = std::min<float>(boxes(i, 0), boxes(i, 2));
-  const float xmin_i = std::min<float>(boxes(i, 1), boxes(i, 3));
-  const float ymax_i = std::max<float>(boxes(i, 0), boxes(i, 2));
-  const float xmax_i = std::max<float>(boxes(i, 1), boxes(i, 3));
-  const float ymin_j = std::min<float>(boxes(j, 0), boxes(j, 2));
-  const float xmin_j = std::min<float>(boxes(j, 1), boxes(j, 3));
-  const float ymax_j = std::max<float>(boxes(j, 0), boxes(j, 2));
-  const float xmax_j = std::max<float>(boxes(j, 1), boxes(j, 3));
-  const float area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i);
-  const float area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j);
-  if (area_i <= 0 || area_j <= 0) return 0.0;
-  const float intersection_ymin = std::max<float>(ymin_i, ymin_j);
-  const float intersection_xmin = std::max<float>(xmin_i, xmin_j);
-  const float intersection_ymax = std::min<float>(ymax_i, ymax_j);
-  const float intersection_xmax = std::min<float>(xmax_i, xmax_j);
-  const float intersection_area =
-      std::max<float>(intersection_ymax - intersection_ymin, 0.0) *
-      std::max<float>(intersection_xmax - intersection_xmin, 0.0);
-  const float iou = intersection_area / (area_i + area_j - intersection_area);
+template <typename T>
+static inline bool IOUGreaterThanThreshold(
+    typename TTypes<T, 2>::ConstTensor boxes, int i, int j, T iou_threshold) {
+  const T ymin_i = std::min<T>(boxes(i, 0), boxes(i, 2));
+  const T xmin_i = std::min<T>(boxes(i, 1), boxes(i, 3));
+  const T ymax_i = std::max<T>(boxes(i, 0), boxes(i, 2));
+  const T xmax_i = std::max<T>(boxes(i, 1), boxes(i, 3));
+  const T ymin_j = std::min<T>(boxes(j, 0), boxes(j, 2));
+  const T xmin_j = std::min<T>(boxes(j, 1), boxes(j, 3));
+  const T ymax_j = std::max<T>(boxes(j, 0), boxes(j, 2));
+  const T xmax_j = std::max<T>(boxes(j, 1), boxes(j, 3));
+  const T area_i = (ymax_i - ymin_i) * (xmax_i - xmin_i);
+  const T area_j = (ymax_j - ymin_j) * (xmax_j - xmin_j);
+  if (area_i <= static_cast<T>(0) || area_j <= static_cast<T>(0)) return 0;
+  const T intersection_ymin = std::max<T>(ymin_i, ymin_j);
+  const T intersection_xmin = std::max<T>(xmin_i, xmin_j);
+  const T intersection_ymax = std::min<T>(ymax_i, ymax_j);
+  const T intersection_xmax = std::min<T>(xmax_i, xmax_j);
+  const T intersection_area =
+      std::max<T>(intersection_ymax - intersection_ymin, static_cast<T>(0.0)) *
+      std::max<T>(intersection_xmax - intersection_xmin, static_cast<T>(0.0));
+  const T iou = intersection_area / (area_i + area_j - intersection_area);
   return iou > iou_threshold;
 }
 
@@ -106,11 +134,13 @@ static inline bool OverlapsGreaterThanThreshold(
   return overlaps(i, j) > overlap_threshold;
 }
 
+template <typename T>
 static inline std::function<bool(int, int)> CreateIOUSuppressCheckFn(
     const Tensor& boxes, float threshold) {
-  typename TTypes<float, 2>::ConstTensor boxes_data = boxes.tensor<float, 2>();
-  return std::bind(&IOUGreaterThanThreshold, boxes_data, std::placeholders::_1,
-                   std::placeholders::_2, threshold);
+  typename TTypes<T, 2>::ConstTensor boxes_data = boxes.tensor<T, 2>();
+  return std::bind(&IOUGreaterThanThreshold<T>, boxes_data,
+                   std::placeholders::_1, std::placeholders::_2,
+                   static_cast<T>(threshold));
 }
 
 static inline std::function<bool(int, int)> CreateOverlapsSuppressCheckFn(
@@ -121,6 +151,7 @@ static inline std::function<bool(int, int)> CreateOverlapsSuppressCheckFn(
                    std::placeholders::_1, std::placeholders::_2, threshold);
 }
 
+template <typename T>
 void DoNonMaxSuppressionOp(
     OpKernelContext* context, const Tensor& scores, int num_boxes,
     const Tensor& max_output_size, const float score_threshold,
@@ -128,13 +159,13 @@ void DoNonMaxSuppressionOp(
     bool pad_to_max_output_size = false, int* ptr_num_valid_outputs = nullptr) {
   const int output_size = max_output_size.scalar<int>()();
 
-  std::vector<float> scores_data(num_boxes);
-  std::copy_n(scores.flat<float>().data(), num_boxes, scores_data.begin());
+  std::vector<T> scores_data(num_boxes);
+  std::copy_n(scores.flat<T>().data(), num_boxes, scores_data.begin());
 
   // Data structure for selection candidate in NMS.
   struct Candidate {
     int box_index;
-    float score;
+    T score;
   };
 
   auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
@@ -143,13 +174,13 @@ void DoNonMaxSuppressionOp(
   std::priority_queue<Candidate, std::deque<Candidate>, decltype(cmp)>
       candidate_priority_queue(cmp);
   for (int i = 0; i < scores_data.size(); ++i) {
-    if (scores_data[i] > score_threshold) {
+    if (static_cast<float>(scores_data[i]) > score_threshold) {
       candidate_priority_queue.emplace(Candidate({i, scores_data[i]}));
     }
   }
 
   std::vector<int> selected;
-  std::vector<float> selected_scores;
+  std::vector<T> selected_scores;
   Candidate next_candidate;
 
   while (selected.size() < output_size && !candidate_priority_queue.empty()) {
@@ -160,7 +191,8 @@ void DoNonMaxSuppressionOp(
     // therefore we iterate through the previously selected boxes backwards
     // in order to see if `next_candidate` should be suppressed.
     bool should_select = true;
-    for (int j = selected.size() - 1; j >= 0; --j) {
+
+    for (int j = static_cast<int>(selected.size()) - 1; j >= 0; --j) {
       if (suppress_check_fn(next_candidate.box_index, selected[j])) {
         should_select = false;
         break;
@@ -176,7 +208,7 @@ void DoNonMaxSuppressionOp(
   int num_valid_outputs = selected.size();
   if (pad_to_max_output_size) {
     selected.resize(output_size, 0);
-    selected_scores.resize(output_size, 0);
+    selected_scores.resize(output_size, static_cast<T>(0));
   }
   if (ptr_num_valid_outputs) {
     *ptr_num_valid_outputs = num_valid_outputs;
@@ -189,6 +221,216 @@ void DoNonMaxSuppressionOp(
                  context->allocate_output(0, output_shape, &output_indices));
   TTypes<int, 1>::Tensor output_indices_data = output_indices->tensor<int, 1>();
   std::copy_n(selected.begin(), selected.size(), output_indices_data.data());
+}
+
+void BatchedNonMaxSuppressionOp(
+    OpKernelContext* context, const Tensor& inp_boxes, const Tensor& inp_scores,
+    int num_boxes, const int max_size_per_class, const int total_size_per_batch,
+    const float score_threshold, const float iou_threshold,
+    bool pad_per_class = false) {
+  int q = inp_boxes.dim_size(2);
+  int num_classes = inp_scores.dim_size(2);
+  const int num_batches = inp_boxes.dim_size(0);
+
+  // Default clip window of [0, 0, 1, 1] if none specified
+  std::vector<float> clip_window{0, 0, 1, 1};
+
+  // [num_batches, per_batch_size * 4]
+  std::vector<std::vector<float>> nmsed_boxes(num_batches);
+  // [num_batches, per_batch_size]
+  std::vector<std::vector<float>> nmsed_scores(num_batches);
+  // [num_batches, per_batch_size]
+  std::vector<std::vector<float>> nmsed_classes(num_batches);
+  // [num_batches]
+  std::vector<int> final_valid_detections;
+
+  int per_batch_size = total_size_per_batch;
+
+  // perform non_max_suppression operation for each batch independently
+  for (int batch = 0; batch < num_batches; ++batch) {
+    // dims of per_batch_boxes [num_boxes, q, 4]
+    Tensor per_batch_boxes = inp_boxes.Slice(batch, batch + 1);
+    // dims of per_batch_scores [num_boxes, num_classes]
+    Tensor per_batch_scores = inp_scores.Slice(batch, batch + 1);
+
+    struct ResultCandidate {
+      int box_index;
+      float score;
+      int class_idx;
+      float box_coord[4];
+    };
+
+    std::vector<ResultCandidate> result_candidate_vec;
+
+    float* scores_data = per_batch_scores.unaligned_flat<float>().data();
+    float* boxes_data = per_batch_boxes.unaligned_flat<float>().data();
+
+    // Iterate through all classes
+    for (int class_idx = 0; class_idx < num_classes; ++class_idx) {
+      std::vector<float> class_scores_data;
+      class_scores_data.reserve(num_boxes);
+      std::vector<float> class_boxes_data;
+      class_boxes_data.reserve(num_boxes * 4);
+
+      for (int box = 0; box < num_boxes; ++box) {
+        // Get the scores per class
+        // class_scores_data dim is [num_boxes].
+        class_scores_data.push_back(scores_data[box * num_classes + class_idx]);
+        for (int cid = 0; cid < 4; ++cid) {
+          if (q > 1) {
+            // Get the boxes per class. class_boxes_data dims is [num_boxes, 4]
+            class_boxes_data.push_back(
+                boxes_data[(box * q + class_idx) * 4 + cid]);
+          } else {
+            class_boxes_data.push_back(boxes_data[box * 4 + cid]);
+          }
+        }
+      }
+
+      // Copy class_boxes_data to a tensor
+      TensorShape boxesShape({num_boxes, 4});
+      Tensor boxes(per_batch_boxes.dtype(), boxesShape);
+      std::copy_n(class_boxes_data.begin(), class_boxes_data.size(),
+                  boxes.unaligned_flat<float>().data());
+
+      const int size_per_class = std::min(max_size_per_class, num_boxes);
+      // Do NMS, get the candidate indices of form vector<int>
+      // Data structure for selection candidate in NMS.
+      struct Candidate {
+        int box_index;
+        float score;
+      };
+      auto cmp = [](const Candidate bs_i, const Candidate bs_j) {
+        return bs_i.score > bs_j.score;
+      };
+      std::vector<Candidate> candidate_vector;
+      for (int i = 0; i < class_scores_data.size(); ++i) {
+        if (class_scores_data[i] > score_threshold) {
+          candidate_vector.emplace_back(Candidate({i, class_scores_data[i]}));
+        }
+      }
+
+      std::vector<int> selected;
+      std::vector<float> selected_boxes;
+      Candidate next_candidate;
+
+      std::sort(candidate_vector.begin(), candidate_vector.end(), cmp);
+      const Tensor const_boxes = boxes;
+      typename TTypes<float, 2>::ConstTensor boxes_data =
+          const_boxes.tensor<float, 2>();
+      int candidate_idx = 0;
+      while (selected.size() < size_per_class &&
+             candidate_idx < candidate_vector.size()) {
+        next_candidate = candidate_vector[candidate_idx++];
+
+        // Overlapping boxes are likely to have similar scores,
+        // therefore we iterate through the previously selected boxes backwards
+        // in order to see if `next_candidate` should be suppressed.
+        bool should_select = true;
+        for (int j = selected.size() - 1; j >= 0; --j) {
+          if (IOUGreaterThanThreshold(boxes_data, next_candidate.box_index,
+                                      selected[j], iou_threshold)) {
+            should_select = false;
+            break;
+          }
+        }
+
+        if (should_select) {
+          selected.push_back(next_candidate.box_index);
+          // Add the selected box to the result candidate. Sorted by score
+          int id = next_candidate.box_index;
+          ResultCandidate rc = {next_candidate.box_index,
+                                next_candidate.score,
+                                class_idx,
+                                {boxes_data(id, 0), boxes_data(id, 1),
+                                 boxes_data(id, 2), boxes_data(id, 3)}};
+          result_candidate_vec.push_back(rc);
+        }
+      }
+    }
+
+    auto rc_cmp = [](const ResultCandidate rc_i, const ResultCandidate rc_j) {
+      return rc_i.score > rc_j.score;
+    };
+    std::sort(result_candidate_vec.begin(), result_candidate_vec.end(), rc_cmp);
+
+    int max_detections = 0;
+    // If pad_per_class is false, we always pad to max_total_size
+    if (!pad_per_class) {
+      max_detections =
+          std::min((int)result_candidate_vec.size(), total_size_per_batch);
+      per_batch_size = total_size_per_batch;
+    } else {
+      per_batch_size =
+          std::min(total_size_per_batch, max_size_per_class * num_classes);
+      max_detections =
+          std::min(per_batch_size, (int)result_candidate_vec.size());
+    }
+
+    final_valid_detections.push_back(max_detections);
+
+    int curr_total_size = max_detections;
+    int result_idx = 0;
+    // Pick the top max_detections values
+    while (curr_total_size > 0 && result_idx < result_candidate_vec.size()) {
+      ResultCandidate next_candidate = result_candidate_vec[result_idx++];
+      // Add to final output vectors
+      nmsed_boxes[batch].push_back(
+          std::max(std::min(next_candidate.box_coord[0], clip_window[2]),
+                   clip_window[0]));
+      nmsed_boxes[batch].push_back(
+          std::max(std::min(next_candidate.box_coord[1], clip_window[3]),
+                   clip_window[1]));
+      nmsed_boxes[batch].push_back(
+          std::max(std::min(next_candidate.box_coord[2], clip_window[2]),
+                   clip_window[0]));
+      nmsed_boxes[batch].push_back(
+          std::max(std::min(next_candidate.box_coord[3], clip_window[3]),
+                   clip_window[1]));
+      nmsed_scores[batch].push_back(next_candidate.score);
+      nmsed_classes[batch].push_back(next_candidate.class_idx);
+      curr_total_size--;
+    }
+
+    nmsed_boxes[batch].resize(per_batch_size * 4, 0);
+    nmsed_scores[batch].resize(per_batch_size, 0);
+    nmsed_classes[batch].resize(per_batch_size, 0);
+  }
+
+  Tensor* nmsed_boxes_t = nullptr;
+  TensorShape boxes_shape({num_batches, per_batch_size, 4});
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(0, boxes_shape, &nmsed_boxes_t));
+  auto nmsed_boxes_flat = nmsed_boxes_t->template flat<float>();
+
+  Tensor* nmsed_scores_t = nullptr;
+  TensorShape scores_shape({num_batches, per_batch_size});
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(1, scores_shape, &nmsed_scores_t));
+  auto nmsed_scores_flat = nmsed_scores_t->template flat<float>();
+
+  Tensor* nmsed_classes_t = nullptr;
+  OP_REQUIRES_OK(context,
+                 context->allocate_output(2, scores_shape, &nmsed_classes_t));
+  auto nmsed_classes_flat = nmsed_classes_t->template flat<float>();
+
+  Tensor* valid_detections_t = nullptr;
+  TensorShape valid_detections_shape({num_batches});
+  OP_REQUIRES_OK(context, context->allocate_output(3, valid_detections_shape,
+                                                   &valid_detections_t));
+  auto valid_detections_flat = valid_detections_t->template flat<int>();
+
+  for (int i = 0; i < num_batches; ++i) {
+    valid_detections_flat(i) = final_valid_detections[i];
+    for (int j = 0; j < per_batch_size; ++j) {
+      nmsed_scores_flat(i * per_batch_size + j) = nmsed_scores[i][j];
+      nmsed_classes_flat(i * per_batch_size + j) = nmsed_classes[i][j];
+      for (int k = 0; k < 4; ++k) {
+        nmsed_boxes_flat(i * per_batch_size * 4 + j * 4 + k) =
+            nmsed_boxes[i][j * 4 + k];
+      }
+    }
+  }
 }
 
 }  // namespace
@@ -221,18 +463,19 @@ class NonMaxSuppressionOp : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    auto suppress_check_fn = CreateIOUSuppressCheckFn(boxes, iou_threshold_);
+    auto suppress_check_fn =
+        CreateIOUSuppressCheckFn<float>(boxes, iou_threshold_);
 
     const float score_threshold_val = std::numeric_limits<float>::lowest();
-    DoNonMaxSuppressionOp(context, scores, num_boxes, max_output_size,
-                          score_threshold_val, suppress_check_fn);
+    DoNonMaxSuppressionOp<float>(context, scores, num_boxes, max_output_size,
+                                 score_threshold_val, suppress_check_fn);
   }
 
  private:
   float iou_threshold_;
 };
 
-template <typename Device>
+template <typename Device, typename T>
 class NonMaxSuppressionV2Op : public OpKernel {
  public:
   explicit NonMaxSuppressionV2Op(OpKernelConstruction* context)
@@ -264,37 +507,39 @@ class NonMaxSuppressionV2Op : public OpKernel {
     if (!context->status().ok()) {
       return;
     }
-    auto suppress_check_fn = CreateIOUSuppressCheckFn(boxes, iou_threshold_val);
+    auto suppress_check_fn =
+        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
 
     const float score_threshold_val = std::numeric_limits<float>::lowest();
-    DoNonMaxSuppressionOp(context, scores, num_boxes, max_output_size,
-                          score_threshold_val, suppress_check_fn);
+    DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
+                             score_threshold_val, suppress_check_fn);
   }
 };
 
-class NonMaxSuppressionV3V4Base : public OpKernel {
+template <typename Device, typename T>
+class NonMaxSuppressionV3Op : public OpKernel {
  public:
-  explicit NonMaxSuppressionV3V4Base(OpKernelConstruction* context)
+  explicit NonMaxSuppressionV3Op(OpKernelConstruction* context)
       : OpKernel(context) {}
 
   void Compute(OpKernelContext* context) override {
     // boxes: [num_boxes, 4]
-    boxes_ = context->input(0);
+    const Tensor& boxes = context->input(0);
     // scores: [num_boxes]
-    scores_ = context->input(1);
+    const Tensor& scores = context->input(1);
     // max_output_size: scalar
-    max_output_size_ = context->input(2);
+    const Tensor& max_output_size = context->input(2);
     OP_REQUIRES(
-        context, TensorShapeUtils::IsScalar(max_output_size_.shape()),
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
         errors::InvalidArgument("max_output_size must be 0-D, got shape ",
-                                max_output_size_.shape().DebugString()));
+                                max_output_size.shape().DebugString()));
     // iou_threshold: scalar
     const Tensor& iou_threshold = context->input(3);
     OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
                 errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
                                         iou_threshold.shape().DebugString()));
-    iou_threshold_val_ = iou_threshold.scalar<float>()();
-    OP_REQUIRES(context, iou_threshold_val_ >= 0 && iou_threshold_val_ <= 1,
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
                 errors::InvalidArgument("iou_threshold must be in [0, 1]"));
     // score_threshold: scalar
     const Tensor& score_threshold = context->input(4);
@@ -302,63 +547,73 @@ class NonMaxSuppressionV3V4Base : public OpKernel {
         context, TensorShapeUtils::IsScalar(score_threshold.shape()),
         errors::InvalidArgument("score_threshold must be 0-D, got shape ",
                                 score_threshold.shape().DebugString()));
-    score_threshold_val_ = score_threshold.scalar<float>()();
+    const float score_threshold_val = score_threshold.scalar<float>()();
 
-    num_boxes_ = 0;
-    ParseAndCheckBoxSizes(context, boxes_, &num_boxes_);
-    CheckScoreSizes(context, num_boxes_, scores_);
+    int num_boxes = 0;
+    ParseAndCheckBoxSizes(context, boxes, &num_boxes);
+    CheckScoreSizes(context, num_boxes, scores);
     if (!context->status().ok()) {
       return;
     }
 
-    DoComputeAndPostProcess(context);
-  }
-
- protected:
-  virtual void DoComputeAndPostProcess(OpKernelContext* context) = 0;
-
-  Tensor boxes_;
-  Tensor scores_;
-  Tensor max_output_size_;
-  int num_boxes_;
-  float iou_threshold_val_;
-  float score_threshold_val_;
-};
-
-template <typename Device>
-class NonMaxSuppressionV3Op : public NonMaxSuppressionV3V4Base {
- public:
-  explicit NonMaxSuppressionV3Op(OpKernelConstruction* context)
-      : NonMaxSuppressionV3V4Base(context) {}
-
- protected:
-  void DoComputeAndPostProcess(OpKernelContext* context) override {
     auto suppress_check_fn =
-        CreateIOUSuppressCheckFn(boxes_, iou_threshold_val_);
+        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
 
-    DoNonMaxSuppressionOp(context, scores_, num_boxes_, max_output_size_,
-                          score_threshold_val_, suppress_check_fn);
+    DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
+                             score_threshold_val, suppress_check_fn);
   }
 };
 
-template <typename Device>
-class NonMaxSuppressionV4Op : public NonMaxSuppressionV3V4Base {
+template <typename Device, typename T>
+class NonMaxSuppressionV4Op : public OpKernel {
  public:
   explicit NonMaxSuppressionV4Op(OpKernelConstruction* context)
-      : NonMaxSuppressionV3V4Base(context) {
+      : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("pad_to_max_output_size",
                                              &pad_to_max_output_size_));
   }
 
- protected:
-  void DoComputeAndPostProcess(OpKernelContext* context) override {
+  void Compute(OpKernelContext* context) override {
+    // boxes: [num_boxes, 4]
+    const Tensor& boxes = context->input(0);
+    // scores: [num_boxes]
+    const Tensor& scores = context->input(1);
+    // max_output_size: scalar
+    const Tensor& max_output_size = context->input(2);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+        errors::InvalidArgument("max_output_size must be 0-D, got shape ",
+                                max_output_size.shape().DebugString()));
+    // iou_threshold: scalar
+    const Tensor& iou_threshold = context->input(3);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
+                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
+                                        iou_threshold.shape().DebugString()));
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
+                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+    // score_threshold: scalar
+    const Tensor& score_threshold = context->input(4);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
+                                score_threshold.shape().DebugString()));
+    const float score_threshold_val = score_threshold.scalar<float>()();
+
+    int num_boxes = 0;
+    ParseAndCheckBoxSizes(context, boxes, &num_boxes);
+    CheckScoreSizes(context, num_boxes, scores);
+    if (!context->status().ok()) {
+      return;
+    }
+
     auto suppress_check_fn =
-        CreateIOUSuppressCheckFn(boxes_, iou_threshold_val_);
+        CreateIOUSuppressCheckFn<T>(boxes, iou_threshold_val);
     int num_valid_outputs;
 
-    DoNonMaxSuppressionOp(context, scores_, num_boxes_, max_output_size_,
-                          score_threshold_val_, suppress_check_fn,
-                          pad_to_max_output_size_, &num_valid_outputs);
+    DoNonMaxSuppressionOp<T>(context, scores, num_boxes, max_output_size,
+                             score_threshold_val, suppress_check_fn,
+                             pad_to_max_output_size_, &num_valid_outputs);
 
     // Allocate scalar output tensor for number of indices computed.
     Tensor* num_outputs_t = nullptr;
@@ -413,25 +668,111 @@ class NonMaxSuppressionWithOverlapsOp : public OpKernel {
     auto suppress_check_fn =
         CreateOverlapsSuppressCheckFn(overlaps, overlap_threshold_val);
 
-    DoNonMaxSuppressionOp(context, scores, num_boxes, max_output_size,
-                          score_threshold_val, suppress_check_fn);
+    DoNonMaxSuppressionOp<float>(context, scores, num_boxes, max_output_size,
+                                 score_threshold_val, suppress_check_fn);
   }
+};
+
+template <typename Device>
+class CombinedNonMaxSuppressionOp : public OpKernel {
+ public:
+  explicit CombinedNonMaxSuppressionOp(OpKernelConstruction* context)
+      : OpKernel(context) {
+    OP_REQUIRES_OK(context, context->GetAttr("pad_per_class", &pad_per_class_));
+  }
+
+  void Compute(OpKernelContext* context) override {
+    // boxes: [batch_size, num_anchors, q, 4]
+    const Tensor& boxes = context->input(0);
+    // scores: [batch_size, num_anchors, num_classes]
+    const Tensor& scores = context->input(1);
+    OP_REQUIRES(
+        context, (boxes.dim_size(0) == scores.dim_size(0)),
+        errors::InvalidArgument("boxes and scores must have same batch size"));
+
+    // max_output_size: scalar
+    const Tensor& max_output_size = context->input(2);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_output_size.shape()),
+        errors::InvalidArgument("max_size_per_class must be 0-D, got shape ",
+                                max_output_size.shape().DebugString()));
+    const int max_size_per_class = max_output_size.scalar<int>()();
+    // max_total_size: scalar
+    const Tensor& max_total_size = context->input(3);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(max_total_size.shape()),
+        errors::InvalidArgument("max_total_size must be 0-D, got shape ",
+                                max_total_size.shape().DebugString()));
+    const int max_total_size_per_batch = max_total_size.scalar<int>()();
+    OP_REQUIRES(context, max_total_size_per_batch > 0,
+                errors::InvalidArgument("max_total_size must be > 0"));
+    // iou_threshold: scalar
+    const Tensor& iou_threshold = context->input(4);
+    OP_REQUIRES(context, TensorShapeUtils::IsScalar(iou_threshold.shape()),
+                errors::InvalidArgument("iou_threshold must be 0-D, got shape ",
+                                        iou_threshold.shape().DebugString()));
+    const float iou_threshold_val = iou_threshold.scalar<float>()();
+
+    // score_threshold: scalar
+    const Tensor& score_threshold = context->input(5);
+    OP_REQUIRES(
+        context, TensorShapeUtils::IsScalar(score_threshold.shape()),
+        errors::InvalidArgument("score_threshold must be 0-D, got shape ",
+                                score_threshold.shape().DebugString()));
+    const float score_threshold_val = score_threshold.scalar<float>()();
+
+    OP_REQUIRES(context, iou_threshold_val >= 0 && iou_threshold_val <= 1,
+                errors::InvalidArgument("iou_threshold must be in [0, 1]"));
+    int num_boxes = 0;
+    const int num_classes = scores.dim_size(2);
+    ParseAndCheckCombinedNMSBoxSizes(context, boxes, &num_boxes, num_classes);
+    CheckCombinedNMSScoreSizes(context, num_boxes, scores);
+
+    if (!context->status().ok()) {
+      return;
+    }
+    BatchedNonMaxSuppressionOp(context, boxes, scores, num_boxes,
+                               max_size_per_class, max_total_size_per_batch,
+                               score_threshold_val, iou_threshold_val,
+                               pad_per_class_);
+  }
+
+ private:
+  bool pad_per_class_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("NonMaxSuppression").Device(DEVICE_CPU),
                         NonMaxSuppressionOp<CPUDevice>);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2").Device(DEVICE_CPU),
-                        NonMaxSuppressionV2Op<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("NonMaxSuppressionV2").TypeConstraint<float>("T").Device(DEVICE_CPU),
+    NonMaxSuppressionV2Op<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV2")
+                            .TypeConstraint<Eigen::half>("T")
+                            .Device(DEVICE_CPU),
+                        NonMaxSuppressionV2Op<CPUDevice, Eigen::half>);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3").Device(DEVICE_CPU),
-                        NonMaxSuppressionV3Op<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("NonMaxSuppressionV3").TypeConstraint<float>("T").Device(DEVICE_CPU),
+    NonMaxSuppressionV3Op<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV3")
+                            .TypeConstraint<Eigen::half>("T")
+                            .Device(DEVICE_CPU),
+                        NonMaxSuppressionV3Op<CPUDevice, Eigen::half>);
 
-REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4").Device(DEVICE_CPU),
-                        NonMaxSuppressionV4Op<CPUDevice>);
+REGISTER_KERNEL_BUILDER(
+    Name("NonMaxSuppressionV4").TypeConstraint<float>("T").Device(DEVICE_CPU),
+    NonMaxSuppressionV4Op<CPUDevice, float>);
+REGISTER_KERNEL_BUILDER(Name("NonMaxSuppressionV4")
+                            .TypeConstraint<Eigen::half>("T")
+                            .Device(DEVICE_CPU),
+                        NonMaxSuppressionV4Op<CPUDevice, Eigen::half>);
 
 REGISTER_KERNEL_BUILDER(
     Name("NonMaxSuppressionWithOverlaps").Device(DEVICE_CPU),
     NonMaxSuppressionWithOverlapsOp<CPUDevice>);
+
+REGISTER_KERNEL_BUILDER(Name("CombinedNonMaxSuppression").Device(DEVICE_CPU),
+                        CombinedNonMaxSuppressionOp<CPUDevice>);
 
 }  // namespace tensorflow

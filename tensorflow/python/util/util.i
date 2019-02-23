@@ -28,17 +28,14 @@ limitations under the License.
 // for functions in this module because they use python methods that need GIL.
 // TODO(iga): Find a way not to leak such definitions across files.
 
-%unignore tensorflow::swig::RegisterSequenceClass;
-%noexception tensorflow::swig::RegisterSequenceClass;
+%unignore tensorflow::swig::RegisterType;
+%noexception tensorflow::swig::RegisterType;
 
-%unignore tensorflow::swig::RegisterMappingClass;
-%noexception tensorflow::swig::RegisterMappingClass;
-
-%unignore tensorflow::swig::RegisterSparseTensorValueClass;
-%noexception tensorflow::swig::RegisterSparseTensorValueClass;
+%unignore tensorflow::swig::IsTensor;
+%noexception tensorflow::swig::IsTensor;
 
 %feature("docstring") tensorflow::swig::IsSequence
-"""Returns a true if its input is a collections.Sequence (except strings).
+"""Returns true if its input is a collections.Sequence (except strings).
 
 Args:
   seq: an input sequence.
@@ -49,6 +46,31 @@ Returns:
 """
 %unignore tensorflow::swig::IsSequence;
 %noexception tensorflow::swig::IsSequence;
+
+%feature("docstring") tensorflow::swig::IsSequenceOrComposite
+"""Returns true if its input is a sequence or a `CompositeTensor`.
+
+Args:
+  seq: an input sequence.
+
+Returns:
+  True if the sequence is a not a string and is a collections.Sequence or a
+  dict or a CompositeTensor.
+"""
+%unignore tensorflow::swig::IsSequenceOrComposite;
+%noexception tensorflow::swig::IsSequenceOrComposite;
+
+%feature("docstring") tensorflow::swig::IsCompositeTensor
+"""Returns true if its input is a `CompositeTensor`.
+
+Args:
+  seq: an input sequence.
+
+Returns:
+  True if the sequence is a CompositeTensor.
+"""
+%unignore tensorflow::swig::IsCompositeTensor;
+%noexception tensorflow::swig::IsCompositeTensor;
 
 %unignore tensorflow::swig::IsNamedtuple;
 %noexception tensorflow::swig::IsNamedtuple;
@@ -64,6 +86,18 @@ Returns:
 """
 %unignore tensorflow::swig::IsMapping;
 %noexception tensorflow::swig::IsMapping;
+
+%feature("docstring") tensorflow::swig::IsAttrs
+"""Returns True iff `instance` is an instance of an `attr.s` decorated class.
+
+Args:
+  instance: An instance of a Python object.
+
+Returns:
+  True if `instance` is an instance of an `attr.s` decorated class.
+"""
+%unignore tensorflow::swig::IsAttrs;
+%noexception tensorflow::swig::IsAttrs;
 
 %feature("docstring") tensorflow::swig::SameNamedtuples
 "Returns True if the two namedtuples have the same name and fields."
@@ -94,6 +128,8 @@ running.
 Args:
   nest: an arbitrarily nested structure or a scalar object. Note, numpy
       arrays are considered scalars.
+  expand_composites: If true, then composite tensors such as `tf.SparseTensor`
+      and `tf.RaggedTensor` are expanded into their component tensors.
 
 Returns:
   A Python list, the flattened version of the input.
@@ -103,10 +139,38 @@ Raises:
 """
 %unignore tensorflow::swig::Flatten;
 %noexception tensorflow::swig::Flatten;
+%feature("kwargs") tensorflow::swig::Flatten;
 
+%feature("docstring") tensorflow::swig::IsSequenceForData
+"""Returns a true if `seq` is a Sequence or dict (except strings/lists).
+
+NOTE(mrry): This differs from `tensorflow.python.util.nest.is_sequence()`,
+which *does* treat a Python list as a sequence. For ergonomic
+reasons, `tf.data` users would prefer to treat lists as
+implicit `tf.Tensor` objects, and dicts as (nested) sequences.
+
+Args:
+  seq: an input sequence.
+
+Returns:
+  True if the sequence is a not a string or list and is a
+  collections.Sequence.
+"""
 %unignore tensorflow::swig::IsSequenceForData;
 %noexception tensorflow::swig::IsSequenceForData;
 
+%feature("docstring") tensorflow::swig::FlattenForData
+"""Returns a flat sequence from a given nested structure.
+
+If `nest` is not a sequence, this returns a single-element list: `[nest]`.
+
+Args:
+  nest: an arbitrarily nested structure or a scalar object.
+    Note, numpy arrays are considered scalars.
+
+Returns:
+  A Python list, the flattened version of the input.
+"""
 %unignore tensorflow::swig::FlattenForData;
 %noexception tensorflow::swig::FlattenForData;
 

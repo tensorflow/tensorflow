@@ -21,6 +21,7 @@ limitations under the License.
 #include <string>
 
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/io/zlib_compression_options.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/file_system.h"
@@ -62,7 +63,7 @@ class ZlibOutputBuffer : public WritableFile {
   // to file when the buffer is full.
   //
   // To immediately write contents to file call `Flush()`.
-  Status Append(const StringPiece& data) override;
+  Status Append(StringPiece data) override;
 
   // Deflates any cached input and writes all output to file.
   Status Flush() override;
@@ -77,8 +78,15 @@ class ZlibOutputBuffer : public WritableFile {
   // will fail.
   Status Close() override;
 
+  // Returns the name of the underlying file.
+  Status Name(StringPiece* result) const override;
+
   // Deflates any cached input, writes all output to file and syncs it.
   Status Sync() override;
+
+  // Returns the write position in the underlying file. The position does not
+  // reflect buffered, un-flushed data.
+  Status Tell(int64* position) override;
 
  private:
   WritableFile* file_;  // Not owned

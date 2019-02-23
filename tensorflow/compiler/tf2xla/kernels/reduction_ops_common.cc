@@ -15,6 +15,7 @@ limitations under the License.
 
 // XLA-specific reduction Ops.
 
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/kernels/reduction_ops.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/tf2xla/xla_helpers.h"
@@ -34,12 +35,13 @@ XlaReductionOp::XlaReductionOp(OpKernelConstruction* ctx,
       ctx, DataTypeToPrimitiveType(reduction_type_, &xla_reduction_type_));
 }
 
-// Unless BuildFinalizer is overridden the reduction has no
-// finalizer.
-xla::XlaOp XlaReductionOp::BuildFinalizer(xla::XlaBuilder* builder,
-                                          const xla::XlaOp& reduce_output,
-                                          int64 num_elements_reduced) {
-  return reduce_output;
+// The default finalizer converts the results back into the input type. This can
+// be overridden.
+xla::XlaOp XlaReductionOp::BuildFinalizer(
+    xla::XlaBuilder* /*builder*/, const xla::XlaOp& /*input*/,
+    const xla::XlaOp& reduce_output,
+    const std::vector<int64>& /*dimensions_to_reduce*/) {
+  return XlaHelpers::ConvertElementType(reduce_output, input_type(0));
 }
 
 void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
@@ -66,11 +68,10 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   OP_REQUIRES_OK(ctx, ctx->ConstantInputReshapedToIntVector(1, &axes));
 
   VLOG(1) << "data shape: " << data_shape.DebugString();
-  VLOG(1) << "axes      : " << str_util::Join(axes, ",");
+  VLOG(1) << "axes      : " << absl::StrJoin(axes, ",");
 
-  gtl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
+  absl::InlinedVector<bool, 4> bitmap(data_shape.dims(), false);
   std::vector<int64> xla_axes;
-  int64 num_elements_reduced = 1LL;
   for (int64 i = 0; i < axes_tensor_shape.num_elements(); ++i) {
     int64 index = axes[i];
     OP_REQUIRES(ctx,
@@ -81,7 +82,6 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
     index = (index + data_shape.dims()) % data_shape.dims();
     bitmap[index] = true;
     xla_axes.push_back(index);
-    num_elements_reduced *= data_shape.dim_size(index);
   }
 
   std::vector<int64> final_shape;
@@ -102,7 +102,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
 
   xla::XlaBuilder* const b = ctx->builder();
   // Construct the builder for the reduction lambda.
-  xla::XlaBuilder r(strings::StrCat(desc, "-reduction"));
+  xla::XlaBuilder r(absl::StrCat(desc, "-reduction"));
   xla::PrimitiveType type;
   TF_CHECK_OK(DataTypeToPrimitiveType(reduction_type_, &type));
 
@@ -117,8 +117,7 @@ void XlaReductionOp::Compile(XlaOpKernelContext* ctx) {
   xla::XlaComputation reduction_computation = r.Build().ConsumeValueOrDie();
 
   auto reduce = xla::Reduce(data, initial, reduction_computation, xla_axes);
-  auto deconverted = XlaHelpers::ConvertElementType(b, reduce, input_type(0));
-  auto finalized = BuildFinalizer(b, deconverted, num_elements_reduced);
+  auto finalized = BuildFinalizer(b, data, reduce, xla_axes);
   auto result = keep_dims_ ? xla::Reshape(finalized, final_shape) : finalized;
   ctx->SetOutput(0, result);
 }

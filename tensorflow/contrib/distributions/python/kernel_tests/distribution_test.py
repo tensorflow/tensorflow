@@ -212,7 +212,7 @@ class DistributionTest(test.TestCase):
   def testStrWorksCorrectlyScalar(self):
     normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
     self.assertEqual(
-        ("tf.distributions.Normal("
+        ("tfp.distributions.Normal("
          "\"Normal/\", "
          "batch_shape=(), "
          "event_shape=(), "
@@ -221,7 +221,7 @@ class DistributionTest(test.TestCase):
 
     chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
     self.assertEqual(
-        ("tf.distributions.Chi2("
+        ("tfp.distributions.Chi2("
          "\"silly/\", "  # What a silly name that is!
          "batch_shape=(2,), "
          "event_shape=(), "
@@ -230,7 +230,7 @@ class DistributionTest(test.TestCase):
 
     exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
     self.assertEqual(
-        ("tf.distributions.Exponential(\"Exponential/\", "
+        ("tfp.distributions.Exponential(\"Exponential/\", "
          # No batch shape.
          "event_shape=(), "
          "dtype=float32)"),
@@ -240,7 +240,7 @@ class DistributionTest(test.TestCase):
     mvn_static = tfd.MultivariateNormalDiag(
         loc=np.zeros([2, 2]), name="MVN")
     self.assertEqual(
-        ("tf.distributions.MultivariateNormalDiag("
+        ("tfp.distributions.MultivariateNormalDiag("
          "\"MVN/\", "
          "batch_shape=(2,), "
          "event_shape=(2,), "
@@ -250,18 +250,27 @@ class DistributionTest(test.TestCase):
     mvn_dynamic = tfd.MultivariateNormalDiag(
         loc=array_ops.placeholder(shape=[None, 3], dtype=dtypes.float32),
         name="MVN2")
-    self.assertEqual(
-        ("tf.distributions.MultivariateNormalDiag("
-         "\"MVN2/\", "
-         "batch_shape=(?,), "  # Partially known.
-         "event_shape=(3,), "
-         "dtype=float32)"),
-        str(mvn_dynamic))
+    if mvn_dynamic.batch_shape._v2_behavior:
+      self.assertEqual(
+          ("tfp.distributions.MultivariateNormalDiag("
+           "\"MVN2/\", "
+           "batch_shape=(None,), "  # Partially known.
+           "event_shape=(3,), "
+           "dtype=float32)"),
+          str(mvn_dynamic))
+    else:
+      self.assertEqual(
+          ("tfp.distributions.MultivariateNormalDiag("
+           "\"MVN2/\", "
+           "batch_shape=(?,), "  # Partially known.
+           "event_shape=(3,), "
+           "dtype=float32)"),
+          str(mvn_dynamic))
 
   def testReprWorksCorrectlyScalar(self):
     normal = tfd.Normal(loc=np.float16(0), scale=np.float16(1))
     self.assertEqual(
-        ("<tf.distributions.Normal"
+        ("<tfp.distributions.Normal"
          " 'Normal/'"
          " batch_shape=()"
          " event_shape=()"
@@ -270,7 +279,7 @@ class DistributionTest(test.TestCase):
 
     chi2 = tfd.Chi2(df=np.float32([1., 2.]), name="silly")
     self.assertEqual(
-        ("<tf.distributions.Chi2"
+        ("<tfp.distributions.Chi2"
          " 'silly/'"  # What a silly name that is!
          " batch_shape=(2,)"
          " event_shape=()"
@@ -279,7 +288,7 @@ class DistributionTest(test.TestCase):
 
     exp = tfd.Exponential(rate=array_ops.placeholder(dtype=dtypes.float32))
     self.assertEqual(
-        ("<tf.distributions.Exponential"
+        ("<tfp.distributions.Exponential"
          " 'Exponential/'"
          " batch_shape=<unknown>"
          " event_shape=()"
@@ -290,7 +299,7 @@ class DistributionTest(test.TestCase):
     mvn_static = tfd.MultivariateNormalDiag(
         loc=np.zeros([2, 2]), name="MVN")
     self.assertEqual(
-        ("<tf.distributions.MultivariateNormalDiag"
+        ("<tfp.distributions.MultivariateNormalDiag"
          " 'MVN/'"
          " batch_shape=(2,)"
          " event_shape=(2,)"
@@ -300,13 +309,22 @@ class DistributionTest(test.TestCase):
     mvn_dynamic = tfd.MultivariateNormalDiag(
         loc=array_ops.placeholder(shape=[None, 3], dtype=dtypes.float32),
         name="MVN2")
-    self.assertEqual(
-        ("<tf.distributions.MultivariateNormalDiag"
-         " 'MVN2/'"
-         " batch_shape=(?,)"  # Partially known.
-         " event_shape=(3,)"
-         " dtype=float32>"),
-        repr(mvn_dynamic))
+    if mvn_dynamic.batch_shape._v2_behavior:
+      self.assertEqual(
+          ("<tfp.distributions.MultivariateNormalDiag"
+           " 'MVN2/'"
+           " batch_shape=(None,)"  # Partially known.
+           " event_shape=(3,)"
+           " dtype=float32>"),
+          repr(mvn_dynamic))
+    else:
+      self.assertEqual(
+          ("<tfp.distributions.MultivariateNormalDiag"
+           " 'MVN2/'"
+           " batch_shape=(?,)"  # Partially known.
+           " event_shape=(3,)"
+           " dtype=float32>"),
+          repr(mvn_dynamic))
 
 
 if __name__ == "__main__":

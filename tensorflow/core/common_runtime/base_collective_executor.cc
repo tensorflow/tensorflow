@@ -14,13 +14,28 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/base_collective_executor.h"
 
-#include "tensorflow/core/common_runtime/broadcaster.h"
+#include <algorithm>
+#include <functional>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/copy_tensor.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
 #include "tensorflow/core/common_runtime/dma_helper.h"
+#include "tensorflow/core/common_runtime/hierarchical_tree_broadcaster.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/ring_reducer.h"
+#include "tensorflow/core/framework/allocator.h"
+#include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 #define VALUE_IN_DEBUG_STRING false
 
@@ -48,7 +63,7 @@ int64 CollectiveAdapter::AlignedChunkElts(int64 elt_bytes, int64 total_elts,
       (chunk_bytes < EIGEN_MAX_ALIGN_BYTES)
           ? (EIGEN_MAX_ALIGN_BYTES - chunk_bytes)
           : (EIGEN_MAX_ALIGN_BYTES - (chunk_bytes % EIGEN_MAX_ALIGN_BYTES));
-  CHECK_EQ(0, diff % elt_bytes);
+  DCHECK_EQ(0, diff % elt_bytes);
   base_chunk_elts += (diff / elt_bytes);
   DCHECK_EQ(0, ((base_chunk_elts * elt_bytes) % EIGEN_MAX_ALIGN_BYTES))
       << "total_elts=" << total_elts << " num_chunks=" << num_chunks
@@ -63,17 +78,23 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
  public:
   // Takes ownership of output and prepares to properly alias its chunks.
   // Ownership is taken because the shape may temporarily change.
-  CollectiveAdapterImpl(Tensor* output, int64 num_chunks, Allocator* allocator)
+  CollectiveAdapterImpl(Tensor* output, int64 num_chunks, Allocator* allocator,
+                        bool align_chunks)
       : output_(std::move(*output)),
         dt_(output_.dtype()),
         old_shape_(output_.shape()),
         num_chunks_(num_chunks),
         allocator_(allocator),
         total_elts_(output_.NumElements()),
-        chunk_elts_(AlignedChunkElts(sizeof(T), total_elts_, num_chunks_)),
+        chunk_elts_(align_chunks
+                        ? AlignedChunkElts(sizeof(T), total_elts_, num_chunks_)
+                        : total_elts_ / num_chunks_),
         data_start_(reinterpret_cast<T*>(DMAHelper::base(&output_))),
         data_end_(data_start_ + total_elts_) {
-    CHECK_GT(chunk_elts_, 0);
+    if (!align_chunks) {
+      DCHECK_EQ(total_elts_, num_chunks_ * chunk_elts_);
+    }
+    DCHECK_GT(chunk_elts_, 0);
     Flatten();
   }
 
@@ -83,7 +104,7 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 
   // If necessary, flatten output.
   void Flatten() {
-    if (old_shape_.dims() > 1) {
+    if (old_shape_.dims() != 1) {
       TensorShape new_shape = TensorShape({old_shape_.num_elements()});
       DMAHelper::UnsafeSetShape(&output_, new_shape);
     }
@@ -161,19 +182,24 @@ class CollectiveAdapterImpl : public CollectiveAdapter {
 }  // namespace
 
 CollectiveAdapter* MakeCollectiveAdapter(Tensor* output, int num_chunks,
-                                         Allocator* allocator) {
+                                         Allocator* allocator,
+                                         bool align_chunks) {
   switch (output->dtype()) {
     case DT_FLOAT:
-      return new CollectiveAdapterImpl<float>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<float>(output, num_chunks, allocator,
+                                              align_chunks);
       break;
     case DT_DOUBLE:
-      return new CollectiveAdapterImpl<double>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<double>(output, num_chunks, allocator,
+                                               align_chunks);
       break;
     case DT_INT32:
-      return new CollectiveAdapterImpl<int32>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<int32>(output, num_chunks, allocator,
+                                              align_chunks);
       break;
     case DT_INT64:
-      return new CollectiveAdapterImpl<int64>(output, num_chunks, allocator);
+      return new CollectiveAdapterImpl<int64>(output, num_chunks, allocator,
+                                              align_chunks);
       break;
     default:
       LOG(FATAL) << "Unsupported type " << output->dtype()
@@ -211,103 +237,112 @@ void BaseCollectiveExecutor::ExecuteAsync(OpKernelContext* ctx,
   };
 
   Tensor* output = ctx->mutable_output(0);
-  string error;
-  switch (col_params.instance.type) {
-    case REDUCTION_COLLECTIVE: {
-      // TODO(tucker): support other reduction algorithms,
-      // e.g. tree-reduce, hybrid tree/ring, delegate-to-NCCL, etc.
-      const Tensor* input = &ctx->input(0);
-      RingReducer* reducer =
-          CreateReducer(ctx, CtxParams(ctx), col_params, exec_key, step_id_,
-                        input, output, &error);
-      if (!reducer) {
-        done_safe(errors::Internal(error));
-        return;
-      }
-      // Run in an I/O thread, so as not to starve the executor threads.
-      // TODO(tucker): Instead of forking every per-device Collective
-      // Op off into its own thread, consider queuing them on a
-      // fixed-size thread-pool dedicated to running CollectiveOps.
-      SchedClosure([reducer, done_safe]() {
-        reducer->Run([reducer, done_safe](const Status& s) {
-          done_safe(s);
-          delete reducer;
-        });
-      });
-    } break;
-
-    case BROADCAST_COLLECTIVE: {
-      Broadcaster* broadcaster = CreateBroadcaster(
-          ctx, CtxParams(ctx), col_params, exec_key, step_id_, output, &error);
-      if (!broadcaster) {
-        done_safe(errors::Internal(error));
-        return;
-      }
-      // Run in an I/O thread, so as not to starve the executor threads.
-      SchedClosure([broadcaster, done_safe]() {
-        broadcaster->Run([broadcaster, done_safe](const Status& s) {
-          done_safe(s);
-          delete broadcaster;
-        });
-      });
-    } break;
-
-    default:
-      done_safe(errors::Internal("Unimplemented CollectiveType ",
-                                 col_params.instance.type));
+  const Tensor* input = (col_params.instance.type == REDUCTION_COLLECTIVE ||
+                         col_params.instance.type == GATHER_COLLECTIVE ||
+                         (col_params.instance.type == BROADCAST_COLLECTIVE &&
+                          col_params.is_source))
+                            ? &ctx->input(0)
+                            : nullptr;
+  CollectiveImplementationInterface* col_impl = nullptr;
+  Status status = CreateCollective(col_params, &col_impl);
+  if (!status.ok()) {
+    done_safe(status);
+    DCHECK_EQ(nullptr, col_impl);
+    return;
   }
+  CollectiveContext* col_ctx =
+      new CollectiveContext(this, dev_mgr_, ctx, CtxParams(ctx), col_params,
+                            exec_key, step_id_, input, output);
+  status = col_impl->InitializeCollectiveContext(col_ctx);
+  if (!status.ok()) {
+    done_safe(status);
+    delete col_ctx;
+    delete col_impl;
+    return;
+  }
+  // Run in an I/O thread, so as not to starve the executor threads.
+  // TODO(b/80529858): Instead of forking every per-device Collective
+  // Op off into its own thread, consider queuing them on a
+  // fixed-size thread-pool dedicated to running CollectiveOps.
+  SchedClosure([col_impl, col_ctx, done_safe]() {
+    col_impl->Run([col_impl, col_ctx, done_safe](const Status& s) {
+      done_safe(s);
+      delete col_ctx;
+      delete col_impl;
+    });
+  });
 }
 
-RingReducer* BaseCollectiveExecutor::CreateReducer(
-    OpKernelContext* ctx, OpKernelContext::Params* params,
-    const CollectiveParams& col_params, const string& exec_key, int64 step_id,
-    const Tensor* input, Tensor* output, string* error) {
+void BaseCollectiveExecutor::CompleteParamsAsync(
+    const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
+    StatusCallback done) {
+  cp->instance.gpu_ring_order = *gpu_ring_order_;
+  cem_->GetParamResolver()->CompleteParamsAsync(device, cp, cancel_mgr, done);
+}
+
+Status BaseCollectiveExecutor::CreateCollective(
+    const CollectiveParams& col_params,
+    CollectiveImplementationInterface** col_impl) {
+  *col_impl = nullptr;
+  Status status;
   switch (col_params.instance.data_type) {
     case DT_INT32:
       if (col_params.group.device_type == DEVICE_GPU) {
-        *error =
-            "Collective Reduce does not support datatype DT_INT32 on "
-            "DEVICE_GPU";
-        return nullptr;
-      }
-      TF_FALLTHROUGH_INTENDED;
-    case DT_FLOAT:
-    case DT_DOUBLE:
-    case DT_INT64:
-      return new RingReducer(this, dev_mgr_, ctx, params, col_params, exec_key,
-                             step_id, input, output);
-      break;
-    default:
-      *error = strings::StrCat("Collective Reduce does not support datatype ",
-                               col_params.instance.data_type);
-      return nullptr;
-  }
-}
-
-Broadcaster* BaseCollectiveExecutor::CreateBroadcaster(
-    OpKernelContext* ctx, OpKernelContext::Params* params,
-    const CollectiveParams& col_params, const string& exec_key, int64 step_id,
-    Tensor* output, string* error) {
-  switch (col_params.instance.data_type) {
-    case DT_INT32:
-      if (col_params.group.device_type == DEVICE_GPU) {
-        *error =
-            "Collective Broadcast does not support datatype DT_INT32 on "
-            "DEVICE_GPU";
-        return nullptr;
+        status = errors::Internal(
+            "CollectiveImplementation does not support datatype DT_INT32 on "
+            "DEVICE_GPU");
       }
       TF_FALLTHROUGH_INTENDED;
     case DT_FLOAT:
     case DT_DOUBLE:
     case DT_INT64: {
-      return new Broadcaster(this, dev_mgr_, ctx, params, col_params, exec_key,
-                             step_id, output);
-    } break;
+      status = CollectiveRegistry::Lookup(
+          col_params.instance.impl_details.collective_name, col_impl);
+      break;
+    }
     default:
-      *error =
-          strings::StrCat("Collective Broadcast does not support datatype ",
-                          DataTypeString(col_params.instance.data_type));
-      return nullptr;
+      status = errors::Internal(
+          "CollectiveImplementation does not support datatype ",
+          col_params.instance.data_type);
+  }
+  return status;
+}
+
+bool BaseCollectiveExecutor::CheckDependencies(
+    const CollectiveParams& col_params) {
+  for (int32 instance : col_params.instance.impl_details.dependencies) {
+    auto find_iter = launched_.find(instance);
+    if (find_iter == launched_.end() || find_iter->second != 0) {
+      VLOG(1) << "Collective " << col_params.ToString()
+              << " blocked by instance " << instance;
+      return false;
+    }
+  }
+  return true;
+}
+
+void BaseCollectiveExecutor::WaitForDependencies(
+    const CollectiveParams& col_params) {
+  mutex_lock l(launch_mu_);
+  while (!CheckDependencies(col_params)) {
+    launch_cv_.wait(l);
+  }
+  VLOG(1) << "Unblocking collective " << col_params.ToString();
+}
+
+void BaseCollectiveExecutor::Launched(const CollectiveParams& col_params) {
+  mutex_lock l(launch_mu_);
+  if (launched_.find(col_params.instance.instance_key) == launched_.end()) {
+    const string& task_name =
+        col_params.instance.task_names[col_params.default_rank];
+    const int32 num_devices =
+        col_params.instance.num_devices_per_task.at(task_name);
+    launched_[col_params.instance.instance_key] = num_devices;
+  }
+  if (--launched_[col_params.instance.instance_key] == 0) {
+    VLOG(1) << "Unblocking dependencies for collective instance "
+            << col_params.instance.instance_key;
+    launch_cv_.notify_all();
   }
 }
 

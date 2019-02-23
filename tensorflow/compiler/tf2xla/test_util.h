@@ -24,8 +24,10 @@ limitations under the License.
 
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/framework/graph_def_util.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/util/equal_graph_def.h"
 
 namespace tensorflow {
 
@@ -43,5 +45,16 @@ Status InstantiateFunctionForTest(const string& name,
                                   InstantiationResultForTest* result);
 
 }  // namespace tensorflow
+
+// Variant of TF_EXPECT_GRAPH_EQ that also compares internal attributes for
+// equality.
+#define TF_EXPECT_GRAPH_EQ_INTERNAL(expected, actual)               \
+  do {                                                              \
+    string diff;                                                    \
+    EqualGraphDefOptions eq_options;                                \
+    eq_options.ignore_internal_attrs = false;                       \
+    EXPECT_TRUE(EqualGraphDef(actual, expected, &diff, eq_options)) \
+        << diff << "\nActual: " << SummarizeGraphDef(actual);       \
+  } while (false)
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_TEST_UTIL_H_

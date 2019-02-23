@@ -17,19 +17,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.framework import random_seed
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.linalg import linalg as linalg_lib
 from tensorflow.python.ops.linalg import linear_operator_test_util
 from tensorflow.python.platform import test
 
 linalg = linalg_lib
-random_seed.set_random_seed(23)
 
 
 class LinearOperatorLowerTriangularTest(
     linear_operator_test_util.SquareLinearOperatorDerivedClassTest):
   """Most tests done in the base class LinearOperatorDerivedClassTest."""
+
+  @property
+  def _tests_to_skip(self):
+    # Cholesky does not make sense for triangular matrices.
+    return ["cholesky"]
 
   def _operator_and_matrix(self, build_info, dtype, use_placeholder):
     shape = list(build_info.shape)
@@ -72,6 +76,30 @@ class LinearOperatorLowerTriangularTest(
   def test_tril_must_have_at_least_two_dims_or_raises(self):
     with self.assertRaisesRegexp(ValueError, "at least 2 dimensions"):
       linalg.LinearOperatorLowerTriangular([1.])
+
+  def test_triangular_diag_matmul(self):
+    operator1 = linalg_lib.LinearOperatorLowerTriangular(
+        [[1., 0., 0.], [2., 1., 0.], [2., 3., 3.]])
+    operator2 = linalg_lib.LinearOperatorDiag([2., 2., 3.])
+    operator_matmul = operator1.matmul(operator2)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorLowerTriangular))
+    self.assertAllClose(
+        math_ops.matmul(
+            operator1.to_dense(),
+            operator2.to_dense()),
+        self.evaluate(operator_matmul.to_dense()))
+
+    operator_matmul = operator2.matmul(operator1)
+    self.assertTrue(isinstance(
+        operator_matmul,
+        linalg_lib.LinearOperatorLowerTriangular))
+    self.assertAllClose(
+        math_ops.matmul(
+            operator2.to_dense(),
+            operator1.to_dense()),
+        self.evaluate(operator_matmul.to_dense()))
 
 
 if __name__ == "__main__":

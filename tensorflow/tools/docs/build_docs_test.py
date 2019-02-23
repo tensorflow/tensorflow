@@ -30,9 +30,11 @@ from tensorflow.tools.docs import generate_lib
 
 class Flags(object):
   resource_root = resource_loader.get_root_dir_with_all_resources()
-  src_dir = os.path.join(resource_root, 'tensorflow/docs_src')
+  src_dir = os.path.join(googletest.GetTempDir(), 'input')
+  os.mkdir(src_dir)
   base_dir = os.path.join(resource_root, 'tensorflow/')
-  output_dir = googletest.GetTempDir()
+  output_dir = os.path.join(googletest.GetTempDir(), 'output')
+  os.mkdir(output_dir)
 
 
 class BuildDocsTest(googletest.TestCase):

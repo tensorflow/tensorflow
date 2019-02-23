@@ -17,12 +17,13 @@ limitations under the License.
 
 #include <vector>
 
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 
 namespace tensorflow {
+namespace data {
 
 // Creates a dataset representing an eagerly-collected window of elements.
 //
@@ -43,6 +44,7 @@ Status NewWindowDataset(std::vector<std::vector<Tensor>> elements,
                         std::vector<PartialTensorShape> output_shapes,
                         DatasetBase** out_dataset);
 
+}  // namespace data
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_WINDOW_DATASET_H_

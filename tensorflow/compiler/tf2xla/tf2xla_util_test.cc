@@ -15,26 +15,32 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
+#include "absl/strings/match.h"
+#include "absl/strings/str_cat.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/data_flow_ops.h"
 #include "tensorflow/cc/ops/function_ops.h"
+#include "tensorflow/cc/ops/functional_ops.h"
 #include "tensorflow/cc/ops/standard_ops.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
+#include "tensorflow/core/common_runtime/process_function_library_runtime.h"
+#include "tensorflow/core/framework/function.h"
+#include "tensorflow/core/framework/graph_to_functiondef.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/graph.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
-#include "tensorflow/core/lib/core/stringpiece.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/test.h"
+#include "tensorflow/core/public/version.h"
 
 namespace tensorflow {
 namespace {
 
-void ExpectErrorContains(const Status& status, StringPiece str) {
+void ExpectErrorContains(const Status& status, absl::string_view str) {
   EXPECT_NE(Status::OK(), status);
-  EXPECT_TRUE(str_util::StrContains(status.error_message(), str))
+  EXPECT_TRUE(absl::StrContains(status.error_message(), str))
       << "expected error: " << status.error_message() << " to contain: " << str;
 }
 
@@ -153,7 +159,7 @@ static tf2xla::Config FetchesConfig(std::vector<string> fetches) {
   tf2xla::Config config;
   for (const auto& fetch_node_name : fetches) {
     auto* fetch = config.add_fetch();
-    fetch->set_name(strings::StrCat("fetch_", fetch_node_name));
+    fetch->set_name(absl::StrCat("fetch_", fetch_node_name));
     fetch->mutable_id()->set_node_name(fetch_node_name);
   }
   return config;
@@ -253,6 +259,161 @@ TEST(SetNodeShardingFromNeighbors, Basic) {
   TF_ASSERT_OK(parse_status.status());
   ASSERT_TRUE(parse_status.ValueOrDie().has_value());
   EXPECT_EQ(1, parse_status.ValueOrDie().value().tile_assignment_devices(0));
+}
+
+REGISTER_OP("One")
+    .Output("y: T")
+    .Attr("T: {float, double, int32, int64}")
+    .Doc(R"doc(
+Returns a tensor with a single element (1) of type T.
+
+y: A scalar in type T.
+
+)doc");
+
+// Tests that CachedFunctionHandles class works.
+TEST(CachedFunctionHandles, Basic) {
+  FunctionDef func = FunctionDefHelper::Define(
+      // Name
+      "TestFunc",
+      // Args
+      {},
+      // Return values
+      {"y:T"},
+      // Attr def
+      {"T:{float, double, int32, int64}"},
+      // Nodes
+      {
+          {{"y"}, "One", {}, {{"T", "$T"}}},
+      });
+  FunctionDefLibrary proto;
+  *proto.add_function() = func;
+  FunctionLibraryDefinition fld(OpRegistry::Global(), proto);
+  std::unique_ptr<ProcessFunctionLibraryRuntime> pflr(
+      new ProcessFunctionLibraryRuntime(
+          /*device_mgr=*/nullptr, Env::Default(), TF_GRAPH_DEF_VERSION, &fld,
+          OptimizerOptions()));
+  FunctionLibraryRuntime* flr =
+      pflr->GetFLR(ProcessFunctionLibraryRuntime::kDefaultFLRDevice);
+
+  CachedFunctionHandles cached_function_handles(flr);
+
+  // Tests that GetOrInstantiate() works.
+  FunctionLibraryRuntime::Handle first_handle;
+  AttrValue attr;
+  attr.set_type(DT_FLOAT);
+  AttrValueMap attrs;
+  attrs["T"] = attr;
+  TF_ASSERT_OK(cached_function_handles.GetOrInstantiate(
+      "TestFunc", AttrSlice(&attrs), &first_handle));
+
+  // Tests that we can get FunctionBody.
+  const FunctionBody* body = flr->GetFunctionBody(first_handle);
+  EXPECT_NE(body, nullptr);
+
+  // Tests that GetOrInstantiate() returns cached handle when called with same
+  // function name and attributes.
+  FunctionLibraryRuntime::Handle second_handle;
+  TF_ASSERT_OK(cached_function_handles.GetOrInstantiate(
+      "TestFunc", AttrSlice(&attrs), &second_handle));
+  EXPECT_EQ(first_handle, second_handle);
+
+  // Tests that GetOrInstantiate() returns new handle when called with same
+  // function name but different attributes.
+  attr.set_type(DT_INT32);
+  attrs["T"] = attr;
+  FunctionLibraryRuntime::Handle third_handle;
+  TF_ASSERT_OK(cached_function_handles.GetOrInstantiate(
+      "TestFunc", AttrSlice(&attrs), &third_handle));
+  EXPECT_NE(first_handle, third_handle);
+
+  // Tests that ReleaseAllHandles() works.
+  TF_EXPECT_OK(cached_function_handles.ReleaseAllHandles());
+}
+
+TEST(PropagateConstIntoFunctionalNodes, WhileLoopWithResourceInput) {
+  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  {
+    // Cond graph & body graph.
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto pred = ops::_Arg(scope.WithOpName("pred"), DT_BOOL, 0);
+    auto input = ops::_Arg(scope.WithOpName("input"), DT_RESOURCE, 1);
+    auto ret = ops::_Retval(scope.WithOpName("ret"), pred, 0);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    FunctionDef cond_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "cond", &cond_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(cond_fdef));
+    FunctionDef body_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "body", &body_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(body_fdef));
+  }
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto pred = ops::Const(scope.WithOpName("pred"), false, TensorShape({}));
+  auto input = ops::Const(scope.WithOpName("input"), 0, TensorShape({}));
+  NameAttrList cond_fn, body_fn;
+  cond_fn.set_name("cond");
+  body_fn.set_name("body");
+  auto while_op =
+      ops::While(scope.WithOpName("while"),
+                 std::initializer_list<Input>{pred, input}, cond_fn, body_fn);
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &fld));
+}
+
+TEST(PropagateConstIntoFunctionalNodes, CopiedConstNodeHasUniqueName) {
+  FunctionLibraryDefinition fld(OpRegistry::Global(), {});
+  {
+    // Cond graph & body graph.
+    Scope scope = Scope::NewRootScope().ExitOnError();
+    auto pred = ops::_Arg(scope.WithOpName("arg0"), DT_BOOL, 0);
+    auto input = ops::_Arg(scope.WithOpName("arg1"), DT_BOOL, 1);
+    auto duplicate_name = ops::NoOp(scope.WithOpName("duplicate_name"));
+    auto ret = ops::_Retval(scope.WithOpName("ret"), pred, 0);
+    Graph graph(OpRegistry::Global());
+    TF_ASSERT_OK(scope.ToGraph(&graph));
+    FunctionDef cond_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "cond", &cond_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(cond_fdef));
+    FunctionDef body_fdef;
+    TF_ASSERT_OK(GraphToFunctionDef(graph, "body", &body_fdef));
+    TF_ASSERT_OK(fld.AddFunctionDef(body_fdef));
+  }
+  Scope scope = Scope::NewRootScope().ExitOnError();
+  auto pred =
+      ops::Const(scope.WithOpName("duplicate_name"), false, TensorShape({}));
+  auto input = ops::Const(scope.WithOpName("input"), false, TensorShape({}));
+  NameAttrList cond_fn, body_fn;
+  cond_fn.set_name("cond");
+  body_fn.set_name("body");
+  auto while_op =
+      ops::While(scope.WithOpName("while"),
+                 std::initializer_list<Input>{pred, input}, cond_fn, body_fn);
+  Graph graph(OpRegistry::Global());
+  TF_ASSERT_OK(scope.ToGraph(&graph));
+
+  TF_EXPECT_OK(PropagateConstIntoFunctionalNodes(&graph, &fld, &fld));
+
+  // Check that in rewritten body function, the NoOp node still has name
+  // "duplicate_name", and the copied Const node has name "duplicate_name/_0".
+  auto node_name_index = graph.BuildNodeNameIndex();
+  Node* while_node = node_name_index["while"];
+  ASSERT_NE(while_node, nullptr);
+  TF_ASSERT_OK(GetNodeAttr(while_node->def(), "body", &body_fn));
+  const FunctionDef* rewritten_body_fn = fld.Find(body_fn.name());
+  ASSERT_NE(rewritten_body_fn, nullptr);
+  std::unordered_map<string, NodeDef> nodes;
+  for (const NodeDef& node_def : rewritten_body_fn->node_def()) {
+    nodes[node_def.name()] = node_def;
+  }
+  auto noop_def = nodes.find("duplicate_name");
+  ASSERT_NE(noop_def, nodes.end());
+  EXPECT_EQ(noop_def->second.op(), "NoOp");
+  auto const_def = nodes.find("duplicate_name/_0");
+  ASSERT_NE(const_def, nodes.end());
+  EXPECT_EQ(const_def->second.op(), "Const");
 }
 
 }  // namespace

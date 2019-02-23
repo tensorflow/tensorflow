@@ -19,6 +19,8 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 
+#include "absl/base/casts.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/client/global_data.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
@@ -32,8 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/tests/literal_test_util.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace xla {
@@ -57,8 +57,8 @@ static const int mantissa_sizes[] = {23, 10, 23, 10};
 
 string TestDataToString(const ::testing::TestParamInfo<int> data) {
   int i = data.param;
-  return tensorflow::strings::StrCat(exponent_sizes[i], "_exponent_bits_",
-                                     mantissa_sizes[i], "_mantissa_bits");
+  return absl::StrCat(exponent_sizes[i], "_exponent_bits_", mantissa_sizes[i],
+                      "_mantissa_bits");
 }
 
 // The FPVAL macro allows us to write out the binary representation of the
@@ -215,14 +215,13 @@ XLA_TEST_P(ReducePrecisionAccuracyTest, ReducePrecisionF32) {
   const uint32_t sign_bit = 1u << 31;
   for (const auto& test_value : test_values) {
     // Add positive values.
-    input_values.push_back(tensorflow::bit_cast<float>(test_value[0]));
-    expected_values.push_back(tensorflow::bit_cast<float>(test_value[index]));
+    input_values.push_back(absl::bit_cast<float>(test_value[0]));
+    expected_values.push_back(absl::bit_cast<float>(test_value[index]));
     // Add negative values.  We do this in the bitwise representation so as to
     // avoid problems with NaN handling.
-    input_values.push_back(
-        tensorflow::bit_cast<float>(test_value[0] ^ sign_bit));
+    input_values.push_back(absl::bit_cast<float>(test_value[0] ^ sign_bit));
     expected_values.push_back(
-        tensorflow::bit_cast<float>(test_value[index] ^ sign_bit));
+        absl::bit_cast<float>(test_value[index] ^ sign_bit));
   }
 
   // This is required for proper handling of NaN values.
@@ -230,11 +229,10 @@ XLA_TEST_P(ReducePrecisionAccuracyTest, ReducePrecisionF32) {
 
   XlaBuilder builder(TestName());
 
-  std::unique_ptr<Literal> a_literal =
-      LiteralUtil::CreateR1<float>({input_values});
+  Literal a_literal = LiteralUtil::CreateR1<float>({input_values});
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
-  auto a = Parameter(&builder, 0, a_literal->shape(), "a");
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto a = Parameter(&builder, 0, a_literal.shape(), "a");
 
   ReducePrecision(a, exponent_bits, mantissa_bits);
 
@@ -254,10 +252,10 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionBeforeFusion)) {
   XlaBuilder builder(TestName());
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001});
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
-  auto a = Parameter(&builder, 0, a_literal->shape(), "a");
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto a = Parameter(&builder, 0, a_literal.shape(), "a");
 
   // Abs doesn't affect resolution.
   auto abs = Abs(a);
@@ -283,10 +281,10 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionSkippedAfterFusion)) {
   XlaBuilder builder(TestName());
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001, 1.00001});
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
-  auto a = Parameter(&builder, 0, a_literal->shape(), "a");
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto a = Parameter(&builder, 0, a_literal.shape(), "a");
 
   // These two operations should be fused by any reasonable backend.
   auto abs = Abs(a);
@@ -301,7 +299,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
       HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
-  ComputeAndCompareR1<float>(&builder, {-1.00001f}, {a_data.get()});
+  ComputeAndCompareR1<float>(&builder, {-1.00001f, -1.00001f}, {a_data.get()});
 }
 
 // The interpreter has no fusion pass, so skip this test.
@@ -309,10 +307,10 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionAddedAfterFusion)) {
   XlaBuilder builder(TestName());
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001, 1.00001});
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
-  auto a = Parameter(&builder, 0, a_literal->shape(), "a");
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto a = Parameter(&builder, 0, a_literal.shape(), "a");
 
   // These two operations should be fused by any reasonable backend.
   auto abs = Abs(a);
@@ -325,7 +323,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
       HloReducePrecisionOptions::UNFUSED_OP_OUTPUTS, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kFusion; });
 
-  ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
+  ComputeAndCompareR1<float>(&builder, {-1.0f, -1.0f}, {a_data.get()});
 }
 
 // The interpreter has no fusion pass, so skip this test.
@@ -333,10 +331,10 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionSkippedFusionContains)) {
   XlaBuilder builder(TestName());
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001});
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
-  auto a = Parameter(&builder, 0, a_literal->shape(), "a");
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto a = Parameter(&builder, 0, a_literal.shape(), "a");
 
   // These two operations should be fused by any reasonable backend.
   auto abs = Abs(a);
@@ -358,10 +356,10 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
            DISABLED_ON_INTERPRETER(ReducePrecisionAddedFusionContains)) {
   XlaBuilder builder(TestName());
 
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR1<float>({1.00001});
+  Literal a_literal = LiteralUtil::CreateR1<float>({1.00001, 1.00001});
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
-  auto a = Parameter(&builder, 0, a_literal->shape(), "a");
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
+  auto a = Parameter(&builder, 0, a_literal.shape(), "a");
 
   // These two operations should be fused by any reasonable backend.
   auto abs = Abs(a);
@@ -375,7 +373,7 @@ XLA_TEST_F(ReducePrecisionInsertionTest,
       HloReducePrecisionOptions::FUSION_OUTPUTS_BY_CONTENT, 5, 10,
       [](const HloOpcode opcode) { return opcode == HloOpcode::kAbs; });
 
-  ComputeAndCompareR1<float>(&builder, {-1.0f}, {a_data.get()});
+  ComputeAndCompareR1<float>(&builder, {-1.0f, -1.0f}, {a_data.get()});
 }
 
 }  // namespace

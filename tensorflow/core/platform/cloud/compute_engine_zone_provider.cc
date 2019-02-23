@@ -43,7 +43,7 @@ Status ComputeEngineZoneProvider::GetZone(string* zone) {
     *zone = cached_zone;
   } else {
     LOG(ERROR) << "Failed to parse the zone name from location: "
-               << location.ToString();
+               << string(location);
   }
 
   return Status::OK();

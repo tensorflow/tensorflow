@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableScanDatasetOp : public DatasetOpKernel {
@@ -66,6 +67,7 @@ class BigtableScanDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     const uint64 num_outputs = columns.size() + 1;
     std::vector<PartialTensorShape> output_shapes;
@@ -224,4 +226,5 @@ REGISTER_KERNEL_BUILDER(Name("BigtableScanDataset").Device(DEVICE_CPU),
                         BigtableScanDatasetOp);
 
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

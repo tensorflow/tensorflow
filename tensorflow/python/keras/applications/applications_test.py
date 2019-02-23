@@ -32,26 +32,21 @@ MODEL_LIST = [
     (applications.InceptionV3, 2048),
     (applications.InceptionResNetV2, 1536),
     (applications.MobileNet, 1024),
-    # TODO(fchollet): enable MobileNetV2 in next version.
+    (applications.MobileNetV2, 1280),
     (applications.DenseNet121, 1024),
     (applications.DenseNet169, 1664),
     (applications.DenseNet201, 1920),
     (applications.NASNetMobile, 1056),
-    (applications.NASNetLarge, 4032),
 ]
 
 
 class ApplicationsTest(test.TestCase, parameterized.TestCase):
 
   @parameterized.parameters(*MODEL_LIST)
-  def test_classification_model(self, model_fn, _):
-    model = model_fn(classes=1000, weights=None)
-    self.assertEqual(model.output_shape[-1], 1000)
-
-  @parameterized.parameters(*MODEL_LIST)
   def test_feature_extration_model(self, model_fn, output_dim):
     model = model_fn(include_top=False, weights=None)
-    self.assertEqual(model.output_shape, (None, None, None, output_dim))
+    self.assertLen(model.output_shape, 4)
+    self.assertEqual(model.output_shape[-1], output_dim)
 
 
 if __name__ == '__main__':

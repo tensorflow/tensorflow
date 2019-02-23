@@ -23,6 +23,7 @@ py_test(
         "//tensorflow/tools/api/tests:README.txt",
     ],
     srcs_version = "PY2AND3",
+    tags = ["no_rocm"],
     deps = [
         "//tensorflow:tensorflow_py",
         "//tensorflow/python:client_testlib",
@@ -31,6 +32,7 @@ py_test(
         "//tensorflow/tools/api/lib:python_object_to_proto_visitor",
         "//tensorflow/tools/common:public_api",
         "//tensorflow/tools/common:traverse",
+        "@six_archive//:six",
     ],
 )
 

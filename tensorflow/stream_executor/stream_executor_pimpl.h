@@ -22,9 +22,10 @@ limitations under the License.
 #include <tuple>
 #include <vector>
 
+#include "absl/base/macros.h"
+#include "absl/types/optional.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
-#include "tensorflow/stream_executor/lib/strcat.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/platform.h"
 #include "tensorflow/stream_executor/platform/logging.h"
@@ -81,8 +82,8 @@ class StreamExecutor {
   port::Status Init();
   port::Status Init(int device_ordinal, DeviceOptions device_options);
 
-  // DEPRECATED: Do not use; use platform() instead.
   // Returns the platform that this StreamExecutor is acting upon.
+  ABSL_DEPRECATED("Use platform() instead.")
   PlatformKind platform_kind() const { return platform_kind_; }
 
   // Returns a reference to the platform that created this executor.
@@ -255,15 +256,15 @@ class StreamExecutor {
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the host source to the device destination.
-  //
-  // Deprecation: prefer explicit H2D below, to avoid error-prone API usage.
+  ABSL_DEPRECATED(
+      "Prefer SynchronousMemcpyH2D, to avoid error-prone API usage.")
   bool SynchronousMemcpy(DeviceMemoryBase *device_dst, const void *host_src,
                          uint64 size) SE_MUST_USE_RESULT;
 
   // [deprecated] Blocks the caller while a data segment of the given size is
   // copied from the device source to the host destination.
-  //
-  // Deprecation: prefer explicit D2H below, to avoid error-prone API usage.
+  ABSL_DEPRECATED(
+      "Prefer SynchronousMemcpyD2H, to avoid error-prone API usage.")
   bool SynchronousMemcpy(void *host_dst, const DeviceMemoryBase &device_src,
                          uint64 size) SE_MUST_USE_RESULT;
 
@@ -413,8 +414,14 @@ class StreamExecutor {
   // Create a RNN sequence descriptor that specifies either the input or output
   // sequence. The caller retains the ownership of the returned descriptor.
   port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
-  createRnnSequenceTensorDescriptor(int seq_length, int batch_size,
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
                                     int data_size, dnn::DataType data_type);
+
+  port::StatusOr<std::unique_ptr<dnn::RnnSequenceTensorDescriptor>>
+  createRnnSequenceTensorDescriptor(int max_seq_length, int batch_size,
+                                    int data_size,
+                                    const absl::Span<const int> &seq_lengths,
+                                    dnn::DataType data_type);
 
   // Create an RNN state descriptor that specifies the input or hidden state.
   // The caller retains the ownership of the returned descriptor.
@@ -479,6 +486,9 @@ class StreamExecutor {
   // previously registered.
   bool UnregisterTraceListener(TraceListener* listener);
 
+  // Return allocator statistics.
+  absl::optional<AllocatorStats> GetAllocatorStats();
+
  private:
   template <typename BeginCallT, typename CompleteCallT,
             typename ReturnT, typename... BeginArgsT>
@@ -517,6 +527,9 @@ class StreamExecutor {
   // stream to complete. Effectively a join on the asynchronous device
   // operations enqueued on the stream before this program point.
   port::Status BlockHostUntilDone(Stream *stream);
+
+  // Without blocking the device, retrieve the current stream status.
+  port::Status GetStatus(Stream *stream);
 
   // Synchronously allocates size bytes on the underlying platform and returns
   // an opaque void* representing that allocation. In the case of failure,
@@ -699,6 +712,13 @@ class StreamExecutor {
   // The set of TraceListeners registered for this StreamExecutor.
   std::set<TraceListener*> listeners_ GUARDED_BY(mu_);
 
+  // Allocated memory in bytes.
+  int64 mem_alloc_bytes_;
+
+  // Memory limit in bytes. Value less or equal to 0 indicates there is no
+  // limit.
+  int64 memory_limit_bytes_;
+
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutor);
 };
 
@@ -840,7 +860,7 @@ DeviceMemory<T> StreamExecutor::AllocateSubBuffer(DeviceMemory<T> *parent,
   }
   CreateAllocRecord(opaque, sizeof(T) * element_count);
   return DeviceMemory<T>(DeviceMemoryBase(opaque, sizeof(T) * element_count,
-                                    true /* = is_sub_buffer */));
+                                          true /* = is_sub_buffer */));
 }
 
 template <typename... Params, typename... Args>

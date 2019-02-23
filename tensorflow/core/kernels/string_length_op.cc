@@ -14,13 +14,18 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/kernels/string_util.h"
 
 namespace tensorflow {
 namespace {
 
 class StringLengthOp : public OpKernel {
  public:
-  using OpKernel::OpKernel;
+  explicit StringLengthOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    string unit;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("unit", &unit));
+    OP_REQUIRES_OK(ctx, ParseCharUnit(unit, &unit_));
+  }
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
@@ -32,10 +37,22 @@ class StringLengthOp : public OpKernel {
     auto src = input.flat<string>();
     auto dst = output->flat<int32>();
 
-    for (int n = 0; n < src.size(); ++n) {
-      dst(n) = src(n).size();
+    switch (unit_) {
+      case CharUnit::BYTE:
+        for (int n = 0; n < src.size(); ++n) {
+          dst(n) = src(n).size();
+        }
+        break;
+      case CharUnit::UTF8_CHAR:
+        for (int n = 0; n < src.size(); ++n) {
+          dst(n) = UTF8StrLen(src(n));
+        }
+        break;
     }
   }
+
+ private:
+  CharUnit unit_ = CharUnit::BYTE;
 };
 
 REGISTER_KERNEL_BUILDER(Name("StringLength").Device(DEVICE_CPU),

@@ -32,7 +32,7 @@ adb push bazel-bin/tensorflow/tools/benchmark/benchmark_model /data/local/tmp
 
 (4) Run the benchmark. For example:
 ```
-adb shell "/data/local/tmp/benchmark_model \
+adb shell /data/local/tmp/benchmark_model \
   --graph=/data/local/tmp/tensorflow_inception_graph.pb \
   --input_layer="input:0" \
   --input_layer_shape="1,224,224,3" \

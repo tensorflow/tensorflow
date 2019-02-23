@@ -23,7 +23,8 @@ limitations under the License.
 #include <vector>
 
 #include "tensorflow/core/common_runtime/allocator_retry.h"
-#include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/gtl/stl_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
 #include "tensorflow/core/platform/macros.h"
@@ -42,7 +43,7 @@ namespace tensorflow {
 // coalescing.  One assumption we make is that the process using this
 // allocator owns pretty much all of the memory, and that nearly
 // all requests to allocate memory go through this interface.
-class BFCAllocator : public VisitableAllocator {
+class BFCAllocator : public Allocator {
  public:
   // Takes ownership of sub_allocator.
   BFCAllocator(SubAllocator* sub_allocator, size_t total_memory,
@@ -50,15 +51,15 @@ class BFCAllocator : public VisitableAllocator {
   ~BFCAllocator() override;
 
   string Name() override { return name_; }
-  void* AllocateRaw(size_t alignment, size_t num_bytes) override;
+
+  void* AllocateRaw(size_t alignment, size_t num_bytes) override {
+    return AllocateRaw(alignment, num_bytes, AllocationAttributes());
+  }
+
   void* AllocateRaw(size_t alignment, size_t num_bytes,
                     const AllocationAttributes& allocation_attr) override;
+
   void DeallocateRaw(void* ptr) override;
-
-  void AddAllocVisitor(Visitor visitor) override;
-
-  // Does nothing, because memory is never freed.
-  void AddFreeVisitor(Visitor visitor) override {}
 
   bool TracksAllocationSizes() override;
 
@@ -68,15 +69,23 @@ class BFCAllocator : public VisitableAllocator {
 
   int64 AllocationId(const void* ptr) override;
 
-  void GetStats(AllocatorStats* stats) override;
+  absl::optional<AllocatorStats> GetStats() override;
 
   void ClearStats() override;
+
+  void SetTimingCounter(SharedCounter* sc) { timing_counter_ = sc; }
 
  private:
   struct Bin;
 
   void* AllocateRawInternal(size_t alignment, size_t num_bytes,
-                            bool dump_log_on_failure);
+                            bool dump_log_on_failure,
+                            uint64 freed_before_count);
+
+  void* AllocateRawInternalWithRetry(
+      size_t alignment, size_t num_bytes,
+      const AllocationAttributes& allocation_attr);
+
   void DeallocateRawInternal(void* ptr);
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
@@ -130,6 +139,9 @@ class BFCAllocator : public VisitableAllocator {
 
     // What bin are we in?
     BinNum bin_num = kInvalidBinNum;
+
+    // Optional count when this chunk was most recently made free.
+    uint64 freed_count = 0;
 
     bool in_use() const { return allocation_id != -1; }
 
@@ -309,7 +321,7 @@ class BFCAllocator : public VisitableAllocator {
   };
 
   // Returns 'bytes' rounded up to the next highest kMinAllocationSize.
-  size_t RoundedBytes(size_t bytes);
+  static size_t RoundedBytes(size_t bytes);
 
   // Try to add a new memory region that can satisfy an allocation of
   // 'rounded_bytes' bytes.  Returns true on success and false on
@@ -319,8 +331,8 @@ class BFCAllocator : public VisitableAllocator {
 
   // Returns a pointer to an underlying allocated chunk of size
   // 'rounded_bytes'.
-  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes)
-      EXCLUSIVE_LOCKS_REQUIRED(lock_);
+  void* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes,
+                     uint64 freed_before) EXCLUSIVE_LOCKS_REQUIRED(lock_);
 
   // Splits the chunk specified by 'h' into two chunks, one at least
   // of size 'num_bytes'.
@@ -423,8 +435,9 @@ class BFCAllocator : public VisitableAllocator {
   // of the available memory.
   bool started_backpedal_ = false;
 
-  std::unique_ptr<SubAllocator> suballocator_;
+  std::unique_ptr<SubAllocator> sub_allocator_;
   string name_;
+  SharedCounter* timing_counter_ = nullptr;
 
   // Structures mutable after construction
   mutable mutex lock_;
@@ -434,9 +447,6 @@ class BFCAllocator : public VisitableAllocator {
 
   // Pointer to head of linked list of free Chunks
   ChunkHandle free_chunks_list_ GUARDED_BY(lock_);
-
-  // Called once on each region, ASAP.
-  std::vector<Visitor> region_visitors_ GUARDED_BY(lock_);
 
   // Counter containing the next unique identifier to assign to a
   // newly-created chunk.

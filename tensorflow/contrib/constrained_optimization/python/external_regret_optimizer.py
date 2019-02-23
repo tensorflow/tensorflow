@@ -82,7 +82,7 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
     raise ValueError(
         "multipliers must be one dimensional (instead is %d-dimensional)" %
         multipliers_shape.ndims)
-  dimension = multipliers_shape[0].value
+  dimension = multipliers_shape.dims[0].value
   if dimension is None:
     raise ValueError("multipliers must have fully-known shape")
 
@@ -102,9 +102,9 @@ def _project_multipliers_wrt_euclidean_norm(multipliers, radius):
         0.0,
         (radius - standard_ops.reduce_sum(multipliers)) / standard_ops.maximum(
             1.0, standard_ops.reduce_sum(inactive)))
-    multipliers += scale * inactive
+    multipliers = multipliers + (scale * inactive)
     new_inactive = standard_ops.cast(multipliers > 0, multipliers.dtype)
-    multipliers *= new_inactive
+    multipliers = multipliers * new_inactive
     return (iteration, multipliers, new_inactive, inactive)
 
   iteration = standard_ops.constant(0)

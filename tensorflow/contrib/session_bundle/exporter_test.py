@@ -64,10 +64,10 @@ class SaveRestoreShardedTest(test.TestCase):
       # v2 is an unsaved variable derived from v0 and v1.  It is used to
       # exercise the ability to run an init op when restoring a graph.
       with sess.graph.device("/cpu:0"):
-        v0 = variables.Variable(10, name="v0")
+        v0 = variables.VariableV1(10, name="v0")
       with sess.graph.device("/cpu:1"):
-        v1 = variables.Variable(20, name="v1")
-      v2 = variables.Variable(1, name="v2", trainable=False, collections=[])
+        v1 = variables.VariableV1(20, name="v1")
+      v2 = variables.VariableV1(1, name="v2", trainable=False, collections=[])
       assign_v2 = state_ops.assign(v2, math_ops.add(v0, v1))
       init_op = control_flow_ops.group(assign_v2, name="init_op")
 

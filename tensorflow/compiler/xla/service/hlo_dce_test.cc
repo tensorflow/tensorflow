@@ -43,9 +43,7 @@ class HloDceTest : public HloTestBase {
   // Returns whether the given instruction exists in the given computation.
   bool HasInstruction(const HloComputation& computation,
                       const HloInstruction* instruction) {
-    return std::find(computation.instructions().begin(),
-                     computation.instructions().end(),
-                     instruction) != computation.instructions().end();
+    return absl::c_linear_search(computation.instructions(), instruction);
   }
 };
 
@@ -59,7 +57,7 @@ TEST_F(HloDceTest, NoDeadCode) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(3, computation->instruction_count());
@@ -80,7 +78,7 @@ TEST_F(HloDceTest, InstructionsWithSideEffect) {
       HloInstruction::CreateSend(constant, token, /*channel_id=*/0));
   builder.AddInstruction(HloInstruction::CreateTuple({}));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(4, computation->instruction_count());
@@ -110,7 +108,7 @@ TEST_F(HloDceTest, DeadParameters) {
   builder.AddInstruction(HloInstruction::CreateUnary(
       live_param->shape(), HloOpcode::kNegate, live_param));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   EXPECT_EQ(5, computation->instruction_count());
@@ -150,7 +148,7 @@ TEST_F(HloDceTest, ControlDependencies) {
   builder.AddInstruction(HloInstruction::CreateBinary(
       constant1->shape(), HloOpcode::kAdd, constant1, constant2));
 
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto computation = module->AddEntryComputation(builder.Build());
 
   // Add a control dependency between two instructions.
@@ -175,7 +173,7 @@ TEST_F(HloDceTest, ControlDependencies) {
 
 // Tests that a dead call instruction is removed.
 TEST_F(HloDceTest, DeadInstructionWithCalledComputation) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   Shape shape = ShapeUtil::MakeShape(F32, {});
 
   // Called computation for the call instruction.
@@ -215,7 +213,7 @@ TEST_F(HloDceTest, DeadInstructionWithCalledComputation) {
 // Tests that a while instruction with an infeed (effectul instruction) in its
 // body is not removed, even its user count is 0.
 TEST_F(HloDceTest, CalledComputationWithSideEffect) {
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   Shape shape = ShapeUtil::MakeShape(F32, {});
 
   // Condition computation of a while instruction.
@@ -270,7 +268,7 @@ TEST_F(HloDceTest, CalledComputationWithSideEffect) {
 
 // Tests that a nested call instruction with a side effect is not removed.
 TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   Shape shape = ShapeUtil::MakeShape(F32, {});
 
   // Nested called computation with a side effect.
@@ -323,7 +321,7 @@ TEST_F(HloDceTest, CalledComputationWithNestedSideEffect) {
 }
 
 TEST_F(HloDceTest, RemoveDeadSubcomputation) {
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   HloComputation::Builder builder(TestName());
 
   HloComputation::Builder subcomp_builder("reduction_subcomp");
@@ -364,7 +362,7 @@ TEST_F(HloDceTest, RemoveDeadSubcomputation) {
 }
 
 TEST_F(HloDceTest, KeepUsedSubcomputation) {
-  auto module = CreateNewModule();
+  auto module = CreateNewUnverifiedModule();
   HloComputation::Builder builder(TestName());
 
   HloComputation::Builder subcomp_builder("reduction_subcomp");

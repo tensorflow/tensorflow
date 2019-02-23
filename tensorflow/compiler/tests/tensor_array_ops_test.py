@@ -79,7 +79,8 @@ class TensorArrayTest(xla_test.XLATestCase):
       c0 = w2.stack()
 
       self.assertAllEqual(
-          convert([[[4.0, 5.0]], [[6.0, 7.0]], [[8.0, 9.0]]]), c0.eval())
+          convert([[[4.0, 5.0]], [[6.0, 7.0]], [[8.0, 9.0]]]),
+          self.evaluate(c0))
 
   def testTensorArrayWritePack(self):
     for dtype in self.numeric_tf_types:
@@ -97,7 +98,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       c0 = w2.stack()
 
-      self.assertAllEqual([3, 0, 1], c0.eval().shape)
+      self.assertAllEqual([3, 0, 1], self.evaluate(c0).shape)
 
   def _testTensorArrayWriteConcat(self, tf_dtype):
     with self.cached_session(), self.test_scope():
@@ -113,8 +114,8 @@ class TensorArrayTest(xla_test.XLATestCase):
       c0 = w2.concat()
 
       self.assertAllEqual(
-          convert([[4.0, 5.0], [104.0, 105.0], [6.0, 7.0],
-                   [106.0, 107.0], [8.0, 9.0], [204.0, 205.0]]), c0.eval())
+          convert([[4.0, 5.0], [104.0, 105.0], [6.0, 7.0], [106.0, 107.0],
+                   [8.0, 9.0], [204.0, 205.0]]), self.evaluate(c0))
 
   def testTensorArrayWriteConcat(self):
     for dtype in self.numeric_tf_types:
@@ -341,7 +342,7 @@ class TensorArrayTest(xla_test.XLATestCase):
         r0_bad = gen_data_flow_ops.tensor_array_read_v3(
             handle=w0.handle, index=0, dtype=dtype2, flow_in=w0.flow)
         with self.assertRaisesOpError("TensorArray dtype is "):
-          r0_bad.eval()
+          self.evaluate(r0_bad)
 
         # Test reading from a different index than the one we wrote to
         w0.read(1)
@@ -422,7 +423,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       w2 = h2.write(0, 5.0)
       r2 = w2.read(0)
       r = r1 + r2
-      self.assertAllClose(9.0, r.eval())
+      self.assertAllClose(9.0, self.evaluate(r))
 
   def _testTensorArrayGradientWriteReadType(self, dtype):
     with self.cached_session() as session, self.test_scope():
@@ -504,7 +505,7 @@ class TensorArrayTest(xla_test.XLATestCase):
                 [-0.5, 1.5],  # read(0) gradient
                 [20.0, 30.0, 40.0, 50.0],  # concat gradient
             ])
-      grad_vals = sess.run(grad_r)  # 2 + 2 entries
+      grad_vals = self.evaluate(grad_r)  # 2 + 2 entries
 
       self.assertAllClose([2.0 - 0.5 + 20.0, 3.0 + 1.5 + 30.0], grad_vals[0])
       self.assertAllEqual([4.0 + 40.0, 5.0 + 50.0], grad_vals[1])
@@ -526,7 +527,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       with ops.control_dependencies([r0_readtwice]):
         r1_readtwice = w_readtwice.read(0)
 
-      self.assertAllEqual([1.0, -1.0], r1_readtwice.eval())
+      self.assertAllEqual([1.0, -1.0], self.evaluate(r1_readtwice))
 
   def _testTensorArrayGradientUnpackRead(self):
     with self.cached_session() as session, self.test_scope():
@@ -592,7 +593,7 @@ class TensorArrayTest(xla_test.XLATestCase):
       ta = tensor_array_ops.TensorArray(
           dtype=dtypes.float32, tensor_array_name="foo", size=3)
       s = ta.size()
-      self.assertAllEqual(3, s.eval())
+      self.assertAllEqual(3, self.evaluate(s))
 
   def testWriteCloseTensorArray(self):
     with self.cached_session(), self.test_scope():
@@ -722,7 +723,7 @@ class TensorArrayTest(xla_test.XLATestCase):
 
   #     r = acc2.stack()
   #     grad = gradients_impl.gradients(r, [x])[0]
-  #     self.assertAllClose(31.0, grad.eval())
+  #     self.assertAllClose(31.0, self.evaluate(grad))
 
   def testSumOfTwoReadVariablesWithoutRepeatGrad(self):
     with self.cached_session() as session, self.test_scope():
@@ -912,13 +913,41 @@ class TensorArrayTest(xla_test.XLATestCase):
       self.assertEqual(0, ta.size().eval())
       ta = ta.unstack(array_ops.zeros([0, 3, 5]))
       packed = ta.stack()
-      self.assertAllEqual([0, 3, 5], packed.eval().shape)
+      self.assertAllEqual([0, 3, 5], self.evaluate(packed).shape)
       # Concatenating zero tensors along their first dimension gives a
       # first dimension of zero
       self.assertAllEqual([0, 5], ta.concat().eval().shape)
 
   def testTensorArrayEvalEmptyWithDefault(self):
     self._testTensorArrayEvalEmptyWithDefault()
+
+  def _testTensorArrayScatterRead(self, tf_dtype):
+    with self.cached_session() as session, self.test_scope():
+      convert = _make_converter(tf_dtype)
+
+      ta = tensor_array_ops.TensorArray(
+          dtype=tf_dtype,
+          tensor_array_name="foo",
+          size=10)
+
+      indices = constant_op.constant([1, 8])
+      value = constant_op.constant(convert([[1.0, -1.0], [10.0, -10.0]]))
+      id0 = array_ops.placeholder(dtypes.int32)
+      id1 = array_ops.placeholder(dtypes.int32)
+
+      w = ta.scatter(indices, value)
+      r0 = w.read(id0)
+      r1 = w.read(id1)
+
+      # Test aggregation of read
+      read_vals = session.run([r0, r1], feed_dict={id0: 1, id1: 8})
+      self.assertAllEqual(convert([1.0, -1.0]), read_vals[0])
+      self.assertAllEqual(convert([10.0, -10.0]), read_vals[1])
+
+  def testTensorArrayScatterRead(self):
+    for dtype in self.numeric_tf_types:
+      self._testTensorArrayScatterRead(dtype)
+    self._testTensorArrayScatterRead(dtypes.bool)
 
   def testTensorArrayScatterReadAndGradients(self):
     with self.cached_session() as session, self.test_scope():
@@ -929,15 +958,18 @@ class TensorArrayTest(xla_test.XLATestCase):
 
       indices = constant_op.constant([1, 8])
       value = constant_op.constant([[1.0, -1.0], [10.0, -10.0]])
+      id0 = array_ops.placeholder(dtypes.int32)
+      id1 = array_ops.placeholder(dtypes.int32)
 
       w = ta.scatter(indices, value)
-      r0 = w.read(1)
-      r1 = w.read(8)
+      r0 = w.read(id0)
+      r1 = w.read(id1)
 
       # Test combined gradients + aggregation of read(0).
       grad = gradients_impl.gradients(
           ys=[r0, r1], xs=[value], grad_ys=[[2.0, 3.0], [4.0, 5.0]])
-      read_vals, grad_vals = session.run([[r0, r1], grad])
+      read_vals, grad_vals = session.run([[r0, r1], grad],
+                                         feed_dict={id0: 1, id1: 8})
 
       self.assertEqual(len(read_vals), 2)
       self.assertEqual(len(grad_vals), 1)
@@ -1010,8 +1042,8 @@ class TensorArrayTest(xla_test.XLATestCase):
           (read0, read1, size0, size1))
 
       # Tests that the control dependencies was added and executed.
-      self.assertEqual(1, v0.eval())
-      self.assertEqual(1, v1.eval())
+      self.assertEqual(1, self.evaluate(v0))
+      self.assertEqual(1, self.evaluate(v1))
 
       # Tests correct TensorArray.
       self.assertEqual(read0_v, 0)

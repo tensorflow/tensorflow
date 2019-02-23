@@ -45,15 +45,17 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([0.0, 0.0], var0.eval())
-      self.assertAllClose([0.0, 0.0], var1.eval())
+      self.assertAllClose([0.0, 0.0], self.evaluate(var0))
+      self.assertAllClose([0.0, 0.0], self.evaluate(var1))
 
       # Run 3 steps Proximal Adagrad.
       for _ in range(3):
         update.run()
 
-      self.assertAllClose(np.array([-2.60260963, -4.29698515]), var0.eval())
-      self.assertAllClose(np.array([-0.28432083, -0.56694895]), var1.eval())
+      self.assertAllClose(
+          np.array([-2.60260963, -4.29698515]), self.evaluate(var0))
+      self.assertAllClose(
+          np.array([-0.28432083, -0.56694895]), self.evaluate(var1))
       opt_vars = opt.variables()
       self.assertStartsWith(opt_vars[0].name, var0._shared_name)
       self.assertStartsWith(opt_vars[1].name, var1._shared_name)
@@ -74,14 +76,14 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([4.0, 3.0], var1.eval())
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
       # Run 3 steps Proximal Adagrad.
       for _ in range(3):
         update.run()
-      self.assertAllClose(np.array([-1.60261, -2.296985]), var0.eval())
-      self.assertAllClose(np.array([3.715679, 2.433051]), var1.eval())
+      self.assertAllClose(np.array([-1.60261, -2.296985]), self.evaluate(var0))
+      self.assertAllClose(np.array([3.715679, 2.433051]), self.evaluate(var1))
 
   def testProximalAdagradWithL1(self):
     with self.cached_session(), self.test_scope():
@@ -98,14 +100,14 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([4.0, 3.0], var1.eval())
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
       # Run 10 steps Proximal Adagrad
       for _ in range(10):
         update.run()
-      self.assertAllClose(np.array([-6.663634, -9.190331]), var0.eval())
-      self.assertAllClose(np.array([2.959304, 1.029232]), var1.eval())
+      self.assertAllClose(np.array([-6.663634, -9.190331]), self.evaluate(var0))
+      self.assertAllClose(np.array([2.959304, 1.029232]), self.evaluate(var1))
 
   def testProximalAdagradWithL1_L2(self):
     with self.cached_session(), self.test_scope():
@@ -122,15 +124,15 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
       update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
       variables.global_variables_initializer().run()
 
-      self.assertAllClose([1.0, 2.0], var0.eval())
-      self.assertAllClose([4.0, 3.0], var1.eval())
+      self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+      self.assertAllClose([4.0, 3.0], self.evaluate(var1))
 
       # Run 10 steps Proximal Adagrad.
       for _ in range(10):
         update.run()
 
-      self.assertAllClose(np.array([-0.0495, -0.0995]), var0.eval())
-      self.assertAllClose(np.array([-0.0045, -0.0095]), var1.eval())
+      self.assertAllClose(np.array([-0.0495, -0.0995]), self.evaluate(var0))
+      self.assertAllClose(np.array([-0.0045, -0.0095]), self.evaluate(var1))
 
   def applyOptimizer(self, opt, steps=5):
     var0 = resource_variable_ops.ResourceVariable([1.0, 2.0])
@@ -141,14 +143,14 @@ class ProximalAdagradOptimizerTest(xla_test.XLATestCase):
     update = opt.apply_gradients(zip([grads0, grads1], [var0, var1]))
     variables.global_variables_initializer().run()
 
-    self.assertAllClose([1.0, 2.0], var0.eval())
-    self.assertAllClose([3.0, 4.0], var1.eval())
+    self.assertAllClose([1.0, 2.0], self.evaluate(var0))
+    self.assertAllClose([3.0, 4.0], self.evaluate(var1))
 
     # Run ProximalAdagrad for a few steps
     for _ in range(steps):
       update.run()
 
-    return var0.eval(), var1.eval()
+    return self.evaluate(var0), self.evaluate(var1)
 
   def testEquivAdagradwithoutRegularization(self):
     with self.cached_session(), self.test_scope():

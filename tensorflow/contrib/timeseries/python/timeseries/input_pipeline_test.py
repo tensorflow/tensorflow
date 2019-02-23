@@ -88,7 +88,7 @@ class RandomWindowInputFnTests(test.TestCase):
         window_size=window_size, batch_size=batch_size)
     result, _ = input_fn()
     init_op = variables.local_variables_initializer()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       coordinator = coordinator_lib.Coordinator()
       queue_runner_impl.start_queue_runners(session, coord=coordinator)
       session.run(init_op)
@@ -261,7 +261,7 @@ class WholeDatasetInputFnTests(test.TestCase):
   def _whole_dataset_input_fn_test_template(
       self, time_series_reader, num_features, num_samples):
     result, _ = input_pipeline.WholeDatasetInputFn(time_series_reader)()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       session.run(variables.local_variables_initializer())
       coordinator = coordinator_lib.Coordinator()
       queue_runner_impl.start_queue_runners(session, coord=coordinator)
@@ -340,7 +340,7 @@ class AllWindowInputFnTests(test.TestCase):
         window_size=window_size)
     features, _ = input_fn()
     init_op = variables.local_variables_initializer()
-    with self.test_session() as session:
+    with self.cached_session() as session:
       coordinator = coordinator_lib.Coordinator()
       queue_runner_impl.start_queue_runners(session, coord=coordinator)
       session.run(init_op)

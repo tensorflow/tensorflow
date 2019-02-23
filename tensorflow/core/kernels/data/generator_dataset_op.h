@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/dataset.h"
 
 namespace tensorflow {
+namespace data {
 
 class GeneratorDatasetOp : public DatasetOpKernel {
  public:
@@ -36,5 +37,6 @@ class GeneratorDatasetOp : public DatasetOpKernel {
   NameAttrList finalize_func_;
 };
 
+}  // namespace data
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_KERNELS_DATA_GENERATOR_DATASET_OP_H_

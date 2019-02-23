@@ -316,6 +316,14 @@ bool ConsumeInOutTimesType(StringPiece* sp, StringPiece* out) {
       .GetResult(sp, out);
 }
 
+bool ConsumeControlOutName(StringPiece* sp, StringPiece* out) {
+  return Scanner(*sp)
+      .One(Scanner::LETTER)
+      .Any(Scanner::LETTER_DIGIT_UNDERSCORE)
+      .StopCapture()
+      .GetResult(sp, out);
+}
+
 #define VERIFY(expr, ...)                                             \
   do {                                                                \
     if (!(expr)) {                                                    \
@@ -408,6 +416,25 @@ void FinalizeInputOrOutput(StringPiece spec, bool is_output, OpDef* op_def,
 }
 
 #undef VERIFY
+
+string ControlOutError(StringPiece orig, const string& op_name) {
+  return strings::StrCat(" from ControlOutput(\"", orig, "\") for Op ",
+                         op_name);
+}
+
+void FinalizeControlOutput(StringPiece name, OpDef* op_def,
+                           std::vector<string>* errors) {
+  StringPiece orig(name);
+
+  // Parse control output name.
+  StringPiece tmp_name;
+  if (!ConsumeControlOutName(&orig, &tmp_name)) {
+    errors->push_back(strings::StrCat("Trouble parsing 'name:'",
+                                      ControlOutError(orig, op_def->name())));
+  }
+
+  *op_def->add_control_output() = string(tmp_name.data(), tmp_name.size());
+}
 
 int num_leading_spaces(StringPiece s) {
   size_t i = 0;
@@ -526,32 +553,37 @@ void FinalizeDoc(const string& text, OpDef* op_def,
 
 }  // namespace
 
-OpDefBuilder::OpDefBuilder(StringPiece op_name) {
-  op_def()->set_name(std::string(op_name));  // NOLINT
+OpDefBuilder::OpDefBuilder(string op_name) {
+  op_def()->set_name(std::move(op_name));
 }
 
-OpDefBuilder& OpDefBuilder::Attr(StringPiece spec) {
-  attrs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Attr(string spec) {
+  attrs_.push_back(std::move(spec));
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Input(StringPiece spec) {
-  inputs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Input(string spec) {
+  inputs_.push_back(std::move(spec));
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Output(StringPiece spec) {
-  outputs_.emplace_back(spec.data(), spec.size());
+OpDefBuilder& OpDefBuilder::Output(string spec) {
+  outputs_.push_back(std::move(spec));
+  return *this;
+}
+
+OpDefBuilder& OpDefBuilder::ControlOutput(string name) {
+  control_outputs_.push_back(std::move(name));
   return *this;
 }
 
 #ifndef TF_LEAN_BINARY
-OpDefBuilder& OpDefBuilder::Doc(StringPiece text) {
+OpDefBuilder& OpDefBuilder::Doc(string text) {
   if (!doc_.empty()) {
     errors_.push_back(
         strings::StrCat("Extra call to Doc() for Op ", op_def()->name()));
   } else {
-    doc_.assign(text.data(), text.size());
+    doc_ = std::move(text);
   }
   return *this;
 }
@@ -577,14 +609,14 @@ OpDefBuilder& OpDefBuilder::SetAllowsUninitializedInput() {
   return *this;
 }
 
-OpDefBuilder& OpDefBuilder::Deprecated(int version, StringPiece explanation) {
+OpDefBuilder& OpDefBuilder::Deprecated(int version, string explanation) {
   if (op_def()->has_deprecation()) {
     errors_.push_back(
         strings::StrCat("Deprecated called twice for Op ", op_def()->name()));
   } else {
     OpDeprecation* deprecation = op_def()->mutable_deprecation();
     deprecation->set_version(version);
-    deprecation->set_explanation(std::string(explanation));
+    deprecation->set_explanation(std::move(explanation));
   }
   return *this;
 }
@@ -613,6 +645,9 @@ Status OpDefBuilder::Finalize(OpRegistrationData* op_reg_data) const {
   }
   for (StringPiece output : outputs_) {
     FinalizeInputOrOutput(output, true, op_def, &errors);
+  }
+  for (StringPiece control_output : control_outputs_) {
+    FinalizeControlOutput(control_output, op_def, &errors);
   }
   FinalizeDoc(doc_, op_def, &errors);
 

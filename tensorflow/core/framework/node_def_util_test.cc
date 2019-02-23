@@ -370,6 +370,48 @@ TEST(NodeDefUtilTest, ValidSyntax) {
                       "Illegal op input name 'a:00");
 }
 
+TEST(InputTypesForNode, Simple) {
+  const OpDef op_def = ToOpDef(OpDefBuilder("Simple")
+                                   .Input("a: float")
+                                   .Input("b: int32")
+                                   .Output("c: string")
+                                   .Output("d: bool"));
+  const NodeDef node_def = ToNodeDef(
+      NodeDefBuilder("simple", &op_def).Input(FakeInput()).Input(FakeInput()));
+  DataTypeVector types;
+  EXPECT_TRUE(InputTypesForNode(node_def, op_def, &types).ok());
+  EXPECT_EQ(types[0], DT_FLOAT);
+  EXPECT_EQ(types[1], DT_INT32);
+
+  DataType type;
+  EXPECT_TRUE(InputTypeForNode(node_def, op_def, 0, &type).ok());
+  EXPECT_EQ(type, DT_FLOAT);
+  EXPECT_TRUE(InputTypeForNode(node_def, op_def, 1, &type).ok());
+  EXPECT_EQ(type, DT_INT32);
+  EXPECT_FALSE(InputTypeForNode(node_def, op_def, 2, &type).ok());
+}
+
+TEST(OutputTypesForNode, Simple) {
+  const OpDef op_def = ToOpDef(OpDefBuilder("Simple")
+                                   .Input("a: float")
+                                   .Input("b: int32")
+                                   .Output("c: string")
+                                   .Output("d: bool"));
+  const NodeDef node_def = ToNodeDef(
+      NodeDefBuilder("simple", &op_def).Input(FakeInput()).Input(FakeInput()));
+  DataTypeVector types;
+  EXPECT_TRUE(OutputTypesForNode(node_def, op_def, &types).ok());
+  EXPECT_EQ(types[0], DT_STRING);
+  EXPECT_EQ(types[1], DT_BOOL);
+
+  DataType type;
+  EXPECT_TRUE(OutputTypeForNode(node_def, op_def, 0, &type).ok());
+  EXPECT_EQ(type, DT_STRING);
+  EXPECT_TRUE(OutputTypeForNode(node_def, op_def, 1, &type).ok());
+  EXPECT_EQ(type, DT_BOOL);
+  EXPECT_FALSE(OutputTypeForNode(node_def, op_def, 2, &type).ok());
+}
+
 TEST(NameRangesForNodeTest, Simple) {
   const OpDef op_def = ToOpDef(OpDefBuilder("Simple")
                                    .Input("a: float")
@@ -529,6 +571,30 @@ TEST(FormatNodeForErrorTest, NodeDef) {
   node_def.set_op("Enter");
   AddNodeAttr("frame_name", "test_frame", &node_def);
   EXPECT_EQ("{{node enter}}", FormatNodeDefForError(node_def));
+}
+
+TEST(AttachDef, AllowMultipleFormattedNode) {
+  NodeDef a;
+  a.set_name("a");
+  NodeDef b;
+  b.set_name("b");
+  Status s = Status(error::CANCELLED, "Error");
+  Status s2 = AttachDef(s, a, true);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
+  Status s3 = AttachDef(s2, b, true);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[{{node b}}]]", s3.error_message());
+}
+
+TEST(AttachDef, DisallowMultipleFormattedNode) {
+  NodeDef a;
+  a.set_name("a");
+  NodeDef b;
+  b.set_name("b");
+  Status s = Status(error::CANCELLED, "Error");
+  Status s2 = AttachDef(s, a, false);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]", s2.error_message());
+  Status s3 = AttachDef(s2, b, false);
+  EXPECT_EQ("Error\n\t [[{{node a}}]]\n\t [[b]]", s3.error_message());
 }
 
 }  // namespace

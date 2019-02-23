@@ -19,27 +19,18 @@ from __future__ import division
 from __future__ import print_function
 
 from keras_applications import imagenet_utils
-from tensorflow.python.util.tf_export import tf_export
 
-decode_predictions = imagenet_utils.decode_predictions
-preprocess_input = imagenet_utils.preprocess_input
+from tensorflow.python.keras.applications import keras_modules_injection
+from tensorflow.python.util.tf_export import keras_export
 
-tf_export(
-    'keras.applications.imagenet_utils.decode_predictions',
-    'keras.applications.densenet.decode_predictions',
-    'keras.applications.inception_resnet_v2.decode_predictions',
-    'keras.applications.inception_v3.decode_predictions',
-    'keras.applications.mobilenet.decode_predictions',
-    'keras.applications.mobilenet_v2.decode_predictions',
-    'keras.applications.nasnet.decode_predictions',
-    'keras.applications.resnet50.decode_predictions',
-    'keras.applications.vgg16.decode_predictions',
-    'keras.applications.vgg19.decode_predictions',
-    'keras.applications.xception.decode_predictions',
-)(decode_predictions)
-tf_export(
-    'keras.applications.imagenet_utils.preprocess_input',
-    'keras.applications.resnet50.preprocess_input',
-    'keras.applications.vgg16.preprocess_input',
-    'keras.applications.vgg19.preprocess_input',
-)(preprocess_input)
+
+@keras_export('keras.applications.imagenet_utils.preprocess_input')
+@keras_modules_injection
+def decode_predictions(*args, **kwargs):
+  return imagenet_utils.decode_predictions(*args, **kwargs)
+
+
+@keras_export('keras.applications.imagenet_utils.preprocess_input')
+@keras_modules_injection
+def preprocess_input(*args, **kwargs):
+  return imagenet_utils.preprocess_input(*args, **kwargs)

@@ -14,7 +14,22 @@ limitations under the License.
 ==============================================================================*/
 #include "tensorflow/core/common_runtime/collective_param_resolver_local.h"
 
+#include <stddef.h>
+#include <algorithm>
+#include <unordered_map>
+#include <utility>
+
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/framework/cancellation.h"
+#include "tensorflow/core/framework/device_attributes.pb.h"
+#include "tensorflow/core/framework/types.h"
+#include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/lib/strings/str_util.h"
+#include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
 
@@ -23,9 +38,12 @@ void CollectiveParamResolverLocal::InstanceRec::WaitForOutMu(mutex_lock& lock) {
 }
 
 CollectiveParamResolverLocal::CollectiveParamResolverLocal(
-    const DeviceMgr* dev_mgr, DeviceResolverInterface* dev_resolver,
-    const string& task_name)
-    : dev_mgr_(dev_mgr), dev_resolver_(dev_resolver), task_name_(task_name) {}
+    const ConfigProto& config, const DeviceMgr* dev_mgr,
+    DeviceResolverInterface* dev_resolver, const string& task_name)
+    : nccl_(config.experimental().collective_nccl()),
+      dev_mgr_(dev_mgr),
+      dev_resolver_(dev_resolver),
+      task_name_(task_name) {}
 
 void CollectiveParamResolverLocal::CompleteGroupAsync(
     const CompleteGroupRequest* request, CompleteGroupResponse* response,
@@ -126,7 +144,6 @@ void CollectiveParamResolverLocal::CompleteGroupLocal(
 }
 
 namespace {
-
 struct DevRec {
   string task;
   string device;
@@ -157,8 +174,43 @@ GlobalDeviceMap BuildDevRecs(const CollInstanceParams& ip,
   return gdm;
 }
 
-void OrderTaskDeviceMap(TaskDeviceMap* tdm) {
+bool ParseRingOrder(const string& gpu_ring_order_str, TaskDeviceMap* tdm) {
+  std::vector<int32> gpu_ring_order_vec;
+  if (!str_util::SplitAndParseAsInts(gpu_ring_order_str, ',',
+                                     &gpu_ring_order_vec)) {
+    return false;
+  }
+  if (gpu_ring_order_vec.size() != tdm->size()) return false;
+  // gpu id -> local rank
+  gtl::FlatMap<int32, int32> gpu_ranks;
+  for (int32 rank = 0; rank < static_cast<int32>(gpu_ring_order_vec.size());
+       ++rank) {
+    gpu_ranks[gpu_ring_order_vec[rank]] = rank;
+  }
+
+  for (auto& tdm_it : *tdm) {
+    DeviceNameUtils::ParsedName parsed_name;
+    DevRec* dr = &tdm_it.second;
+    if (!DeviceNameUtils::ParseFullName(dr->device, &parsed_name)) {
+      return false;
+    }
+    auto rank_it = gpu_ranks.find(parsed_name.id);
+    if (rank_it == gpu_ranks.end()) return false;
+    dr->local_rank = rank_it->second;
+  }
+  VLOG(2) << "Assigned local ranks based on ring order " << gpu_ring_order_str;
+  return true;
+}
+
+void OrderTaskDeviceMap(const string& gpu_ring_order, TaskDeviceMap* tdm) {
   CHECK_GT(tdm->size(), 0);  // Should never be called with 0 devices
+
+  // If a valid ring order has been passed in via ConfigProto, use that.
+  if (ParseRingOrder(gpu_ring_order, tdm)) return;
+
+  // Either no ring order was passed in, or the format was unexpected.
+  // We now assign a ring order based on link strengths.  Note that this
+  // algorithm is not optimal and may not always find the best ring order.
   int least_rank = -1;
   string next_device;
   std::set<string> selected;
@@ -179,7 +231,9 @@ void OrderTaskDeviceMap(TaskDeviceMap* tdm) {
   int next_rank = 0;
   while (true) {
     selected.insert(next_device);
-    DevRec* dr = &(*tdm)[next_device];
+    auto next_dev_it = tdm->find(next_device);
+    CHECK(next_dev_it != tdm->end());
+    DevRec* dr = &next_dev_it->second;
     dr->local_rank = next_rank;
     ++next_rank;
     if (selected.size() == tdm->size()) {
@@ -193,7 +247,13 @@ void OrderTaskDeviceMap(TaskDeviceMap* tdm) {
         parsed_name.id = il.device_id();
         string endpoint_device =
             DeviceNameUtils::ParsedNameToString(parsed_name);
+        // Skip the device if we've already seen it.
         if (selected.find(endpoint_device) != selected.end()) {
+          continue;
+        }
+        // Skip the device if it is not participating in this collective
+        // instance.
+        if (tdm->find(endpoint_device) == tdm->end()) {
           continue;
         }
         if (best_link == nullptr || il.strength() > best_link->strength()) {
@@ -235,7 +295,7 @@ GlobalDeviceMap EstablishGlobalRank(
   GlobalDeviceMap gdm = BuildDevRecs(cp->instance, localities);
   for (auto& iter : gdm) {
     TaskDeviceMap& tdm = iter.second;
-    OrderTaskDeviceMap(&tdm);
+    OrderTaskDeviceMap(cp->instance.gpu_ring_order, &tdm);
   }
   // Connect the global rank order by the order in which tasks first appear.
   std::set<string> ordered_tasks;
@@ -259,29 +319,28 @@ GlobalDeviceMap EstablishGlobalRank(
 // cp->same_num_devices_per_task.  Requires cp->instance.task_names
 // be sorted.
 void SetDevPerTask(CollectiveParams* cp) {
-  cp->instance.same_num_devices_per_task = false;
-  if (cp->instance.task_names.empty()) return;
-  int dev_per_task = -1;
-  int count = 0;
+  cp->instance.num_devices_per_task.clear();
   const string* last_task_name = &cp->instance.task_names[0];
+  int count = 0;
   for (const string& task_name : cp->instance.task_names) {
-    if (task_name != *last_task_name) {
-      CHECK_GT(count, 0);
-      if (dev_per_task < 0) {
-        dev_per_task = count;
-      } else {
-        CHECK_GT(dev_per_task, 0);
-        if (count != dev_per_task) return;
-      }
+    if (task_name == *last_task_name) {
+      ++count;
+    } else {
+      cp->instance.num_devices_per_task[*last_task_name] = count;
       count = 1;
       last_task_name = &task_name;
-    } else {
-      ++count;
     }
   }
-  CHECK_GT(count, 0);
-  if ((dev_per_task > 0) && (count != dev_per_task)) {
-    return;
+  cp->instance.num_devices_per_task[*last_task_name] = count;
+
+  cp->instance.same_num_devices_per_task = false;
+  int dev_per_task = -1;
+  for (const auto& task_dev : cp->instance.num_devices_per_task) {
+    if (dev_per_task == -1) {
+      dev_per_task = task_dev.second;
+    } else if (dev_per_task != task_dev.second) {
+      return;
+    }
   }
   cp->instance.same_num_devices_per_task = true;
   CHECK_EQ((cp->group.group_size % cp->group.num_tasks), 0);
@@ -301,7 +360,7 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
   for (int i = 0; i < perm.size(); ++i) {
     perm[i] = i;
   }
-  std::sort(perm.begin(), perm.end(), [cp](const int& a, const int& b) {
+  std::sort(perm.begin(), perm.end(), [cp](int a, int b) {
     return cp->instance.device_names[a] < cp->instance.device_names[b];
   });
   std::vector<string> new_devs;
@@ -318,206 +377,6 @@ void SortDevicesAndTasks(CollectiveParams* cp) {
   SetDevPerTask(cp);
 }
 }  // namespace
-
-int GetDeviceTask(int device_rank, const std::vector<int>& dev_per_task) {
-  int num_tasks = static_cast<int>(dev_per_task.size());
-  int task_lo = 0;
-  int task_hi;
-  for (int ti = 0; ti < num_tasks; ti++) {
-    task_hi = task_lo + dev_per_task[ti];
-    if (task_lo <= device_rank && device_rank < task_hi) return ti;
-    task_lo += dev_per_task[ti];
-  }
-  LOG(FATAL) << "Unexpected device rank " << device_rank << " for " << task_hi
-             << " devices";
-  return -1;
-}
-
-void CollectiveParamResolverLocal::GenerateBcastSubdivPerms(
-    const string& device, int source_rank, const std::vector<int>& dev_per_task,
-    CollectiveParams* cp) {
-  if (VLOG_IS_ON(1)) {
-    string dpt_buf;
-    for (int dpt : dev_per_task) strings::StrAppend(&dpt_buf, dpt, ";");
-    VLOG(1) << "GenerateBcastSubdivPerms device=" << device
-            << " source_rank=" << source_rank << " dev_per_task=" << dpt_buf;
-  }
-  int num_tasks = cp->group.num_tasks;
-  // If there is just 1 task, then execute binary tree broadcast over all
-  // devices.  Otherwise, the first subdiv is inter-task broadcast, and then
-  // there are N more subdivs, where N is #task.
-  int num_subdivs = num_tasks + (num_tasks > 1 ? 1 : 0);
-  int total_num_devices = 0;
-  for (int num_dev : dev_per_task) total_num_devices += num_dev;
-
-  cp->instance.impl_details.subdiv_permutations.resize(num_subdivs);
-  cp->subdiv_rank.reserve(num_subdivs);
-  cp->instance.impl_details.subdiv_source_rank.reserve(num_subdivs);
-
-  // Inter-task subdiv.  Pick one device from each task - this is the source
-  // device if it belongs to that task, or device 0 for that task.  If a device
-  // does not participate in the subdiv, set subdiv_rank to -1.
-  if (num_tasks > 1) {
-    const int sdi = 0;
-    std::vector<int>& perm = cp->instance.impl_details.subdiv_permutations[sdi];
-    CHECK_EQ(perm.size(), 0);
-    int device_count = 0;
-    int source_task = GetDeviceTask(source_rank, dev_per_task);
-    for (int ti = 0; ti < cp->group.num_tasks; ti++) {
-      bool participate = false;
-      if (source_task == ti) {
-        // Source device belongs to this task.
-        perm.push_back(source_rank);
-        participate = cp->instance.device_names[source_rank] == device;
-      } else {
-        // Source does not belong to this task, choose dev 0.
-        perm.push_back(device_count);
-        participate = cp->instance.device_names[device_count] == device;
-      }
-      if (participate) cp->subdiv_rank.push_back(ti);
-      device_count += dev_per_task[ti];
-    }
-    if (cp->subdiv_rank.empty()) cp->subdiv_rank.push_back(-1);
-    cp->instance.impl_details.subdiv_source_rank.push_back(source_task);
-  }
-
-  // Intra-task subdivs.  Pick all devices in task ti for subdiv sdi.  Set
-  // source to dev 0 for that task if it does not contain original source, else
-  // set to rank of original source.  If a device does not participate in the
-  // subdiv, set subdiv_rank to -1;
-  int abs_di = 0;
-  for (int ti = 0; ti < cp->group.num_tasks; ti++) {
-    const int sdi = ti + (num_tasks > 1 ? 1 : 0);
-    std::vector<int>& perm = cp->instance.impl_details.subdiv_permutations[sdi];
-    CHECK_EQ(perm.size(), 0);
-    bool participate = false;
-    int subdiv_source = 0;
-    for (int di = 0; di < dev_per_task[ti]; di++) {
-      perm.push_back(abs_di);
-      if (cp->instance.device_names[abs_di] == device) {
-        participate = true;
-        cp->subdiv_rank.push_back(di);
-      }
-      if (abs_di == source_rank) subdiv_source = di;
-      abs_di++;
-    }
-    if (!participate) cp->subdiv_rank.push_back(-1);
-    cp->instance.impl_details.subdiv_source_rank.push_back(subdiv_source);
-  }
-
-  for (int sri = 0; sri < num_subdivs; sri++) {
-    CHECK_GE(cp->instance.impl_details.subdiv_source_rank[sri], 0);
-  }
-}
-
-// Establish the requested number of subdivision permutations based on the
-// ring order implicit in the device order.
-/*static*/
-void CollectiveParamResolverLocal::GenerateSubdivPerms(const string& device,
-                                                       int source_rank,
-                                                       CollectiveParams* cp) {
-  // Each subdiv permutation is a ring formed by rotating each
-  // single-task subsequence of devices by an offset.  This makes most
-  // sense when each task has the same number of devices but we can't
-  // depend on that being the case so we'll compute something that
-  // works in any case.
-
-  // Start by counting the devices in each task.
-  // Precondition: device_names must be sorted so that all devices in
-  // the same task are adjacent.
-  VLOG(2) << "Sorted task names: "
-          << str_util::Join(cp->instance.task_names, ", ");
-  std::vector<int> dev_per_task;
-  const string* prior_task_name = &cp->instance.task_names[0];
-  int dev_count = 1;
-  for (int di = 1; di < cp->group.group_size; ++di) {
-    if (cp->instance.task_names[di] != *prior_task_name) {
-      dev_per_task.push_back(dev_count);
-      dev_count = 1;
-      prior_task_name = &cp->instance.task_names[di];
-    } else {
-      ++dev_count;
-    }
-  }
-  dev_per_task.push_back(dev_count);
-  CHECK_EQ(cp->group.num_tasks, dev_per_task.size());
-
-  CHECK(cp->instance.type == REDUCTION_COLLECTIVE ||
-        cp->instance.type == BROADCAST_COLLECTIVE);
-  if (cp->instance.type == REDUCTION_COLLECTIVE) {
-    // Generate a ring permutation for each requested offset.
-    CHECK_GT(cp->instance.impl_details.subdiv_offsets.size(), 0);
-    VLOG(2) << "Setting up perms for cp " << cp << " subdiv_permutations "
-            << &cp->instance.impl_details.subdiv_permutations;
-    cp->instance.impl_details.subdiv_permutations.resize(
-        cp->instance.impl_details.subdiv_offsets.size());
-    cp->subdiv_rank.resize(cp->instance.impl_details.subdiv_offsets.size(), -1);
-    for (int sdi = 0; sdi < cp->instance.impl_details.subdiv_offsets.size();
-         ++sdi) {
-      std::vector<int>& perm =
-          cp->instance.impl_details.subdiv_permutations[sdi];
-      CHECK_EQ(perm.size(), 0);
-      int offset = cp->instance.impl_details.subdiv_offsets[sdi];
-      // A negative subdivision offset is interpreted as follows:
-      //  1. Reverse the local device ordering.
-      //  2. Begin the subdivision at abs(offset) in the reversed ordering.
-      bool reverse = false;
-      if (offset < 0) {
-        offset = abs(offset);
-        reverse = true;
-      }
-      int prior_dev_count = 0;  // sum over prior worker device counts
-      for (int ti = 0; ti < cp->group.num_tasks; ++ti) {
-        for (int di = 0; di < dev_per_task[ti]; ++di) {
-          int di_offset = (di + offset) % dev_per_task[ti];
-          int offset_di =
-              reverse ? (dev_per_task[ti] - (di_offset + 1)) : di_offset;
-          // Device index in global subdivision permutation.
-          int permuted_di = prior_dev_count + offset_di;
-          int rank = static_cast<int>(perm.size());
-          perm.push_back(permuted_di);
-          if (cp->instance.device_names[permuted_di] == device) {
-            CHECK_EQ(permuted_di, cp->default_rank);
-            cp->subdiv_rank[sdi] = rank;
-          }
-        }
-        prior_dev_count += dev_per_task[ti];
-      }
-      CHECK_EQ(cp->group.group_size, perm.size());
-    }
-  } else if (cp->instance.type == BROADCAST_COLLECTIVE) {
-    GenerateBcastSubdivPerms(device, source_rank, dev_per_task, cp);
-  }
-
-  if (VLOG_IS_ON(1)) {
-    // Log the computed ring order for each subdiv.
-    string buf;
-    for (int sdi = 0;
-         sdi < cp->instance.impl_details.subdiv_permutations.size(); ++sdi) {
-      buf = strings::StrCat("Subdiv ", sdi, " device order:\n");
-      for (int di = 0;
-           di < cp->instance.impl_details.subdiv_permutations[sdi].size();
-           ++di) {
-        int idx = cp->instance.impl_details.subdiv_permutations[sdi][di];
-        if (idx >= 0) {
-          CHECK_GT(cp->instance.device_names.size(), idx);
-          strings::StrAppend(&buf, cp->instance.device_names[idx], "\n");
-        }
-      }
-      strings::StrAppend(&buf, " subdiv_offsets: ");
-      for (auto o : cp->instance.impl_details.subdiv_offsets)
-        strings::StrAppend(&buf, o, " ");
-      strings::StrAppend(&buf, " SubdivRank: ");
-      for (auto d : cp->subdiv_rank) strings::StrAppend(&buf, d, " ");
-      if (cp->instance.type == BROADCAST_COLLECTIVE) {
-        strings::StrAppend(&buf, " subdiv_source_rank: ");
-        for (auto src : cp->instance.impl_details.subdiv_source_rank)
-          strings::StrAppend(&buf, src, " ");
-      }
-      VLOG(1) << buf;
-    }
-  }
-}
 
 void CollectiveParamResolverLocal::CompleteTaskIsLocal(const string& task_name,
                                                        CollectiveParams* cp) {
@@ -541,7 +400,6 @@ void CollectiveParamResolverLocal::SetDefaultRank(const string& device,
 void CollectiveParamResolverLocal::InitInstanceSharedParams(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
     const StatusCallback& done) {
-  VLOG(1) << "InitInstanceSharedParams " << ir;
   ir->shared.instance = cp->instance;
   {
     mutex_lock gl(gr->mu);
@@ -555,8 +413,8 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
   }
   ir->shared.default_rank = -1;
 
-  // Sort devce_names lexicographcally, keeping task_names in
-  // corresponding order.
+  // Sort device_names lexicographically, keeping task_names in corresponding
+  // order.  Also set number of devices per task.
   SortDevicesAndTasks(&ir->shared);
 
   // Get Locality data for all devices.
@@ -594,6 +452,10 @@ void CollectiveParamResolverLocal::InitInstanceSharedParams(
           });
 }
 
+// NOTE(ayushd): The DeviceLocality objects in localities will have LocalLinks
+// to all devices that they are physically connected to and visible to the
+// TensorFlow runtime.  This set of devices may be a superset of the devices
+// participating in this instance of collectives.
 void CollectiveParamResolverLocal::CompleteDefaultRanking(
     const GroupRec* gr, const CollectiveParams* cp, InstanceRec* ir,
     const std::vector<DeviceLocality>& localities) {
@@ -620,8 +482,7 @@ void CollectiveParamResolverLocal::CompleteDefaultRanking(
   ir->shared.instance.task_names = new_task_names;
   if (VLOG_IS_ON(2)) {
     string buf;
-    for (const auto& d : cp->instance.device_names)
-      strings::StrAppend(&buf, "\n", d);
+    for (const auto& d : new_device_names) strings::StrAppend(&buf, "\n", d);
     VLOG(2) << "Optimized device order for " << ir->shared.name << ": " << buf;
   }
 }
@@ -651,7 +512,7 @@ void CollectiveParamResolverLocal::FindInstanceRec(
         if (irec->is_init) {
           exit_outside_locks = true;
         } else {
-          irec->init_waiters.push_back([this, gr, cp, done](InstanceRec* irec) {
+          irec->init_waiters.push_back([this, done](InstanceRec* irec) {
             CallbackWithStatus(done, irec);
           });
           return;
@@ -697,7 +558,6 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
   InitInstanceSharedParams(
       gr, cp, ir,
       [this, ir, done](const Status& s) UNLOCK_FUNCTION(ir->out_mu) {
-        DCHECK(!ir->out_mu.try_lock());
         DCHECK(ir->out_mu_available);
         ir->status.Update(s);
         ir->out_mu.unlock();
@@ -724,7 +584,7 @@ void CollectiveParamResolverLocal::CallInitInstanceSharedParams(
 void CollectiveParamResolverLocal::CompleteParamsAsync(
     const string& device, CollectiveParams* cp, CancellationManager* cancel_mgr,
     const StatusCallback& done) {
-  VLOG(1) << "CompleteParams " << device << " for " << cp << ": "
+  VLOG(1) << "CompleteParams local " << device << " for " << cp << ": "
           << cp->ToString();
   CompleteGroupLocal(
       device, cp,
@@ -744,6 +604,27 @@ void CollectiveParamResolverLocal::CompleteInstanceAsync(
       errors::Internal("CompleteInstance is not implemented by "
                        "CollectiveParamResolverLocal which is "
                        "intended only for non-distributed deployment."));
+}
+
+// TODO(b/111897089): we need a better way to pick the collective
+// implementation.  The ideal way would depend upon the topology and link
+// strength before picking a particular implementation.
+void CollectiveParamResolverLocal::AssignCollectiveType(CollectiveParams* cp) {
+  if (cp->instance.type == BROADCAST_COLLECTIVE) {
+    cp->instance.impl_details.collective_name = "HierarchicalTreeBroadcast";
+  } else if (cp->instance.type == REDUCTION_COLLECTIVE) {
+    if (nccl_) {
+      cp->instance.impl_details.collective_name = "NcclReduce";
+    } else {
+      cp->instance.impl_details.collective_name = "RingReduce";
+    }
+  } else if (cp->instance.type == GATHER_COLLECTIVE) {
+    cp->instance.impl_details.collective_name = "RingGather";
+  } else {
+    cp->instance.impl_details.collective_name = "undef";
+  }
+  VLOG(1) << "AssignCollectiveType "
+          << cp->instance.impl_details.collective_name;
 }
 
 void CollectiveParamResolverLocal::CompleteInstanceLocal(
@@ -782,38 +663,57 @@ void CollectiveParamResolverLocal::CompleteInstanceFromInitializedIRec(
     // custom operator= does a deep copy.
     cp->instance = ir->shared.instance;
   }
-  // Populate the fields common across task, also default_rank.
+  // Populate the fields common across task.
+  AssignCollectiveType(cp);
   SetDefaultRank(device, cp);
   CompleteTaskIsLocal(task_name_, cp);
-  // If broadcast, may need to wait for source discovery.
-  if (cp->instance.type == BROADCAST_COLLECTIVE) {
-    CompleteInstanceSource(ir, cp, is_source,
-                           [this, ir, device, cp, done](InstanceRec* irec) {
-                             CHECK_EQ(ir, irec);
-                             Status s;
-                             int source_rank;
-                             {
-                               mutex_lock l(irec->out_mu);
-                               irec->WaitForOutMu(l);
-                               s = irec->status;
-                               source_rank = irec->source_rank;
-                             }
-                             if (s.ok()) {
-                               GenerateSubdivPerms(device, source_rank, cp);
-                             }
-                             done(s);
-                           });
-    return;
-  } else {
-    GenerateSubdivPerms(device, 0, cp);
+
+  CollectiveImplementationInterface* col_impl;
+  Status status = CollectiveRegistry::LookupParamResolverInstance(
+      cp->instance.impl_details.collective_name, &col_impl);
+  if (status.ok()) {
+    status = col_impl->InitializeInstanceBeforeGroupDiscovery(cp);
   }
-  done(Status::OK());
+  if (!status.ok()) {
+    done(status);
+    return;
+  }
+
+  //  We may need to wait for the group if:
+  //  * this is a broadcast, for source discovery;
+  //  * we are using NCCL with more than 1 worker, for the communicator key from
+  //    rank 0.
+  bool broadcast = cp->instance.type == BROADCAST_COLLECTIVE;
+  bool nccl = cp->instance.type == REDUCTION_COLLECTIVE &&
+              cp->instance.impl_details.collective_name == "NcclReduce" &&
+              cp->group.num_tasks > 1;
+  if (broadcast || nccl) {
+    WaitForGroup(ir, cp, is_source, broadcast, nccl,
+                 [col_impl, ir, device, cp, done](InstanceRec* irec) {
+                   Status s;
+                   if (ir != irec) {
+                     s = errors::Internal("Expected ir ", ir, " and irec ",
+                                          irec, " to be equal");
+                   } else {
+                     mutex_lock l(irec->out_mu);
+                     irec->WaitForOutMu(l);
+                     s = irec->status;
+                     cp->source_rank = irec->source_rank;
+                     cp->instance.communicator_key = irec->communicator_key;
+                   }
+                   if (s.ok()) {
+                     s = col_impl->InitializeCollectiveParams(cp);
+                   }
+                   done(s);
+                 });
+  } else {
+    done(col_impl->InitializeCollectiveParams(cp));
+  }
 }
 
-void CollectiveParamResolverLocal::CompleteInstanceSource(InstanceRec* ir,
-                                                          CollectiveParams* cp,
-                                                          bool is_source,
-                                                          const IRConsumer& f) {
+void CollectiveParamResolverLocal::WaitForGroup(
+    InstanceRec* ir, CollectiveParams* cp, bool is_source, bool init_source,
+    bool init_nccl, const IRConsumer& f) {
   std::vector<IRConsumer> ready_waiters;
   {
     mutex_lock l(ir->out_mu);
@@ -823,14 +723,28 @@ void CollectiveParamResolverLocal::CompleteInstanceSource(InstanceRec* ir,
     if (!ir->known[cp->default_rank]) {
       ir->known[cp->default_rank] = true;
       ++ir->known_count;
-      if (is_source) {
+      if (init_source && is_source) {
+        // Initialize source rank.
         if (ir->source_rank >= 0) {
           ir->status = errors::Internal("Instance ", cp->instance.instance_key,
                                         " already has source ", ir->source_rank,
-                                        ", recevied second claim from ",
+                                        ", received second claim from ",
                                         cp->default_rank);
         } else {
           ir->source_rank = cp->default_rank;
+        }
+      }
+      if (init_nccl && cp->default_rank == 0) {
+        // Initialize communicator key.
+        if (!ir->communicator_key.empty()) {
+          ir->status =
+              errors::Internal("Instance ", cp->instance.instance_key,
+                               " already has communicator_key ",
+                               str_util::CEscape(ir->communicator_key),
+                               ", received second claim from device ",
+                               cp->instance.device_names[cp->default_rank]);
+        } else {
+          ir->communicator_key = cp->instance.communicator_key;
         }
       }
     }
@@ -839,7 +753,23 @@ void CollectiveParamResolverLocal::CompleteInstanceSource(InstanceRec* ir,
       return;
     }
     CHECK_EQ(ir->known_count, ir->shared.group.group_size);
-    CHECK_GE(ir->source_rank, 0);
+    if (init_source && ir->source_rank < 0) {
+      // NOTE(ayushd): changing the error message below would also require
+      // updating CompleteParamsBroadcastForgotSend test in
+      // CollectiveParamResolverLocalTest.
+      ir->status =
+          errors::Internal("Instance ", cp->instance.instance_key,
+                           " found no source for broadcast.  This "
+                           "could mean that there were group_size=",
+                           ir->known_count, " BcastRecvs but no BcastSend.");
+    }
+    if (init_nccl && ir->communicator_key.empty()) {
+      ir->status = errors::Internal(
+          "Instance ", cp->instance.instance_key, " device ",
+          cp->instance.device_names[cp->default_rank],
+          " did not find rank 0 for setting communicator key.  This is an "
+          "internal error in collective param resolution");
+    }
     if (!ir->known_waiters.empty()) {
       ready_waiters = std::move(ir->known_waiters);
     }

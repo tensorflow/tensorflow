@@ -3,6 +3,7 @@
 
 package(default_visibility = [
     "//learning/brain:__subpackages__",
+    "//research/vision/piedpiper:__subpackages__",
     "//tensorflow:__subpackages__",
 ])
 
@@ -12,12 +13,12 @@ load(
     "//tensorflow:tensorflow.bzl",
     "tf_cc_test",
     "tf_custom_op_library",
-    "tf_custom_op_py_library",
     "tf_gen_op_libs",
     "tf_gen_op_wrapper_py",
     "tf_kernel_library",
     "tf_py_test",
 )
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_py_library")
 
 cc_library(
     name = "range_coder",

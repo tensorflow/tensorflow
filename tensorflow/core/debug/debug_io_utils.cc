@@ -18,6 +18,8 @@ limitations under the License.
 #include <stddef.h>
 #include <string.h>
 #include <cmath>
+#include <cstdlib>
+#include <cstring>
 #include <limits>
 #include <utility>
 #include <vector>
@@ -33,6 +35,7 @@ limitations under the License.
 #include "tensorflow/core/debug/debugger_event_metadata.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/summary.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/lib/hash/hash.h"
@@ -399,8 +402,8 @@ Status DebugIO::PublishDebugMetadata(
                               strings::Printf("%.14lld", session_run_index))),
           Env::Default()->NowMicros());
       status.Update(DebugFileIO::DumpEventProtoToFile(
-          event, std::string(io::Dirname(core_metadata_path)),
-          std::string(io::Basename(core_metadata_path))));
+          event, string(io::Dirname(core_metadata_path)),
+          string(io::Basename(core_metadata_path))));
     }
   }
 
@@ -417,6 +420,19 @@ Status DebugIO::PublishDebugTensor(const DebugNodeKey& debug_node_key,
   for (const string& url : debug_urls) {
     if (str_util::Lowercase(url).find(kFileURLScheme) == 0) {
       const string dump_root_dir = url.substr(strlen(kFileURLScheme));
+
+      const int64 tensorBytes =
+          tensor.IsInitialized() ? tensor.TotalBytes() : 0;
+      if (!DebugFileIO::requestDiskByteUsage(tensorBytes)) {
+        return errors::ResourceExhausted(
+            "TensorFlow Debugger has exhausted file-system byte-size "
+            "allowance (",
+            DebugFileIO::globalDiskBytesLimit, "), therefore it cannot ",
+            "dump an additional ", tensorBytes, " byte(s) of tensor data ",
+            "for the debug tensor ", debug_node_key.node_name, ":",
+            debug_node_key.output_slot, ". You may use the environment ",
+            "variable TFDBG_DISK_BYTES_LIMIT to set a higher limit.");
+      }
 
       Status s = DebugFileIO::DumpTensorToDir(
           debug_node_key, tensor, wall_time_us, dump_root_dir, nullptr);
@@ -632,8 +648,8 @@ Status DebugFileIO::DumpTensorToEventFile(const DebugNodeKey& debug_node_key,
   std::vector<Event> events;
   TF_RETURN_IF_ERROR(
       WrapTensorAsEvents(debug_node_key, tensor, wall_time_us, 0, &events));
-  return DumpEventProtoToFile(events[0], std::string(io::Dirname(file_path)),
-                              std::string(io::Basename(file_path)));
+  return DumpEventProtoToFile(events[0], string(io::Dirname(file_path)),
+                              string(io::Basename(file_path)));
 }
 
 Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
@@ -642,7 +658,7 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
     return Status::OK();
   }
 
-  string parent_dir = std::string(io::Dirname(dir));
+  string parent_dir(io::Dirname(dir));
   if (!env->FileExists(parent_dir).ok()) {
     // The parent path does not exist yet, create it first.
     Status s = RecursiveCreateDir(env, parent_dir);  // Recursive call
@@ -670,6 +686,42 @@ Status DebugFileIO::RecursiveCreateDir(Env* env, const string& dir) {
   }
 }
 
+// Default total disk usage limit: 100 GBytes
+const uint64 DebugFileIO::defaultGlobalDiskBytesLimit = 107374182400L;
+uint64 DebugFileIO::globalDiskBytesLimit = 0;
+uint64 DebugFileIO::diskBytesUsed = 0;
+
+mutex DebugFileIO::bytes_mu(LINKER_INITIALIZED);
+
+bool DebugFileIO::requestDiskByteUsage(uint64 bytes) {
+  mutex_lock l(bytes_mu);
+  if (globalDiskBytesLimit == 0) {
+    const char* env_tfdbg_disk_bytes_limit = getenv("TFDBG_DISK_BYTES_LIMIT");
+    if (env_tfdbg_disk_bytes_limit == nullptr ||
+        strlen(env_tfdbg_disk_bytes_limit) == 0) {
+      globalDiskBytesLimit = defaultGlobalDiskBytesLimit;
+    } else {
+      strings::safe_strtou64(string(env_tfdbg_disk_bytes_limit),
+                             &globalDiskBytesLimit);
+    }
+  }
+
+  if (bytes == 0) {
+    return true;
+  }
+  if (diskBytesUsed + bytes < globalDiskBytesLimit) {
+    diskBytesUsed += bytes;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+void DebugFileIO::resetDiskByteUsage() {
+  mutex_lock l(bytes_mu);
+  diskBytesUsed = 0;
+}
+
 #ifndef PLATFORM_WINDOWS
 DebugGrpcChannel::DebugGrpcChannel(const string& server_stream_addr)
     : server_stream_addr_(server_stream_addr),
@@ -679,7 +731,7 @@ Status DebugGrpcChannel::Connect(const int64 timeout_micros) {
   ::grpc::ChannelArguments args;
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // Avoid problems where default reconnect backoff is too long (e.g., 20 s).
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
   channel_ = ::grpc::CreateCustomChannel(
       server_stream_addr_, ::grpc::InsecureChannelCredentials(), args);
   if (!channel_->WaitForConnected(

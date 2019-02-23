@@ -40,7 +40,10 @@ py_test(
     timeout = "long",  # Moderate but for asan
     srcs = ["state_space_model_test.py"],
     srcs_version = "PY2AND3",
-    tags = ["no_windows"],  # TODO: needs investigation on Windows
+    tags = [
+        "no_mac",
+        "no_windows",  # TODO: needs investigation on Windows
+    ],
     deps = [
         ":state_space_model",
         "//tensorflow/contrib/layers:layers_py",
@@ -75,7 +78,6 @@ py_library(
     srcs = ["kalman_filter.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -232,7 +234,6 @@ py_library(
     srcs = ["filtering_postprocessor.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",

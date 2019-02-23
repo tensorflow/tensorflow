@@ -20,12 +20,12 @@ limitations under the License.
 
 namespace xla {
 
-class ScatterExpander : public HloPassInterface {
+class ScatterExpander : public HloModulePass {
  public:
-  tensorflow::StringPiece name() const override { return "scatter_expander"; }
+  absl::string_view name() const override { return "scatter_expander"; }
   StatusOr<bool> Run(HloModule* module) override;
 
- private:
+ protected:
   StatusOr<HloInstruction*> ExpandScatter(HloInstruction* scatter);
 };
 

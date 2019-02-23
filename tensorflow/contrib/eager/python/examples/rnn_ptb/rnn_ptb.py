@@ -128,7 +128,7 @@ class PTBModel(tf.keras.Model):
 
     self.linear = layers.Dense(
         vocab_size, kernel_initializer=tf.random_uniform_initializer(-0.1, 0.1))
-    self._output_shape = [-1, embedding_dim]
+    self._output_shape = [-1, hidden_dim]
 
   def call(self, input_seq, training):
     """Run the forward pass of PTBModel.

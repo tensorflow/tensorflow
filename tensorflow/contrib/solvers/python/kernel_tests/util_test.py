@@ -33,7 +33,7 @@ class UtilTest(test.TestCase):
       a_np = np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=dtype)
       x_np = np.array([[2.], [-3.]], dtype=dtype)
       y_np = np.array([[2], [-3.], [5.]], dtype=dtype)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         if use_static_shape_:
           a = constant_op.constant(a_np, dtype=dtype)
           x = constant_op.constant(x_np, dtype=dtype)
@@ -68,7 +68,7 @@ class UtilTest(test.TestCase):
       a_np = np.array([[1., 2.], [3., 4.], [5., 6.]], dtype=dtype)
       x_np = np.array([[2.], [-3.]], dtype=dtype)
       y_np = np.array([[2], [-3.], [5.]], dtype=dtype)
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         if use_static_shape_:
           a = constant_op.constant(a_np, dtype=dtype)
           x = constant_op.constant(x_np, dtype=dtype)
@@ -101,7 +101,7 @@ class UtilTest(test.TestCase):
     self._testIdentityOperator(False)
 
   def testL2Norm(self):
-    with self.test_session():
+    with self.cached_session():
       x_np = np.array([[2], [-3.], [5.]])
       x_norm_np = np.linalg.norm(x_np)
       x_normalized_np = x_np / x_norm_np

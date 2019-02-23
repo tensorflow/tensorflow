@@ -99,7 +99,7 @@ class GmmOpsTest(test.TestCase):
     logging.info('Numpy took %f', time.time() - start_time)
 
     start_time = time.time()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       op = gmm_ops._covariance(
           constant_op.constant(
               data.T, dtype=dtypes.float32), False)
@@ -120,7 +120,7 @@ class GmmOpsTest(test.TestCase):
     graph = ops.Graph()
     with graph.as_default() as g:
       g.seed = 5
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         data = constant_op.constant(self.data, dtype=dtypes.float32)
         loss_op, scores, assignments, training_op, init_op, _ = gmm_ops.gmm(
             data, 'random', num_classes, random_seed=self.seed)
@@ -144,7 +144,7 @@ class GmmOpsTest(test.TestCase):
   def testParams(self):
     """Tests that the params work as intended."""
     num_classes = 2
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Experiment 1. Update weights only.
       data = constant_op.constant(self.data, dtype=dtypes.float32)
       gmm_tool = gmm_ops.GmmAlgorithm([data], num_classes,

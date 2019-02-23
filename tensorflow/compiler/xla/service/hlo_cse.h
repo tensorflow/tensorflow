@@ -25,7 +25,7 @@ namespace xla {
 // and identical instructions with the same operands are commoned. The pass
 // iterates over the instructions in topological order which enables the pass to
 // find arbitrarily large common expressions.
-class HloCSE : public HloPassInterface {
+class HloCSE : public HloModulePass {
  public:
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.
@@ -34,7 +34,7 @@ class HloCSE : public HloPassInterface {
       : is_layout_sensitive_(is_layout_sensitive),
         only_fusion_computations_(only_fusion_computations) {}
   ~HloCSE() override = default;
-  tensorflow::StringPiece name() const override { return "cse"; }
+  absl::string_view name() const override { return "cse"; }
 
   // Run CSE on the given module. Returns whether the module was changed (common
   // subexpressions were found and eliminated).

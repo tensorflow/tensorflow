@@ -18,12 +18,12 @@ limitations under the License.
 
 #include <string>
 
+#include "absl/types/span.h"
 #include "llvm/IR/IRBuilder.h"
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace xla {
 namespace cpu {
@@ -114,6 +114,9 @@ class VectorSupportLibrary {
   // raison d'etre) less cluttered.
 
   llvm::Value* FCmpEQMask(llvm::Value* lhs, llvm::Value* rhs);
+  llvm::Value* FCmpEQMask(llvm::Value* lhs, const llvm::APFloat& rhs) {
+    return FCmpEQMask(lhs, GetConstantFloat(lhs->getType(), rhs));
+  }
   llvm::Value* FCmpULEMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, llvm::Value* rhs);
   llvm::Value* FCmpOLTMask(llvm::Value* lhs, const llvm::APFloat& rhs) {
@@ -324,7 +327,7 @@ class TileVariable {
                std::vector<llvm::Value*> initial_value);
 
   std::vector<llvm::Value*> Get() const;
-  void Set(tensorflow::gtl::ArraySlice<llvm::Value*> value);
+  void Set(absl::Span<llvm::Value* const> value);
 
  private:
   std::vector<VectorVariable> storage_;

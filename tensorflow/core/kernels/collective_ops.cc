@@ -43,16 +43,21 @@ class CollectiveOpKernel : public AsyncOpKernel {
       // Call in a blockable thread because it's not guaranteed that
       // this call cannot block.
       c->env()->SchedClosure([this, c, done, col_exec]() {
-        col_exec->CompleteParamsAsync(c->device()->name(), &col_params_,
-                                      c->cancellation_manager(),
-                                      [this, c, done](const Status& s) {
-                                        if (s.ok()) {
-                                          ComputeAsync(c, done);
-                                        } else {
-                                          c->SetStatus(s);
-                                          done();
-                                        }
-                                      });
+        VLOG(1) << "CollectiveOpKernel CompleteParams for collective "
+                << col_params_.name << " device " << c->device()->name()
+                << " group " << col_params_.group.group_key << " instance "
+                << col_params_.instance.instance_key;
+        col_exec->CompleteParamsAsync(
+            c->device()->name(), &col_params_, c->cancellation_manager(),
+            [this, c, done](const Status& s) {
+              if (s.ok()) {
+                col_params_.instance.impl_details.dependencies = dependencies_;
+                ComputeAsync(c, done);
+              } else {
+                c->SetStatus(s);
+                done();
+              }
+            });
       });
       return false;
     }
@@ -60,7 +65,59 @@ class CollectiveOpKernel : public AsyncOpKernel {
   }
 
   CollectiveParams col_params_;
+  std::vector<int32> dependencies_;
 };
+
+class CollectiveGatherOpKernel : public CollectiveOpKernel {
+ public:
+  explicit CollectiveGatherOpKernel(OpKernelConstruction* c)
+      : CollectiveOpKernel(c) {
+    col_params_.instance.type = GATHER_COLLECTIVE;
+    OP_REQUIRES_OK(c, c->GetAttr("group_size", &col_params_.group.group_size));
+    OP_REQUIRES_OK(c, c->GetAttr("group_key", &col_params_.group.group_key));
+    OP_REQUIRES_OK(
+        c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
+    OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
+    const NodeDef& real_node = c->def();
+    col_params_.name = strings::StrCat(real_node.name(), ": Gather");
+    col_params_.group.device_type = c->device_type();
+  }
+
+  void ComputeAsync(OpKernelContext* c, DoneCallback done) override {
+    CollectiveExecutor* col_exec = c->collective_executor();
+    OP_REQUIRES_ASYNC(
+        c, col_exec,
+        errors::Internal(
+            "Failed to get CollectiveExecutor from OpKernelContext for Op ",
+            col_params_.name),
+        done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // Allocate the output tensor.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          c, c->allocate_output(0, col_params_.instance.shape, &output), done);
+    }
+    if (!CanProceedWithCompute(c, col_exec, done)) return;
+    auto actual_done = [c, done](const Status& s) {
+      OP_REQUIRES_OK_ASYNC(c, s, done);
+      done();
+    };
+    col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
+  }
+
+ private:
+  TF_DISALLOW_COPY_AND_ASSIGN(CollectiveGatherOpKernel);
+};
+
+REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_CPU),
+                        CollectiveGatherOpKernel);
+REGISTER_KERNEL_BUILDER(Name("CollectiveGather").Device(DEVICE_GPU),
+                        CollectiveGatherOpKernel);
 
 class CollectiveReduceOpKernel : public CollectiveOpKernel {
  public:
@@ -87,6 +144,7 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
                     "final_op must be one of {\"Id\", \"Div\"} but got ",
                     final_op_name));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
+    OP_REQUIRES_OK(c, c->GetAttr("wait_for", &dependencies_));
 
     const NodeDef& real_node = c->def();
     col_params_.name = strings::StrCat(real_node.name(), ": Reduce(",
@@ -132,18 +190,32 @@ class CollectiveReduceOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // Allocate the output tensor, trying to reuse the input.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(c,
+                           c->forward_input_or_allocate_output(
+                               {0}, 0, c->input(0).shape(), &output),
+                           done);
+      col_params_.instance.shape = c->input(0).shape();
+    }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
-    // Allocate the output tensor, trying to reuse the input.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(c,
-                         c->forward_input_or_allocate_output(
-                             {0}, 0, c->input(0).shape(), &output),
-                         done);
 
-    auto actual_done = [c, col_exec, done](const Status& s) {
+    int32 instance_key = col_params_.instance.instance_key;
+    auto actual_done = [c, instance_key, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      VLOG(1) << "CollectiveReduceKernel ExecuteAsync done for device "
+              << c->device()->name() << " instance " << instance_key;
     };
+    VLOG(1) << "CollectiveReduceKernel ExecuteAsync start for collective "
+            << col_params_.name << " device " << c->device()->name()
+            << " group " << col_params_.group.group_key << " instance "
+            << instance_key;
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
@@ -166,7 +238,7 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &shape_));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
     col_params_.is_source = true;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -183,27 +255,40 @@ class CollectiveBcastSendOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // Allocate the output tensor, trying to reuse the input.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(c,
+                           c->forward_input_or_allocate_output(
+                               {0}, 0, col_params_.instance.shape, &output),
+                           done);
+    }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
     OP_REQUIRES_ASYNC(
-        c, shape_.IsSameSize(c->input(0).shape()),
+        c, col_params_.instance.shape.IsSameSize(c->input(0).shape()),
         errors::Internal("Declared shape of op ", col_params_.name,
                          " does not match shape of input"),
         done);
-    // Allocate the output Tensor, trying to reuse the input.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(
-        c, c->forward_input_or_allocate_output({0}, 0, shape_, &output), done);
 
-    auto actual_done = [c, col_exec, done](const Status& s) {
+    int32 instance_key = col_params_.instance.instance_key;
+    auto actual_done = [c, instance_key, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync done for device "
+              << c->device()->name() << " instance " << instance_key;
     };
+    VLOG(1) << "CollectiveBcastSendOpKernel ExecuteAsync start for collective "
+            << col_params_.name << " device " << c->device()->name()
+            << " group " << col_params_.group.group_key << " instance "
+            << instance_key;
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
  private:
-  TensorShape shape_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastSendOpKernel);
 };
 
@@ -222,7 +307,7 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
     OP_REQUIRES_OK(
         c, c->GetAttr("instance_key", &col_params_.instance.instance_key));
     OP_REQUIRES_OK(c, c->GetAttr("T", &col_params_.instance.data_type));
-    OP_REQUIRES_OK(c, c->GetAttr("shape", &shape_));
+    OP_REQUIRES_OK(c, c->GetAttr("shape", &col_params_.instance.shape));
     col_params_.is_source = false;
     col_params_.instance.impl_details.subdiv_offsets = {0};
 
@@ -239,21 +324,33 @@ class CollectiveBcastRecvOpKernel : public CollectiveOpKernel {
             "Failed to get CollectiveExecutor from OpKernelContext for Op ",
             col_params_.name),
         done);
+    // Allocate output on the first pass through this function.  This must be
+    // done immediately, while we're still in the executor thread.  Otherwise
+    // the memory is not guaranteed to be unused by any concurrently executing
+    // GPU kernel.
+    if (c->mutable_output(0) == nullptr) {
+      // No input, so must allocate output.
+      Tensor* output = nullptr;
+      OP_REQUIRES_OK_ASYNC(
+          c, c->allocate_output(0, col_params_.instance.shape, &output), done);
+    }
     if (!CanProceedWithCompute(c, col_exec, done)) return;
-    // No input, so must allocate output.
-    Tensor* output = nullptr;
-    OP_REQUIRES_OK_ASYNC(c, c->allocate_output(0, shape_, &output), done);
 
-    auto actual_done = [c, col_exec, done](const Status& s) {
+    int32 instance_key = col_params_.instance.instance_key;
+    auto actual_done = [c, instance_key, done](const Status& s) {
       OP_REQUIRES_OK_ASYNC(c, s, done);
       done();
+      VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync done for device "
+              << c->device()->name() << " instance " << instance_key;
     };
+    VLOG(1) << "CollectiveBcastRecvOpKernel ExecuteAsync start for collective "
+            << col_params_.name << " device " << c->device()->name()
+            << " group " << col_params_.group.group_key << " instance "
+            << instance_key;
     col_exec->ExecuteAsync(c, col_params_, GetCollectiveKey(c), actual_done);
   }
 
  private:
-  TensorShape shape_;
-
   TF_DISALLOW_COPY_AND_ASSIGN(CollectiveBcastRecvOpKernel);
 };
 

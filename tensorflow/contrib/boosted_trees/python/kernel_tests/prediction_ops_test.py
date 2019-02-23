@@ -331,7 +331,7 @@ class PredictionOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([[], []], dropout_info.eval())
 
   def testObliviousEnsemble(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Bias tree.
       tree1 = tree_ensemble_config.trees.add()
@@ -1399,7 +1399,7 @@ class PartitionExamplesOpsTest(test_util.TensorFlowTestCase):
       self.assertAllEqual([0, 0], result.eval())
 
   def testObliviousTreeNonFinalized(self):
-    with self.test_session():
+    with self.cached_session():
       tree_ensemble_config = tree_config_pb2.DecisionTreeEnsembleConfig()
       # Depth 3 tree.
       tree1 = tree_ensemble_config.trees.add()

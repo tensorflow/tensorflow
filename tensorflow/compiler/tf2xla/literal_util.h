@@ -18,11 +18,11 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 #define TENSORFLOW_COMPILER_TF2XLA_LITERAL_UTIL_H_
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 
 namespace tensorflow {
 
@@ -30,6 +30,11 @@ namespace tensorflow {
 // 'host_tensor'.
 Status HostTensorToBorrowingLiteral(const Tensor& host_tensor,
                                     xla::BorrowingLiteral* literal);
+
+// Returns a Literal with the contents of 'host_tensor', backed by its own
+// storage (i.e., not reusing 'host_tensor's buffers.)
+xla::StatusOr<xla::Literal> HostTensorToLiteral(const Tensor& host_tensor);
+
 // Returns a MutableBorrowingLiteral that utilizes the same underlying buffer
 // owned by 'host_tensor', but is mutable via the xla::Literal methods.
 Status HostTensorToMutableBorrowingLiteral(
@@ -43,9 +48,8 @@ Status HostTensorToMutableBorrowingLiteral(
 
 // Returns a BorrowingLiteral tuple that utilizes the same underlying buffers
 // owned by 'host_tensors'.
-Status HostTensorsToBorrowingLiteralTuple(
-    tensorflow::gtl::ArraySlice<Tensor> host_tensors,
-    xla::BorrowingLiteral* literal);
+Status HostTensorsToBorrowingLiteralTuple(absl::Span<const Tensor> host_tensors,
+                                          xla::BorrowingLiteral* literal);
 
 // Copies 'literal' to freshly allocated 'host_tensor', which is allocated of
 // type <target_type>.

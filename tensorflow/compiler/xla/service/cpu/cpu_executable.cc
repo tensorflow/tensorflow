@@ -22,6 +22,9 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
+#include "absl/strings/str_join.h"
 #include "llvm/ExecutionEngine/Orc/IRCompileLayer.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/computation_layout.h"
@@ -35,9 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -51,8 +51,7 @@ namespace cpu {
 CpuExecutable::CpuExecutable(
     std::unique_ptr<SimpleOrcJIT> jit,
     std::unique_ptr<const BufferAssignment> assignment,
-    std::unique_ptr<const HloModule> hlo_module,
-    const string& entry_function_name,
+    std::unique_ptr<HloModule> hlo_module, const string& entry_function_name,
     std::unique_ptr<HloProfilePrinterData> hlo_profile_printer_data,
     std::unique_ptr<HloProfileIndexMap> hlo_profile_index_map)
     : Executable(std::move(hlo_module), std::move(hlo_profile_printer_data),
@@ -75,9 +74,9 @@ CpuExecutable::CpuExecutable(
 
 StatusOr<std::pair<std::vector<se::DeviceMemoryBase>,
                    std::vector<OwningDeviceMemory>>>
-CpuExecutable::CreateTempArray(
+CpuExecutable::CreateBufferTable(
     DeviceMemoryAllocator* memory_allocator, int device_ordinal,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   std::vector<se::DeviceMemoryBase> unowning_buffers(
       assignment_->Allocations().size());
   std::vector<OwningDeviceMemory> owning_buffers(
@@ -136,19 +135,19 @@ CpuExecutable::CreateTempArray(
 
 Status CpuExecutable::ExecuteComputeFunction(
     const ExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<se::DeviceMemoryBase> buffers,
+    absl::Span<const se::DeviceMemoryBase> buffers,
     HloExecutionProfile* hlo_execution_profile) {
   // The calling convention for JITed functions is:
   //
   //  void function(void* result, const void* run_options, void** args_array,
-  //                void** temps_array)
+  //                void** buffer_table)
   //
   // result: Points at the result.
   // run_options: the ExecutableRunOptions object.
   // args_array: null
-  // temps_array: An array of pointers, containing pointers to temporary buffers
-  //              required by the executable adn pointers to entry computation
-  //              parameters.
+  // buffer_table: An array of pointers, containing pointers to temporary
+  //   buffers required by the executable adn pointers to entry computation
+  //   parameters.
   //
 
   uint64 start_micros = tensorflow::Env::Default()->NowMicros();
@@ -171,20 +170,19 @@ Status CpuExecutable::ExecuteComputeFunction(
   void* result_buffer = buffer_pointers[result_slice.index()];
   if (VLOG_IS_ON(3)) {
     VLOG(3) << "Executing compute function:";
-    VLOG(3) << tensorflow::strings::Printf(
-        "  func(void* result, void* params[null], void* temps[%zu], "
-        "uint64 profile_counters[%zu])",
+    VLOG(3) << absl::StrFormat(
+        "  func(void* result, void* params[null], void* buffer_table[%u], "
+        "uint64 profile_counters[%u])",
         buffer_pointers.size(), profile_counters_size);
-    VLOG(3) << tensorflow::strings::Printf("    result = %p", result_buffer);
+    VLOG(3) << absl::StrFormat("    result = %p", result_buffer);
     auto ptr_printer = [](string* out, const void* p) {
-      tensorflow::strings::StrAppend(out, tensorflow::strings::Printf("%p", p));
+      absl::StrAppend(out, absl::StrFormat("%p", p));
     };
     VLOG(3) << "    params = nullptr";
-    VLOG(3) << tensorflow::strings::Printf(
-        "    temps = [%s]",
-        tensorflow::str_util::Join(buffer_pointers, ", ", ptr_printer).c_str());
-    VLOG(3) << tensorflow::strings::Printf("    profile_counters = %p",
-                                           profile_counters);
+    VLOG(3) << absl::StrFormat(
+        "    buffer_table = [%s]",
+        absl::StrJoin(buffer_pointers, ", ", ptr_printer));
+    VLOG(3) << absl::StrFormat("    profile_counters = %p", profile_counters);
   }
 
   compute_function_(result_buffer, run_options, nullptr, buffer_pointers.data(),
@@ -209,12 +207,14 @@ Status CpuExecutable::ExecuteComputeFunction(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::MutableArraySlice<OwningDeviceMemory> buffers) {
+    absl::Span<OwningDeviceMemory> buffers) {
   se::Stream* stream = run_options->stream();
   ScopedShapedBuffer result_buffer(
       /*on_host_shape=*/result_shape(),
       /*on_device_shape=*/result_shape(), run_options->allocator(),
       stream->parent()->device_ordinal());
+  const HloInputOutputAliasConfig& input_output_alias =
+      module().input_output_alias_config();
 
   // Move OwningDeviceMemory values which contain the array(s) of the result
   // into the respective location in ScopedShapedBuffer which is returned to the
@@ -234,12 +234,31 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
         TF_ASSIGN_OR_RETURN(
             const BufferAllocation::Slice slice,
             this->assignment_->GetUniqueSlice(src, buffer_source->index()));
-        CHECK(!slice.allocation()->is_entry_computation_parameter());
-
         const BufferAllocation::Index buffer_index = slice.index();
         OwningDeviceMemory& buffer = buffers[buffer_index];
-        CHECK(!buffer.is_null() || buffer.size() == 0);
-        *device_memory = buffer.Forget();
+        if (!slice.allocation()->is_entry_computation_parameter()) {
+          // If the buffer coming out of the result is from a parameter, the
+          // owning buffer will be null, and that means the caller aliased some
+          // parameter buffer to an output one (via the
+          // HloInputOutputAliasConfig API). If that is the case, the caller
+          // will receive a partially complete scoped shaped buffer, which they
+          // will have to fill up on return. Unfortunately the interface to the
+          // execute APIs are ShapedBuffer pointer based, which assumes caller
+          // ownership, and hence a buffer coming from there cannot be part of
+          // the new ScopedShapedBuffer we create for the result (which assumes
+          // ownership).
+          *device_memory = buffer.Forget();
+        } else {
+          auto output_alias = input_output_alias.GetAliasedOutput(
+              slice.allocation()->parameter_number(),
+              slice.allocation()->param_shape_index());
+          CHECK(output_alias)
+              << "Ouput buffer is coming from parameter "
+              << slice.allocation()->parameter_number() << " at index "
+              << slice.allocation()->param_shape_index()
+              << ", but no alias exists";
+          CHECK_EQ(*output_alias, index);
+        }
         return Status::OK();
       }));
   return std::move(result_buffer);
@@ -247,7 +266,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::CreateResultShapedBuffer(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   TF_ASSIGN_OR_RETURN(
       auto result,
@@ -258,7 +277,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteOnStream(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments) {
+    absl::Span<const ShapedBuffer* const> arguments) {
   if (hlo_profiling_enabled()) {
     return Unimplemented(
         "Asynchronous execution on stream with hlo profiling is not yet "
@@ -269,7 +288,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStream(
 
 StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
     const ServiceExecutableRunOptions* run_options,
-    tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+    absl::Span<const ShapedBuffer* const> arguments,
     HloExecutionProfile* hlo_execution_profile) {
   if (GetRootPointsToSet().IsAmbiguous()) {
     return Unimplemented("Points-to set of root instruction is ambiguous");
@@ -283,11 +302,12 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
   std::vector<se::DeviceMemoryBase> unowning_buffers;
   TF_ASSIGN_OR_RETURN(
       std::tie(unowning_buffers, owning_buffers),
-      CreateTempArray(memory_allocator, stream->parent()->device_ordinal(),
-                      arguments));
+      CreateBufferTable(memory_allocator, stream->parent()->device_ordinal(),
+                        arguments));
 
-  TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
-                      CreateResultShapedBuffer(run_options, &owning_buffers));
+  TF_ASSIGN_OR_RETURN(
+      ScopedShapedBuffer result,
+      CreateResultShapedBuffer(run_options, absl::MakeSpan(owning_buffers)));
 
   // At this point, `unowning_buffers` contains unowning pointers to all of our
   // buffers, and `buffers` contains owning pointers to the non-live-out
@@ -300,7 +320,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
   //
   // We also need to change the types of some of the variables we capture:
   // run_options needs to change from a pointer to a value type, and arguments
-  // needs to change from an ArraySlice into a vector.  We use a struct instead
+  // needs to change from a Span into a vector.  We use a struct instead
   // of a lambda to make this explicit.
   struct AsyncRunTask {
     CpuExecutable* executable;
@@ -327,7 +347,7 @@ StatusOr<ScopedShapedBuffer> CpuExecutable::ExecuteAsyncOnStreamImpl(
 
 /*static*/ int64 CpuExecutable::ShapeSizeBytes(const Shape& shape) {
   // On the cpu, opaques are pointers.
-  if (ShapeUtil::IsOpaque(shape)) {
+  if (shape.IsOpaque()) {
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));

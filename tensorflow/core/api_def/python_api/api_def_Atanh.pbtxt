@@ -5,6 +5,5 @@ op {
   }
   endpoint {
     name: "atanh"
-    deprecated: true
   }
 }

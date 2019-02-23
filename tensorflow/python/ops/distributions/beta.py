@@ -33,6 +33,7 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import kullback_leibler
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -46,7 +47,7 @@ _beta_sample_note = """Note: `x` must have dtype `self.dtype` and be in
 `[0, 1].` It must have a shape compatible with `self.batch_shape()`."""
 
 
-@tf_export("distributions.Beta")
+@tf_export(v1=["distributions.Beta"])
 class Beta(distribution.Distribution):
   """Beta distribution.
 
@@ -98,10 +99,13 @@ class Beta(distribution.Distribution):
   #### Examples
 
   ```python
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
+
   # Create a batch of three Beta distributions.
   alpha = [1, 2, 3]
   beta = [1, 2, 3]
-  dist = tf.distributions.Beta(alpha, beta)
+  dist = tfd.Beta(alpha, beta)
 
   dist.sample([4, 5])  # Shape [4, 5, 3]
 
@@ -117,7 +121,7 @@ class Beta(distribution.Distribution):
   # Create batch_shape=[2, 3] via parameter broadcast:
   alpha = [[1.], [2]]      # Shape [2, 1]
   beta = [3., 4, 5]        # Shape [3]
-  dist = tf.distributions.Beta(alpha, beta)
+  dist = tfd.Beta(alpha, beta)
 
   # alpha broadcast as: [[1., 1, 1,],
   #                      [2, 2, 2]]
@@ -138,7 +142,7 @@ class Beta(distribution.Distribution):
   ```python
   alpha = tf.constant(1.0)
   beta = tf.constant(2.0)
-  dist = tf.distributions.Beta(alpha, beta)
+  dist = tfd.Beta(alpha, beta)
   samples = dist.sample(5)  # Shape [5]
   loss = tf.reduce_mean(tf.square(samples))  # Arbitrary loss function
   # Unbiased stochastic gradients of the loss function
@@ -147,6 +151,14 @@ class Beta(distribution.Distribution):
 
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                concentration1=None,
                concentration0=None,
@@ -264,8 +276,8 @@ class Beta(distribution.Distribution):
 
   def _log_unnormalized_prob(self, x):
     x = self._maybe_assert_valid_sample(x)
-    return ((self.concentration1 - 1.) * math_ops.log(x)
-            + (self.concentration0 - 1.) * math_ops.log1p(-x))
+    return (math_ops.xlogy(self.concentration1 - 1., x) +
+            (self.concentration0 - 1.) * math_ops.log1p(-x))
 
   def _log_normalization(self):
     return (math_ops.lgamma(self.concentration1)
@@ -338,6 +350,11 @@ class Beta(distribution.Distribution):
 class BetaWithSoftplusConcentration(Beta):
   """Beta with softplus transform of `concentration1` and `concentration0`."""
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "Use `tfd.Beta(tf.nn.softplus(concentration1), "
+      "tf.nn.softplus(concentration2))` instead.",
+      warn_once=True)
   def __init__(self,
                concentration1,
                concentration0,

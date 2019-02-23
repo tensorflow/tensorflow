@@ -18,20 +18,13 @@ limitations under the License.
 #include "tensorflow/core/framework/allocator_registry.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
+#include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/mem.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
-
-void AllocatorStats::Clear() {
-  this->num_allocs = 0;
-  this->bytes_in_use = 0;
-  this->max_bytes_in_use = 0;
-  this->max_alloc_size = 0;
-  this->bytes_limit = 0;
-}
 
 string AllocatorStats::DebugString() const {
   return strings::Printf(
@@ -40,8 +33,8 @@ string AllocatorStats::DebugString() const {
       "MaxInUse:     %20lld\n"
       "NumAllocs:    %20lld\n"
       "MaxAllocSize: %20lld\n",
-      this->bytes_limit, this->bytes_in_use, this->max_bytes_in_use,
-      this->num_allocs, this->max_alloc_size);
+      this->bytes_limit ? *this->bytes_limit : 0, this->bytes_in_use,
+      this->peak_bytes_in_use, this->num_allocs, this->largest_alloc_size);
 }
 
 constexpr size_t Allocator::kAllocatorAlignment;
@@ -54,6 +47,14 @@ void RunResourceCtor(ResourceHandle* p, size_t n) {
 
 void RunResourceDtor(ResourceHandle* p, size_t n) {
   for (size_t i = 0; i < n; ++p, ++i) p->~ResourceHandle();
+}
+
+void Allocator::RunVariantCtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) new (p) Variant();
+}
+
+void Allocator::RunVariantDtor(Variant* p, size_t n) {
+  for (size_t i = 0; i < n; ++p, ++i) p->~Variant();
 }
 
 // If true, cpu allocator collects more stats.
@@ -87,9 +88,11 @@ static int64_t TotalAllocationWarningBytes() {
 void EnableCPUAllocatorStats(bool enable) {
   cpu_allocator_collect_stats = enable;
 }
+bool CPUAllocatorStatsEnabled() { return cpu_allocator_collect_stats; }
 void EnableCPUAllocatorFullStats(bool enable) {
   cpu_allocator_collect_full_stats = enable;
 }
+bool CPUAllocatorFullStatsEnabled() { return cpu_allocator_collect_full_stats; }
 
 namespace {
 // A default Allocator for CPU devices.  ProcessState::GetCPUAllocator() will
@@ -121,10 +124,10 @@ class CPUAllocator : public Allocator {
       mutex_lock l(mu_);
       ++stats_.num_allocs;
       stats_.bytes_in_use += alloc_size;
-      stats_.max_bytes_in_use =
-          std::max<int64>(stats_.max_bytes_in_use, stats_.bytes_in_use);
-      stats_.max_alloc_size =
-          std::max<int64>(stats_.max_alloc_size, alloc_size);
+      stats_.peak_bytes_in_use =
+          std::max<int64>(stats_.peak_bytes_in_use, stats_.bytes_in_use);
+      stats_.largest_alloc_size =
+          std::max<int64>(stats_.largest_alloc_size, alloc_size);
 
       if (stats_.bytes_in_use > TotalAllocationWarningBytes() &&
           total_allocation_warning_count_ < kMaxTotalAllocationWarnings) {
@@ -147,16 +150,16 @@ class CPUAllocator : public Allocator {
     port::AlignedFree(ptr);
   }
 
-  void GetStats(AllocatorStats* stats) override {
+  absl::optional<AllocatorStats> GetStats() override {
     mutex_lock l(mu_);
-    *stats = stats_;
+    return stats_;
   }
 
   void ClearStats() override {
     mutex_lock l(mu_);
     stats_.num_allocs = 0;
-    stats_.max_bytes_in_use = stats_.bytes_in_use;
-    stats_.max_alloc_size = 0;
+    stats_.peak_bytes_in_use = stats_.bytes_in_use;
+    stats_.largest_alloc_size = 0;
   }
 
   size_t AllocatedSizeSlow(const void* ptr) override {
@@ -187,7 +190,7 @@ class CPUAllocatorFactory : public AllocatorFactory {
   class CPUSubAllocator : public SubAllocator {
    public:
     explicit CPUSubAllocator(CPUAllocator* cpu_allocator)
-        : cpu_allocator_(cpu_allocator) {}
+        : SubAllocator({}, {}), cpu_allocator_(cpu_allocator) {}
 
     void* Alloc(size_t alignment, size_t num_bytes) override {
       return cpu_allocator_->AllocateRaw(alignment, num_bytes);
@@ -205,12 +208,48 @@ class CPUAllocatorFactory : public AllocatorFactory {
 REGISTER_MEM_ALLOCATOR("DefaultCPUAllocator", 100, CPUAllocatorFactory);
 }  // namespace
 
-Allocator* cpu_allocator() {
+Allocator* cpu_allocator_base() {
   static Allocator* cpu_alloc =
       AllocatorFactoryRegistry::singleton()->GetAllocator();
+  // TODO(tucker): This really seems wrong.  It's only going to be effective on
+  // the first call in a process (but the desired effect is associated with a
+  // session), and we probably ought to be tracking the highest level Allocator,
+  // not the lowest.  Revisit the advertised semantics of the triggering option.
   if (cpu_allocator_collect_full_stats && !cpu_alloc->TracksAllocationSizes()) {
     cpu_alloc = new TrackingAllocator(cpu_alloc, true);
   }
   return cpu_alloc;
+}
+
+Allocator* cpu_allocator(int numa_node) {
+  // Correctness relies on devices being created prior to the first call
+  // to cpu_allocator, if devices are ever to be created in the process.
+  // Device creation in turn triggers ProcessState creation and the availability
+  // of the correct access pointer via this function call.
+  static ProcessStateInterface* ps =
+      AllocatorFactoryRegistry::singleton()->process_state();
+  if (ps) {
+    return ps->GetCPUAllocator(numa_node);
+  } else {
+    return cpu_allocator_base();
+  }
+}
+
+SubAllocator::SubAllocator(const std::vector<Visitor>& alloc_visitors,
+                           const std::vector<Visitor>& free_visitors)
+    : alloc_visitors_(alloc_visitors), free_visitors_(free_visitors) {}
+
+void SubAllocator::VisitAlloc(void* ptr, int index, size_t num_bytes) {
+  for (const auto& v : alloc_visitors_) {
+    v(ptr, index, num_bytes);
+  }
+}
+
+void SubAllocator::VisitFree(void* ptr, int index, size_t num_bytes) {
+  // Although we don't guarantee any order of visitor application, strive
+  // to apply free visitors in reverse order of alloc visitors.
+  for (int i = free_visitors_.size() - 1; i >= 0; --i) {
+    free_visitors_[i](ptr, index, num_bytes);
+  }
 }
 }  // namespace tensorflow

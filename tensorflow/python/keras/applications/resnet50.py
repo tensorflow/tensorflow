@@ -20,11 +20,25 @@ from __future__ import division
 from __future__ import print_function
 
 from keras_applications import resnet50
-from tensorflow.python.util.tf_export import tf_export
 
-ResNet50 = resnet50.ResNet50
-decode_predictions = resnet50.decode_predictions
-preprocess_input = resnet50.preprocess_input
+from tensorflow.python.keras.applications import keras_modules_injection
+from tensorflow.python.util.tf_export import keras_export
 
-tf_export('keras.applications.resnet50.ResNet50',
-          'keras.applications.ResNet50')(ResNet50)
+
+@keras_export('keras.applications.resnet50.ResNet50',
+              'keras.applications.ResNet50')
+@keras_modules_injection
+def ResNet50(*args, **kwargs):
+  return resnet50.ResNet50(*args, **kwargs)
+
+
+@keras_export('keras.applications.resnet50.decode_predictions')
+@keras_modules_injection
+def decode_predictions(*args, **kwargs):
+  return resnet50.decode_predictions(*args, **kwargs)
+
+
+@keras_export('keras.applications.resnet50.preprocess_input')
+@keras_modules_injection
+def preprocess_input(*args, **kwargs):
+  return resnet50.preprocess_input(*args, **kwargs)

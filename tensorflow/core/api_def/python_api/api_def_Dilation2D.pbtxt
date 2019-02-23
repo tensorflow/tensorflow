@@ -1,6 +1,4 @@
 op {
   graph_op_name: "Dilation2D"
-  endpoint {
-    name: "nn.dilation2d"
-  }
+  visibility: HIDDEN
 }

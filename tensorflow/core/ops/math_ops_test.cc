@@ -144,12 +144,16 @@ TEST(MathOpsTest, BroadcastBinaryOps_ShapeFn) {
     INFER_OK(op, "[1];[2]", "[d1_0]");
     INFER_OK(op, "[2];[1]", "[d0_0]");
     INFER_OK(op, "[2];[]", "[d0_0]");
+    INFER_OK(op, "[2];[?]", "[d0_0]");
 
     INFER_OK(op, "[0];[0]", "[d0_0|d1_0]");
     INFER_OK(op, "[];[0]", "[d1_0]");
     INFER_OK(op, "[1];[0]", "[d1_0]");
     INFER_OK(op, "[0];[1]", "[d0_0]");
     INFER_OK(op, "[0];[]", "[d0_0]");
+
+    INFER_OK(op, "[2];[?,?]", "[d1_0,d0_0]");
+    INFER_OK(op, "[2,2];[?,?,?]", "[d1_0,d0_0,d0_1]");
 
     // Multiple dimension cases (same test cases, switching x and y).
     INFER_OK(op, "[?,1,2,3,4,5];[3,1,?]",
@@ -558,5 +562,17 @@ TEST(MathOpsTest, QuantizedAdd_ShapeFn) {
   INFER_ERROR("must be rank 0", op, "?;?;?;[2];?;?");
   INFER_ERROR("must be rank 0", op, "?;?;?;?;[3];?");
   INFER_ERROR("must be rank 0", op, "?;?;?;?;?;[4]");
+}
+
+TEST(MathOpsTest, Bincount_ShapeFn) {
+  ShapeInferenceTestOp op("Bincount");
+
+  // size should be scalar.
+  INFER_ERROR("Shape must be rank 0 but is rank 1", op, "?;[1];?");
+
+  INFER_OK(op, "?;?;?", "[?]");
+  INFER_OK(op, "?;[];?", "[?]");
+  INFER_OK(op, "[?];[];?", "[?]");
+  INFER_OK(op, "[?];[];[?]", "[?]");
 }
 }  // end namespace tensorflow

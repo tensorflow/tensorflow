@@ -29,8 +29,8 @@ limitations under the License.
 namespace xla {
 namespace {
 
-Array<int64> MakeArray(tensorflow::gtl::ArraySlice<int64> dimensions,
-                       tensorflow::gtl::ArraySlice<int64> contents) {
+Array<int64> MakeArray(absl::Span<const int64> dimensions,
+                       absl::Span<const int64> contents) {
   Array<int64> a(dimensions);
   std::copy(contents.begin(), contents.end(), a.begin());
   return a;
@@ -84,7 +84,7 @@ TEST_F(HloShardingTest, Tile) {
   }
 
   {
-    // Test should fail because of more devices used then `num_device`.
+    // Test should fail because of more devices used than `num_device`.
     HloSharding sharding = HloSharding::Tile(MakeArray({2, 2}, {0, 1, 2, 3}));
     EXPECT_IS_NOT_OK(sharding.Validate(ShapeUtil::MakeShape(U32, {4, 6}),
                                        /*num_devices=*/2));
@@ -113,6 +113,13 @@ TEST_F(HloShardingTest, Tile) {
 
     EXPECT_FALSE(sharding.HasUniqueDevice());
   }
+}
+
+// Tests that empty tuple is supported.
+TEST_F(HloShardingTest, EmptySingleTuple) {
+  HloSharding sharding = HloSharding::SingleTuple(ShapeUtil::MakeTupleShape({}),
+                                                  HloSharding::AssignDevice(0));
+  EXPECT_TRUE(sharding.ExtractSingleSharding());
 }
 
 TEST_F(HloShardingTest, NestedTuple) {

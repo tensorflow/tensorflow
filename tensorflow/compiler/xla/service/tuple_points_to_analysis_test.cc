@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 
 #include "tensorflow/compiler/xla/literal_util.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_matchers.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/instruction_fusion.h"
@@ -48,7 +49,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   }
 
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewModule();
+    module_ = CreateNewUnverifiedModule();
     module_->AddEntryComputation(std::move(computation));
   }
 
@@ -72,9 +73,8 @@ class TuplePointsToAnalysisTest : public HloTestBase {
 
   // Checks that the given points-to set contains exactly (unordered) the given
   // LogicalBuffers.
-  void ExpectHasBuffers(
-      const PointsToSet::BufferList& points_to_set,
-      tensorflow::gtl::ArraySlice<const LogicalBuffer*> buffers) {
+  void ExpectHasBuffers(const PointsToSet::BufferList& points_to_set,
+                        absl::Span<const LogicalBuffer* const> buffers) {
     std::vector<const LogicalBuffer*> vec(buffers.begin(), buffers.end());
     EXPECT_THAT(points_to_set, UnorderedElementsAreArray(vec));
   }
@@ -83,7 +83,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // top-level buffers of the given instructions.
   void ExpectHasTopLevelBuffers(
       const PointsToSet::BufferList& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+      absl::Span<HloInstruction* const> instructions) {
     PointsToSet::BufferList buffers;
     for (auto instruction : instructions) {
       buffers.push_back(GetBuffer(instruction, /*index=*/{}));
@@ -94,7 +94,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // Overload which takes a set instead of a vector.
   void ExpectHasTopLevelBuffers(
       const PointsToSet::BufferSet& points_to_set,
-      tensorflow::gtl::ArraySlice<HloInstruction*> instructions) {
+      absl::Span<HloInstruction* const> instructions) {
     ExpectHasTopLevelBuffers(
         PointsToSet::BufferList(points_to_set.begin(), points_to_set.end()),
         instructions);
@@ -104,8 +104,7 @@ class TuplePointsToAnalysisTest : public HloTestBase {
   // aliases which are exactly (unordered) the given instruction/index pairs.
   void ExpectHasBufferAliases(
       const HloInstruction* instruction, const ShapeIndex& index,
-      tensorflow::gtl::ArraySlice<std::pair<HloInstruction*, ShapeIndex>>
-          expected) {
+      absl::Span<const std::pair<HloInstruction*, ShapeIndex>> expected) {
     const LogicalBuffer* buffer =
         points_to_analysis_->GetBufferDefinedAt(instruction, index)
             .ValueOrDie();
@@ -264,6 +263,22 @@ TEST_F(TuplePointsToAnalysisTest, GetTupleElement) {
 
   EXPECT_THAT(points_to_set.tuple_sources({}),
               UnorderedElementsAre(inner_tuple));
+}
+
+TEST_F(TuplePointsToAnalysisTest, AddDependency) {
+  auto builder = HloComputation::Builder(TestName());
+  auto constant = builder.AddInstruction(
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  auto add_dependency = builder.AddInstruction(
+      HloInstruction::CreateAddDependency(constant, token));
+  BuildModuleAndRunAnalysis(builder.Build());
+
+  auto& points_to_set = points_to_analysis_->GetPointsToSet(add_dependency);
+  EXPECT_EQ(1, points_to_set.size());
+  EXPECT_FALSE(points_to_set.IsAmbiguous());
+  EXPECT_TRUE(points_to_set.IsDistinct());
+  ExpectHasTopLevelBuffers(points_to_set.CreateFlattenedSet(), {constant});
 }
 
 TEST_F(TuplePointsToAnalysisTest, DuplicatedElement) {
@@ -557,10 +572,10 @@ TEST_F(TuplePointsToAnalysisTest, PointsToTupleConstantElements) {
   // Construct a tuple constant and kCopy it. Verify the points-to set of the
   // copy correctly correctly points into the nested elements of the constant.
   auto builder = HloComputation::Builder(TestName());
-  auto tuple_constant = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::MakeTuple(
-          {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}).get(),
-           LiteralUtil::CreateR1<float>({2.0, 42}).get()})));
+  Literal elements[] = {LiteralUtil::CreateR2<float>({{1.0}, {2.0}}),
+                        LiteralUtil::CreateR1<float>({2.0, 42})};
+  auto tuple_constant = builder.AddInstruction(HloInstruction::CreateConstant(
+      LiteralUtil::MakeTuple({&elements[0], &elements[1]})));
   auto copy = builder.AddInstruction(HloInstruction::CreateUnary(
       tuple_constant->shape(), HloOpcode::kCopy, tuple_constant));
 
@@ -609,7 +624,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   void Run(const bool add_additional_gte0_user) {
     Shape input_shape = ShapeUtil::MakeShape(F32, {8});
     Shape update_shape = ShapeUtil::MakeShape(F32, {3});
-    Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+    Shape starts_shape = ShapeUtil::MakeShape(S32, {});
     Shape tuple_shape =
         ShapeUtil::MakeTupleShape({input_shape, update_shape, starts_shape});
 
@@ -643,7 +658,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
         HloInstruction::CreateGetTupleElement(starts_shape, tuple_param0, 2));
     // Update 'input' with 'update' at dynamic 'starts' indices.
     builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-        input_shape, input, update, starts));
+        input_shape, input, update, {starts}));
 
     // Build computation and add it to module as entry computation.
     BuildModule(builder.Build());
@@ -707,9 +722,8 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // to fusion 'operand'.
   HloInstruction* GetFusionParameterForOperand(HloInstruction* fusion,
                                                HloInstruction* operand) {
-    auto it = std::find_if(
-        fusion->fused_instructions().begin(),
-        fusion->fused_instructions().end(), [=](const HloInstruction* fused) {
+    auto it = absl::c_find_if(
+        fusion->fused_instructions(), [&](const HloInstruction* fused) {
           return fused->opcode() == HloOpcode::kParameter &&
                  fusion->operand(fused->parameter_number()) == operand;
         });
@@ -720,7 +734,7 @@ class FusionPointsToAnalysisTest : public TuplePointsToAnalysisTest {
   // Returns all users of 'fusion_paran' at 'tuple_index'.
   std::vector<HloInstruction*> GetFusionParameterUsersAt(
       HloInstruction* fusion_param, int64 tuple_index) {
-    CHECK(ShapeUtil::IsTuple(fusion_param->shape()));
+    CHECK(fusion_param->shape().IsTuple());
     std::vector<HloInstruction*> users_at_tuple_index;
     for (auto user : fusion_param->users()) {
       CHECK_EQ(HloOpcode::kGetTupleElement, user->opcode());
@@ -811,7 +825,7 @@ TEST_F(FusionPointsToAnalysisTest, FusionParam0TwoUsers) {
 class PointsToAnalysisTestBase : public HloTestBase {
  protected:
   void BuildModule(std::unique_ptr<HloComputation> computation) {
-    module_ = CreateNewModule();
+    module_ = CreateNewUnverifiedModule();
     computation_ = module_->AddEntryComputation(std::move(computation));
   }
 
@@ -869,12 +883,12 @@ TEST_F(DoesNotUseOperandBufferTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, starts));
+          data_shape, gte1, update, {starts}));
   builder.AddInstruction(
       HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
 
@@ -963,12 +977,12 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDynamicUpdateSlice) {
 
   // Create a DynamicUpdateSlice instruction of tuple element 1.
   auto starts = builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR1<int32>({2})));
+      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(2)));
   auto update = builder.AddInstruction(HloInstruction::CreateConstant(
       LiteralUtil::CreateR1<float>({2.f, 2.f, 2.f})));
   auto dynamic_update_slice =
       builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-          data_shape, gte1, update, starts));
+          data_shape, gte1, update, {starts}));
   builder.AddInstruction(
       HloInstruction::CreateTuple({gte0, dynamic_update_slice}));
 
@@ -990,7 +1004,7 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
 
   Shape data_shape = ShapeUtil::MakeShape(F32, {8});
   Shape update_shape = ShapeUtil::MakeShape(F32, {4});
-  Shape starts_shape = ShapeUtil::MakeShape(S32, {1});
+  Shape starts_shape = ShapeUtil::MakeShape(S32, {});
   auto data = builder.AddInstruction(
       HloInstruction::CreateParameter(0, data_shape, "data"));
   auto update = builder.AddInstruction(
@@ -998,7 +1012,7 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
   auto starts = builder.AddInstruction(
       HloInstruction::CreateParameter(2, starts_shape, "starts"));
   auto dus = builder.AddInstruction(HloInstruction::CreateDynamicUpdateSlice(
-      data_shape, data, update, starts));
+      data_shape, data, update, {starts}));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -1012,16 +1026,57 @@ TEST_F(CanShareOperandBufferWithUserTest, DynamicUpdateSliceCanShare) {
       points_to_analysis_->CanShareOperandBufferWithUser(starts, {}, dus, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, ScatterCanShare) {
+  const char* hlo_text = R"(
+    HloModule TensorFlowScatterV1
+
+    update_s32 (lhs: s32[], rhs: s32[]) -> s32[] {
+      lhs = s32[] parameter(0)
+      ROOT rhs = s32[] parameter(1)
+    }
+
+    ENTRY main {
+      operand = s32[3,3] parameter(0)
+      indices = s32[2] parameter(1)
+      updates = s32[2,3] parameter(2)
+      ROOT scatter = s32[3,3] scatter(operand, indices, updates),
+          to_apply=update_s32,
+          update_window_dims={1},
+          inserted_window_dims={0},
+          scatter_dims_to_operand_dims={0},
+          index_vector_dim=1
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseHloString(hlo_text));
+  computation_ = module_->entry_computation();
+  RunAnalysis();
+
+  HloInstruction* operand_param = computation_->parameter_instruction(0);
+  HloInstruction* indices_param = computation_->parameter_instruction(1);
+  HloInstruction* updates_param = computation_->parameter_instruction(2);
+  HloInstruction* scatter = computation_->root_instruction();
+
+  EXPECT_TRUE(points_to_analysis_->CanShareOperandBufferWithUser(
+      operand_param, {}, scatter, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(
+      indices_param, {}, scatter, {}));
+  EXPECT_FALSE(points_to_analysis_->CanShareOperandBufferWithUser(
+      updates_param, {}, scatter, {}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto builder = HloComputation::Builder(TestName());
+  module_ = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
-  auto sort =
-      builder.AddInstruction(HloInstruction::CreateSort(keys_shape, 0, keys));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort, MakeSortHlo(keys_shape, {keys}, 0, /*is_stable=*/false,
+                              &builder, module_.get()));
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  computation_ = module_->AddEntryComputation(builder.Build());
+  RunAnalysis();
 
   EXPECT_TRUE(
       points_to_analysis_->CanShareOperandBufferWithUser(keys, {}, sort, {}));
@@ -1029,6 +1084,7 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
 
 TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   auto builder = HloComputation::Builder(TestName());
+  module_ = CreateNewVerifiedModule();
 
   Shape keys_shape = ShapeUtil::MakeShape(F32, {8});
   Shape values_shape = ShapeUtil::MakeShape(F32, {8});
@@ -1036,10 +1092,14 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   auto values = builder.AddInstruction(
       HloInstruction::CreateParameter(1, values_shape, "values"));
-  auto sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({keys_shape, values_shape}), 0, keys, values));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort,
+      MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
+                  {keys, values}, 0, /*is_stable=*/false, &builder,
+                  module_.get()));
 
-  BuildModuleAndRunAnalysis(builder.Build());
+  computation_ = module_->AddEntryComputation(builder.Build());
+  RunAnalysis();
 
   // The buffer for the keys can be shared with the first tuple entry.
   EXPECT_TRUE(
@@ -1066,8 +1126,11 @@ TEST_F(CanShareOperandBufferWithUserTest, FusedDotAdd) {
   DotDimensionNumbers dot_dnums;
   dot_dnums.add_lhs_contracting_dimensions(1);
   dot_dnums.add_rhs_contracting_dimensions(0);
+  PrecisionConfig precision_config;
+  precision_config.mutable_operand_precision()->Resize(
+      /*new_size=*/2, PrecisionConfig::DEFAULT);
   auto dot = builder.AddInstruction(
-      HloInstruction::CreateDot(data_shape, a, b, dot_dnums));
+      HloInstruction::CreateDot(data_shape, a, b, dot_dnums, precision_config));
 
   auto one = builder.AddInstruction(
       HloInstruction::CreateConstant(LiteralUtil::CreateR0<float>(1.0)));
@@ -1136,7 +1199,7 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     return builder.Build();
   };
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   HloComputation* cond_computation =
       module_->AddEmbeddedComputation(make_cond());
   HloComputation* body_computation =
@@ -1171,7 +1234,7 @@ TEST_F(CanShareOperandBufferWithUserTest, CallToComputationWithFusionRoot) {
   auto add = sub_builder.AddInstruction(
       HloInstruction::CreateBinary(shape, HloOpcode::kAdd, sub_param, ones));
 
-  module_ = CreateNewModule();
+  module_ = CreateNewUnverifiedModule();
   auto sub_computation = module_->AddEmbeddedComputation(sub_builder.Build());
   sub_computation->CreateFusionInstruction({add, ones},
                                            HloInstruction::FusionKind::kLoop);

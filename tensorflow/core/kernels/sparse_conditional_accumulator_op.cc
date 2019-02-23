@@ -34,8 +34,8 @@ class SparseConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
   Creator GetCreator() const override {
     return [this](ConditionalAccumulatorBase** ret) {
       SparseConditionalAccumulator<Device, T>* accumulator =
-          new SparseConditionalAccumulator<Device, T>(dtype_, shape_,
-                                                      cinfo_.name());
+          new SparseConditionalAccumulator<Device, T>(
+              dtype_, shape_, cinfo_.name(), reduction_type_);
       *ret = accumulator;
       return Status::OK();
     };

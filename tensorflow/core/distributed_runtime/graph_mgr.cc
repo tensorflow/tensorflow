@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/distributed_runtime/graph_mgr.h"
 
+#include <chrono>  // NOLINT(build/c++11)
 #include <vector>
 
 #include "tensorflow/core/common_runtime/build_graph_options.h"
@@ -25,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/memory_types.h"
+#include "tensorflow/core/common_runtime/metrics.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
 #include "tensorflow/core/common_runtime/process_util.h"
 #include "tensorflow/core/common_runtime/rendezvous_util.h"
@@ -90,7 +92,7 @@ static Status ValidateGraphDefForDevices(const GraphDef& gdef) {
   for (const auto& ndef : gdef.node()) {
     if (!DeviceNameUtils::ParseFullName(ndef.device(), &parsed)) {
       return errors::InvalidArgument("Missing device name in: ",
-                                     SummarizeNodeDef(ndef));
+                                     FormatNodeDefForError(ndef));
     }
   }
   return Status::OK();
@@ -233,14 +235,11 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
     params.function_library = lib;
     params.create_kernel = [session, lib, opseg](const NodeDef& ndef,
                                                  OpKernel** kernel) {
-      // We do not share the kernel via the OpSegment if the node is
-      // stateless, or a function.
       // NOTE(mrry): We must not share function kernels (implemented
       // using `CallOp`) between subgraphs, because `CallOp::handle_`
       // is tied to a particular subgraph. Even if the function itself
       // is stateful, the `CallOp` that invokes it is not.
-      if (!lib->IsStateful(ndef.op()) ||
-          lib->GetFunctionLibraryDefinition()->Find(ndef.op()) != nullptr) {
+      if (!OpSegment::ShouldOwnKernel(lib, ndef.op())) {
         return lib->CreateKernel(ndef, kernel);
       }
       auto create_fn = [lib, &ndef](OpKernel** kernel) {
@@ -252,8 +251,7 @@ Status GraphMgr::InitItem(const string& session, const GraphDef& gdef,
       return opseg->FindOrCreate(session, ndef.name(), kernel, create_fn);
     };
     params.delete_kernel = [lib](OpKernel* kernel) {
-      // If the node is stateful, opseg owns it. Otherwise, delete it.
-      if (kernel && !lib->IsStateful(kernel->type_string())) {
+      if (kernel && !OpSegment::ShouldOwnKernel(lib, kernel->type_string())) {
         delete kernel;
       }
     };
@@ -358,6 +356,12 @@ Status GraphMgr::RecvOutputs(const int64 step_id, NamedTensors* out) {
   Rendezvous* rendezvous = worker_env_->rendezvous_mgr->Find(step_id);
   Status s = RecvOutputsFromRendezvous(rendezvous, out, Rendezvous::Args());
   rendezvous->Unref();
+  if (!s.ok()) {
+    // Failing to fetch the outputs should not be possible, so rewrite the error
+    // status to an INTERNAL error.
+    s = errors::Internal("Failed to fetch outputs for step ", step_id,
+                         ". (Original error message: ", s.ToString(), ")");
+  }
   return s;
 }
 
@@ -390,6 +394,7 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
                             MutableRunGraphResponseWrapper* response,
                             CancellationManager* cancellation_manager,
                             const NamedTensors& in, StatusCallback done) {
+  const uint64 start_time_usecs = Env::Default()->NowMicros();
   // Lookup an item. Holds one ref while executing.
   Item* item = nullptr;
   {
@@ -447,14 +452,17 @@ void GraphMgr::ExecuteAsync(const string& handle, const int64 step_id,
     return;
   }
 
-  StartParallelExecutors(handle, step_id, item, rendezvous, ce_handle,
-                         collector, cost_graph, cancellation_manager,
-                         [item, rendezvous, ce_handle, done](const Status& s) {
-                           done(s);
-                           rendezvous->Unref();
-                           item->Unref();
-                           delete ce_handle;
-                         });
+  StartParallelExecutors(
+      handle, step_id, item, rendezvous, ce_handle, collector, cost_graph,
+      cancellation_manager,
+      [item, rendezvous, ce_handle, done, start_time_usecs](const Status& s) {
+        done(s);
+        metrics::UpdateGraphExecTime(Env::Default()->NowMicros() -
+                                     start_time_usecs);
+        rendezvous->Unref();
+        item->Unref();
+        delete ce_handle;
+      });
 }
 
 void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
@@ -479,10 +487,7 @@ void GraphMgr::StartParallelExecutors(const string& handle, int64 step_id,
                             delete step_container;
                           });
   Executor::Args args;
-  {
-    mutex_lock l(mu_);
-    args.step_id = ++next_id_;
-  }
+  args.step_id = step_id;
   args.rendezvous = rendezvous;
   args.collective_executor = ce_handle ? ce_handle->get() : nullptr;
   args.cancellation_manager = cancellation_manager;

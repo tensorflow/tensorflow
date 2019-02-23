@@ -28,13 +28,13 @@ from tensorflow.python.training import training_ops
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.AdagradOptimizer")
+@tf_export(v1=["train.AdagradOptimizer"])
 class AdagradOptimizer(optimizer.Optimizer):
   """Optimizer that implements the Adagrad algorithm.
 
   See this [paper](http://www.jmlr.org/papers/volume12/duchi11a/duchi11a.pdf)
   or this
-  [intro](http://cs.stanford.edu/~ppasupat/a9online/uploads/proximal_notes.pdf).
+  [intro](https://ppasupat.github.io/a9online/uploads/proximal_notes.pdf).
   """
 
   def __init__(self, learning_rate, initial_accumulator_value=0.1,

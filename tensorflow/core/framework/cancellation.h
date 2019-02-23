@@ -56,6 +56,9 @@ class CancellationManager {
   // Returns true iff StartCancel() has been called.
   bool IsCancelled() { return is_cancelled_.load(std::memory_order_acquire); }
 
+  // Resets the cancellation manager to its original pre-cancelled state.
+  void Reset();
+
   // Returns a token that must be used in calls to RegisterCallback
   // and DeregisterCallback.
   CancellationToken get_cancellation_token();
@@ -121,6 +124,15 @@ class CancellationManager {
   // to invoke any cancellation callback that has been registered with this
   // cancellation manager.
   bool DeregisterCallback(CancellationToken token);
+
+  // Deregister the callback that, when registered, was associated
+  // with the given cancellation token. Returns true iff the callback
+  // was deregistered and will not be invoked; otherwise returns false
+  // immediately, with no guarantee that the callback has completed.
+  //
+  // This method is guaranteed to return true if StartCancel has not been
+  // called.
+  bool TryDeregisterCallback(CancellationToken token);
 
  private:
   bool is_cancelling_;

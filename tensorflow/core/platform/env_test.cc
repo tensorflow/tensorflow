@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/cord.h"
 #include "tensorflow/core/platform/null_file_system.h"
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
@@ -345,9 +346,23 @@ TEST_F(DefaultEnvTest, LocalTempFilename) {
   // Write something to the temporary file.
   std::unique_ptr<WritableFile> file_to_write;
   TF_CHECK_OK(env->NewWritableFile(filename, &file_to_write));
+#if defined(PLATFORM_GOOGLE)
+  TF_CHECK_OK(file_to_write->Append("Nu"));
+  TF_CHECK_OK(file_to_write->Append(absl::Cord("ll")));
+#else
+  // TODO(ebrevdo): Remove this version.
   TF_CHECK_OK(file_to_write->Append("Null"));
+#endif
   TF_CHECK_OK(file_to_write->Close());
   TF_CHECK_OK(env->FileExists(filename));
+
+  // Open the file in append mode, check that Tell() reports the appropriate
+  // offset.
+  std::unique_ptr<WritableFile> file_to_append;
+  TF_CHECK_OK(env->NewAppendableFile(filename, &file_to_append));
+  int64 pos;
+  TF_CHECK_OK(file_to_append->Tell(&pos));
+  ASSERT_EQ(4, pos);
 
   // Read from the temporary file and check content.
   std::unique_ptr<RandomAccessFile> file_to_read;
@@ -375,6 +390,22 @@ TEST_F(DefaultEnvTest, CreateUniqueFileName) {
 
   EXPECT_TRUE(str_util::StartsWith(filename, prefix));
   EXPECT_TRUE(str_util::EndsWith(filename, suffix));
+}
+
+TEST_F(DefaultEnvTest, GetThreadInformation) {
+  Env* env = Env::Default();
+  // TODO(fishx): Turn on this test for Apple.
+#if !defined(__APPLE__)
+  EXPECT_NE(env->GetCurrentThreadId(), 0);
+#endif
+  string thread_name;
+  bool res = env->GetCurrentThreadName(&thread_name);
+#if defined(PLATFORM_WINDOWS) || defined(__ANDROID__)
+  EXPECT_FALSE(res);
+#elif !defined(__APPLE__)
+  EXPECT_TRUE(res);
+  EXPECT_GT(thread_name.size(), 0);
+#endif
 }
 
 }  // namespace tensorflow

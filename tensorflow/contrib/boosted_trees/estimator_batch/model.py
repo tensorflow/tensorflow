@@ -25,6 +25,7 @@ from tensorflow.contrib.boosted_trees.estimator_batch import estimator_utils
 from tensorflow.contrib.boosted_trees.estimator_batch import trainer_hooks
 from tensorflow.contrib.boosted_trees.python.ops import model_ops
 from tensorflow.contrib.boosted_trees.python.training.functions import gbdt_batch
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import training_util
@@ -81,12 +82,19 @@ def model_builder(features,
   logits_modifier_function = params["logits_modifier_function"]
   output_leaf_index = params["output_leaf_index"]
   override_global_step_value = params.get("override_global_step_value", None)
+  num_quantiles = params["num_quantiles"]
 
   if features is None:
     raise ValueError("At least one feature must be specified.")
 
   if config is None:
     raise ValueError("Missing estimator RunConfig.")
+  if config.session_config is not None:
+    session_config = config.session_config
+    session_config.allow_soft_placement = True
+  else:
+    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
+  config = config.replace(session_config=session_config)
 
   center_bias = params["center_bias"]
 
@@ -116,7 +124,8 @@ def model_builder(features,
       logits_dimension=head.logits_dimension,
       features=training_features,
       use_core_columns=use_core_libs,
-      output_leaf_index=output_leaf_index)
+      output_leaf_index=output_leaf_index,
+      num_quantiles=num_quantiles)
   with ops.name_scope("gbdt", "gbdt_optimizer"):
     predictions_dict = gbdt_model.predict(mode)
     logits = predictions_dict["predictions"]
@@ -237,6 +246,7 @@ def ranking_model_builder(features,
   output_leaf_index = params["output_leaf_index"]
   ranking_model_pair_keys = params["ranking_model_pair_keys"]
   override_global_step_value = params.get("override_global_step_value", None)
+  num_quantiles = params["num_quantiles"]
 
   if features is None:
     raise ValueError("At least one feature must be specified.")
@@ -299,7 +309,8 @@ def ranking_model_builder(features,
       logits_dimension=head.logits_dimension,
       features=main_features,
       use_core_columns=use_core_libs,
-      output_leaf_index=output_leaf_index)
+      output_leaf_index=output_leaf_index,
+      num_quantiles=num_quantiles)
 
   with ops.name_scope("gbdt", "gbdt_optimizer"):
     # Logits for inference.

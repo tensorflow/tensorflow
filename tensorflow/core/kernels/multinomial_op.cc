@@ -75,7 +75,7 @@ struct MultinomialFunctor<CPUDevice, T, OutputType> {
       // lambda.  Since we want to let each worker have its own copy, we pass
       // "gen" by reference and explicitly do a copy assignment here.
       random::PhiloxRandom gen_copy = gen;
-      // Skip takes units of 128 bytes.  +3 is so rounding doesn't lead to
+      // Skip takes units of 128 bits.  +3 is so rounding doesn't lead to
       // us using the same state in different batches.
       gen_copy.Skip(start_row * (num_samples + 3) / 4);
       random::SimplePhilox simple_philox(&gen_copy);

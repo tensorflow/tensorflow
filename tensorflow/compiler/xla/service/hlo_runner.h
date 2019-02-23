@@ -22,6 +22,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/backend.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
@@ -33,7 +34,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
-#include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/platform/stream_executor_no_cuda.h"
 
 namespace xla {
@@ -60,7 +60,7 @@ class HloRunner {
     // The number of times the infeed literal should be fed to the HLO module.
     // For a clean exit, this should match the iterations-per-loop parameter
     // used when generating the HLO module proto (that is usually the main
-    // while bounary counter). A value higher then iterations-per-loop would
+    // while boundary counter). A value higher then iterations-per-loop would
     // lead to infeed threads feeding to a gone computation, while a lower
     // value would trigger a stuck ExecuteReplicated() call (the computation
     // will be trying to infeed data which will never come).
@@ -72,7 +72,7 @@ class HloRunner {
 
     // A pointer to a vector where the outfeed values will be stored. If
     // nullptr, the values will be read and discarded.
-    std::vector<std::unique_ptr<Literal>>* outfeed_values = nullptr;
+    std::vector<Literal>* outfeed_values = nullptr;
 
     // Whether the HLO passes should be run on the input module. Usually
     // saved modules are coming from after the HLO pass pipeline, so triggering
@@ -87,8 +87,7 @@ class HloRunner {
   // Converts an HloModule from the given hlo textual IR string (in
   // HloModule::ToString format).
   static StatusOr<std::unique_ptr<HloModule>> CreateModuleFromString(
-      const tensorflow::StringPiece hlo_string,
-      const DebugOptions& debug_options);
+      const absl::string_view hlo_string, const DebugOptions& debug_options);
 
   // Reads the proto file in xla.HloProto format, creates and returns the
   // HloModule.
@@ -105,43 +104,68 @@ class HloRunner {
   // Transfers data between the host and device.
   StatusOr<ScopedShapedBuffer> TransferLiteralToDevice(const Literal& literal);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      const tensorflow::gtl::ArraySlice<const Literal*> literals);
+      const absl::Span<const Literal* const> literals);
   StatusOr<std::vector<ScopedShapedBuffer>> TransferLiteralsToDevice(
-      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> literals);
-  StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
-      const ShapedBuffer& buffer);
+      const absl::Span<const Literal> literals);
+  StatusOr<Literal> TransferLiteralFromDevice(const ShapedBuffer& buffer);
 
   // Executes the given module with given literals as input and returns the
   // result as a Literal.
   //
   // If run_hlo_passes is false, the module will be executed without Hlo
   // optimization.
-  StatusOr<std::unique_ptr<Literal>> Execute(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<const Literal*> arguments,
-      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+  StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
+                            const absl::Span<const Literal* const> arguments,
+                            bool run_hlo_passes = true,
+                            ExecutionProfile* profile = nullptr);
 
-  StatusOr<std::unique_ptr<Literal>> Execute(
-      std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<std::unique_ptr<Literal>> arguments,
-      bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+  StatusOr<Literal> Execute(std::unique_ptr<HloModule> module,
+                            const absl::Span<const Literal> arguments,
+                            bool run_hlo_passes = true,
+                            ExecutionProfile* profile = nullptr);
+
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal* const> arguments,
+                            ExecutionProfile* profile = nullptr);
+
+  StatusOr<Literal> Execute(std::unique_ptr<Executable> executable,
+                            const absl::Span<const Literal> arguments,
+                            ExecutionProfile* profile = nullptr);
 
   // As Execute(), but accepts and returns device buffers instead of host
   // buffers.
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<const ShapedBuffer*> arguments,
+      const absl::Span<const ShapedBuffer* const> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
 
   StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
       std::unique_ptr<HloModule> module,
-      const tensorflow::gtl::ArraySlice<ScopedShapedBuffer> arguments,
+      const absl::Span<const ScopedShapedBuffer> arguments,
       bool run_hlo_passes = true, ExecutionProfile* profile = nullptr);
+
+  // In the following two calls, "executable" is not a unique_ptr to allow
+  // reuse of the Executable.  This call may update the profile information in
+  // *executable.
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      Executable* executable,
+      const absl::Span<const ShapedBuffer* const> arguments,
+      ExecutionProfile* profile = nullptr);
+
+  StatusOr<ScopedShapedBuffer> ExecuteWithDeviceBuffers(
+      Executable* executable,
+      const absl::Span<const ScopedShapedBuffer> arguments,
+      ExecutionProfile* profile = nullptr);
+
+  // Creates an executable object given an HLO module. If run_hlo_passes is
+  // true, the HLO passes will be run as part of compilation.
+  StatusOr<std::unique_ptr<Executable>> CreateExecutable(
+      std::unique_ptr<HloModule> module, bool run_hlo_passes);
 
   // Executes a given HLO module into a set of replicas, and returns a map
   // with the replica number as key, and the corresponding returned literal as
   // value.
-  StatusOr<std::vector<std::unique_ptr<Literal>>> ExecuteReplicated(
+  StatusOr<std::vector<Literal>> ExecuteReplicated(
       std::unique_ptr<HloModule> module,
       const ReplicatedExecuteOptions& options);
 
@@ -154,11 +178,6 @@ class HloRunner {
   const Backend& backend() const;
 
  private:
-  // Creates an executable object given an HLO module. If run_hlo_passes is
-  // true, the HLO passes will be run before.
-  StatusOr<std::unique_ptr<Executable>> CreateExecutable(
-      std::unique_ptr<HloModule> module, bool run_hlo_passes);
-
   // Creates a ServiceExecutableRunOptions object to configure a run on device,
   // using the provided stream object. If device_assignment is not nullptr, it
   // will be used to configure the replication parameters. Replicated executions

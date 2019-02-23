@@ -17,9 +17,9 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/strings/str_cat.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/compiler/xla/types.h"
-#include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/lib/strings/strcat.h"
 
 namespace xla {
 
@@ -42,8 +42,8 @@ void ComputationLayout::SetToDefaultLayout() {
 }
 
 bool ComputationLayout::LayoutIsSet() const {
-  return std::all_of(parameter_layouts_.begin(), parameter_layouts_.end(),
-                     [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
+  return absl::c_all_of(parameter_layouts_,
+                        [](const ShapeLayout& s) { return s.LayoutIsSet(); }) &&
          result_layout_.LayoutIsSet();
 }
 
@@ -52,9 +52,18 @@ string ComputationLayout::ToString() const {
   for (auto& param_layout : parameter_layouts_) {
     params.push_back(param_layout.ToString());
   }
-  return tensorflow::strings::StrCat("(",
-                                     tensorflow::str_util::Join(params, ", "),
-                                     ") => ", result_layout_.ToString());
+  return absl::StrCat("(", absl::StrJoin(params, ", "), ") => ",
+                      result_layout_.ToString());
+}
+
+ProgramShape ComputationLayout::ComputeProgramShape() const {
+  ProgramShape program_shape;
+  for (int64 i = 0; i < parameter_layouts_.size(); ++i) {
+    *program_shape.add_parameters() = parameter_layouts_[i].shape();
+    *program_shape.add_parameter_names() = absl::StrCat("p", i);
+  }
+  *program_shape.mutable_result() = result_layout_.shape();
+  return program_shape;
 }
 
 }  // namespace xla

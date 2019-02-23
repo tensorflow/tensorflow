@@ -59,7 +59,7 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
   string fixed_prefix = pattern.substr(0, pattern.find_first_of("*?[\\"));
   string eval_pattern = pattern;
   std::vector<string> all_files;
-  string dir = std::string(io::Dirname(fixed_prefix));
+  string dir(io::Dirname(fixed_prefix));
   // If dir is empty then we need to fix up fixed_prefix and eval_pattern to
   // include . as the top level directory.
   if (dir.empty()) {
@@ -82,6 +82,10 @@ Status GetMatchingPaths(FileSystem* fs, Env* env, const string& pattern,
     dir_q.pop_front();
     std::vector<string> children;
     Status s = fs->GetChildren(current_dir, &children);
+    // In case PERMISSION_DENIED is encountered, we bail here.
+    if (s.code() == tensorflow::error::PERMISSION_DENIED) {
+      continue;
+    }
     ret.Update(s);
     if (children.empty()) continue;
     // This IsDirectory call can be expensive for some FS. Parallelizing it.

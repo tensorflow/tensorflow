@@ -46,7 +46,7 @@ class MakeModelTest(test.TestCase):
         },
         mode=estimator_lib.ModeKeys.TRAIN)
     initializer = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([initializer])
       outputs.loss.eval()
 
@@ -65,7 +65,7 @@ class MakeModelTest(test.TestCase):
         },
         mode=estimator_lib.ModeKeys.TRAIN)
     initializer = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([initializer])
       outputs.loss.eval()
 
@@ -85,7 +85,7 @@ class MakeModelTest(test.TestCase):
             TrainEvalFeatures.VALUES: constant_op.constant([[[1.], [2.]]])},
         mode=estimator_lib.ModeKeys.TRAIN)
     initializer = variables.global_variables_initializer()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run([initializer])
       outputs.loss.eval()
 

@@ -4,6 +4,7 @@ tf_class {
   is_instance: "<type \'object\'>"
   member_method {
     name: "__init__"
+    argspec: "args=[\'self\', \'sequence\', \'use_multiprocessing\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
     name: "get"

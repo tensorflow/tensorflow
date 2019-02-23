@@ -42,8 +42,8 @@ struct SelectAndScatterTestParam {
   std::vector<int64> operand_shape;
   std::vector<int64> source_shape;
   Padding padding_type;
-  tensorflow::gtl::ArraySlice<int64> window_dimensions;
-  tensorflow::gtl::ArraySlice<int64> window_strides;
+  absl::Span<const int64> window_dimensions;
+  absl::Span<const int64> window_strides;
 };
 
 class SelectAndScatterTest

@@ -109,6 +109,30 @@ Status SelfAdjointEigV2ShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// Input is [...,N,N].
+// First and second outputs are:
+//   [...,N,N]; [...,N].
+Status LuShapeFn(InferenceContext* c) {
+  ShapeHandle input;
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
+
+  DimensionHandle n;
+  TF_RETURN_IF_ERROR(c->Merge(c->Dim(input, -2), c->Dim(input, -1), &n));
+
+  ShapeHandle batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(input, 0, -2, &batch_shape));
+
+  ShapeHandle lu_shape;
+  ShapeHandle p_shape;
+
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Matrix(n, n), &lu_shape));
+  TF_RETURN_IF_ERROR(c->Concatenate(batch_shape, c->Vector(n), &p_shape));
+
+  c->set_output(0, lu_shape);
+  c->set_output(1, p_shape);
+  return Status::OK();
+}
+
 // Input is [...,M,N].
 // First and second outputs are:
 //   [...,M,M]; [...,M,N], if full_matrices is true,
@@ -184,12 +208,42 @@ Status SvdShapeFn(InferenceContext* c) {
   return Status::OK();
 }
 
+// The first input is [...,3,M] and second input is [...,M,K].
+// Output is [...,M,K].
+Status TridiagonalSolveShapeFn(InferenceContext* c) {
+  ShapeHandle lhs;
+  ShapeHandle rhs;
+  // Check that rank is at least 2.
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &lhs));
+  TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(1), 2, &rhs));
+
+  // Extract batch dimensions and check they are the same.
+  ShapeHandle lhs_batch_shape;
+  ShapeHandle rhs_batch_shape;
+  TF_RETURN_IF_ERROR(c->Subshape(lhs, 0, -2, &lhs_batch_shape));
+  TF_RETURN_IF_ERROR(c->Subshape(rhs, 0, -2, &rhs_batch_shape));
+  TF_RETURN_IF_ERROR(
+      c->Merge(lhs_batch_shape, rhs_batch_shape, &lhs_batch_shape));
+
+  // Check that "M" is the same in both inputs.
+  DimensionHandle m_lhs = c->Dim(lhs, -1);
+  DimensionHandle m_rhs = c->Dim(rhs, -2);
+  TF_RETURN_IF_ERROR(c->Merge(m_lhs, m_rhs, &m_lhs));
+
+  // Check that next-to-last dimension of the first input is 3.
+  TF_RETURN_IF_ERROR(c->WithValue(c->Dim(lhs, -2), 3, &m_lhs));
+
+  // The output shape is the same as rhs shape.
+  c->set_output(0, rhs);
+  return Status::OK();
+}
+
 }  // namespace
 
 REGISTER_OP("MatrixDeterminant")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("T: {half, float, double, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
@@ -208,7 +262,7 @@ REGISTER_OP("LogMatrixDeterminant")
     .Input("input: T")
     .Output("sign: T")
     .Output("log_abs_determinant: T")
-    .Attr("T: {float, double, complex64, complex128}")
+    .Attr("T: {half, float, double, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRankAtLeast(c->input(0), 2, &input));
@@ -231,13 +285,15 @@ REGISTER_OP("MatrixInverse")
     .Input("input: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(BatchUnchangedSquareShapeFn);
 
 REGISTER_OP("MatrixExponential")
+    .Deprecated(
+        27, "Use Python implementation tf.linalg.matrix_exponential instead.")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(BatchUnchangedSquareShapeFn);
 
 REGISTER_OP("MatrixLogarithm")
@@ -249,20 +305,20 @@ REGISTER_OP("MatrixLogarithm")
 REGISTER_OP("Cholesky")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(BatchUnchangedSquareShapeFn);
 
 REGISTER_OP("CholeskyGrad")
     .Input("l: T")
     .Input("grad: T")
     .Output("output: T")
-    .Attr("T: {float, double}")
+    .Attr("T: {half, float, double}")
     .SetShapeFn(BatchUnchangedSquareShapeFn);
 
 REGISTER_OP("SelfAdjointEig")
     .Input("input: T")
     .Output("output: T")
-    .Attr("T: {double, float}")
+    .Attr("T: {double, float, half}")
     .Deprecated(11, "Use SelfAdjointEigV2 instead.")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
@@ -284,15 +340,23 @@ REGISTER_OP("SelfAdjointEigV2")
     .Output("e: T")
     .Output("v: T")
     .Attr("compute_v: bool = True")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(SelfAdjointEigV2ShapeFn);
+
+REGISTER_OP("Lu")
+    .Input("input: T")
+    .Output("lu: T")
+    .Output("p: output_idx_type")
+    .Attr("T: {double, float, half, complex64, complex128}")
+    .Attr("output_idx_type: {int32, int64} = DT_INT32")
+    .SetShapeFn(LuShapeFn);
 
 REGISTER_OP("MatrixSolve")
     .Input("matrix: T")
     .Input("rhs: T")
     .Output("output: T")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       return MatrixSolveShapeFn(c, true /* square (*/);
     });
@@ -303,7 +367,7 @@ REGISTER_OP("MatrixTriangularSolve")
     .Output("output: T")
     .Attr("lower: bool = True")
     .Attr("adjoint: bool = False")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn([](InferenceContext* c) {
       return MatrixSolveShapeFn(c, true /* square (*/);
     });
@@ -313,7 +377,7 @@ REGISTER_OP("MatrixSolveLs")
     .Input("rhs: T")
     .Input("l2_regularizer: double")
     .Output("output: T")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .Attr("fast: bool = True")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle l2_regularizer;
@@ -321,12 +385,18 @@ REGISTER_OP("MatrixSolveLs")
       return MatrixSolveShapeFn(c, false /* square */);
     });
 
+REGISTER_OP("MatrixSquareRoot")
+    .Input("input: T")
+    .Output("output: T")
+    .Attr("T: {double, float, half, complex64, complex128}")
+    .SetShapeFn(BatchUnchangedSquareShapeFn);
+
 REGISTER_OP("Qr")
     .Input("input: T")
     .Output("q: T")
     .Output("r: T")
     .Attr("full_matrices: bool = False")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(QrShapeFn);
 
 REGISTER_OP("Svd")
@@ -336,8 +406,15 @@ REGISTER_OP("Svd")
     .Output("v: T")
     .Attr("compute_uv: bool = True")
     .Attr("full_matrices: bool = False")
-    .Attr("T: {double, float, complex64, complex128}")
+    .Attr("T: {double, float, half, complex64, complex128}")
     .SetShapeFn(SvdShapeFn);
+
+REGISTER_OP("TridiagonalSolve")
+    .Input("diagonals: T")
+    .Input("rhs: T")
+    .Output("output: T")
+    .Attr("T: {double, float, complex64, complex128}")
+    .SetShapeFn(TridiagonalSolveShapeFn);
 
 // Deprecated op registrations:
 

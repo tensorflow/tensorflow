@@ -15,7 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/cpu/cpu_copy_insertion.h"
 
-#include "tensorflow/compiler/xla/legacy_flags/debug_options_flags.h"
+#include "tensorflow/compiler/xla/debug_options_flags.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
@@ -65,7 +65,7 @@ class CpuCopyInsertionTest : public HloTestBase {
 TEST_F(CpuCopyInsertionTest, WhileBodyWithConstantRoot) {
   // Test a while body and condition which are each simply a constant (root of
   // computation is a constant). Each constant should be copied.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param_0 = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param_0"));
@@ -103,7 +103,7 @@ TEST_F(CpuCopyInsertionTest, TupleCall) {
   // Test a kCall instruction which calls a computation which produces a three
   // element tuple: one is a constant, one is a parameter, and one is produced
   // in the computation. The constant and parameter should be copied.
-  auto module = CreateNewModule();
+  auto module = CreateNewVerifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto param = builder.AddInstruction(
       HloInstruction::CreateParameter(0, scalar_shape_, "param_0"));

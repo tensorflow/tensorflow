@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/core/errors.h"
+#include "tensorflow/core/lib/gtl/map_util.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -57,16 +58,16 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
 
     // If buffer #i's address is already registered (e.g. external arguments or
     // result buffers), use that registered buffer.
-    if (registered_buffers_.count(i)) {
-      se::DeviceMemoryBase address = FindOrDie(registered_buffers_, i);
-      if (reinterpret_cast<uintptr_t>(address.opaque()) % expected_alignment !=
+    if (se::DeviceMemoryBase* address =
+            tensorflow::gtl::FindOrNull(registered_buffers_, i)) {
+      if (reinterpret_cast<uintptr_t>(address->opaque()) % expected_alignment !=
           0) {
         return InternalError(
-            "Address of registered buffer %lld must be a multiple of %llx, but "
+            "Address of registered buffer %d must be a multiple of %x, but "
             "was %p",
-            i, kEntryParameterAlignBytes, address.opaque());
+            i, kEntryParameterAlignBytes, address->opaque());
       }
-      buffer_allocations->SetBuffer(i, FindOrDie(registered_buffers_, i));
+      buffer_allocations->SetBuffer(i, *address);
       continue;
     }
 
@@ -83,7 +84,7 @@ StatusOr<std::unique_ptr<BufferAllocations>> BufferAllocations::Builder::Build(
             0) {
           return InternalError(
               "Address returned by memory_allocator->Allocate must be a "
-              "multiple of %llx, but was %p",
+              "multiple of 0x%x, but was %p",
               kXlaAllocatedBufferAlignBytes, buffer.opaque());
         }
         // We do manual memory management within BufferAllocations.  Be sure not

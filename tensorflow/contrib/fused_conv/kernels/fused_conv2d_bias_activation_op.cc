@@ -19,13 +19,13 @@ limitations under the License.
 
 #include "tensorflow/contrib/fused_conv/kernels/fused_conv2d_bias_activation_op.h"
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/tensor_slice.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/conv_2d.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/errors.h"
@@ -111,8 +111,8 @@ class FusedConv2DBiasActivationOp : public OpKernel {
         context,
         (GetTensorDim(strides, data_format_, 'N') == 1 &&
          GetTensorDim(strides, data_format_, 'C') == 1),
-        errors::InvalidArgument("Convolutional strides are not supported in "
-                                "the batch or depth dimensions."));
+        errors::Unimplemented("Convolutional strides are not supported in "
+                              "the batch and depth dimensions."));
 
     // Assuming qint8 <--> NCHW_VECT_C, OIHW_VECT_I (int8x4) here.
     constexpr bool is_int8x4 = std::is_same<T, qint8>::value;
@@ -174,7 +174,7 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 
     // Input bias is a 1-D tensor, with size matching output depth.
     const Tensor& bias = context->input(kBias);
-    OP_REQUIRES_OK(context, CheckShape(bias, "conv_input"));
+    OP_REQUIRES_OK(context, CheckShape(bias, "bias"));
 
     const Tensor& conv_input_scale_tensor = context->input(kConvInputScale);
     const Tensor& side_input_scale_tensor = context->input(kSideInputScale);
@@ -497,7 +497,8 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                 FORMAT_OIHW, filter_param.shape(), FORMAT_HWIO),
                             &maybe_transformed_filter));
     functor::TransformFilter<GPUDevice, T, int, 4>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter_param.tensor<T, 4>()),
+        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        To32Bit(filter_param.tensor<T, 4>()),
         To32Bit(maybe_transformed_filter.tensor<T, 4>()));
     filter = &maybe_transformed_filter;
   }
@@ -521,7 +522,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
   auto bias_ptr = AsDeviceMemory(bias.template flat<BiasType>().data(),
                                  bias.template flat<BiasType>().size());
 
-  static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+  static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
   );
@@ -564,12 +565,26 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
         fused_conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
             stream->parent()),
         &algorithms));
+    if (activation_mode == ActivationMode::NONE) {
+      // Only CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM is supported for
+      // identity activation, other algs seem to quietly do Relu.
+      // See
+      // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#cudnnConvolutionBiasActivationForward
+      algorithms.erase(
+          std::remove_if(
+              algorithms.begin(), algorithms.end(),
+              [](dnn::AlgorithmDesc alg) {
+                return alg.algo_id() !=
+                       CUDNN_CONVOLUTION_FWD_ALGO_IMPLICIT_PRECOMP_GEMM;
+              }),
+          algorithms.end());
+    }
     dnn::ProfileResult best_result;
     dnn::ProfileResult best_result_no_scratch;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
-      CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+      DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
       dnn::ProfileResult profile_result;
       bool cudnn_launch_status =
           stream
@@ -608,7 +623,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
                                                       algorithm_config);
   }
 
-  CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+  DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
   bool cudnn_launch_status =
       stream
           ->ThenFusedConvolveWithAlgorithm(

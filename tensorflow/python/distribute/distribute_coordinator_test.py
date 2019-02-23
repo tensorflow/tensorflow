@@ -20,20 +20,21 @@ from __future__ import print_function
 
 import contextlib
 import copy
+import json
 import os
 import sys
 import threading
+import time
 import six
 
-# pylint: disable=invalid-name
 _portpicker_import_error = None
 try:
   import portpicker  # pylint: disable=g-import-not-at-top
-except ImportError as _error:
+except ImportError as _error:  # pylint: disable=invalid-name
   _portpicker_import_error = _error
   portpicker = None
-# pylint: enable=invalid-name
 
+# pylint: disable=g-import-not-at-top
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.distribute import distribute_coordinator
@@ -46,6 +47,7 @@ from tensorflow.python.ops import variable_scope
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.training import monitored_session
+from tensorflow.python.training import session_manager
 
 
 CHIEF = distribute_coordinator._TaskType.CHIEF
@@ -58,6 +60,8 @@ INDEPENDENT_WORKER = distribute_coordinator.CoordinatorMode.INDEPENDENT_WORKER
 
 NUM_WORKERS = 3
 NUM_PS = 2
+
+original_sys_exit = sys.exit
 
 
 def _bytes_to_str(maybe_bytes):
@@ -75,6 +79,19 @@ def _strip_protocol(target):
     return target
 
 
+class MockExtended(object):
+
+  def __init__(self,
+               between_graph=False,
+               should_init=None,
+               should_checkpoint=None,
+               should_save_summary=None):
+    self.experimental_between_graph = between_graph
+    self.experimental_should_init = should_init
+    self.should_checkpoint = should_checkpoint
+    self.should_save_summary = should_save_summary
+
+
 class MockStrategy(object):
 
   def __init__(self,
@@ -82,54 +99,50 @@ class MockStrategy(object):
                should_init=None,
                should_checkpoint=None,
                should_save_summary=None):
-    self._between_graph = between_graph
-    self._should_init = should_init
-    self._should_checkpoint = should_checkpoint
-    self._should_save_summary = should_save_summary
-
-  @property
-  def between_graph(self):
-    return self._between_graph
+    self.extended = MockExtended(between_graph, should_init, should_checkpoint,
+                                 should_save_summary)
 
   def configure(self,
-                session_options=None,
+                session_config=None,
                 cluster_spec=None,
                 task_type=None,
                 task_id=None):
-    del session_options, cluster_spec, task_type
-    if self._should_init is None:
+    if self.extended.experimental_should_init is None:
       if task_id == 0:
-        self._should_init = True
+        self.extended.experimental_should_init = True
       else:
-        self._should_init = False
-    if self._should_checkpoint is None:
+        self.extended.experimental_should_init = False
+    if self.extended.should_checkpoint is None:
       if task_id == 0:
-        self._should_checkpoint = True
+        self.extended.should_checkpoint = True
       else:
-        self._should_checkpoint = False
-    if self._should_save_summary is None:
+        self.extended.should_checkpoint = False
+    if self.extended.should_save_summary is None:
       if task_id == 0:
-        self._should_save_summary = True
+        self.extended.should_save_summary = True
       else:
-        self._should_save_summary = False
+        self.extended.should_save_summary = False
 
-  @property
-  def should_init(self):
-    return self._should_init
-
-  @property
-  def should_checkpoint(self):
-    return self._should_checkpoint
-
-  @property
-  def should_save_summary(self):
-    return self._should_save_summary
+    if session_config:
+      if (cluster_spec and task_type and task_id is not None and
+          self.extended.experimental_between_graph):
+        session_config.intra_op_parallelism_threads += 1
+        if task_type in ["chief", "worker"]:
+          session_config.device_filters.extend(
+              ["/job:%s/task:%d" % (task_type, task_id), "/job:ps"])
+      else:
+        session_config.inter_op_parallelism_threads += 1
+        session_config.device_filters.append("/job:somejob")
 
 
 class MockServer(object):
 
   def __init__(self):
     self._joined = False
+    self._started = False
+
+  def start(self):
+    self._started = True
 
   def join(self):
     assert not self._joined
@@ -139,6 +152,10 @@ class MockServer(object):
   def joined(self):
     return self._joined
 
+  @property
+  def started(self):
+    return self._started
+
 
 class DistributeCoordinatorTestBase(test.TestCase):
 
@@ -147,6 +164,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
     # We have to create a global in-process cluster because once an in-process
     # tensorflow server is created, there is no way to terminate it. Please see
     # multi_worker_test_base.py for more details.
+    # TODO(yuefengz): use the utitliy from multi_worker_test_base.
     cls._workers, cls._ps = test_util.create_local_cluster(
         NUM_WORKERS, num_ps=NUM_PS)
     cls._cluster_spec = {
@@ -171,6 +189,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
     with session.Session(graph=None, config=config, target=target) as sess:
       yield sess
 
+  # TODO(yuefengz): use the utitliy from multi_worker_test_base.
   def _create_cluster_spec(self,
                            has_chief=False,
                            num_workers=1,
@@ -211,7 +230,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       with ops.device("/job:worker/task:0"):
         result = math_ops.add_n(xs)
 
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       result_value = sess.run(result)
     self.assertEqual(result_value, expected)
     if result_value == expected:
@@ -259,7 +278,7 @@ class DistributeCoordinatorTestBase(test.TestCase):
       train_op = control_flow_ops.group([x_add, y_sub])
 
       if context.is_chief:
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
 
       # Synchronize workers after initializaton.
       if context.has_barrier:
@@ -294,9 +313,9 @@ class DistributeCoordinatorTestBase(test.TestCase):
     with ops.device("/job:ps/task:0"):
       # TODO(yuefengz): investigate why not using resource variable will make
       # the test flaky.
-      x = variable_scope.get_variable("x", initializer=10.0, use_resource=True)
+      x = variable_scope.get_variable("xx", initializer=10.0, use_resource=True)
     with ops.device("/job:ps/task:1"):
-      y = variable_scope.get_variable("y", initializer=20.0, use_resource=True)
+      y = variable_scope.get_variable("yy", initializer=20.0, use_resource=True)
 
     x_add = x.assign_add(2.0)
     y_sub = y.assign_sub(2.0)
@@ -349,9 +368,12 @@ class DistributeCoordinatorTestBase(test.TestCase):
     context = distribute_coordinator_context.get_current_worker_context()
     self.assertTrue(context is not None)
 
-    self.assertEqual(context._strategy.should_init, strategy.should_init)
-    self.assertEqual(context.should_checkpoint, strategy.should_checkpoint)
-    self.assertEqual(context.should_save_summary, strategy.should_save_summary)
+    self.assertEqual(context._strategy.extended.experimental_should_init,
+                     strategy.extended.experimental_should_init)
+    self.assertEqual(context.should_checkpoint,
+                     strategy.extended.should_checkpoint)
+    self.assertEqual(context.should_save_summary,
+                     strategy.extended.should_save_summary)
 
     task_type = str(context.task_type)
     task_id = context.task_id or 0
@@ -361,7 +383,8 @@ class DistributeCoordinatorTestBase(test.TestCase):
       while len(self._strategy_property[task_type]) <= task_id:
         self._strategy_property[task_type].append(None)
       self._strategy_property[task_type][task_id] = (
-          context._strategy.should_init, context.should_checkpoint,
+          context._strategy.extended.experimental_should_init,
+          context.should_checkpoint,
           context.should_save_summary)
 
   def _run_mock_std_server(self,
@@ -369,7 +392,8 @@ class DistributeCoordinatorTestBase(test.TestCase):
                            cluster_spec=None,
                            task_type=None,
                            task_id=None,
-                           rpc_layer=None):
+                           rpc_layer=None,
+                           environment=None):
     task_type = str(task_type)
     task_id = task_id or 0
     with self._lock:
@@ -403,6 +427,7 @@ class DistributeCoordinatorTestStandaloneMode(DistributeCoordinatorTestBase):
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     """Test monitored session in standalone client mode."""
     distribute_coordinator.run_distribute_coordinator(
@@ -576,6 +601,7 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     # Each finished worker will increment self._result_correct.
     self.assertEqual(self._result_correct, NUM_WORKERS)
 
+  @test_util.run_v1_only("MonitoredSession removed from v2")
   def testBetweenGraphWithMonitoredSession(self):
     cluster_spec = self._create_cluster_spec(
         num_workers=NUM_WORKERS, num_ps=NUM_PS)
@@ -730,8 +756,193 @@ class DistributeCoordinatorTestInpendentWorkerMode(
     self.assertTrue(self._std_servers[WORKER][2].joined)
     self.assertFalse(self._std_servers[EVALUATOR][0].joined)
 
+  def testRunStdServerInGoogleEnvironment(self):
+    cluster_spec = {"worker": ["fake_worker"], "ps": ["localhost:0"]}
+    tf_config = {"cluster": cluster_spec, "environment": "google"}
+
+    joined = [False]
+
+    def _fake_sleep(_):
+      joined[0] = True
+      original_sys_exit(0)
+
+    def _thread_fn(cluster_spec):
+      distribute_coordinator.run_distribute_coordinator(
+          None,
+          MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="ps",
+          task_id=0)
+
+    with test.mock.patch.dict(
+        "os.environ",
+        {"TF_CONFIG": json.dumps(tf_config)}), test.mock.patch.object(
+            time, "sleep", _fake_sleep):
+      t = threading.Thread(target=_thread_fn, args=(cluster_spec,))
+      t.start()
+      t.join()
+    self.assertTrue(joined[0])
+
+  def testRpcLayerEnvironmentVariable(self):
+    cluster_spec = {"worker": ["fake_worker"], "ps": ["fake_ps"]}
+    tf_config = {"cluster": cluster_spec, "rpc_layer": "cake"}
+
+    rpc_layer_from_coordinator = [None]
+
+    def _run_mock_server(cluster_spec=None,
+                         task_type=None,
+                         task_id=None,
+                         session_config=None,
+                         rpc_layer=None,
+                         environment=None):
+      del cluster_spec, task_type, task_id, session_config, environment
+      rpc_layer_from_coordinator[0] = rpc_layer
+      return MockServer()
+
+    with test.mock.patch.dict(
+        "os.environ",
+        {"TF_CONFIG": json.dumps(tf_config)}), test.mock.patch.object(
+            distribute_coordinator, "_run_std_server", _run_mock_server):
+      distribute_coordinator.run_distribute_coordinator(
+          None,
+          MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="ps",
+          task_id=0)
+    self.assertEqual(rpc_layer_from_coordinator[0], "cake")
+
+
+class StrategyConfigureTest(test.TestCase):
+
+  def setUp(self):
+    self._device_filters = []
+    self._intra_op_parallelism_threads = None
+    self._inter_op_parallelism_threads = None
+    super(StrategyConfigureTest, self).setUp()
+
+  def _dump_device_filters(self, *args, **kwargs):
+    session_config = kwargs.get("session_config", None)
+    self._device_filters.extend(session_config.device_filters)
+    self._intra_op_parallelism_threads = (
+        session_config.intra_op_parallelism_threads)
+    self._inter_op_parallelism_threads = (
+        session_config.inter_op_parallelism_threads)
+    return MockServer()
+
+  def _worker_fn(self, strategy):
+    worker_context = distribute_coordinator_context.get_current_worker_context()
+    session_config = worker_context._session_config
+    self._device_filters.extend(session_config.device_filters)
+    self._intra_op_parallelism_threads = (
+        session_config.intra_op_parallelism_threads)
+    self._inter_op_parallelism_threads = (
+        session_config.inter_op_parallelism_threads)
+    return MockServer()
+
+  def test_session_config_in_std_server(self):
+    cluster_spec = {"worker": ["fake_worker"], "ps": ["fake_ps"]}
+    tf_config = {"cluster": cluster_spec}
+
+    with test.mock.patch.dict(
+        "os.environ",
+        {"TF_CONFIG": json.dumps(tf_config)}), test.mock.patch.object(
+            distribute_coordinator, "_run_std_server",
+            self._dump_device_filters):
+      distribute_coordinator.run_distribute_coordinator(
+          lambda _: None,
+          MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="worker",
+          task_id=0)
+    self.assertEqual(self._intra_op_parallelism_threads, 1)
+    self.assertEqual(self._inter_op_parallelism_threads, 0)
+
+  def test_session_config_in_session_creator(self):
+    cluster_spec = {"worker": ["localhost:0"]}
+    tf_config = {"cluster": cluster_spec}
+
+    # Reset the saved Server state.
+    distribute_coordinator._thread_local = threading.local()  # pylint: disable=protected-access
+
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      distribute_coordinator.run_distribute_coordinator(
+          self._worker_fn,
+          MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="worker",
+          task_id=0)
+    self.assertEqual(self._device_filters, ["/job:worker/task:0", "/job:ps"])
+    self.assertEqual(self._intra_op_parallelism_threads, 2)
+    self.assertEqual(self._inter_op_parallelism_threads, 0)
+
+  def test_eval_strategy_configure(self):
+    cluster_spec = {"evaluator": ["localhost:0"]}
+    tf_config = {"cluster": cluster_spec}
+
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      distribute_coordinator.run_distribute_coordinator(
+          lambda _: None,
+          MockStrategy(between_graph=False),
+          eval_fn=self._worker_fn,
+          eval_strategy=MockStrategy(between_graph=True),
+          mode=INDEPENDENT_WORKER,
+          cluster_spec=cluster_spec,
+          task_type="evaluator",
+          task_id=0)
+    self.assertEqual(self._device_filters, ["/job:somejob"])
+    self.assertEqual(self._intra_op_parallelism_threads, 0)
+    self.assertEqual(self._inter_op_parallelism_threads, 2)
+
+
+class RunStandardTensorflowServerTest(test.TestCase):
+
+  def test_std_server_arguments(self):
+    cs = {"worker": ["fake_worker"], "ps": ["fake_ps"]}
+    tf_config = {"cluster": cs, "task": {"type": "ps", "id": 0}}
+
+    def _mock_run_std_server(cluster_spec=None,
+                             task_type=None,
+                             task_id=None,
+                             session_config=None,
+                             rpc_layer=None):
+      self.assertEqual(cluster_spec.as_dict(), cs)
+      self.assertEqual(task_type, "ps")
+      self.assertEqual(task_id, 0)
+      self.assertEqual(session_config.experimental.collective_group_leader,
+                       "/job:worker/replica:0/task:0")
+      self.assertEqual(session_config.intra_op_parallelism_threads, 1)
+      self.assertEqual(rpc_layer, "grpc")
+
+      return MockServer()
+
+    with test.mock.patch.dict(
+        "os.environ",
+        {"TF_CONFIG": json.dumps(tf_config)}), test.mock.patch.object(
+            distribute_coordinator, "_run_std_server", _mock_run_std_server):
+      session_config = config_pb2.ConfigProto()
+      session_config.intra_op_parallelism_threads = 1
+      mock_server = distribute_coordinator.run_standard_tensorflow_server(
+          session_config)
+      self.assertTrue(mock_server.started)
+
 
 if __name__ == "__main__":
   # TODO(yuefengz): find a smart way to terminite std server threads.
   with test.mock.patch.object(sys, "exit", os._exit):
+    # Reduce `recovery_wait_secs` from 30 seconds so the test completes quickly.
+    orig_init = session_manager.SessionManager.__init__
+
+    def new_init(*args, **kwargs):
+      kwargs.pop("recovery_wait_secs", None)
+      kwargs["recovery_wait_secs"] = 0.5
+      orig_init(*args, **kwargs)
+
+    session_manager.SessionManager.__init__ = new_init
+
     test.main()

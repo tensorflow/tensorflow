@@ -17,6 +17,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 
 namespace tensorflow {
+namespace data {
 namespace {
 
 class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
@@ -33,6 +34,7 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
     BigtableTableResource* resource;
     OP_REQUIRES_OK(ctx,
                    LookupResource(ctx, HandleFromInput(ctx, 0), &resource));
+    core::ScopedUnref scoped_unref(resource);
 
     *output =
         new Dataset(ctx, resource, std::move(start_key), std::move(end_key));
@@ -117,4 +119,5 @@ class BigtableRangeKeyDatasetOp : public DatasetOpKernel {
 REGISTER_KERNEL_BUILDER(Name("BigtableRangeKeyDataset").Device(DEVICE_CPU),
                         BigtableRangeKeyDatasetOp);
 }  // namespace
+}  // namespace data
 }  // namespace tensorflow

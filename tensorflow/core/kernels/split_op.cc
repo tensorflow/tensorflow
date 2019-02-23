@@ -18,10 +18,10 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/split_lib.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -49,7 +49,12 @@ class SplitOpBase : public OpKernel {
   void ComputeEasyCases(OpKernelContext* context, bool* done) {
     const Tensor& input = context->input(1);
     const TensorShape& input_shape = input.shape();
-    const int32 split_dim_orig = context->input(0).flat<int32>()(0);
+    const Tensor& split_dim_tensor = context->input(0);
+    OP_REQUIRES(
+        context, split_dim_tensor.shape().dims() == 0,
+        errors::InvalidArgument("split_dim must be a scalar but has rank ",
+                                split_dim_tensor.shape().dims()));
+    const int32 split_dim_orig = split_dim_tensor.flat<int32>()(0);
     const int32 split_dim =
         split_dim_orig < 0 ? split_dim_orig + input.dims() : split_dim_orig;
     const int32 num_split = num_outputs();

@@ -34,7 +34,7 @@ from tensorflow.python.platform import test
 class ClassificationTest(test.TestCase):
 
   def testAccuracy1D(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       pred = array_ops.placeholder(dtypes.int32, shape=[None])
       labels = array_ops.placeholder(dtypes.int32, shape=[None])
       acc = classification.accuracy(pred, labels)
@@ -44,7 +44,7 @@ class ClassificationTest(test.TestCase):
       self.assertEqual(result, 0.5)
 
   def testAccuracy1DBool(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       pred = array_ops.placeholder(dtypes.bool, shape=[None])
       labels = array_ops.placeholder(dtypes.bool, shape=[None])
       acc = classification.accuracy(pred, labels)
@@ -54,7 +54,7 @@ class ClassificationTest(test.TestCase):
       self.assertEqual(result, 0.5)
 
   def testAccuracy1DInt64(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       pred = array_ops.placeholder(dtypes.int64, shape=[None])
       labels = array_ops.placeholder(dtypes.int64, shape=[None])
       acc = classification.accuracy(pred, labels)
@@ -64,7 +64,7 @@ class ClassificationTest(test.TestCase):
       self.assertEqual(result, 0.5)
 
   def testAccuracy1DString(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       pred = array_ops.placeholder(dtypes.string, shape=[None])
       labels = array_ops.placeholder(dtypes.string, shape=[None])
       acc = classification.accuracy(pred, labels)
@@ -87,7 +87,7 @@ class ClassificationTest(test.TestCase):
       classification.accuracy(pred, labels)
 
   def testAccuracy1DWeighted(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       pred = array_ops.placeholder(dtypes.int32, shape=[None])
       labels = array_ops.placeholder(dtypes.int32, shape=[None])
       weights = array_ops.placeholder(dtypes.float32, shape=[None])
@@ -101,7 +101,7 @@ class ClassificationTest(test.TestCase):
       self.assertEqual(result, 0.5)
 
   def testAccuracy1DWeightedBroadcast(self):
-    with self.test_session() as session:
+    with self.cached_session() as session:
       pred = array_ops.placeholder(dtypes.int32, shape=[None])
       labels = array_ops.placeholder(dtypes.int32, shape=[None])
       weights = array_ops.placeholder(dtypes.float32, shape=[])
@@ -161,7 +161,7 @@ class F1ScoreTest(test.TestCase):
         (10, 3), maxval=2, dtype=dtypes.int64, seed=2)
     f1, f1_op = classification.f1_score(predictions, labels, num_thresholds=3)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.local_variables_initializer())
 
       # Run several updates.
@@ -176,7 +176,7 @@ class F1ScoreTest(test.TestCase):
   def testAllCorrect(self):
     inputs = np.random.randint(0, 2, size=(100, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(inputs, dtype=dtypes.float32)
       labels = constant_op.constant(inputs)
       f1, f1_op = classification.f1_score(predictions, labels, num_thresholds=3)
@@ -191,7 +191,7 @@ class F1ScoreTest(test.TestCase):
         [1, 0, 1, 0], shape=(1, 4), dtype=dtypes.float32)
     labels = constant_op.constant([0, 1, 1, 0], shape=(1, 4))
     f1, f1_op = classification.f1_score(predictions, labels, num_thresholds=1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.local_variables_initializer())
       sess.run([f1_op])
       # Threshold 0 will have around 0.5 precision and 1 recall yielding an F1
@@ -201,7 +201,7 @@ class F1ScoreTest(test.TestCase):
   def testAllIncorrect(self):
     inputs = np.random.randint(0, 2, size=(10000, 1))
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(inputs, dtype=dtypes.float32)
       labels = constant_op.constant(1 - inputs, dtype=dtypes.float32)
       f1, f1_op = classification.f1_score(predictions, labels, num_thresholds=3)
@@ -214,7 +214,7 @@ class F1ScoreTest(test.TestCase):
       self.assertAlmostEqual(2 * 0.5 * 1 / (1 + 0.5), f1.eval(), places=2)
 
   def testWeights1d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes.float32)
       labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
@@ -228,7 +228,7 @@ class F1ScoreTest(test.TestCase):
       self.assertAlmostEqual(1.0, f1.eval(), places=5)
 
   def testWeights2d(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = constant_op.constant(
           [[1, 0], [1, 0]], shape=(2, 2), dtype=dtypes.float32)
       labels = constant_op.constant([[0, 1], [1, 0]], shape=(2, 2))
@@ -242,7 +242,7 @@ class F1ScoreTest(test.TestCase):
       self.assertAlmostEqual(1.0, f1.eval(), places=5)
 
   def testZeroLabelsPredictions(self):
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       predictions = array_ops.zeros([4], dtype=dtypes.float32)
       labels = array_ops.zeros([4])
       f1, f1_op = classification.f1_score(predictions, labels, num_thresholds=3)
@@ -291,16 +291,15 @@ class F1ScoreTest(test.TestCase):
 
     labels = labels.astype(np.float32)
     predictions = predictions.astype(np.float32)
-    tf_predictions, tf_labels = (dataset_ops.Dataset
-                                 .from_tensor_slices((predictions, labels))
-                                 .repeat()
-                                 .batch(batch_size)
-                                 .make_one_shot_iterator()
-                                 .get_next())
+    tf_predictions, tf_labels = dataset_ops.make_one_shot_iterator(
+        dataset_ops.Dataset
+        .from_tensor_slices((predictions, labels))
+        .repeat()
+        .batch(batch_size)).get_next()
     f1, f1_op = classification.f1_score(tf_labels, tf_predictions,
                                         num_thresholds=3)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.local_variables_initializer())
       for _ in range(num_batches):
         sess.run([f1_op])

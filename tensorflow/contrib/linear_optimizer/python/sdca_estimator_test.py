@@ -524,7 +524,7 @@ class SDCALinearRegressorTest(test.TestCase):
           # LinearClassifier requires at least one column.
           'place_holder':
               constant_op.constant([[0.0]] * num_examples),
-      }, constant_op.constant([[1 if i % 4 is 0 else 0]
+      }, constant_op.constant([[1 if i % 4 == 0 else 0]
                                for i in range(num_examples)])
 
     with self._single_threaded_test_session():

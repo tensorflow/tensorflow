@@ -91,10 +91,17 @@ with an asset of the same name, only the first version is retained.
 
 #### Tags
 Each meta graph added to the SavedModel must be annotated with user specified
-tags. The tags provide a means to identify the specific meta graph to load and
-restore, along with the shared set of variables and assets. These tags
-typically annotate a MetaGraph with its functionality (e.g. serving or
-training), and possibly hardware specific aspects such as GPU.
+tags, which reflect the meta graph capabilities or use-cases.
+More specifically, these tags typically annotate a meta graph with its
+functionality (e.g. serving or training), and possibly hardware specific aspects
+such as GPU.
+In the SavedModel, the meta graph def whose tag-set exactly matches those
+specified in the loader API, will be the one loaded by the loader.
+If no meta graph def is found matching the specified tags, an error is returned.
+For example, a loader with a requirement to serve on GPU hardware would be able
+to load only meta graph annotated with tags='serve,gpu' by specifying this set
+of tags in tensorflow::LoadSavedModel(...).
+
 
 #### Usage
 The typical usage of `builder` is as follows:

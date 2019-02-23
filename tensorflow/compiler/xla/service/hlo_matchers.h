@@ -165,6 +165,7 @@ namespace opcode_matchers {
   }
 HLO_MATCHER(Abs);
 HLO_MATCHER(Add);
+HLO_MATCHER(AllToAll);
 HLO_MATCHER(Bitcast);
 HLO_MATCHER(Broadcast);
 HLO_MATCHER(BatchNormGrad);
@@ -177,8 +178,10 @@ HLO_MATCHER(Constant);
 HLO_MATCHER(Convert);
 HLO_MATCHER(Convolution);
 HLO_MATCHER(Copy);
-HLO_MATCHER(CrossReplicaSum);
+HLO_MATCHER(AllReduce);
+HLO_MATCHER(CollectivePermute);
 HLO_MATCHER(Divide);
+HLO_MATCHER(Domain);
 HLO_MATCHER(DynamicSlice);
 HLO_MATCHER(DynamicUpdateSlice);
 HLO_MATCHER(Eq);
@@ -188,6 +191,7 @@ HLO_MATCHER(Fusion);
 HLO_MATCHER(Ge);
 HLO_MATCHER(AfterAll);
 HLO_MATCHER(Gt);
+HLO_MATCHER(Iota);
 HLO_MATCHER(Infeed);
 HLO_MATCHER(IsFinite);
 HLO_MATCHER(Le);
@@ -215,6 +219,7 @@ HLO_MATCHER(Remainder);
 HLO_MATCHER(Reshape);
 HLO_MATCHER(Reverse);
 HLO_MATCHER(Rng);
+HLO_MATCHER(Scatter);
 HLO_MATCHER(Select);
 HLO_MATCHER(SelectAndScatter);
 HLO_MATCHER(Send);
@@ -306,9 +311,9 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(shape));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> Shape(
-    tensorflow::StringPiece shape) {
-  return ::testing::MakeMatcher(new ::xla::testing::HloShapeMatcher(
-      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+    absl::string_view shape) {
+  return ::testing::MakeMatcher(
+      new ::xla::testing::HloShapeMatcher(ParseShape(shape).ValueOrDie()));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
     const class Shape& shape) {
@@ -316,9 +321,9 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
       new ::xla::testing::HloShapeAndLayoutMatcher(shape));
 }
 inline ::testing::Matcher<const ::xla::HloInstruction*> ShapeWithLayout(
-    tensorflow::StringPiece shape) {
+    absl::string_view shape) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShapeAndLayoutMatcher(
-      ShapeUtil::ParseShapeString(shape).ValueOrDie()));
+      ParseShape(shape).ValueOrDie()));
 }
 
 // Verifies the value of the HloSharing against the provided sharding object.
@@ -329,7 +334,7 @@ inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
 }
 // Matcher for Sharding from sharding string
 inline ::testing::Matcher<const ::xla::HloInstruction*> Sharding(
-    tensorflow::StringPiece sharding) {
+    absl::string_view sharding) {
   return ::testing::MakeMatcher(new ::xla::testing::HloShardingMatcher(
       ParseSharding(sharding).ValueOrDie()));
 }
@@ -380,7 +385,6 @@ std::vector<const HloInstruction*> Pointers(const Container& container) {
 // Tell GMock to print HloInstruction* by value, so error messages are nice.
 // Has to be in the same namespace as 'HloInstruction'.
 void PrintTo(const HloInstruction* inst, ::std::ostream* os);
-void PrintTo(HloInstruction* inst, ::std::ostream* os);
 
 }  // namespace xla
 

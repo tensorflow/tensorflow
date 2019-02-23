@@ -25,6 +25,7 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@py_func
 @@defun
+@@function
 @@make_template
 @@implicit_gradients
 @@implicit_value_and_gradients
@@ -40,6 +41,8 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@add_execution_callback
 @@clear_execution_callbacks
+@@errstate
+@@ExecutionCallback
 @@inf_callback
 @@inf_nan_callback
 @@nan_callback
@@ -59,7 +62,6 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 
 @@Checkpoint
 @@Checkpointable
-@@CheckpointableSaver
 
 @@executing_eagerly
 @@in_eager_mode
@@ -73,6 +75,8 @@ To use, at program startup, call `tf.enable_eager_execution()`.
 @@run_all_tests_in_graph_and_eager_modes
 
 @@TensorSpec
+
+@@connect_to_remote_host
 
 @@DEVICE_PLACEMENT_EXPLICIT
 @@DEVICE_PLACEMENT_WARN
@@ -98,7 +102,7 @@ from tensorflow.contrib.eager.python.saver import get_optimizer_variables
 from tensorflow.contrib.eager.python.saver import restore_variables_on_create
 from tensorflow.contrib.eager.python.saver import Saver
 from tensorflow.python.eager import backprop
-from tensorflow.python.eager import function
+from tensorflow.python.eager import function as _function_lib
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_EXPLICIT
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_WARN
 from tensorflow.python.eager.context import DEVICE_PLACEMENT_SILENT
@@ -112,12 +116,16 @@ from tensorflow.python.eager.context import SYNC
 from tensorflow.python.eager.context import ASYNC
 from tensorflow.python.eager.context import num_gpus
 from tensorflow.python.eager.context import set_server_def
+from tensorflow.python.eager.def_function import function
 from tensorflow.python.eager.execution_callbacks import add_execution_callback
 from tensorflow.python.eager.execution_callbacks import clear_execution_callbacks
+from tensorflow.python.eager.execution_callbacks import errstate
+from tensorflow.python.eager.execution_callbacks import ExecutionCallback
 from tensorflow.python.eager.execution_callbacks import inf_callback
 from tensorflow.python.eager.execution_callbacks import inf_nan_callback
 from tensorflow.python.eager.execution_callbacks import nan_callback
 from tensorflow.python.eager.execution_callbacks import seterr
+from tensorflow.python.eager.remote import connect_to_remote_host
 from tensorflow.python.framework.tensor_spec import TensorSpec
 from tensorflow.python.framework.ops import enable_eager_execution
 from tensorflow.python.framework.ops import enable_eager_execution_internal as enable_remote_eager_execution
@@ -129,13 +137,12 @@ from tensorflow.python.ops.resource_variable_ops import ResourceVariable as Vari
 from tensorflow.python.ops.variable_scope import EagerVariableStore
 from tensorflow.python.ops import script_ops
 from tensorflow.python.ops import template
-from tensorflow.python.training.checkpointable.tracking import Checkpointable
-from tensorflow.python.training.checkpointable.util import CheckpointableSaver
-from tensorflow.python.training.checkpointable.util import Checkpoint
+from tensorflow.python.training.tracking.tracking import AutoTrackable as Checkpointable
+from tensorflow.python.training.tracking.util import Checkpoint
 from tensorflow.python.util.all_util import remove_undocumented
 
 py_func = script_ops.eager_py_func
-defun = function.defun
+defun = _function_lib.defun
 make_template = template.make_template_internal
 implicit_gradients = backprop.implicit_grad
 implicit_value_and_gradients = backprop.implicit_val_and_grad

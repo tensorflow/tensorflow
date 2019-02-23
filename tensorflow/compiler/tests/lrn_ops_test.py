@@ -120,8 +120,8 @@ class LRNTest(xla_test.XLATestCase):
       with self.test_scope():
         actual = gen_nn_ops.lrn_grad(out_grads, in_image, out_image,
                                      depth_radius, bias, alpha, beta)
-      expected_val = expected.eval()
-      actual_val = actual.eval()
+      expected_val = self.evaluate(expected)
+      actual_val = self.evaluate(actual)
     self.assertAllClose(actual_val, expected_val, rtol=1e-3)
 
 

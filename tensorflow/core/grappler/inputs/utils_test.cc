@@ -31,6 +31,25 @@ class UtilsTest : public ::testing::Test {
     non_existent_file_ = io::JoinPath(BaseDir(), "non_existent_file.txt");
     actual_file_ = io::JoinPath(BaseDir(), "test_file.txt");
     TF_CHECK_OK(WriteStringToFile(env_, actual_file_, "Some test data"));
+
+    text_graph_def_file_ = io::JoinPath(BaseDir(), "text_graph_def_file.txt");
+    binary_graph_def_file_ =
+        io::JoinPath(BaseDir(), "binary_graph_def_file.txt");
+    text_meta_graph_def_file_ =
+        io::JoinPath(BaseDir(), "text_meta_graph_def_file.txt");
+    binary_meta_graph_def_file_ =
+        io::JoinPath(BaseDir(), "binary_meta_graph_def_file.txt");
+
+    auto node = graph_def_.add_node();
+    node->set_name("foo");
+    node->set_op("bar");
+    TF_CHECK_OK(WriteTextProto(env_, text_graph_def_file_, graph_def_));
+    TF_CHECK_OK(WriteBinaryProto(env_, binary_graph_def_file_, graph_def_));
+    *meta_graph_def_.mutable_graph_def() = graph_def_;
+    TF_CHECK_OK(
+        WriteTextProto(env_, text_meta_graph_def_file_, meta_graph_def_));
+    TF_CHECK_OK(
+        WriteBinaryProto(env_, binary_meta_graph_def_file_, meta_graph_def_));
   }
 
   void TearDown() override {
@@ -39,8 +58,14 @@ class UtilsTest : public ::testing::Test {
         env_->DeleteRecursively(BaseDir(), &undeleted_files, &undeleted_dirs));
   }
 
+  GraphDef graph_def_;
+  MetaGraphDef meta_graph_def_;
   string non_existent_file_;
   string actual_file_;
+  string text_graph_def_file_;
+  string binary_graph_def_file_;
+  string text_meta_graph_def_file_;
+  string binary_meta_graph_def_file_;
   Env* env_ = Env::Default();
 };
 
@@ -56,6 +81,30 @@ TEST_F(UtilsTest, FilesExist) {
   EXPECT_EQ(status.size(), 2);
   EXPECT_FALSE(status[0].ok());
   EXPECT_TRUE(status[1].ok());
+}
+
+TEST_F(UtilsTest, ReadGraphDefFromFile_Text) {
+  GraphDef result;
+  TF_CHECK_OK(ReadGraphDefFromFile(text_graph_def_file_, &result));
+  EXPECT_EQ(result.DebugString(), graph_def_.DebugString());
+}
+
+TEST_F(UtilsTest, ReadGraphDefFromFile_Binary) {
+  GraphDef result;
+  TF_CHECK_OK(ReadGraphDefFromFile(binary_graph_def_file_, &result));
+  EXPECT_EQ(result.DebugString(), graph_def_.DebugString());
+}
+
+TEST_F(UtilsTest, ReadMetaGraphDefFromFile_Text) {
+  MetaGraphDef result;
+  TF_CHECK_OK(ReadMetaGraphDefFromFile(text_meta_graph_def_file_, &result));
+  EXPECT_EQ(result.DebugString(), meta_graph_def_.DebugString());
+}
+
+TEST_F(UtilsTest, ReadReadMetaGraphDefFromFile_Binary) {
+  MetaGraphDef result;
+  TF_CHECK_OK(ReadMetaGraphDefFromFile(binary_meta_graph_def_file_, &result));
+  EXPECT_EQ(result.DebugString(), meta_graph_def_.DebugString());
 }
 
 }  // namespace

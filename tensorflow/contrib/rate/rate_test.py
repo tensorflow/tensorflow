@@ -46,7 +46,7 @@ class RateTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testBasic(self):
-    with self.test_session():
+    with self.cached_session():
       r_ = rate.Rate()
       a = r_(array_ops.ones([1]), denominator=array_ops.ones([1]))
       self.evaluate(variables.global_variables_initializer())
@@ -67,7 +67,7 @@ class RateTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes()
   def testWhileLoop(self):
-    with self.test_session():
+    with self.cached_session():
       r_ = rate.Rate()
 
       def body(value, denom, i, ret_rate):

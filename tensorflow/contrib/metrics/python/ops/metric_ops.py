@@ -45,24 +45,6 @@ from tensorflow.python.util.deprecation import deprecated
 _EPSILON = 1e-7
 
 
-def _safe_div(numerator, denominator, name):
-  """Divides two values, returning 0 if the denominator is <= 0.
-
-  Args:
-    numerator: A real `Tensor`.
-    denominator: A real `Tensor`, with dtype matching `numerator`.
-    name: Name for the returned op.
-
-  Returns:
-    0 if `denominator` <= 0, else `numerator` / `denominator`
-  """
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.truediv(numerator, denominator),
-      0,
-      name=name)
-
-
 @deprecated(None, 'Please switch to tf.metrics.true_positives. Note that the '
             'order of the labels and predictions arguments has been switched.')
 def streaming_true_positives(predictions,
@@ -1374,9 +1356,8 @@ def _compute_placement_auc(labels, predictions, weights, alpha,
           weights_0 * math_ops.square(1. - placement_values_0 - auc_0)) /
       (total_0 - 1. + _EPSILON))
   var_1 = (
-      math_ops.reduce_sum(
-          weights_1 * math_ops.square(placement_values_1 - auc_1)) /
-      (total_1 - 1. + _EPSILON))
+      math_ops.reduce_sum(weights_1 * math_ops.squared_difference(
+          placement_values_1, auc_1)) / (total_1 - 1. + _EPSILON))
   auc_std_err = math_ops.sqrt(
       (var_0 / (total_0 + _EPSILON)) + (var_1 / (total_1 + _EPSILON)))
 
@@ -2532,7 +2513,8 @@ def sparse_recall_at_top_k(labels,
         name=name_scope)
 
 
-def _compute_recall_at_precision(tp, fp, fn, precision, name):
+def _compute_recall_at_precision(tp, fp, fn, precision, name,
+                                 strict_mode=False):
   """Helper function to compute recall at a given `precision`.
 
   Args:
@@ -2541,17 +2523,42 @@ def _compute_recall_at_precision(tp, fp, fn, precision, name):
     fn: The number of false negatives.
     precision: The precision for which the recall will be calculated.
     name: An optional variable_scope name.
+    strict_mode: If true and there exists a threshold where the precision is
+      no smaller than the target precision, return the corresponding recall at
+      the threshold. Otherwise, return 0. If false, find the threshold where the
+      precision is closest to the target precision and return the recall at the
+      threshold.
 
   Returns:
     The recall at a given `precision`.
   """
   precisions = math_ops.div(tp, tp + fp + _EPSILON)
-  tf_index = math_ops.argmin(
-      math_ops.abs(precisions - precision), 0, output_type=dtypes.int32)
+  if not strict_mode:
+    tf_index = math_ops.argmin(
+        math_ops.abs(precisions - precision), 0, output_type=dtypes.int32)
+    # Now, we have the implicit threshold, so compute the recall:
+    return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
+                        name)
+  else:
+    # We aim to find the threshold where the precision is minimum but no smaller
+    # than the target precision.
+    # The rationale:
+    # 1. Compute the difference between precisions (by different thresholds) and
+    #   the target precision.
+    # 2. Take the reciprocal of the values by the above step. The intention is
+    #   to make the positive values rank before negative values and also the
+    #   smaller positives rank before larger positives.
+    tf_index = math_ops.argmax(
+        math_ops.div(1.0, precisions - precision + _EPSILON),
+        0,
+        output_type=dtypes.int32)
 
-  # Now, we have the implicit threshold, so compute the recall:
-  return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
-                      name)
+    def _return_good_recall():
+      return math_ops.div(tp[tf_index], tp[tf_index] + fn[tf_index] + _EPSILON,
+                          name)
+
+    return control_flow_ops.cond(precisions[tf_index] >= precision,
+                                 _return_good_recall, lambda: .0)
 
 
 def recall_at_precision(labels,
@@ -2561,7 +2568,8 @@ def recall_at_precision(labels,
                         num_thresholds=200,
                         metrics_collections=None,
                         updates_collections=None,
-                        name=None):
+                        name=None,
+                        strict_mode=False):
   """Computes `recall` at `precision`.
 
   The `recall_at_precision` function creates four local variables,
@@ -2593,6 +2601,11 @@ def recall_at_precision(labels,
     updates_collections: An optional list of collections that `update_op` should
       be added to.
     name: An optional variable_scope name.
+    strict_mode: If true and there exists a threshold where the precision is
+      above the target precision, return the corresponding recall at the
+      threshold. Otherwise, return 0. If false, find the threshold where the
+      precision is closest to the target precision and return the recall at the
+      threshold.
 
   Returns:
     recall: A scalar `Tensor` representing the recall at the given
@@ -2621,10 +2634,11 @@ def recall_at_precision(labels,
         predictions, labels, thresholds, weights)
 
     recall = _compute_recall_at_precision(values['tp'], values['fp'],
-                                          values['fn'], precision, 'value')
+                                          values['fn'], precision, 'value',
+                                          strict_mode)
     update_op = _compute_recall_at_precision(update_ops['tp'], update_ops['fp'],
                                              update_ops['fn'], precision,
-                                             'update_op')
+                                             'update_op', strict_mode)
 
     if metrics_collections:
       ops.add_to_collections(metrics_collections, recall)
@@ -3205,22 +3219,20 @@ def streaming_covariance(predictions,
 
     # We update the means by Delta=Error*BatchCount/(BatchCount+PrevCount)
     # batch_mean_prediction is E[x_B] in the update equation
-    batch_mean_prediction = _safe_div(
-        math_ops.reduce_sum(weighted_predictions), batch_count,
-        'batch_mean_prediction')
-    delta_mean_prediction = _safe_div(
-        (batch_mean_prediction - mean_prediction) * batch_count, update_count,
-        'delta_mean_prediction')
+    batch_mean_prediction = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_predictions), batch_count)
+    delta_mean_prediction = math_ops.div_no_nan(
+        (batch_mean_prediction - mean_prediction) * batch_count, update_count)
     update_mean_prediction = state_ops.assign_add(mean_prediction,
                                                   delta_mean_prediction)
     # prev_mean_prediction is E[x_A] in the update equation
     prev_mean_prediction = update_mean_prediction - delta_mean_prediction
 
     # batch_mean_label is E[y_B] in the update equation
-    batch_mean_label = _safe_div(
-        math_ops.reduce_sum(weighted_labels), batch_count, 'batch_mean_label')
-    delta_mean_label = _safe_div((batch_mean_label - mean_label) * batch_count,
-                                 update_count, 'delta_mean_label')
+    batch_mean_label = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_labels), batch_count)
+    delta_mean_label = math_ops.div_no_nan(
+        (batch_mean_label - mean_label) * batch_count, update_count)
     update_mean_label = state_ops.assign_add(mean_label, delta_mean_label)
     # prev_mean_label is E[y_A] in the update equation
     prev_mean_label = update_mean_label - delta_mean_label
@@ -3403,7 +3415,7 @@ def streaming_mean_cosine_distance(predictions,
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(
-      radial_diffs, reduction_indices=[
+      radial_diffs, axis=[
           dim,
       ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
@@ -3882,8 +3894,8 @@ def cohen_kappa(labels,
       po_sum = math_ops.reduce_sum(po)
       total = math_ops.reduce_sum(pe_row)
       pe_sum = math_ops.reduce_sum(
-          metrics_impl._safe_div(  # pylint: disable=protected-access
-              pe_row * pe_col, total, None))
+          math_ops.div_no_nan(
+              math_ops.to_double(pe_row * pe_col), math_ops.to_double(total)))
       po_sum, pe_sum, total = (math_ops.to_double(po_sum),
                                math_ops.to_double(pe_sum),
                                math_ops.to_double(total))

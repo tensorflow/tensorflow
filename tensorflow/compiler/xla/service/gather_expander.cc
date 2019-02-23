@@ -25,7 +25,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/util.h"
 
 namespace xla {
-using tensorflow::gtl::ArraySlice;
 
 static StatusOr<HloInstruction*> TransposeIndexVectorDimToLast(
     HloInstruction* start_indices, int64 index_vector_dim) {
@@ -154,10 +153,9 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
            dim_numbers.index_vector_dim() ==
                gather.operand(1)->shape().dimensions_size());
 
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * induction_var_as_vector,
+  HloInstruction* induction_var_as_vector =
       MakeBroadcastHlo(induction_var, /*broadcast_dimensions=*/{},
-                       /*result_shape_bounds=*/{1}));
+                       /*result_shape_bounds=*/{1});
 
   HloInstruction* index_vector;
 
@@ -223,9 +221,9 @@ static StatusOr<std::vector<HloInstruction*>> GatherLoopBody(
       {operand, start_indices, updated_accumulator}};
 }
 
-static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
+static HloInstruction* CreateGatherLoopAccumulatorInitValue(
     HloComputation* computation, PrimitiveType element_type,
-    ArraySlice<int64> slice_sizes, int64 gather_loop_trip_count,
+    absl::Span<const int64> slice_sizes, int64 gather_loop_trip_count,
     const GatherDimensionNumbers& dim_numbers) {
   std::vector<int64> accumulator_state_shape_dims;
   accumulator_state_shape_dims.reserve(1 + slice_sizes.size());
@@ -244,7 +242,7 @@ static StatusOr<HloInstruction*> CreateGatherLoopAccumulatorInitValue(
 // are the major dimensions and the offset dimensions are the minor dimensions.
 // Fix this up with a transpose.
 static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
-    HloInstruction* accumulator, ArraySlice<int64> offset_dims,
+    HloInstruction* accumulator, absl::Span<const int64> offset_dims,
     int64 output_rank) {
   std::vector<int64> permutation;
   permutation.reserve(output_rank);
@@ -298,7 +296,7 @@ static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
 // [3,1] out of operand into an accumulator of shape [4,3,1].  We then
 // reshape this result to [2,2,3] and finally transpose it to [2,3,2].
 
-StatusOr<HloInstruction*> GatherExpander::ExpandGather(
+StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
     HloInstruction* gather_instr) {
   CHECK(!ShapeUtil::IsZeroElementArray(gather_instr->shape()));
 
@@ -323,7 +321,7 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
     return Unimplemented(
         "Gather operations with more than 2147483647 gather indices are not "
         "supported. This error occurred for %s.",
-        gather_instr->ToString().c_str());
+        gather_instr->ToString());
   }
 
   TF_ASSIGN_OR_RETURN(
@@ -333,12 +331,10 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
   CHECK_EQ(gather_loop_trip_count,
            canonical_start_indices->shape().dimensions(0));
 
-  TF_ASSIGN_OR_RETURN(
-      HloInstruction * accumulator_init,
-      CreateGatherLoopAccumulatorInitValue(
-          computation, output_shape.element_type(),
-          gather_instr->gather_slice_sizes(), gather_loop_trip_count,
-          gather_instr->gather_dimension_numbers()));
+  HloInstruction* accumulator_init = CreateGatherLoopAccumulatorInitValue(
+      computation, output_shape.element_type(),
+      gather_instr->gather_slice_sizes(), gather_loop_trip_count,
+      gather_instr->gather_dimension_numbers());
 
   StatusOr<std::vector<HloInstruction*>> gather_loop_result_or_error =
       WhileUtil::MakeCountedLoop(
@@ -347,7 +343,8 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
           [&](HloInstruction* indvar,
               const std::vector<HloInstruction*>& loop_state) {
             return GatherLoopBody(*gather_instr, indvar, loop_state);
-          });
+          },
+          gather_instr->metadata());
 
   TF_ASSIGN_OR_RETURN(std::vector<HloInstruction*> gather_loop_result,
                       gather_loop_result_or_error);
@@ -364,25 +361,11 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
                                    output_rank);
 }
 
-StatusOr<bool> GatherExpander::Run(HloModule* module) {
-  auto is_nontrivial_gather = [](HloInstruction* inst) {
-    return inst->opcode() == HloOpcode::kGather &&
-           // Avoid expanding gather ops that produce zero sized tensors,
-           // instead punt these to ZeroSizedHloElimination.
-           !ShapeUtil::IsZeroElementArray(inst->shape());
-  };
-
-  std::vector<HloInstruction*> gather_instrs;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    absl::c_copy_if(computation->instructions(),
-                    std::back_inserter(gather_instrs), is_nontrivial_gather);
-  }
-
-  for (HloInstruction* inst : gather_instrs) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandGather(inst));
-    TF_RETURN_IF_ERROR(inst->parent()->ReplaceInstruction(inst, expanded_root));
-  }
-
-  return !gather_instrs.empty();
+bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kGather &&
+         // Avoid expanding gather ops that produce zero sized tensors,
+         // instead punt these to ZeroSizedHloElimination.
+         !ShapeUtil::IsZeroElementArray(inst->shape());
 }
+
 }  // namespace xla

@@ -59,7 +59,7 @@ Status ConditionalThunk::ExecuteOnStream(
   Status block_status = stream->BlockHostUntilDone();
   if (!block_status.ok()) {
     return InternalError("Failed to retrieve predicate value on stream %p: %s.",
-                         stream, block_status.error_message().c_str());
+                         stream, block_status.error_message());
   }
 
   // Execute the true or the false computation depending on the value of the

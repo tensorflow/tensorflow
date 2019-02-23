@@ -20,17 +20,17 @@ limitations under the License.
 
 #include <ostream>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
-#include "tensorflow/core/lib/gtl/flatset.h"
 
 namespace xla {
 
 // The context in which a computation is called by another computation.
 enum class CallContext {
-  // In a parallel contex the computation is applied to each element of the
+  // In a parallel context the computation is applied to each element of the
   // array argument(s). kMap and kReduce instructions call computations in
   // parallel context.
   kParallel,
@@ -121,6 +121,11 @@ class CallGraphNode {
   // Returns the context in which this computation is called.
   CallContext context() const { return context_; }
 
+  // Returns the depth of this node in the call graph. The depth is defined as
+  // the length of the longest call chain from a computation with no callers
+  // (usually the entry computation node) to this node.
+  int depth() const { return depth_; }
+
   string ToString() const;
 
  private:
@@ -129,6 +134,9 @@ class CallGraphNode {
 
   // Sets the context in which this computation is called.
   void set_context(CallContext value) { context_ = value; }
+
+  // Sets the depth of this node in the graph.
+  void set_depth(int value) { depth_ = value; }
 
   // Adds a callsite which calls this computation. Updates callers to include
   // the calling computation.
@@ -145,25 +153,28 @@ class CallGraphNode {
   // The computations called by this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callees_;
-  tensorflow::gtl::FlatSet<HloComputation*> callee_set_;
+  absl::flat_hash_set<HloComputation*> callee_set_;
 
   // The computations which call this computation. The vector is used for a
   // stable ordering and the set enables fast membership testing.
   std::vector<HloComputation*> callers_;
-  tensorflow::gtl::FlatSet<HloComputation*> caller_set_;
+  absl::flat_hash_set<HloComputation*> caller_set_;
 
   // The call sites in this computation
   std::vector<CallSite> callsites_;
 
   // The map from instruction to index in callsites_ for looking up the callsite
   // (if any) associated with a particular instruction in this computation.
-  tensorflow::gtl::FlatMap<const HloInstruction*, int64> callsite_instructions_;
+  absl::flat_hash_map<const HloInstruction*, int64> callsite_instructions_;
 
   // The call sites in other computations which call this computation.
   std::vector<CallSite> caller_callsites_;
 
   // The context in which this computation is called.
   CallContext context_ = CallContext::kNone;
+
+  // The depth of this node in the call graph.
+  int depth_ = 0;
 };
 
 // The call graph for an HLO module. The graph includes a node for each
@@ -236,13 +247,24 @@ class CallGraph {
   // FlattenCallGraph.
   bool IsFlattened() const;
 
+  // Returns a vector of instructions calling the passed computation.
+  // (Often a vector of size 1.)
+  std::vector<HloInstruction*> GetComputationCallers(HloComputation* c);
+
   string ToString() const;
 
  private:
   CallGraph(const HloModule* module);
 
+  // Not copyable.
+  CallGraph(const CallGraph&) = delete;
+  CallGraph& operator=(const CallGraph&) = delete;
+
   // Sets the call contexts for every node in the graph.
   void SetCallContexts();
+
+  // Sets the call node depths for every node in the graph.
+  void SetNodeDepths();
 
   // Helper method for VisitNodes(). Traverses the call graph from 'node' in DFS
   // post order (callee before caller) calling visitor_func on each node. Adds
@@ -250,14 +272,14 @@ class CallGraph {
   // 'visited'.
   Status VisitNodesInternal(
       const VisitorFunction& visitor_func, const CallGraphNode& node,
-      tensorflow::gtl::FlatSet<const CallGraphNode*>* visited) const;
+      absl::flat_hash_set<const CallGraphNode*>* visited) const;
 
   // Recursive helper for computing whether 'a' dominates 'b' in the call
   // graph. 'b_ancestor' is the currently visited node (which starts at 'b'),
   // and 'visited' is the set of computations which have been visited.
   bool DominatesHelper(
       const HloComputation* a, const HloComputation* b,
-      tensorflow::gtl::FlatSet<const HloComputation*>* visited) const;
+      absl::flat_hash_set<const HloComputation*>* visited) const;
 
   // The HLO module represented by this call graph.
   const HloModule* module_ = nullptr;
@@ -267,7 +289,7 @@ class CallGraph {
 
   // Map from HLO computation to the index of the corresponding call graph node
   // in nodes_.
-  tensorflow::gtl::FlatMap<const HloComputation*, int64> node_indices_;
+  absl::flat_hash_map<const HloComputation*, int64> node_indices_;
 };
 
 }  // namespace xla

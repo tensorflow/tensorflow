@@ -18,8 +18,9 @@ limitations under the License.
 #include "grpcpp/security/server_credentials.h"
 #include "grpcpp/server.h"
 #include "grpcpp/server_builder.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/compiler/xla/rpc/grpc_service.h"
-#include "tensorflow/core/lib/strings/stringprintf.h"
+#include "tensorflow/compiler/xla/service/platform_util.h"
 #include "tensorflow/core/platform/init_main.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/command_line_flags.h"
@@ -29,8 +30,15 @@ namespace {
 
 int RealMain(int argc, char** argv) {
   int32 port = 1685;
+  bool any_address = false;
+  string platform_str;
   std::vector<tensorflow::Flag> flag_list = {
-      tensorflow::Flag("port", &port, "port to listen on"),
+      tensorflow::Flag("platform", &platform_str,
+                       "The XLA platform this service should be bound to"),
+      tensorflow::Flag("port", &port, "The TCP port to listen on"),
+      tensorflow::Flag(
+          "any", &any_address,
+          "Whether to listen to any host address or simply localhost"),
   };
   string usage = tensorflow::Flags::Usage(argv[0], flag_list);
   bool parsed_values_ok = tensorflow::Flags::Parse(&argc, argv, flag_list);
@@ -40,19 +48,24 @@ int RealMain(int argc, char** argv) {
   }
   tensorflow::port::InitMain(argv[0], &argc, &argv);
 
+  se::Platform* platform = nullptr;
+  if (!platform_str.empty()) {
+    platform = PlatformUtil::GetPlatform(platform_str).ValueOrDie();
+  }
   std::unique_ptr<xla::GRPCService> service =
-      xla::GRPCService::NewService().ConsumeValueOrDie();
+      xla::GRPCService::NewService(platform).ConsumeValueOrDie();
 
   ::grpc::ServerBuilder builder;
-  string server_address(tensorflow::strings::Printf("localhost:%d", port));
+  string server_address(
+      absl::StrFormat("%s:%d", any_address ? "[::]" : "localhost", port));
 
+  builder.SetMaxReceiveMessageSize(INT_MAX);
   builder.AddListeningPort(server_address, ::grpc::InsecureServerCredentials());
   builder.RegisterService(service.get());
   std::unique_ptr<::grpc::Server> server(builder.BuildAndStart());
 
   LOG(INFO) << "Server listening on " << server_address;
   server->Wait();
-
   return 0;
 }
 
