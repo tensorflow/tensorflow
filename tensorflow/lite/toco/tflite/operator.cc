@@ -2191,6 +2191,31 @@ class Dequantize
   }
 };
 
+class ReverseSequence
+    : public BuiltinOperator<ReverseSequenceOperator,
+                             ::tflite::ReverseSequenceOptions,
+                             ::tflite::BuiltinOptions_ReverseSequenceOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateReverseSequenceOptions(*builder, op.seq_dim,
+                                                  op.batch_dim);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {
+    op->seq_dim = options.seq_dim();
+    op->batch_dim = options.batch_dim();
+  }
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
 class Equal : public SimpleOperator<TensorFlowEqualOperator> {
  public:
   explicit Equal() : SimpleOperator("EQUAL", OperatorType::kEqual) {}
@@ -2434,6 +2459,9 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       OperatorType::kUnidirectionalSequenceRnn));
   ops.push_back(
       MakeUnique<Where>(::tflite::BuiltinOperator_WHERE, OperatorType::kWhere));
+  ops.push_back(
+      MakeUnique<ReverseSequence>(::tflite::BuiltinOperator_REVERSE_SEQUENCE,
+                                  OperatorType::kReverseSequence));
 
   // Custom Operators.
   ops.push_back(
