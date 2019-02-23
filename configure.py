@@ -55,6 +55,12 @@ NCCL_LIB_PATHS = [
     'lib64/', 'lib/powerpc64le-linux-gnu/', 'lib/x86_64-linux-gnu/', ''
 ]
 
+# List of files to be configured for using Bazel on Apple platforms.
+APPLE_BAZEL_FILES = [
+    'tensorflow/lite/experimental/objc/BUILD',
+    'tensorflow/lite/experimental/swift/BUILD'
+]
+
 if platform.machine() == 'ppc64le':
   _DEFAULT_TENSORRT_PATH_LINUX = '/usr/lib/powerpc64le-linux-gnu/'
 else:
@@ -255,6 +261,7 @@ def setup_python(environ_cp):
 def reset_tf_configure_bazelrc():
   """Reset file that contains customized config settings."""
   open(_TF_BAZELRC, 'w').close()
+
 
 def cleanup_makefile():
   """Delete any leftover BUILD files from the Makefile build.
@@ -785,8 +792,7 @@ def set_gcc_host_compiler_path(environ_cp):
       environ_cp,
       var_name='GCC_HOST_COMPILER_PATH',
       var_default=default_gcc_host_compiler_path,
-      ask_for_var=
-      'Please specify which gcc should be used by nvcc as the host compiler.',
+      ask_for_var='Please specify which gcc should be used by nvcc as the host compiler.',
       check_success=os.path.exists,
       error_msg='Invalid gcc path. %s cannot be found.',
   )
@@ -1237,6 +1243,7 @@ def set_tf_nccl_install_path(environ_cp):
   environ_cp['TF_NCCL_VERSION'] = tf_nccl_version
   write_action_env_to_bazelrc('TF_NCCL_VERSION', tf_nccl_version)
 
+
 def get_native_cuda_compute_capabilities(environ_cp):
   """Get native cuda compute capabilities.
 
@@ -1273,13 +1280,15 @@ def set_tf_cuda_compute_capabilities(environ_cp):
 
     ask_cuda_compute_capabilities = (
         'Please specify a list of comma-separated '
-        'Cuda compute capabilities you want to '
+        'CUDA compute capabilities you want to '
         'build with.\nYou can find the compute '
         'capability of your device at: '
         'https://developer.nvidia.com/cuda-gpus.\nPlease'
         ' note that each additional compute '
         'capability significantly increases your '
-        'build time and binary size. [Default is: %s]: ' %
+        'build time and binary size, and that '
+        'TensorFlow only supports compute '
+        'capabilities >= 3.5 [Default is: %s]: ' %
         default_cuda_compute_capabilities)
     tf_cuda_compute_capabilities = get_from_env_or_user_or_default(
         environ_cp, 'TF_CUDA_COMPUTE_CAPABILITIES',
@@ -1292,12 +1301,14 @@ def set_tf_cuda_compute_capabilities(environ_cp):
     for compute_capability in tf_cuda_compute_capabilities.split(','):
       m = re.match('[0-9]+.[0-9]+', compute_capability)
       if not m:
-        print('Invalid compute capability: ' % compute_capability)
+        print('Invalid compute capability: %s' % compute_capability)
         all_valid = False
       else:
-        ver = int(m.group(0).split('.')[0])
-        if ver < 3:
-          print('Only compute capabilities 3.0 or higher are supported.')
+        ver = float(m.group(0))
+        if ver < 3.5:
+          print('ERROR: TensorFlow only supports CUDA compute capabilities 3.5 '
+                'and higher. Please re-specify the list of compute '
+                'capabilities excluding version %s.' % ver)
           all_valid = False
 
     if all_valid:
@@ -1484,6 +1495,34 @@ def set_other_mpi_vars(environ_cp):
         'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
         (mpi_home, mpi_home, mpi_home))
 
+def system_specific_test_config(env):
+  """Add default test flags required for TF tests to bazelrc."""
+  write_to_bazelrc('test --flaky_test_attempts=3')
+  write_to_bazelrc('test --test_size_filters=small,medium')
+  write_to_bazelrc(
+      'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
+  write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
+  if is_windows():
+    if env.get('TF_NEED_CUDA', None) == 1:
+      write_to_bazelrc(
+          'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+      write_to_bazelrc(
+          'test --build_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+    else:
+      write_to_bazelrc('test --test_tag_filters=-no_windows,-gpu')
+      write_to_bazelrc('test --build_tag_filters=-no_windows,-gpu')
+  elif is_macos():
+    write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
+    write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
+  elif is_linux():
+    if env.get('TF_NEED_CUDA', None) == 1:
+      write_to_bazelrc('test --test_tag_filters=-no_gpu')
+      write_to_bazelrc('test --build_tag_filters=-no_gpu')
+      write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
+    else:
+      write_to_bazelrc('test --test_tag_filters=-gpu')
+      write_to_bazelrc('test --build_tag_filters=-gpu')
+
 
 def set_system_libs_flag(environ_cp):
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
@@ -1513,10 +1552,6 @@ def set_windows_build_flags(environ_cp):
   # The host and target platforms are the same in Windows build. So we don't
   # have to distinct them. This avoids building the same targets twice.
   write_to_bazelrc('build --distinct_host_configuration=false')
-  # Enable short object file path to avoid long path issue on Windows.
-  # TODO(pcloudy): Remove this flag when upgrading Bazel to 0.16.0
-  # Short object file path will be enabled by default.
-  write_to_bazelrc('build --experimental_shortened_obj_file_path=true')
 
   if get_var(
       environ_cp, 'TF_OVERRIDE_EIGEN_STRONG_INLINE', 'Eigen strong inline',
@@ -1535,6 +1570,23 @@ def set_windows_build_flags(environ_cp):
 def config_info_line(name, help_text):
   """Helper function to print formatted help text for Bazel config options."""
   print('\t--config=%-12s\t# %s' % (name, help_text))
+
+
+def configure_apple_bazel_rules():
+  """Configures Bazel rules for building on Apple platforms.
+
+  Enables analyzing and building Apple Bazel rules on Apple platforms. This
+  function will only be executed if `is_macos()` is true.
+  """
+  if not is_macos():
+    return
+  for filepath in APPLE_BAZEL_FILES:
+    print(
+        'Configuring %s file to analyze and build Bazel rules on Apple platforms.'
+        % filepath)
+    existing_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath + '.apple')
+    renamed_filepath = os.path.join(_TF_WORKSPACE_ROOT, filepath)
+    os.rename(existing_filepath, renamed_filepath)
 
 
 def main():
@@ -1556,7 +1608,7 @@ def main():
   # environment variables.
   environ_cp = dict(os.environ)
 
-  check_bazel_version('0.19.0', '0.21.0')
+  check_bazel_version('0.19.0', '0.22.0')
 
   reset_tf_configure_bazelrc()
 
@@ -1577,6 +1629,8 @@ def main():
 
   if is_macos():
     environ_cp['TF_NEED_TENSORRT'] = '0'
+  else:
+    environ_cp['TF_CONFIGURE_APPLE_BAZEL_RULES'] = '0'
 
   # The numpy package on ppc64le uses OpenBLAS which has multi-threading
   # issues that lead to incorrect answers.  Set OMP_NUM_THREADS=1 at
@@ -1679,6 +1733,16 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
+  system_specific_test_config(os.environ)
+
+  if get_var(
+      environ_cp, 'TF_CONFIGURE_APPLE_BAZEL_RULES',
+      'Configure Bazel rules for Apple platforms', False,
+      ('Would you like to configure Bazel rules for building on Apple platforms?'
+      ), 'Configuring Bazel rules for Apple platforms.',
+      'Not configuring Bazel rules for Apple platforms.'):
+    configure_apple_bazel_rules()
+
   print('Preconfigured Bazel build configs. You can use any of the below by '
         'adding "--config=<>" to your build command. See .bazelrc for more '
         'details.')
@@ -1687,8 +1751,9 @@ def main():
   config_info_line('gdr', 'Build with GDR support.')
   config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
-  config_info_line('dynamic_kernels',
-                   '(Experimental) Build kernels into separate shared objects.')
+  config_info_line(
+      'dynamic_kernels',
+      '(Experimental) Build kernels into separate shared objects.')
 
   print('Preconfigured Bazel build configs to DISABLE default on features:')
   config_info_line('noaws', 'Disable AWS S3 filesystem support.')

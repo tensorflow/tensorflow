@@ -454,7 +454,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert devices, "Must specify at least one device."
     devices = tuple(device_util.resolve(d) for d in devices)
     assert len(set(devices)) == len(devices), (
-        "No duplicates allowed in `devices` argument: %s" % devices)
+        "No duplicates allowed in `devices` argument: %s" % (devices,))
     # TODO(josh11b): Require at least 2 devices?
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)

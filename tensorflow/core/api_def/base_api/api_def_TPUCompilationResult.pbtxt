@@ -1,0 +1,4 @@
+op {
+  graph_op_name: "TPUCompilationResult"
+  summary: "CompilationResultProto indicating the status of the TPU compilation."
+}

@@ -37,7 +37,7 @@ from tensorflow.python.ops import gen_resource_variable_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 
 
@@ -630,7 +630,7 @@ class _MirroredSaveable(saver.BaseSaverBuilder.ResourceVariableSaveable):
 
 
 class MirroredVariable(DistributedVariable, Mirrored,
-                       checkpointable.Checkpointable):
+                       trackable.Trackable):
   """Holds a map from device to variables whose values are kept in sync."""
 
   def __init__(
@@ -710,7 +710,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
     return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
-    """Overrides CheckpointableBase method.
+    """Overrides Trackable method.
 
     This allows both name-based and object-based save and restore of
     MirroredVariables.
@@ -720,7 +720,7 @@ class MirroredVariable(DistributedVariable, Mirrored,
     """
     def _saveable_factory(name=self._common_name):
       return _MirroredSaveable(self, self.primary, name)
-    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+    return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
 
 # Register a conversion function which reads the value of the variable,
@@ -752,7 +752,7 @@ def _enclosing_tpu_context():
 # tpu.replicate() because it assumes that you're in a device context where you
 # can operate on a single version of the variable, but a tpu.replicate()
 # operates on all variables and is replicated during a rewrite pass.
-class TPUMirroredVariable(checkpointable.Checkpointable):
+class TPUMirroredVariable(trackable.Trackable):
   """Holds a map from device to TPU variables whose values are kept in sync."""
 
   def __init__(
@@ -983,7 +983,8 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     return self._read_variable_op()
 
   def assign_sub(self, *args, **kwargs):
-    def assign_sub_fn(var, delta, **kw):
+    def assign_sub_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -997,7 +998,8 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     return self._assign_func(f=assign_sub_fn, *args, **kwargs)
 
   def assign_add(self, *args, **kwargs):
-    def assign_add_fn(var, delta, **kw):
+    def assign_add_fn(var, delta, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -1011,7 +1013,8 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     return self._assign_func(f=assign_add_fn, *args, **kwargs)
 
   def assign(self, *args, **kwargs):
-    def assign_fn(var, value, **kw):
+    def assign_fn(var, value, *ar, **kw):
+      del ar
       name = kw.pop("name", None)
       read_value = kw.pop("read_value", True)
       with self._handle_graph(var.handle):
@@ -1085,7 +1088,7 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     return self._read_variable_op()
 
   def _gather_saveables_for_checkpoint(self):
-    """Overrides CheckpointableBase method.
+    """Overrides Trackable method.
 
     This allows both name-based and object-based save and restore of
     MirroredVariables.
@@ -1095,7 +1098,7 @@ class TPUMirroredVariable(checkpointable.Checkpointable):
     """
     def _saveable_factory(name=self._common_name):
       return _MirroredSaveable(self, self.primary, name)
-    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+    return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
   def _should_act_as_resource_variable(self):
     """Pass resource_variable_ops.is_resource_variable check."""
@@ -1204,8 +1207,9 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
+# TODO(josh11b): Rename this to SyncOnReadVariable.
 class ReplicaLocalVariable(DistributedVariable, PerReplica,
-                           checkpointable.Checkpointable):
+                           trackable.Trackable):
   """Holds a map from device to variables whose values are reduced on save."""
 
   def __init__(
@@ -1243,11 +1247,8 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
   def _get_cross_replica(self):
     if self._aggregation == vs.VariableAggregation.ONLY_FIRST_REPLICA:
       return self.primary
-    # TODO(josh11b): Use a strategy-specific method.
-    total = math_ops.add_n(self._values)
-    if self._aggregation == vs.VariableAggregation.MEAN:
-      return total * (1./ len(self._values))
-    return total
+    return self._distribute_strategy.reduce(
+        reduce_util.ReduceOp.from_variable_aggregation(self.aggregation), self)
 
   def _as_graph_element(self):
     # pylint: disable=protected-access
@@ -1256,7 +1257,7 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
     return self.get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
-    """Overrides CheckpointableBase method.
+    """Overrides Trackable method.
 
     This allows both name-based and object-based save and restore of
     ReplicaLocalVariables.
@@ -1266,7 +1267,7 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
     """
     def _saveable_factory(name=self._common_name):
       return _ReplicaLocalSaveable(self, name)
-    return {checkpointable.VARIABLE_VALUE_KEY: _saveable_factory}
+    return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
 
 # Register a conversion function for ReplicaLocalVariable which allows as_ref to
@@ -1436,7 +1437,7 @@ def value_container(val):
 
 
 # TODO(josh11b): Descend from Variable.
-class AggregatingVariable(checkpointable.Checkpointable):
+class AggregatingVariable(trackable.Trackable):
   """A wrapper around a variable that aggregates updates across replicas."""
 
   def __init__(self, strategy, v, aggregation):
@@ -1514,7 +1515,7 @@ class AggregatingVariable(checkpointable.Checkpointable):
 
   # TODO(josh11b): Test saving & restoring.
   def _gather_saveables_for_checkpoint(self):
-    return {checkpointable.VARIABLE_VALUE_KEY: self._v}
+    return {trackable.VARIABLE_VALUE_KEY: self._v}
 
   # pylint: disable=multiple-statements
   def __add__(self, o): return self._v + o

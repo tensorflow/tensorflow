@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
@@ -32,6 +33,7 @@ from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.optimizer_v2 import rmsprop
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
@@ -225,6 +227,28 @@ class BaseLayerTest(keras_parameterized.TestCase):
     model(np.zeros((2, 4), dtype='float32'))
     self.assertTrue(model.built)
 
+  @test_util.run_in_graph_and_eager_modes
+  def test_default_add_weight(self):
+
+    class TestLayer(keras.layers.Layer):
+
+      def __init__(self):
+        super(TestLayer, self).__init__()
+        self.default_weight = self.add_weight()
+        self.weight_without_name = self.add_weight(shape=(3, 4))
+        self.regularized_weight_without_name = self.add_weight(
+            shape=(3, 4), regularizer='l2')
+
+    layer = TestLayer()
+    self.assertEqual(layer.default_weight.shape.as_list(), [])
+    self.assertEqual(layer.weight_without_name.shape.as_list(), [3, 4])
+    self.assertEqual(layer.default_weight.dtype.name, 'float32')
+    self.assertEqual(layer.weight_without_name.dtype.name, 'float32')
+    self.assertEqual(len(layer.losses), 1)
+    if not context.executing_eagerly():
+      # Cannot access tensor.name in eager execution.
+      self.assertTrue('Variable_2/Regularizer' in layer.losses[0].name)
+
   def test_learning_phase_freezing_for_layers(self):
     # This test is only meant to run in graph functions mode (ambient eager).
     # In forced eager, `model.predict` ignores the global learning phase
@@ -256,6 +280,91 @@ class BaseLayerTest(keras_parameterized.TestCase):
     self.assertEqual(get_learning_phase_value(), 1)
     keras.backend.set_learning_phase(0)
     self.assertEqual(get_learning_phase_value(), 0)
+
+  # Cannot be enabled with `run_eagerly=True`, see b/123904578
+  @test_util.run_all_in_graph_and_eager_modes
+  def test_layer_can_return_variable(self):
+
+    class ComputeSum(keras.layers.Layer):
+
+      def __init__(self):
+        super(ComputeSum, self).__init__()
+        self.total = variables.Variable(
+            initial_value=array_ops.zeros((1, 1)), trainable=False)
+        if not context.executing_eagerly():
+          keras.backend.get_session().run(self.total.initializer)
+
+      def call(self, inputs):
+        self.total.assign_add(inputs)
+        return self.total
+
+    inputs = keras.Input(shape=(1,))
+    model = keras.Model(inputs, ComputeSum()(inputs))
+    model.predict(np.ones((1, 1)))
+
+  def _get_layer_with_training_arg(self):
+
+    class TrainingLayer(keras.layers.Layer):
+      """A layer with a `training` argument in a defuned `call`."""
+
+      @def_function.function
+      def call(self, inputs, training=None):
+        if training is None:
+          training = keras.backend.learning_phase()
+        return tf_utils.smart_cond(training,
+                                   lambda: array_ops.ones_like(inputs),
+                                   lambda: array_ops.zeros_like(inputs))
+
+    return TrainingLayer()
+
+  @keras_parameterized.run_with_all_model_types
+  # b/124459427: can't test with `run_eagerly=True` for now.
+  @test_util.run_in_graph_and_eager_modes
+  def test_training_arg_in_defun(self):
+    layer = self._get_layer_with_training_arg()
+    model = testing_utils.get_model_from_layers([layer], input_shape=(1,))
+    model.compile(rmsprop.RMSprop(0.),
+                  loss='mae')
+    history = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
+    self.assertEqual(history.history['loss'][0], 1.)
+    loss = model.evaluate(np.zeros((1, 1)), np.zeros((1, 1)))
+    self.assertEqual(loss, 0.)
+
+    # Test that the argument injection performed in `call` is not active
+    # when the argument is passed explicitly.
+    layer = self._get_layer_with_training_arg()
+    inputs = keras.Input(shape=(1,))
+    # Pass `training` by name
+    outputs = layer(inputs, training=False)
+    model = keras.Model(inputs, outputs)
+    model.compile(rmsprop.RMSprop(0.),
+                  loss='mae')
+    history = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
+    self.assertEqual(history.history['loss'][0], 0.)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_raw_variable_assignment(self):
+
+    class RawVariableLayer(keras.layers.Layer):
+
+      def __init__(self, **kwargs):
+        super(RawVariableLayer, self).__init__(**kwargs)
+        # Test variables in nested structure.
+        self.var_list = [variables.Variable(1.), {'a': variables.Variable(2.)}]
+
+      def call(self, inputs):
+        return inputs * self.var_list[0] * self.var_list[1]['a']
+
+    model = testing_utils.get_model_from_layers([RawVariableLayer()],
+                                                input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 10))
+    # Checks that variables get initialized.
+    model.fit(x, y, batch_size=2, epochs=2)
+
+
+class SymbolicSupportTest(test.TestCase):
 
   def test_using_symbolic_tensors_with_tf_ops(self):
     # Single-input.
@@ -390,6 +499,9 @@ class NestedTrackingTest(test.TestCase):
     self.assertEqual(len(layer.weights), 8)
     self.assertEqual(len(layer.trainable_weights), 0)
     self.assertEqual(len(layer.non_trainable_weights), 8)
+    self.assertEqual(
+        set([layer.dense1, layer.dense2, layer.v1, layer.v2]),
+        set([obj for unused_name, obj in layer._checkpoint_dependencies]))
 
   def test_nested_layer_updates_losses_tracking(self):
     # Test that updates and losses from nested sublayers are
@@ -432,6 +544,34 @@ class NestedTrackingTest(test.TestCase):
       _ = layer(inputs)
       self.assertEqual(len(layer.losses), 3)
       self.assertEqual(len(layer.updates), 3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class NameScopingTest(keras_parameterized.TestCase):
+
+  def test_name_scope_layer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(10, name='MyName')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName/kernel:0')
+
+  def test_name_scope_sublayer(self):
+    x = keras.backend.placeholder(shape=(10, 10))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName2')
+    y = layer(x)
+    self.assertEqual(layer.bias.name, 'MyName2/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName2/kernel:0')
+    self.assertEqual(y.name, 'MyName2/MyAct/Relu:0')
+
+  def test_name_scope_tf_tensor(self):
+    x = ops.convert_to_tensor(np.ones((10, 10)))
+    layer = keras.layers.Dense(
+        10, activation=keras.layers.ReLU(name='MyAct'), name='MyName3')
+    layer(x)
+    self.assertEqual(layer.bias.name, 'MyName3/bias:0')
+    self.assertEqual(layer.kernel.name, 'MyName3/kernel:0')
 
 
 if __name__ == '__main__':

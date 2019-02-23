@@ -227,14 +227,14 @@ Status SingleMachine::GetPeakMemoryUsage(
 
   device_peak_memory->clear();
   for (Device* device : devices) {
-    AllocatorStats stats;
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
       return Status(error::INVALID_ARGUMENT,
                     "Tracking allocation is not enabled.");
     }
-    allocator->GetStats(&stats);
-    (*device_peak_memory)[device->name()] = stats.max_bytes_in_use;
+    absl::optional<AllocatorStats> stats = allocator->GetStats();
+    (*device_peak_memory)[device->name()] =
+        (stats ? stats->peak_bytes_in_use : 0);
   }
 
   return Status::OK();

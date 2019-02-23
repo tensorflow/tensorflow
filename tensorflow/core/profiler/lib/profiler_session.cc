@@ -15,22 +15,28 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include <string>
-#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
-#include "tensorflow/core/framework/graph.pb.h"
+#include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/gpu/tracer.h"
 #include "tensorflow/core/profiler/internal/runtime/eager_profiler.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
 namespace {
 
+// Track whether there's an active ProfilerSession.
+// Prevents another ProfilerSession from creating ProfilerInterface(s), as they
+// use singletons that do not allow concurrent profiling request (e.g.,
+// DeviceTracer).
+std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
+
 void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
-                                    tpu::Trace* trace,
+                                    profiler::Trace* trace,
                                     const uint64 profile_start_time_micros) {
   auto trace_devices = trace->mutable_devices();
   // TODO(fishx): use a lighter representation instead of GraphDef to insert
@@ -41,22 +47,35 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Create device
     auto* device_stats =
         run_metadata->mutable_step_stats()->mutable_dev_stats(device_id);
-    tensorflow::tpu::Device device;
+    profiler::Device device;
     device.set_name(device_stats->device());
     device.set_device_id(device_id);
-    tensorflow::tpu::Resource resource;
+    profiler::Resource resource;
     resource.set_name("0");
     resource.set_resource_id(0);
     (*device.mutable_resources())[0] = resource;
+    for (const auto& thread_name : device_stats->thread_names()) {
+      profiler::Resource resource;
+      resource.set_resource_id(thread_name.first);
+      resource.set_name(thread_name.second);
+      (*device.mutable_resources())[thread_name.first] = resource;
+    }
     (*trace_devices)[device_id] = device;
 
     // Emit events.
     for (auto node :
          run_metadata->step_stats().dev_stats(device_id).node_stats()) {
+      if (node.all_start_micros() < profile_start_time_micros) {
+        continue;
+      }
       auto* event = trace->add_trace_events();
       auto* args = event->mutable_args();
       event->set_device_id(device_id);
-      event->set_resource_id(0);
+      if (device_stats->device().find("host:CPU") != string::npos) {
+        event->set_resource_id(node.thread_id());
+      } else {
+        event->set_resource_id(0);
+      }
       event->set_name(node.node_name());
       event->set_timestamp_ps(
           (node.all_start_micros() - profile_start_time_micros) *
@@ -73,7 +92,7 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
 }  // namespace
 
 /*static*/ std::unique_ptr<ProfilerSession> ProfilerSession::Create(
-    EagerContext* const context) {
+    ProfilerContext* const context) {
   return absl::WrapUnique(new ProfilerSession(context));
 }
 
@@ -93,7 +112,13 @@ Status ProfilerSession::SerializeToString(string* content) {
     profiler->CollectData(&run_metadata).IgnoreError();
   }
 
-  tpu::Trace trace;
+  if (active_) {
+    // Allow another session to start.
+    session_active.store(false);
+    active_ = false;
+  }
+
+  profiler::Trace trace;
 
   ConvertRunMetadataToTraceEvent(&run_metadata, &trace, start_time_micros_);
 
@@ -101,13 +126,20 @@ Status ProfilerSession::SerializeToString(string* content) {
   return Status::OK();
 }
 
-ProfilerSession::ProfilerSession(EagerContext* const context)
-    : start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
+ProfilerSession::ProfilerSession(ProfilerContext* const context)
+    : active_(!session_active.exchange(true)),
+      start_time_micros_(Env::Default()->NowNanos() / EnvTime::kMicrosToNanos) {
+  if (!active_) {
+    status_ = tensorflow::Status(tensorflow::error::Code::UNAVAILABLE,
+                                 "Another profiling session is active.");
+    return;
+  }
+
   LOG(INFO) << "Profile Session started.";
 
-  if (context != nullptr) {
-    profilers_.push_back(
-        tensorflow::profiler::runtime::EagerProfiler::Create(context));
+  if (context->eager_context != nullptr) {
+    profilers_.push_back(tensorflow::profiler::runtime::EagerProfiler::Create(
+        context->eager_context));
   }
   profilers_.push_back(tensorflow::profiler::gpu::Tracer::Create());
 
@@ -121,6 +153,11 @@ ProfilerSession::ProfilerSession(EagerContext* const context)
 ProfilerSession::~ProfilerSession() {
   for (auto& profiler : profilers_) {
     profiler->Stop().IgnoreError();
+  }
+
+  if (active_) {
+    // Allow another session to start.
+    session_active.store(false);
   }
 }
 

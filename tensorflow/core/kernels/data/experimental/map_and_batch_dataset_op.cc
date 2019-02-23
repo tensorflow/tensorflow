@@ -450,7 +450,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
               result->UpdateStatus(allocate_status, offset);
             } else {
               for (size_t i = 0; i < return_values->size(); ++i) {
-                const Tensor& tensor = return_values->at(i);
+                Tensor& tensor = return_values->at(i);
                 Tensor* batch = &(result->output)[i];
                 if (tensor.NumElements() !=
                     (batch->NumElements() / batch->dim_size(0))) {
@@ -468,8 +468,8 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
                 // TODO(mrry): Add a version of DoParallelConcat that allows us
                 // to move `tensor` where possible, to speed up string tensor
                 // batching.
-                Status copy_status =
-                    batch_util::CopyElementToSlice(tensor, batch, offset);
+                Status copy_status = batch_util::CopyElementToSlice(
+                    std::move(tensor), batch, offset);
                 if (!copy_status.ok()) {
                   result->UpdateStatus(copy_status, offset);
                   break;

@@ -401,8 +401,8 @@ cudaError LaunchTopKKernel(const cudaStream_t& stream, int num_shards,
   // We are limited by the amount of shared memory we have per block.
   auto shared_memory_size = (num_shards + 1) * k * sizeof(Entry<T>);
 
-  TopKKernel<<<batch_size, num_shards, shared_memory_size, stream>>>(
-      input, length, k, sorted, output, indices);
+  CudaLaunchKernel(TopKKernel<T>, batch_size, num_shards, shared_memory_size,
+                   stream, input, length, k, sorted, output, indices);
   return cudaGetLastError();
 }
 

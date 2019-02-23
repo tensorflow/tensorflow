@@ -29,6 +29,7 @@ from tensorflow.python.distribute import input_lib
 from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
+from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
@@ -38,9 +39,11 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.util.tf_export import tf_export
 
 
 # TODO(yuefengz): support in-graph replication.
+@tf_export("distribute.experimental.MultiWorkerMirroredStrategy")
 class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
   """Distribution strategy that uses collective ops for all-reduce.
 
@@ -80,14 +83,15 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     else:
       self._initialize_local(cluster_resolver)
     # Save the num_gpus_per_worker for configure method.
-    self._num_gpus_per_worker = cluster_resolver.num_accelerators()
+    self._num_gpus_per_worker = (
+        cluster_resolver.num_accelerators().get("GPU", 0))
 
   def _initialize_local(self, cluster_resolver):
     """Initializes the object for local training."""
     self._is_chief = True
     self._num_workers = 1
 
-    num_gpus = cluster_resolver.num_accelerators()
+    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
     if num_gpus:
       local_devices = tuple("/device:GPU:%d" % i for i in range(num_gpus))
     else:
@@ -115,7 +119,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # TODO(yuefengz): The `num_gpus` is only for this particular task. It
     # assumes all workers have the same number of GPUs. We should remove this
     # assumption by querying all tasks for their numbers of GPUs.
-    num_gpus = cluster_resolver.num_accelerators()
+    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
     cluster_spec = multi_worker_util.normalize_cluster_spec(
         cluster_resolver.cluster_spec())
     task_type = cluster_resolver.task_type
@@ -307,7 +311,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators=self._num_gpus_per_worker)
+          num_accelerators={"GPU": self._num_gpus_per_worker})
       self._initialize_multi_worker(cluster_resolver)
       assert isinstance(self._get_cross_device_ops(),
                         cross_device_ops_lib.CollectiveAllReduce)
@@ -353,6 +357,29 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
         "/job:%s/task:%d" % (self._task_type, self._task_id))
 
     return updated_config
+
+  def _reduce_to(self, reduce_op, value, destinations):
+    if (isinstance(value, values.Mirrored) and
+        reduce_op == reduce_util.ReduceOp.MEAN):
+      return value
+    assert not isinstance(value, values.Mirrored)
+
+    if (isinstance(value, values.DistributedValues) and
+        len(self.worker_devices) == 1):
+      value = value.values[0]
+
+    # When there are multiple workers, we need to reduce across workers using
+    # collective ops.
+    if (not isinstance(value, values.DistributedValues) and
+        self._num_workers == 1):
+      # This function handles reducing values that are not PerReplica or
+      # Mirrored values. For example, the same value could be present on all
+      # replicas in which case `value` would be a single value or value could
+      # be 0.
+      return cross_device_ops_lib.reduce_non_distributed_value(
+          reduce_op, self._device_map, value, destinations)
+    return self._get_cross_device_ops().reduce(
+        reduce_op, value, destinations=destinations)
 
   @property
   def experimental_between_graph(self):

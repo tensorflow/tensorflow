@@ -49,11 +49,14 @@ class DependencyOptimizer : public GraphOptimizer {
   // Returns true if bypassing node does not increase the number of edges or
   // number of edges crossing a device boundary.
   bool BypassingNodeIsBeneficial(
-      const NodeDef& node,
+      const NodeDef& node, int num_controlling_fanins,
+      const absl::flat_hash_set<MutableGraphView::Edge>& fanin_edges,
       const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges) const;
   int NumEdgesIfBypassed(
-      const NodeDef& node,
-      const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges) const;
+      const NodeDef& node, int num_controlling_fanins,
+      const absl::flat_hash_set<MutableGraphView::Edge>& fanin_edges,
+      const absl::flat_hash_set<MutableGraphView::Edge>& fanout_edges,
+      int num_unique_fanout_nodes) const;
   // Returns true if node is not an Identity node or if it is an Identity
   // that is safe to remove.
   bool SafeToRemoveIdentity(const NodeDef& node) const;

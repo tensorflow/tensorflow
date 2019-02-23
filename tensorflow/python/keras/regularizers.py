@@ -54,6 +54,8 @@ class L1L2(Regularizer):
     self.l2 = K.cast_to_floatx(l2)
 
   def __call__(self, x):
+    if not self.l1 and not self.l2:
+      return K.constant(0.)
     regularization = 0.
     if self.l1:
       regularization += math_ops.reduce_sum(self.l1 * math_ops.abs(x))

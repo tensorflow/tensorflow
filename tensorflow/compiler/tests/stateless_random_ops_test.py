@@ -167,8 +167,8 @@ class StatelessRandomOpsTest(xla_test.XLATestCase):
         beta = (b - mu) / sigma
         z = normal_cdf(beta) - normal_cdf(alpha)
 
-        self.assertTrue((y >= a).sum() == n)
-        self.assertTrue((y <= b).sum() == n)
+        self.assertEqual((y >= a).sum(), n)
+        self.assertEqual((y <= b).sum(), n)
 
         # For more information on these calculations, see:
         # Burkardt, John. "The Truncated Normal Distribution".

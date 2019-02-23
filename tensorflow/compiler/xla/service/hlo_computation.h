@@ -369,13 +369,13 @@ class HloComputation {
   // channel complete).
   bool IsRemovable(const HloInstruction* instruction);
 
-  // Returns a map from channel-id to directed dependencies of the channel
-  // instructions. For send&recv pairs it means the send instruction and for
-  // all-reduce the union of the dependencies for all participating
-  // instructions.
-  using ChannelDependencyMap =
+  // Returns a map from channel-id to the group of instructions associated with
+  // the channel. These instructions will be considered as a single node for
+  // dependency purposes. Send and RecvDone are in the group, and AllReduces
+  // with the same channel id are in the group.
+  using ChannelDependencyGroup =
       absl::flat_hash_map<int64, absl::InlinedVector<HloInstruction*, 1>>;
-  ChannelDependencyMap ComputeChannelDependencies() const;
+  ChannelDependencyGroup ComputeChannelDependencies() const;
 
   // Returns true if this computation has a side effect. A computation has a
   // side effect if it contains one or more instructions with a side effect.
@@ -390,6 +390,10 @@ class HloComputation {
   void SetFusionInstruction(HloInstruction* fusion_instruction) {
     fusion_instruction_ = fusion_instruction;
   }
+
+  // Clear the unique ID of the computation so that it can be re-assigned, such
+  // as for the purpose of compacting the unique IDs.
+  void ClearUniqueIdInternal() { unique_id_ = -1; }
 
   // The id of this computation should be unique within the module.
   void SetUniqueId(int64 id) {
@@ -434,7 +438,7 @@ class HloComputation {
 
   enum VisitState { kVisiting, kVisited };
   void ComputeInstructionPostOrder(
-      const HloComputation::ChannelDependencyMap& channel_dependency_map,
+      const HloComputation::ChannelDependencyGroup& channel_dependency_map,
       std::vector<HloInstruction*>* post_order, HloInstruction* root,
       absl::flat_hash_map<HloInstruction*, VisitState>* visited) const;
 

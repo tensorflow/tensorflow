@@ -16,7 +16,6 @@ limitations under the License.
 #ifdef GOOGLE_CUDA
 #include "cuda/include/cuda.h"
 #include "tensorflow/stream_executor/cuda/cuda_activation.h"
-#include "tensorflow/stream_executor/cuda/cuda_driver_wrapper.h"
 #endif  // GOOGLE_CUDA
 
 #include "tensorflow/core/common_runtime/gpu/gpu_cudamalloc_allocator.h"
@@ -42,7 +41,7 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
   // allocate with cudaMalloc
   se::cuda::ScopedActivateExecutorContext scoped_activation{stream_exec_};
   CUdeviceptr rv = 0;
-  CUresult res = tensorflow::wrap::cuMemAlloc(&rv, num_bytes);
+  CUresult res = cuMemAlloc(&rv, num_bytes);
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "cuMemAlloc failed to allocate " << num_bytes;
     return nullptr;
@@ -55,8 +54,7 @@ void* GPUcudaMallocAllocator::AllocateRaw(size_t alignment, size_t num_bytes) {
 void GPUcudaMallocAllocator::DeallocateRaw(void* ptr) {
 #ifdef GOOGLE_CUDA
   // free with cudaFree
-  CUresult res =
-      tensorflow::wrap::cuMemFree(reinterpret_cast<CUdeviceptr>(ptr));
+  CUresult res = cuMemFree(reinterpret_cast<CUdeviceptr>(ptr));
   if (res != CUDA_SUCCESS) {
     LOG(ERROR) << "cuMemFree failed to free " << ptr;
   }

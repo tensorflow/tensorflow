@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/kernels/logging_ops.h"
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -640,7 +641,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
                       dimvec.size(), base, size, DeleteArray, base);
 }
 
-Status MessageToBuffer(const tensorflow::protobuf::Message& in,
+Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out) {
   if (out->data != nullptr) {
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
@@ -1308,6 +1309,13 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(
       attr_name, ArraySlice<const DataType>(
                      reinterpret_cast<const DataType*>(values), num_values));
+}
+
+void TF_SetAttrPlaceholder(TF_OperationDescription* desc, const char* attr_name,
+                           const char* placeholder) {
+  tensorflow::AttrValue attr_value;
+  attr_value.set_placeholder(placeholder);
+  desc->node_builder.Attr(attr_name, attr_value);
 }
 
 void TF_SetAttrFuncName(TF_OperationDescription* desc, const char* attr_name,
@@ -2954,4 +2962,11 @@ void TF_DeleteServer(TF_Server* server) {
   delete server;
 #endif
 }
+
+void TF_RegisterLogListener(void (*listener)(const char*)) {
+#ifndef __ANDROID__
+  tensorflow::logging::RegisterListener(listener);
+#endif
+}
+
 }  // end extern "C"

@@ -122,13 +122,13 @@ class UnionClusterResolverTest(test.TestCase):
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
                                             task_id=1, environment="cloud",
-                                            num_accelerators=8,
+                                            num_accelerators={"GPU": 8},
                                             rpc_layer="grpc")
 
     self.assertEqual(simple_resolver.task_type, "ps")
     self.assertEqual(simple_resolver.task_id, 1)
     self.assertEqual(simple_resolver.environment, "cloud")
-    self.assertEqual(simple_resolver.num_accelerators(), 8)
+    self.assertEqual(simple_resolver.num_accelerators(), {"GPU": 8})
     self.assertEqual(simple_resolver.rpc_layer, "grpc")
 
   def testOverrideSimpleClusterResolver(self):
@@ -139,7 +139,7 @@ class UnionClusterResolverTest(test.TestCase):
 
     simple_resolver = SimpleClusterResolver(base_cluster_spec, task_type="ps",
                                             task_id=1, environment="cloud",
-                                            num_accelerators=8,
+                                            num_accelerators={"GPU": 8},
                                             rpc_layer="grpc")
 
     simple_resolver.task_type = "worker"
@@ -187,7 +187,7 @@ class UnionClusterResolverTest(test.TestCase):
     })
     resolver1 = SimpleClusterResolver(cluster_spec_1, task_type="ps",
                                       task_id=1, environment="cloud",
-                                      num_accelerators=8,
+                                      num_accelerators={"GPU": 8},
                                       rpc_layer="grpc")
 
     cluster_spec_2 = server_lib.ClusterSpec({
@@ -196,7 +196,7 @@ class UnionClusterResolverTest(test.TestCase):
     })
     resolver2 = SimpleClusterResolver(cluster_spec_2, task_type="worker",
                                       task_id=2, environment="local",
-                                      num_accelerators=16,
+                                      num_accelerators={"GPU": 16},
                                       rpc_layer="http")
 
     union_resolver = UnionClusterResolver(resolver1, resolver2)
@@ -204,7 +204,7 @@ class UnionClusterResolverTest(test.TestCase):
     self.assertEqual(union_resolver.task_type, "ps")
     self.assertEqual(union_resolver.task_id, 1)
     self.assertEqual(union_resolver.environment, "cloud")
-    self.assertEqual(union_resolver.num_accelerators(), 8)
+    self.assertEqual(union_resolver.num_accelerators(), {"GPU": 8})
     self.assertEqual(union_resolver.rpc_layer, "grpc")
 
     union_resolver.task_type = "worker"

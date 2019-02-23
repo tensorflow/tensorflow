@@ -46,8 +46,11 @@ def set_verbosity(level, alsologtostdout=False):
   more in-depth debugging.
 
   There are two controls that control the logging verbosity:
+
    * The `set_verbosity` function
+
    * The `AUTOGRAPH_VERBOSITY` environment variable
+
   `set_verbosity` takes precedence over the environment variable.
 
   For example:
@@ -133,6 +136,8 @@ def log(level, msg, *args, **kwargs):
 
 def warn(msg, *args, **kwargs):
   logging.warn(msg, *args, **kwargs)
+  if echo_log_to_stdout:
+    print('WARNING:', msg % args)
 
 
 def warn_first_n(msg, *args, **kwargs):

@@ -7,13 +7,25 @@ licenses(["notice"])  # Apache 2.0
 load("//tensorflow:tensorflow.bzl", "tf_py_wrap_cc")
 
 cc_library(
+    name = "numpy",
+    srcs = ["numpy.cc"],
+    hdrs = ["numpy.h"],
+    deps = [
+        "//third_party/py/numpy:headers",
+        "//third_party/python_runtime:headers",
+    ],
+)
+
+cc_library(
     name = "interpreter_wrapper_lib",
     srcs = ["interpreter_wrapper.cc"],
     hdrs = ["interpreter_wrapper.h"],
     deps = [
+        ":numpy",
         ":python_error_reporter",
         ":python_utils",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:builtin_ops",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
@@ -36,7 +48,9 @@ cc_library(
     srcs = ["python_utils.cc"],
     hdrs = ["python_utils.h"],
     deps = [
+        ":numpy",
         "//tensorflow/lite:framework",
+        "//tensorflow/lite:string_util",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
     ],
