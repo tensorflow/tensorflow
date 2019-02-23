@@ -123,7 +123,7 @@ template <typename T>
 NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals,
                          const TensorShape& shape) {
   Scope s = Scope::NewRootScope();
-  Tensor t = ::tensorflow::test::AsTensor<T>(vals, shape);
+  Tensor t = test::AsTensor<T>(vals, shape);
   auto const_op = ops::Const(s.WithOpName(name), t);
   return const_op.node()->def();
 }
@@ -968,7 +968,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
   Status RunConvertGraphDefToEngine(Scope* s) {
     GraphDef gdef;
     TF_EXPECT_OK(s->ToGraphDef(&gdef));
-    std::vector<tensorflow::PartialTensorShape> input_shapes;
+    std::vector<PartialTensorShape> input_shapes;
     int batch_size = -1;
     for (const NodeDef& node : gdef.node()) {
       absl::string_view node_name(node.name());
@@ -1323,34 +1323,34 @@ void TestConvertConst(OpConverterTest* test) {
     reset_and_test(t, false, {}, {});
   }
   {
-    Tensor t = ::tensorflow::test::AsScalar<InputCType>(12);
+    Tensor t = test::AsScalar<InputCType>(12);
     reset_and_test(t, false, {1}, {12});
     reset_and_test(t, true, {1}, {12});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2});
+    Tensor t = test::AsTensor<InputCType>({1, 2});
     reset_and_test(t, false, {2}, {1, 2});
     reset_and_test(t, true, {2}, {1, 2});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 2, 3, 4, 5, 6});
     reset_and_test(t, true, {2, 3}, {1, 2, 3, 4, 5, 6});
   }
   {
     // Set all tensor elements to the same value. Such tensors are encoded
     // using a single element list in tensor proto.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 1, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {1, 1, 1, 1, 1, 1});
   }
   {
     // Set trailing tensor elements to the same value. Such tensors are
     // encoded by truncating all equal elements except the first one.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {2, 2, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {2, 2, 1, 1, 1, 1});
   }
