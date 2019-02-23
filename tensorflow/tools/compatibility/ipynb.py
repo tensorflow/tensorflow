@@ -38,15 +38,15 @@ def process_file(in_filename, out_filename, upgrader):
   with tempfile.NamedTemporaryFile("w", delete=False) as temp_file:
 
     processed_file, new_file_content, log, process_errors = (
-      upgrader.update_string_pasta("\n".join(raw_lines), in_filename))
+        upgrader.update_string_pasta("\n".join(raw_lines), in_filename))
 
     if temp_file and processed_file:
       new_notebook = _update_notebook(
-        notebook, raw_code, new_file_content.split("\n"))
+          notebook, raw_code, new_file_content.split("\n"))
       json.dump(new_notebook, temp_file)
     else:
       raise SyntaxError(
-        "Was not able to process the file: \n%s\n" % ''.join(log))
+          "Was not able to process the file: \n%s\n" % ''.join(log))
 
     files_processed = processed_file
     report_text = upgrader._format_log(log, in_filename, out_filename)
@@ -88,8 +88,8 @@ def _get_code(input_file):
         # sometimes a line would start with `\n` and content after
         # that's the hack for this
         raw_code.append(
-          CodeLine(cell_index,
-                   code_line.rstrip().replace('\n', "###===")))
+            CodeLine(cell_index,
+                     code_line.rstrip().replace('\n', "###===")))
 
       cell_index += 1
 
@@ -112,13 +112,13 @@ def _update_notebook(original_notebook, original_raw_lines, updated_code_lines):
       continue
 
     applicable_lines = [
-      idx for idx, code_line in enumerate(original_raw_lines)
-      if code_line.cell_number == code_cell_idx]
+        idx for idx, code_line in enumerate(original_raw_lines)
+        if code_line.cell_number == code_cell_idx]
 
     new_code = [updated_code_lines[idx] for idx in applicable_lines]
 
     cell['source'] = "\n".join(new_code).replace(
-                        '###!!!', '').replace("###===", "\n")
+                          '###!!!', '').replace("###===", "\n")
     code_cell_idx += 1
 
   return new_notebook
