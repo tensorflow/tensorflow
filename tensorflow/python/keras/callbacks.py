@@ -1194,10 +1194,14 @@ class TensorBoard(Callback):
     if kwargs.get('embeddings_freq', False):
       logging.warning('Embeddings will be ignored in TensorFlow 2.0 '
                       'for the `TensorBoard` Callback.')
+    if kwargs.get('batch_size', False):
+      logging.warning('`batch_size` is no longer needed in the '
+                      '`TensorBoard` Callback and will be ignored '
+                      'in TensorFlow 2.0.')
 
     unrecognized_kwargs = set(kwargs.keys()) - {
         'write_grads', 'embeddings_freq', 'embeddings_layer_names',
-        'embeddings_metadata', 'embeddings_data'
+        'embeddings_metadata', 'embeddings_data', 'batch_size'
     }
 
     # Only allow kwargs that were supported in V1.
