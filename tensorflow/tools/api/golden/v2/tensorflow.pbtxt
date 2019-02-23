@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "Module"
+    mtype: "<class \'tensorflow.python.module.module.ModuleMetaclass\'>"
+  }
+  member {
     name: "Operation"
     mtype: "<type \'type\'>"
   }
@@ -537,10 +541,6 @@ tf_module {
     argspec: "args=[\'device_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
-    name: "div_no_nan"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
-  }
-  member_method {
     name: "divide"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -775,6 +775,10 @@ tf_module {
   member_method {
     name: "not_equal"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "numpy_function"
+    argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "one_hot"

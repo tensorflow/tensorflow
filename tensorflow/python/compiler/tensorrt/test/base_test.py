@@ -20,8 +20,9 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.compiler.tensorrt.test import tf_trt_integration_test_base as trt_test
+from tensorflow.python.compiler.tensorrt.wrap_conversion import add_test_value
+from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -154,7 +155,7 @@ class PartiallyConvertedTestA(trt_test.TfTrtIntegrationTestBase):
     """Setup method."""
     super(PartiallyConvertedTestA, self).setUp()
     # Let it fail to build the second engine.
-    trt_convert.add_test_value("TRTEngineOp_1:CreateTRTNode", "fail")
+    add_test_value("TRTEngineOp_1:CreateTRTNode", "fail")
 
   def GetParams(self):
     """Create a graph containing two segment."""
@@ -209,8 +210,8 @@ class PartiallyConvertedTestB(PartiallyConvertedTestA):
     """Setup method."""
     super(PartiallyConvertedTestB, self).setUp()
     # Let it fail to build the first engine.
-    trt_convert.clear_test_values("")
-    trt_convert.add_test_value("TRTEngineOp_0:CreateTRTNode", "fail")
+    clear_test_values("")
+    add_test_value("TRTEngineOp_0:CreateTRTNode", "fail")
 
   def ExpectedEnginesToBuild(self, run_params):
     """Return the expected engines to build."""

@@ -24,6 +24,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/cuda_launch_config.h"
 
 namespace tensorflow {
 
@@ -65,8 +66,8 @@ struct CheckNumericsLaunch {
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
-    CheckNumericsKernel<T><<<num_blocks, block_size, 0, d.stream()>>>(
-        data, size, abnormal_detected);
+    CudaLaunchKernel(CheckNumericsKernel<T>, num_blocks, block_size, 0,
+                     d.stream(), data, size, abnormal_detected);
   }
 };
 

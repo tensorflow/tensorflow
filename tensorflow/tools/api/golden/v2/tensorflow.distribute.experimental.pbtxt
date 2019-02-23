@@ -1,0 +1,11 @@
+path: "tensorflow.distribute.experimental"
+tf_module {
+  member {
+    name: "MultiWorkerMirroredStrategy"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ParameterServerStrategy"
+    mtype: "<type \'type\'>"
+  }
+}

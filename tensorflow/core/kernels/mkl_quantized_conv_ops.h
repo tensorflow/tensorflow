@@ -60,9 +60,9 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
                                            const Tensor& max_b_vector,
                                            Tensor** min_c_vector,
                                            Tensor** max_c_vector) {
-  CHECK(min_b_vector.NumElements() == (*min_c_vector)->NumElements());
-  CHECK(max_b_vector.NumElements() == (*max_c_vector)->NumElements());
-
+  DCHECK(min_b_vector.NumElements() == (*min_c_vector)->NumElements());
+  DCHECK(max_b_vector.NumElements() == (*max_c_vector)->NumElements());
+  size_t n_channel = min_b_vector.NumElements();
   const int64 c_highest = static_cast<int64>(Eigen::NumTraits<T3>::highest());
   const int64 c_lowest = static_cast<int64>(Eigen::NumTraits<T3>::lowest());
   const float* min_b = min_b_vector.flat<float>().data();
@@ -70,7 +70,7 @@ void MklQuantizationRangeForMultiplication(float min_a, float max_a,
   float* min_c = (*min_c_vector)->flat<float>().data();
   float* max_c = (*max_c_vector)->flat<float>().data();
 #pragma omp parallel for
-  for (size_t n = 0; n < min_b_vector.NumElements(); n++) {
+  for (size_t n = 0; n < n_channel; ++n) {
     float a_float_for_one_quant_level =
         MklFloatForOneQuantizedLevel<T1>(min_a, max_a);
     float b_float_for_one_quant_level =

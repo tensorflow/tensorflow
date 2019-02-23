@@ -35,9 +35,9 @@ void AdjustHueGPU<T>::operator()(GPUDevice* device,
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  internal::adjust_hsv_nhwc<true, false, false, T>
-      <<<block_count, threads_per_block, 0, stream>>>(
-          number_of_elements, input, output, delta, nullptr, nullptr);
+  CudaLaunchKernel(internal::adjust_hsv_nhwc<true, false, false, T>,
+                   block_count, threads_per_block, 0, stream,
+                   number_of_elements, input, output, delta, nullptr, nullptr);
 }
 
 template struct AdjustHueGPU<float>;

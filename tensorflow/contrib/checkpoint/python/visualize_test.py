@@ -28,7 +28,7 @@ from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.layers import core
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.training import adam
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 try:
   import pydot  # pylint: disable=g-import-not-at-top
@@ -57,7 +57,7 @@ class DotGraphTests(test.TestCase):
       model = MyModel()
       optimizer = adam.AdamOptimizer(0.001)
       optimizer_step = resource_variable_ops.ResourceVariable(12)
-      save_checkpoint = checkpointable_utils.Checkpoint(
+      save_checkpoint = trackable_utils.Checkpoint(
           optimizer=optimizer, model=model, optimizer_step=optimizer_step)
       optimizer.minimize(functools.partial(model, input_value))
       checkpoint_directory = self.get_temp_dir()

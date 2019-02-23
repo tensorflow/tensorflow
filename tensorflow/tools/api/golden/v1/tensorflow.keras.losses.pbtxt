@@ -13,7 +13,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CosineProximity"
+    name: "CosineSimilarity"
     mtype: "<type \'type\'>"
   }
   member {
@@ -106,6 +106,10 @@ tf_module {
   }
   member_method {
     name: "cosine_proximity"
+    argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
+    name: "cosine_similarity"
     argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {

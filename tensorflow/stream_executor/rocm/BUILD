@@ -33,7 +33,7 @@ filegroup(
 cc_library(
     name = "rocm_diagnostics",
     srcs = if_rocm_is_configured(["rocm_diagnostics.cc"]),
-    hdrs = [],
+    hdrs = if_rocm_is_configured(["rocm_diagnostics.h"]),
     deps = if_rocm_is_configured([
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
@@ -47,7 +47,7 @@ cc_library(
 cc_library(
     name = "rocm_driver",
     srcs = if_rocm_is_configured(["rocm_driver.cc"]),
-    hdrs = [],
+    hdrs = if_rocm_is_configured(["rocm_driver_wrapper.h"]),
     deps = if_rocm_is_configured([
         ":rocm_diagnostics",
         "@com_google_absl//absl/base",
@@ -57,6 +57,7 @@ cc_library(
         "//tensorflow/stream_executor/gpu:gpu_driver_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
         "@local_config_rocm//rocm:rocm_headers",
     ]),
 )
@@ -140,55 +141,62 @@ cc_library(
     deps = ["//tensorflow/stream_executor:platform"],
 )
 
-# FIXME: enable in future PRs
-#cc_library(
-#    name = "rocblas_plugin",
-#    srcs = ["rocm_blas.cc"],
-#    hdrs = ["rocm_blas.h"],
-#    visibility = ["//visibility:public"],
-#    deps = [
-#        ":rocm_gpu_executor",
-#        ":rocm_platform_id",
-#        "//third_party/eigen3",
-#        "//tensorflow/core:lib_internal",
-#        "//tensorflow/stream_executor",
-#        "//tensorflow/stream_executor:event",
-#        "//tensorflow/stream_executor:host_or_device_scalar",
-#        "//tensorflow/stream_executor:plugin_registry",
-#        "//tensorflow/stream_executor:scratch_allocator",
-#        "//tensorflow/stream_executor:timer",
-#        "//tenosrflow/stream_executor/gpu:gpu_activation_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_stream_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_timer_header",
-#        "//tensorflow/stream_executor/lib",
-#        "//tensorflow/stream_executor/platform",
-#        "//tensorflow/stream_executor/platform:dso_loader",
-#        "@com_google_absl//absl/strings",
-#        "@local_config_rocm//rocm:rocm_headers",
-#    ] + if_static(["@local_config_rocm//rocm:rocblas"]),
-#    alwayslink = True,
-#)
+cc_library(
+    name = "rocblas_plugin",
+    srcs = if_rocm_is_configured(["rocm_blas.cc"]),
+    hdrs = if_rocm_is_configured(["rocm_blas.h"]),
+    visibility = ["//visibility:public"],
+    deps = if_rocm_is_configured([
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        "//third_party/eigen3",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/stream_executor",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:host_or_device_scalar",
+        "//tensorflow/stream_executor:plugin_registry",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor:timer",
+        "//tensorflow/stream_executor/gpu:gpu_activation",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_timer_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+        "@com_google_absl//absl/strings",
+        "@local_config_rocm//rocm:rocm_headers",
+    ] + if_static([
+        "@local_config_rocm//rocm:rocblas",
+    ])),
+    alwayslink = True,
+)
 
-# FIXME: enable in future PRs
-#cc_library(
-#    name = "rocfft_plugin",
-#    srcs = ["rocm_fft.cc"],
-#    hdrs = [],
-#    visibility = ["//visibility:public"],
-#    deps = [
-#        ":rocm_platform_id",
-#        "//tensorflow/stream_executor:event",
-#        "//tensorflow/stream_executor:fft",
-#        "//tensorflow/stream_executor:plugin_registry",
-#        "//tensorflow/stream_executor:scratch_allocator",
-#        "//tenosrflow/stream_executor/gpu:gpu_stream_header",
-#        "//tensorflow/stream_executor/lib",
-#        "//tensorflow/stream_executor/platform",
-#        "//tensorflow/stream_executor/platform:dso_loader",
-#        "@local_config_rocm//rocm:rocm_headers",
-#    ] + if_static(["@local_config_rocm//rocm:rocfft"]),
-#    alwayslink = True,
-#)
+cc_library(
+    name = "rocfft_plugin",
+    srcs = if_rocm_is_configured(["rocm_fft.cc"]),
+    hdrs = if_rocm_is_configured(["rocm_fft.h"]),
+    visibility = ["//visibility:public"],
+    deps = if_rocm_is_configured([
+        ":rocm_platform_id",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:fft",
+        "//tensorflow/stream_executor:plugin_registry",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor/gpu:gpu_activation",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_kernel_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+        "@local_config_rocm//rocm:rocm_headers",
+    ] + if_static([
+        "@local_config_rocm//rocm:rocfft",
+    ])),
+    alwayslink = True,
+)
 
 # FIXME: enable in future PRs
 #cc_library(
@@ -229,26 +237,30 @@ cc_library(
 #    alwayslink = True,
 #)
 
-# FIXME: enable in future PRs
-#cc_library(
-#    name = "rocrand_plugin",
-#    srcs = ["rocm_rng.cc"],
-#    hdrs = [],
-#    deps = [
-#        ":rocm_gpu_executor",
-#        ":rocm_platform_id",
-#        "@local_config_rocm//rocm:rocm_headers",
-#        "//tensorflow/stream_executor:event",
-#        "//tensorflow/stream_executor:plugin_registry",
-#        "//tensorflow/stream_executor:rng",
-#        "//tenosrflow/stream_executor/gpu:gpu_activation_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_stream_header",
-#        "//tensorflow/stream_executor/lib",
-#        "//tensorflow/stream_executor/platform",
-#        "//tensorflow/stream_executor/platform:dso_loader",
-#    ] + if_static(["@local_config_rocm//rocm:curand"]),
-#    alwayslink = True,
-#)
+cc_library(
+    name = "rocrand_plugin",
+    srcs = if_rocm_is_configured(["rocm_rng.cc"]),
+    hdrs = if_rocm_is_configured([]),
+    deps = if_rocm_is_configured([
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        "@local_config_rocm//rocm:rocm_headers",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:plugin_registry",
+        "//tensorflow/stream_executor:rng",
+        "//tensorflow/stream_executor/gpu:gpu_activation_header",
+        "//tensorflow/stream_executor/gpu:gpu_helpers_header",
+        "//tensorflow/stream_executor/gpu:gpu_executor_header",
+        "//tensorflow/stream_executor/gpu:gpu_rng_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+    ] + if_static([
+        "@local_config_rocm//rocm:hiprand",
+    ])),
+    alwayslink = True,
+)
 
 cc_library(
     name = "all_runtime",
@@ -257,9 +269,9 @@ cc_library(
     deps = if_rocm_is_configured([
         # FIXME: enable in future PRs
         #":miopen_plugin",
-        #":rocfft_plugin",
-        #":rocblas_plugin",
-        #":rocrand_plugin",
+        ":rocfft_plugin",
+        ":rocblas_plugin",
+        ":rocrand_plugin",
         ":rocm_driver",
         ":rocm_platform",
     ]),

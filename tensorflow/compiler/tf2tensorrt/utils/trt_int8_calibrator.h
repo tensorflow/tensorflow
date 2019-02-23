@@ -34,7 +34,12 @@ namespace tensorrt {
 // TRTs pull model for calibration. When TRT implements a means for
 // a push calibration This class should be updated accordingly
 
+// IInt8EntropyCalibrator2 is prefferred for TRT 5.1+.
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator2 {
+#else
 struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
+#endif
  public:
   // Construct a calibrator for future calibration.
   TRTInt8Calibrator(

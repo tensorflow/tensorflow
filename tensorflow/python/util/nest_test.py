@@ -231,17 +231,17 @@ class NestTest(parameterized.TestCase, test.TestCase):
                             ["and", "goodbye", "again"])
 
   @test_util.assert_no_new_pyobjects_executing_eagerly
-  def testIsSequence(self):
-    self.assertFalse(nest.is_sequence("1234"))
-    self.assertTrue(nest.is_sequence([1, 3, [4, 5]]))
-    self.assertTrue(nest.is_sequence(((7, 8), (5, 6))))
-    self.assertTrue(nest.is_sequence([]))
-    self.assertTrue(nest.is_sequence({"a": 1, "b": 2}))
-    self.assertFalse(nest.is_sequence(set([1, 2])))
+  def testIsNested(self):
+    self.assertFalse(nest.is_nested("1234"))
+    self.assertTrue(nest.is_nested([1, 3, [4, 5]]))
+    self.assertTrue(nest.is_nested(((7, 8), (5, 6))))
+    self.assertTrue(nest.is_nested([]))
+    self.assertTrue(nest.is_nested({"a": 1, "b": 2}))
+    self.assertFalse(nest.is_nested(set([1, 2])))
     ones = array_ops.ones([2, 3])
-    self.assertFalse(nest.is_sequence(ones))
-    self.assertFalse(nest.is_sequence(math_ops.tanh(ones)))
-    self.assertFalse(nest.is_sequence(np.ones((4, 5))))
+    self.assertFalse(nest.is_nested(ones))
+    self.assertFalse(nest.is_nested(math_ops.tanh(ones)))
+    self.assertFalse(nest.is_nested(np.ones((4, 5))))
 
   @parameterized.parameters({"mapping_type": _CustomMapping},
                             {"mapping_type": dict})

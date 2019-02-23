@@ -86,7 +86,8 @@ IrEmitter::IrEmitter(
     llvm::Module* llvm_module,
     std::unordered_map<const HloInstruction*, int64> instruction_to_profile_idx,
     std::unordered_map<const HloComputation*, int64> computation_to_profile_idx,
-    const TargetMachineFeatures* target_machine_features)
+    const TargetMachineFeatures* target_machine_features,
+    bool emit_code_for_msan)
     : assignment_(assignment),
       module_(llvm_module),
       arch_type_(llvm::Triple(llvm_module->getTargetTriple()).getArch()),
@@ -96,7 +97,8 @@ IrEmitter::IrEmitter(
       alias_analysis_(hlo_module, assignment, &llvm_module->getContext()),
       hlo_module_config_(hlo_module.config()),
       is_top_level_computation_(false),
-      target_machine_features_(*target_machine_features) {
+      target_machine_features_(*target_machine_features),
+      emit_code_for_msan_(emit_code_for_msan) {
   b_.setFastMathFlags(llvm_ir::GetFastMathFlags(
       /*fast_math_enabled=*/hlo_module_config_.debug_options()
           .xla_cpu_enable_fast_math()));
@@ -583,7 +585,7 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
       b_.getVoidTy(),
       {b_.getInt64Ty(), b_.getInt64Ty(), b_.getInt64Ty(),
        b_.getInt8PtrTy()->getPointerTo(), b_.getInt32Ty(),
-       b_.getInt32Ty()->getPointerTo(), b_.getInt8PtrTy(),
+       b_.getInt32Ty()->getPointerTo(), b_.getInt1Ty(), b_.getInt8PtrTy(),
        b_.getInt64Ty()->getPointerTo(), less_than_function->getType()},
       /*isVarArg=*/false);
   auto* key_value_sort_func = llvm::dyn_cast<llvm::Function>(
@@ -616,8 +618,8 @@ Status IrEmitter::HandleSort(HloInstruction* hlo) {
        {b_.getInt64(higher_dimensions), b_.getInt64(sort_dimension_elements),
         b_.getInt64(lower_dimensions), values,
         b_.getInt32(sort->operand_count()), sizes,
-        GetExecutableRunOptionsArgument(), GetProfileCountersArgument(),
-        less_than_function});
+        b_.getInt1(sort->is_stable()), GetExecutableRunOptionsArgument(),
+        GetProfileCountersArgument(), less_than_function});
 
   if (sort->values_count() > 0) {
     llvm_ir::EmitTuple(GetIrArrayFor(sort), destination_addresses, &b_,
@@ -2224,6 +2226,25 @@ Status IrEmitter::HandleCustomCall(HloInstruction* custom_call) {
     llvm::Value* slot_in_operands_alloca =
         InBoundsGEP(operands_alloca, {b_.getInt64(i)});
     Store(operand_as_i8ptr, slot_in_operands_alloca);
+  }
+  if (emit_code_for_msan_) {
+    // Mark the alloca as initialized for msan. The buffer gets read by the
+    // custom callee, which might be msan-instrumented.
+    // TODO(b/66051036): Run the msan instrumentation pass instead.
+    const llvm::DataLayout& dl = module_->getDataLayout();
+    llvm::Type* intptr_type = b_.getIntPtrTy(dl);
+    auto* msan_unpoison_ir_function = llvm::cast<llvm::Function>(
+        module_
+            ->getOrInsertFunction(
+                "__msan_unpoison",
+                llvm::FunctionType::get(
+                    /*Result=*/b_.getVoidTy(),
+                    /*Params=*/{i8_ptr_type, intptr_type}, /*isVarArg=*/false))
+            .getCallee());
+    Call(msan_unpoison_ir_function,
+         {PointerCast(operands_alloca, i8_ptr_type),
+          llvm::ConstantInt::get(
+              intptr_type, *operands_alloca->getAllocationSizeInBits(dl) / 8)});
   }
   auto* custom_call_ir_function = llvm::dyn_cast<llvm::Function>(
       module_

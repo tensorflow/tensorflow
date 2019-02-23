@@ -21,11 +21,11 @@
 #   substitutions: A dictionary mapping strings to their substitutions
 
 def template_rule_impl(ctx):
-  ctx.template_action(
-      template = ctx.file.src,
-      output = ctx.outputs.out,
-      substitutions = ctx.attr.substitutions,
-  )
+    ctx.template_action(
+        template = ctx.file.src,
+        output = ctx.outputs.out,
+        substitutions = ctx.attr.substitutions,
+    )
 
 template_rule = rule(
     attrs = {

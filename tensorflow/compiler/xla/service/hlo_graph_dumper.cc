@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
 #include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -536,7 +535,12 @@ stylesheet=<
     }
   }
 
-  return StrFormat(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
+  // Browsers require that we URI-encode the contents of our data URI.  (It
+  // seems this was a relatively recent change?) In practice, this means that we
+  // need to escape '#'.
+  return StrFormat(
+      fmt, graph_label,
+      absl::StrReplaceAll(StrJoin(edge_css_rules, "\n"), {{"#", "%23"}}));
 }
 
 string HloDotDumper::Footer() { return StrCat(StrJoin(edges_, "\n"), "\n}"); }
@@ -949,6 +953,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -957,6 +962,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
@@ -1282,8 +1288,9 @@ namespace {
 
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
-NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
-                                      int64 radius) {
+NodeFilter MakeNodeRadiusAroundFilter(
+    const HloInstruction* root, int64 radius,
+    const absl::flat_hash_set<const HloInstruction*>& boundary) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
   absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
@@ -1297,6 +1304,9 @@ NodeFilter MakeNodeRadiusAroundFilter(const HloInstruction* root,
 
     nodes[instr] = kNormalNode;
     if (depth == radius) {
+      continue;
+    }
+    if (boundary.contains(instr)) {
       continue;
     }
 
@@ -1447,9 +1457,6 @@ string SaveGraph(const string& graph,
     case GraphRendererInterface::DOT_GRAPH:
       file_extension = ".dot";
       break;
-    case GraphRendererInterface::TF_GRAPHDEF:
-      file_extension = ".pbtxt";
-      break;
   }
   string path = JoinPath(dest_path, StrCat("hlo_graph_", output_num++, "."));
   auto status = Status::OK();
@@ -1487,25 +1494,27 @@ string ExportGraph(const string& graph,
 
 }  // namespace
 
+string HloComputationToDotGraph(const HloComputation& computation,
+                                const DotGraphOptions& options) {
+  DebugOptions default_debug_options;
+  return HloDotDumper(&computation, options.label,
+                      options.debug_options ? *options.debug_options
+                                            : default_debug_options,
+                      options.show_backend_config, options.profile,
+                      NodeFilter())
+      .Dump();
+}
+
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,
                  bool show_backend_config) {
   GraphRendererInterface::GraphKind graph_kind;
-  string graph;
-  if (debug_options.xla_hlo_dump_as_graphdef()) {
-    HloTfGraphBuilder builder(debug_options);
-    TF_CHECK_OK(builder.AddComputation(computation));
-    CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
-                                                          &graph));
-    graph_kind = GraphRendererInterface::TF_GRAPHDEF;
-  } else {
-    graph =
-        HloDotDumper(&computation, label, debug_options, show_backend_config,
-                     hlo_execution_profile, NodeFilter())
-            .Dump();
-    graph_kind = GraphRendererInterface::DOT_GRAPH;
-  }
+  string graph =
+      HloDotDumper(&computation, label, debug_options, show_backend_config,
+                   hlo_execution_profile, NodeFilter())
+          .Dump();
+  graph_kind = GraphRendererInterface::DOT_GRAPH;
 
   string graph_url = ExportGraph(graph, graph_kind, debug_options);
   LOG(INFO) << "computation " << computation.name() << " [" << label
@@ -1513,12 +1522,13 @@ string DumpGraph(const HloComputation& computation, const string& label,
   return graph_url;
 }
 
-string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_backend_config) {
+string DumpNeighborhoodAround(
+    const HloInstruction& node, int radius, bool show_backend_config,
+    const absl::flat_hash_set<const HloInstruction*>& boundary) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
-  NodeFilter filter = MakeNodeRadiusAroundFilter(&node, radius);
+  NodeFilter filter = MakeNodeRadiusAroundFilter(&node, radius, boundary);
   string graph =
       HloDotDumper(node.parent(), label, debug_options, show_backend_config,
                    /*profile=*/nullptr, filter)

@@ -22,10 +22,39 @@ import functools
 
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.ops import array_ops
 from tensorflow.python.saved_model import loader_impl
 from tensorflow.python.saved_model import signature_serialization
 from tensorflow.python.training import saver as tf_saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
+
+
+class _Initializer(tracking.TrackableResource):
+  """Represents an initialization operation restored from a SavedModel.
+
+  Without this object re-export of imported 1.x SavedModels would omit the
+  original SavedModel's initialization procedure.
+
+  Created when `tf.saved_model.load` loads a TF 1.x-style SavedModel with an
+  initialization op. This object holds a function which runs the
+  initialization. It does not require any manual user intervention;
+  `tf.saved_model.save` will see this object and automatically add it to the
+  exported SavedModel, and `tf.saved_model.load` runs the initialization
+  function automatically.
+  """
+
+  def __init__(self, init_fn, asset_paths):
+    super(_Initializer, self).__init__()
+    self._asset_paths = asset_paths
+    self._init_fn = init_fn
+
+  def create_resource(self):
+    return array_ops.placeholder(
+        dtype=dtypes.resource, shape=[], name="unused_resource")
+
+  def initialize(self):
+    self._init_fn(*[path.asset_path for path in self._asset_paths])
 
 
 class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
@@ -78,7 +107,12 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
                    for name, out in signature_def.outputs.items()})
       # pylint: disable=protected-access
       signature_fn._arg_keywords = input_names
-      signature_fn._num_positional_args = 0
+      if len(input_names) == 1:
+        # Allowing positional arguments does not create any ambiguity if there's
+        # only one.
+        signature_fn._num_positional_args = 1
+      else:
+        signature_fn._num_positional_args = 0
       # pylint: enable=protected-access
       signature_functions[signature_key] = signature_fn
     return signature_functions
@@ -86,12 +120,6 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
   def load(self, tags):
     """Creates an object from the MetaGraph identified by `tags`."""
     meta_graph_def = self.get_meta_graph_def_from_tags(tags)
-    for node in meta_graph_def.graph_def.node:
-      if node.op == "VariableV2":
-        raise NotImplementedError(
-            "Importing a SavedModel which contains RefVariables. This is not "
-            "currently supported. Running tf.enable_resource_variables() "
-            "before creating exported variables will fix this.")
     load_graph_returns = [None]
     wrapped = wrap_function.wrap_function(
         functools.partial(self.load_graph, load_graph_returns, meta_graph_def),
@@ -100,12 +128,25 @@ class _EagerSavedModelLoader(loader_impl.SavedModelLoader):
     self.restore_variables(wrapped, saver)
     with wrapped.graph.as_default():
       init_op = loader_impl.get_init_op(meta_graph_def)
+    root = tracking.AutoTrackable()
     if init_op is not None:
-      # TODO(allenl): Deal with assets
-      wrapped.prune(feeds=[],
-                    fetches=[wrapped.graph.as_graph_element(init_op)])()
+      asset_feed_tensors = []
+      asset_paths = []
+      for tensor_name, value in loader_impl.get_asset_tensors(
+          self._export_dir, meta_graph_def).items():
+        asset_feed_tensors.append(wrapped.graph.as_graph_element(tensor_name))
+        asset_paths.append(tracking.TrackableAsset(value))
+      init_fn = wrapped.prune(
+          feeds=asset_feed_tensors,
+          fetches=[wrapped.graph.as_graph_element(init_op)])
+      initializer = _Initializer(init_fn, asset_paths)
+      initializer.initialize()
+      root.initializer = initializer
+      root.asset_paths = asset_paths
+    else:
+      root.asset_paths = []
     signature_functions = self._extract_signatures(wrapped, meta_graph_def)
-    root = tracking.AutoCheckpointable()
+
     root.signatures = signature_serialization.create_signature_map(
         signature_functions)
     root.variables = list(wrapped.graph.variables)

@@ -34,6 +34,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 # memory_profiler might not be available in the OSS version of TensorFlow.
@@ -65,6 +66,7 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
       for _ in six.moves.range(num_iters):
         f()
       increase = memory_profiler.memory_usage(-1)[0] - initial
+      logging.info("Memory increase observed: %f MB" % increase)
       assert increase < increase_threshold_absolute_mb, (
           "Increase is too high. Initial memory usage: %f MB. Increase: %f MB. "
           "Maximum allowed increase: %f") % (initial, increase,
@@ -101,22 +103,41 @@ class MultiDeviceIteratorTest(test_base.DatasetTestBase,
         self.evaluate(elem_on_2)
 
   @test_util.run_v1_only("b/121264236")
-  def testEagerNoMemoryLeak(self):
+  def testEagerMemoryUsageWithReset(self):
     if not context.executing_eagerly():
       self.skipTest("Only eager mode test")
     if memory_profiler is None:
       self.skipTest("memory_profiler required to run this test")
 
+    dataset = dataset_ops.Dataset.range(10)
+    multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
+        dataset, ["/cpu:1", "/cpu:2"])
+
     def f():
-      dataset = dataset_ops.Dataset.range(10)
+      self.evaluate(multi_device_iterator.get_next())
+      multi_device_iterator._eager_reset()
+
+    self.assertNotIncreasingMemory(
+        f, num_iters=100, increase_threshold_absolute_mb=50)
+
+  @test_util.run_v1_only("b/121264236")
+  def testEagerMemoryUsageWithRecreation(self):
+    if not context.executing_eagerly():
+      self.skipTest("Only eager mode test")
+    if memory_profiler is None:
+      self.skipTest("memory_profiler required to run this test")
+
+    dataset = dataset_ops.Dataset.range(10)
+
+    def f():
       multi_device_iterator = multi_device_iterator_ops.MultiDeviceIterator(
           dataset, ["/cpu:1", "/cpu:2"])
       self.evaluate(multi_device_iterator.get_next())
       del multi_device_iterator
-      del dataset
 
+    # TODO(b/123316347): Reduce threshold once bug is fixed.
     self.assertNotIncreasingMemory(
-        f, num_iters=100, increase_threshold_absolute_mb=175)
+        f, num_iters=100, increase_threshold_absolute_mb=500)
 
   @test_util.run_v1_only("b/121264236")
   def testOneOnSameDevice(self):

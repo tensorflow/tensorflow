@@ -58,6 +58,7 @@ py_library(
         ":function",
         ":graph_only_ops",
         ":profiler",
+        ":profiler_client",
         ":tape",
         ":test",
         ":wrap_function",
@@ -110,7 +111,17 @@ cuda_py_test(
         ":profiler",
         ":test",
         "//tensorflow/python:constant_op",
-        "//tensorflow/contrib/tpu/profiler:trace_events_proto_py",
+        "//tensorflow/core/profiler:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "profiler_client",
+    srcs = ["profiler_client.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -151,6 +162,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -499,7 +511,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -530,6 +542,7 @@ tf_xla_py_test(
     srcs = ["def_function_xla_test.py"],
     tags = [
         "no_pip",
+        "no_rocm",
         "nomac",
     ],
     deps = [
@@ -553,7 +566,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 

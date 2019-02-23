@@ -50,7 +50,7 @@ bool IsCpuGpuCompile(const Graph* graph) {
       continue;
     // Early return for any node with a device that is not a CPU or GPU.
     DeviceNameUtils::ParsedName parsed;
-    if (DeviceNameUtils::ParseFullName(n->def().device(), &parsed)) {
+    if (DeviceNameUtils::ParseFullName(n->requested_device(), &parsed)) {
       if (parsed.type != DEVICE_CPU && parsed.type != DEVICE_GPU) {
         return false;
       }
@@ -200,7 +200,7 @@ Status RewriteSubgraph(const std::vector<OutputTensor>& arg_source_tensors,
   auto serialized = absl::make_unique<char[]>(size);
   TF_RET_CHECK(SerializeToBufferDeterministic(gdef, serialized.get(), size));
   uint64 fingerprint = Fingerprint64(absl::string_view(serialized.get(), size));
-  LOG(INFO) << "Subgraph fingerprint:" << fingerprint;
+  VLOG(1) << "Subgraph fingerprint:" << fingerprint;
   call_def->set_op(absl::StrCat(call_def->op(), "_", fingerprint));
   return Status::OK();
 }

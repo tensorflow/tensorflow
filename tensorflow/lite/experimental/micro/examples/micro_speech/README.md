@@ -83,7 +83,8 @@ If you see a compiling error on older machines, try leaving out the `--copt` arg
 ```
 bazel run tensorflow/examples/speech_commands:freeze -- \
 --model_architecture=tiny_conv --window_stride=20 --preprocess=average \
---wanted_words="yes,no" --quantize=1 --output_file=/tmp/tiny_conv.pb
+--wanted_words="yes,no" --quantize=1 --output_file=/tmp/tiny_conv.pb \
+--start_checkpoint=/tmp/speech_commands_train/tiny_conv.ckpt-18000
 ```
 
 The next step is to create a TensorFlow Lite file from the frozen graph:
@@ -99,5 +100,5 @@ bazel run tensorflow/lite/toco:toco -- \
 Finally, convert the file into a C source file that can be compiled into an embedded system:
 
 ```
-xxd -i /tmp/tiny_conv.tflite > /tmp/tiny_conv_model_data.cc
+xxd -i /tmp/tiny_conv.tflite > /tmp/tiny_conv_simple_features_model_data.cc
 ```

@@ -19,6 +19,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op.h"
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/util/ptr_util.h"
+
 // TODO(ycling): Consider refactoring to extract the LSTM definition out of
 // graph_transformation module.
 #include "tensorflow/lite/schema/schema_generated.h"
@@ -199,6 +200,12 @@ class Add : public BuiltinOperator<AddOperator, ::tflite::AddOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -239,6 +246,12 @@ class SpaceToBatchND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -263,6 +276,12 @@ class Sub : public BuiltinOperator<SubOperator, ::tflite::SubOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -308,6 +327,12 @@ class BatchToSpaceND
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -446,18 +471,29 @@ class FullyConnected
     }
   }
 
+  // +-----------------+--------------------+--------------------------+
+  // |                 |    Weight::Default | Weight::Shuffled4x16Int8 |
+  // +-----------------+--------------------+--------------------------+
+  // | Float           |                  1 |                        2 |
+  // | Quantized Uint8 |                  1 |                        2 |
+  // | Hybrid          |                  3 |                        3 |
+  // | Quantized Int8  |                  4 |                        4 |
+  // +-----------------+--------------------+--------------------------+
   int GetVersion(const OperatorSignature& op_signature) const override {
     const auto& fc_op =
         static_cast<const FullyConnectedOperator&>(*op_signature.op);
-    if (fc_op.weights_format == FullyConnectedWeightsFormat::kDefault) {
-      return 1;
-    }
     const string& input_name = op_signature.op->inputs[0];
     const string& weights_name = op_signature.op->inputs[1];
     const string& output_name = op_signature.op->outputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
     const Array& weights_array = op_signature.model->GetArray(weights_name);
     const Array& output_array = op_signature.model->GetArray(output_name);
+    // Int8 fully fixed point kernel is at version 4.
+    if (input_array.data_type == ArrayDataType::kInt8 &&
+        weights_array.data_type == ArrayDataType::kInt8 &&
+        output_array.data_type == ArrayDataType::kInt8) {
+      return 4;
+    }
     // If the op is a signed int8 hybrid operation, we need to return
     // version 3.
     if (input_array.data_type == ArrayDataType::kFloat &&
@@ -465,7 +501,15 @@ class FullyConnected
         output_array.data_type == ArrayDataType::kFloat) {
       return 3;
     }
-    return 2;
+    // For float and uint8 fixed point kernels, if the weight is
+    // Shuffled4x16Int8, is is version 2.
+    if (fc_op.weights_format ==
+        FullyConnectedWeightsFormat::kShuffled4x16Int8) {
+      return 2;
+    }
+
+    // Otherwise (weight is default), the version is 1.
+    return 1;
   }
 };
 
@@ -492,6 +536,26 @@ class Gather : public BuiltinOperator<GatherOperator, ::tflite::GatherOptions,
     if (input_array.data_type == ArrayDataType::kInt8) {
       return 2;
     }
+    return 1;
+  }
+};
+
+class GatherNd
+    : public BuiltinOperator<GatherNdOperator, ::tflite::GatherNdOptions,
+                             ::tflite::BuiltinOptions_GatherNdOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateGatherNdOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
     return 1;
   }
 };
@@ -700,6 +764,12 @@ class Mul : public BuiltinOperator<MulOperator, ::tflite::MulOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -719,6 +789,12 @@ class Pad : public BuiltinOperator<PadOperator, ::tflite::PadOptions,
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -756,6 +832,12 @@ class PadV2 : public BuiltinOperator<PadV2Operator, ::tflite::PadV2Options,
                    TocoOperator* op) const override {}
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -829,6 +911,12 @@ class SpaceToDepth
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1394,6 +1482,12 @@ class StridedSlice
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1563,6 +1657,12 @@ class Pack : public BuiltinOperator<PackOperator, ::tflite::PackOptions,
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1585,6 +1685,34 @@ class Shape
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
+  }
+};
+
+class Slice : public SimpleOperator<SliceOperator> {
+ public:
+  explicit Slice() : SimpleOperator("SLICE", OperatorType::kSlice) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class Tanh : public SimpleOperator<TanhOperator> {
+ public:
+  explicit Tanh() : SimpleOperator("TANH", OperatorType::kTanh) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1674,6 +1802,21 @@ class LeakyRelu
 class Logistic : public SimpleOperator<LogisticOperator> {
  public:
   explicit Logistic() : SimpleOperator("LOGISTIC", OperatorType::kLogistic) {}
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // Version 2 supports signed int8 input types.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
+    return 1;
+  }
+};
+
+class LogSoftmax : public SimpleOperator<LogSoftmaxOperator> {
+ public:
+  explicit LogSoftmax()
+      : SimpleOperator("LOG_SOFTMAX", OperatorType::kLogSoftmax) {}
   int GetVersion(const OperatorSignature& op_signature) const override {
     const string& input_name = op_signature.op->inputs[0];
     const Array& input_array = op_signature.model->GetArray(input_name);
@@ -1786,6 +1929,25 @@ class UnidirectionalSequenceRnn
     std::vector<bool> mutating_input_variables(op.inputs.size(), false);
     mutating_input_variables[4] = true;
     return mutating_input_variables;
+  }
+};
+
+class Where : public BuiltinOperator<WhereOperator, ::tflite::WhereOptions,
+                                     ::tflite::BuiltinOptions_WhereOptions> {
+ public:
+  using BuiltinOperator::BuiltinOperator;
+
+  flatbuffers::Offset<TfLiteOptions> WriteOptions(
+      const TocoOperator& op,
+      flatbuffers::FlatBufferBuilder* builder) const override {
+    return ::tflite::CreateWhereOptions(*builder);
+  }
+
+  void ReadOptions(const TfLiteOptions& options,
+                   TocoOperator* op) const override {}
+
+  int GetVersion(const OperatorSignature& op_signature) const override {
+    return 1;
   }
 };
 
@@ -2166,6 +2328,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
                                  OperatorType::kFullyConnected));
   ops.push_back(MakeUnique<Gather>(::tflite::BuiltinOperator_GATHER,
                                    OperatorType::kGather));
+  ops.push_back(MakeUnique<GatherNd>(::tflite::BuiltinOperator_GATHER_ND,
+                                     OperatorType::kGatherNd));
   ops.push_back(
       MakeUnique<L2Normalization>(::tflite::BuiltinOperator_L2_NORMALIZATION,
                                   OperatorType::kL2Normalization));
@@ -2268,6 +2432,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(MakeUnique<UnidirectionalSequenceRnn>(
       ::tflite::BuiltinOperator_UNIDIRECTIONAL_SEQUENCE_RNN,
       OperatorType::kUnidirectionalSequenceRnn));
+  ops.push_back(
+      MakeUnique<Where>(::tflite::BuiltinOperator_WHERE, OperatorType::kWhere));
 
   // Custom Operators.
   ops.push_back(
@@ -2288,6 +2454,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<CeilOperator>>("CEIL", OperatorType::kCeil));
   ops.push_back(
+      MakeUnique<SimpleOperator<EluOperator>>("ELU", OperatorType::kElu));
+  ops.push_back(
       MakeUnique<SimpleOperator<ReluOperator>>("RELU", OperatorType::kRelu));
   ops.push_back(MakeUnique<SimpleOperator<Relu1Operator>>(
       "RELU_N1_TO_1", OperatorType::kRelu1));
@@ -2295,12 +2463,12 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<PReluOperator>>("PRELU", OperatorType::kPRelu));
   ops.push_back(MakeUnique<Logistic>());
-  ops.push_back(
-      MakeUnique<SimpleOperator<TanhOperator>>("TANH", OperatorType::kTanh));
+  ops.push_back(MakeUnique<Tanh>());
   ops.push_back(
       MakeUnique<SimpleOperator<ExpOperator>>("EXP", OperatorType::kExp));
-  ops.push_back(MakeUnique<SimpleOperator<LogSoftmaxOperator>>(
-      "LOG_SOFTMAX", OperatorType::kLogSoftmax));
+  ops.push_back(
+      MakeUnique<SimpleOperator<CosOperator>>("COS", OperatorType::kCos));
+  ops.push_back(MakeUnique<LogSoftmax>());
   ops.push_back(MakeUnique<Maximum>());  //  Element-wise Maximum
   ops.push_back(MakeUnique<Minimum>());  //  Element-wise Minimum
   ops.push_back(MakeUnique<Greater>());
@@ -2312,8 +2480,7 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
   ops.push_back(
       MakeUnique<SimpleOperator<NegOperator>>("NEG", OperatorType::kNeg));
   ops.push_back(MakeUnique<Select>());
-  ops.push_back(
-      MakeUnique<SimpleOperator<SliceOperator>>("SLICE", OperatorType::kSlice));
+  ops.push_back(MakeUnique<Slice>());
   ops.push_back(
       MakeUnique<SimpleOperator<PowOperator>>("POW", OperatorType::kPow));
   ops.push_back(MakeUnique<SimpleOperator<LogicalOrOperator>>(
@@ -2347,6 +2514,8 @@ std::vector<std::unique_ptr<BaseOperator>> BuildOperatorList(
       MakeUnique<SimpleOperator<FillOperator>>("FILL", OperatorType::kFill));
   ops.push_back(MakeUnique<SimpleOperator<ReverseV2Operator>>(
       "REVERSE_V2", OperatorType::kReverseV2));
+  ops.push_back(MakeUnique<SimpleOperator<TensorFlowRankOperator>>(
+      "RANK", OperatorType::kRank));
   return ops;
 }
 }  // namespace

@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/graph/graph.h"
+#include "tensorflow/core/kernels/data/dataset_utils.h"
 #include "tensorflow/core/util/batch_util.h"
 
 namespace tensorflow {
@@ -28,7 +29,10 @@ namespace {
 class TensorSliceDatasetOp : public DatasetOpKernel {
  public:
   explicit TensorSliceDatasetOp(OpKernelConstruction* ctx)
-      : DatasetOpKernel(ctx) {}
+      : DatasetOpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("Toutput_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase** output) override {
     OpInputList inputs;
@@ -50,6 +54,10 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
               "All components must have the same size in the 0th dimension"));
     }
     *output = new Dataset(ctx, std::move(components));
+    OP_REQUIRES_OK(ctx,
+                   VerifyTypesMatch((*output)->output_dtypes(), output_types_));
+    OP_REQUIRES_OK(ctx, VerifyShapesCompatible((*output)->output_shapes(),
+                                               output_shapes_));
   }
 
  private:
@@ -170,6 +178,9 @@ class TensorSliceDatasetOp : public DatasetOpKernel {
     DataTypeVector dtypes_;
     std::vector<PartialTensorShape> shapes_;
   };
+
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 REGISTER_KERNEL_BUILDER(Name("TensorSliceDataset").Device(DEVICE_CPU),

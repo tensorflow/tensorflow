@@ -79,6 +79,7 @@ struct FunctionBody {
   DataTypeVector ret_types;
   gtl::InlinedVector<Node*, 4> arg_nodes;
   gtl::InlinedVector<Node*, 4> ret_nodes;
+  gtl::InlinedVector<Node*, 4> control_ret_nodes;
 
   FunctionBody() {}
   FunctionBody(const FunctionDef& f, DataTypeSlice arg_types,

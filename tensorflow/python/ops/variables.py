@@ -35,7 +35,7 @@ from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import compat
 from tensorflow.python.util import tf_should_use
 from tensorflow.python.util.deprecation import deprecated
@@ -204,7 +204,7 @@ class VariableMetaclass(type):
 
 @tf_export("Variable", v1=[])
 class Variable(six.with_metaclass(VariableMetaclass,
-                                  checkpointable.Checkpointable)):
+                                  trackable.Trackable)):
   """See the [Variables Guide](https://tensorflow.org/guide/variables).
 
   A variable maintains state in the graph across calls to `run()`. You add a
@@ -1018,8 +1018,8 @@ class Variable(six.with_metaclass(VariableMetaclass,
     return self.shape
 
   def _gather_saveables_for_checkpoint(self):
-    """For implementing `Checkpointable`. This object is saveable on its own."""
-    return {checkpointable.VARIABLE_VALUE_KEY: self}
+    """For implementing `Trackable`. This object is saveable on its own."""
+    return {trackable.VARIABLE_VALUE_KEY: self}
 
   def to_proto(self, export_scope=None):
     """Converts a `Variable` to a `VariableDef` protocol buffer.
@@ -1506,8 +1506,8 @@ class RefVariable(VariableV1):
     # Store the graph key so optimizers know how to only retrieve variables from
     # this graph.
     self._graph_key = ops.get_default_graph()._graph_key  # pylint: disable=protected-access
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 

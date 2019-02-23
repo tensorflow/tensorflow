@@ -197,17 +197,17 @@ class MapFnTest(test.TestCase):
     y = map_fn.map_fn(lambda e: e, x)
     self.assertIs(None, y.get_shape().dims)
 
-  @test_util.disable_control_flow_v2("b/119323354")
-  @test_util.run_in_graph_and_eager_modes
+  # TODO(b/124383826): this test fails in eager: the iterable is of length 0 so
+  # so the body of the while loop never executes
   @test_util.run_v1_only("b/120545219")
   def testMapEmptyScalar(self):
-    map_return = map_fn.map_fn(lambda x: 1, constant_op.constant([]))
+    map_return = map_fn.map_fn(lambda x: 1,
+                               constant_op.constant([], dtype=dtypes.int32))
     self.assertAllEqual([0], map_return.get_shape().dims)
     self.assertAllEqual([0], self.evaluate(map_return).shape)
 
-  # TODO(akshayka): this test fails in eager: the iterable is of length 0 so
+  # TODO(b/124383826): this test fails in eager: the iterable is of length 0 so
   # so the body of the while loop never executes
-  @test_util.disable_control_flow_v2("b/119323354")
   @test_util.run_v1_only("b/120545219")
   def testMapEmptyTensor(self):
     with self.cached_session():
