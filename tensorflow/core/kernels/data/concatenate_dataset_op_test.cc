@@ -51,7 +51,7 @@ class ConcatenateDatasetOpTest : public DatasetOpsTestBase {
     node_def_ = test::function::NDef(
         kNodeName, kOpName, {"input_dataset", "another_dataset"},
         {{"output_types", output_tyeps}, {"output_shapes", output_shapes}});
-    TF_CHECK_OK(CreateOpKernel(node_def_, op_kernel));
+    TF_RETURN_IF_ERROR(CreateOpKernel(node_def_, op_kernel));
     return Status::OK();
   }
 
@@ -124,11 +124,13 @@ struct TestParam {
      /*expected_cardinality*/ 4,
      /*breakpoints*/ {0, 2, 5}}};
 
-struct ConcatenateDatasetOpTestHelper : ConcatenateDatasetOpTest {
+class ConcatenateDatasetOpTestHelper : public ConcatenateDatasetOpTest {
+ public:
   ~ConcatenateDatasetOpTestHelper() {
     if (dataset) dataset->Unref();
   }
 
+ protected:
   Status CreateDatasetFromTestCase(const TestParam &test_case) {
     std::vector<Tensor> tensor_slice_dataset_tensors;
     TF_RETURN_IF_ERROR(CreateTensorSliceDatasetTensors(
@@ -163,10 +165,11 @@ struct ConcatenateDatasetOpTestHelper : ConcatenateDatasetOpTest {
   std::unique_ptr<IteratorBase> iterator;
 };
 
-struct DatasetGetNextTest : public ConcatenateDatasetOpTestHelper,
-                            ::testing::WithParamInterface<TestParam> {};
+class ParameterizedDatasetTest
+    : public ConcatenateDatasetOpTestHelper,
+      public ::testing::WithParamInterface<TestParam> {};
 
-TEST_P(DatasetGetNextTest, GetNext) {
+TEST_P(ParameterizedDatasetTest, GetNext) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -180,7 +183,7 @@ TEST_P(DatasetGetNextTest, GetNext) {
     TF_EXPECT_OK(
         iterator->GetNext(iterator_ctx.get(), &out_tensors, &end_of_sequence));
     if (!end_of_sequence) {
-      for (auto &tensor : out_tensors) {
+      for (const auto &tensor : out_tensors) {
         EXPECT_NE(expected_outputs_it, test_case.expected_outputs.end());
         TF_EXPECT_OK(ExpectEqual(tensor, *expected_outputs_it));
         expected_outputs_it++;
@@ -189,9 +192,6 @@ TEST_P(DatasetGetNextTest, GetNext) {
   }
   EXPECT_EQ(expected_outputs_it, test_case.expected_outputs.end());
 }
-
-INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetGetNextTest,
-                        ::testing::ValuesIn(TestCases));
 
 TEST_F(ConcatenateDatasetOpTestHelper, DifferentDtypes) {
   int thread_num = 2, cpu_num = 2;
@@ -221,10 +221,7 @@ TEST_F(ConcatenateDatasetOpTestHelper, DatasetName) {
   EXPECT_EQ(dataset->name(), kOpName);
 }
 
-struct DatasetOutputDtypesTest : ConcatenateDatasetOpTestHelper,
-                                 ::testing::WithParamInterface<TestParam> {};
-
-TEST_P(DatasetOutputDtypesTest, DatasetOutputDtypes) {
+TEST_P(ParameterizedDatasetTest, DatasetOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -234,13 +231,7 @@ TEST_P(DatasetOutputDtypesTest, DatasetOutputDtypes) {
                              test_case.expected_output_dtypes));
 }
 
-INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetOutputDtypesTest,
-                        ::testing::ValuesIn(TestCases));
-
-struct DatasetOutputShapesTest : ConcatenateDatasetOpTestHelper,
-                                 ::testing::WithParamInterface<TestParam> {};
-
-TEST_P(DatasetOutputShapesTest, DatasetOutputShapes) {
+TEST_P(ParameterizedDatasetTest, DatasetOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -250,13 +241,7 @@ TEST_P(DatasetOutputShapesTest, DatasetOutputShapes) {
                                    test_case.expected_output_shapes));
 }
 
-INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetOutputShapesTest,
-                        ::testing::ValuesIn(TestCases));
-
-struct DatasetCardinalityTest : ConcatenateDatasetOpTestHelper,
-                                ::testing::WithParamInterface<TestParam> {};
-
-TEST_P(DatasetCardinalityTest, Cardinality) {
+TEST_P(ParameterizedDatasetTest, Cardinality) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -265,9 +250,6 @@ TEST_P(DatasetCardinalityTest, Cardinality) {
 
   EXPECT_EQ(dataset->Cardinality(), GetParam().expected_cardinality);
 }
-
-INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, DatasetCardinalityTest,
-                        ::testing::ValuesIn(TestCases));
 
 TEST_F(ConcatenateDatasetOpTestHelper, DatasetSave) {
   int thread_num = 2, cpu_num = 2;
@@ -283,10 +265,7 @@ TEST_F(ConcatenateDatasetOpTestHelper, DatasetSave) {
   TF_ASSERT_OK(writer.Flush());
 }
 
-struct IteratorOutputDtypesTest : ConcatenateDatasetOpTestHelper,
-                                  ::testing::WithParamInterface<TestParam> {};
-
-TEST_P(IteratorOutputDtypesTest, IteratorOutputDtypes) {
+TEST_P(ParameterizedDatasetTest, IteratorOutputDtypes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -296,13 +275,7 @@ TEST_P(IteratorOutputDtypesTest, IteratorOutputDtypes) {
                                 test_case.expected_output_dtypes));
 }
 
-INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, IteratorOutputDtypesTest,
-                        ::testing::ValuesIn(TestCases));
-
-struct IteratorOutputShapesTest : ConcatenateDatasetOpTestHelper,
-                                  ::testing::WithParamInterface<TestParam> {};
-
-TEST_P(IteratorOutputShapesTest, IteratorOutputShapes) {
+TEST_P(ParameterizedDatasetTest, IteratorOutputShapes) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -312,9 +285,6 @@ TEST_P(IteratorOutputShapesTest, IteratorOutputShapes) {
                                       test_case.expected_output_shapes));
 }
 
-INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, IteratorOutputShapesTest,
-                        ::testing::ValuesIn(TestCases));
-
 TEST_F(ConcatenateDatasetOpTestHelper, IteratorOutputPrefix) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
@@ -323,10 +293,7 @@ TEST_F(ConcatenateDatasetOpTestHelper, IteratorOutputPrefix) {
   EXPECT_EQ(iterator->prefix(), "Iterator::Concatenate");
 }
 
-struct IteratorRoundtripTest : ConcatenateDatasetOpTestHelper,
-                               ::testing::WithParamInterface<TestParam> {};
-
-TEST_P(IteratorRoundtripTest, Roundtrip) {
+TEST_P(ParameterizedDatasetTest, Roundtrip) {
   int thread_num = 2, cpu_num = 2;
   TF_ASSERT_OK(InitThreadPool(thread_num));
   TF_ASSERT_OK(InitFunctionLibraryRuntime({}, cpu_num));
@@ -371,7 +338,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, IteratorRoundtripTest,
+INSTANTIATE_TEST_CASE_P(ConcatenateDatasetOpTest, ParameterizedDatasetTest,
                         ::testing::ValuesIn(TestCases));
 }  // namespace
 }  // namespace data

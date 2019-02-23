@@ -86,7 +86,6 @@ Status DatasetOpsTestBase::CreateTensorSliceDataset(
   return Status::OK();
 }
 
->>>>>>> Add CreateTensorSliceDataset[Kernel] functions to the test base class
 Status DatasetOpsTestBase::CreateOpKernel(
     const NodeDef& node_def, std::unique_ptr<OpKernel>* op_kernel) {
   Status status;
