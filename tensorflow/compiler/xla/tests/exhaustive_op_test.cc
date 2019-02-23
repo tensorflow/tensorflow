@@ -162,13 +162,12 @@ float HostDigamma(float x) {
 // For f32, f16, and bf16, we need 9, 5, and 4 decimal places of precision to be
 // guaranteed that we're printing the full number.
 //
-// If we have a floating-point number with S significand bits, we need
+// (The general formula is, given a floating-point number with S significand
+// bits, the number of decimal digits needed to print it to full precision is
 //
-//   ceil(1 + S * log_10(2)) ~= ceil(1 + S * 0.30103)
+//   ceil(1 + S * log_10(2)) ~= ceil(1 + S * 0.30103).
 //
-// decimal digits to be guaranteed that we're printing the full number.  For
-// F32/F16/BF16 this works out to 9/5/4 digits.  See
-// https://people.eecs.berkeley.edu/~wkahan/Math128/BinDecBin.pdf
+// See https://people.eecs.berkeley.edu/~wkahan/Math128/BinDecBin.pdf.)
 string StringifyNum(float x) {
   return absl::StrFormat("%0.9g (0x%08x)", x, absl::bit_cast<uint32>(x));
 }
@@ -361,9 +360,9 @@ class ExhaustiveOpTest
       // Easy case: If `input` is not denormal and !IsClose(expected, actual),
       // print an error.
       //
-      // TODO(jlebar): This doesn't correctly detect f16 and bfloat16 denormals!
-      // This seems to be OK for now, but at some point we may need to implement
-      // fpclassify for half and bfloat.
+      // (This doesn't correctly detect f16 and bfloat16 denormals!  This seems
+      // to be OK for now, but at some point we may need to implement fpclassify
+      // for half and bfloat.)
       if (std::fpclassify(input_f32) != FP_SUBNORMAL) {
         PrintMismatch(&mismatches, [&] {
           return absl::StrFormat("Mismatch on %s. Expected %s, but got %s.",
@@ -526,7 +525,10 @@ XLA_TEST_P(ExhaustiveOpTest, Sqrt) {
   Run(Sqrt, std::sqrt);
 }
 
+// TODO(jlebar): Add remaining trig functions.  Don't forget Atan2!
+// TODO(jlebar): Test trig functions over complex inputs.
 XLA_TEST_P(ExhaustiveOpTest, Tanh) { Run(Tanh, std::tanh); }
+
 XLA_TEST_P(ExhaustiveOpTest, Erf) { Run(Erf, std::erf); }
 XLA_TEST_P(ExhaustiveOpTest, Erfc) { Run(Erfc, std::erfc); }
 XLA_TEST_P(ExhaustiveOpTest, ErfInv) { Run(ErfInv, HostErfInv); }
