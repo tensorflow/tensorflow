@@ -1679,7 +1679,7 @@ class Layer(trackable.Trackable):
     output_shapes = self.compute_output_shape(input_shapes)
 
     def _make_placeholder_like(shape):
-      ph = backend.placeholder(shape, self.dtype)
+      ph = backend.placeholder(shape=shape, dtype=self.dtype)
       ph._keras_mask = None
       return ph
 
