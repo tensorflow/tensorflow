@@ -389,8 +389,8 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  void AddOpValidator(const string& op_name, OpConverter op_validator) {
-    validator_.op_validators_[op_name] = op_validator;
+  std::unordered_map<string, OpConverter>& op_validators() {
+    return validator_.op_validators_;
   }
 
   Status ConvertToTensorOrWeights(
@@ -401,9 +401,17 @@ class ValidatorTest : public ::testing::Test {
         node_def, output_port, graph_properties, tensor_or_weights);
   }
 
+  const std::set<string>* GetQuantizeOps() { return validator_.quantize_ops; }
+
  protected:
   TrtNodeValidator validator_;
 };
+
+TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
+  for (const string& quantize_op : *GetQuantizeOps()) {
+    QCHECK(op_validators().count(quantize_op));
+  }
+}
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
@@ -477,18 +485,30 @@ TEST_F(ValidatorTest, ValidateNode) {
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {});
 
-  // Validator not registered, validation should pass.
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  // Validator not registered.
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED, "Op type MyOp is not supported.");
 
   // Register validator.
-  AddOpValidator("MyOp", op_converter);
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  op_validators()["MyOp"] = op_converter;
+  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties));
   EXPECT_EQ(false, start_conversion);
 
   // Let the converter return error.
   should_fail = true;
-  ExpectStatus(validator_.ValidateNode(node_def, {}, graph_properties),
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
                error::INVALID_ARGUMENT);
+
+  // Test quantization ops, they're only supported in INT8 mode. The success
+  // case is tested in OpConverterTest.ConvertQuantize.
+  node_def = MakeNodeDef("my_op", "FakeQuantWithMinMaxArgs", {});
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED,
+               "Op type FakeQuantWithMinMaxArgs is not supported.");
 }
 
 class ConverterTest : public ::testing::Test {
@@ -1049,7 +1069,7 @@ class OpConverterTest : public ::testing::Test {
 
     // Reset the validator and converter.
     validator_.reset(new TrtNodeValidator);
-    converter_.reset(new Converter(network_.get(), TrtPrecisionMode::FP32,
+    converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
                                    /*use_calibration=*/false));
 
     // Reset other related artifacts.
@@ -1182,9 +1202,10 @@ class OpConverterTest : public ::testing::Test {
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    ExpectStatus(validator_->ValidateNode(node_def, input_node_and_ports,
-                                          graph_properties),
-                 expected_code, expected_msg_substr);
+    ExpectStatus(
+        validator_->ValidateNode(node_def, input_node_and_ports,
+                                 precision_mode_to_test_, graph_properties),
+        expected_code, expected_msg_substr);
   }
 
   void RunConversion(const NodeDef& node_def,
@@ -1213,6 +1234,10 @@ class OpConverterTest : public ::testing::Test {
 
   std::unique_ptr<Converter> converter_;
   std::unique_ptr<TrtNodeValidator> validator_;
+
+ protected:
+  // TODO(laigd): parameterize the test and make the precision mode a parameter.
+  TrtPrecisionMode precision_mode_to_test_ = TrtPrecisionMode::FP32;
 
  private:
   Logger logger_;
@@ -2006,6 +2031,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
+  precision_mode_to_test_ = TrtPrecisionMode::INT8;
   const std::pair<string, int> op_with_num_inputs[4] = {
       {"FakeQuantWithMinMaxArgs", 1},
       {"FakeQuantWithMinMaxVars", 3},

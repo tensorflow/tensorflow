@@ -379,9 +379,12 @@ class TrtNodeValidator {
   Status ValidateNode(
       const NodeDef& node_def,
       const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
+      const TrtPrecisionMode precision_mode,
       const grappler::GraphProperties& graph_properties);
 
  private:
+  static const std::set<string>* quantize_ops;
+
   void RegisterOpValidators();
 
   // Convert a Const node to a TRT_TensorOrWeights.
