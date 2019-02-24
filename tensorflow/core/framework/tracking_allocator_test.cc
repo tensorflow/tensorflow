@@ -44,7 +44,6 @@ class TestableSizeTrackingAllocator : public Allocator {
     EXPECT_NE(size_map_.end(), iter);
     return iter->second;
   }
-  absl::optional<AllocatorStats> GetStats() override { return absl::nullopt; }
 
  private:
   std::unordered_map<const void*, size_t> size_map_;
@@ -58,7 +57,6 @@ class NoMemoryAllocator : public Allocator {
   }
   void DeallocateRaw(void* ptr) override {}
   bool TracksAllocationSizes() override { return true; }
-  absl::optional<AllocatorStats> GetStats() override { return absl::nullopt; }
 };
 
 TEST(TrackingAllocatorTest, SimpleNoTracking) {

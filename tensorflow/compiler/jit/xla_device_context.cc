@@ -51,19 +51,16 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
   delete XlaTensor::FromOpaquePointer(ptr);
 }
 
-absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
-  absl::optional<stream_executor::AllocatorStats> se_stats =
+AllocatorStats XlaDeviceAllocator::GetStats() {
+  stream_executor::AllocatorStats se_stats =
       stream_executor_->GetAllocatorStats();
-  if (!se_stats) {
-    return absl::nullopt;
-  }
 
   tensorflow::AllocatorStats tf_stats;
-  tf_stats.num_allocs = se_stats->num_allocs;
-  tf_stats.bytes_in_use = se_stats->bytes_in_use;
-  tf_stats.peak_bytes_in_use = se_stats->peak_bytes_in_use;
-  tf_stats.largest_alloc_size = se_stats->largest_alloc_size;
-  tf_stats.bytes_limit = se_stats->bytes_limit;
+  tf_stats.num_allocs = se_stats.num_allocs;
+  tf_stats.bytes_in_use = se_stats.bytes_in_use;
+  tf_stats.peak_bytes_in_use = se_stats.peak_bytes_in_use;
+  tf_stats.largest_alloc_size = se_stats.largest_alloc_size;
+  tf_stats.bytes_limit = se_stats.bytes_limit;
   return tf_stats;
 }
 

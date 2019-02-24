@@ -132,7 +132,7 @@ int64 GPUDebugAllocator::AllocationId(const void* ptr) {
                                        MASK_BYTES);
 }
 
-absl::optional<AllocatorStats> GPUDebugAllocator::GetStats() {
+AllocatorStats GPUDebugAllocator::GetStats() {
   return base_allocator_->GetStats();
 }
 
@@ -208,7 +208,7 @@ size_t GPUNanResetAllocator::AllocatedSize(const void* ptr) {
   return base_allocator_->AllocatedSize(ptr);
 }
 
-absl::optional<AllocatorStats> GPUNanResetAllocator::GetStats() {
+AllocatorStats GPUNanResetAllocator::GetStats() {
   return base_allocator_->GetStats();
 }
 
