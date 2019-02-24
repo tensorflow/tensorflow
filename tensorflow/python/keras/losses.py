@@ -685,7 +685,7 @@ class Huber(LossFunctionWrapper):
                reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
                name='huber_loss'):
     super(Huber, self).__init__(
-        huber_loss, name=name, reduction=reduction, delta=delta)
+        huber, name=name, reduction=reduction, delta=delta)
 
 
 @keras_export('keras.metrics.mean_squared_error',
@@ -815,9 +815,8 @@ def logloss(y_true, y_pred):
   return K.mean(-losses, axis=-1)
 
 
-@keras_export('keras.losses.huber',
-              'keras.losses.huber_loss')
-def huber_loss(y_true, y_pred, delta=1.0):
+@keras_export('keras.losses.huber')
+def huber(y_true, y_pred, delta=1.0):
   """Computes Huber loss value.
 
   For each value x in `error=y_true-y_pred`, the following is calculated:
