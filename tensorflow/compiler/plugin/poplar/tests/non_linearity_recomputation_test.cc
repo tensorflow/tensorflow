@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/plugin/poplar/driver/passes/non_linearity_recomputation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
+#include "tensorflow/compiler/plugin/poplar/driver/tools/matcher_predicates.h"
 
 #include "tensorflow/compiler/xla/service/hlo_parser.h"
 
@@ -200,13 +201,15 @@ TEST_F(NonLinearityRecomputationTest, RecomputeRelu) {
   ASSERT_EQ(conv_grad->operand(1), relu);
   ASSERT_EQ(relu_grad->operand(0), relu);
   ASSERT_TRUE(NonLinearityRecomputaion(true).Run(module).ValueOrDie());
-  // Original relu now only has one user.
-  ASSERT_EQ(relu->users().size(), 1);
-  // The conv in the forward pass.
-  ASSERT_EQ(fwd_conv->operand(0), relu);
+  // Original relu has no users as all previous users have their own NL clone.
+  ASSERT_EQ(relu->users().size(), 0);
 
-  // Check grad ops are using the same clone of relu.
-  ASSERT_EQ(conv_grad->operand(1), relu_grad->operand(0));
+  ASSERT_NE(fwd_conv->operand(0), conv_grad->operand(1));
+  ASSERT_NE(fwd_conv->operand(0), relu_grad->operand(0));
+  ASSERT_NE(conv_grad->operand(1), relu_grad->operand(0));
+  ASSERT_TRUE(IsNonLinearity(fwd_conv->operand(0)));
+  ASSERT_TRUE(IsNonLinearity(conv_grad->operand(1)));
+  ASSERT_TRUE(IsNonLinearity(relu_grad->operand(0)));
 }
 
 TEST_F(NonLinearityRecomputationTest, DontRecomputeRelu) {

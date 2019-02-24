@@ -27,15 +27,12 @@ namespace poplarplugin {
 
 // HLO pass which attempts to find non linearity (NL) operations in the graph
 // (ReLU, sigmoid) which follow a training normalization operation (such as
-// group norm). If such NL operation is used in the following three ops:
-//  1. Forward pass op
-//  2. Backwards pass gradient op of (1)
-//  3. Backwards pass gradient of NL
-// we then clone the NL operation (NLClone) and replace all the uses of NL in
-// (2) and (3) with NLClone and we add control dependencies such that NLClone
-// is executed right before (3). This allows us not to store the output of NL
-// for the backwards pass, saving us memory since we have to store the output
-// of the normalization for the normalization gradient op anyway.
+// group norm). For every user of the NL, we clone the NL operation (NLClone)
+// and replace all the uses of NL in the user with NLClone and we add control
+// dependencies such that NLClone is executed as late as possible. This allows
+// us not to store the output of NL for the backwards pass, saving us memory
+// since we have to store the output of the normalization for the normalization
+// gradient op anyway.
 //
 // For example:
 // clang-format off
@@ -65,20 +62,20 @@ namespace poplarplugin {
 // |     NORM      |                            |   NORM-GRAD   |
 //  ---------------                              ---------------
 //        ||                                       /\     /\
-//        ||====================||=================||     ||
-//        \/                    \/                        ||
-//  ---------------       ---------------        ---------------
-// |     RELU      |     |     RELU      |      |   RELU-GRAD   |
-//  ---------------       ---------------        ---------------
-//        ||                    ||                 /\     /\
-//        ||                    ||=================||     ||
-//        \/                    ||                        ||
-//  ---------------             ||               ---------------
-// |   SOME-OP     |            ||              |  SOME-OP-GRAD |
-//  ---------------             ||               ---------------
-//        ||                    ||                 /\     /\
-//        ||                    ||                 ||     ||
-//        \/                    ||=================||     ||
+//        ||=============||========||==============||     ||
+//        \/             ||        \/                     ||
+//  ---------------      ||  ---------------     ---------------
+// |     RELU      |     || |     RELU      |   |   RELU-GRAD   |
+//  ---------------      ||  ---------------     ---------------
+//        ||             ||        ||              /\     /\
+//        ||             ||        ||==============||     ||
+//        \/             \/                               ||
+//  ---------------     ---------------          ---------------
+// |   SOME-OP     |   |     RELU      |        |  SOME-OP-GRAD |
+//  ---------------     ---------------          ---------------
+//        ||                  ||                   /\     /\
+//        ||                  ||                   ||     ||
+//        \/                  ||===================||     ||
 //       ....                                            ....
 // clang-format on
 // This (memory)size-(computation) speed optimisation means that we don't need
