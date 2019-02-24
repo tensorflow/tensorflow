@@ -178,6 +178,7 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
   functions which apply to user input. For example a dense layer in a neural
   network might be implemented as a `tf.Module`:
 
+  ```python
   >>> class Dense(tf.Module):
   ...   def __init__(self, in_features, output_features):
   ...     super(Dense, self).__init__()
@@ -189,18 +190,23 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
   ...     x = tf.convert_to_tensor(x, name='x')
   ...     y = tf.matmul(x, self.w) + self.b
   ...     return tf.nn.relu(y)
+  ```
 
   You can use the dense layer as you would expect:
-
+  
+  ```python
   >>> d = Dense(input_features=64, output_features=10)
   >>> d(tf.ones([100, 64]))
   <tf.Tensor: ...>
+  ```
 
   By subclassing `tf.Module` instead of `object` any variables created inside
   the module are automatically created within the modules name scope:
 
+  ```python
   >>> d.w.name
   "dense/w:0"
+  ```
 
   In eager mode this is useful for debugging, and when used with `@tf.function`
   the use of name scopes gives operations (e.g. matmul) useful names as well.
@@ -208,8 +214,10 @@ class Module(six.with_metaclass(ModuleMetaclass, tracking.AutoTrackable)):
   As well as automatic naming, the Dense module inherits methods for tracking
   its variables:
 
+  ```python
   >>> d.variables
   (<tf.Variable 'dense/b:0' ...>, <tf.Variable 'dense/w:0' ...>)
+  ```
   """
 
   def __init__(self, name=None):
