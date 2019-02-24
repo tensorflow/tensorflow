@@ -1,4 +1,4 @@
 op {
   graph_op_name: "Asin"
-  summary: "Computes asin of x element-wise."
+  summary: "Computes `tf.math.asin` of `x` element-wise."
 }
