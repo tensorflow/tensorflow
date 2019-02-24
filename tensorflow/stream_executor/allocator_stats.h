@@ -18,7 +18,6 @@ limitations under the License.
 
 #include <string>
 
-#include "absl/types/optional.h"
 #include "tensorflow/stream_executor/platform/port.h"
 
 namespace stream_executor {
@@ -33,14 +32,15 @@ struct AllocatorStats {
   int64 largest_alloc_size;  // The largest single allocation seen.
 
   // The upper limit of bytes of user allocatable device memory, if such a limit
-  // is known.
-  absl::optional<int64> bytes_limit;
+  // is known. Certain allocators may return 0 to indicate the limit is unknown.
+  int64 bytes_limit;
 
   AllocatorStats()
       : num_allocs(0),
         bytes_in_use(0),
         peak_bytes_in_use(0),
-        largest_alloc_size(0) {}
+        largest_alloc_size(0),
+        bytes_limit(0) {}
 
   string DebugString() const;
 };

@@ -41,7 +41,7 @@ class XlaDeviceAllocator : public Allocator {
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  absl::optional<AllocatorStats> GetStats() override;
+  AllocatorStats GetStats() override;
 
  private:
   // The stream executor of the device.

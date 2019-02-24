@@ -69,7 +69,7 @@ class BFCAllocator : public Allocator {
 
   int64 AllocationId(const void* ptr) override;
 
-  absl::optional<AllocatorStats> GetStats() override;
+  AllocatorStats GetStats() override;
 
   void ClearStats() override;
 

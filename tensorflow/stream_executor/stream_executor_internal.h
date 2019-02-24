@@ -370,9 +370,7 @@ class StreamExecutorInterface {
   virtual void *GpuContextHack() { return nullptr; }
 
   // Return allocator statistics.
-  virtual absl::optional<AllocatorStats> GetAllocatorStats() {
-    return absl::nullopt;
-  }
+  virtual AllocatorStats GetAllocatorStats() { return AllocatorStats(); }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);

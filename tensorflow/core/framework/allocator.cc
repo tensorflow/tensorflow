@@ -33,8 +33,8 @@ string AllocatorStats::DebugString() const {
       "MaxInUse:     %20lld\n"
       "NumAllocs:    %20lld\n"
       "MaxAllocSize: %20lld\n",
-      this->bytes_limit ? *this->bytes_limit : 0, this->bytes_in_use,
-      this->peak_bytes_in_use, this->num_allocs, this->largest_alloc_size);
+      this->bytes_limit, this->bytes_in_use, this->peak_bytes_in_use,
+      this->num_allocs, this->largest_alloc_size);
 }
 
 constexpr size_t Allocator::kAllocatorAlignment;
@@ -150,7 +150,7 @@ class CPUAllocator : public Allocator {
     port::AlignedFree(ptr);
   }
 
-  absl::optional<AllocatorStats> GetStats() override {
+  AllocatorStats GetStats() override {
     mutex_lock l(mu_);
     return stats_;
   }

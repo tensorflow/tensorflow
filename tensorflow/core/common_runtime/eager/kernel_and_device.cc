@@ -156,11 +156,8 @@ void UpdateStats(OpKernelContext* context,
     memory->set_peak_bytes(std::get<1>(sizes));
     memory->set_live_bytes(std::get<2>(sizes));
 
-    absl::optional<AllocatorStats> allocator_stats =
-        allocator_pair.first->GetStats();
-    if (stats) {
-      memory->set_allocator_bytes_in_use(allocator_stats->bytes_in_use);
-    }
+    AllocatorStats allocator_stats = allocator_pair.first->GetStats();
+    memory->set_allocator_bytes_in_use(allocator_stats.bytes_in_use);
     allocator_pair.second->GetRecordsAndUnRef();
   }
   auto* ms = stats->mutable_memory_stats();

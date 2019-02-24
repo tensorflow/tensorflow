@@ -43,7 +43,7 @@ class GPUDebugAllocator : public Allocator {
   size_t RequestedSize(const void* ptr) override;
   size_t AllocatedSize(const void* ptr) override;
   int64 AllocationId(const void* ptr) override;
-  absl::optional<AllocatorStats> GetStats() override;
+  AllocatorStats GetStats() override;
   void ClearStats() override;
 
   // For testing.
@@ -71,7 +71,7 @@ class GPUNanResetAllocator : public Allocator {
   void DeallocateRaw(void* ptr) override;
   size_t RequestedSize(const void* ptr) override;
   size_t AllocatedSize(const void* ptr) override;
-  absl::optional<AllocatorStats> GetStats() override;
+  AllocatorStats GetStats() override;
   void ClearStats() override;
 
  private:
