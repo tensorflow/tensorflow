@@ -152,7 +152,9 @@ int64 TrackingAllocator::AllocationId(const void* ptr) {
   }
 }
 
-AllocatorStats TrackingAllocator::GetStats() { return allocator_->GetStats(); }
+absl::optional<AllocatorStats> TrackingAllocator::GetStats() {
+  return allocator_->GetStats();
+}
 
 void TrackingAllocator::ClearStats() { allocator_->ClearStats(); }
 

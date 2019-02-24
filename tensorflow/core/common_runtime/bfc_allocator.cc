@@ -686,7 +686,7 @@ void BFCAllocator::DumpMemoryLog(size_t num_bytes) {
   LOG(INFO) << "Stats: \n" << stats_.DebugString();
 }
 
-AllocatorStats BFCAllocator::GetStats() {
+absl::optional<AllocatorStats> BFCAllocator::GetStats() {
   mutex_lock l(lock_);
   return stats_;
 }

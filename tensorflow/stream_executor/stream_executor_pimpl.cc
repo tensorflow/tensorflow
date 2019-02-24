@@ -871,7 +871,7 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener *listener) {
   return true;
 }
 
-AllocatorStats StreamExecutor::GetAllocatorStats() {
+absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
   return implementation_->GetAllocatorStats();
 }
 
