@@ -291,7 +291,7 @@ class TFLiteConverterV2(object):
 class TFLiteConverter(object):
   """Convert a TensorFlow model into `output_format` using TOCO.
 
-  This is used to convert from a TensorFlow GraphDef or SavedModel into either a
+  This is used to convert from a TensorFlow GraphDef, SavedModel or tf.keras model into either a
   TFLite FlatBuffer or graph visualization.
 
   Attributes:
@@ -370,10 +370,12 @@ class TFLiteConverter(object):
     # Converting a SavedModel.
     converter = lite.TFLiteConverter.from_saved_model(saved_model_dir)
     tflite_model = converter.convert()
+    open("converted_model.tflite", "wb").write(tflite_model)
 
     # Converting a tf.keras model.
     converter = lite.TFLiteConverter.from_keras_model_file(keras_model)
     tflite_model = converter.convert()
+    open("converted_model.tflite", "wb").write(tflite_model)
     ```
   """
 
