@@ -118,7 +118,7 @@ def _update_notebook(original_notebook, original_raw_lines, updated_code_lines):
     new_code = [updated_code_lines[idx] for idx in applicable_lines]
 
     cell['source'] = "\n".join(new_code).replace(
-                          '###!!!', '').replace("###===", "\n")
+        '###!!!', '').replace("###===", "\n")
     code_cell_idx += 1
 
   return new_notebook
