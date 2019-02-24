@@ -174,8 +174,7 @@ class IpuXlaConvTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
-            'Copy_',
+      ok = ['Copy_',
             'Conv3DBackpropInputV2/fusion*/WeightTranspose',
             'Conv3DBackpropInputV2/fusion*/Conv_2x2x2']
 

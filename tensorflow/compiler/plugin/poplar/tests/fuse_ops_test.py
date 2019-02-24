@@ -211,8 +211,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
-            'max/fusion/maxPool']
+      ok = ['max/fusion/maxPool']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFwdAndBwdMaxPool(self):
@@ -263,8 +262,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       ok = ['Copy_*',
             'MaxPool/fusion/maxPool2x2/',
-            'MaxPoolGrad/fusion.1/maxPool2x2',
-            'host-exchange-local-copy-']
+            'MaxPoolGrad/fusion.1/maxPool2x2']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testScaledAddTo(self):
@@ -539,8 +537,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['host-exchange-local-copy-',
-            'avg/fusion/avgPool5x5']
+      ok = ['avg/fusion/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
@@ -580,8 +577,7 @@ class IpuFuseOpsTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(result)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['host-exchange-local-copy-',
-            'avg/fusion/avgPool5x5']
+      ok = ['avg/fusion/avgPool5x5']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testFullyConnectedWithBias(self):
