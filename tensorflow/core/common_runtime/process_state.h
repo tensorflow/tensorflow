@@ -130,7 +130,7 @@ class RecordingAllocator : public Allocator {
   bool TracksAllocationSizes() override { return a_->TracksAllocationSizes(); }
   size_t RequestedSize(const void* p) override { return a_->RequestedSize(p); }
   size_t AllocatedSize(const void* p) override { return a_->AllocatedSize(p); }
-  AllocatorStats GetStats() override { return a_->GetStats(); }
+  absl::optional<AllocatorStats> GetStats() override { return a_->GetStats(); }
   void ClearStats() override { a_->ClearStats(); }
   ProcessState::MDMap* mm_;  // not owned
   Allocator* a_;             // not owned

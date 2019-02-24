@@ -23,6 +23,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/macros.h"
+#include "absl/types/optional.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/statusor.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
@@ -486,7 +487,7 @@ class StreamExecutor {
   bool UnregisterTraceListener(TraceListener* listener);
 
   // Return allocator statistics.
-  AllocatorStats GetAllocatorStats();
+  absl::optional<AllocatorStats> GetAllocatorStats();
 
  private:
   template <typename BeginCallT, typename CompleteCallT,
