@@ -2169,7 +2169,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   }
   lhs_index.InsertAt(lhs_contracting_dim, inner_loop->GetIndVarValue());
 
-  for (int64 i = 0; i < rhs_dims - 1; i++) {
+  int64 num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
+  for (int64 i = 0; i < num_batch_dims; i++) {
+    rhs_index.push_back(dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
+  }
+  for (int64 i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
     rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
   }
   rhs_index.InsertAt(rhs_contracting_dim, inner_loop->GetIndVarValue());
