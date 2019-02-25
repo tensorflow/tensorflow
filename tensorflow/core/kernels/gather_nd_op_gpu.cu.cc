@@ -86,10 +86,11 @@ struct GatherNdSlice<GPUDevice, T, Index, IXDIM> {
     }
     CudaLaunchConfig config = GetCudaLaunchConfig(out_size, d);
 
-    CudaLaunchKernel(GatherSliceOpKernel<T, Index, IXDIM>, config.block_count,
-                     config.thread_per_block, 0, d.stream(), Tparams.data(),
-                     Tindices.data(), Tout.data(), batch_strides, batch_indices,
-                     indices_size, s_size, out_size);
+    TF_CHECK_OK(CudaLaunchKernel(GatherSliceOpKernel<T, Index, IXDIM>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), Tparams.data(), Tindices.data(),
+                                 Tout.data(), batch_strides, batch_indices,
+                                 indices_size, s_size, out_size));
 
     // TODO(ebrevdo): enable indices validation on GPU.
     // Right now checking for indices out of bound in the kernel would
