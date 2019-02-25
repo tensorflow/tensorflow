@@ -619,17 +619,15 @@ def extract_execution_state_timing_list_from_events(events):
         pass
   return result
 
-def extract_xla_graph_def_from_compilation_event(evt):
+def extract_xla_graph_from_compilation_event(evt):
   """Return the final optimized XLA graph from a COMPILE_BEGIN event.
   :param evt: An IpuTraceEvent which is of type COMPILE_BEGIN.
-  :return: A GraphDef of the main XLA computation.
+  :return: A DOT file string of the main XLA computation.
   """
   if evt.type != IpuTraceEvent.COMPILE_BEGIN:
     raise Exception(
       "`evt` must be a COMPILE_BEGIN event")
-  gdef = graph_pb2.GraphDef()
-  gdef.ParseFromString(evt.compile_begin.xla_graph)
-  return gdef
+  return evt.compile_begin.xla_graph
 
 def get_memory_size_from_events(events):
   """Get the total memory consumption for the first compilation in the list

@@ -171,11 +171,11 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
       rep = sess.run(report)
 
       num_compiles = 0
-      gdef = None
+      dot_graph = None
       evts = ipu.utils.extract_all_events(rep)
       for evt in evts:
         if evt.type == IpuTraceEvent.COMPILE_BEGIN:
-          gdef = ipu.utils.extract_xla_graph_def_from_compilation_event(evt)
+          dot_graph = ipu.utils.extract_xla_graph_from_compilation_event(evt)
         if evt.type == IpuTraceEvent.COMPILE_END:
           num_compiles = num_compiles + 1
 
@@ -183,7 +183,7 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
 
       # There is 1 inter-ipu copy and it copies something 'data' shaped
       n_inter_ipu_copies = 0
-      for n in gdef.node:
+      for n in dot_graph.node:
         if n.op == 'HloCustomCall':
           a = n.attr.get('custom_call_target')
           s = n.attr.get('_output_shapes').list.shape[0]
