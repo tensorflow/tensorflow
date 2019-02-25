@@ -39,7 +39,7 @@ tblgen::Operator::Operator(const llvm::Record &def) : def(def) {
   populateOpStructure();
 }
 
-const SmallVectorImpl<StringRef> &tblgen::Operator::getSplitDefName() const {
+ArrayRef<StringRef> tblgen::Operator::getSplitDefName() const {
   return splittedDefName;
 }
 

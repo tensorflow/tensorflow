@@ -63,7 +63,7 @@ public:
   std::string getQualCppClassName() const;
 
   // Returns the TableGen definition name split around '_'.
-  const SmallVectorImpl<StringRef> &getSplitDefName() const;
+  ArrayRef<StringRef> getSplitDefName() const;
 
   // Returns the number of results this op produces.
   int getNumResults() const;

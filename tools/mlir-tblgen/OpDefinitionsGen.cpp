@@ -145,10 +145,10 @@ OpEmitter::OpEmitter(const Record &def, raw_ostream &os)
     : def(def), op(def), os(os) {}
 
 void OpEmitter::mapOverClassNamespaces(function_ref<void(StringRef)> fn) {
-  auto &splittedDefName = op.getSplitDefName();
-  for (auto it = splittedDefName.begin(), e = std::prev(splittedDefName.end());
-       it != e; ++it)
-    fn(*it);
+  // We only care about namespaces, so drop the class name here
+  auto splittedDefName = op.getSplitDefName().drop_back();
+  for (auto ns : splittedDefName)
+    fn(ns);
 }
 
 void OpEmitter::emit(const Record &def, raw_ostream &os) {
