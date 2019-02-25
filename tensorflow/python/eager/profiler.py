@@ -44,7 +44,6 @@ from tensorflow.python.framework import c_api_util
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 
-LOGDIR_PLUGIN = 'plugins/profile'
 
 _profiler = None
 _profiler_lock = threading.Lock()
@@ -118,8 +117,8 @@ def save(logdir, result):
     result: profiling result returned by stop().
   """
   plugin_dir = os.path.join(
-      logdir, LOGDIR_PLUGIN,
-      datetime.datetime.now().strftime('%Y-%m-%d_%H:%M:%S'))
+      logdir, 'plugins', 'profile',
+      datetime.datetime.now().strftime('%Y-%m-%d_%H-%M-%S'))
   gfile.MakeDirs(plugin_dir)
   with gfile.Open(os.path.join(plugin_dir, 'local.trace'), 'wb') as f:
     f.write(result)
