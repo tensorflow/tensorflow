@@ -26,7 +26,7 @@ tf_module {
   }
   member {
     name: "Module"
-    mtype: "<class \'tensorflow.python.module.module.ModuleMetaclass\'>"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "Operation"
