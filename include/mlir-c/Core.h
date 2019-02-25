@@ -240,6 +240,16 @@ edsc_block_t BlockSetBody(edsc_block_t, edsc_stmt_list_t stmts);
 /// `arguments` as block arguments.
 edsc_stmt_t Branch(edsc_block_t destination, edsc_expr_list_t arguments);
 
+/// Returns an opaque statement that redirects the control flow to either
+/// `trueDestination` or `falseDestination` depending on whether the
+/// `condition` expression is true or false.  The caller may pass expressions
+/// as arguments to the destination blocks using `trueArguments` and
+/// `falseArguments`, respectively.
+edsc_stmt_t CondBranch(edsc_expr_t condition, edsc_block_t trueDestination,
+                       edsc_expr_list_t trueArguments,
+                       edsc_block_t falseDestination,
+                       edsc_expr_list_t falseArguments);
+
 /// Returns an opaque statement for an mlir::AffineForOp with `enclosedStmts`
 /// nested below it.
 edsc_stmt_t For(edsc_expr_t iv, edsc_expr_t lb, edsc_expr_t ub,

@@ -649,6 +649,24 @@ Stmt mlir::edsc::Branch(StmtBlock destination, ArrayRef<Expr> args) {
   return VariadicExpr::make<BranchOp>(arguments, {}, {}, {destination});
 }
 
+Stmt mlir::edsc::CondBranch(Expr condition, StmtBlock trueDestination,
+                            ArrayRef<Expr> trueArgs, StmtBlock falseDestination,
+                            ArrayRef<Expr> falseArgs) {
+  SmallVector<Expr, 8> arguments;
+  arguments.push_back(condition);
+  arguments.push_back(nullptr);
+  arguments.append(trueArgs.begin(), trueArgs.end());
+  arguments.push_back(nullptr);
+  arguments.append(falseArgs.begin(), falseArgs.end());
+  return VariadicExpr::make<CondBranchOp>(arguments, {}, {},
+                                          {trueDestination, falseDestination});
+}
+
+Stmt mlir::edsc::CondBranch(Expr condition, StmtBlock trueDestination,
+                            StmtBlock falseDestination) {
+  return CondBranch(condition, trueDestination, {}, falseDestination, {});
+}
+
 static raw_ostream &printBinaryExpr(raw_ostream &os, BinaryExpr e,
                                     StringRef infix) {
   os << '(' << e.getLHS() << ' ' << infix << ' ' << e.getRHS() << ')';
@@ -765,6 +783,27 @@ edsc_stmt_t Branch(edsc_block_t destination, edsc_expr_list_t arguments) {
   return mlir::edsc::Branch(StmtBlock(destination), args);
 }
 
+edsc_stmt_t CondBranch(edsc_expr_t condition, edsc_block_t trueDestination,
+                       edsc_expr_list_t trueArguments,
+                       edsc_block_t falseDestination,
+                       edsc_expr_list_t falseArguments) {
+  auto trueArgs = makeExprs(trueArguments);
+  auto falseArgs = makeExprs(falseArguments);
+  return mlir::edsc::CondBranch(Expr(condition), StmtBlock(trueDestination),
+                                trueArgs, StmtBlock(falseDestination),
+                                falseArgs);
+}
+
+// If `blockArgs` is not empty, print it as a comma-separated parenthesized
+// list, otherwise print nothing.
+void printOptionalBlockArgs(ArrayRef<Expr> blockArgs, llvm::raw_ostream &os) {
+  if (!blockArgs.empty())
+    os << '(';
+  interleaveComma(blockArgs, os);
+  if (!blockArgs.empty())
+    os << ")";
+}
+
 void mlir::edsc::Expr::print(raw_ostream &os) const {
   if (auto unbound = this->dyn_cast<Bindable>()) {
     os << "$" << unbound.getId();
@@ -824,12 +863,16 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
     }
     if (narExpr.is_op<BranchOp>()) {
       os << "br ^bb" << narExpr.getSuccessors().front().getId();
-      auto blockArgs = getSuccessorArguments(0);
-      if (!blockArgs.empty())
-        os << '(';
-      interleaveComma(blockArgs, os);
-      if (!blockArgs.empty())
-        os << ")";
+      printOptionalBlockArgs(getSuccessorArguments(0), os);
+      return;
+    }
+    if (narExpr.is_op<CondBranchOp>()) {
+      os << "cond_br(" << getProperArguments()[0] << ", ^bb"
+         << getSuccessors().front().getId();
+      printOptionalBlockArgs(getSuccessorArguments(0), os);
+      os << ", ^bb" << getSuccessors().back().getId();
+      printOptionalBlockArgs(getSuccessorArguments(1), os);
+      os << ')';
       return;
     }
   }

@@ -634,6 +634,11 @@ Expr call(Expr func, llvm::ArrayRef<Expr> args);
 
 Stmt Return(ArrayRef<Expr> values = {});
 Stmt Branch(StmtBlock destination, ArrayRef<Expr> args = {});
+Stmt CondBranch(Expr condition, StmtBlock trueDestination,
+                ArrayRef<Expr> trueArgs, StmtBlock falseDestination,
+                ArrayRef<Expr> falseArgs);
+Stmt CondBranch(Expr condition, StmtBlock trueDestination,
+                StmtBlock falseDestination);
 
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,

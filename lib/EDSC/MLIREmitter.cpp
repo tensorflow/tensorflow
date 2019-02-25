@@ -223,9 +223,10 @@ mlir::edsc::MLIREmitter &mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
     assert((stmt.getRHS().is_op<DeallocOp>() ||
             stmt.getRHS().is_op<StoreOp>() || stmt.getRHS().is_op<ReturnOp>() ||
             stmt.getRHS().is_op<CallIndirectOp>() ||
-            stmt.getRHS().is_op<BranchOp>()) &&
-           "dealloc, store, return, br, or call_indirect expected as the only "
-           "0-result ops");
+            stmt.getRHS().is_op<BranchOp>() ||
+            stmt.getRHS().is_op<CondBranchOp>()) &&
+           "dealloc, store, return, br, cond_br or call_indirect expected as "
+           "the only 0-result ops");
     if (stmt.getRHS().is_op<CallIndirectOp>()) {
       assert(
           stmt.getRHS().cast<VariadicExpr>().getTypes().empty() &&

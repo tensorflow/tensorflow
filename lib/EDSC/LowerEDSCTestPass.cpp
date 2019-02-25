@@ -25,7 +25,6 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
-#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -79,6 +78,39 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
     f->begin()->clear();
     builder.setInsertionPoint(&*f->begin(), f->begin()->begin());
     edsc::MLIREmitter(&builder, f->getLoc()).emitStmt(instr);
+  }
+
+  // Inject two EDSC-constructed blocks with arguments and a conditional branch
+  // instruction that transfers control to these blocks.
+  if (f->getName().strref() == "cond_branch") {
+    FuncBuilder builder(f);
+    edsc::ScopedEDSCContext context;
+    auto i1 = builder.getIntegerType(1);
+    auto i32 = builder.getIntegerType(32);
+    auto i64 = builder.getIntegerType(64);
+    edsc::Expr arg1(i32), arg2(i64), arg3(i32);
+    // Declare two blocks with different numbers of arguments.
+    edsc::StmtBlock b1 = edsc::block({arg1}, {edsc::Return()}),
+                    b2 = edsc::block({arg2, arg3}, {edsc::Return()});
+    edsc::Expr funcArg(i1);
+
+    // Inject the conditional branch.
+    auto condBranch = edsc::CondBranch(
+        funcArg, b1, {edsc::constantInteger(i32, 32)}, b2,
+        {edsc::constantInteger(i64, 64), edsc::constantInteger(i32, 42)});
+
+    assert(f->getNumArguments() == 1 && "cond_branch must have 1 argument");
+    assert(f->getArgument(0)->getType() == i1 &&
+           "the argument of cond_branch must have i1 type");
+
+    // Remove the existing `return` instruction from the entry block of the
+    // function.  It will be replaced by the conditional branch.
+    f->begin()->clear();
+    builder.setInsertionPoint(&*f->begin(), f->begin()->begin());
+    edsc::MLIREmitter(&builder, f->getLoc())
+        .bind(edsc::Bindable(funcArg), f->getArgument(0))
+        .emitStmt(condBranch);
+    return success();
   }
 
   // Inject a EDSC-constructed `for` loop with bounds coming from function

@@ -472,6 +472,24 @@ PYBIND11_MODULE(pybind, m) {
         return PythonStmt(::Branch(destination, makeCExprs(owning, operands)));
       },
       py::arg("destination"), py::arg("operands") = py::list());
+  m.def("CondBranch",
+        [](PythonExpr condition, PythonBlock trueDestination,
+           const py::list &trueOperands, PythonBlock falseDestination,
+           const py::list &falseOperands) {
+          SmallVector<edsc_expr_t, 8> owningTrue;
+          SmallVector<edsc_expr_t, 8> owningFalse;
+          return PythonStmt(::CondBranch(
+              condition, trueDestination, makeCExprs(owningTrue, trueOperands),
+              falseDestination, makeCExprs(owningFalse, falseOperands)));
+        });
+  m.def("CondBranch", [](PythonExpr condition, PythonBlock trueDestination,
+                         PythonBlock falseDestination) {
+    edsc_expr_list_t emptyList;
+    emptyList.exprs = nullptr;
+    emptyList.n = 0;
+    return PythonStmt(::CondBranch(condition, trueDestination, emptyList,
+                                   falseDestination, emptyList));
+  });
   m.def("For", [](const py::list &ivs, const py::list &lbs, const py::list &ubs,
                   const py::list &steps, const py::list &stmts) {
     SmallVector<edsc_expr_t, 8> owningIVs;

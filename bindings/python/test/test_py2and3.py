@@ -192,6 +192,26 @@ class EdscTest(unittest.TestCase):
       self.assertIn("^bb1($1):\n" + "$6 = br ^bb2(($1 + 1))", str1)
       self.assertIn("^bb2($2):\n" + "$8 = br ^bb1($2)", str2)
 
+  def testCondBranch(self):
+    with E.ContextManager():
+      cond = E.Expr(E.Bindable(self.boolType))
+      b1 = E.Block([])
+      b2 = E.Block([])
+      b3 = E.Block([E.CondBranch(cond, b1, b2)])
+      str = b3.__str__()
+      self.assertIn("cond_br($1, ^bb1, ^bb2)", str)
+
+  def testCondBranchArgs(self):
+    with E.ContextManager():
+      arg1, arg2, arg3 = (E.Expr(E.Bindable(self.i32Type)) for _ in range(3))
+      expr1, expr2, expr3 = (E.Expr(E.Bindable(self.i32Type)) for _ in range(3))
+      cond = E.Expr(E.Bindable(self.boolType))
+      b1 = E.Block([arg1], [])
+      b2 = E.Block([arg2, arg3], [])
+      b3 = E.Block([E.CondBranch(cond, b1, [expr1], b2, [expr2, expr3])])
+      str = b3.__str__()
+      self.assertIn("cond_br($7, ^bb1($4), ^bb2($5, $6))", str)
+
   def testMLIRScalarTypes(self):
     module = E.MLIRModule()
     t = module.make_scalar_type("bf16")

@@ -25,6 +25,24 @@ func @blocks() {
 //CHECK-NEXT: }
 }
 
+// This function will be detected by the test pass that will insert two
+// EDSC-constructed blocks with arguments and a conditional branch that goes to
+// both of them.
+func @cond_branch(%arg0: i1) {
+  return
+// CHECK-LABEL: @cond_branch
+// CHECK-NEXT:   %c0 = constant 0 : index
+// CHECK-NEXT:   %c1 = constant 1 : index
+// CHECK-NEXT:   %c32_i32 = constant 32 : i32
+// CHECK-NEXT:   %c64_i64 = constant 64 : i64
+// CHECK-NEXT:   %c42_i32 = constant 42 : i32
+// CHECK-NEXT:   cond_br %arg0, ^bb1(%c32_i32 : i32), ^bb2(%c64_i64, %c42_i32 : i64, i32)
+// CHECK-NEXT: ^bb1(%0: i32):	// pred: ^bb0
+// CHECK-NEXT:   return
+// CHECK-NEXT: ^bb2(%1: i64, %2: i32):	// pred: ^bb0
+// CHECK-NEXT:   return
+}
+
 // This function will be detected by the test pass that will insert an
 // EDSC-constructed empty `for` loop that corresponds to
 //   for %arg0 to %arg1 step 2
