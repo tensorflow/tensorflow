@@ -51,16 +51,24 @@ _profiler_lock = threading.Lock()
 _run_num = 0
 
 
+class ProfilerAlreadyRunningError(Exception):
+  pass
+
+
+class ProfilerNotRunningError(Exception):
+  pass
+
+
 def start():
   """Start profiling.
 
   Raises:
-    AssertionError: If another profiling session is running.
+    ProfilerAlreadyRunningError: If another profiling session is running.
   """
   global _profiler
   with _profiler_lock:
     if _profiler is not None:
-      raise AssertionError('Another profiler is running.')
+      raise ProfilerAlreadyRunningError('Another profiler is running.')
     profiler_context = pywrap_tensorflow.TFE_NewProfilerContext()
     if context.default_execution_mode == context.EAGER_MODE:
       pywrap_tensorflow.TFE_ProfilerContextSetEagerContext(
@@ -82,13 +90,14 @@ def stop():
     to file for offline analysis by tensorboard.
 
   Raises:
-    AssertionError: If there is no active profiling session.
+    ProfilerNotRunningError: If there is no active profiling session.
   """
   global _profiler
   global _run_num
   with _profiler_lock:
     if _profiler is None:
-      raise AssertionError('Cannot stop profiling. No profiler is running.')
+      raise ProfilerNotRunningError(
+          'Cannot stop profiling. No profiler is running.')
     with c_api_util.tf_buffer() as buffer_:
       pywrap_tensorflow.TFE_ProfilerSerializeToString(
           context.context()._handle,  # pylint: disable=protected-access

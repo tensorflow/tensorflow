@@ -21,6 +21,8 @@ from __future__ import print_function
 import os
 import unittest
 
+import six
+
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
 from tensorflow.core.framework import step_stats_pb2
@@ -45,6 +47,7 @@ from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
+from tensorflow.python.platform import tf_logging as logging
 
 
 class SummaryOpsCoreTest(test_util.TensorFlowTestCase):
@@ -571,6 +574,9 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
 
 class SummaryOpsTest(test_util.TensorFlowTestCase):
 
+  def tearDown(self):
+    summary_ops.disable_trace()
+
   def run_metadata(self, *args, **kwargs):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
@@ -614,6 +620,18 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     events = events_from_logdir(logdir)
     # The first event contains no summary values. The written content goes to
     # the second event.
+    return events[1].summary
+
+  def run_trace(self, f):
+    assert context.executing_eagerly()
+    logdir = self.get_temp_dir()
+    writer = summary_ops.create_file_writer(logdir)
+    summary_ops.enable_trace(graph=True, profiler=False)
+    with writer.as_default():
+      f()
+      summary_ops.export_trace(name='foo', step=1)
+    writer.close()
+    events = events_from_logdir(logdir)
     return events[1].summary
 
   @test_util.run_v2_only
@@ -717,6 +735,62 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     summary = self.keras_model(name='my_name', data=model, step=1)
     first_val = summary.value[0]
     self.assertEqual(model.to_json(), first_val.tensor.string_val[0])
+
+  @test_util.run_v2_only
+  def testTrace(self):
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    summary = self.run_trace(f)
+
+    first_val = summary.value[0]
+    actual_run_metadata = config_pb2.RunMetadata.FromString(
+        first_val.tensor.string_val[0])
+
+    # Content of function_graphs is large and, for instance, device can change.
+    self.assertTrue(hasattr(actual_run_metadata, 'function_graphs'))
+
+  @test_util.run_v2_only
+  def testTrace_cannotEnableTraceInFunction(self):
+
+    @def_function.function
+    def f():
+      summary_ops.enable_trace(graph=True, profiler=False)
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      return x**y
+
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      f()
+      self.assertRegexpMatches(
+          str(mock_log.call_args), 'Must enable trace in eager mode.')
+
+  @test_util.run_v2_only
+  def testTrace_cannotExportTraceWithoutTrace(self):
+    with six.assertRaisesRegex(self, ValueError,
+                               'Must enable trace before export.'):
+      summary_ops.export_trace(name='foo', step=1)
+
+  @test_util.run_v2_only
+  def testTrace_cannotExportTraceInFunction(self):
+    summary_ops.enable_trace(graph=True, profiler=False)
+
+    @def_function.function
+    def f():
+      x = constant_op.constant(2)
+      y = constant_op.constant(3)
+      summary_ops.export_trace(name='foo', step=1)
+      return x**y
+
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      f()
+      self.assertRegexpMatches(
+          str(mock_log.call_args),
+          'Can only export trace while executing eagerly.')
 
 
 def events_from_file(filepath):
