@@ -80,11 +80,10 @@ Simple usage:
   parser.add_argument(
       "--inplace",
       dest="in_place",
-      help=("If converting a whole tree of files, whether to "
+      help=("If converting a set of files, whether to "
             "allow the conversion to be performed on the "
-            "files in the input tree."),
-      type=bool,
-      default=False)
+            "input files."),
+      action="store_true")
   parser.add_argument(
       "--reportfile",
       dest="report_filename",
@@ -99,21 +98,29 @@ Simple usage:
   report_filename = args.report_filename
   files_processed = 0
   if args.input_file:
-    if not args.output_file:
+    if not args.in_place and not args.output_file:
       raise ValueError(
           "--outfile=<output file> argument is required when converting a "
           "single file.")
+    if args.in_place and args.output_file:
+      raise ValueError(
+          "--outfile argument is invalid when when converting in place")
+    output_file = args.input_file if args.in_place else args.output_file
     files_processed, report_text, errors = process_file(
-        args.input_file, args.output_file, upgrade)
+        args.input_file, output_file, upgrade)
     errors = {args.input_file: errors}
     files_processed = 1
   elif args.input_tree:
-    if not args.output_tree:
+    if not args.in_place and not args.output_tree:
       raise ValueError(
           "--outtree=<output directory> argument is required when converting a "
           "file tree.")
+    if args.in_place and args.output_tree:
+      raise ValueError(
+          "--outtree argument is invalid when when converting in place")
+    output_tree = args.input_tree if args.in_place else args.output_tree
     files_processed, report_text, errors = upgrade.process_tree(
-        args.input_tree, args.output_tree, args.copy_other_files, args.in_place)
+        args.input_tree, output_tree, args.copy_other_files)
   else:
     parser.print_help()
   if report_text:
