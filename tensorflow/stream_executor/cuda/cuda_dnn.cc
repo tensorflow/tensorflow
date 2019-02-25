@@ -163,7 +163,7 @@ class CudnnAccess {
   explicit CudnnAccess(cudnnHandle_t handle) : handle_(handle) {}
 
   ~CudnnAccess() {
-    mutex_lock lock(mutex_);
+    mutex_lock lock(*mutex_);
     cudnnDestroy(handle_);
   }
 
@@ -184,7 +184,7 @@ class CudnnAccess {
   // therefore a bad idea (performance wise) to call any cuDNN APIs that
   // enqueue work in the stream.
   CudnnHandle GetHandle(GpuExecutor* executor, Stream* stream) {
-    mutex_lock lock(mutex_);
+    mutex_lock lock(*mutex_);
     gpu::ScopedActivateExecutorContext context(executor);
     CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
     auto status = cudnnSetStream(handle_, cu_stream);
@@ -194,11 +194,18 @@ class CudnnAccess {
 
  private:
   // Guards the enqueueing of cuDNN operations via the handle_ below.
-  mutex mutex_;
+  //
+  // The mutex is static to work around b/124313574: calling cuDNN concurrently
+  // with different handles is not thread safe, even though the documentation
+  // suggests it is:
+  // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#thread-safety.
+  static mutex* mutex_;
 
   // cuDNN library handle.
-  cudnnHandle_t handle_ GUARDED_BY(mutex_);  // Owned.
+  cudnnHandle_t handle_ GUARDED_BY(*mutex_);  // Owned.
 };
+
+mutex* CudnnAccess::mutex_ = new mutex;
 
 namespace {
 
