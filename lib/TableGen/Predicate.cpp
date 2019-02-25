@@ -150,11 +150,14 @@ static PredNode *buildPredicateTree(const tblgen::Pred &root,
     rootNode->expr = root.getCondition();
     // Apply all parent substitutions from innermost to outermost.
     for (const auto &subst : llvm::reverse(substitutions)) {
-      size_t start = 0;
-      while (auto pos =
-                 rootNode->expr.find(subst.first, start) != std::string::npos) {
+      auto pos = rootNode->expr.find(subst.first);
+      while (pos != std::string::npos) {
         rootNode->expr.replace(pos, subst.first.size(), subst.second);
-        start = pos + subst.second.size();
+        // Skip the newly inserted substring, which itself may consider the
+        // pattern to match.
+        pos += subst.second.size();
+        // Find the next possible match position.
+        pos = rootNode->expr.find(subst.first, pos);
       }
     }
     return rootNode;
