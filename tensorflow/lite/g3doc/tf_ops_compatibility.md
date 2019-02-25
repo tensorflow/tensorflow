@@ -803,7 +803,7 @@ Inputs {
   1: a 1D tensor with 2 elements
 }
 Outputs {
-  0: A tensor of type `tensor 0` resized according to `tensor 1` heigh/width values
+  0: A tensor of type `tensor 0` resized according to `tensor 1` height/width values
   using nearest neighbors interpolation.
 }
 Options {
