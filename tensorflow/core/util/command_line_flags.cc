@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include <cinttypes>
+#include <cstring>
 #include <string>
 #include <vector>
 
