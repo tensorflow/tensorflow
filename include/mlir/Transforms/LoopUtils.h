@@ -104,6 +104,23 @@ void interchangeLoops(OpPointer<AffineForOp> forOpA,
 /// 'loopDepth' AffineForOps consecutively nested under it.
 void sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth);
 
+/// Performs tiling fo imperfectly nested loops (with interchange) by
+/// strip-mining the `forOps` by `sizes` and sinking them, in their order of
+/// occurrence in `forOps`, under each of the `targets`.
+/// Returns the new AffineForOps, one per each of (`forOps`, `targets`) pair,
+/// nested immediately under each of `targets`.
+SmallVector<SmallVector<OpPointer<AffineForOp>, 8>, 8>
+tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
+     ArrayRef<OpPointer<AffineForOp>> targets);
+
+/// Performs tiling (with interchange) by strip-mining the `forOps` by `sizes`
+/// and sinking them, in their order of occurrence in `forOps`, under `target`.
+/// Returns the new AffineForOps, one per `forOps`, nested immediately under
+/// `target`.
+SmallVector<OpPointer<AffineForOp>, 8>
+tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
+     OpPointer<AffineForOp> target);
+
 } // end namespace mlir
 
 #endif // MLIR_TRANSFORMS_LOOP_UTILS_H

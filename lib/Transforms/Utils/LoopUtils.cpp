@@ -34,6 +34,7 @@
 #include "mlir/StandardOps/StandardOps.h"
 #include "llvm/ADT/DenseMap.h"
 #include "llvm/Support/Debug.h"
+
 #define DEBUG_TYPE "LoopUtils"
 
 using namespace mlir;
@@ -485,4 +486,98 @@ void mlir::sinkLoop(OpPointer<AffineForOp> forOp, unsigned loopDepth) {
         forOp->getBody()->front().cast<AffineForOp>();
     interchangeLoops(forOp, nextForOp);
   }
+}
+
+// Factors out common behavior to add max(`iv`, ...), min(`iv` + `offset`, ...)
+// to loop bounds.
+static void augmentMapAndBounds(FuncBuilder *b, Value *iv, AffineMap *map,
+                                SmallVector<Value *, 4> *operands,
+                                int64_t offset = 0) {
+  auto bounds = llvm::to_vector<4>(map->getResults());
+  operands->push_back(iv);
+  auto numOperands = operands->size();
+  bounds.push_back(b->getAffineDimExpr(numOperands - 1) + offset);
+  *map = b->getAffineMap(numOperands, map->getNumSymbols(), bounds, {});
+  canonicalizeMapAndOperands(map, operands);
+}
+
+// Stripmines `forOp` by `factor` and sinks it under each of the `targets`.
+// Stripmine-sink is a primitive building block for generalized tiling of
+// imperfectly nested loops.
+// This transformation is purely mechanical and does not check legality,
+// profitability or even structural correctness. It is the user's
+// responsibility to specify `targets` that are dominated by `forOp`.
+// Returns the new AffineForOps, one per `targets`, nested immediately under
+// each of the `targets`.
+static SmallVector<OpPointer<AffineForOp>, 8>
+stripmineSink(OpPointer<AffineForOp> forOp, uint64_t factor,
+              ArrayRef<OpPointer<AffineForOp>> targets) {
+  // TODO(ntv): Use cheap structural assertions that targets are nested under
+  // forOp and that targets are not nested under each other when DominanceInfo
+  // exposes the capability. It seems overkill to construct a whole function
+  // dominance tree at this point.
+  auto originalStep = forOp->getStep();
+  auto scaledStep = originalStep * factor;
+  forOp->setStep(scaledStep);
+
+  auto *forInst = forOp->getInstruction();
+  FuncBuilder b(forInst->getBlock(), ++Block::iterator(forInst));
+
+  // Lower-bound map creation.
+  auto lbMap = forOp->getLowerBoundMap();
+  SmallVector<Value *, 4> lbOperands(forOp->getLowerBoundOperands());
+  augmentMapAndBounds(&b, forOp->getInductionVar(), &lbMap, &lbOperands);
+
+  // Upper-bound map creation.
+  auto ubMap = forOp->getLowerBoundMap();
+  SmallVector<Value *, 4> ubOperands(forOp->getUpperBoundOperands());
+  augmentMapAndBounds(&b, forOp->getInductionVar(), &ubMap, &ubOperands,
+                      /*offset=*/scaledStep);
+
+  SmallVector<OpPointer<AffineForOp>, 8> innerLoops;
+  for (auto t : targets) {
+    // Insert forOp just before the first instruction in the body.
+    auto *body = t->getBody();
+    auto &inst = body->getInstructions().front();
+    FuncBuilder b(&inst);
+    auto newLoop = b.create<AffineForOp>(t->getLoc(), lbOperands, lbMap,
+                                         ubOperands, ubMap, originalStep);
+    newLoop->createBody()->getInstructions().splice(
+        newLoop->getBody()->end(), body->getInstructions(), ++body->begin(),
+        body->end());
+    innerLoops.push_back(newLoop);
+  }
+
+  return innerLoops;
+}
+
+// Stripmines a `forOp` by `factor` and sinks it under a single `target`.
+// Returns the new AffineForOps, nested immediately under `target`.
+OpPointer<AffineForOp> stripmineSink(OpPointer<AffineForOp> forOp,
+                                     uint64_t factor,
+                                     OpPointer<AffineForOp> target) {
+  auto res =
+      stripmineSink(forOp, factor, ArrayRef<OpPointer<AffineForOp>>{target});
+  assert(res.size() == 1 && "Expected 1 inner forOp");
+  return res[0];
+}
+
+SmallVector<SmallVector<OpPointer<AffineForOp>, 8>, 8>
+mlir::tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
+           ArrayRef<OpPointer<AffineForOp>> targets) {
+  SmallVector<SmallVector<OpPointer<AffineForOp>, 8>, 8> res;
+  SmallVector<OpPointer<AffineForOp>, 8> currentTargets(targets.begin(),
+                                                        targets.end());
+  for (auto it : llvm::zip(forOps, sizes)) {
+    auto step = stripmineSink(std::get<0>(it), std::get<1>(it), currentTargets);
+    res.push_back(step);
+    currentTargets = step;
+  }
+  return res;
+}
+
+SmallVector<OpPointer<AffineForOp>, 8>
+mlir::tile(ArrayRef<OpPointer<AffineForOp>> forOps, ArrayRef<uint64_t> sizes,
+           OpPointer<AffineForOp> target) {
+  return tile(forOps, sizes, ArrayRef<OpPointer<AffineForOp>>{target})[0];
 }

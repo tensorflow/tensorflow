@@ -127,3 +127,22 @@ func @second_order_callee(() -> ()) -> (() -> (index))
 func @call_indirect() {
   return
 }
+
+// This function will be detected by the test pass that will insert an
+// EDSC-constructed chain of indirect calls that corresponds to an imperfectly
+// nested loop nest with 2 common outer loops and 2 inner 1-d loops.
+// CHECK-LABEL: func @tile_2d
+// CHECK:   for %i0 = #[[idmap]]({{.*}}) to #[[idmap]]({{.*}}) step 512 {
+// CHECK:     for %i1 = #[[idmap]]({{.*}}) to #[[idmap]]({{.*}}) step 1024 {
+// CHECK:       for %i2 = #[[idmap]]({{.*}}) to #[[idmap]]({{.*}}) {
+// CHECK:         for %i3 = max #{{.*}}, %i0) to min #{{.*}}, %i0) step 16 {
+// CHECK:           for %i4 = max #{{.*}}, %i1) to min #{{.*}}, %i1) step 32 {
+// CHECK:             for %i5 = max #{{.*}}, %i1, %i4) to min #{{.*}}, %i1, %i4) {
+// CHECK:               for %i6 = max #{{.*}}, %i0, %i3) to min #{{.*}}, %i0, %i3) {
+// CHECK:                     for %i7 = #[[idmap]]({{.*}}) to #[[idmap]]({{.*}}) {
+// CHECK:         for %i8 = max #{{.*}}, %i0) to min #{{.*}}, %i0) {
+// CHECK:           for %i9 = max #{{.*}}, %i1) to min #{{.*}}, %i1) {
+func @tile_2d(%arg0: memref<?x?x?xf32>, %arg1: memref<?x?x?xf32>, %arg2: memref<?x?x?xf32>) {
+  return
+}
+

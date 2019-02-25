@@ -15,6 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
+#include "mlir/AffineOps/AffineOps.h"
 #include "mlir/EDSC/MLIREmitter.h"
 #include "mlir/EDSC/Types.h"
 #include "mlir/IR/Builders.h"
@@ -25,6 +26,8 @@
 #include "mlir/IR/Types.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/StandardOps/StandardOps.h"
+#include "mlir/Transforms/LoopUtils.h"
+#include "llvm/Support/raw_ostream.h"
 
 using namespace mlir;
 
@@ -260,8 +263,46 @@ PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
       }),
     });
     // clang-format on
-
     emitter.emitStmts(block.getBody());
+  }
+
+  // Inject an EDSC-constructed computation to exercise imperfectly nested 2-d
+  // tiling.
+  if (f->getName().strref().contains("tile_2d")) {
+    FuncBuilder builder(f);
+    edsc::ScopedEDSCContext context;
+    edsc::MLIREmitter emitter(&builder, f->getLoc());
+
+    edsc::Expr zero = emitter.zero();
+    edsc::Expr one = emitter.one();
+    auto args = emitter.makeBoundFunctionArguments(f);
+    auto views = emitter.makeBoundMemRefViews(args.begin(), args.end());
+
+    Type indexType = builder.getIndexType();
+    edsc::Expr i(indexType), j(indexType), k1(indexType), k2(indexType);
+    edsc::Indexed A(args[0]), B(args[1]), C(args[2]);
+    edsc::Expr M = views[0].dim(0), N = views[0].dim(1), O = views[0].dim(2);
+    // clang-format off
+    using namespace edsc::op;
+    edsc::Stmt scalarA, scalarB, tmp;
+    auto block = edsc::block({
+      For(ArrayRef<edsc::Expr>{i, j}, {zero, zero}, {M, N}, {one, one}, {
+        For(k1, zero, O, one, {
+          C({i, j, k1}) = A({i, j, k1}) + B({i, j, k1})
+        }),
+        For(k2, zero, O, one, {
+          C({i, j, k2}) = A({i, j, k2}) + B({i, j, k2})
+        }),
+      }),
+    });
+    // clang-format on
+    emitter.emitStmts(block.getBody());
+
+    auto li = emitter.getAffineForOp(i), lj = emitter.getAffineForOp(j),
+         lk1 = emitter.getAffineForOp(k1), lk2 = emitter.getAffineForOp(k2);
+    auto indicesL1 = mlir::tile({li, lj}, {512, 1024}, {lk1, lk2});
+    auto lii1 = indicesL1[0][0], ljj1 = indicesL1[1][0];
+    mlir::tile({ljj1, lii1}, {32, 16}, ljj1);
   }
 
   f->walk([](Instruction *op) {

@@ -40,6 +40,7 @@
 #include "llvm/ADT/DenseMap.h"
 
 namespace mlir {
+class AffineForOp;
 class FuncBuilder;
 class Value;
 
@@ -164,6 +165,7 @@ struct MLIREmitter {
     }
     return res;
   }
+  OpPointer<AffineForOp> getAffineForOp(Expr e);
 
 private:
   /// Emits the MLIR for `expr` and inserts at the `builder`'s insertion point.

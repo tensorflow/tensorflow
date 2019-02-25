@@ -388,6 +388,12 @@ mlir::edsc::MLIREmitter::makeBoundMemRefView(Expr boundMemRef) {
   return makeBoundMemRefView(v);
 }
 
+OpPointer<AffineForOp> mlir::edsc::MLIREmitter::getAffineForOp(Expr e) {
+  auto *value = ssaBindings.lookup(e);
+  assert(value && "Expr not bound");
+  return getForInductionVarOwner(value);
+}
+
 edsc_expr_t bindConstantBF16(edsc_mlir_emitter_t emitter, double value) {
   auto *e = reinterpret_cast<mlir::edsc::MLIREmitter *>(emitter);
   Expr b(e->getBuilder()->getBF16Type());
