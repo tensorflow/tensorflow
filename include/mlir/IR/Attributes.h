@@ -438,6 +438,10 @@ public:
 
   StringRef getValue() const;
 
+  /// Return the value at the given index. If index does not refer to a valid
+  /// element, then a null attribute is returned.
+  Attribute getValue(ArrayRef<uint64_t> index) const;
+
   /// Decodes the attribute value using dialect-specific decoding hook.
   /// Returns false if decoding is successful. If not, returns true and leaves
   /// 'result' argument unspecified.

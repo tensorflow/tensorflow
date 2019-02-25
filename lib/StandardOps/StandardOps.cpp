@@ -1186,6 +1186,8 @@ Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
   case Attribute::Kind::DenseFPElements:
   case Attribute::Kind::DenseIntElements:
     return aggregate.cast<DenseElementsAttr>().getValue(indices);
+  case Attribute::Kind::OpaqueElements:
+    return aggregate.cast<OpaqueElementsAttr>().getValue(indices);
   case Attribute::Kind::SparseElements:
     return aggregate.cast<SparseElementsAttr>().getValue(indices);
   default:

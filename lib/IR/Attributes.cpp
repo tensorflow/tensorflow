@@ -342,6 +342,14 @@ StringRef OpaqueElementsAttr::getValue() const {
   return static_cast<ImplType *>(attr)->bytes;
 }
 
+/// Return the value at the given index. If index does not refer to a valid
+/// element, then a null attribute is returned.
+Attribute OpaqueElementsAttr::getValue(ArrayRef<uint64_t> index) const {
+  if (Dialect *dialect = getDialect())
+    return dialect->extractElementHook(*this, index);
+  return Attribute();
+}
+
 Dialect *OpaqueElementsAttr::getDialect() const {
   return static_cast<ImplType *>(attr)->dialect;
 }
