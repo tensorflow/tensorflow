@@ -585,10 +585,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = [
-        "manual",  # b/124471597
-        "notap",  # b/124471597
-    ],
     xla_enable_strict_auto_jit = True,
 )
 
