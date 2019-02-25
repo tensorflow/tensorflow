@@ -1831,6 +1831,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
 
+  def testFunctionWithNestedFunctionCallAndSideEffects(self):
+    v1 = variables.Variable(1.0)
+    v2 = variables.Variable(1.0)
+
+    @def_function.function
+    def add_one(a):
+      a.assign_add(1.0)
+
+    # Grappler will inline calls to `add_one` into the function body, we check
+    # that all side-effects were executed.
+    @def_function.function
+    def side_effecting_function(a, b):
+      add_one(a)
+      add_one(b)
+      return a + b
+
+    result = side_effecting_function(v1, v2)
+    self.assertEqual(result.numpy(), 4.0)
+
   def testFunctionWithExtraAttributes(self):
     @function.defun_with_attributes(attributes={'experimental_1': 'value1',
                                                 'experimental_2': 2})
