@@ -38,6 +38,8 @@ using DialectHooksSetter = std::function<void(MLIRContext *)>;
 /// The subclass should override DialectHook methods for supported hooks.
 class DialectHooks {
 public:
+  // Returns hook to constant fold an operation.
+  DialectConstantFoldHook getConstantFoldHook() { return nullptr; }
   // Returns hook to decode opaque constant tensor.
   DialectConstantDecodeHook getDecodeHook() { return nullptr; }
   // Returns hook to extract an element of an opaque constant tensor.
@@ -65,6 +67,8 @@ template <typename ConcreteHooks> struct DialectHooksRegistration {
       }
       // Set hooks.
       ConcreteHooks hooks;
+      if (auto h = hooks.getConstantFoldHook())
+        dialect->constantFoldHook = h;
       if (auto h = hooks.getDecodeHook())
         dialect->decodeHook = h;
       if (auto h = hooks.getExtractElementHook())

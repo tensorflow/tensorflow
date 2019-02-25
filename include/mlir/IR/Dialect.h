@@ -178,25 +178,10 @@ private:
 };
 
 using DialectAllocatorFunction = std::function<void(MLIRContext *)>;
-using ConstantFoldHookAllocator = std::function<void(MLIRContext *)>;
 
 /// Registers a specific dialect creation function with the system, typically
 /// used through the DialectRegistration template.
 void registerDialectAllocator(const DialectAllocatorFunction &function);
-
-/// Registers a constant fold hook for one or multiple dialects. The
-/// ConstantFoldHookAllocator defines how the hook gets mapped to the targeted
-/// dialect(s) in the context.
-/// Exmaple:
-///      registerConstantFoldHook([&](MLIRContext *ctx) {
-///        auto dialects = ctx->getRegisteredDialects();
-///        // then iterate and select the target dialect from dialects, or
-///        // get one dialect directly by the prefix:
-///        auto dialect = ctx->getRegisteredDialect("TARGET_PREFIX")
-///
-///        dialect->constantFoldHook = MyConstantFoldHook;
-///      });
-void registerConstantFoldHook(const ConstantFoldHookAllocator &function);
 
 /// Registers all dialects with the specified MLIRContext.
 void registerAllDialects(MLIRContext *context);
