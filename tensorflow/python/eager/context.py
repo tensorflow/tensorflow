@@ -83,6 +83,7 @@ class _EagerTensorCache(object):
 
 class FunctionCallOptions(object):
   """Options applied at call sites of eager functions.
+
   Eager functions are functions decorated with tf.contrib.eager.defun.
   """
 
@@ -251,27 +252,27 @@ class Context(object):
         options for the Context. Note that a lot of these options may be
         currently unimplemented or irrelevant when eager execution is enabled.
       device_policy: (Optional.) What policy to use when trying to run an
-         operation on a device with inputs which are not on that device.
-         When set to None, an appropriate value will be picked automatically.
-         The value picked may change between TensorFlow releases.
+        operation on a device with inputs which are not on that device.
+        When set to None, an appropriate value will be picked automatically.
+        The value picked may change between TensorFlow releases.
 
-         Defaults to tf.contrib.eager.DEVICE_PLACEMENT_SILENT_FOR_INT32.
-         Valid values:
-         - tfe.DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
-           not correct.
-         - tfe.DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
-           right device but raises a warning.
-         - tfe.DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
-           hide performance problems.
-         - tfe.DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
-           raising errors on the other ones.
+        Defaults to DEVICE_PLACEMENT_SILENT.
+        Valid values:
+        - DEVICE_PLACEMENT_EXPLICIT: raises an error if the placement is
+          not correct.
+        - DEVICE_PLACEMENT_WARN: copies the tensors which are not on the
+          right device but raises a warning.
+        - DEVICE_PLACEMENT_SILENT: silently copies the tensors. This might
+          hide performance problems.
+        - DEVICE_PLACEMENT_SILENT_FOR_INT32: silently copies int32 tensors,
+          raising errors on the other ones.
       execution_mode: (Optional.) Policy controlling how operations dispatched
         are actually executed. When set to None, an appropriate value will be
         picked automatically. The value picked may change between TensorFlow
         releases.
         Valid values:
-        - tf.contrib.eager.SYNC: executes each operation synchronously.
-        - tf.contrib.eager.ASYNC: executes each operation asynchronously. These
+        - SYNC: executes each operation synchronously.
+        - ASYNC: executes each operation asynchronously. These
           operations may return "non-ready" handles.
       server_def: (Optional.) A tensorflow::ServerDef proto.
         Enables execution on remote devices. GrpcServers need to be started by
@@ -287,9 +288,13 @@ class Context(object):
     self._context_handle = None
     self._context_devices = None
     self._post_execution_callbacks = []
+    if config is None:
+      config = config_pb2.ConfigProto()
     self._config = config
     self._seed = None
     self._initialize_lock = threading.Lock()
+    if device_policy is None:
+      device_policy = DEVICE_PLACEMENT_SILENT
     self._device_policy = device_policy
     if execution_mode not in (None, SYNC, ASYNC):
       raise ValueError(
@@ -594,31 +599,35 @@ class Context(object):
     """List of the names of devices available to execute operations."""
     return self._devices
 
-  def get_execution_mode(self):
+  @property
+  def execution_mode(self):
+    """Gets execution mode for current thread."""
+    # Only get the execution mode from the context if it has already been
+    # initialized
+    if self._context_handle is None:
+      return self._execution_mode
+
     mode = self._eager_context.execution_mode
     if mode is None:
       mode = self._execution_mode
     return mode
 
-  def set_execution_mode(self, mode):
+  @execution_mode.setter
+  def execution_mode(self, mode):
     """Sets execution mode for current thread."""
     if mode not in (None, SYNC, ASYNC):
       raise ValueError(
           "Execution mode should be None/SYNC/ASYNC. Got %s" % mode)
     if mode is None:
       mode = SYNC
-    self._eager_context.execution_mode = mode
-    pywrap_tensorflow.TFE_ContextSetAsyncForThread(self._handle, mode == ASYNC)
 
-  @tf_contextlib.contextmanager
-  def execution_mode(self, mode):
-    """Context manager for setting execution mode for current thread."""
-    old_mode = self.get_execution_mode()
-    try:
-      self.set_execution_mode(mode)
-      yield
-    finally:
-      self.set_execution_mode(old_mode)
+    if self._execution_mode != mode:
+      self._execution_mode = mode
+      # Only set the execution mode if the context has already been initialized
+      if self._context_handle is not None:
+        self._eager_context.execution_mode = mode
+        pywrap_tensorflow.TFE_ContextSetAsyncForThread(
+            self._handle, mode == ASYNC)
 
   def get_function_call_options(self):
     """Returns function call options for current thread.
@@ -725,17 +734,98 @@ class Context(object):
     """Get the list of post-execution callbacks added to the context."""
     return self._post_execution_callbacks
 
-  @tf_contextlib.contextmanager
+  @property
+  def gpu_per_process_memory_fraction(self):
+    return self._config.gpu_options.per_process_gpu_memory_fraction
+
+  @gpu_per_process_memory_fraction.setter
+  def gpu_per_process_memory_fraction(self, fraction):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "GPU options must be set at program startup")
+
+    self._config.gpu_options.per_process_gpu_memory_fraction = fraction
+
+  @property
+  def gpu_per_process_memory_growth(self):
+    return self._config.gpu_options.allow_growth
+
+  @gpu_per_process_memory_growth.setter
+  def gpu_per_process_memory_growth(self, enabled):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "GPU options must be set at program startup")
+
+    self._config.gpu_options.allow_growth = enabled
+
+  @property
+  def intra_op_parallelism_threads(self):
+    return self._config.intra_op_parallelism_threads
+
+  @intra_op_parallelism_threads.setter
+  def intra_op_parallelism_threads(self, num_threads):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Intra op parallelism must be set at program startup")
+
+    self._config.intra_op_parallelism_threads = num_threads
+
+  @property
+  def inter_op_parallelism_threads(self):
+    return self._config.inter_op_parallelism_threads
+
+  @inter_op_parallelism_threads.setter
+  def inter_op_parallelism_threads(self, num_threads):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Inter op parallelism must be set at program startup")
+
+    self._config.inter_op_parallelism_threads = num_threads
+
+  @property
+  def soft_device_placement(self):
+    return self._config.allow_soft_placement
+
+  @soft_device_placement.setter
+  def soft_device_placement(self, enabled):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Soft placement must be set at program startup")
+
+    self._config.allow_soft_placement = enabled
+
+  @property
+  def log_device_placement(self):
+    return self._config.log_device_placement
+
+  @log_device_placement.setter
+  def log_device_placement(self, enabled):
+    if self._context_handle is not None:
+      raise RuntimeError(
+          "Device placement logging must be set at program startup")
+
+    self._config.log_device_placement = enabled
+
+  @property
+  def device_policy(self):
+    # Only get the policy from the context if it has already been initialized
+    if self._context_handle is not None:
+      return pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(self._handle)
+
+    return self._device_policy
+
+  @device_policy.setter
   def device_policy(self, policy):
-    handle = self._handle
-    old = pywrap_tensorflow.TFE_ContextGetDevicePlacementPolicy(handle)
-    pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-        handle, policy)
-    try:
-      yield
-    finally:
-      pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
-          handle, old)
+    if policy is None:
+      policy = DEVICE_PLACEMENT_SILENT
+
+    if self._device_policy != policy:
+      self._device_policy = policy
+
+      # Only set the policy if the context has already been initialized
+      if self._context_handle is not None:
+        pywrap_tensorflow.TFE_ContextSetThreadLocalDevicePlacementPolicy(
+            self._handle, self._device_policy)
 
   def enable_run_metadata(self):
     """Enables tracing of op execution via RunMetadata.
@@ -931,14 +1021,53 @@ def list_devices():
   return context().devices()
 
 
+@tf_export("debugging.get_log_device_placement")
+def get_log_device_placement():
+  """Get if device placements are logged.
+
+  Returns:
+    If device placements are logged.
+  """
+  return context().log_device_placement
+
+
+@tf_export("debugging.set_log_device_placement")
+def set_log_device_placement(enabled):
+  """Set if device placements should be logged.
+
+  Args:
+    enabled: Whether to enabled device placement logging.
+  """
+  context().log_device_placement = enabled
+
+
+@tf_contextlib.contextmanager
+def device_policy(policy):
+  """Context manager for setting device placement policy for current thread."""
+  ctx = context()
+  old_policy = ctx.device_policy
+  try:
+    ctx.device_policy = policy
+    yield
+  finally:
+    ctx.device_policy = old_policy
+
+
 def set_execution_mode(mode):
   """Sets execution mode for the current thread."""
-  context().set_execution_mode(mode)
+  context().execution_mode = mode
 
 
+@tf_contextlib.contextmanager
 def execution_mode(mode):
   """Context manager for setting execution mode for current thread."""
-  return context().execution_mode(mode)
+  ctx = context()
+  old_mode = ctx.execution_mode
+  try:
+    ctx.execution_mode = mode
+    yield
+  finally:
+    ctx.execution_mode = old_mode
 
 
 @tf_export("experimental.function_executor_type")
