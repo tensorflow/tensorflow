@@ -524,6 +524,18 @@ py_library(
     deps = [
         ":context",
         "//tensorflow/python:framework_ops",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "lift_to_graph_test",
+    size = "medium",
+    srcs = ["lift_to_graph_test.py"],
+    additional_deps = [
+        "lift_to_graph",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:framework_ops",
     ],
 )
 
