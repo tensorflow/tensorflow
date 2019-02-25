@@ -784,7 +784,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
   auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
   TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
   TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
-  // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
+  // d^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
   // Branch Cuts for Complex Elementary Functions or Much Ado About
   // Nothing's Sign Bit, W. Kahan, Section 10.
   return Select(
