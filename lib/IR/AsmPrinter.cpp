@@ -715,8 +715,7 @@ void ModulePrinter::printType(Type type) {
   default: {
     auto &dialect = type.getDialect();
     os << '!' << dialect.getNamespace() << "<\"";
-    assert(dialect.typePrintHook && "Expected dialect type printing hook.");
-    dialect.typePrintHook(type, os);
+    dialect.printType(type, os);
     os << "\">";
     return;
   }

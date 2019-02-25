@@ -35,9 +35,6 @@ using DialectConstantFoldHook = std::function<bool(
     const Instruction *, ArrayRef<Attribute>, SmallVectorImpl<Attribute> &)>;
 using DialectExtractElementHook =
     std::function<Attribute(const OpaqueElementsAttr, ArrayRef<uint64_t>)>;
-using DialectTypeParserHook =
-    std::function<Type(StringRef, Location, MLIRContext *)>;
-using DialectTypePrinterHook = std::function<void(Type, raw_ostream &)>;
 
 /// Dialects are groups of MLIR operations and behavior associated with the
 /// entire group.  For example, hooks into other systems for constant folding,
@@ -80,11 +77,16 @@ public:
         return Attribute();
       };
 
-  /// Registered parsing/printing hooks for types registered to the dialect.
-  DialectTypeParserHook typeParseHook = nullptr;
+  /// Parse a type registered to this dialect.
+  virtual Type parseType(StringRef tyData, Location loc,
+                         MLIRContext *context) const;
+
+  /// Print a type registered to this dialect.
   /// Note: The data printed for the provided type must not include any '"'
   /// characters.
-  DialectTypePrinterHook typePrintHook = nullptr;
+  virtual void printType(Type, raw_ostream &) const {
+    assert(0 && "dialect has no registered type printing hook");
+  }
 
   /// Registered hooks for getting identifier aliases for symbols. The
   /// identifier is used in place of the symbol when printing textual IR.

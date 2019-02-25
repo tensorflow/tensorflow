@@ -57,27 +57,6 @@ LLVMType LLVMType::get(MLIRContext *context, llvm::Type *llvmType) {
   return Base::get(context, FIRST_LLVM_TYPE, llvmType);
 }
 
-static Type parseLLVMType(StringRef data, Location loc, MLIRContext *ctx) {
-  llvm::SMDiagnostic errorMessage;
-  auto *llvmDialect =
-      static_cast<LLVMDialect *>(ctx->getRegisteredDialect("llvm"));
-  assert(llvmDialect && "LLVM dialect not registered");
-  llvm::Type *type =
-      llvm::parseType(data, errorMessage, llvmDialect->getLLVMModule());
-  if (!type) {
-    ctx->emitError(loc, errorMessage.getMessage());
-    return {};
-  }
-  return LLVMType::get(ctx, type);
-}
-
-static void printLLVMType(Type ty, raw_ostream &os) {
-  auto type = ty.dyn_cast<LLVMType>();
-  assert(type && "printing wrong type");
-  assert(type.getUnderlyingType() && "no underlying LLVM type");
-  type.getUnderlyingType()->print(os);
-}
-
 llvm::Type *LLVMType::getUnderlyingType() const {
   return static_cast<ImplType *>(type)->underlyingType;
 }
@@ -91,9 +70,24 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
   addOperations<
 #include "mlir/LLVMIR/llvm_ops.inc"
       >();
+}
 
-  typeParseHook = parseLLVMType;
-  typePrintHook = printLLVMType;
+/// Parse a type registered to this dialect.
+Type LLVMDialect::parseType(StringRef tyData, Location loc,
+                            MLIRContext *context) const {
+  llvm::SMDiagnostic errorMessage;
+  llvm::Type *type = llvm::parseType(tyData, errorMessage, module);
+  if (!type)
+    return (context->emitError(loc, errorMessage.getMessage()), nullptr);
+  return LLVMType::get(context, type);
+}
+
+/// Print a type registered to this dialect.
+void LLVMDialect::printType(Type type, raw_ostream &os) const {
+  auto llvmType = type.dyn_cast<LLVMType>();
+  assert(llvmType && "printing wrong type");
+  assert(llvmType.getUnderlyingType() && "no underlying LLVM type");
+  llvmType.getUnderlyingType()->print(os);
 }
 
 static DialectRegistration<LLVMDialect> llvmDialect;

@@ -18,6 +18,7 @@
 #include "mlir/IR/Dialect.h"
 #include "mlir/IR/DialectHooks.h"
 #include "mlir/IR/MLIRContext.h"
+#include "llvm/ADT/Twine.h"
 #include "llvm/Support/ManagedStatic.h"
 using namespace mlir;
 
@@ -65,3 +66,11 @@ Dialect::Dialect(StringRef namePrefix, MLIRContext *context)
 }
 
 Dialect::~Dialect() {}
+
+/// Parse a type registered to this dialect.
+Type Dialect::parseType(StringRef tyData, Location loc,
+                        MLIRContext *context) const {
+  context->emitError(loc, "dialect '" + getNamespace() +
+                              "' provides no type parsing hook");
+  return Type();
+}

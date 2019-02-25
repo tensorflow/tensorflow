@@ -76,6 +76,13 @@ public:
   llvm::LLVMContext &getLLVMContext() { return llvmContext; }
   llvm::Module &getLLVMModule() { return module; }
 
+  /// Parse a type registered to this dialect.
+  Type parseType(StringRef tyData, Location loc,
+                 MLIRContext *context) const override;
+
+  /// Print a type registered to this dialect.
+  void printType(Type type, raw_ostream &os) const override;
+
 private:
   llvm::LLVMContext llvmContext;
   llvm::Module module;

@@ -496,15 +496,7 @@ Type Parser::parseExtendedType() {
     return aliasIt->second;
   }
 
-  // Otherwise, check for a registered dialect with this name.
-  auto *dialect = state.context->getRegisteredDialect(identifier);
-  if (dialect) {
-    // Make sure that the dialect provides a parsing hook.
-    if (!dialect->typeParseHook)
-      return (emitError("dialect '" + dialect->getNamespace() +
-                        "' provides no type parsing hook"),
-              nullptr);
-  }
+  // Otherwise, we are parsing a dialect-specific type.
 
   // Consume the '<'.
   if (parseToken(Token::less, "expected '<' in dialect type"))
@@ -522,8 +514,8 @@ Type Parser::parseExtendedType() {
   Type result;
 
   // If we found a registered dialect, then ask it to parse the type.
-  if (dialect) {
-    result = dialect->typeParseHook(typeData, loc, state.context);
+  if (auto *dialect = state.context->getRegisteredDialect(identifier)) {
+    result = dialect->parseType(typeData, loc, state.context);
     if (!result)
       return nullptr;
   } else {
