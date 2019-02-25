@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Upgrader for Python scripts from 1.* TensorFlow to 2.0 TensorFlow."""
+"""Upgrader for Python scripts from 1.x TensorFlow to 2.0 TensorFlow."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -22,15 +22,33 @@ import argparse
 
 from tensorflow.tools.compatibility import ast_edits
 from tensorflow.tools.compatibility import tf_upgrade_v2
+from tensorflow.tools.compatibility import ipynb
+
+
+def process_file(in_filename, out_filename, upgrader):
+  """Process a file of type `.py` or `.ipynb`."""
+
+  if in_filename.endswith(".py"):
+    files_processed, report_text, errors = \
+      upgrader.process_file(in_filename, out_filename)
+  elif in_filename.endswith(".ipynb"):
+    files_processed, report_text, errors = \
+      ipynb.process_file(in_filename, out_filename, upgrader)
+  else:
+    raise NotImplementedError(
+        "Currently converter only supports python or ipynb")
+
+  return files_processed, report_text, errors
 
 
 def main():
   parser = argparse.ArgumentParser(
       formatter_class=argparse.RawDescriptionHelpFormatter,
-      description="""Convert a TensorFlow Python file from 1.* to 2.0
+      description="""Convert a TensorFlow Python file from 1.x to 2.0
 
 Simple usage:
   tf_upgrade_v2.py --infile foo.py --outfile bar.py
+  tf_upgrade_v2.py --infile foo.ipynb --outfile bar.ipynb
   tf_upgrade_v2.py --intree ~/code/old --outtree ~/code/new
 """)
   parser.add_argument(
@@ -85,8 +103,8 @@ Simple usage:
       raise ValueError(
           "--outfile=<output file> argument is required when converting a "
           "single file.")
-    files_processed, report_text, errors = upgrade.process_file(
-        args.input_file, args.output_file)
+    files_processed, report_text, errors = process_file(
+        args.input_file, args.output_file, upgrade)
     errors = {args.input_file: errors}
     files_processed = 1
   elif args.input_tree:
