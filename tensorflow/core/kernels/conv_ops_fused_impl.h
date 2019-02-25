@@ -28,6 +28,9 @@ limitations under the License.
 //
 // NOTE: GPU only supports fusion of Conv2D + BiasAdd + <optional Relu>.
 
+#ifndef TENSORFLOW_CORE_KERNELS_CONV_OPS_FUSED_IMPL_H_
+#define TENSORFLOW_CORE_KERNELS_CONV_OPS_FUSED_IMPL_H_
+
 #define USE_EIGEN_TENSOR
 #define EIGEN_USE_THREADS
 
@@ -63,7 +66,6 @@ namespace tensorflow {
 typedef Eigen::ThreadPoolDevice CPUDevice;
 typedef Eigen::GpuDevice GPUDevice;
 
-namespace {
 // Supported Conv2D fusions. Not all of them supported on all type of devices.
 enum class FusedComputationType {
   // NOTE(ezhulenev): CuDNN `cudnnConvolutionBiasActivationForward` supports
@@ -463,12 +465,12 @@ class FusedConvParameters : public ConvParameters {
   se::dnn::ActivationMode activation_mode_;
 };
 
-bool operator==(const FusedConvParameters& lhs,
+inline bool operator==(const FusedConvParameters& lhs,
                 const FusedConvParameters& rhs) {
   return lhs.get_data_as_tuple() == rhs.get_data_as_tuple();
 }
 
-bool operator!=(const FusedConvParameters& lhs,
+inline bool operator!=(const FusedConvParameters& lhs,
                 const FusedConvParameters& rhs) {
   return !(lhs == rhs);
 }
@@ -482,7 +484,7 @@ using AutoTuneFusedConv =
     AutoTuneSingleton<FusedConvAutoTuneGroup, FusedConvParameters,
                       se::dnn::AlgorithmConfig>;
 
-int64 ConvolveScratchSize() {
+inline int64 ConvolveScratchSize() {
   static int64 convolve_scratch_size = GetDnnWorkspaceLimit(
       // default value is in bytes despite the name of the environment variable
       "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32  // 4GB
@@ -822,8 +824,6 @@ struct LaunchFusedConv2DOp<GPUDevice, T> {
 
 #endif  // GOOGLE_CUDA
 
-}  // namespace
-
 template <typename Device, typename T>
 class FusedConv2DOp : public OpKernel {
  public:
@@ -962,22 +962,9 @@ class FusedConv2DOp : public OpKernel {
       Name("_FusedConv2D").Device(DEVICE_CPU).TypeConstraint<T>("T"), \
       FusedConv2DOp<CPUDevice, T>);
 
-// If we're using the alternative GEMM-based implementation of Conv2D for the
-// CPU implementation, don't register this EigenTensor-based version.
-// TODO(b/119765980): Upgrade upstream Eigen to set `m_can_use_xsmm=false` for
-// contractions with non-default contraction output kernels.
-#if !defined(USE_GEMM_FOR_CONV) && !defined(EIGEN_USE_LIBXSMM)
-TF_CALL_float(REGISTER_FUSED_CPU_CONV2D);
-TF_CALL_double(REGISTER_FUSED_CPU_CONV2D);
-#endif  // !USE_GEMM_FOR_CONV
-
-#undef REGISTER_FUSED_CPU_CONV2D
-
 #if GOOGLE_CUDA
 
-// Forward declarations of the functor specializations for GPU.
-namespace functor {
-#define DECLARE_GPU_SPEC(T)                                              \
+#define DECLARE_FUNCTOR_GPU_SPEC(T)                                      \
   template <>                                                            \
   void TransformFilter<GPUDevice, T, int, 4>::operator()(                \
       const GPUDevice& d, FilterTensorFormat dst_filter_format,          \
@@ -992,23 +979,14 @@ namespace functor {
       typename TTypes<T, 4, int>::Tensor out, TensorFormat data_format); \
   extern template struct PadInput<GPUDevice, T, int, 4>
 
-DECLARE_GPU_SPEC(float);
-DECLARE_GPU_SPEC(Eigen::half);
-DECLARE_GPU_SPEC(double);
-#undef DECLARE_GPU_SPEC
-}  // namespace functor
-
 // Registration of the GPU implementations.
 #define REGISTER_FUSED_GPU_CONV2D(T)                                  \
   REGISTER_KERNEL_BUILDER(                                            \
       Name("_FusedConv2D").Device(DEVICE_GPU).TypeConstraint<T>("T"), \
       FusedConv2DOp<GPUDevice, T>);
 
-TF_CALL_float(REGISTER_FUSED_GPU_CONV2D);
-TF_CALL_double(REGISTER_FUSED_GPU_CONV2D);
-
-#undef REGISTER_FUSED_GPU_CONV2D
-
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow
+
+#endif  // TENSORFLOW_CORE_KERNELS_CONV_OPS_FUSED_IMPL_H_
