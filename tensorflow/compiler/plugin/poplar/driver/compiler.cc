@@ -230,10 +230,8 @@ bool AreAllOutputsParameters(
 }  // namespace
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
-  std::string buffer;
-  hlo_graph_dumper::HloDotDumper builder;
-  TF_CHECK_OK(builder.AddComputation(comp));
-  builder.GetGraphDef().SerializeToString(&buffer);
+  std::string buffer = hlo_graph_dumper::DumpGraph(comp, "main_computation",
+                                                   {}, nullptr, true);
   return buffer;
 }
 
