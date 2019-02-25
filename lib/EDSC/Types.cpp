@@ -767,8 +767,10 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
   // sign-extended result for everything but i1 (booleans).
   if (this->is_op<ConstantIndexOp>() || this->is_op<ConstantIntOp>()) {
     APInt value = getAttribute("value").cast<IntegerAttr>().getValue();
-    os << (value.getBitWidth() == 1 ? value.getZExtValue()
-                                    : value.getSExtValue());
+    if (value.getBitWidth() == 1)
+      os << value.getZExtValue();
+    else
+      os << value;
     return;
   }
 
