@@ -64,17 +64,23 @@ struct ExprStorage {
   unsigned id;
 
   StringRef opName;
+
+  // Exprs can contain multiple groups of operands separated by null
+  // expressions.  Two null expressions in a row identify an empty group.
   ArrayRef<Expr> operands;
+
   ArrayRef<Type> resultTypes;
   ArrayRef<NamedAttribute> attributes;
+  ArrayRef<StmtBlock> successors;
 
   ExprStorage(ExprKind kind, StringRef name, ArrayRef<Type> results,
               ArrayRef<Expr> children, ArrayRef<NamedAttribute> attrs,
-              StringRef descr = "", unsigned exprId = Expr::newId())
+              ArrayRef<StmtBlock> succ = {}, unsigned exprId = Expr::newId())
       : kind(kind), id(exprId) {
     operands = copyIntoExprAllocator(children);
     resultTypes = copyIntoExprAllocator(results);
     attributes = copyIntoExprAllocator(attrs);
+    successors = copyIntoExprAllocator(succ);
     if (!name.empty()) {
       auto nameStorage = Expr::globalAllocator()->Allocate<char>(name.size());
       std::uninitialized_copy(name.begin(), name.end(), nameStorage);
@@ -94,11 +100,24 @@ struct StmtStorage {
 struct StmtBlockStorage {
   StmtBlockStorage(ArrayRef<Bindable> args, ArrayRef<Type> argTypes,
                    ArrayRef<Stmt> stmts) {
+    id = nextId();
     arguments = copyIntoExprAllocator(args);
     argumentTypes = copyIntoExprAllocator(argTypes);
     statements = copyIntoExprAllocator(stmts);
   }
 
+  void replaceStmts(ArrayRef<Stmt> stmts) {
+    Expr::globalAllocator()->Deallocate(statements.data(), statements.size());
+    statements = copyIntoExprAllocator(stmts);
+  }
+
+  static uint64_t &nextId() {
+    static thread_local uint64_t next = 0;
+    return ++next;
+  }
+  static void resetIds() { nextId() = 0; }
+
+  uint64_t id;
   ArrayRef<Bindable> arguments;
   ArrayRef<Type> argumentTypes;
   ArrayRef<Stmt> statements;
@@ -111,6 +130,7 @@ struct StmtBlockStorage {
 mlir::edsc::ScopedEDSCContext::ScopedEDSCContext() {
   Expr::globalAllocator() = &allocator;
   Bindable::resetIds();
+  StmtBlockStorage::resetIds();
 }
 
 mlir::edsc::ScopedEDSCContext::~ScopedEDSCContext() {
@@ -138,10 +158,6 @@ ArrayRef<Type> mlir::edsc::Expr::getResultTypes() const {
   return storage->resultTypes;
 }
 
-ArrayRef<Expr> mlir::edsc::Expr::getChildExpressions() const {
-  return storage->operands;
-}
-
 ArrayRef<NamedAttribute> mlir::edsc::Expr::getAttributes() const {
   return storage->attributes;
 }
@@ -153,26 +169,38 @@ Attribute mlir::edsc::Expr::getAttribute(StringRef name) const {
   return {};
 }
 
+ArrayRef<StmtBlock> mlir::edsc::Expr::getSuccessors() const {
+  return storage->successors;
+}
+
 StringRef mlir::edsc::Expr::getName() const {
   return static_cast<ImplType *>(storage)->opName;
 }
 
 SmallVector<Value *, 4>
-Expr::build(FuncBuilder &b,
-            const llvm::DenseMap<Expr, Value *> &ssaBindings) const {
+buildExprs(ArrayRef<Expr> exprs, FuncBuilder &b,
+           const llvm::DenseMap<Expr, Value *> &ssaBindings,
+           const llvm::DenseMap<StmtBlock, mlir::Block *> &blockBindings) {
+  SmallVector<Value *, 4> values;
+  values.reserve(exprs.size());
+  for (auto child : exprs) {
+    auto subResults = child.build(b, ssaBindings, blockBindings);
+    assert(subResults.size() == 1 &&
+           "expected single-result expression as operand");
+    values.push_back(subResults.front());
+  }
+  return values;
+}
+
+SmallVector<Value *, 4>
+Expr::build(FuncBuilder &b, const llvm::DenseMap<Expr, Value *> &ssaBindings,
+            const llvm::DenseMap<StmtBlock, Block *> &blockBindings) const {
   auto it = ssaBindings.find(*this);
   if (it != ssaBindings.end())
     return {it->second};
 
-  auto *impl = static_cast<ImplType *>(storage);
-  SmallVector<Value *, 4> operandValues;
-  operandValues.reserve(impl->operands.size());
-  for (auto child : impl->operands) {
-    auto subResults = child.build(b, ssaBindings);
-    assert(subResults.size() == 1 &&
-           "expected single-result expression as operand");
-    operandValues.push_back(subResults.front());
-  }
+  SmallVector<Value *, 4> operandValues =
+      buildExprs(getProperArguments(), b, ssaBindings, blockBindings);
 
   // Special case for emitting composed affine.applies.
   // FIXME: this should not be a special case, instead, define composed form as
@@ -185,11 +213,23 @@ Expr::build(FuncBuilder &b,
     return {affInstr->getResult()};
   }
 
-  auto state = OperationState(b.getContext(), b.getUnknownLoc(), impl->opName);
+  auto state = OperationState(b.getContext(), b.getUnknownLoc(), getName());
   state.addOperands(operandValues);
-  state.addTypes(impl->resultTypes);
-  for (const auto &attr : impl->attributes)
+  state.addTypes(getResultTypes());
+  for (const auto &attr : getAttributes())
     state.addAttribute(attr.first, attr.second);
+
+  auto successors = getSuccessors();
+  auto successorArgs = getSuccessorArguments();
+  assert(successors.size() == successorArgs.size() &&
+         "expected all successors to have a corresponding operand group");
+  for (int i = 0, e = successors.size(); i < e; ++i) {
+    StmtBlock block = successors[i];
+    assert(blockBindings.count(block) != 0 && "successor block does not exist");
+    state.addSuccessor(
+        blockBindings.lookup(block),
+        buildExprs(successorArgs[i], b, ssaBindings, blockBindings));
+  }
 
   Instruction *inst = b.createOperation(state);
   return llvm::to_vector<4>(inst->getResults());
@@ -499,17 +539,26 @@ edsc_stmt_t MaxMinFor(edsc_expr_t iv, edsc_max_expr_t lb, edsc_min_expr_t ub,
                   Expr(step), stmts));
 }
 
-StmtBlock mlir::edsc::block(ArrayRef<Bindable> args, ArrayRef<Type> argTypes,
-                            ArrayRef<Stmt> stmts) {
-  assert(args.size() == argTypes.size() &&
-         "mismatching number of arguments and argument types");
-  return StmtBlock(args, argTypes, stmts);
+StmtBlock mlir::edsc::block(ArrayRef<Bindable> args, ArrayRef<Stmt> stmts) {
+  return StmtBlock(args, stmts);
 }
 
-edsc_block_t Block(edsc_stmt_list_t enclosedStmts) {
+edsc_block_t Block(edsc_expr_list_t arguments, edsc_stmt_list_t enclosedStmts) {
   llvm::SmallVector<Stmt, 8> stmts;
   fillStmts(enclosedStmts, &stmts);
-  return StmtBlock(stmts);
+
+  llvm::SmallVector<Bindable, 8> args;
+  for (uint64_t i = 0; i < arguments.n; ++i)
+    args.emplace_back(Expr(arguments.exprs[i]));
+
+  return StmtBlock(args, stmts);
+}
+
+edsc_block_t BlockSetBody(edsc_block_t block, edsc_stmt_list_t stmts) {
+  llvm::SmallVector<Stmt, 8> body;
+  fillStmts(stmts, &body);
+  StmtBlock(block).set(body);
+  return block;
 }
 
 Expr mlir::edsc::load(Expr m, ArrayRef<Expr> indices) {
@@ -591,6 +640,13 @@ Stmt mlir::edsc::Return(ArrayRef<Expr> values) {
 
 edsc_stmt_t Return(edsc_expr_list_t values) {
   return Stmt(Return(makeExprs(values)));
+}
+
+Stmt mlir::edsc::Branch(StmtBlock destination, ArrayRef<Expr> args) {
+  SmallVector<Expr, 4> arguments;
+  arguments.push_back(nullptr);
+  arguments.insert(arguments.end(), args.begin(), args.end());
+  return VariadicExpr::make<BranchOp>(arguments, {}, {}, {destination});
 }
 
 static raw_ostream &printBinaryExpr(raw_ostream &os, BinaryExpr e,
@@ -701,7 +757,12 @@ void printAffineApply(raw_ostream &os, mlir::edsc::Expr e) {
   assert(mapAttr && "expected a map in an affine apply expr");
 
   printAffineMap(os, mapAttr.cast<AffineMapAttr>().getValue(),
-                 e.getChildExpressions());
+                 e.getProperArguments());
+}
+
+edsc_stmt_t Branch(edsc_block_t destination, edsc_expr_list_t arguments) {
+  auto args = makeExprs(arguments);
+  return mlir::edsc::Branch(StmtBlock(destination), args);
 }
 
 void mlir::edsc::Expr::print(raw_ostream &os) const {
@@ -737,15 +798,15 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
   // Handle known variadic ops with pretty forms.
   if (auto narExpr = this->dyn_cast<VariadicExpr>()) {
     if (narExpr.is_op<LoadOp>()) {
-      os << narExpr.getName() << '(' << getChildExpressions().front() << '[';
-      interleaveComma(getChildExpressions().drop_front(), os);
+      os << narExpr.getName() << '(' << getProperArguments().front() << '[';
+      interleaveComma(getProperArguments().drop_front(), os);
       os << "])";
       return;
     }
     if (narExpr.is_op<StoreOp>()) {
-      os << narExpr.getName() << '(' << getChildExpressions().front() << ", "
-         << getChildExpressions()[1] << '[';
-      interleaveComma(getChildExpressions().drop_front(2), os);
+      os << narExpr.getName() << '(' << getProperArguments().front() << ", "
+         << getProperArguments()[1] << '[';
+      interleaveComma(getProperArguments().drop_front(2), os);
       os << "])";
       return;
     }
@@ -756,9 +817,19 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
       return;
     }
     if (narExpr.is_op<CallIndirectOp>()) {
-      os << '@' << getChildExpressions().front() << '(';
-      interleaveComma(getChildExpressions().drop_front(), os);
+      os << '@' << getProperArguments().front() << '(';
+      interleaveComma(getProperArguments().drop_front(), os);
       os << ')';
+      return;
+    }
+    if (narExpr.is_op<BranchOp>()) {
+      os << "br ^bb" << narExpr.getSuccessors().front().getId();
+      auto blockArgs = getSuccessorArguments(0);
+      if (!blockArgs.empty())
+        os << '(';
+      interleaveComma(blockArgs, os);
+      if (!blockArgs.empty())
+        os << ")";
       return;
     }
   }
@@ -778,7 +849,26 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
   if (this->isa<UnaryExpr>() || this->isa<BinaryExpr>() ||
       this->isa<TernaryExpr>() || this->isa<VariadicExpr>()) {
     os << (getName().empty() ? "##unknown##" : getName()) << '(';
-    interleaveComma(getChildExpressions(), os);
+    interleaveComma(getProperArguments(), os);
+    auto successors = getSuccessors();
+    if (!successors.empty()) {
+      os << '[';
+      interleave(
+          llvm::zip(successors, getSuccessorArguments()),
+          [&os](const std::tuple<const StmtBlock &, const ArrayRef<Expr> &>
+                    &pair) {
+            const auto &block = std::get<0>(pair);
+            ArrayRef<Expr> operands = std::get<1>(pair);
+            os << "^bb" << block.getId();
+            if (!operands.empty()) {
+              os << '(';
+              interleaveComma(operands, os);
+              os << ')';
+            }
+          },
+          [&os]() { os << ", "; });
+      os << ']';
+    }
     auto attrs = getAttributes();
     if (!attrs.empty()) {
       os << '{';
@@ -797,7 +887,7 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
     // We only print the lb, ub and step here, which are the StmtBlockLike
     // part of the `for` StmtBlockLikeExpr.
     case ExprKind::For: {
-      auto exprGroups = stmtLikeExpr.getExprGroups();
+      auto exprGroups = stmtLikeExpr.getAllArgumentGroups();
       assert(exprGroups.size() == 3 &&
              "For StmtBlockLikeExpr expected 3 groups");
       assert(exprGroups[2].size() == 1 && "expected 1 expr for loop step");
@@ -885,17 +975,21 @@ Expr mlir::edsc::TernaryExpr::getRHS() const {
 
 mlir::edsc::VariadicExpr::VariadicExpr(StringRef name, ArrayRef<Expr> exprs,
                                        ArrayRef<Type> types,
-                                       ArrayRef<NamedAttribute> attrs)
+                                       ArrayRef<NamedAttribute> attrs,
+                                       ArrayRef<StmtBlock> succ)
     : Expr(Expr::globalAllocator()->Allocate<detail::ExprStorage>()) {
   // Initialize with placement new.
   new (storage)
-      detail::ExprStorage(ExprKind::Variadic, name, types, exprs, attrs);
+      detail::ExprStorage(ExprKind::Variadic, name, types, exprs, attrs, succ);
 }
 ArrayRef<Expr> mlir::edsc::VariadicExpr::getExprs() const {
-  return static_cast<ImplType *>(storage)->operands;
+  return storage->operands;
 }
 ArrayRef<Type> mlir::edsc::VariadicExpr::getTypes() const {
-  return static_cast<ImplType *>(storage)->resultTypes;
+  return storage->resultTypes;
+}
+ArrayRef<StmtBlock> mlir::edsc::VariadicExpr::getSuccessors() const {
+  return storage->successors;
 }
 
 mlir::edsc::StmtBlockLikeExpr::StmtBlockLikeExpr(ExprKind kind,
@@ -905,22 +999,54 @@ mlir::edsc::StmtBlockLikeExpr::StmtBlockLikeExpr(ExprKind kind,
   // Initialize with placement new.
   new (storage) detail::ExprStorage(kind, "", types, exprs, {});
 }
-ArrayRef<Expr> mlir::edsc::StmtBlockLikeExpr::getExprs() const {
-  return static_cast<ImplType *>(storage)->operands;
-}
-SmallVector<ArrayRef<Expr>, 4>
-mlir::edsc::StmtBlockLikeExpr::getExprGroups() const {
-  SmallVector<ArrayRef<Expr>, 4> groups;
-  ArrayRef<Expr> exprs = getExprs();
-  int start = 0;
-  for (int i = 0, e = exprs.size(); i < e; ++i) {
-    if (!exprs[i]) {
-      groups.push_back(exprs.slice(start, i - start));
-      start = i + 1;
-    }
+
+static ArrayRef<Expr> getOneArgumentGroupStartingFrom(int start,
+                                                      ExprStorage *storage) {
+  for (int i = start, e = storage->operands.size(); i < e; ++i) {
+    if (!storage->operands[i])
+      return storage->operands.slice(start, i - start);
   }
-  groups.push_back(exprs.slice(start, exprs.size() - start));
+  return storage->operands.drop_front(start);
+}
+
+static SmallVector<ArrayRef<Expr>, 4>
+getAllArgumentGroupsStartingFrom(int start, ExprStorage *storage) {
+  SmallVector<ArrayRef<Expr>, 4> groups;
+  while (start < storage->operands.size()) {
+    auto group = getOneArgumentGroupStartingFrom(start, storage);
+    start += group.size() + 1;
+    groups.push_back(group);
+  }
   return groups;
+}
+
+ArrayRef<Expr> mlir::edsc::Expr::getProperArguments() const {
+  return getOneArgumentGroupStartingFrom(0, storage);
+}
+
+SmallVector<ArrayRef<Expr>, 4> mlir::edsc::Expr::getSuccessorArguments() const {
+  // Skip the first group containing proper arguments.
+  // Note that +1 to size is necessary to step over the nullptrs in the list.
+  int start = getOneArgumentGroupStartingFrom(0, storage).size() + 1;
+  return getAllArgumentGroupsStartingFrom(start, storage);
+}
+
+ArrayRef<Expr> mlir::edsc::Expr::getSuccessorArguments(int index) const {
+  assert(index >= 0 && "argument group index is out of bounds");
+  assert(!storage->operands.empty() && "argument list is empty");
+
+  // Skip over the first index + 1 groups (also includes proper arguments).
+  int start = 0;
+  for (int i = 0, e = index + 1; i < e; ++i) {
+    assert(start < storage->operands.size() &&
+           "argument group index is out of bounds");
+    start += getOneArgumentGroupStartingFrom(start, storage).size() + 1;
+  }
+  return getOneArgumentGroupStartingFrom(start, storage);
+}
+
+SmallVector<ArrayRef<Expr>, 4> mlir::edsc::Expr::getAllArgumentGroups() const {
+  return getAllArgumentGroupsStartingFrom(0, storage);
 }
 
 mlir::edsc::Stmt::Stmt(const Bindable &lhs, const Expr &rhs,
@@ -1012,13 +1138,27 @@ llvm::raw_ostream &mlir::edsc::operator<<(llvm::raw_ostream &os,
 }
 
 mlir::edsc::StmtBlock::StmtBlock(llvm::ArrayRef<Stmt> stmts)
-    : StmtBlock({}, {}, stmts) {}
+    : StmtBlock({}, stmts) {}
 
 mlir::edsc::StmtBlock::StmtBlock(llvm::ArrayRef<Bindable> args,
-                                 llvm::ArrayRef<Type> argTypes,
                                  llvm::ArrayRef<Stmt> stmts) {
+  // Extract block argument types from bindable types.
+  // Bindables must have a single type.
+  llvm::SmallVector<Type, 8> argTypes;
+  argTypes.reserve(args.size());
+  for (Bindable arg : args) {
+    auto argResults = arg.getResultTypes();
+    assert(argResults.size() == 1 &&
+           "only single-result expressions are supported");
+    argTypes.push_back(argResults.front());
+  }
   storage = Expr::globalAllocator()->Allocate<detail::StmtBlockStorage>();
   new (storage) detail::StmtBlockStorage(args, argTypes, stmts);
+}
+
+mlir::edsc::StmtBlock &mlir::edsc::StmtBlock::operator=(ArrayRef<Stmt> stmts) {
+  storage->replaceStmts(stmts);
+  return *this;
 }
 
 ArrayRef<mlir::edsc::Bindable> mlir::edsc::StmtBlock::getArguments() const {
@@ -1033,17 +1173,20 @@ ArrayRef<mlir::edsc::Stmt> mlir::edsc::StmtBlock::getBody() const {
   return storage->statements;
 }
 
+uint64_t mlir::edsc::StmtBlock::getId() const { return storage->id; }
+
 void mlir::edsc::StmtBlock::print(llvm::raw_ostream &os, Twine indent) const {
-  os << indent << "^bb";
+  os << indent << "^bb" << storage->id;
   if (!getArgumentTypes().empty())
     os << '(';
   interleaveComma(getArguments(), os);
   if (!getArgumentTypes().empty())
     os << ')';
   os << ":\n";
-
-  for (auto stmt : getBody())
+  for (auto stmt : getBody()) {
     stmt.print(os, indent + "  ");
+    os << '\n';
+  }
 }
 
 std::string mlir::edsc::StmtBlock::str() const {

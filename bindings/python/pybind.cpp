@@ -241,6 +241,8 @@ struct PythonBlock {
     return StmtBlock(blk).str();
   }
 
+  PythonBlock set(const py::list &stmts);
+
   edsc_block_t blk;
 };
 
@@ -315,6 +317,14 @@ static edsc_expr_list_t makeCExprs(llvm::SmallVectorImpl<edsc_expr_t> &owning,
     owning.push_back(edsc_expr_t{inp.cast<PythonExpr>()});
   }
   return edsc_expr_list_t{owning.data(), owning.size()};
+}
+
+static mlir_type_list_t makeCTypes(llvm::SmallVectorImpl<mlir_type_t> &owning,
+                                   const py::list &types) {
+  for (auto &inp : types) {
+    owning.push_back(mlir_type_t{inp.cast<PythonType>()});
+  }
+  return mlir_type_list_t{owning.data(), owning.size()};
 }
 
 PythonExpr::PythonExpr(const PythonBindable &bindable) : expr{bindable.expr} {}
@@ -410,6 +420,12 @@ void MLIRFunctionEmitter::emitBlockBody(PythonBlock block) {
   emitter.emitStmts(StmtBlock(block).getBody());
 }
 
+PythonBlock PythonBlock::set(const py::list &stmts) {
+  SmallVector<edsc_stmt_t, 8> owning;
+  ::BlockSetBody(blk, makeCStmts(owning, stmts));
+  return *this;
+}
+
 PythonExpr dispatchCall(py::args args, py::kwargs kwargs) {
   assert(args.size() != 0);
   llvm::SmallVector<edsc_expr_t, 8> exprs;
@@ -438,10 +454,24 @@ PYBIND11_MODULE(pybind, m) {
   m.def("deleteContext",
         [](void *ctx) { delete reinterpret_cast<ScopedEDSCContext *>(ctx); });
 
+  m.def("Block", [](const py::list &args, const py::list &stmts) {
+    SmallVector<edsc_stmt_t, 8> owning;
+    SmallVector<edsc_expr_t, 8> owningArgs;
+    return PythonBlock(
+        ::Block(makeCExprs(owningArgs, args), makeCStmts(owning, stmts)));
+  });
   m.def("Block", [](const py::list &stmts) {
     SmallVector<edsc_stmt_t, 8> owning;
-    return PythonBlock(::Block(makeCStmts(owning, stmts)));
+    edsc_expr_list_t args{nullptr, 0};
+    return PythonBlock(::Block(args, makeCStmts(owning, stmts)));
   });
+  m.def(
+      "Branch",
+      [](PythonBlock destination, const py::list &operands) {
+        SmallVector<edsc_expr_t, 8> owning;
+        return PythonStmt(::Branch(destination, makeCExprs(owning, operands)));
+      },
+      py::arg("destination"), py::arg("operands") = py::list());
   m.def("For", [](const py::list &ivs, const py::list &lbs, const py::list &ubs,
                   const py::list &steps, const py::list &stmts) {
     SmallVector<edsc_expr_t, 8> owningIVs;
@@ -527,6 +557,7 @@ PYBIND11_MODULE(pybind, m) {
   py::class_<PythonBlock>(m, "StmtBlock",
                           "Wrapping class for mlir::edsc::StmtBlock")
       .def(py::init<PythonBlock>())
+      .def("set", &PythonBlock::set)
       .def("__str__", &PythonBlock::str);
 
   py::class_<PythonType>(m, "Type", "Wrapping class for mlir::Type.")

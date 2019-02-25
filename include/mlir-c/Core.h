@@ -230,8 +230,15 @@ edsc_expr_t ConstantInteger(mlir_type_t type, int64_t value);
 edsc_stmt_t Return(edsc_expr_list_t values);
 
 /// Returns an opaque expression for an mlir::edsc::StmtBlock containing the
-/// given list of statements.  Block arguments are not currently supported.
-edsc_block_t Block(edsc_stmt_list_t enclosedStmts);
+/// given list of statements.
+edsc_block_t Block(edsc_expr_list_t arguments, edsc_stmt_list_t enclosedStmts);
+
+/// Set the body of the block to the given statements and return the block.
+edsc_block_t BlockSetBody(edsc_block_t, edsc_stmt_list_t stmts);
+
+/// Returns an opaque statement branching to `destination` and passing
+/// `arguments` as block arguments.
+edsc_stmt_t Branch(edsc_block_t destination, edsc_expr_list_t arguments);
 
 /// Returns an opaque statement for an mlir::AffineForOp with `enclosedStmts`
 /// nested below it.

@@ -48,6 +48,8 @@ struct StmtBlockStorage;
 
 } // namespace detail
 
+class StmtBlock;
+
 /// EDSC Types closely mirror the core MLIR and uses an abstraction similar to
 /// AffineExpr:
 ///   1. a set of composable structs;
@@ -164,7 +166,20 @@ public:
   ArrayRef<Type> getResultTypes() const;
 
   /// Returns the list of expressions used as arguments of this expression.
-  ArrayRef<Expr> getChildExpressions() const;
+  ArrayRef<Expr> getProperArguments() const;
+
+  /// Returns the list of lists of expressions used as arguments of successors
+  /// of this expression (i.e., arguments passed to destination basic blocks in
+  /// terminator statements).
+  SmallVector<ArrayRef<Expr>, 4> getSuccessorArguments() const;
+
+  /// Returns the list of expressions used as arguments of the `index`-th
+  /// successor of this expression.
+  ArrayRef<Expr> getSuccessorArguments(int index) const;
+
+  /// Returns the list of argument groups (includes the proper argument group,
+  /// followed by successor/block argument groups).
+  SmallVector<ArrayRef<Expr>, 4> getAllArgumentGroups() const;
 
   /// Returns the list of attributes of this expression.
   ArrayRef<NamedAttribute> getAttributes() const;
@@ -172,9 +187,13 @@ public:
   /// Returns the attribute with the given name, if any.
   Attribute getAttribute(StringRef name) const;
 
+  /// Returns the list of successors (StmtBlocks) of this expression.
+  ArrayRef<StmtBlock> getSuccessors() const;
+
   /// Build the IR corresponding to this expression.
   SmallVector<Value *, 4>
-  build(FuncBuilder &b, const llvm::DenseMap<Expr, Value *> &ssaBindings) const;
+  build(FuncBuilder &b, const llvm::DenseMap<Expr, Value *> &ssaBindings,
+        const llvm::DenseMap<StmtBlock, Block *> &blockBindings) const;
 
   void print(raw_ostream &os) const;
   void dump() const;
@@ -267,15 +286,18 @@ struct VariadicExpr : public Expr {
   friend class Expr;
   VariadicExpr(StringRef name, llvm::ArrayRef<Expr> exprs,
                llvm::ArrayRef<Type> types = {},
-               ArrayRef<NamedAttribute> attrs = {});
+               llvm::ArrayRef<NamedAttribute> attrs = {},
+               llvm::ArrayRef<StmtBlock> succ = {});
   llvm::ArrayRef<Expr> getExprs() const;
   llvm::ArrayRef<Type> getTypes() const;
+  llvm::ArrayRef<StmtBlock> getSuccessors() const;
 
   template <typename T>
   static VariadicExpr make(llvm::ArrayRef<Expr> exprs,
                            llvm::ArrayRef<Type> types = {},
-                           llvm::ArrayRef<NamedAttribute> attrs = {}) {
-    return VariadicExpr(T::getOperationName(), exprs, types, attrs);
+                           llvm::ArrayRef<NamedAttribute> attrs = {},
+                           llvm::ArrayRef<StmtBlock> succ = {}) {
+    return VariadicExpr(T::getOperationName(), exprs, types, attrs, succ);
   }
 
 protected:
@@ -288,18 +310,6 @@ struct StmtBlockLikeExpr : public Expr {
   friend class Expr;
   StmtBlockLikeExpr(ExprKind kind, llvm::ArrayRef<Expr> exprs,
                     llvm::ArrayRef<Type> types = {});
-
-  /// Get the list of subexpressions.
-  /// StmtBlockLikeExprs can contain multiple groups of subexpressions separated
-  /// by null expressions and the result of this call will include them.
-  llvm::ArrayRef<Expr> getExprs() const;
-
-  /// Get the list of subexpression groups.
-  /// StmtBlockLikeExprs can contain multiple groups of subexpressions separated
-  /// by null expressions.  This will identify those groups and return a list
-  /// of lists of subexpressions split around null expressions.  Two null
-  /// expressions in a row identify an empty group.
-  SmallVector<llvm::ArrayRef<Expr>, 4> getExprGroups() const;
 
 protected:
   StmtBlockLikeExpr(Expr::ImplType *ptr) : Expr(ptr) {
@@ -399,18 +409,22 @@ public:
   explicit StmtBlock(edsc_block_t st)
       : storage(reinterpret_cast<ImplType *>(st)) {}
   StmtBlock(const StmtBlock &other) = default;
-  StmtBlock(llvm::ArrayRef<Stmt> stmts = {});
-  StmtBlock(llvm::ArrayRef<Bindable> args, llvm::ArrayRef<Type> argTypes,
-            llvm::ArrayRef<Stmt> stmts = {});
+  StmtBlock(llvm::ArrayRef<Stmt> stmts);
+  StmtBlock(llvm::ArrayRef<Bindable> args, llvm::ArrayRef<Stmt> stmts = {});
 
   llvm::ArrayRef<Bindable> getArguments() const;
   llvm::ArrayRef<Type> getArgumentTypes() const;
   llvm::ArrayRef<Stmt> getBody() const;
+  uint64_t getId() const;
 
   void print(llvm::raw_ostream &os, Twine indent) const;
   std::string str() const;
 
   operator edsc_block_t() { return edsc_block_t{storage}; }
+
+  /// Reset the body of this block with the given list of statements.
+  StmtBlock &operator=(llvm::ArrayRef<Stmt> stmts);
+  void set(llvm::ArrayRef<Stmt> stmts) { *this = stmts; }
 
   ImplType *getStoragePtr() const { return storage; }
 
@@ -619,6 +633,8 @@ Expr call(Expr func, Type result, llvm::ArrayRef<Expr> args);
 Expr call(Expr func, llvm::ArrayRef<Expr> args);
 
 Stmt Return(ArrayRef<Expr> values = {});
+Stmt Branch(StmtBlock destination, ArrayRef<Expr> args = {});
+
 Stmt For(Expr lb, Expr ub, Expr step, llvm::ArrayRef<Stmt> enclosedStmts);
 Stmt For(const Bindable &idx, Expr lb, Expr ub, Expr step,
          llvm::ArrayRef<Stmt> enclosedStmts);
@@ -633,11 +649,13 @@ Stmt For(llvm::ArrayRef<Expr> indices, llvm::ArrayRef<Expr> lbs,
 Stmt MaxMinFor(const Bindable &idx, ArrayRef<Expr> lbs, ArrayRef<Expr> ubs,
                Expr step, ArrayRef<Stmt> enclosedStmts);
 
-StmtBlock block(llvm::ArrayRef<Bindable> args, llvm::ArrayRef<Type> argTypes,
-                llvm::ArrayRef<Stmt> stmts);
-inline StmtBlock block(llvm::ArrayRef<Stmt> stmts) {
-  return block({}, {}, stmts);
-}
+/// Define an MLIR Block and bind its arguments to `args`.  The types of block
+/// arguments are those of `args`, each of which must have exactly one result
+/// type.  The body of the block may be empty and can be reset later.
+StmtBlock block(llvm::ArrayRef<Bindable> args, llvm::ArrayRef<Stmt> stmts);
+/// Define an MLIR Block without arguments.  The body of the block can be empty
+/// and can be reset later.
+inline StmtBlock block(llvm::ArrayRef<Stmt> stmts) { return block({}, stmts); }
 
 /// This helper class exists purely for sugaring purposes and allows writing
 /// expressions such as:

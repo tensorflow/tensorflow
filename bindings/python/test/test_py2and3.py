@@ -151,9 +151,46 @@ class EdscTest(unittest.TestCase):
       i, j = list(map(E.Expr, [E.Bindable(self.f32Type) for _ in range(2)]))
       stmt = E.Block([E.Stmt(i + j), E.Stmt(i - j)])
       str = stmt.__str__()
-      self.assertIn("^bb:", str)
+      self.assertIn("^bb", str)
       self.assertIn(" = ($1 + $2)", str)
       self.assertIn(" = ($1 - $2)", str)
+
+  def testBlockArgs(self):
+    with E.ContextManager():
+      module = E.MLIRModule()
+      t = module.make_scalar_type("i", 32)
+      i, j = list(map(E.Expr, [E.Bindable(t) for _ in range(2)]))
+      stmt = E.Block([i, j], [E.Stmt(i + j)])
+      str = stmt.__str__()
+      self.assertIn("^bb", str)
+      self.assertIn("($1, $2):", str)
+      self.assertIn("($1 + $2)", str)
+
+  def testBranch(self):
+    with E.ContextManager():
+      i, j = list(map(E.Expr, [E.Bindable(self.i32Type) for _ in range(2)]))
+      b1 = E.Block([E.Stmt(i + j)])
+      b2 = E.Block([E.Branch(b1)])
+      str1 = b1.__str__()
+      str2 = b2.__str__()
+      self.assertIn("^bb1:\n" + "$4 = ($1 + $2)", str1)
+      self.assertIn("^bb2:\n" + "$6 = br ^bb1", str2)
+
+  def testBranchArgs(self):
+    with E.ContextManager():
+      b1arg, b2arg = (E.Expr(E.Bindable(self.i32Type)) for _ in range(2))
+      # Declare empty blocks with arguments and bind those arguments.
+      b1 = E.Block([b1arg], [])
+      b2 = E.Block([b2arg], [])
+      one = E.ConstantInteger(self.i32Type, 1)
+      # Make blocks branch to each other in a sort of infinite loop.
+      # This checks that the EDSC implementation does not fall into such loop.
+      b1.set([E.Branch(b2, [b1arg + one])])
+      b2.set([E.Branch(b1, [b2arg])])
+      str1 = b1.__str__()
+      str2 = b2.__str__()
+      self.assertIn("^bb1($1):\n" + "$6 = br ^bb2(($1 + 1))", str1)
+      self.assertIn("^bb2($2):\n" + "$8 = br ^bb1($2)", str2)
 
   def testMLIRScalarTypes(self):
     module = E.MLIRModule()

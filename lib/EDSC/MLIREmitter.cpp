@@ -129,7 +129,16 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
   bool expectedEmpty = false;
   if (e.isa<UnaryExpr>() || e.isa<BinaryExpr>() || e.isa<TernaryExpr>() ||
       e.isa<VariadicExpr>()) {
-    auto results = e.build(*builder, ssaBindings);
+    // Emit any successors before the instruction with successors.  At this
+    // point, all values defined by the current block must have been bound, the
+    // current instruction with successors cannot define new values, so the
+    // successor can use those values.
+    assert(e.getSuccessors().empty() || e.getResultTypes().empty() &&
+                                            "an operation with successors must "
+                                            "not have results and vice versa");
+    for (StmtBlock block : e.getSuccessors())
+      emitBlock(block);
+    auto results = e.build(*builder, ssaBindings, blockBindings);
     assert(results.size() <= 1 && "2+-result exprs are not supported");
     expectedEmpty = results.empty();
     if (!results.empty())
@@ -138,7 +147,7 @@ Value *mlir::edsc::MLIREmitter::emitExpr(Expr e) {
 
   if (auto expr = e.dyn_cast<StmtBlockLikeExpr>()) {
     if (expr.getKind() == ExprKind::For) {
-      auto exprGroups = expr.getExprGroups();
+      auto exprGroups = expr.getAllArgumentGroups();
       assert(exprGroups.size() == 3 && "expected 3 expr groups in `for`");
       assert(!exprGroups[0].empty() && "expected at least one lower bound");
       assert(!exprGroups[1].empty() && "expected at least one upper bound");
@@ -213,8 +222,9 @@ mlir::edsc::MLIREmitter &mlir::edsc::MLIREmitter::emitStmt(const Stmt &stmt) {
   if (!val) {
     assert((stmt.getRHS().is_op<DeallocOp>() ||
             stmt.getRHS().is_op<StoreOp>() || stmt.getRHS().is_op<ReturnOp>() ||
-            stmt.getRHS().is_op<CallIndirectOp>()) &&
-           "dealloc, store, return or call_indirect expected as the only "
+            stmt.getRHS().is_op<CallIndirectOp>() ||
+            stmt.getRHS().is_op<BranchOp>()) &&
+           "dealloc, store, return, br, or call_indirect expected as the only "
            "0-result ops");
     if (stmt.getRHS().is_op<CallIndirectOp>()) {
       assert(

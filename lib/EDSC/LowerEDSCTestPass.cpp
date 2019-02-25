@@ -42,21 +42,43 @@ struct LowerEDSCTestPass : public FunctionPass {
 #include "mlir/EDSC/reference-impl.inc"
 
 PassResult LowerEDSCTestPass::runOnFunction(Function *f) {
-  // Inject a EDSC-constructed list of blocks.
+  // Inject a EDSC-constructed infinite loop implemented by mutual branching
+  // between two blocks, following the pattern:
+  //
+  //       br ^bb1
+  //    ^bb1:
+  //       br ^bb2
+  //    ^bb2:
+  //       br ^bb1
+  //
+  // Use blocks with arguments.
   if (f->getName().strref() == "blocks") {
     using namespace edsc::op;
 
     FuncBuilder builder(f);
     edsc::ScopedEDSCContext context;
+    // Declare two blocks.  Note that we must declare the blocks before creating
+    // branches to them.
     auto type = builder.getIntegerType(32);
-    edsc::Expr arg1(type), arg2(type), arg3(type), arg4(type);
+    edsc::Expr arg1(type), arg2(type), arg3(type), arg4(type), r(type);
+    edsc::StmtBlock b1 = edsc::block({arg1, arg2}, {}),
+                    b2 = edsc::block({arg3, arg4}, {});
+    auto c1 = edsc::constantInteger(type, 42);
+    auto c2 = edsc::constantInteger(type, 1234);
 
-    auto b1 =
-        edsc::block({arg1, arg2}, {type, type}, {arg1 + arg2, edsc::Return()});
-    auto b2 =
-        edsc::block({arg3, arg4}, {type, type}, {arg3 - arg4, edsc::Return()});
+    // Make an infinite loops by branching between the blocks.  Note that copy-
+    // assigning a block won't work well with branches, update the body instead.
+    b1.set({r = arg1 + arg2, edsc::Branch(b2, {arg1, r})});
+    b2.set({edsc::Branch(b1, {arg3, arg4})});
+    auto instr = edsc::Branch(b2, {c1, c2});
 
-    edsc::MLIREmitter(&builder, f->getLoc()).emitBlock(b1).emitBlock(b2);
+    // Remove the existing 'return' from the function, reset the builder after
+    // the instruction iterator invalidation and emit a branch to b2.  This
+    // should also emit blocks b2 and b1 that appear as successors to the
+    // current block after the branch instruction is insterted.
+    f->begin()->clear();
+    builder.setInsertionPoint(&*f->begin(), f->begin()->begin());
+    edsc::MLIREmitter(&builder, f->getLoc()).emitStmt(instr);
   }
 
   // Inject a EDSC-constructed `for` loop with bounds coming from function

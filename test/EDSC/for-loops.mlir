@@ -10,16 +10,19 @@
 // CHECK-DAG: #[[id2dmap:.*]] = (d0, d1) -> (d0, d1)
 
 // This function will be detected by the test pass that will insert
-// EDSC-constructed blocks with arguments.
+// EDSC-constructed blocks with arguments forming an infinite loop.
 // CHECK-LABEL: @blocks
 func @blocks() {
   return
-//CHECK:      ^bb1(%0: i32, %1: i32):	// no predecessors
-//CHECK-NEXT:   %2 = addi %0, %1 : i32
-//CHECK-NEXT:   return
-//CHECK:      ^bb2(%3: i32, %4: i32):	// no predecessors
-//CHECK-NEXT:   %5 = subi %3, %4 : i32
-//CHECK-NEXT:   return
+//CHECK:        %c42_i32 = constant 42 : i32
+//CHECK-NEXT:   %c1234_i32 = constant 1234 : i32
+//CHECK-NEXT:   br ^bb1(%c42_i32, %c1234_i32 : i32, i32)
+//CHECK-NEXT: ^bb1(%0: i32, %1: i32):	// 2 preds: ^bb0, ^bb2
+//CHECK-NEXT:   br ^bb2(%0, %1 : i32, i32)
+//CHECK-NEXT: ^bb2(%2: i32, %3: i32):	// pred: ^bb1
+//CHECK-NEXT:   %4 = addi %2, %3 : i32
+//CHECK-NEXT:   br ^bb1(%2, %4 : i32, i32)
+//CHECK-NEXT: }
 }
 
 // This function will be detected by the test pass that will insert an
