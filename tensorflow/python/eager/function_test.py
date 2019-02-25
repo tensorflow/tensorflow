@@ -114,6 +114,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     r = add(x, v2)
     self.assertEqual(3.0, self.evaluate(r))
 
+  def testExternalControlDependency(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.0)
+      v.initializer.run()
+
+      op = v.assign_add(1.0)
+
+      @function.defun
+      def f():
+        with ops.control_dependencies([op]):
+          return 1.0
+
+      self.evaluate(f())
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
