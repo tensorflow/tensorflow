@@ -3816,6 +3816,7 @@ py_library(
         "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:python_state",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
         "@six_archive//:six",

@@ -257,3 +257,23 @@ tf_py_test(
         "notsan",  # b/74395663
     ],
 )
+
+py_library(
+    name = "python_state",
+    srcs = ["python_state.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
+    ],
+)
+
+tf_py_test(
+    name = "python_state_test",
+    srcs = ["python_state_test.py"],
+    additional_deps = [
+        ":base",
+        ":util",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
