@@ -47,6 +47,11 @@ http_archive(
     strip_prefix = "rules_apple-0.13.0",
     urls = ["https://github.com/bazelbuild/rules_apple/archive/0.13.0.tar.gz"],
 )
+http_archive(
+    name = "build_bazel_rules_swift",
+    strip_prefix = "rules_swift-0.6.0",
+    urls = ["https://github.com/bazelbuild/rules_swift/archive/0.6.0.tar.gz"],
+)
 http_file(
     name = "xctestrunner",
     executable = 1,
