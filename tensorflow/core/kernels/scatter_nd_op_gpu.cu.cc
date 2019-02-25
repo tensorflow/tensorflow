@@ -137,10 +137,11 @@ struct ScatterNdFunctor<GPUDevice, T, Index, op, IXDIM> {
 
     CudaLaunchConfig config = GetCudaLaunchConfig(Toutput.size(), d);
 
-    CudaLaunchKernel(ScatterNdOpKernel<T, Index, op, IXDIM>, config.block_count,
-                     config.thread_per_block, 0, d.stream(), Tindices.data(),
-                     Tupdates.data(), Toutput.data(), output_shape_prefix,
-                     batch_strides, batch_size, slice_size);
+    TF_CHECK_OK(CudaLaunchKernel(ScatterNdOpKernel<T, Index, op, IXDIM>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), Tindices.data(), Tupdates.data(),
+                                 Toutput.data(), output_shape_prefix,
+                                 batch_strides, batch_size, slice_size));
 
     return -1;
   }
