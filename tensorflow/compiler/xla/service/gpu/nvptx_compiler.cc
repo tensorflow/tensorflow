@@ -87,6 +87,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_simplifier.h"
+#include "tensorflow/compiler/xla/service/while_loop_trip_count_annotator.h"
 #include "tensorflow/compiler/xla/service/zero_sized_hlo_elimination.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/compiler/xla/types.h"
@@ -247,6 +248,17 @@ Status OptimizeHloModule(HloModule* hlo_module, se::StreamExecutor* stream_exec,
         TransposeFolding::NeverFoldTranspose);
     pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
     pipeline.AddPass<HloDCE>();
+
+    // Run WhileLoopTripCountAnnotator at the end of the simplification
+    // pipeline, before layout assignment and fusion.  This pass does some
+    // pattern-matching on while bodies/conditions, and this is where the HLO is
+    // "nicest".
+    //
+    // It's important that we don't make semantic changes (e.g. unrolling) to
+    // any `while` loops after this point, because otherwise the trip-count
+    // annotations added by this pass may not be correct after the
+    // modifications.
+    pipeline.AddPass<WhileLoopTripCountAnnotator>();
     TF_RETURN_IF_ERROR(pipeline.Run(hlo_module).status());
   }
 
