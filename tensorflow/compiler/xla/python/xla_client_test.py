@@ -1023,14 +1023,13 @@ class SingleOpTest(ComputationTest):
         c.Constant(NumpyArrayF32(2)))
     self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
 
-  # TODO(b/72689392): re-enable when bug S32 resolved
-  def DISABLED_testClampS32(self):
+  def testClampS32(self):
     c = self._NewComputation()
     c.Clamp(
         c.Constant(NumpyArrayS32(-1)),
         c.Constant(NumpyArrayS32([-2, -1, 0, 1, 2, 3])),
         c.Constant(NumpyArrayS32(2)))
-    self._ExecuteAndCompareExact(c, expected=[-1, 0, 1, 2, 2])
+    self._ExecuteAndCompareExact(c, expected=[-1, -1, 0, 1, 2, 2])
 
   def testSelect(self):
     c = self._NewComputation()
