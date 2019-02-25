@@ -282,8 +282,6 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       RecordStart(ctx.get());
       auto cleanup = gtl::MakeCleanup([this, ctx] { RecordStop(ctx.get()); });
       while (true) {
-        std::vector<Tensor> value;
-
         // 1. Wait for a slot in the buffer.
         {
           mutex_lock l(mu_);
