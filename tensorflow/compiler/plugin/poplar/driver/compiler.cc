@@ -66,7 +66,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
-#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
@@ -231,7 +231,7 @@ bool AreAllOutputsParameters(
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
   std::string buffer;
-  hlo_graph_dumper::HloTfGraphBuilder builder;
+  hlo_graph_dumper::HloDotDumper builder;
   TF_CHECK_OK(builder.AddComputation(comp));
   builder.GetGraphDef().SerializeToString(&buffer);
   return buffer;
