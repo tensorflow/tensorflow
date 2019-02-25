@@ -111,16 +111,8 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       result = sess.run(res)
     ```
 
-    NOTE: It is legitimate to call `Iterator.get_next()` multiple times.
-    However, calling it multiple times can result in unintended loss of data,
-    for example:
-    ```python
-      def body(v):
-        a = infeed_queue.get_next()["a"]
-        b = infeed_queue.get_next()["b"]
-        return v + a + b
-    ```
-    will cause two dequeues.
+    NOTE: It is not legitimate to call `IPUInfeedQueue.get_next()` multiple
+      times inside the same code block.
 
     Returns:
       A nested structure of `tf.Tensor` objects.
@@ -141,9 +133,9 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
 
   @property
   def initializer(self):
-    """A `tf.Operation` that should be run to initialize this iterator.
+    """A `tf.Operation` that should be run to initialize this IPUInfeedQueue.
 
     Returns:
-      A `tf.Operation` that should be run to initialize this iterator
+      A `tf.Operation` that should be run to initialize this IPUInfeedQueue
     """
     return self._initializer

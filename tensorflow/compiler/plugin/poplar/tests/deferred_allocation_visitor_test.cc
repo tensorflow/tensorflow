@@ -20,13 +20,13 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/convolution_classifier.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/inplace_finder.h"
-#include "tensorflow/compiler/plugin/poplar/driver/passes/scheduler.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/sharding_pass.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tensor.h"
 
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
@@ -73,7 +73,11 @@ HloPassPipeline GetMockPipeline(CompilerResources& resources) {
   pipeline.AddPass<ConvolutionClassifier>(resources.annotations);
   pipeline.AddPass<AllocationFinder>(resources.annotations);
   pipeline.AddPass<HloPassFix<ForwardAllocation>>(resources.annotations);
-  pipeline.AddPass<Scheduler>();
+  pipeline.AddPass<HloMemoryScheduler>(
+      [](const BufferValue& buffer) {
+        return ShapeUtil::ByteSizeOf(buffer.shape(), 1);
+      },
+      DefaultMemoryScheduler);
   return pipeline;
 }
 

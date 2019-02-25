@@ -159,6 +159,8 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
           break;
         }
         case HloOpcode::kCall: {
+          // This also handles repeat loops which are represented as a Call
+          // operation.
           HloComputation* comp = user->to_apply();
           HloInstruction* param = comp->parameter_instruction(op_index);
           FindConsumers(src, param, index);
@@ -177,9 +179,6 @@ void AllocationFinder::FindConsumers(const TensorSource& src,
               }
               tensor_allocation_map.insert(std::make_pair(src, t));
             }
-          } else if (IsRepeatLoop(user)) {
-            HloInstruction* param = comp->parameter_instruction(op_index);
-            FindConsumers(src, param, index);
           }
           break;
         }

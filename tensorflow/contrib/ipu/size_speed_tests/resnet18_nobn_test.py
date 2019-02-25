@@ -111,33 +111,33 @@ class Resnet18_No_Batchnorm(test_util.TensorFlowTestCase):
   def testInference(self):
     x = array_ops.placeholder(datatype, shape=[1, 224, 224, 4])
     y_ = array_ops.placeholder(datatype, shape=[1, 1000])
-    
+
     with ipu_ops.ipu_scope("/device:IPU:0"):
       logits = inference(x)
 
       loss = math_ops.reduce_mean(
         nn_ops.softmax_cross_entropy_with_logits(logits=logits, labels=y_))
-    
+
     with ops.device('cpu'):
       report = gen_ipu_ops.ipu_event_trace()
-    
+
     opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
     sess = sl.Session(config=config_pb2.ConfigProto(ipu_options=opts))
-    
+
     sess.run(variables.global_variables_initializer())
     sess.run(report)
-    
+
     data = np.zeros([1, 224, 224, 4]);
     labels = np.zeros([1,1000])
-    
+
     sess.run(loss, feed_dict={x: data, y_: labels})
     out = sess.run(report)
-    
+
     sess.close()
 
     evts = utils.extract_all_events(out)
     size = utils.get_memory_size_from_events(evts)
-    self.assertTrue(size < 220000000)
+    self.assertTrue(size < 227000000)
 
   def testTraining(self):
     x = array_ops.placeholder(datatype, shape=[1, 224, 224, 4])

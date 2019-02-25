@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "absl/types/optional.h"
 
 #include <queue>
 #include <stack>
@@ -27,6 +28,7 @@ namespace poplarplugin {
 
 template <typename T>
 class MetaGraph {
+ private:
   using Graph = absl::flat_hash_map<T, absl::flat_hash_set<T>>;
 
   MetaGraph(){};
@@ -52,6 +54,55 @@ class MetaGraph {
     }
 
     return consumers;
+  }
+
+  absl::optional<std::pair<int64_t, std::vector<T>>> ShortestPathImpl(
+      T src, T dst) const {
+    absl::flat_hash_map<T, int64_t> dist;
+    absl::flat_hash_map<T, T> prev;
+    absl::flat_hash_set<T> visited;
+
+    const auto comp = [&](T a, T b) { return dist[a] < dist[b]; };
+
+    std::priority_queue<T, std::vector<T>, decltype(comp)> queue(comp);
+
+    const auto vs = GetVertices();
+    for (const auto& v : vs) {
+      dist[v] = std::numeric_limits<int64_t>::max();
+    }
+
+    dist[src] = 0;
+    queue.push(src);
+    bool found = src == dst;
+    while (!queue.empty() && !found) {
+      const auto top = queue.top();
+      queue.pop();
+      visited.insert(top);
+
+      const auto itr = graph_.find(top);
+      if (itr != graph_.end()) {
+        std::for_each(itr->second.begin(), itr->second.end(), [&](T v) {
+          if (!visited.contains(v)) {
+            found |= v == dst;
+            dist[v] = dist[top] + 1;
+            prev[v] = top;
+            queue.push(v);
+          }
+        });
+      }
+    }
+
+    // Only return the distance and path if we have actually found it.
+    if (found) {
+      std::vector<T> path = {dst};
+      while (path.back() != src) {
+        path.push_back(prev[path.back()]);
+      }
+      std::reverse(path.begin(), path.end());
+      return std::make_pair(dist[dst], path);
+    } else {
+      return absl::nullopt;
+    }
   }
 
   Graph graph_;
@@ -139,47 +190,22 @@ class MetaGraph {
     return result;
   }
 
-  std::vector<T> ShortestPath(T src, T dst) const {
-    absl::flat_hash_map<T, int> dist;
-    absl::flat_hash_map<T, T> prev;
-    absl::flat_hash_set<T> visited;
-
-    const auto comp = [&](T a, T b) { return dist[a] < dist[b]; };
-
-    std::priority_queue<T, std::vector<T>, decltype(comp)> queue(comp);
-
-    const auto vs = GetVertices();
-    for (const auto& v : vs) {
-      dist[v] = std::numeric_limits<int>::max();
+  absl::optional<int64_t> ShortestPathDistance(T src, T dst) const {
+    auto optional_result = ShortestPathImpl(src, dst);
+    if (optional_result) {
+      return optional_result->first;
+    } else {
+      return absl::nullopt;
     }
+  }
 
-    dist[src] = 0;
-    queue.push(src);
-
-    while (!queue.empty() && dist[dst] == std::numeric_limits<int>::max()) {
-      const auto top = queue.top();
-      queue.pop();
-      visited.insert(top);
-
-      const auto itr = graph_.find(top);
-      if (itr != graph_.end()) {
-        std::for_each(itr->second.begin(), itr->second.end(), [&](T v) {
-          if (!visited.contains(v)) {
-            dist[v] = dist[top] + 1;
-            prev[v] = top;
-            queue.push(v);
-          }
-        });
-      }
+  absl::optional<std::vector<T>> ShortestPath(T src, T dst) const {
+    auto optional_result = ShortestPathImpl(src, dst);
+    if (optional_result) {
+      return optional_result->second;
+    } else {
+      return absl::nullopt;
     }
-
-    std::vector<T> path = {dst};
-    while (path.back() != src) {
-      path.push_back(prev[path.back()]);
-    }
-    std::reverse(path.begin(), path.end());
-
-    return path;
   }
 
   template <typename Predicate>

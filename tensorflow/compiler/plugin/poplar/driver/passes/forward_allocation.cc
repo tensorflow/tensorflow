@@ -211,9 +211,13 @@ static absl::optional<int64> IsLayoutSensitiveOperand(
     const HloInstruction* target, const HloInstruction* operand,
     const HloInstruction* layout_producer) {
   const auto op_idx = target->operand_index(operand);
-  if (IsPopOpsElementwiseBinary(target)) {
+  // Some PopOps elementwise binary ops have more than two inputs (for example
+  // scaled inplace with a scalar) - we make sure that we only target the first
+  // two operands.
+  if (IsPopOpsElementwiseBinary(target) && op_idx < 2) {
     return op_idx;
   }
+
   switch (target->opcode()) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -444,8 +448,14 @@ StatusOr<bool> ForwardAllocation::Run(
         }
         auto* layout_producer = *optional_layout_producer;
 
-        auto prefix = g.ShortestPath(source, target);
-        auto suffix = g.ShortestPath(layout_producer, target);
+        // Try and find the shortest paths from/to target.
+        auto optional_prefix = g.ShortestPath(source, target);
+        auto optional_suffix = g.ShortestPath(layout_producer, target);
+        if (!(optional_prefix && optional_suffix)) {
+          continue;
+        }
+        auto prefix = *optional_prefix;
+        auto suffix = *optional_suffix;
         // Only some operands are layout sensitive.
         auto optional_op_idx = IsLayoutSensitiveOperand(
             target, prefix.rbegin()[1], layout_producer);

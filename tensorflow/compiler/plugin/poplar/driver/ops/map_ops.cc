@@ -122,7 +122,8 @@ GetOrCompileSubComputation(CompilerResources& res, const ArgVectors& inputs,
 
   auto visitor = std::make_shared<SubComputationVisitor>(
       res, inputs, inplace_inputs, dependent_subcomputations);
-  TF_RETURN_IF_ERROR(comp->Accept(visitor.get()));
+  auto order = comp->parent()->schedule().sequence(comp).instructions();
+  TF_RETURN_IF_ERROR(comp->AcceptOrdered(visitor.get(), order));
 
   // We can reuse sub computation if it's not inplace.
   if (!inplace_inputs) {
@@ -230,6 +231,8 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
       TF_CHECK_OK(AddOutputTensor(tensor_map, inst, i,
                                   arithmetic_visitor.outputs()[i]));
     }
+  } else if (IsRepeatLoop(inst)) {
+    TF_ASSIGN_OR_RETURN(seq, CreateRepeatOp(res, inst, output, tensor_map));
   } else {
     ArgVectors args = GetCallInputs(res, inst, tensor_map, seq);
     TF_ASSIGN_OR_RETURN(auto subcomp_visitor,
@@ -393,15 +396,13 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
 
   TF_ASSIGN_OR_RETURN(PoplarBackendConfig cfg,
                       inst->backend_config<PoplarBackendConfig>());
-  int64 repeat_count = cfg.fusion_config().repeat_count();
+  int64 repeat_count = cfg.repeat_config().repeat_count();
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
                       GetInplaceOutputTensors(tensor_map, res, inst, main_seq));
   CHECK_EQ(inputs.size(), 1);
 
-  TF_ASSIGN_OR_RETURN(
-      auto body,
-      GetOrCompileSubComputation(res, inputs,
-                                 inst->fused_instructions_computation(), true));
+  TF_ASSIGN_OR_RETURN(auto body, GetOrCompileSubComputation(
+                                     res, inputs, inst->to_apply(), true));
 
   unsigned int param_count = inputs[0].size();
 

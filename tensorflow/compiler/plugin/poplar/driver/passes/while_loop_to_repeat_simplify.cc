@@ -191,9 +191,9 @@ HloInstruction* GetFinalValue(HloInstruction* init_value_inst,
 
 HloInstruction* ConvertToRepeat(HloInstruction* while_inst,
                                 const int64 number_of_iterations) {
-  // We represent repeat as a Fusion of type Custom and store the number of
-  // iterations in the  backend config field. We therefore clone the repeat
-  // computation to use as the fusion computation.
+  // We represent repeat as kCall and store the number of iterations in the
+  // backend config field. We clone the repeat computation and use it as the
+  // computation for the call.
   HloComputation* parent_computation = while_inst->parent();
   HloModule* module = parent_computation->parent();
   HloComputation* repeat_body =
@@ -340,22 +340,21 @@ HloInstruction* ConvertToRepeat(HloInstruction* while_inst,
     }
   }
 
-  HloInstruction* repeat_fusion =
-      parent_computation->AddInstruction(HloInstruction::CreateFusion(
-          input_tuple->shape(), HloInstruction::FusionKind::kCustom,
-          {input_tuple}, repeat_body));
+  HloInstruction* repeat_call =
+      parent_computation->AddInstruction(HloInstruction::CreateCall(
+          input_tuple->shape(), {input_tuple}, repeat_body));
   PoplarBackendConfig backend_config;
-  auto* cfg = backend_config.mutable_fusion_config();
+  auto* cfg = backend_config.mutable_repeat_config();
   cfg->set_repeat_count(number_of_iterations);
   cfg->set_is_repeat_loop(true);
-  repeat_fusion->set_backend_config(backend_config);
+  repeat_call->set_backend_config(backend_config);
 
   // Copy sharding info from the while_inst to the repeat.
   if (while_inst->has_sharding()) {
-    repeat_fusion->set_sharding(while_inst->sharding());
+    repeat_call->set_sharding(while_inst->sharding());
   }
 
-  return repeat_fusion;
+  return repeat_call;
 }
 
 }  // namespace
@@ -395,9 +394,9 @@ StatusOr<bool> WhileLoopToRepeatSimplify::Run(HloModule* module) {
     }
 
     if (simplified) {
-      HloInstruction* repeat_fusion = ConvertToRepeat(while_inst, count);
-      HloComputation* parent_computation = repeat_fusion->parent();
-      while_inst->ReplaceAllUsesWith(repeat_fusion);
+      HloInstruction* repeat_call = ConvertToRepeat(while_inst, count);
+      HloComputation* parent_computation = repeat_call->parent();
+      while_inst->ReplaceAllUsesWith(repeat_call);
       VLOG(1) << "Simplified while loop " << while_inst->name()
               << " with a repeat of count " << count;
       while_insts_to_remove.insert(while_inst);

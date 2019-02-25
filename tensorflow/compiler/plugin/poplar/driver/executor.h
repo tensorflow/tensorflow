@@ -273,11 +273,21 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   }
 
   bool AlwaysRearrangeCopiesOnTheHost() const {
-    return current_config_.always_rearrange_copies_on_the_host();
+    return current_config_.speed_size_config()
+        .always_rearrange_copies_on_the_host();
   }
 
   bool DisableGraphConvCaching() const {
-    return current_config_.disable_graph_convolution_caching();
+    return current_config_.speed_size_config()
+        .disable_graph_convolution_caching();
+  }
+
+  bool NonLinearityRecomputaionEnabled() const {
+    // Re-computation of non linearities is enabled by default unless the user
+    // has specifically told us not to do it.
+    return current_config_.speed_size_config().has_recompute_non_linearities()
+               ? current_config_.speed_size_config().recompute_non_linearities()
+               : true;
   }
 
   poplar::OptionFlags GetConvolutionOptions() const { return conv_options_; }
@@ -299,8 +309,7 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
   void AddLoadEngineEventRecord(const std::string& module_name);
 
   void AddExecuteEventRecord(const std::string& module_name,
-                             const std::string& report,
-                             const std::string& trace);
+                             const std::string& report);
 
   Status GetCompilerEvents(std::list<tensorflow::IpuTraceEvent>& out);
 
@@ -327,6 +336,9 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
       const std::string&, std::unique_ptr<tensorflow::data::IteratorBase>,
       std::unique_ptr<tensorflow::data::IteratorContext>,
       const std::vector<xla::Shape>&);
+
+  void setFlagIfNotPresent(poplar::OptionFlags& opts, const std::string& key,
+                           const std::string& value);
 
  private:
   struct TensorControl {

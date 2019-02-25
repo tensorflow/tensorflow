@@ -199,7 +199,7 @@ def group_norm(inputs,
 
 
     if training:
-      outputs, _, _, _ = gen_popnn_ops.popnn_group_norm_training(
+      outputs, _, _ = gen_popnn_ops.popnn_group_norm_training(
                                                         inputs=inputs,
                                                         gamma=gamma,
                                                         beta=beta,

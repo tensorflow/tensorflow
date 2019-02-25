@@ -171,6 +171,7 @@ StatusOr<bool> InplaceFinder::Run(HloModule* module) {
         case HloOpcode::kAddDependency:
         case HloOpcode::kBitcast:
         case HloOpcode::kBroadcast:
+        case HloOpcode::kCall:
         case HloOpcode::kConcatenate:
         case HloOpcode::kCustomCall:
         case HloOpcode::kDynamicUpdateSlice:

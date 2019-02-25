@@ -78,5 +78,27 @@ class ForwardAllocationTest(test_util.TensorFlowTestCase):
                                    [[[34.], [34.]], [[38.], [38.]], [[42.], [42.]], [[46.], [46.]]],
                                    [[[50.], [50.]], [[54.], [54.]], [[58.], [58.]], [[62.], [62.]]]])
 
+  def testPrefixPathWithElementwiseInPath(self):
+    with ops.device("/device:IPU:0"):
+      x = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+      z = array_ops.placeholder(np.float32, shape=[1, 4, 4, 2])
+      s = array_ops.placeholder(np.float32, shape=[])
+
+      with variable_scope.variable_scope("vs", use_resource=True):
+        y = convolutional.conv2d(x, 2, 1, use_bias=True,
+                                 kernel_initializer=init_ops.ones_initializer())
+      res = y + z * s
+    with tu.ipu_session(True, True, True) as sess:
+      sess.run(variables.global_variables_initializer())
+
+      result = sess.run(res, {x: np.reshape(np.arange(32), [1,4,4,2]),
+                              z: np.reshape(np.arange(32), [1,4,4,2]),
+                              s: 2.0})
+      # Confirmed with values on the CPU.
+      self.assertAllClose(result, [[[[  1.,   3.], [  9.,  11.], [ 17.,  19.], [ 25.,  27.]],
+                                    [[ 33.,  35.], [ 41.,  43.], [ 49.,  51.], [ 57.,  59.]],
+                                    [[ 65.,  67.], [ 73.,  75.], [ 81.,  83.], [ 89.,  91.]],
+                                    [[ 97.,  99.], [105., 107.], [113., 115.], [121., 123.]]]])
+
 if __name__ == "__main__":
     googletest.main()

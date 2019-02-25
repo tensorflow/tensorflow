@@ -70,20 +70,20 @@ def ipu_shard(index):
 def get_total_memory_from_report(report):
   lines = report.split('\n')
   found = False
-  for x in lines:
+  for l in lines:
     if not found:
-      m = re.search('Memory Usage\s+:', x)
+      m = re.search('Memory Usage:', l)
       if m:
         found = True
     else:
-      m = re.search('Total\s*:\s+(\d+) bytes', x)
+      m = re.search('Including Gaps: +([\d,]+) B', l)
       if m:
-        return int(m.group(1))
+        return int(m.group(1).replace(',', ''))
   return None
 
 def get_compute_sets_from_report(report):
   lines = report.split('\n')
-  cs = [x for x in lines if re.search('  Step #\d+:', x)]
+  cs = [x for x in lines if re.search(' OnTileExecute .*: ', x)]
   cs = [x.split(":")[1].strip() for x in cs]
   cs = [x.split()[0] for x in cs]
   return cs
@@ -91,11 +91,16 @@ def get_compute_sets_from_report(report):
 
 def get_maximum_tile_size_from_events(report):
   lines = report.split('\n')
+  found = False
   for l in lines:
-    if l.startswith('Max tile memory'):
-        m = re.match(r'Max tile memory \(tile \d+\): (\d+) \(\d+% of mean\)', l)
-        if m:
-          return int(m.group(1))
+    if not found:
+      m = re.search('Memory Usage:', l)
+      if m:
+        found = True
+    else:
+      m = re.match(r' +Maximum: ([\d,]+) on tile [\d,]+', l)
+      if m:
+        return int(m.group(1).replace(',', ''))
   return None
 
 def check_compute_sets_not_in_blacklist(cs_list, bl):

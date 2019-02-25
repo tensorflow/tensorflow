@@ -203,8 +203,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['progIdCopy',
-            'vs/z1/Initializer/random_normal/RandomStandardNormal/fusion/Normal']
+      ok = ['vs/z1/Initializer/random_normal/RandomStandardNormal/fusion/Normal']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testRandomNormalNonScalarInitalizer(self):
@@ -226,8 +225,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['progIdCopy',
-            'vs/z1/Initializer/random_normal/RandomStandardNormal/fusion/Normal']
+      ok = ['vs/z1/Initializer/random_normal/RandomStandardNormal/fusion/Normal']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testDefaultRandomNormalInitalizer(self):
@@ -268,8 +266,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'z1/Initializer/truncated_normal/TruncatedNormal/fusion',
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion',
             'z1/Initializer/truncated_normal/mul',
             'z1/Initializer/truncated_normal/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -300,8 +297,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'z1/Initializer/truncated_normal/TruncatedNormal/fusion',
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion',
             'z1/Initializer/truncated_normal/mul',
             'z1/Initializer/truncated_normal/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
@@ -330,8 +326,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'z1/Initializer/truncated_normal/TruncatedNormal/fusion']
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
@@ -358,8 +353,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['progIdCopy',
-            'z1/Initializer/truncated_normal/TruncatedNormal/fusion']
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testUniformRandomInitalizer(self):
@@ -381,8 +375,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['progIdCopy',
-            'vs/z1/Initializer/random_uniform/RandomUniform/fusion/Uniform']
+      ok = ['vs/z1/Initializer/random_uniform/RandomUniform/fusion/Uniform']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testUniformRandomNonScalarInitalizer(self):
@@ -404,8 +397,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
 
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
-      ok = ['progIdCopy',
-            'vs/z1/Initializer/random_uniform/RandomUniform/fusion/Uniform']
+      ok = ['vs/z1/Initializer/random_uniform/RandomUniform/fusion/Uniform']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 

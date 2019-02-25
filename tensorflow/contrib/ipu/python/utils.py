@@ -82,9 +82,9 @@ def create_ipu_config(profiling=False, enable_ipu_events=False,
   opts.profiling.enable_poplar_reports_text = use_poplar_text_report
   opts.profiling.report_every_nth_execution = report_every_nth_execution
 
-  opts.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
+  opts.speed_size_config.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
 
-  opts.disable_graph_convolution_caching = disable_graph_convolution_caching
+  opts.speed_size_config.disable_graph_convolution_caching = disable_graph_convolution_caching
   return opts
 
 def set_compilation_options(opts, compilation_options=None):
@@ -198,7 +198,7 @@ def set_report_options(opts, report_options=None):
     ```python
     opts = create_ipu_config()
     opts = set_report_options(opts,
-        report_options={"doLayerWiseBreakdown": "false"})
+        report_options={"reportOption1": "false"})
 
     with tf.Session(config=tf.ConfigProto(ipu_options=opts)) as s:
       ...
@@ -238,6 +238,24 @@ def set_ipu_model_options(opts, compile_ipu_code=True):
              set.
   """
   opts.ipu_model_config.compile_ipu_code = compile_ipu_code
+
+  return opts
+
+def set_recomputation_options(opts, recompute_non_linearities=True):
+  """Set re-computation options.
+
+  Args:
+    :param recompute_non_linearities: Whether or not to re-compute the non
+      linearities during training. Enabling this option can reduce memory
+      usage at the expense of extra computation.
+
+  Returns:
+
+    :return: The IPUOptions configuration protobuf.
+  """
+
+  opts.speed_size_config.recompute_non_linearities = recompute_non_linearities
+  opts.speed_size_config.has_recompute_non_linearities = True
 
   return opts
 
@@ -628,10 +646,10 @@ def get_memory_size_from_events(events):
           l = l.strip()
           if l.startswith('Memory Usage'):
             in_memory_usage_section=True
-          if l.startswith('Total') and in_memory_usage_section:
-              m = re.match(r'.+:\s+(\d+)', l)
+          if l.startswith('Including Gaps') and in_memory_usage_section:
+              m = re.match(r'.+:\s+([\d,]+) B', l)
               if m:
-                return int(m.group(1))
+                return int(m.group(1).replace(',', ''))
       except UnicodeDecodeError:
         pass
   return None

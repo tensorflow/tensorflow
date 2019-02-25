@@ -332,8 +332,7 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
           xla::ShapeUtil::MakeShape(input_type, {num_groups_ * num_batches});
 
       xla::Shape output_tuple_shape = xla::ShapeUtil::MakeTupleShape(
-          {output_shape, mean_inv_std_dev_shape, mean_inv_std_dev_shape,
-           output_shape});
+          {output_shape, mean_inv_std_dev_shape, mean_inv_std_dev_shape});
       xla::XlaOp call_output =
           xla::CustomCall(&b,
                           GetPoplibsCustomOpTargetString(
@@ -342,12 +341,10 @@ class PopnnGroupNorm : public XlaOpKernel, IpuOpKernel {
       xla::XlaOp output = xla::GetTupleElement(call_output, 0);
       xla::XlaOp mean = xla::GetTupleElement(call_output, 1);
       xla::XlaOp inv_std_dev = xla::GetTupleElement(call_output, 2);
-      xla::XlaOp input_whitened = xla::GetTupleElement(call_output, 3);
 
       ctx->SetOutput(0, output);
       ctx->SetOutput(1, mean);
       ctx->SetOutput(2, inv_std_dev);
-      ctx->SetOutput(3, input_whitened);
     } else {
       LOG(FATAL) << "Unsupported use of PopnnGroupNorm.";
     }
