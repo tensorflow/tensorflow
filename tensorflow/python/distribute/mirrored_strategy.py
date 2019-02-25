@@ -533,7 +533,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
                   init_value = value_list[0].initial_value
                   return array_ops.identity(init_value)
             kwargs["initial_value"] = initial_value_fn
-          with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+          with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
             with tape.stop_recording():
@@ -853,7 +853,7 @@ class _MirroredReplicaThread(threading.Thread):
           _enter_graph(self._init_graph, self._init_in_eager), \
           _enter_graph(self.graph, self.in_eager,
                        self._variable_creator_stack), \
-          context.context().device_policy(self.context_device_policy), \
+          context.device_policy(self.context_device_policy), \
           MirroredReplicaContext(self.distribution, constant_op.constant(
               self.replica_id, dtypes.int32)), \
           ops.device(self.device_map.logical_to_actual_devices(0)[

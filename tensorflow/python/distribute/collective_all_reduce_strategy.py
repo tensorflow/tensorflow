@@ -246,7 +246,7 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
                   return array_ops.identity(value_list[0].initial_value)
 
           kwargs["initial_value"] = _overridden_initial_value_fn
-          with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+          with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
             with tape.stop_recording():

@@ -436,6 +436,7 @@ cuda_py_test(
         ":test",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
