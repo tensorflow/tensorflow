@@ -603,8 +603,7 @@ class SingleOpTest(ComputationTest):
       c.CrossReplicaSum(c.Constant(lhs))
       self._ExecuteAndCompareExact(c, expected=lhs)
 
-  def DISABLED_testReplicaId(self):
-    # TODO(b/125740859): enable this test
+  def testReplicaId(self):
     c = self._NewComputation()
     _ = c.ReplicaId()
     self._ExecuteAndCompareExact(c, expected=0)
