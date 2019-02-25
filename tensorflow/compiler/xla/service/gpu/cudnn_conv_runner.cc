@@ -336,17 +336,10 @@ StatusOr<CudnnConvParams> GetCudnnConvParams(
   params.window = &conv->window();
   params.dnums = &conv->convolution_dimension_numbers();
   params.feature_group_count = conv->feature_group_count();
-
-  #if TENSORFLOW_USE_ROCM
-    // MIOpen has its own logic to find and tune convolution kernels. 
-    // Use default algorithm to force a search
-    params.algorithm = se::dnn::AlgorithmConfig();
-  #elif 
-    params.algorithm = se::dnn::AlgorithmConfig(
+  params.algorithm = se::dnn::AlgorithmConfig(
       se::dnn::AlgorithmDesc(backend_config.algorithm(),
                              backend_config.tensor_ops_enabled()),
       backend_config.scratch_size());
-  #endif 
   params.conv_result_scale = backend_config.conv_result_scale();
 
   switch (kind) {
