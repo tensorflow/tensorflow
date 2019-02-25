@@ -1063,7 +1063,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
                                          ArrayRef<char> data) {
   auto bitsRequired = type.getSizeInBits();
   (void)bitsRequired;
-  assert((bitsRequired <= data.size() * 8L) &&
+  assert((bitsRequired <= data.size() * APInt::APINT_WORD_SIZE) &&
          "Input data bit size should be larger than that type requires");
 
   auto &impl = type.getContext()->getImpl();
@@ -1113,11 +1113,10 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
   size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
 
   // Compress the attribute values into a character buffer.
-  SmallVector<char, 8> data(APInt::getNumWords(bitWidth * values.size()) * 8L);
+  SmallVector<char, 8> data(APInt::getNumWords(bitWidth * values.size()) *
+                            APInt::APINT_WORD_SIZE);
+  APInt intVal;
   for (unsigned i = 0, e = values.size(); i < e; ++i) {
-    unsigned bitPos = i * bitWidth;
-
-    APInt intVal;
     switch (eltType.getKind()) {
     case StandardTypes::BF16:
     case StandardTypes::F16:
@@ -1137,7 +1136,7 @@ DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
     }
     assert(intVal.getBitWidth() == bitWidth &&
            "expected value to have same bitwidth as element type");
-    writeBits(data.data(), bitPos, intVal);
+    writeBits(data.data(), i * bitWidth, intVal);
   }
   return get(type, data);
 }

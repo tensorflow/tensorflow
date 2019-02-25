@@ -353,7 +353,7 @@ public:
   using ImplType = detail::DenseElementsAttributeStorage;
 
   /// It assumes the elements in the input array have been truncated to the bits
-  /// width specified by the element type (note all float type are 64 bits).
+  /// width specified by the element type.
   static DenseElementsAttr get(VectorOrTensorType type, ArrayRef<char> data);
 
   // Constructs a dense elements attribute from an array of element values. Each
@@ -383,6 +383,11 @@ public:
   }
 
 protected:
+  // Constructs a dense elements attribute from an array of raw APInt values.
+  // Each APInt value is expected to have the same bitwidth as the element type
+  // of 'type'.
+  static DenseElementsAttr get(VectorOrTensorType type, ArrayRef<APInt> values);
+
   /// Parses the raw integer internal value for each dense element into
   /// 'values'.
   void getRawValues(SmallVectorImpl<APInt> &values) const;
@@ -393,8 +398,15 @@ protected:
 class DenseIntElementsAttr : public DenseElementsAttr {
 public:
   using DenseElementsAttr::DenseElementsAttr;
+  using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
   using DenseElementsAttr::ImplType;
+
+  // Constructs a dense integer elements attribute from an array of APInt
+  // values. Each APInt value is expected to have the same bitwidth as the
+  // element type of 'type'.
+  static DenseIntElementsAttr get(VectorOrTensorType type,
+                                  ArrayRef<APInt> values);
 
   /// Gets the integer value of each of the dense elements.
   void getValues(SmallVectorImpl<APInt> &values) const;
@@ -410,8 +422,15 @@ public:
 class DenseFPElementsAttr : public DenseElementsAttr {
 public:
   using DenseElementsAttr::DenseElementsAttr;
+  using DenseElementsAttr::get;
   using DenseElementsAttr::getValues;
   using DenseElementsAttr::ImplType;
+
+  // Constructs a dense float elements attribute from an array of APFloat
+  // values. Each APFloat value is expected to have the same bitwidth as the
+  // element type of 'type'.
+  static DenseFPElementsAttr get(VectorOrTensorType type,
+                                 ArrayRef<APFloat> values);
 
   /// Gets the float value of each of the dense elements.
   void getValues(SmallVectorImpl<APFloat> &values) const;

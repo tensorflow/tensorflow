@@ -251,6 +251,27 @@ ArrayRef<char> DenseElementsAttr::getRawData() const {
   return static_cast<ImplType *>(attr)->data;
 }
 
+// Constructs a dense elements attribute from an array of raw APInt values.
+// Each APInt value is expected to have the same bitwidth as the element type
+// of 'type'.
+DenseElementsAttr DenseElementsAttr::get(VectorOrTensorType type,
+                                         ArrayRef<APInt> values) {
+  assert(values.size() == type.getNumElements() &&
+         "expected 'values' to contain the same number of elements as 'type'");
+
+  // FIXME(b/121118307): using 64 bits for BF16 because it is currently stored
+  // with double semantics.
+  auto eltType = type.getElementType();
+  size_t bitWidth = eltType.isBF16() ? 64 : eltType.getIntOrFloatBitWidth();
+  std::vector<char> elementData(APInt::getNumWords(bitWidth * values.size()) *
+                                APInt::APINT_WORD_SIZE);
+  for (unsigned i = 0, e = values.size(); i != e; ++i) {
+    assert(values[i].getBitWidth() == bitWidth);
+    writeBits(elementData.data(), i * bitWidth, values[i]);
+  }
+  return get(type, elementData);
+}
+
 /// Parses the raw integer internal value for each dense element into
 /// 'values'.
 void DenseElementsAttr::getRawValues(SmallVectorImpl<APInt> &values) const {
@@ -317,12 +338,32 @@ APInt DenseElementsAttr::readBits(const char *rawData, size_t bitPos,
 
 /// DenseIntElementsAttr
 
+// Constructs a dense integer elements attribute from an array of APInt
+// values. Each APInt value is expected to have the same bitwidth as the
+// element type of 'type'.
+DenseIntElementsAttr DenseIntElementsAttr::get(VectorOrTensorType type,
+                                               ArrayRef<APInt> values) {
+  return DenseElementsAttr::get(type, values).cast<DenseIntElementsAttr>();
+}
+
 void DenseIntElementsAttr::getValues(SmallVectorImpl<APInt> &values) const {
   // Simply return the raw integer values.
   getRawValues(values);
 }
 
 /// DenseFPElementsAttr
+
+// Constructs a dense float elements attribute from an array of APFloat
+// values. Each APFloat value is expected to have the same bitwidth as the
+// element type of 'type'.
+DenseFPElementsAttr DenseFPElementsAttr::get(VectorOrTensorType type,
+                                             ArrayRef<APFloat> values) {
+  // Convert the APFloat values to APInt and create a dense elements attribute.
+  std::vector<APInt> intValues(values.size());
+  for (unsigned i = 0, e = values.size(); i != e; ++i)
+    intValues[i] = values[i].bitcastToAPInt();
+  return DenseElementsAttr::get(type, intValues).cast<DenseFPElementsAttr>();
+}
 
 void DenseFPElementsAttr::getValues(SmallVectorImpl<APFloat> &values) const {
   // Get the raw APInt element values.
