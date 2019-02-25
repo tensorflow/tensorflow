@@ -619,8 +619,6 @@ Status PoplarExecutor::ConfigurePoplarDevice(
       pooling_options_.set(opt.option(), opt.value());
     }
 
-    report_options_.set("showVarStorage", "true");
-    report_options_.set("showExecutionSteps", "true");
     for (const auto& opt : current_config_.profiling().options()) {
       report_options_.set(opt.option(), opt.value());
     }
@@ -1277,6 +1275,17 @@ void PoplarExecutor::AboutToFreeEngine(poplar::Engine* engine) {
 
 const int PoplarExecutor::device_ordinal() const { return ordinal_; }
 
+void PoplarExecutor::setFlagIfNotPresent(poplar::OptionFlags& opts,
+                                         const std::string& key,
+                                         const std::string& value) {
+  for (const auto& opt : opts) {
+    if (opt.first == key) {
+      return;
+    }
+  }
+  opts.set(key, value);
+}
+
 poplar::DeviceManager& PoplarExecutor::GetDeviceManager() {
   static poplar::DeviceManager device_mgr =
       poplar::DeviceManager::createDeviceManager();
@@ -1406,13 +1415,17 @@ StatusOr<se::DeviceMemoryBase> PoplarExecutor::ExecuteEngine(
         std::stringstream report_stream;
         if (current_config_.profiling().enable_execution_trace() > 0) {
           if (executable.ExecutionCount() == 0) {
-            auto rep = current_engine_->getExecutionProfile();
-            auto opts = GetReportFlags();
+            auto graph_profile = current_engine_->getGraphProfile();
+            auto exec_profile = current_engine_->getExecutionProfile();
+
             if (CompilerReportingTextFormat()) {
-              poplar::printProfileSummary(
-                  report_stream, current_engine_->getGraphProfile(), rep, opts);
+              auto opts = GetReportFlags();
+              setFlagIfNotPresent(opts, "showExecutionSteps", "true");
+
+              poplar::printExecutionSummary(report_stream, graph_profile,
+                                            exec_profile, opts);
             } else {
-              poplar::serializeToJSON(report_stream, rep);
+              poplar::serializeToJSON(report_stream, exec_profile);
             }
 
             current_engine_->resetExecutionProfile();

@@ -489,11 +489,11 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
 
     if (poplarExecutor->CompilerReportingEnabled() && engine != nullptr) {
       try {
-        auto& opts = poplarExecutor->GetReportFlags();
-
         auto rep = engine->getGraphProfile();
         if (poplarExecutor->CompilerReportingTextFormat()) {
-          poplar::printProfileSummary(stream, rep, {}, opts);
+          auto opts = poplarExecutor->GetReportFlags();
+          poplarExecutor->setFlagIfNotPresent(opts, "showVarStorage", "true");
+          poplar::printGraphSummary(stream, rep, opts);
         } else {
           poplar::serializeToJSON(stream, rep);
         }
