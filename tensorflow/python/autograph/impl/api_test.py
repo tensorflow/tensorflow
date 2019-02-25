@@ -515,6 +515,20 @@ class ApiTest(test.TestCase):
 
     self.assertEqual(compiled_fn(), 3)
 
+  def test_to_graph_with_kwargs_clashing_unconverted_call(self):
+
+    @api.do_not_convert()
+    def called_fn(**kwargs):
+      return kwargs['f'] + kwargs['owner']
+
+    def test_fn():
+      # These arg names intentionally match _call_unconverted's
+      return called_fn(f=1, owner=2)
+
+    compiled_fn = api.to_graph(test_fn)
+
+    self.assertEqual(compiled_fn(), 3)
+
   def test_to_code_basic(self):
 
     def test_fn(x, s):

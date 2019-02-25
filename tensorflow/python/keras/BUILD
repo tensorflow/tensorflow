@@ -221,6 +221,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/eager:profiler",
     ],
 )
 
@@ -233,6 +234,7 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        "//tensorflow/python/eager:profiler",
     ],
 )
 
@@ -1114,6 +1116,20 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+)
+
+tf_py_test(
+    name = "training_arrays_test",
+    size = "small",
+    srcs = ["engine/training_arrays_test.py"],
+    additional_deps = [
+        ":keras",
+        ":layers",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 tf_py_test(

@@ -23,7 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -47,16 +47,26 @@ class ForLoopTest(test.TestCase):
         init_state=(0,))
     self.assertEqual((10,), s)
 
-  @test_util.run_deprecated_v1
   def test_dataset(self):
-    to_int32 = lambda i: math_ops.cast(i, dtypes.int32)
     s = control_flow.for_stmt(
-        dataset_ops.Dataset.range(5).map(to_int32),
-        None,
+        dataset_ops.Dataset.range(5),
+        extra_test=None,
         body=lambda i, s: (s + i,),
-        init_state=(0,))
-    with self.cached_session():
-      self.assertEqual((10,), self.evaluate(s))
+        init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+    self.assertEqual(self.evaluate(s), (10,))
+
+  @test_util.run_v2_only
+  def test_dataset_no_state(self):
+    v = variables.Variable(0, dtype=dtypes.int64)
+    def stateless_with_side_effects(i):
+      v.assign(v.read_value() + i)
+    s = control_flow.for_stmt(
+        dataset_ops.Dataset.range(5),
+        extra_test=None,
+        body=stateless_with_side_effects,
+        init_state=())
+    self.evaluate(s)
+    self.assertEqual(self.evaluate(v.read_value()), 10)
 
 
 class WhileLoopTest(test.TestCase):

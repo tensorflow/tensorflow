@@ -75,6 +75,7 @@ static const char* param_structs[] = {"TfLiteAddParams",
                                       "TfLiteUnidirectionalSequenceLSTMParams",
                                       "TfLiteUniqueParams",
                                       "TfLiteUnpackParams",
+                                      "TfLiteReverseSequenceParams",
                                       nullptr};
 }  // namespace
 
@@ -180,6 +181,7 @@ class OpOptionData {
     op_to_option_["SQRT"] = "";
     op_to_option_["RSQRT"] = "";
     op_to_option_["ELU"] = "";
+    op_to_option_["REVERSE_SEQUENCE"] = "";
 
     // TODO(aselle): These are undesirable hacks. Consider changing C structs
     option_to_struct_["Pool2DOptions"] = "TfLitePoolParams";

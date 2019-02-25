@@ -502,7 +502,10 @@ def _gen_pairs(items):
   assert len(items) % 2 == 0
   items = iter(items)
   while True:
-    yield next(items), next(items)
+    try:
+      yield next(items), next(items)
+    except StopIteration:
+      return
 
 
 class _FunctionDetail(

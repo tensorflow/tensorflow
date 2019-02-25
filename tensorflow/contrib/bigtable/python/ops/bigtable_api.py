@@ -475,15 +475,17 @@ class BigtableTable(object):
     """
     if timestamp is None:
       timestamp = -1  # Bigtable server provided timestamp.
-    for tensor_type in nest.flatten(dataset.output_types):
+    for tensor_type in nest.flatten(
+        dataset_ops.get_legacy_output_types(dataset)):
       if tensor_type != dtypes.string:
         raise ValueError("Not all elements of the dataset were `tf.string`")
-    for shape in nest.flatten(dataset.output_shapes):
+    for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
       if not shape.is_compatible_with(tensor_shape.scalar()):
         raise ValueError("Not all elements of the dataset were scalars")
     if len(column_families) != len(columns):
       raise ValueError("len(column_families) != len(columns)")
-    if len(nest.flatten(dataset.output_types)) != len(columns) + 1:
+    if len(nest.flatten(
+        dataset_ops.get_legacy_output_types(dataset))) != len(columns) + 1:
       raise ValueError("A column name must be specified for every component of "
                        "the dataset elements. (e.g.: len(columns) != "
                        "len(dataset.output_types))")

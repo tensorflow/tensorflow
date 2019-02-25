@@ -78,10 +78,10 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   const int batch_size_;
 
   // mutex for condition_variable
-  tensorflow::mutex cond_mtx_;
+  mutex cond_mtx_;
 
   // condition variable to implement producer-consumer queue for calibration
-  tensorflow::condition_variable cond_;
+  condition_variable cond_;
 
   // Is calibration finished?
   bool done_;

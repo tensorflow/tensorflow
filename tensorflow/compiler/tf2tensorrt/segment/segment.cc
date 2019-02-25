@@ -39,7 +39,7 @@ namespace segment {
 using absl::StrAppend;
 using absl::StrCat;
 
-// A simple graph representation to mirror tensorflow::Graph. This structure
+// A simple graph representation to mirror Graph. This structure
 // helps saving memory since segmenter modifies the graph in place, preventing
 // the need to create a copy of the graph. It is composed of edges and nodes.
 // Nodes keep pointers to original TF nodes.
@@ -75,7 +75,7 @@ class SimpleEdge {
 
 class SimpleNode {
  public:
-  SimpleNode(const tensorflow::Node* node, const int id);
+  SimpleNode(const Node* node, const int id);
 
   const std::vector<SimpleEdge*>& in_edges() const { return in_edges_; }
   const std::vector<SimpleEdge*>& out_edges() const { return out_edges_; }
@@ -99,11 +99,11 @@ class SimpleNode {
   }
 
   const string& name() const { return node_->name(); }
-  const tensorflow::Node* tf_node() const { return node_; }
+  const Node* tf_node() const { return node_; }
   int id() const { return id_; }
 
  private:
-  const tensorflow::Node* node_;
+  const Node* node_;
   std::vector<SimpleEdge*> in_edges_;
   std::vector<SimpleEdge*> out_edges_;
   int id_;
@@ -113,7 +113,7 @@ class SimpleNode {
 
 class SimpleGraph {
  public:
-  explicit SimpleGraph(const tensorflow::Graph* g);
+  explicit SimpleGraph(const Graph* g);
   ~SimpleGraph();
 
   void AddControlEdge(SimpleNode* src, SimpleNode* dst);
@@ -126,15 +126,11 @@ class SimpleGraph {
     return nodes_[node_id];
   }
   int num_node_ids() const { return nodes_.size(); }
-  const SimpleNode* source_node() const {
-    return nodes_[tensorflow::Graph::kSourceId];
-  }
-  const SimpleNode* sink_node() const {
-    return nodes_[tensorflow::Graph::kSinkId];
-  }
+  const SimpleNode* source_node() const { return nodes_[Graph::kSourceId]; }
+  const SimpleNode* sink_node() const { return nodes_[Graph::kSinkId]; }
 
  private:
-  const tensorflow::Graph* g_;
+  const Graph* g_;
   std::vector<SimpleNode*> nodes_;
   std::vector<SimpleEdge*> edges_;
   // free_edge_ids_ and free_node_ids_ contain freed indices.
@@ -142,15 +138,14 @@ class SimpleGraph {
   std::set<int> free_node_ids_;
 };
 
-SimpleNode::SimpleNode(const tensorflow::Node* node, const int id)
-    : node_(node), id_(id) {
+SimpleNode::SimpleNode(const Node* node, const int id) : node_(node), id_(id) {
   if (node_) {
     in_edges_.reserve(node_->in_edges().size());
     out_edges_.reserve(node_->out_edges().size());
   }
 }
 
-SimpleGraph::SimpleGraph(const tensorflow::Graph* g) : g_(g) {
+SimpleGraph::SimpleGraph(const Graph* g) : g_(g) {
   int n_nodes = g_->num_node_ids();
   nodes_.resize(n_nodes, nullptr);
   nodes_[g->kSourceId] = new SimpleNode(g->source_node(), g->kSourceId);
@@ -194,8 +189,8 @@ void SimpleGraph::AddEdge(SimpleNode* src, int out_port, SimpleNode* dst,
   } else {
     edges_.push_back(nullptr);
   }
-  bool is_control = (out_port == tensorflow::Graph::kControlSlot);
-  is_control |= (in_port == tensorflow::Graph::kControlSlot);
+  bool is_control = (out_port == Graph::kControlSlot);
+  is_control |= (in_port == Graph::kControlSlot);
   auto edge = new SimpleEdge(i, src, out_port, dst, in_port, is_control);
   edges_[i] = edge;
   src->out_edges_.push_back(edge);
@@ -203,8 +198,7 @@ void SimpleGraph::AddEdge(SimpleNode* src, int out_port, SimpleNode* dst,
 }
 
 void SimpleGraph::AddControlEdge(SimpleNode* src, SimpleNode* dst) {
-  AddEdge(src, tensorflow::Graph::kControlSlot, dst,
-          tensorflow::Graph::kControlSlot);
+  AddEdge(src, Graph::kControlSlot, dst, Graph::kControlSlot);
 }
 
 void SimpleGraph::RemoveEdge(const SimpleEdge* edge) {
@@ -241,15 +235,14 @@ struct SimpleEdgePtrCompare {
 };
 
 struct NodePtrCompare {
-  bool operator()(const tensorflow::Node* lhs,
-                  const tensorflow::Node* rhs) const {
+  bool operator()(const Node* lhs, const Node* rhs) const {
     return lhs->name() < rhs->name();
   }
 };
 
 namespace {
 
-// Copied from TF ReverseDFS, which only works for tensorflow::Graph.
+// Copied from TF ReverseDFS, which only works for Graph.
 void StableDFS(const SimpleGraph& g, bool reverse,
                const std::vector<const SimpleNode*>& start,
                const std::function<bool(const SimpleNode*)>& enter,
@@ -371,8 +364,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
       if (in_edge->src() != src) {
         SimpleEdge* e = const_cast<SimpleEdge*>(in_edge);
         if (e->src() == graph->source_node()) {
-          graph->AddEdge(e->src(), e->src_output(), src,
-                         tensorflow::Graph::kControlSlot);
+          graph->AddEdge(e->src(), e->src_output(), src, Graph::kControlSlot);
         } else {
           graph->AddEdge(e->src(), e->src_output(), src, 0 /* input index */);
         }
@@ -391,8 +383,7 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
       if (e->dst() == graph->sink_node()) {
         VLOG(1) << " edge to sink node " << src->name() << " -> "
                 << e->dst()->name();
-        graph->AddEdge(src, tensorflow::Graph::kControlSlot, e->dst(),
-                       e->dst_input());
+        graph->AddEdge(src, Graph::kControlSlot, e->dst(), e->dst_input());
       } else {
         graph->AddEdge(src, 0 /* output index */, e->dst(), e->dst_input());
       }
@@ -410,12 +401,12 @@ void ContractEdge(SimpleEdge* edge, SimpleGraph* graph,
   }
 }
 
-tensorflow::Status SegmentGraph(
-    const tensorflow::Graph* tf_graph,
-    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
-    const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
-    const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
-    const SegmentOptions& options, SegmentNodesVector* segments) {
+Status SegmentGraph(const Graph* tf_graph,
+                    const std::function<Status(const Node*)>& candidate_fn,
+                    const std::function<bool(const Edge*)>& input_candidate_fn,
+                    const std::function<bool(const Edge*)>& output_candidate_fn,
+                    const SegmentOptions& options,
+                    SegmentNodesVector* segments) {
   // Steps:
   // 1. run the segmentation algorithm to find all the segments, which uses
   //    candidate_fn to determine the candidates segment nodes;
@@ -552,7 +543,7 @@ tensorflow::Status SegmentGraph(
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the segment nodes set.
-  std::map<string, std::set<const tensorflow::Node*, NodePtrCompare>> sg_map;
+  std::map<string, std::set<const Node*, NodePtrCompare>> sg_map;
 
   // A map from the segment identifier (currently the name of the root node of
   // the segment tree) to the device names that the nodes in the segment are
@@ -578,7 +569,7 @@ tensorflow::Status SegmentGraph(
         device_maps[u.ParentValue()->name()].insert(
             tf_node->requested_device());
       } else {
-        VLOG(1) << "Node " << tf_node->name()
+        VLOG(2) << "Node " << tf_node->name()
                 << " has no device assigned requested device is: "
                 << tf_node->requested_device();
       }
@@ -588,17 +579,16 @@ tensorflow::Status SegmentGraph(
   // --------------------------------- Step 2 ---------------------------------
   // Remove ineligible input/output nodes.
   for (auto& itr : sg_map) {
-    std::set<const tensorflow::Node*, NodePtrCompare>& segment_nodes =
-        itr.second;
+    std::set<const Node*, NodePtrCompare>& segment_nodes = itr.second;
     VLOG(1) << "Segment original size: " << segment_nodes.size();
     while (true) {
-      std::deque<const tensorflow::Node*> in_nodes_que, out_nodes_que;
+      std::deque<const Node*> in_nodes_que, out_nodes_que;
       // Find an input node that is not eligible and add it to the queue.
       // Nodes that has no incoming edges should not be treated as "input",
       // as there are really no inputs to them. Similar for output nodes.
       for (auto node : segment_nodes) {
         bool added = false;
-        for (const tensorflow::Edge* edge : node->in_edges()) {
+        for (const Edge* edge : node->in_edges()) {
           if (!edge->IsControlEdge() && !edge->src()->IsSource() &&
               !segment_nodes.count(edge->src())) {  // 'node' is an input node.
             if (!input_candidate_fn(edge)) {
@@ -609,7 +599,7 @@ tensorflow::Status SegmentGraph(
           }
         }
         if (added) continue;  // Only adding the node once to either queue.
-        for (const tensorflow::Edge* edge : node->out_edges()) {
+        for (const Edge* edge : node->out_edges()) {
           if (!edge->dst()->IsSink() && !edge->IsControlEdge() &&
               !segment_nodes.count(edge->dst())) {  // 'node' is an output node.
             if (!output_candidate_fn(edge)) {
@@ -637,13 +627,11 @@ tensorflow::Status SegmentGraph(
       // remove all their inputs, and for non-const output nodes remove all
       // their outputs. In this way, for common cases the number of removed
       // nodes should be minimum.
-      auto remove_nodes = [&segment_nodes](
-                              bool is_input_nodes,
-                              std::deque<const tensorflow::Node*>* que) {
+      auto remove_nodes = [&segment_nodes](bool is_input_nodes,
+                                           std::deque<const Node*>* que) {
         // Run a BFS on the queue to find all the input/output nodes.
-        std::set<const tensorflow::Node*, NodePtrCompare> visited;
-        std::set<const tensorflow::Node*, NodePtrCompare> logged(que->begin(),
-                                                                 que->end());
+        std::set<const Node*, NodePtrCompare> visited;
+        std::set<const Node*, NodePtrCompare> logged(que->begin(), que->end());
         while (!que->empty()) {
           auto node = que->front();
           que->pop_front();
@@ -722,7 +710,7 @@ tensorflow::Status SegmentGraph(
       VLOG(1) << "Devices " << s;
     }
   }
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 }  // namespace segment

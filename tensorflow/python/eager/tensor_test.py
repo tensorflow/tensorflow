@@ -66,11 +66,11 @@ class TFETensorTest(test_util.TensorFlowTestCase):
     device = ctx.device_name
     # Missing context.
     with self.assertRaisesRegexp(
-        TypeError, r"Required argument 'context' \(pos 2\) not found"):
+        TypeError, r".*argument 'context' \(pos 2\).*"):
       ops.EagerTensor(1, device=device)
     # Missing device.
     with self.assertRaisesRegexp(
-        TypeError, r"Required argument 'device' \(pos 3\) not found"):
+        TypeError, r".*argument 'device' \(pos 3\).*"):
       ops.EagerTensor(1, context=handle)
     # Bad dtype type.
     with self.assertRaisesRegexp(TypeError,
@@ -363,6 +363,14 @@ class TFETensorTest(test_util.TensorFlowTestCase):
         "Cannot convert provided value to EagerTensor. "
         "Provided value.*Requested dtype.*"):
       _ = ops.convert_to_tensor(1., dtype=dtypes.int32)
+
+  def testEagerLargeConstant(self):
+    self.assertEqual(
+        constant_op.constant(dtypes.uint64.max, dtype=dtypes.uint64).numpy(),
+        dtypes.uint64.max)
+    self.assertEqual(
+        constant_op.constant(dtypes.uint32.max, dtype=dtypes.uint32).numpy(),
+        dtypes.uint32.max)
 
 
 class TFETensorUtilTest(test_util.TensorFlowTestCase):

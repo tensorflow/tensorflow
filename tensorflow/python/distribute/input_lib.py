@@ -260,6 +260,8 @@ class DatasetIterator(InputIteratorImpl):
                                                 worker_devices)
         iterators.append(iterator)
 
+    self._element_structure = dataset._element_structure  # pylint: disable=protected-access
+
     super(DatasetIterator, self).__init__(input_workers, iterators)
 
 
@@ -313,15 +315,15 @@ class _SingleWorkerDatasetIterator(object):
 
   @property
   def output_classes(self):
-    return self._iterator.output_classes
+    return dataset_ops.get_legacy_output_classes(self._iterator)
 
   @property
   def output_shapes(self):
-    return self._iterator.output_shapes
+    return dataset_ops.get_legacy_output_shapes(self._iterator)
 
   @property
   def output_types(self):
-    return self._iterator.output_types
+    return dataset_ops.get_legacy_output_types(self._iterator)
 
 
 class _SingleWorkerCallableIterator(object):

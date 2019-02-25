@@ -95,8 +95,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     dataset = dataset_ops.Dataset.from_tensor_slices(components).map(
         _map_fn).repeat(count)
-    self.assertEqual([c.shape[1:] for c in components],
-                     [shape for shape in dataset.output_shapes])
+    self.assertEqual(
+        [c.shape[1:] for c in components],
+        [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     return dataset
 
   def testMapDataset(self):
@@ -161,8 +162,9 @@ class MapTest(test_base.DatasetTestBase, parameterized.TestCase):
         _map_fn, num_parallel_calls=num_parallel_calls).prefetch(
             output_buffer_size).repeat(count)
 
-    self.assertEqual([c.shape[1:] for c in components],
-                     [shape for shape in dataset.output_shapes])
+    self.assertEqual(
+        [c.shape[1:] for c in components],
+        [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     return dataset
 
   def testParallelMapDataset(self):

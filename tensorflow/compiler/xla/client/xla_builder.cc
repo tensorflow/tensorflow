@@ -3287,6 +3287,12 @@ XlaOp Real(const XlaOp& operand) {
 XlaOp Imag(const XlaOp& operand) {
   return operand.builder()->UnaryOp(HloOpcode::kImag, operand);
 }
+XlaOp Sqrt(const XlaOp& operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
+}
+XlaOp Rsqrt(const XlaOp& operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);
+}
 
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions) {

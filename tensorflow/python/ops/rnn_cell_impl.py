@@ -606,7 +606,7 @@ class GRUCell(LayerRNNCell):
 _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 
 
-@tf_export("nn.rnn_cell.LSTMStateTuple")
+@tf_export(v1=["nn.rnn_cell.LSTMStateTuple"])
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 

@@ -1092,8 +1092,7 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
   def test_TensorBoard_weight_histograms(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, histogram_freq=1)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
 
     with _mock_summary_api() as summary_file:
       model.fit(
@@ -1122,9 +1121,8 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
   def test_TensorBoard_weight_images(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    temp_dir = self.get_temp_dir() + '/tb'
     tb_cbk = keras.callbacks.TensorBoard(
-        temp_dir, histogram_freq=1, write_images=True)
+        self.logdir, histogram_freq=1, write_images=True)
 
     with _mock_summary_api() as summary_file:
       model.fit(
