@@ -699,8 +699,8 @@ class DatasetV2(tracking_base.Trackable, composite_tensor.CompositeTensor):
   def prefetch(self, buffer_size):
     """Creates a `Dataset` that prefetches elements from this dataset.
 
-    Note that if the dataset was batched using `Dataset.batch`, each element is
-    a batch and this operation will prefetch `buffer_size` batches.
+    NOTE: If prefetch after batch, such as: dataset.batch(20).prefetch(2),
+    which means prefetch 2 batches, totally 40 samples.
 
     Args:
       buffer_size: A `tf.int64` scalar `tf.Tensor`, representing the maximum
