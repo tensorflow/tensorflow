@@ -213,12 +213,12 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
                      kwargs["name"])
   elif synchronization == variable_scope.VariableSynchronization.ON_READ:
     # Variables that are to be synced on read are replica local.
-    is_replica_local = True
+    is_sync_on_read = True
     kwargs["trainable"] = False
   elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
         synchronization == variable_scope.VariableSynchronization.AUTO):
     # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
-    is_replica_local = False
+    is_sync_on_read = False
   else:
     raise ValueError(
         "Invalid variable synchronization mode: %s for variable: %s" %
@@ -247,8 +247,8 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
     devices = device_map.logical_to_actual_devices(logical_device)
     value_list = real_mirrored_creator(devices, *args, **kwargs)
 
-    if is_replica_local:
-      result = values.ReplicaLocalVariable(
+    if is_sync_on_read:
+      result = values.SyncOnReadVariable(
           strategy, device_map, value_list, aggregation,
           logical_device=logical_device)
     else:
@@ -719,7 +719,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
-    if isinstance(replica_local_var, values.ReplicaLocalVariable):
+    if isinstance(replica_local_var, values.SyncOnReadVariable):
       return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
     assert isinstance(replica_local_var, values.Mirrored)
     return array_ops.identity(replica_local_var.get())
