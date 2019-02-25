@@ -234,7 +234,7 @@ class OpHint(object):
           and OpHint.AGGREGATE_STACK.
           Note, aggregate is only valid if tag is specified.
         index_override: Specify what input/output index should this be in the
-          final stub. i.e. add(arg0, index=1); add(arg1, index=0) wil make the
+          final stub. i.e. add(arg0, index=1); add(arg1, index=0) will make the
           final stub be as stub_func(inputs[arg1, arg0], outputs=[]) rather than
           the default call order based ordering.
 
@@ -928,7 +928,7 @@ def _convert_single_op_hint_to_stub(call,
 
   Args:
     call: A single function call to be converted.
-    graph_def: A graph_def to use as input (that hass call obviously).
+    graph_def: A graph_def to use as input (that has call obviously).
     function_def_nodes: Nodes inside the function def those are not connected to
       the graph.
     is_last_run: Whether it is the last run for a given pass (for OpHint has
@@ -995,7 +995,7 @@ def _convert_single_op_hint_to_stub(call,
     new_node.input.append(input_name)
   new_node.attr[OpHint.TFLITE_INPUT_INDICES].list.i.extend(sorted_input_indices)
 
-  # Ceate the function
+  # Create the function
   new_node.op = call.function_name
   new_node.name = call.uuid
   out.node.extend([new_node])
