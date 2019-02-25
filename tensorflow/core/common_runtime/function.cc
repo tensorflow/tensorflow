@@ -684,7 +684,6 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     }
   }
 
-  Status s;
   const FunctionLibraryDefinition* lib_def =
       options.overlay_lib ? options.overlay_lib : base_lib_def_;
   FunctionBody* fbody = nullptr;
