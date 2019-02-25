@@ -220,8 +220,9 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
     # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
     is_replica_local = False
   else:
-    raise ValueError("Invalid variable synchronization mode: " +
-                     synchronization + " for variable: " + kwargs["name"])
+    raise ValueError(
+        "Invalid variable synchronization mode: %s for variable: %s" %
+        (synchronization, kwargs["name"]))
 
   # Get aggregation value
   aggregation = kwargs.pop("aggregation",
@@ -232,8 +233,9 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
       variable_scope.VariableAggregation.MEAN,
       variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
   ):
-    raise ValueError("Invalid variable aggregation mode: " + aggregation +
-                     " for variable: " + kwargs["name"])
+    raise ValueError(
+        "Invalid variable aggregation mode: %s for variable: %s" %
+        (aggregation, kwargs["name"]))
 
   # Ignore user-specified caching device, not needed for mirrored variables.
   kwargs.pop("caching_device", None)
