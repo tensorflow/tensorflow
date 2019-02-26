@@ -169,7 +169,6 @@ tf_kernel_library(
         "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:stateless_random_ops_op_lib",
         "//tensorflow/core:training_ops_op_lib",
-        "//tensorflow/core/kernels:concat_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:conv_ops",
