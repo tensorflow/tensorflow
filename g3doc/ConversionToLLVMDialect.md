@@ -225,6 +225,48 @@ func @bar() {
 }
 ```
 
+## Repeated Successor Removal
+
+Since the goal of the LLVM IR dialect is to reflect LLVM IR in MLIR, the dialect
+and the conversion procedure must account for the differences between block
+arguments and LLVM IR PHI nodes. In particular, LLVM IR disallows PHI nodes with
+different values coming from the same source. Therefore, the LLVM IR dialect
+disallows operations that have identical successors accepting arguments, which
+would lead to invalid PHI nodes. The conversion process resolves the potential
+PHI source ambiguity by injecting dummy blocks if the same block is used more
+than once as a successor in an instruction. These dummy blocks branch
+unconditionally to the original successors, pass them the original operands
+(available in the dummy block because it is dominated by the original block) and
+are used instead of them in the original terminator operation.
+
+Example:
+
+```mlir {.mlir}
+  cond_br %0, ^bb1(%1 : i32), ^bb1(%2 : i32)
+^bb1(%3 : i32)
+  "use"(%3) : (i32) -> ()
+```
+
+leads to a new basic block being inserted,
+
+```mlir {.mlir}
+  cond_br %0, ^bb1(%1 : i32), ^dummy
+^bb1(%3 : i32):
+  "use"(%3) : (i32) -> ()
+^dummy:
+  br ^bb1(%4 : i32)
+```
+
+before the conversion to the LLVM IR dialect:
+
+```mlir {.mlir}
+  "llvm.cond_br"(%0)[^bb1(%1 : !llvm.type<"i32">), ^dummy] : (!llvm.type<"i1">) -> ()
+^bb1(%3 : !llvm.type<"i32">):
+  "use"(%3) : (!llvm.type<"i32">) -> ()
+^dummy:
+  "llvm.br"()[^bb1(%2 : !llvm.type<"i32">)] : () -> ()
+```
+
 ## Memref Model
 
 ### Memref Descriptor

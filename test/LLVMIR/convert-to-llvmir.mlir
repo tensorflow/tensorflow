@@ -426,3 +426,16 @@ func @dfs_block_order() -> (i32) {
 // CHECK-NEXT:   "llvm.br"()[^bb1] : () -> ()
   br ^bb1
 }
+// CHECK-LABEL: func @cond_br_same_target(%arg0: !llvm<"i1">, %arg1: !llvm<"i32">, %arg2: !llvm<"i32">)
+func @cond_br_same_target(%arg0: i1, %arg1: i32, %arg2 : i32) -> (i32) {
+// CHECK-NEXT:   "llvm.cond_br"(%arg0)[^[[origBlock:bb[0-9]+]](%arg1 : !llvm<"i32">), ^[[dummyBlock:bb[0-9]+]]] : (!llvm<"i1">) -> ()
+  cond_br %arg0, ^bb1(%arg1 : i32), ^bb1(%arg2 : i32)
+
+// CHECK:      ^[[origBlock]](%0: !llvm<"i32">):
+// CHECK-NEXT:   "llvm.return"(%0) : (!llvm<"i32">) -> ()
+^bb1(%0 : i32):
+  return %0 : i32
+
+// CHECK:      ^[[dummyBlock]]:
+// CHECK-NEXT:   "llvm.br"()[^[[origBlock]](%arg2 : !llvm<"i32">)] : () -> ()
+}

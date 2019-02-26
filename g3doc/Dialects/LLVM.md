@@ -174,6 +174,12 @@ pass arguments to basic blocks. Successors must be valid block MLIR identifiers
 and operand lists for each of them must have the same types as the arguments of
 the respective blocks. `<condition>` must be a wrapped LLVM IR `i1` type.
 
+Since LLVM IR uses the name of the predecessor basic block to identify the
+sources of a PHI node, it is invalid for two entries of the PHI node to indicate
+different values coming from the same block. Therefore, `cond_br` in the LLVM IR
+dialect disallows its successors to be the same block _if_ this block has
+arguments.
+
 Examples:
 
 ```mlir {.mlir}
@@ -182,11 +188,19 @@ Examples:
   "llvm.br"() [^bb0] : () -> ()
 
 // Branch and pass arguments.
-^bb1(%arg: !llvm.type<"i32">00):
+^bb1(%arg: !llvm.type<"i32">):
   "llvm.br"() [^bb1(%arg : !llvm.type<"i32">)] : () -> ()
 
 // Conditionally branch and pass arguments to one of the blocks.
 "llvm.cond_br"(%cond) [^bb0, %bb1(%arg : !llvm.type<"i32">)] : (!llvm.type<"i1">) -> ()
+
+// It's okay to use the same block without arguments, but probably useless.
+"llvm.cond_br"(%cond) [^bb0, ^bb0] : (!llvm.type<"i1">) ->  ()
+
+// ERROR: Passing different arguments to the same block in a conditional branch.
+"llvm.cond_br"(%cond) [^bb1(%0 : !llvm.type<"i32">),
+                       ^bb1(%1 : !llvm.type<"i32">)] : (!llvm.type<"i1">) -> ()
+
 ```
 
 Call operations:

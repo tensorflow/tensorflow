@@ -767,3 +767,24 @@ func @indirect_call(%arg0: !llvm<"i32 (float)*">, %arg1: !llvm<"float">) -> !llv
   "llvm.return"(%0) : (!llvm<"i32">) -> ()
 }
 
+//
+// Check that we properly construct phi nodes in the blocks that have the same
+// predecessor more than once.
+//
+
+// CHECK-LABEL: define void @cond_br_arguments(i1, i1) {
+func @cond_br_arguments(%arg0: !llvm<"i1">, %arg1: !llvm<"i1">) {
+// CHECK-NEXT:   br i1 %0, label %3, label %5
+  "llvm.cond_br"(%arg0)[^bb2(%arg0 : !llvm<"i1">), ^bb3] : (!llvm<"i1">) -> ()
+
+// CHECK:      ; <label>:3:
+// CHECK-NEXT:   %4 = phi i1 [ %1, %5 ], [ %0, %2 ]
+^bb2(%0 : !llvm<"i1">):
+// CHECK-NEXT:   ret void
+  "llvm.return"() : () -> ()
+
+// CHECK:      ; <label>:5:
+^bb3:
+// CHECK-NEXT:   br label %3
+  "llvm.br"()[^bb2(%arg1 : !llvm<"i1">)] : () -> ()
+}

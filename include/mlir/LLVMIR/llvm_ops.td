@@ -164,7 +164,17 @@ def LLVM_SelectOp : LLVM_OneResultOp<"select", [NoSideEffect]>,
 
 // Terminators.
 def LLVM_BrOp : LLVM_TerminatorOp<"br", [NoSideEffect]>;
-def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]>;
+def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]> {
+  let verifier = [{
+    if (getNumSuccessors() != 2)
+      return emitOpError("expected exactly two successors");
+    if (getSuccessor(0) == getSuccessor(1) &&
+        getNumSuccessorOperands(0) != 0)
+      return emitOpError(
+          "expected successors with arguments to be different blocks");
+    return false;
+  }];
+}
 def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]>;
 
 // Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to

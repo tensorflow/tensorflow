@@ -405,9 +405,13 @@ static const Value *getPHISourceValue(const Block *current, const Block *pred,
   assert(condBranchOp &&
          "only branch instructions can be terminators of a block that "
          "has successors");
+  assert((condBranchOp->getSuccessor(0) != condBranchOp->getSuccessor(1)) &&
+         "successors with arguments in LLVM conditional branches must be "
+         "different blocks");
 
-  condBranchOp->emitError("NYI: conditional branches with arguments");
-  return nullptr;
+  return condBranchOp->getSuccessor(0) == current
+             ? terminator.getSuccessorOperand(0, index)
+             : terminator.getSuccessorOperand(1, index);
 }
 
 void ModuleTranslation::connectPHINodes(const Function &func) {

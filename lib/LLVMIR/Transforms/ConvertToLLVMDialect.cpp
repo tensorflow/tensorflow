@@ -1024,6 +1024,53 @@ struct CondBranchOpLowering
 
 } // namespace
 
+static void ensureDistinctSuccessors(Block &bb) {
+  auto *terminator = bb.getTerminator();
+
+  // Find repeated successors with arguments.
+  llvm::SmallDenseMap<Block *, llvm::SmallVector<int, 4>> successorPositions;
+  for (int i = 0, e = terminator->getNumSuccessors(); i < e; ++i) {
+    Block *successor = terminator->getSuccessor(i);
+    // Blocks with no arguments are safe even if they appear multiple times
+    // because they don't need PHI nodes.
+    if (successor->getNumArguments() == 0)
+      continue;
+    successorPositions[successor].push_back(i);
+  }
+
+  // If a successor appears for the second or more time in the terminator,
+  // create a new dummy block that unconditionally branches to the original
+  // destination, and retarget the terminator to branch to this new block.
+  // There is no need to pass arguments to the dummy block because it will be
+  // dominated by the original block and can therefore use any values defined in
+  // the original block.
+  for (const auto &successor : successorPositions) {
+    const auto &positions = successor.second;
+    // Start from the second occurrence of a block in the successor list.
+    for (auto position = std::next(positions.begin()), end = positions.end();
+         position != end; ++position) {
+      auto *dummyBlock = new Block();
+      bb.getParent()->push_back(dummyBlock);
+      auto builder = FuncBuilder(dummyBlock);
+      SmallVector<Value *, 8> operands(
+          terminator->getSuccessorOperands(*position));
+      builder.create<BranchOp>(terminator->getLoc(), successor.first, operands);
+      terminator->setSuccessor(dummyBlock, *position);
+      for (int i = 0, e = terminator->getNumSuccessorOperands(*position); i < e;
+           ++i)
+        terminator->eraseSuccessorOperand(*position, i);
+    }
+  }
+}
+
+static void ensureDistinctSuccessors(Module *m) {
+  for (auto &f : *m) {
+    for (auto &bb : f.getBlocks()) {
+      ensureDistinctSuccessors(bb);
+    }
+  }
+};
+
 /// A pass converting MLIR Standard and Builtin operations into the LLVM IR
 /// dialect.
 class LLVMLowering : public ModulePass, public DialectConversion {
@@ -1033,6 +1080,7 @@ public:
   constexpr static PassID passID = {};
 
   PassResult runOnModule(Module *m) override {
+    uniqueSuccessorsWithArguments(m);
     return DialectConversion::convert(m) ? failure() : success();
   }
 
@@ -1073,6 +1121,15 @@ protected:
   // Convert function signatures using the stored LLVM IR module.
   FunctionType convertFunctionSignatureType(FunctionType t) override {
     return TypeConverter::convertFunctionSignature(t, *module);
+  }
+
+  // Make argument-taking successors of each block distinct.  PHI nodes in LLVM
+  // IR use the predecessor ID to identify which value to take.  They do not
+  // support different values coming from the same predecessor.  If a block has
+  // another block as a successor more than once with different values, insert
+  // a new dummy block for LLVM PHI nodes to tell the sources apart.
+  void uniqueSuccessorsWithArguments(Module *m) {
+    return ensureDistinctSuccessors(m);
   }
 
 private:
