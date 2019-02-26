@@ -1,9 +1,9 @@
-path: "tensorflow.rnn.ResidualWrapper"
+path: "tensorflow.nn.DropoutWrapper"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.ResidualWrapperV2\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DropoutWrapperV2\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DropoutWrapper\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV2\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.LayerRNNCell\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.ResidualWrapper\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent.AbstractRNNCell\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV1\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
   is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
@@ -106,9 +106,13 @@ tf_class {
     name: "weights"
     mtype: "<type \'property\'>"
   }
+  member {
+    name: "wrapped_cell"
+    mtype: "<type \'property\'>"
+  }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\', \'cell\', \'residual_fn\'], varargs=None, keywords=None, defaults=[\'None\'], "
+    argspec: "args=[\'self\'], varargs=args, keywords=kwargs, defaults=None"
   }
   member_method {
     name: "add_loss"

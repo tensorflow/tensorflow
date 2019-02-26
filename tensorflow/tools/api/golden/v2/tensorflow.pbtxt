@@ -301,10 +301,6 @@ tf_module {
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
-    name: "rnn"
-    mtype: "<type \'module\'>"
-  }
-  member {
     name: "saved_model"
     mtype: "<type \'module\'>"
   }
