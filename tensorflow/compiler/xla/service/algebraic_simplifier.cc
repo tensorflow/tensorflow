@@ -109,7 +109,7 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
 
   int exp;
   double mantissa = std::frexp(*val, &exp);
-  // frexp returns a value in the range (-1; -0.5] U [0.5, 1).  A return value
+  // frexp returns a value in the range (-1, -0.5] U [0.5, 1).  A return value
   // of +/-0.5 therefore indicates that the floating point value is a power of
   // 2.
   return mantissa == 0.5 || mantissa == -0.5;
