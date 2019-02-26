@@ -1561,7 +1561,7 @@ def _is_symbol_for_any_size(symbol):
 
 
 def _is_symbol_for_unspecified_dims(symbol):
-  return symbol in [..., '*']
+  return symbol in [Ellipsis, '*']
 
 
 @tf_export('debugging.assert_shapes', 'assert_shapes')

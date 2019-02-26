@@ -1773,7 +1773,7 @@ class AssertShapesTest(test.TestCase):
     y = array_ops.ones([2, 3], name="y")
     s1 = {
         x: (3, 'Q'),
-        y: (..., 3, 'D'),
+        y: (Ellipsis, 3, 'D'),
     }
     s2 = {
         x: "3Q",
@@ -1791,8 +1791,8 @@ class AssertShapesTest(test.TestCase):
     x = array_ops.ones([1, 2, 3, 2], name="x")
     y = array_ops.ones([2, 3, 3], name="y")
     a1 = check_ops.assert_shapes({
-        x: (..., 'N', 'Q'),
-        y: (..., 'N', 'D'),
+        x: (Ellipsis, 'N', 'Q'),
+        y: (Ellipsis, 'N', 'D'),
     })
     a2 = check_ops.assert_shapes({
         x: "*NQ",
@@ -1806,7 +1806,7 @@ class AssertShapesTest(test.TestCase):
   def test_raise_variable_num_outer_dims_prefix_misuse(self):
     x = array_ops.ones([1, 2], name="x")
     s1 = {
-        x: ('N', ..., 'Q'),
+        x: ('N', Ellipsis, 'Q'),
     }
     s2 = {
         x: "N*Q",
