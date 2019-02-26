@@ -13,8 +13,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         ":pywrap_xla",
-        "//tensorflow/compiler/xla:xla_data_proto_py",
-        "//tensorflow/compiler/xla/service:hlo_proto_py",
     ],
 )
 
@@ -33,6 +31,7 @@ py_test(
     deps = [
         ":custom_call_for_test",
         ":xla_client",
+        "//tensorflow/compiler/xla:xla_data_proto_py",
         "//tensorflow/python:platform_test",
     ],
 )
