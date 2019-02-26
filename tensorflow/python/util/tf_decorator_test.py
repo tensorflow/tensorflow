@@ -190,7 +190,8 @@ class TfMakeDecoratorTest(test.TestCase):
 
   def testAttachesATFDecoratorAttr(self):
     decorated = tf_decorator.make_decorator(test_function, test_wrapper)
-    self.assertIsInstance(decorated._tf_decorator, tf_decorator.TFDecorator)
+    decorator = decorated._tf_decorator  # pylint: disable=protected-access
+    self.assertIsInstance(decorator, tf_decorator.TFDecorator)
 
   def testAttachesWrappedAttr(self):
     decorated = tf_decorator.make_decorator(test_function, test_wrapper)
@@ -199,13 +200,13 @@ class TfMakeDecoratorTest(test.TestCase):
   def testSetsTFDecoratorNameToDecoratorNameArg(self):
     decorated = tf_decorator.make_decorator(test_function, test_wrapper,
                                             'test decorator name')
-    decorator = decorated._tf_decorator
+    decorator = decorated._tf_decorator  # pylint: disable=protected-access
     self.assertEqual('test decorator name', decorator.decorator_name)
 
   def testSetsTFDecoratorDocToDecoratorDocArg(self):
     decorated = tf_decorator.make_decorator(
         test_function, test_wrapper, decorator_doc='test decorator doc')
-    decorator = decorated._tf_decorator
+    decorator = decorated._tf_decorator  # pylint: disable=protected-access
     self.assertEqual('test decorator doc', decorator.decorator_doc)
 
   def testUpdatesDictWithMissingEntries(self):
@@ -230,7 +231,8 @@ class TfMakeDecoratorTest(test.TestCase):
         defaults=(1, 'hello'))
     decorated = tf_decorator.make_decorator(test_function, test_wrapper, '', '',
                                             argspec)
-    self.assertEqual(argspec, decorated._tf_decorator.decorator_argspec)
+    decorator = decorated._tf_decorator  # pylint: disable=protected-access
+    self.assertEqual(argspec, decorator.decorator_argspec)
 
   def testSetsDecoratorNameToFunctionThatCallsMakeDecoratorIfAbsent(self):
 
@@ -238,7 +240,7 @@ class TfMakeDecoratorTest(test.TestCase):
       return tf_decorator.make_decorator(test_function, wrapper)
 
     decorated = test_decorator_name(test_wrapper)
-    decorator = decorated._tf_decorator
+    decorator = decorated._tf_decorator  # pylint: disable=protected-access
     self.assertEqual('test_decorator_name', decorator.decorator_name)
 
   def testCompatibleWithNamelessCallables(self):
@@ -276,7 +278,7 @@ class TfDecoratorRewrapTest(test.TestCase):
     def new_target(x):
       return x * 3
 
-    prev_target = test_rewrappable_decorated._tf_decorator._decorated_target
+    prev_target = test_rewrappable_decorated._tf_decorator._decorated_target  # pylint: disable=protected-access
     # In this case, only the outer decorator (test_injectable_decorator_square)
     # should be preserved.
     tf_decorator.rewrap(test_rewrappable_decorated, prev_target, new_target)

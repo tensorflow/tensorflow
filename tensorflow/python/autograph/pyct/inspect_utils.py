@@ -64,7 +64,7 @@ def isnamedtuple(f):
     return False
   if not hasattr(f, '_fields'):
     return False
-  fields = f._fields
+  fields = f._fields  # pylint: disable=protected-access
   if not isinstance(fields, tuple):
     return False
   if not all(isinstance(f, str) for f in fields):

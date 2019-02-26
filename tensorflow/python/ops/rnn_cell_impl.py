@@ -330,7 +330,7 @@ class RNNCell(base_layer.Layer):
     is_eager = context.executing_eagerly()
     if is_eager and _hasattr(self, "_last_zero_state"):
       (last_state_size, last_batch_size, last_dtype,
-       last_output) = self._last_zero_state
+       last_output) = self._last_zero_state  # pylint: disable=protected-access
       if (last_batch_size == batch_size and
           last_dtype == dtype and
           last_state_size == state_size):

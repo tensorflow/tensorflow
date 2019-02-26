@@ -93,21 +93,25 @@ def restore_variables_on_create(save_path, map_func=None):
     old_init = getattr(resource_variable_ops.ResourceVariable,
                        "_init_from_args", None)
     assert old_init, "ResourceVariable misses _init_from_args method."
-    resource_variable_ops.ResourceVariable._init_from_args = \
-        _init_from_checkpoint
+    # pylint: disable=protected-access
+    resource_variable_ops.ResourceVariable._init_from_args = (
+        _init_from_checkpoint)
     resource_variable_ops.ResourceVariable._old_init = old_init
     resource_variable_ops.ResourceVariable._map_func = map_func_wrapper
     resource_variable_ops.ResourceVariable._ckpt_var_cache = ckpt_var_cache
+    # pylint: enable=protected-access
   try:
     yield
   except Exception as e:
     raise e
   finally:
     if save_path:
+      # pylint: disable=protected-access
       resource_variable_ops.ResourceVariable._init_from_args = old_init
       resource_variable_ops.ResourceVariable._old_init = None
       resource_variable_ops.ResourceVariable._map_func = None
       resource_variable_ops.ResourceVariable._ckpt_var_cache = None
+      # pylint: enable=protected-access
 
 
 class Saver(object):

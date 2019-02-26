@@ -500,7 +500,7 @@ def disable_control_flow_v2(unused_msg):
   """
 
   def wrapper(func):
-    func._disable_control_flow_v2 = True
+    func._disable_control_flow_v2 = True  # pylint: disable=protected-access
     return func
 
   return wrapper

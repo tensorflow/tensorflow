@@ -1486,7 +1486,7 @@ class Layer(trackable.Trackable):
 
       for output, mask in zip(flat_outputs, flat_masks):
         try:
-          output._keras_mask = mask
+          output._keras_mask = mask  # pylint: disable=protected-access
         except AttributeError:
           # C Type such as np.ndarray.
           pass

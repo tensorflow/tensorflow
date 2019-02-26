@@ -76,7 +76,7 @@ class AstUtilTest(test.TestCase):
       def f(a):
         return a + 1
     """))
-    node.body[0].__foo = 'bar'
+    node.body[0].__foo = 'bar'  # pylint: disable=protected-access
     new_node = ast_util.copy_clean(node)
     self.assertIsNot(new_node, node)
     self.assertIsNot(new_node.body[0], node.body[0])

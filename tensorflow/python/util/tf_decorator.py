@@ -88,7 +88,7 @@ def make_decorator(target,
     decorator_name = getattr(frame, 'name', frame[2])  # Caller's name
   decorator = TFDecorator(decorator_name, target, decorator_doc,
                           decorator_argspec)
-  decorator_func._tf_decorator = decorator
+  decorator_func._tf_decorator = decorator  # pylint: disable=protected-access
   # Objects that are callables (e.g., a functools.partial object) may not have
   # the following attributes.
   if hasattr(target, '__name__'):
@@ -150,7 +150,7 @@ def rewrap(decorator_func, previous_target, new_target):
   target = None
   while hasattr(cur, '_tf_decorator'):
     innermost_decorator = cur
-    target = cur._tf_decorator
+    target = cur._tf_decorator  # pylint: disable=protected-access
     if target.decorated_target is previous_target:
       break
     cur = target.decorated_target
@@ -201,7 +201,7 @@ def unwrap(maybe_tf_decorator):
     if isinstance(cur, TFDecorator):
       decorators.append(cur)
     elif hasattr(cur, '_tf_decorator'):
-      decorators.append(cur._tf_decorator)
+      decorators.append(cur._tf_decorator)  # pylint: disable=protected-access
     else:
       break
     if not hasattr(decorators[-1], 'decorated_target'):

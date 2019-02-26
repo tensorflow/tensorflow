@@ -99,7 +99,7 @@ def convert(
 
     # Sometimes the decorator is just desugared, making it impossible to detect.
     # This attribute makes detection easier.
-    wrapper.__ag_compiled = True
+    wrapper.__ag_compiled = True  # pylint: disable=protected-access
     return wrapper
 
   return decorator
@@ -121,7 +121,7 @@ class RunMode(Enum):
 
 def do_not_convert_internal(f):
   """Decorator that marks internal functions which do not need conversion."""
-  setattr(f, '__ag_compiled', True)
+  f.__ag_compiled = True  # pylint: disable=protected-access
   return f
 
 
@@ -163,7 +163,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
     else:
       raise ValueError('unknown value for run_as: %s' % run_as)
 
-    wrapper.__ag_compiled = True
+    wrapper.__ag_compiled = True  # pylint: disable=protected-access
     return wrapper
 
   return decorator

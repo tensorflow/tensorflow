@@ -344,8 +344,8 @@ class ProfileContext(object):
       else:
         session.BaseSession.run = _profiled_run
         session.BaseSession.__init__ = _profiled_init
-        session.BaseSession._profiler_run_internal = self.old_run
-        session.BaseSession._profiler_init_internal = self.old_init
+        session.BaseSession._profiler_run_internal = self.old_run  # pylint: disable=protected-access
+        session.BaseSession._profiler_init_internal = self.old_init  # pylint: disable=protected-access
         session.BaseSession.profile_context = self
         return self
     else:
@@ -357,6 +357,6 @@ class ProfileContext(object):
     print_mdl.DeleteProfiler()
     session.BaseSession.run = self.old_run
     session.BaseSession.__init__ = self.old_init
-    session.BaseSession._profiler_run_internal = None
-    session.BaseSession._profiler_init_internal = None
+    session.BaseSession._profiler_run_internal = None  # pylint: disable=protected-access
+    session.BaseSession._profiler_init_internal = None  # pylint: disable=protected-access
     session.BaseSession.profile_context = None
