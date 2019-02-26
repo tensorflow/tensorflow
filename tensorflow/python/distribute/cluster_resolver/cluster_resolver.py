@@ -151,6 +151,11 @@ class ClusterResolver(object):
     devices = get_accelerator_devices(master, config_proto)
     mapping = collections.defaultdict(int)
     for device in devices:
+      if task_type is not None and task_id is not None:
+        job_path = '/job:%s' % task_type
+        task_path = '/task:%s' % task_id
+        if job_path not in device.name or task_path not in device.name:
+          continue
       mapping[device.device_type] += 1
     return mapping
 
