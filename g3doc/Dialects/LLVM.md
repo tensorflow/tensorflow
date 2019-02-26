@@ -104,7 +104,7 @@ Examples:
 #### Memory-related instructions
 
 -   `<r> = alloca <size>`
--   `<r> = getelementptr <address> {position: [<index> (, <index>)+]}`
+-   `<r> = getelementptr <address>, <index> (, <index>)+`
 -   `<r> = load <address>`
 -   `store <value>, <address>`
 
@@ -113,9 +113,8 @@ In these operations, `<size>` must be a value of wrapped LLVM IR integer type,
 be a value of wrapped LLVM IR type that corresponds to the pointee type of
 `<address>`.
 
-The `position` attribute is a mandatory array attribute containing integer
-attributes. Its semantics is identical to the non-pointer arguments of LLVM IR's
-`getelementptr`.
+The `index` operands are integer values whose semantics is identical to the
+non-pointer arguments of LLVM IR's `getelementptr`.
 
 Examples:
 
@@ -125,7 +124,9 @@ Examples:
 %0 = "llvm.alloca"(%c4) : (!llvm.type<"i64">) -> !llvm.type<"float*">
 
 // Get the second element of the array (note 0-based indexing).
-%1 = "llvm.getelementptr"(%0) {position: [1]} : (!llvm.type<"float*">) -> !llvm.type<"float*">
+%c1 = "llvm.constant" {value: 1 : i64} : !llvm.type<"i64">
+%1 = "llvm.getelementptr"(%0, %c1) : (!llvm.type<"float*">, !llvm.type<"i64">)
+                                   -> !llvm.type<"float*">
 
 // Store a constant into this element.
 %cf = "llvm.constant" {value: 42.0 : f32} : !llvm.type<"float">
@@ -210,7 +211,21 @@ Examples:
 
 #### Miscellaneous operations.
 
-Integer comparisons: `icmp <lhs>, <rhs> {predicate: <int>}`.
+Integer comparisons: `icmp <lhs>, <rhs> {predicate: <int>}`. The following
+predicate values are supported:
+
+-   `0` - equality comparison;
+-   `1` - inequality comparison;
+-   `2` - signed less-than comparison
+-   `3` - signed less-than-or-equal comparison
+-   `4` - signed greater-than comparison
+-   `5` - signed greater-than-or-equal comparison
+-   `6` - unsigned less-than comparison
+-   `7` - unsigned less-than-or-equal comparison
+-   `8` - unsigned greater-than comparison
+-   `9` - unsigned greater-than-or-equal comparison
+
+Note: these constant values correspond to those used by MLIR's `cmpi` operation.
 
 Bitwise reinterpretation: `bitcast <value>`.
 
