@@ -863,6 +863,10 @@ TEST_F(OperatorTest, VersioningPadV2Test) {
   SimpleVersioningTest<PadV2Operator>();
 }
 
+TEST_F(OperatorTest, VersioningConcatenationTest) {
+  SimpleVersioningTest<ConcatenationOperator>();
+}
+
 TEST_F(OperatorTest, VersioningSelectTest) {
   SimpleVersioningTest<SelectOperator>();
 }
