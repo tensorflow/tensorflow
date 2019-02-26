@@ -170,7 +170,7 @@ def get_v1_names(symbol):
   estimator_api_attr_v1 = API_ATTRS_V1[ESTIMATOR_API_NAME].names
   keras_api_attr_v1 = API_ATTRS_V1[KERAS_API_NAME].names
 
-  if not hasattr(symbol, tensorflow_api_attr_v1):
+  if not hasattr(symbol, '__dict__'):
     return names_v1
   if tensorflow_api_attr_v1 in symbol.__dict__:
     names_v1.extend(getattr(symbol, tensorflow_api_attr_v1))
@@ -196,7 +196,7 @@ def get_v2_names(symbol):
   estimator_api_attr = API_ATTRS[ESTIMATOR_API_NAME].names
   keras_api_attr = API_ATTRS[KERAS_API_NAME].names
 
-  if not hasattr(symbol, tensorflow_api_attr):
+  if not hasattr(symbol, '__dict__'):
     return names_v2
   if tensorflow_api_attr in symbol.__dict__:
     names_v2.extend(getattr(symbol, tensorflow_api_attr))
