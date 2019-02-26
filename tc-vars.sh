@@ -25,6 +25,42 @@ if [ "${OS}" = "Linux" ]; then
     ANDROID_SDK_URL=https://dl.google.com/android/repository/sdk-tools-linux-4333796.zip
     ANDROID_SDK_SHA256=92ffee5a1d98d856634e8b71132e8a95d96c83a63fde1099be3d86df3106def9
 
+    SHA_SUM="sha256sum -c --strict"
+    WGET=/usr/bin/wget
+    TAR=tar
+    XZ="pixz -9"
+elif [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
+    if [ -z "${TASKCLUSTER_TASK_DIR}" -o -z "${TASKCLUSTER_ARTIFACTS}" ]; then
+        echo "Inconsistent Windows setup: missing some vars."
+        echo "TASKCLUSTER_TASK_DIR=${TASKCLUSTER_TASK_DIR}"
+        echo "TASKCLUSTER_ARTIFACTS=${TASKCLUSTER_ARTIFACTS}"
+        exit 1
+    fi;
+
+    # Re-export with cygpath to make sure it is sane, otherwise it might trigger
+    # unobvious failures with cp etc.
+    export TASKCLUSTER_TASK_DIR="$(cygpath ${TASKCLUSTER_TASK_DIR})"
+    export TASKCLUSTER_ARTIFACTS="$(cygpath ${TASKCLUSTER_ARTIFACTS})"
+
+    export DS_ROOT_TASK=${TASKCLUSTER_TASK_DIR}
+    export BAZEL_VC='C:\Program Files (x86)\Microsoft Visual Studio 14.0\VC'
+    export BAZEL_SH='C:\builds\tc-workdir\msys64\usr\bin\bash'
+    export TC_WIN_BUILD_PATH='C:\builds\tc-workdir\msys64\usr\bin;C:\Python36'
+    export MSYS2_ARG_CONV_EXCL='//'
+
+    mkdir -p ${TASKCLUSTER_TASK_DIR}/tmp/
+    export TEMP=${TASKCLUSTER_TASK_DIR}/tmp/
+    export TMP=${TASKCLUSTER_TASK_DIR}/tmp/
+
+    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.19.2/bazel-0.19.2-windows-x86_64.exe
+    BAZEL_SHA256=9ee409cea41af14a92933c97f4e821de6c1fbfe648ae1b264b1bd519b8f92b37
+
+    CUDA_INSTALL_DIRECTORY=$(cygpath 'C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v10.0')
+
+    SHA_SUM="sha256sum -c --strict"
+    WGET=wget
+    TAR=/usr/bin/tar.exe
+    XZ="xz -9 -T0"
 elif [ "${OS}" = "Darwin" ]; then
     if [ -z "${TASKCLUSTER_TASK_DIR}" -o -z "${TASKCLUSTER_ARTIFACTS}" ]; then
         echo "Inconsistent OSX setup: missing some vars."
@@ -37,6 +73,11 @@ elif [ "${OS}" = "Darwin" ]; then
 
     BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.19.2/bazel-0.19.2-installer-darwin-x86_64.sh
     BAZEL_SHA256=25ea85d4974ead87a7600e17b733bf8035a075fc8671c97e1c1f7dc8ff304231
+
+    SHA_SUM="shasum -a 256 -c"
+    WGET=wget
+    TAR=gtar
+    XZ="pixz -9"
 fi;
 
 # /tmp/artifacts for docker-worker on linux,
@@ -63,7 +104,12 @@ export TF_DOWNLOAD_CLANG=0
 export TF_SET_ANDROID_WORKSPACE=0
 export TF_NEED_TENSORRT=0
 export GCC_HOST_COMPILER_PATH=/usr/bin/gcc
-export PYTHON_BIN_PATH=/usr/bin/python2.7
+
+if [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
+    export PYTHON_BIN_PATH=C:/Python36/python.exe
+else
+    export PYTHON_BIN_PATH=/usr/bin/python2.7
+fi
 
 export TF_NEED_CUDA=0
 export TF_NEED_OPENCL_SYCL=0
@@ -79,7 +125,12 @@ export TF_NEED_ROCM=0
 #
 # Build for generic amd64 platforms, no device-specific optimization
 # See https://gcc.gnu.org/onlinedocs/gcc/x86-Options.html for targetting specific CPUs
-CC_OPT_FLAGS="-mtune=generic -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mavx"
+
+if [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
+    CC_OPT_FLAGS="/arch:AVX"
+else
+    CC_OPT_FLAGS="-mtune=generic -march=x86-64 -msse -msse2 -msse3 -msse4.1 -msse4.2 -mavx"
+fi
 BAZEL_OPT_FLAGS=""
 for flag in ${CC_OPT_FLAGS};
 do
@@ -88,7 +139,7 @@ done;
 
 export CC_OPT_FLAGS
 
-if [ "${OS}" = "Darwin" ]; then
+if [ "${OS}" = "Darwin" -o "${OS}" = "${TC_MSYS_VERSION}" ]; then
     BAZEL_OUTPUT_CACHE_DIR="${DS_ROOT_TASK}/.bazel_cache/"
     BAZEL_OUTPUT_CACHE_INSTANCE="${BAZEL_OUTPUT_CACHE_DIR}/output/"
     mkdir -p ${BAZEL_OUTPUT_CACHE_INSTANCE} || true
@@ -100,13 +151,29 @@ if [ "${OS}" = "Darwin" ]; then
 fi;
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
-TF_CUDA_FLAGS="TF_NEED_CUDA=1 TF_CUDA_CLANG=0 TF_CUDA_VERSION=10.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.3 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+if [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
+    TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=10.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=\"${CUDA_INSTALL_DIRECTORY}\" CUDNN_INSTALL_PATH=\"${CUDA_INSTALL_DIRECTORY}\" TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+else
+    TF_CUDA_FLAGS="TF_CUDA_CLANG=0 TF_CUDA_VERSION=10.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.3 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+fi
 BAZEL_ARM_FLAGS="--config=rpi3 --config=rpi3_opt"
 BAZEL_ARM64_FLAGS="--config=rpi3-armv8 --config=rpi3-armv8_opt"
 BAZEL_ANDROID_ARM_FLAGS="--config=android --config=android_arm --action_env ANDROID_NDK_API_LEVEL=21 --cxxopt=-std=c++11 --copt=-D_GLIBCXX_USE_C99"
 BAZEL_ANDROID_ARM64_FLAGS="--config=android --config=android_arm64 --action_env ANDROID_NDK_API_LEVEL=21 --cxxopt=-std=c++11 --copt=-D_GLIBCXX_USE_C99"
 BAZEL_CUDA_FLAGS="--config=cuda"
-BAZEL_EXTRA_FLAGS="--config=noaws --config=nogcp --config=nohdfs --config=noignite --config=nokafka --copt=-fvisibility=hidden"
+BAZEL_EXTRA_FLAGS="--config=noaws --config=nogcp --config=nohdfs --config=noignite --config=nokafka"
+
+if [ "${OS}" = "${TC_MSYS_VERSION}" ]; then
+    # Somehow, even with Python being in the PATH, Bazel on windows struggles
+    # with '/usr/bin/env python' ...
+    #
+    # We also force TMP/TEMP otherwise Bazel will pick default Windows one
+    # under %USERPROFILE%\AppData\Local\Temp and with 8.3 file format convention
+    # it messes with cxx_builtin_include_directory
+    BAZEL_EXTRA_FLAGS="${BAZEL_EXTRA_FLAGS} --action_env=PATH=${TC_WIN_BUILD_PATH} --action_env=TEMP=${TEMP} --action_env=TMP=${TMP}"
+else
+    BAZEL_EXTRA_FLAGS="${BAZEL_EXTRA_FLAGS} --copt=-fvisibility=hidden"
+fi
 
 ### Define build targets that we will re-ues in sourcing scripts.
 BUILD_TARGET_LIB_CPP_API="//tensorflow:libtensorflow_cc.so"

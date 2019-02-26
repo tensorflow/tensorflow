@@ -6,3 +6,6 @@ taskcluster:
   generic:
     provisionerId: deepspeech-provisioner
     workerType: ds-macos-heavy
+  win:
+    provisionerId: aws-provisioner-v1
+    workerType: deepspeech-win
