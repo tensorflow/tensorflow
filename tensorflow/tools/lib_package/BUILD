@@ -1,5 +1,5 @@
 # Packaging for TensorFlow artifacts other than the Python API (pip whl).
-# This includes the C API, Java API, and protocol buffer files.
+# This includes the C API, Java API, and protocol buffer srcs.
 
 package(default_visibility = ["//visibility:private"])
 
@@ -45,6 +45,7 @@ pkg_tar(
     tags = ["manual"],
     deps = [
         ":ccheaders",
+        ":coreheaders",
         # ":cclib",
         # ":cclicenses",
     ],
@@ -53,7 +54,7 @@ pkg_tar(
 pkg_tar(
     name = "libtensorflow_jni",
     extension = "tar.gz",
-    files = [
+    srcs = [
         "include/tensorflow/jni/LICENSE",
         "//tensorflow/java:libtensorflow_jni",
     ],
@@ -69,13 +70,13 @@ pkg_tar(
 # Shared objects that all TensorFlow libraries depend on.
 pkg_tar(
     name = "common_deps",
-    files = tf_binary_additional_srcs(),
+    srcs = tf_binary_additional_srcs(),
     tags = ["manual"],
 )
 
 pkg_tar(
     name = "cheaders",
-    files = [
+    srcs = [
         "//tensorflow/c:headers",
     ],
     package_dir = "include/tensorflow/c",
@@ -89,7 +90,7 @@ pkg_tar(
 
 pkg_tar(
     name = "eager_cheaders",
-    files = [
+    srcs = [
         "//tensorflow/c/eager:headers",
     ],
     package_dir = "include/tensorflow/c/eager",
@@ -103,9 +104,6 @@ pkg_tar(
 
 pkg_tar(
     name = "ccheaders",
-    # files = [
-    #     "//tensorflow/cc:client_session",
-    # ],
     package_dir = "include/tensorflow/cc",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
@@ -127,7 +125,7 @@ pkg_tar(
 
 pkg_tar(
     name = "client_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc:client_headers",
     ],
     package_dir = "client",
@@ -136,7 +134,7 @@ pkg_tar(
 
 pkg_tar(
     name = "framework_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc:framework_headers",
     ],
     package_dir = "framework",
@@ -145,7 +143,7 @@ pkg_tar(
 
 pkg_tar(
     name = "gradient_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc:gradient_headers",
     ],
     package_dir = "gradient",
@@ -154,7 +152,7 @@ pkg_tar(
 
 pkg_tar(
     name = "ops_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc:ops_headers",
     ],
     package_dir = "ops",
@@ -163,7 +161,7 @@ pkg_tar(
 
 pkg_tar(
     name = "profiler_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc/profiler:headers",
     ],
     package_dir = "profiler",
@@ -172,7 +170,7 @@ pkg_tar(
 
 pkg_tar(
     name = "saved_model_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc/saved_model:headers",
     ],
     package_dir = "saved_model",
@@ -181,7 +179,7 @@ pkg_tar(
 
 pkg_tar(
     name = "tools_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc/tools:headers",
     ],
     package_dir = "tools",
@@ -190,7 +188,7 @@ pkg_tar(
 
 pkg_tar(
     name = "training_ccheaders",
-    files = [
+    srcs = [
         "//tensorflow/cc:training_headers",
     ],
     package_dir = "training",
@@ -198,8 +196,81 @@ pkg_tar(
 )
 
 pkg_tar(
+    name = "coreheaders",
+    package_dir = "include/tensorflow/core",
+    # Mark as "manual" till
+    # https://github.com/bazelbuild/bazel/issues/2352
+    # and https://github.com/bazelbuild/bazel/issues/1580
+    # are resolved, otherwise these rules break when built
+    # with Python 3.
+    tags = ["manual"],
+    deps = [
+        ":framework_coreheaders",
+        ":graph_coreheaders",
+        ":lib_core_coreheaders",
+        ":lib_strings_coreheaders",
+        ":platform_coreheaders",
+        ":public_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "framework_coreheaders",
+    srcs = [
+        "//tensorflow/core:framework_headers",
+    ],
+    package_dir = "framework",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "graph_coreheaders",
+    srcs = [
+        "//tensorflow/core:graph_headers",
+    ],
+    package_dir = "graph",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_core_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_core_headers",
+    ],
+    package_dir = "lib/core",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_strings_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_strings_headers",
+    ],
+    package_dir = "lib/strings",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "platform_coreheaders",
+    srcs = [
+        "//tensorflow/core:platform_headers",
+    ],
+    package_dir = "platform",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "public_coreheaders",
+    srcs = [
+        "//tensorflow/core:public_headers",
+    ],
+    package_dir = "public",
+    tags = ["manual"],
+)
+
+pkg_tar(
     name = "clib",
-    files = select({
+    srcs = select({
         "//tensorflow:windows": [
             "//tensorflow:tensorflow.dll",
             "//tensorflow:tensorflow_dll_import_lib",
@@ -218,7 +289,7 @@ pkg_tar(
 
 pkg_tar(
     name = "cclib",
-    files = select({
+    srcs = select({
         "//tensorflow:windows": [
             "//tensorflow:tensorflow_cc.dll",
             "//tensorflow:tensorflow_cc_dll_import_lib",
@@ -235,9 +306,28 @@ pkg_tar(
     deps = [":common_deps"],
 )
 
+# pkg_tar(
+#     name = "corelib",
+#     srcs = select({
+#         "//tensorflow:windows": [
+#             "//tensorflow:tensorflow_cc.dll",
+#             "//tensorflow:tensorflow_cc_dll_import_lib",
+#         ],
+#         "//conditions:default": ["//tensorflow:libtensorflow_cc.so"],
+#     }),
+#     package_dir = "lib",
+#     # Mark as "manual" till
+#     # https://github.com/bazelbuild/bazel/issues/2352
+#     # and https://github.com/bazelbuild/bazel/issues/1580
+#     # are resolved, otherwise these rules break when built
+#     # with Python 3.
+#     tags = ["manual"],
+#     deps = [":common_deps"],
+# )
+
 pkg_tar(
     name = "clicenses",
-    files = [":include/tensorflow/c/LICENSE"],
+    srcs = [":include/tensorflow/c/LICENSE"],
     package_dir = "include/tensorflow/c",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
@@ -249,7 +339,7 @@ pkg_tar(
 
 pkg_tar(
     name = "cclicenses",
-    files = [":include/tensorflow/cc/LICENSE"],
+    srcs = [":include/tensorflow/cc/LICENSE"],
     package_dir = "include/tensorflow/cc",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
