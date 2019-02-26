@@ -94,8 +94,8 @@ tf_py_test(
         "//tensorflow/python/keras:layers",
     ],
     tags = [
-        "nomac" +
         "no_windows",
+        "nomac",
     ],
 )
 
