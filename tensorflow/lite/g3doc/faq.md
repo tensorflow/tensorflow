@@ -29,7 +29,8 @@ detect compatibility issues early on.
 Since the number of TensorFlow Lite operations is smaller than TensorFlow's,
 some inference models may not be able to convert. For unimplemented operations,
 take a look at the question on
-[missing operators](faq.md#why-is-some-operator-not-implemented-in-tensorflow-lite).
+[missing operators](faq.md#why-are-some-operations-not-implemented-in-tensorflow-lite).
+Unsupported operators include embeddings and LSTM/RNNs.
 For conversion issues not related to missing operations, search our
 [GitHub issues](https://github.com/tensorflow/tensorflow/issues?q=label%3Acomp%3Alite+)
 or file a [new one](https://github.com/tensorflow/tensorflow/issues).
