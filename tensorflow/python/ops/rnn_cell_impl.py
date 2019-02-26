@@ -180,7 +180,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return nest.map_structure(get_state_shape, state_size)
 
 
-@tf_export("nn.rnn_cell.RNNCell")
+@tf_export(v1=["nn.rnn_cell.RNNCell"])
 class RNNCell(base_layer.Layer):
   """Abstract object representing an RNN cell.
 
@@ -207,7 +207,9 @@ class RNNCell(base_layer.Layer):
     super(RNNCell, self).__init__(
         trainable=trainable, name=name, dtype=dtype, **kwargs)
     # Attribute that indicates whether the cell is a TF RNN cell, due the slight
-    # difference between TF and Keras RNN cell.
+    # difference between TF and Keras RNN cell. Notably the state is not wrapped
+    # in a list for TF cell where they are single tensor state, whereas keras
+    # cell will wrap the state into a list, and call() will have to unwrap them.
     self._is_tf_rnn_cell = True
 
   def __call__(self, inputs, state, scope=None):
