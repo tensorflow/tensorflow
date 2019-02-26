@@ -59,6 +59,8 @@ static Module *parseMLIRInput(StringRef inputFilename, MLIRContext *context) {
 
 static bool printMLIROutput(const Module &module,
                             llvm::StringRef outputFilename) {
+  if (module.verify())
+    return true;
   auto file = openOutputFile(outputFilename);
   if (!file)
     return true;
@@ -88,8 +90,7 @@ struct TranslationParser : public llvm::cl::parser<const TranslateFunction *> {
         std::unique_ptr<Module> module = function(inputFilename, context);
         if (!module)
           return true;
-        printMLIROutput(*module, outputFilename);
-        return false;
+        return printMLIROutput(*module, outputFilename);
       };
       wrapperStorage.emplace_back(std::move(wrapper));
 
