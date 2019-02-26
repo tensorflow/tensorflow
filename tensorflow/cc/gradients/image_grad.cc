@@ -29,13 +29,17 @@ Status ResizeNearestNeighborGradHelper(const Scope& scope, const Operation& op,
   bool align_corners;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "align_corners", &align_corners));
+  bool half_pixel_centers;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "half_pixel_centers",
+                                 &half_pixel_centers));
   // The internal gradient implementation needs the shape of the input image.
   // x_shape = shape(x)[1:3]
   //         = slice(shape(x), {1}, {3 - 1})
   auto x_shape = Slice(scope, Shape(scope, op.input(0)), {1}, {2});
   grad_outputs->push_back(internal::ResizeNearestNeighborGrad(
       scope, grad_inputs[0], x_shape,
-      internal::ResizeNearestNeighborGrad::AlignCorners(align_corners)));
+      internal::ResizeNearestNeighborGrad::AlignCorners(align_corners)
+          .HalfPixelCenters(half_pixel_centers)));
   grad_outputs->push_back(NoGradient());
   return scope.status();
 }
@@ -47,9 +51,13 @@ Status ResizeBilinearGradHelper(const Scope& scope, const Operation& op,
   bool align_corners;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "align_corners", &align_corners));
+  bool half_pixel_centers;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "half_pixel_centers",
+                                 &half_pixel_centers));
   grad_outputs->push_back(internal::ResizeBilinearGrad(
       scope, grad_inputs[0], op.input(0),
-      internal::ResizeBilinearGrad::AlignCorners(align_corners)));
+      internal::ResizeBilinearGrad::AlignCorners(align_corners)
+          .HalfPixelCenters(half_pixel_centers)));
   grad_outputs->push_back(NoGradient());
   return scope.status();
 }
@@ -61,9 +69,14 @@ Status ResizeBicubicGradHelper(const Scope& scope, const Operation& op,
   bool align_corners;
   TF_RETURN_IF_ERROR(
       GetNodeAttr(op.node()->attrs(), "align_corners", &align_corners));
+  bool half_pixel_centers;
+  TF_RETURN_IF_ERROR(GetNodeAttr(op.node()->attrs(), "half_pixel_centers",
+                                 &half_pixel_centers));
+
   grad_outputs->push_back(internal::ResizeBicubicGrad(
       scope, grad_inputs[0], op.input(0),
-      internal::ResizeBicubicGrad::AlignCorners(align_corners)));
+      internal::ResizeBicubicGrad::AlignCorners(align_corners)
+          .HalfPixelCenters(half_pixel_centers)));
   grad_outputs->push_back(NoGradient());
   return scope.status();
 }
