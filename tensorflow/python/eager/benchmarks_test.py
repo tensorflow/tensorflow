@@ -146,7 +146,7 @@ class MicroBenchmarks(test.Benchmark):
   def _run(self, func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
     ctx = context.context()
-    with ctx.execution_mode(execution_mode):
+    with context.execution_mode(execution_mode):
       func()
       if execution_mode == context.ASYNC:
         ctx.async_wait()
