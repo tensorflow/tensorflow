@@ -49,12 +49,14 @@ from source.
 
     This can take a while (tens of minutes, more if also building for GPU).
 
-3.  Make `libtensorflow.so` available to the linker. This can be done by either:
+3.  Make `libtensorflow.so` and `libtensorflow_framework.so` available to the
+    linker. This can be done by either:
 
     a. Copying it to a system location, e.g.,
 
     ```sh
     sudo cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow.so /usr/local/lib
+    sudo cp ${GOPATH}/src/github.com/tensorflow/tensorflow/bazel-bin/tensorflow/libtensorflow_framework.so /usr/local/lib
     ```
 
     OR
