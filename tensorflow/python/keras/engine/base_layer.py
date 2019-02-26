@@ -588,7 +588,11 @@ class Layer(trackable.Trackable):
             kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
-              outputs = self.call(inputs, *args, **kwargs)
+              with base_layer_utils.AutoAddUpdates(self,
+                                                   inputs) as auto_updater:
+                outputs = self.call(inputs, *args, **kwargs)
+                auto_updater.set_outputs(outputs)
+
             except TypeError as e:
               messages = ('`tf.Tensor` as a Python `bool` is not allowed',
                           'Tensor objects are only iterable when eager')
@@ -1805,6 +1809,11 @@ class Layer(trackable.Trackable):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
+
+  @property
+  def _unfiltered_updates(self):
+    # Overridden in `Network`.
+    return self.updates
 
 
 class Node(object):
