@@ -589,8 +589,7 @@ genrule(
         "//tensorflow:windows": """
               $(location @local_config_def_file_filter//:def_file_filter) \\
               --input $(location :tensorflow_def_file) \\
-              --output $@ \\
-              --target tensorflow.dll
+              --output $@
           """,
         "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
     }),
