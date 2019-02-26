@@ -867,7 +867,7 @@ Syntax:
 ``` {.ebnf}
 attribute-dict ::= `{` `}`
                  | `{` attribute-entry (`,` attribute-entry)* `}`
-attribute-entry ::= bare-id `:` attribute-value
+attribute-entry ::= `:`? bare-id `:` attribute-value
 ```
 
 Attributes are the mechanism for specifying constant data in MLIR in places

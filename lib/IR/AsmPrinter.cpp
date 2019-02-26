@@ -1022,8 +1022,8 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   SmallVector<NamedAttribute, 8> filteredAttrs;
   for (auto attr : attrs) {
     auto attrName = attr.first.strref();
-    // Never print attributes that start with a colon.  These are internal
-    // attributes that represent location or other internal metadata.
+    // By default, never print attributes that start with a colon.  These are
+    // attributes represent location or other internal metadata.
     if (!printInternalAttributes && attrName.startswith(":"))
       return;
 
