@@ -618,6 +618,12 @@ class L2Normalization
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    // Version 2 supports signed int8 input types.
+    if (output_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
