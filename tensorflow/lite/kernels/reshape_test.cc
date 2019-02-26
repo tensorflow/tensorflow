@@ -33,7 +33,7 @@ enum ShapeSpecificationType {
   // Const node, which is guaranteed not to change once inference starts. The
   // shape is also hardcoded as in kAsReshapeOption.
   kAsConstantTensor,
-  // The output shape is specifed as an input tensor that can change based on
+  // The output shape is specified as an input tensor that can change based on
   // external input. That is, the shape is not know before the inference
   // starts. The shape is also hardcoded as in kAsReshapeOption.
   kAsTensor,
