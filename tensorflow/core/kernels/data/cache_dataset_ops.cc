@@ -815,7 +815,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             LOG(WARNING)
                 << "The calling iterator did not fully read the dataset being "
                    "cached. In order to avoid unexpected truncation of the "
-                   "dataset, the partially cached contents of the dataset"
+                   "dataset, the partially cached contents of the dataset "
                    "will be discarded. This can happen if you have an input "
                    "pipeline similar to `dataset.cache().take(k).repeat()`. "
                    "You should use `dataset.take(k).cache().repeat()` instead.";
