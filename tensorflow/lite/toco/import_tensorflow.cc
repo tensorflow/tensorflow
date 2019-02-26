@@ -1349,7 +1349,7 @@ tensorflow::Status ConvertUnsupportedOperator(
   }
 
   // Parse outputs. Name them after the node's name, plus an ordinal suffix.
-  // Note that some outputs are to be multipled by a named attribute.
+  // Note that some outputs are to be multiplied by a named attribute.
   const tensorflow::OpDef* op_def = nullptr;
   if (tensorflow::OpRegistry::Global()->LookUpOpDef(node.op(), &op_def).ok()) {
     GetOutputNamesFromNodeDef(node, *op_def, op);
@@ -1483,7 +1483,7 @@ tensorflow::Status ConvertPlaceholderOperator(
   if (node.attr().count("shape")) {
     const auto& shape = GetShapeAttr(node, "shape");
     auto num_dims = shape.dim_size();
-    // TODO(b/62716978): This logic needs to be revisted.  During dims
+    // TODO(b/62716978): This logic needs to be revisited.  During dims
     // refactoring it is an interim fix.
     if (num_dims > 0 && !HasWildcardDimension(shape)) {
       auto& dst_array_dims = *array.mutable_shape()->mutable_dims();
@@ -2025,6 +2025,27 @@ tensorflow::Status ConvertShapeOperator(
   return tensorflow::Status::OK();
 }
 
+tensorflow::Status ConvertReverseSequenceOperator(
+    const NodeDef& node, const TensorFlowImportFlags& tf_import_flags,
+    Model* model) {
+  CHECK_EQ(node.op(), "ReverseSequence");
+  TF_QCHECK_OK(CheckInputsCount(node, tf_import_flags, 2));
+  auto op = absl::make_unique<ReverseSequenceOperator>();
+  if (HasAttr(node, "seq_dim")) {
+    op->seq_dim = GetIntAttr(node, "seq_dim");
+  }
+  // In tf.reverse_sequence, batch_dim defaults to 0.
+  op->batch_dim =
+      HasAttr(node, "batch_dim") ? GetIntAttr(node, "batch_dim") : 0;
+  const int num_inputs = GetInputsCount(node, tf_import_flags);
+  for (int i = 0; i < num_inputs; ++i) {
+    op->inputs.push_back(node.input(i));
+  }
+  op->outputs.push_back(node.name());
+  model->operators.push_back(std::move(op));
+  return tensorflow::Status::OK();
+}
+
 void StripCaretFromArrayNames(Model* model) {
   for (auto& op : model->operators) {
     for (auto& input : op->inputs) {
@@ -2421,6 +2442,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Div", ConvertSimpleOperator<DivOperator, 2, 1>},
       {"DynamicPartition", ConvertDynamicPartitionOperator},
       {"DynamicStitch", ConvertDynamicStitchOperator},
+      {"Elu", ConvertSimpleOperator<EluOperator, 1, 1>},
       {"Equal", ConvertSimpleOperator<TensorFlowEqualOperator, 2, 1>},
       {"Exp", ConvertSimpleOperator<ExpOperator, 1, 1>},
       {"ExpandDims", ConvertSimpleOperator<ExpandDimsOperator, 2, 1>},
@@ -2479,6 +2501,7 @@ ConverterMapType GetTensorFlowNodeConverterMap() {
       {"Reshape", ConvertSimpleOperator<TensorFlowReshapeOperator, 2, 1>},
       {"ResizeBilinear", ConvertResizeBilinearOperator},
       {"ResizeNearestNeighbor", ConvertResizeNearestNeighborOperator},
+      {"ReverseSequence", ConvertReverseSequenceOperator},
       {"ReverseV2", ConvertSimpleOperator<ReverseV2Operator, 2, 1>},
       {"Rsqrt", ConvertSimpleOperator<TensorFlowRsqrtOperator, 1, 1>},
       {"Select", ConvertSimpleOperator<SelectOperator, 3, 1>},

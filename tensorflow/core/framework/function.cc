@@ -569,6 +569,9 @@ string Print(const FunctionDef& fdef) {
   for (const auto& n : fdef.node_def()) {
     strings::StrAppend(&out, "  ", Print(n), "\n");
   }
+  for (const auto& cr : fdef.control_ret()) {
+    strings::StrAppend(&out, "  @return ", cr.first, " = ", cr.second, "\n");
+  }
   for (const auto& r : fdef.ret()) {
     strings::StrAppend(&out, "  return ", r.first, " = ", r.second, "\n");
   }
@@ -825,6 +828,12 @@ bool FunctionDefsEqual(const FunctionDef& f1, const FunctionDef& f2) {
   std::map<string, string> ret2(f2.ret().begin(), f2.ret().end());
   if (ret1 != ret2) return false;
 
+  std::map<string, string> control_ret1(f1.control_ret().begin(),
+                                        f1.control_ret().end());
+  std::map<string, string> control_ret2(f2.control_ret().begin(),
+                                        f2.control_ret().end());
+  if (control_ret1 != control_ret2) return false;
+
   return true;
 }
 
@@ -845,6 +854,14 @@ uint64 FunctionDefHash(const FunctionDef& fdef) {
   // output names
   std::map<string, string> ret(fdef.ret().begin(), fdef.ret().end());
   for (const auto& p : ret) {
+    h = Hash64(p.first.data(), p.first.size(), h);
+    h = Hash64(p.second.data(), p.second.size(), h);
+  }
+
+  // control output names
+  std::map<string, string> control_ret(fdef.control_ret().begin(),
+                                       fdef.control_ret().end());
+  for (const auto& p : control_ret) {
     h = Hash64(p.first.data(), p.first.size(), h);
     h = Hash64(p.second.data(), p.second.size(), h);
   }
@@ -899,6 +916,12 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   string executor_type = FunctionLibraryRuntime::ExecutorType(options, attrs);
   if (!executor_type.empty()) {
     entries.push_back(strings::StrCat(kExecutorAttr, "=", executor_type));
+  }
+  string config_proto_serialized;
+  options.config_proto.SerializeToString(&config_proto_serialized);
+  if (!config_proto_serialized.empty()) {
+    entries.push_back(strings::StrCat(
+        "_config_proto", "=", str_util::CEscape(config_proto_serialized)));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
@@ -1512,7 +1535,8 @@ FunctionDef FunctionDefHelper::Create(
     const string& function_name, gtl::ArraySlice<string> in_def,
     gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
     gtl::ArraySlice<Node> node_def,
-    gtl::ArraySlice<std::pair<string, string>> ret_def) {
+    gtl::ArraySlice<std::pair<string, string>> ret_def,
+    gtl::ArraySlice<std::pair<string, string>> control_ret_def) {
   FunctionDef fdef;
 
   // Signature
@@ -1520,6 +1544,7 @@ FunctionDef FunctionDefHelper::Create(
   for (const auto& i : in_def) b.Input(i);
   for (const auto& o : out_def) b.Output(o);
   for (const auto& a : attr_def) b.Attr(a);
+  for (const auto& c : control_ret_def) b.ControlOutput(c.first);
 
   OpRegistrationData op_reg_data;
   TF_CHECK_OK(b.Finalize(&op_reg_data));
@@ -1535,6 +1560,11 @@ FunctionDef FunctionDefHelper::Create(
     fdef.mutable_ret()->insert({r.first, r.second});
   }
 
+  // Control returns
+  for (const auto& cr : control_ret_def) {
+    fdef.mutable_control_ret()->insert({cr.first, cr.second});
+  }
+
   auto* op_def_registry = OpRegistry::Global();
   // Check if any op is stateful.
   for (const auto& n : node_def) {
@@ -1548,6 +1578,16 @@ FunctionDef FunctionDefHelper::Create(
   }
 
   return fdef;
+}
+
+/* static */
+FunctionDef FunctionDefHelper::Create(
+    const string& function_name, gtl::ArraySlice<string> in_def,
+    gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
+    gtl::ArraySlice<Node> node_def,
+    gtl::ArraySlice<std::pair<string, string>> ret_def) {
+  return Create(function_name, in_def, out_def, attr_def, node_def, ret_def,
+                /*control_ret_def=*/{});
 }
 
 /* static */

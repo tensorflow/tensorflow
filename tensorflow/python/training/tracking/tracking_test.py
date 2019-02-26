@@ -215,7 +215,7 @@ class _DummyResource(tracking.TrackableResource):
     self._handle_name = handle_name
     super(_DummyResource, self).__init__()
 
-  def create_resource(self):
+  def _create_resource(self):
     return self._handle_name
 
 

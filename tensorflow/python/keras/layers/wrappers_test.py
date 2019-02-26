@@ -27,6 +27,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
+from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.training.tracking import util as trackable_util
 
 
@@ -304,7 +305,8 @@ class BidirectionalTest(test.TestCase):
 
         # check whether the model variables are present in the
         # trackable list of objects
-        checkpointed_objects = set(trackable_util.list_objects(model))
+        checkpointed_objects = object_identity.ObjectIdentitySet(
+            trackable_util.list_objects(model))
         for v in model.variables:
           self.assertIn(v, checkpointed_objects)
 
@@ -703,3 +705,4 @@ def _to_list(ls):
 
 if __name__ == '__main__':
   test.main()
+

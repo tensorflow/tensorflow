@@ -54,6 +54,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/ir_emitter_context.h"
 #include "tensorflow/compiler/xla/service/gpu/kernel_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/memset_thunk.h"
+#include "tensorflow/compiler/xla/service/gpu/nccl_all_reduce_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/outfeed_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/parallel_loop_emitter.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
@@ -74,6 +75,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/sort_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/service/while_loop_analysis.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status_macros.h"
@@ -101,6 +103,8 @@ using absl::optional;
 using absl::StrCat;
 using llvm_ir::IrArray;
 using llvm_ir::IrName;
+
+namespace m = match;
 
 // If a dimensions is smaller than this, untiled transposition may be more
 // efficient.
@@ -926,13 +930,12 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  // TODO(b/112163966): Move trip count computation earlier in the pipeline.
-  if (auto loop_trip_count = ComputeWhileLoopTripCount(xla_while)) {
-    AddThunkToThunkSequence(BuildForThunk(xla_while, *loop_trip_count));
-    VLOG(3) << "Built ForThunk for while: " << xla_while->name();
+  auto config = xla_while->backend_config<WhileLoopBackendConfig>();
+  if (config.ok() && config.ValueOrDie().has_known_trip_count()) {
+    AddThunkToThunkSequence(
+        BuildForThunk(xla_while, config.ValueOrDie().known_trip_count().n()));
   } else {
     AddThunkToThunkSequence(BuildWhileThunk(xla_while));
-    VLOG(3) << "Built WhileThunk for while: " << xla_while->name();
   }
   return Status::OK();
 }
@@ -1319,11 +1322,55 @@ Status IrEmitterUnnested::HandleTupleSelect(HloInstruction* tuple_select) {
   return IrEmitter::HandleTupleSelect(tuple_select);
 }
 
+namespace {
+
+bool IsScalarAddComputation(HloComputation* computation) {
+  return Match(computation->root_instruction(),
+               m::AddAnyOrder(m::Parameter(0), m::Parameter(1))
+                   .WithShape(m::Shape().IsEffectiveScalar()));
+}
+
+}  // namespace
+
 Status IrEmitterUnnested::HandleAllReduce(HloInstruction* crs) {
+  VLOG(2) << "AllReduce; replica count: " << hlo_module_config_.replica_count()
+          << "; operand count: " << crs->operand_count()
+          << "; NCCL is enabled: " << NcclAllReduceThunk::NcclIsEnabled();
+
+  // Note the replica_count == 1 case is handled via device-to-device copy
+  // below.
+  bool should_use_nccl_thunk =
+      hlo_module_config_.replica_count() > 1 &&
+      crs->IsCrossReplicaAllReduce() &&
+      crs->operand_count() == 1 &&  // One array to reduce.
+      crs->operand(0)->shape().element_type() == F32 &&
+      // Check the computation is a summation.
+      IsScalarAddComputation(crs->to_apply());
+
+  if (should_use_nccl_thunk) {
+    CHECK(crs->operand(0)->shape().IsArray())
+        << "Operands to all-reduce must be arrays: " << crs->ToString();
+    AddThunkToThunkSequence(absl::make_unique<NcclAllReduceThunk>(
+        /*replica_count=*/hlo_module_config_.replica_count(),
+        /*elements=*/ShapeUtil::ElementsIn(crs->operand(0)->shape()),
+        /*source_address=*/GetAllocationSlice(*crs->operand(0)),
+        /*destination_buffer=*/GetAllocationSlice(*crs), crs));
+    return Status::OK();
+  }
+
   if (hlo_module_config_.replica_count() != 1) {
-    // TODO(b/33011107): Support nontrivial cross replica sum on GPU.
-    return Unimplemented(
-        "AllReduce with >1 replica is not implemented on GPU.");
+    // TODO(b/33011107): Support more AllReduce configurations on GPU.
+    string message = absl::StrFormat(
+        "Requested AllReduce not implemented on GPU; replica_count: %d; "
+        "operand_count: %d; IsCrossReplicaAllReduce: %d; NCCL support: %d",
+        hlo_module_config_.replica_count(), crs->operand_count(),
+        crs->IsCrossReplicaAllReduce(), NcclAllReduceThunk::NcclIsEnabled());
+    if (crs->operand_count() > 0) {
+      absl::StrAppendFormat(
+          &message, "; first operand array element-type: %s",
+          PrimitiveType_Name(crs->operand(0)->shape().element_type()));
+    }
+    return Unimplemented("%s", message);
   }
 
   // CRS with one operand and one replica is simply the identity function.

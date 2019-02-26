@@ -182,6 +182,11 @@ class TopKTest(test.TestCase):
     k = constant_op.constant(3)
     self._validateTopK(inputs, k, [19, 18, 17], [11, 3, 7])
 
+  def testTop3ZeroRows(self):
+    inputs = np.zeros([0, 10], dtype=np.float32)
+    self._validateTopK(inputs, 3, np.zeros([0, 3], dtype=np.float32),
+                       np.zeros([0, 3], dtype=np.int32))
+
   @test_util.run_deprecated_v1
   def testKNegative(self):
     inputs = [[0.1, 0.2], [0.3, 0.4]]

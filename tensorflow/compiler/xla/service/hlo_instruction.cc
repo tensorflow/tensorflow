@@ -96,36 +96,31 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
   Shape shape(proto.shape());
   TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(shape));
 
+  absl::optional<int> arity = HloOpcodeArity(opcode);
+  if (arity) {
+    TF_RET_CHECK(proto.operand_ids_size() == *arity)
+        << proto.opcode() << " instruction should have " << *arity
+        << " operands but sees " << proto.operand_ids_size();
+  }
+
   switch (opcode) {
     // Ops migrated to subclasses.
     case HloOpcode::kBatchNormTraining:
-      TF_RET_CHECK(proto.operand_ids_size() == 3)
-          << "BatchNormTraining instruction should have 3 operands but sees "
-          << proto.operand_ids_size();
       instruction =
           CreateBatchNormTraining(shape, operands(0), operands(1), operands(2),
                                   proto.epsilon(), proto.feature_index());
       break;
     case HloOpcode::kBatchNormInference:
-      TF_RET_CHECK(proto.operand_ids_size() == 5)
-          << "BatchNormInference instruction should have 5 operands but sees "
-          << proto.operand_ids_size();
       instruction = CreateBatchNormInference(
           shape, operands(0), operands(1), operands(2), operands(3),
           operands(4), proto.epsilon(), proto.feature_index());
       break;
     case HloOpcode::kBatchNormGrad:
-      TF_RET_CHECK(proto.operand_ids_size() == 5)
-          << "BatchNormGrad instruction should have 5 operands but sees "
-          << proto.operand_ids_size();
       instruction = CreateBatchNormGrad(shape, operands(0), operands(1),
                                         operands(2), operands(3), operands(4),
                                         proto.epsilon(), proto.feature_index());
       break;
     case HloOpcode::kFft: {
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Fft instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       std::vector<int64> fft_length(proto.fft_length().begin(),
                                     proto.fft_length().end());
       instruction = CreateFft(shape, operands(0), proto.fft_type(),
@@ -133,43 +128,25 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kTriangularSolve: {
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Triangular solve instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       instruction = CreateTriangularSolve(shape, operands(0), operands(1),
                                           proto.triangular_solve_options());
       break;
     }
     case HloOpcode::kSend:
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Send instruction should have 2 operand but sees "
-          << proto.operand_ids_size();
       instruction = CreateSend(operands(0), operands(1), proto.channel_id(),
                                proto.is_host_transfer());
       break;
     case HloOpcode::kSendDone:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "SendDone instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction = CreateSendDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kRecv:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Recv instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction = CreateRecv(shape.tuple_shapes(0), operands(0),
                                proto.channel_id(), proto.is_host_transfer());
       break;
     case HloOpcode::kRecvDone:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "RecvDone instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction = CreateRecvDone(operands(0), proto.is_host_transfer());
       break;
     case HloOpcode::kReverse:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Reverse instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction = CreateReverse(shape, operands(0),
                                   std::vector<int64>(proto.dimensions().begin(),
                                                      proto.dimensions().end()));
@@ -218,18 +195,12 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kTranspose:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Transpose instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction =
           CreateTranspose(shape, operands(0),
                           std::vector<int64>(proto.dimensions().begin(),
                                              proto.dimensions().end()));
       break;
     case HloOpcode::kBroadcast:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Broadcast instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction =
           CreateBroadcast(shape, operands(0),
                           std::vector<int64>(proto.dimensions().begin(),
@@ -242,9 +213,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       instruction = CreateMap(shape, all_operands(), computations(0));
       break;
     case HloOpcode::kSlice: {
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Slice instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       std::vector<int64> slice_starts, slice_limits, slice_strides;
       for (const HloInstructionProto::SliceDimensions& slice_dimensions :
            proto.slice_dimensions()) {
@@ -268,9 +236,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kTrace: {
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Trace instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_literal());
       TF_ASSIGN_OR_RETURN(auto literal,
                           Literal::CreateFromProto(proto.literal()));
@@ -310,16 +275,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       }
       break;
     case HloOpcode::kGetTupleElement:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "GetTupleElement instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction =
           CreateGetTupleElement(shape, operands(0), proto.tuple_index());
       break;
     case HloOpcode::kReducePrecision:
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "ReducePrecision instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction = CreateReducePrecision(
           shape, operands(0), proto.exponent_bits(), proto.mantissa_bits());
       break;
@@ -329,16 +288,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
           << "Infeed should have a tuple shape with 2 operands, but has: "
           << shape;
       const Shape& data_shape = ShapeUtil::GetTupleElementShape(shape, 0);
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Infeed instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       instruction =
           CreateInfeed(data_shape, operands(0), proto.infeed_config());
     } break;
     case HloOpcode::kOutfeed: {
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Outfeed instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       Shape outfeed_shape(proto.outfeed_shape());
       TF_RETURN_IF_ERROR(
           ShapeUtil::ValidateShapeWithOptionalLayout(outfeed_shape));
@@ -372,9 +325,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kCollectivePermute: {
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "CollectivePermute instruction should have 1 operand but sees "
-          << proto.operand_ids_size();
       std::vector<std::pair<int64, int64>> source_target_pairs(
           proto.source_target_pairs_size());
       for (int i = 0; i < source_target_pairs.size(); i++) {
@@ -386,16 +336,10 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kReplicaId: {
-      TF_RET_CHECK(proto.operand_ids_size() == 0)
-          << "ReplicaId instruction should have 0 operand but sees "
-          << proto.operand_ids_size();
       instruction = CreateReplicaId();
       break;
     }
     case HloOpcode::kConvolution: {
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Convolution instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_window());
       TF_RET_CHECK(proto.has_convolution_dimension_numbers());
       PrecisionConfig precision_config = proto.precision_config();
@@ -409,9 +353,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kReduceWindow:
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "ReduceWindow instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
           << "ReduceWindow should have 1 called computation but sees "
           << proto.called_computation_ids_size();
@@ -419,9 +360,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                        proto.window(), computations(0));
       break;
     case HloOpcode::kSelectAndScatter:
-      TF_RET_CHECK(proto.operand_ids_size() == 3)
-          << "SelectAndScatter instruction should have 3 operands but sees "
-          << proto.operand_ids_size();
       TF_RET_CHECK(proto.called_computation_ids_size() == 2)
           << "SelectAndScatter should have 2 called computations but sees "
           << proto.called_computation_ids_size();
@@ -464,9 +402,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
               std::max(static_cast<int64>(proto.batch_group_count()), 1LL));
       break;
     case HloOpcode::kPad:
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Pad instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_padding_config());
       instruction =
           CreatePad(shape, operands(0), operands(1), proto.padding_config());
@@ -512,9 +447,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kGather: {
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Gather instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_gather_dimension_numbers())
           << "Gather instruction should have GatherDimensionNumbers set.";
       std::unique_ptr<GatherDimensionNumbers> gather_dimension_numbers =
@@ -529,9 +461,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kScatter: {
-      TF_RET_CHECK(proto.operand_ids_size() == 3)
-          << "Scatter instruction should have 3 operands but sees "
-          << proto.operand_ids_size();
       TF_RET_CHECK(proto.has_scatter_dimension_numbers())
           << "Scatter instruction should have ScatterDimensionNumbers set.";
       TF_RET_CHECK(proto.called_computation_ids_size() == 1)
@@ -553,9 +482,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
     case HloOpcode::kDot: {
       TF_RET_CHECK(proto.has_dot_dimension_numbers())
           << "Dot instruction should have dot_dimension_numbers.";
-      TF_RET_CHECK(proto.operand_ids_size() == 2)
-          << "Dot instruction should have 2 operands but sees "
-          << proto.operand_ids_size();
       PrecisionConfig precision_config = proto.precision_config();
       precision_config.mutable_operand_precision()->Resize(
           proto.operand_ids_size(), PrecisionConfig::DEFAULT);
@@ -565,9 +491,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kDomain: {
-      TF_RET_CHECK(proto.operand_ids_size() == 1)
-          << "Domain instruction should have 1 operands but sees "
-          << proto.operand_ids_size();
       std::shared_ptr<const HloSharding> entry_hlo_sharding;
       std::shared_ptr<const HloSharding> exit_hlo_sharding;
       if (proto.has_domain_entry_sharding()) {
@@ -589,7 +512,6 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
       break;
     }
     case HloOpcode::kGetDimensionSize:
-      TF_RET_CHECK(proto.operand_ids_size() == 1);
       TF_RET_CHECK(proto.dimensions_size() == 1);
       instruction =
           CreateGetDimensionSize(shape, operands(0), proto.dimensions(0));
@@ -709,8 +631,10 @@ HloInstruction::CreateGetTupleElement(const Shape& shape,
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       break;
     default:
@@ -1390,8 +1314,10 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kNot:
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       CHECK_EQ(new_operands.size(), 1);
       clone = CreateUnary(shape, opcode_, new_operands[0]);
@@ -1751,12 +1677,14 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kReshape:
     case HloOpcode::kReplicaId:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
     case HloOpcode::kShiftRightLogical:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
     case HloOpcode::kTuple:
@@ -1880,7 +1808,11 @@ Status HloInstruction::ReplaceUseWith(HloInstruction* user,
       << "this shape: " << ShapeUtil::HumanString(shape())
       << ", replacement shape: "
       << ShapeUtil::HumanString(new_producer->shape());
+  return ReplaceUseWithDifferentShape(user, new_producer);
+}
 
+Status HloInstruction::ReplaceUseWithDifferentShape(
+    HloInstruction* user, HloInstruction* new_producer) {
   VLOG(3) << "Replacing uses of " << name() << " in " << user->name()
           << " with " << new_producer->name();
 
@@ -2107,8 +2039,10 @@ bool HloInstruction::IsElementwiseImpl(
     case HloOpcode::kNegate:
     case HloOpcode::kReal:
     case HloOpcode::kReducePrecision:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSign:
     case HloOpcode::kSin:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       CHECK_EQ(1, operand_count());
       return true;
@@ -2545,6 +2479,10 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleCos(this);
     case HloOpcode::kSin:
       return visitor->HandleSin(this);
+    case HloOpcode::kSqrt:
+      return visitor->HandleSqrt(this);
+    case HloOpcode::kRsqrt:
+      return visitor->HandleRsqrt(this);
     case HloOpcode::kReal:
       return visitor->HandleReal(this);
     case HloOpcode::kImag:

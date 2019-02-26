@@ -35,6 +35,7 @@ from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.platform import gfile
 from tensorflow.python.summary.writer import writer_cache
@@ -1217,7 +1218,7 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
 
   @staticmethod
   def loss_fn(_, y_pred):
-    return y_pred
+    return math_ops.reduce_mean(y_pred)
 
   @combinations.generate(all_strategy_combinations_minus_default())
   def test_regularizer_loss(self, distribution):
@@ -1240,9 +1241,10 @@ class TestRegularizerLoss(test.TestCase, parameterized.TestCase):
       model = keras.models.Model(inputs=x, outputs=y)
       opt = gradient_descent_keras.SGD(1.)
       model.compile(opt, loss=TestRegularizerLoss.loss_fn)
-      model.fit(x=np.array([1., 1.], dtype=np.float32),
-                y=np.array([1., 1.], dtype=np.float32),
-                batch_size=batch_size)
+      model.fit(
+          x=np.array([[1.], [1.]], dtype=np.float32),
+          y=np.array([[1.], [1.]], dtype=np.float32),
+          batch_size=batch_size)
       v = model.get_weights()[0]
       self.assertEqual(-1.0, v)
 
@@ -1280,27 +1282,22 @@ class TestDistributionStrategyWithKerasModels(test.TestCase,
     model.predict(inputs, steps=1)
     model.evaluate(inputs, targets, steps=1)
 
-  # TODO(b/124377929): Remove error assertions once subclassed models
-  # are supported in DistributedStrategy.
   @combinations.generate(all_strategy_combinations_minus_default())
-  def test_distribution_strategy_on_subclassed_model(self, distribution):
+  def test_distribution_strategy_one_dimensional(self, distribution):
     with distribution.scope():
-      model = simple_subclassed_model()
-      optimizer = rmsprop.RMSPropOptimizer(learning_rate=0.001)
-      loss = 'mse'
-      model.compile(optimizer, loss)
+      inp = keras.layers.Input(shape=(10,))
+      out = keras.layers.Dense(3, activation='softmax')(inp)
+      model = keras.Model(inputs=[inp], outputs=[out])
+      model.compile(
+          optimizer='rmsprop',
+          loss='sparse_categorical_crossentropy',
+          metrics=['sparse_categorical_accuracy'],
+      )
 
-      inputs = np.zeros((64, 3), dtype=np.float32)
-      targets = np.zeros((64, 2), dtype=np.float32)
+      x = np.random.random((64, 10)).astype('float32')
+      y = np.random.randint(3, size=64)
 
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.fit(inputs, targets, epochs=1, steps_per_epoch=2)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.predict(inputs, steps=1)
-
-    with self.assertRaisesRegexp(AttributeError, 'has no attribute'):
-      model.evaluate(inputs, targets, steps=1)
+      model.fit(x, y, epochs=1, steps_per_epoch=2)
 
 
 if __name__ == '__main__':

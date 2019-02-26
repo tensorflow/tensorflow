@@ -22,9 +22,6 @@ limitations under the License.
 #include <Python.h>
 
 #include "absl/types/span.h"
-#include "tensorflow/cc/framework/ops.h"
-#include "tensorflow/cc/framework/scope.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -122,58 +119,6 @@ class LocalShapedBufferTuple {
   std::vector<LocalShapedBuffer*> elements_;
 };
 
-// Represents a reference to literals that live in a device-allocated buffer via
-// XRT. Specifically, wraps an int64 handle produced by running the allocation
-// graph, and an XLA shape to track the referent's shape.
-class XrtAllocation {
- public:
-  // Accepts a `session_target` argument, used in constructing the
-  // `tensorflow::ClientSession` instance in which allocation and deallocation
-  // graphs are run.
-  static StatusOr<XrtAllocation*> FromLiteral(const Literal& argument,
-                                              const string& session_target);
-
-  XrtAllocation(int64 handle, Shape shape, const string& session_target);
-  ~XrtAllocation();
-  StatusOr<Literal> ToLiteral() const;
-  const Shape& shape() const;
-  const int64 handle() const;
-
- private:
-  const int64 handle_;
-  const Shape shape_;
-  const string session_target_;
-};
-
-// Result of a tuple destructuring operation on an XrtAllocation.
-class XrtAllocationTuple {
- public:
-  // Note: any XrtAllocation elements that are not Release()'d will be
-  // deallocated in the destructor.
-  explicit XrtAllocationTuple(std::vector<XrtAllocation*> elements);
-
-  ~XrtAllocationTuple();
-
-  // Releases the ith element to the caller. Further attempts to release the ith
-  // element will return an invalid argument error.
-  StatusOr<XrtAllocation*> Release(int i);
-
-  // Returns the number of elements in the destructured tuple.
-  int64 size() const;
-
- private:
-  std::vector<XrtAllocation*> elements_;
-};
-
-// Destructures a tuple-valued XrtAllocation into its constitutent elements
-// in XrtAllocationTuple form.
-//
-// Accepts a `session_target` argument, used in constructing the
-// `tensorflow::ClientSession` instance in which the sub-tupling graph is run,
-// and passed along in constructing each constituent XrtAllocation.
-StatusOr<XrtAllocationTuple*> DestructureXrtAllocationTuple(
-    XrtAllocation* allocation, const string& session_target);
-
 // Represents a compiled computation that can be executed given handles to
 // device-allocated literals. Specifically, wraps an XLA LocalExecutable.
 class LocalExecutable {
@@ -204,30 +149,6 @@ class LocalExecutable {
   xla::LocalClient* const client_;
 };
 
-// Represents a compiled computation that can be executed given handles to
-// device-allocated literals. Specifically, wraps an XRT computation handle.
-class XrtExecutable {
- public:
-  // Accepts a `session_target` argument, used in constructing the
-  // `tensorflow::ClientSession` instance in which the execution graph is run.
-  XrtExecutable(const ProgramShape& program_shape, int64 handle,
-                const string& session_target);
-  ~XrtExecutable();
-
-  std::vector<int> DeviceOrdinals() const { return {0}; }
-
-  StatusOr<XrtAllocation*> Execute(
-      absl::Span<XrtAllocation* const> argument_handles);
-
-  const ProgramShape& program_shape() const;
-  int64 handle() const;
-
- private:
-  const ProgramShape program_shape_;
-  const int64 handle_;
-  const string session_target_;
-};
-
 // Wraps a XlaComputation produced by a ComputationBuilder. The
 // Compile method compiles the computation to a (local) executable via
 // the client library's local client. This class is intended to be
@@ -239,11 +160,6 @@ class Computation {
   StatusOr<LocalExecutable*> Compile(
       const std::vector<Shape>& argument_shapes,
       const ExecutableBuildOptions* build_options, const LocalClient& client);
-
-  // Accepts a `session_target` argument, used in constructing the
-  // `tensorflow::ClientSession` instance in which the compilation graph is run.
-  StatusOr<XrtExecutable*> CompileForXrt(
-      const std::vector<Shape>& argument_shapes, const string& session_target);
 
   const XlaComputation& computation() const;
 
@@ -307,6 +223,8 @@ class ComputationBuilder {
 
   // Returns the shape of the current return value for the computation.
   StatusOr<Shape> GetReturnValueShape();
+
+  LocalOp ReplicaId();
 
   LocalOp Infeed(const Shape& shape);
 
@@ -498,6 +416,7 @@ class ComputationBuilder {
   _FORWARD_BINOP(Pow)
   _FORWARD_BINOP(Complex)
   _FORWARD_UNOP(Not)
+  _FORWARD_UNOP(Clz)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
   _FORWARD_UNOP(Expm1)
@@ -545,9 +464,7 @@ class ComputationBuilder {
 
 // Functions for freeing resources from the Python side.
 void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer);
-void DeleteXrtAllocation(XrtAllocation* allocation);
 void DeleteLocalExecutable(LocalExecutable* computation);
-void DeleteXrtExecutable(XrtExecutable* computation);
 void DeleteComputation(Computation* computation);
 
 }  // namespace swig

@@ -366,7 +366,6 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
   }
 };
 
-// TODO(b/118877434) Placeholder, to be implemented in subsequent CL.
 template <int32 max_padding>
 struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
                       DepthwiseConvDepthMultiplication::kUnitInputDepth,
@@ -375,8 +374,107 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
                          const uint8* input_block_data,
                          int8* scratch_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_DCHECK(false);
-    return;
+    // Currently support for padding is limited to 1 on any side.
+    TFLITE_DCHECK_LE(max_padding, 1);
+
+    // Strides.
+    // The count of micro blocks (below) provides the width strides.
+    const int input_height_stride = function_params->input_height_stride;
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+
+    // Remaining iteration and dimension parameters.
+    //
+    // If width_overall_micro_repeats = input_width_micro_repeats + 1, then the
+    // final micro block is incomplete.
+    const int width_overall_micro_repeats =
+        function_params->input_width_overall_micro_repeats;
+    const int input_width_micro_repeats =
+        function_params->input_width_micro_repeats;
+    const int residual_width = function_params->residual_width;
+    const int block_height = function_params->inbound_block_height;
+    TFLITE_DCHECK_GE(workspace_height_stride, 4 * width_overall_micro_repeats);
+
+    const int padding_left = function_params->padding_left;
+    const int padding_right = function_params->padding_right;
+    const int padding_top = function_params->padding_top;
+    const int padding_bottom = function_params->padding_bottom;
+
+    const bool leading_width_padding =
+        padding_left > 0 && width_block_number == 0;
+    const bool trailing_width_padding =
+        padding_right > 0 &&
+        width_block_number == (function_params->width_macro_count - 1);
+    const bool leading_height_padding =
+        padding_top > 0 && height_block_number < 0;
+    const bool trailing_height_padding =
+        padding_bottom > 0 &&
+        height_block_number == (function_params->height_macro_count - 1);
+
+    constexpr int kSymmetricZeroPoint = 128;
+    const int32 input_offset_difference =
+        function_params->input_offset + kSymmetricZeroPoint;
+
+    int copy_block_height = block_height;
+    if (leading_height_padding) {
+      memset(scratch_block_data, -input_offset_difference,
+             workspace_height_stride + kWorkspaceExtension);
+      scratch_block_data += workspace_height_stride;
+      input_block_data += input_height_stride;
+      copy_block_height -= 1;
+    }
+    if (trailing_height_padding) {
+      copy_block_height -= 1;
+    }
+
+    int adjusted_residual_width =
+        input_width_micro_repeats < width_overall_micro_repeats ? residual_width
+                                                                : 4;
+
+    if (trailing_width_padding) {
+      adjusted_residual_width -= 1;
+    }
+    int start_width = 0;
+    if (leading_width_padding) {
+      start_width = 1;
+      input_block_data += 1;
+    }
+
+    const int copy_size = (width_overall_micro_repeats - 1) * 4 +
+                          adjusted_residual_width - start_width;
+
+    TFLITE_DCHECK_LE(
+        copy_size,
+        input_height_stride - width_block_number * input_width_micro_repeats);
+    // We may drop up to stride-1 of trailing input.
+    TFLITE_DCHECK_GE(copy_size, input_height_stride - 1);
+
+    // When there is unit input depth, the micro-block iteration need only be
+    // through the height. The micro blocks are contiguous across the width.
+    for (int k_height = 0; k_height < copy_block_height; ++k_height) {
+      const uint8* input_data =
+          input_block_data + k_height * input_height_stride;
+      int8* scratch_data =
+          scratch_block_data + k_height * workspace_height_stride;
+
+      // Handle leading padding. This is overwritten if there is no padding.
+      scratch_data[0] = -input_offset_difference;
+
+      memcpy(&scratch_data[start_width], input_data, copy_size);
+      for (int i = 0; i < copy_size; ++i) {
+        scratch_data[start_width + i] += -kSymmetricZeroPoint;
+      }
+
+      // Handle trailing padding, and fill in remainder of micro block.
+      memset(&scratch_data[start_width + copy_size], -input_offset_difference,
+             4 - adjusted_residual_width + kWorkspaceExtension);
+    }
+
+    if (trailing_height_padding) {
+      memset(scratch_block_data + copy_block_height * workspace_height_stride,
+             -input_offset_difference,
+             workspace_height_stride + kWorkspaceExtension);
+    }
   }
 };
 
@@ -504,8 +602,6 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
     const int stride_val = function_params->stride;
     const int four_over_stride = function_params->four_over_stride;
 
-    const int workspace_width_micro_repeats =
-        function_params->workspace_width_micro_repeats;
     const int output_width_overall_micro_repeats =
         function_params->output_width_overall_micro_repeats;
     const int block_height = function_params->outbound_block_height;
@@ -548,9 +644,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
             const int output_width = i_width == output_width_micro_repeats
                                          ? residual_width
                                          : four_over_stride;
-            const bool no_right_block = i_width == output_width_micro_repeats &&
-                                        output_width_overall_micro_repeats ==
-                                            workspace_width_micro_repeats;
+            const bool no_right_block = (output_width - 1) * stride_val < 2;
             TFLITE_DCHECK_LE(output_width * stride_val, 4);
             const int8* input_data =
                 scratch_data + width_micro_stride * i_width;
@@ -576,17 +670,163 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
   }
 };
 
-// TODO(b/118877434) Placeholder, to be implemented in subsequent CL.
+// Apply filter to macro block of input data and store results.
+//
+// Parameters for repeats and residual sizes are in terms of outputs.
+//
+// Requirement: depth_micro_repeats > 0 || residual_depth > 0.
 template <int32 stride>
 struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
                         DepthwiseConvDepthMultiplication::kUnitInputDepth,
                         stride> {
+  // Construct a width-shifted combination of two input sub-blocks, effectively
+  // concatenating them.
+  //
+  // The filter is applied using sub-blocks. These are in the needed form for
+  // the first (width) offset. For subsequent offsets, the filter is applied to
+  // shifted and combined data. The concatentation and shifting herein is fairly
+  // straightforward, but in the optimized code is an area of creativity in
+  // design because NEON instructions do not directly support the required
+  // between-register permutation.
+  //
+  // In NEON optimized code, input data is grouped in 4-byte blocks. In order to
+  // move along the width for each output point calculation, data is shifted, in
+  // essence between two such blocks.
+  //
+  // selected_data has format height 3, width 4.
+  //
+  // When the micro block is trailing (the last across the macro-block width),
+  // it would be illegal to load the right (next) block, and the no_right_block
+  // indicates this scenario.
+  static inline void ConcatenateInputSubBlocks(int offset,
+                                               int workspace_height_stride,
+                                               bool no_right_block,
+                                               const int8* input_block,
+                                               int8 selected_data[3][4]) {
+    TFLITE_DCHECK_GE(offset, 0);
+    TFLITE_DCHECK_LT(offset, 4);
+    if (no_right_block) {
+      for (int k_height = 0; k_height < 3; ++k_height) {
+        memcpy(selected_data[k_height],
+               &input_block[k_height * workspace_height_stride + offset],
+               4 - offset);
+      }
+    } else {
+      for (int k_height = 0; k_height < 3; ++k_height) {
+        memcpy(selected_data[k_height],
+               &input_block[k_height * workspace_height_stride + offset], 4);
+      }
+    }
+  }
+
+  // Straight implementation of 3x3 filter within sub-micro block.
+  static inline void Calculate3x3FilterOutput(
+      const DepthwiseConvDotProdParams& function_params, int sub_block,
+      const int8 selected_data[3][4], const int8 filter_bank[3][2][4][4],
+      const int32* bias_data, uint8 output_values[4]) {
+    const int32 output_activation_min =
+        function_params.quantized_activation_min;
+    const int32 output_activation_max =
+        function_params.quantized_activation_max;
+    const int32 output_multiplier = function_params.output_multiplier;
+    const int32 output_shift = function_params.output_shift;
+    const int32 output_offset = function_params.output_offset;
+    for (int d = 0; d < 4; ++d) {
+      int32 acc = 0;
+      for (int y = 0; y < 3; ++y) {
+        for (int x = 0; x < 4; ++x) {
+          int32 input_val = selected_data[y][x];
+          int32 filter_val = filter_bank[y][sub_block][d][x];
+          acc += filter_val * input_val;
+        }
+      }
+      acc += bias_data[d];
+      acc = reference_ops::depthwise_conv::DepthwiseConvRound<
+          DepthwiseConvOutputRounding::kUpward>(acc, output_multiplier,
+                                                output_shift);
+      acc += output_offset;
+      acc = std::max(acc, output_activation_min);
+      acc = std::min(acc, output_activation_max);
+      output_values[d] = static_cast<uint8>(acc);
+    }
+  }
+
   static inline void Run(const int8* scratch_block_data,
                          const int8* filter_workspace, const int32* bias_data,
                          uint8* output_block_data,
                          const DepthwiseConvDotProdParams* function_params) {
-    TFLITE_DCHECK(false);
-    return;
+    const int workspace_height_stride =
+        function_params->workspace_height_stride;
+    const int output_width_micro_repeats =
+        function_params->output_width_micro_repeats;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
+    const int depth = function_params->output_depth;
+    const int stride_val = function_params->stride;
+    const int four_over_stride = function_params->four_over_stride;
+
+    const int workspace_width_micro_repeats =
+        function_params->workspace_width_micro_repeats;
+    const int output_width_overall_micro_repeats =
+        function_params->output_width_overall_micro_repeats;
+    const int block_height = function_params->outbound_block_height;
+    const int residual_width = function_params->output_residual_width;
+    const int output_height_stride = function_params->output_height_stride;
+    constexpr int bias_increment = 4;
+    TFLITE_DCHECK_EQ(function_params->bias_increment, bias_increment);
+
+    TFLITE_DCHECK(depth_micro_repeats > 0);
+
+    constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
+
+    // Simulate NEON-register transposition of subset of filter.
+    int8 filter_bank[3][2][4][4];  // Height 3, sub-block,  depth 4, width 4.
+    // Simulate NEON-register input data concatenation + sub-selection.
+    int8 sub_selected_input_data[3][4];  // Height 3, depth 4, width 4.
+    uint8 output_values[4];              // Depth 4.
+
+    // The outer 3 loops go through all the micro blocks in a macro block, and
+    // separately treat the two sub-blocks within each micro block.
+    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
+      memcpy(filter_bank[0][0][0],
+             filter_workspace + j_depth * shuffled_filter_increment,
+             shuffled_filter_increment);
+
+      for (int s = 0; s < 2; ++s) {
+        for (int k_height = 0; k_height < block_height; ++k_height) {
+          const int8* scratch_data =
+              scratch_block_data +
+              workspace_height_stride * k_height * stride_val;
+          uint8* output_data =
+              output_block_data + output_height_stride * k_height + 8 * j_depth;
+
+          for (int i_width = 0; i_width < output_width_overall_micro_repeats;
+               ++i_width) {
+            const int output_width = i_width == output_width_micro_repeats
+                                         ? residual_width
+                                         : four_over_stride;
+            const bool no_right_block = i_width == output_width_micro_repeats &&
+                                        output_width_overall_micro_repeats ==
+                                            workspace_width_micro_repeats;
+            TFLITE_DCHECK_LE(output_width * stride_val, 4);
+            const int8* input_data = scratch_data + 4 * i_width;
+            // Iterate over input width shifts within 4x4 blocks.
+            for (int x = 0; x < output_width; ++x) {
+              ConcatenateInputSubBlocks(x * stride_val, workspace_height_stride,
+                                        no_right_block, input_data,
+                                        sub_selected_input_data);
+              Calculate3x3FilterOutput(
+                  *function_params, s, sub_selected_input_data, filter_bank,
+                  bias_data + (2 * j_depth + s) * bias_increment,
+                  output_values);
+              for (int d = 0; d < 4; ++d) {
+                output_data[depth * (four_over_stride * i_width + x) + 4 * s +
+                            d] = output_values[d];
+              }
+            }
+          }
+        }
+      }
+    }
   }
 };
 
@@ -915,8 +1155,9 @@ inline void DepthwiseConvDotProduct3x3(
   // difficult to test for (to trigger) erroneous reads (past end of array) in
   // the depth multplication case.
   int workspace_width_micro_repeats =
-      (has_depth_multiplication ? kDepthwiseConvScratchWorkspaceSize - 16
-                                : kDepthwiseConvScratchWorkspaceSize) /
+      (has_depth_multiplication
+           ? kDepthwiseConvScratchWorkspaceSize - kWorkspaceExtension
+           : kDepthwiseConvScratchWorkspaceSize) /
       (4 * largest_macro_depth * height_block_size);
   // When there is no depth multiplication, the workspace depth is a multiple of
   // 8, which ensures that workspace rows are 16-byte aligned. (Actually 32,

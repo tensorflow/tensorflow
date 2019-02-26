@@ -54,6 +54,16 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
+KernelAndDeviceOp::~KernelAndDeviceOp() {
+  // Make sure that the device execution has finished before deleting cm_.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    while (num_deferred_ops_ > 0) {
+      no_deferred_ops_cv_.wait(lock);
+    }
+  }
+}
+
 Status KernelAndDeviceOp::Init(const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
@@ -90,8 +100,7 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   // Android tf library does not include grappler.
   const auto& config_it = ndef.attr().find("config_proto");
   if (it != ndef.attr().end()) {
-    ConfigProto config_proto;
-    if (!config_proto.ParseFromString(config_it->second.s())) {
+    if (!options.config_proto.ParseFromString(config_it->second.s())) {
       return errors::InvalidArgument(
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
@@ -111,9 +120,9 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
 
     options.optimize_graph_fn = std::bind(
         grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
-        std::placeholders::_3, std::placeholders::_4, config_proto,
-        function_def->signature().name(), optimization_options,
-        std::placeholders::_5);
+        std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
+        options.config_proto, function_def->signature().name(),
+        optimization_options, std::placeholders::_6);
   }
 #endif
   options.graph_collector = graph_collector;
@@ -147,9 +156,11 @@ void UpdateStats(OpKernelContext* context,
     memory->set_peak_bytes(std::get<1>(sizes));
     memory->set_live_bytes(std::get<2>(sizes));
 
-    AllocatorStats allocator_stats;
-    allocator_pair.first->GetStats(&allocator_stats);
-    memory->set_allocator_bytes_in_use(allocator_stats.bytes_in_use);
+    absl::optional<AllocatorStats> allocator_stats =
+        allocator_pair.first->GetStats();
+    if (stats) {
+      memory->set_allocator_bytes_in_use(allocator_stats->bytes_in_use);
+    }
     allocator_pair.second->GetRecordsAndUnRef();
   }
   auto* ms = stats->mutable_memory_stats();
@@ -196,6 +207,17 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.cancellation_manager = &cm_;
   cm_.Reset();
   params.log_memory = log_memory_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_--;
+    if (num_deferred_ops_ == 0) {
+      no_deferred_ops_cv_.notify_all();
+    }
+  };
   std::unique_ptr<StepStatsCollector> step_stats_collector;
   if (stats != nullptr) {
     step_stats_collector.reset(new StepStatsCollector(step_stats));

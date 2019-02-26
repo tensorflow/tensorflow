@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status_test_util.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/strcat.h"
+#include "tensorflow/core/platform/tensor_coding.h"
 
 namespace tensorflow {
 namespace grappler {
@@ -3650,8 +3651,7 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
   auto x_t = GenerateRandomTensor<DT_FLOAT>(TensorShape({1, 2, 3, 4}));
   auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {{"x", x_t}});
 
-  ConstantFolding optimizer(/*opt_level=*/RewriterConfig::AGGRESSIVE,
-                            /*cpu_device=*/nullptr);
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
   GraphDef output;
   Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
   TF_EXPECT_OK(status);
@@ -3679,6 +3679,40 @@ TEST_F(ConstantFoldingTest, MaterializeConstantValuedNode) {
       test::ExpectTensorEqual<int>(tensors_expected[i], tensors[i]);
     } else {
       test::ExpectTensorEqual<float>(tensors_expected[i], tensors[i]);
+    }
+  }
+}
+
+TEST_F(ConstantFoldingTest, MaterializeConstantValuedNodeHugeFill) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Output value = ops::Const(scope.WithOpName("value"), 42, {});
+  Output fill_huge = ops::Fill(scope.WithOpName("fill_huge"),
+                               {1024, 1024, 1024, 1024, 1024}, value);
+
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  // Manually convert the input value format to tensor_content to test this
+  // case.
+  NodeDef* node = item.graph.mutable_node(0);
+  ASSERT_EQ(node->name(), "value");
+  TensorProto* t = (*node->mutable_attr())["value"].mutable_tensor();
+  t->clear_int_val();
+  int val = 42;
+  port::CopyFromArray(t->mutable_tensor_content(),
+                      reinterpret_cast<const char*>(&val), sizeof(int));
+  item.fetch = {"fill_huge"};
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  Status status = optimizer.Optimize(/*cluster=*/nullptr, item, &output);
+  TF_EXPECT_OK(status);
+
+  EXPECT_EQ(output.node_size(), 3);
+  for (const auto& node : output.node()) {
+    EXPECT_EQ(node.op(), "Const");
+    if (node.name() == "fill_huge") {
+      ASSERT_EQ(node.input_size(), 2);
+      EXPECT_EQ(node.input(0)[0], '^');
+      EXPECT_EQ(node.input(1)[0], '^');
     }
   }
 }
@@ -3714,6 +3748,55 @@ TEST_F(ConstantFoldingTest, BitcastDenormalFloats) {
   ASSERT_EQ(tensors.size(), 1);
   ASSERT_EQ(tensors_expected.size(), 1);
   test::ExpectTensorEqual<int64>(tensors[0], tensors_expected[0]);
+}
+
+TEST_F(ConstantFoldingTest, CompressConstants) {
+  tensorflow::Scope scope = tensorflow::Scope::NewRootScope();
+  Tensor zeros_t(DT_FLOAT, TensorShape({64}));
+  Tensor ones_t(DT_FLOAT, TensorShape({64}));
+  for (int i = 0; i < 64; ++i) {
+    zeros_t.flat<float>()(i) = 0.0f;
+    ones_t.flat<float>()(i) = 1.0f;
+  }
+  Output zeros = ops::Const(scope.WithOpName("zeros"), zeros_t);
+  Output host_ones = ops::Const(scope.WithOpName("host_ones"), ones_t);
+  GrapplerItem item;
+  TF_CHECK_OK(scope.ToGraphDef(&item.graph));
+  ASSERT_EQ(item.graph.node(1).name(), "host_ones");
+  // There is not C++ api for HostConst, so we manually change the node type
+  // here.
+  item.graph.mutable_node(1)->set_op("HostConst");
+  item.fetch = {"zeros", "host_ones"};
+  auto tensors_expected = EvaluateNodes(item.graph, item.fetch, {});
+
+  ConstantFolding optimizer(/*cpu_device=*/nullptr);
+  GraphDef output;
+  TF_EXPECT_OK(optimizer.Optimize(/*cluster=*/nullptr, item, &output));
+
+  {
+    ASSERT_EQ(output.node_size(), 2);
+    const NodeDef& node = output.node(0);
+    EXPECT_EQ(node.name(), "zeros");
+    EXPECT_EQ(node.op(), "Const");
+    const TensorProto& zeroes_t = node.attr().at("value").tensor();
+    EXPECT_EQ(zeroes_t.float_val_size(), 1);
+    EXPECT_EQ(zeroes_t.float_val(0), 0.0f);
+  }
+  {
+    const NodeDef& node = output.node(1);
+    EXPECT_EQ(node.name(), "host_ones");
+    EXPECT_EQ(node.op(), "HostConst");
+    const TensorProto& ones_t = node.attr().at("value").tensor();
+    EXPECT_EQ(ones_t.float_val_size(), 1);
+    EXPECT_EQ(ones_t.float_val(0), 1.0f);
+  }
+
+  auto tensors = EvaluateNodes(output, item.fetch, {});
+  ASSERT_EQ(tensors.size(), 2);
+  ASSERT_EQ(tensors_expected.size(), 2);
+  for (int i = 0; i < 2; ++i) {
+    test::ExpectTensorEqual<float>(tensors[i], tensors_expected[i]);
+  }
 }
 
 }  // namespace

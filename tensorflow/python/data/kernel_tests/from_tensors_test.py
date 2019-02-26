@@ -45,8 +45,9 @@ class FromTensorsTest(test_base.DatasetTestBase):
 
     dataset = dataset_ops.Dataset.from_tensors(components)
 
-    self.assertEqual([c.shape for c in components],
-                     nest.flatten(dataset.output_shapes))
+    self.assertEqual(
+        [c.shape for c in components],
+        nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)))
 
     self.assertDatasetProduces(dataset, expected_output=[components])
 
@@ -65,7 +66,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
 
     self.assertEqual(
         [tensor_shape.TensorShape(c.dense_shape) for c in components],
-        [shape for shape in dataset.output_shapes])
+        [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
     self.assertDatasetProduces(dataset, expected_output=[components])
 
   def testFromTensorsMixed(self):
@@ -84,7 +85,7 @@ class FromTensorsTest(test_base.DatasetTestBase):
     self.assertEqual([
         tensor_shape.TensorShape(c.dense_shape)
         if sparse_tensor.is_sparse(c) else c.shape for c in components
-    ], [shape for shape in dataset.output_shapes])
+    ], [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
 
     self.assertDatasetProduces(dataset, expected_output=[components])
 
@@ -95,51 +96,67 @@ class FromTensorsTest(test_base.DatasetTestBase):
                   np.array([8, 9, 10], dtype=np.int64))
 
     dataset = dataset_ops.Dataset.from_tensors(components)
-    self.assertEquals((dtypes.int64, (dtypes.float64, dtypes.float64),
-                       dtypes.int64), dataset.output_types)
-    self.assertEquals(([3], ([2], [2]), [3]), dataset.output_shapes)
+    self.assertEqual((dtypes.int64, (dtypes.float64, dtypes.float64),
+                      dtypes.int64),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.shuffle(10, 10)
-    self.assertEquals((dtypes.int64, (dtypes.float64, dtypes.float64),
-                       dtypes.int64), dataset.output_types)
-    self.assertEquals(([3], ([2], [2]), [3]), dataset.output_shapes)
+    self.assertEqual((dtypes.int64, (dtypes.float64, dtypes.float64),
+                      dtypes.int64),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.repeat(-1)
-    self.assertEquals((dtypes.int64, (dtypes.float64, dtypes.float64),
-                       dtypes.int64), dataset.output_types)
-    self.assertEquals(([3], ([2], [2]), [3]), dataset.output_shapes)
+    self.assertEqual((dtypes.int64, (dtypes.float64, dtypes.float64),
+                      dtypes.int64),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.filter(lambda x, y, z: True)
-    self.assertEquals((dtypes.int64, (dtypes.float64, dtypes.float64),
-                       dtypes.int64), dataset.output_types)
-    self.assertEquals(([3], ([2], [2]), [3]), dataset.output_shapes)
+    self.assertEqual((dtypes.int64, (dtypes.float64, dtypes.float64),
+                      dtypes.int64),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.take(5)
-    self.assertEquals((dtypes.int64, (dtypes.float64, dtypes.float64),
-                       dtypes.int64), dataset.output_types)
-    self.assertEquals(([3], ([2], [2]), [3]), dataset.output_shapes)
+    self.assertEqual((dtypes.int64, (dtypes.float64, dtypes.float64),
+                      dtypes.int64),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([3], ([2], [2]), [3]),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.map(lambda x, y, z: ((x, z), (y[0], y[1])))
-    self.assertEquals(((dtypes.int64, dtypes.int64),
-                       (dtypes.float64, dtypes.float64)), dataset.output_types)
-    self.assertEquals((([3], [3]), ([2], [2])), dataset.output_shapes)
+    self.assertEqual(((dtypes.int64, dtypes.int64),
+                      (dtypes.float64, dtypes.float64)),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual((([3], [3]), ([2], [2])),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.flat_map(
         lambda x, y: dataset_ops.Dataset.from_tensors(((x[0], x[1]),
                                                        (y[0], y[1])))
     )
-    self.assertEquals(((dtypes.int64, dtypes.int64),
-                       (dtypes.float64, dtypes.float64)), dataset.output_types)
-    self.assertEquals((([3], [3]), ([2], [2])), dataset.output_shapes)
+    self.assertEqual(((dtypes.int64, dtypes.int64),
+                      (dtypes.float64, dtypes.float64)),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual((([3], [3]), ([2], [2])),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.batch(32)
-    self.assertEquals(((dtypes.int64, dtypes.int64),
-                       (dtypes.float64, dtypes.float64)), dataset.output_types)
-    self.assertEquals((([None, 3], [None, 3]), ([None, 2], [None, 2])),
-                      nest.pack_sequence_as(dataset.output_shapes, [
-                          s.as_list()
-                          for s in nest.flatten(dataset.output_shapes)
-                      ]))
+    self.assertEqual(((dtypes.int64, dtypes.int64),
+                      (dtypes.float64, dtypes.float64)),
+                     dataset_ops.get_legacy_output_types(dataset))
+    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+    self.assertEqual((([None, 3], [None, 3]), ([None, 2], [None, 2])),
+                     nest.pack_sequence_as(dataset_output_shapes, [
+                         s.as_list()
+                         for s in nest.flatten(dataset_output_shapes)
+                     ]))
 
     # Define a separate set of components with matching leading
     # dimension for the from-slices constructor.
@@ -148,10 +165,11 @@ class FromTensorsTest(test_base.DatasetTestBase):
                              np.array([10, 11, 12], dtype=np.int64))
 
     dataset = dataset_ops.Dataset.from_tensor_slices(components_for_slices)
-    self.assertEquals((dtypes.int64,
-                       (dtypes.float64, dtypes.float64), dtypes.int64),
-                      dataset.output_types)
-    self.assertEquals(([], ([], []), []), dataset.output_shapes)
+    self.assertEqual((dtypes.int64,
+                      (dtypes.float64, dtypes.float64), dtypes.int64),
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual(([], ([], []), []),
+                     dataset_ops.get_legacy_output_shapes(dataset))
 
   # TODO(b/117581999): more specific shapes in eager mode.
   @test_util.run_deprecated_v1
@@ -169,60 +187,70 @@ class FromTensorsTest(test_base.DatasetTestBase):
 
     get_next = self.getNext(dataset)
     (w, x), (y, z) = get_next()
-    self.assertEquals(dtypes.int64, w.dtype)
-    self.assertEquals(dtypes.int64, x.dtype)
-    self.assertEquals(dtypes.float64, y.dtype)
-    self.assertEquals(dtypes.float64, z.dtype)
-    self.assertEquals([None, 3], w.shape.as_list())
-    self.assertEquals([None, 3], x.shape.as_list())
-    self.assertEquals([None, 2], y.shape.as_list())
-    self.assertEquals([None, 2], z.shape.as_list())
+    self.assertEqual(dtypes.int64, w.dtype)
+    self.assertEqual(dtypes.int64, x.dtype)
+    self.assertEqual(dtypes.float64, y.dtype)
+    self.assertEqual(dtypes.float64, z.dtype)
+    self.assertEqual([None, 3], w.shape.as_list())
+    self.assertEqual([None, 3], x.shape.as_list())
+    self.assertEqual([None, 2], y.shape.as_list())
+    self.assertEqual([None, 2], z.shape.as_list())
 
     get_next = self.getNext(dataset)
     (w, x), (y, z) = get_next()
-    self.assertEquals(dtypes.int64, w.dtype)
-    self.assertEquals(dtypes.int64, x.dtype)
-    self.assertEquals(dtypes.float64, y.dtype)
-    self.assertEquals(dtypes.float64, z.dtype)
-    self.assertEquals([None, 3], w.shape.as_list())
-    self.assertEquals([None, 3], x.shape.as_list())
-    self.assertEquals([None, 2], y.shape.as_list())
-    self.assertEquals([None, 2], z.shape.as_list())
+    self.assertEqual(dtypes.int64, w.dtype)
+    self.assertEqual(dtypes.int64, x.dtype)
+    self.assertEqual(dtypes.float64, y.dtype)
+    self.assertEqual(dtypes.float64, z.dtype)
+    self.assertEqual([None, 3], w.shape.as_list())
+    self.assertEqual([None, 3], x.shape.as_list())
+    self.assertEqual([None, 2], y.shape.as_list())
+    self.assertEqual([None, 2], z.shape.as_list())
 
   def testNestedDict(self):
     components = {"a": {"aa": 1, "ab": [2.0, 2.0]}, "b": [3, 3, 3]}
     dataset = dataset_ops.Dataset.from_tensors(components)
-    self.assertEquals(dtypes.int32, dataset.output_types["a"]["aa"])
-    self.assertEquals(dtypes.float32, dataset.output_types["a"]["ab"])
-    self.assertEquals(dtypes.int32, dataset.output_types["b"])
-    self.assertEquals([], dataset.output_shapes["a"]["aa"])
-    self.assertEquals([2], dataset.output_shapes["a"]["ab"])
-    self.assertEquals([3], dataset.output_shapes["b"])
+    self.assertEqual(dtypes.int32,
+                     dataset_ops.get_legacy_output_types(dataset)["a"]["aa"])
+    self.assertEqual(dtypes.float32,
+                     dataset_ops.get_legacy_output_types(dataset)["a"]["ab"])
+    self.assertEqual(dtypes.int32,
+                     dataset_ops.get_legacy_output_types(dataset)["b"])
+    self.assertEqual([],
+                     dataset_ops.get_legacy_output_shapes(dataset)["a"]["aa"])
+    self.assertEqual([2],
+                     dataset_ops.get_legacy_output_shapes(dataset)["a"]["ab"])
+    self.assertEqual([3],
+                     dataset_ops.get_legacy_output_shapes(dataset)["b"])
 
   def testNonSequenceNestedStructure(self):
     components = np.array([1, 2, 3], dtype=np.int64)
 
     dataset = dataset_ops.Dataset.from_tensors(components)
-    self.assertEquals(dtypes.int64, dataset.output_types)
-    self.assertEquals([3], dataset.output_shapes)
+    self.assertEqual(dtypes.int64,
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual([3], dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.filter(
         lambda x: math_ops.reduce_all(math_ops.equal(x, components)))
-    self.assertEquals(dtypes.int64, dataset.output_types)
-    self.assertEquals([3], dataset.output_shapes)
+    self.assertEqual(dtypes.int64,
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual([3], dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.map(lambda x: array_ops.stack([x, x]))
-    self.assertEquals(dtypes.int64, dataset.output_types)
-    self.assertEquals([2, 3], dataset.output_shapes)
+    self.assertEqual(dtypes.int64,
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual([2, 3], dataset_ops.get_legacy_output_shapes(dataset))
 
     dataset = dataset.flat_map(
         lambda x: dataset_ops.Dataset.from_tensor_slices(x))
-    self.assertEquals(dtypes.int64, dataset.output_types)
-    self.assertEquals([3], dataset.output_shapes)
+    self.assertEqual(dtypes.int64,
+                     dataset_ops.get_legacy_output_types(dataset))
+    self.assertEqual([3], dataset_ops.get_legacy_output_shapes(dataset))
 
     get_next = self.getNext(dataset)
-    self.assertEquals(dtypes.int64, get_next().dtype)
-    self.assertEquals([3], get_next().shape)
+    self.assertEqual(dtypes.int64, get_next().dtype)
+    self.assertEqual([3], get_next().shape)
 
   # TODO(b/121264236): needs mechanism for multiple device in eager mode.
   def testSkipEagerSplitPipelineFailsWithPlacementError(self):

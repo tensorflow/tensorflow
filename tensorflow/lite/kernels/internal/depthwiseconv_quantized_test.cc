@@ -147,8 +147,13 @@ inline void DispatchDepthwiseConv(
       DotProduct3x3KernelType kernel_type =
           optimized_ops::depthwise_conv::CategorizeDotProductKernel(params);
 
-      ASSERT_TRUE(kernel_type == DotProduct3x3KernelType::kPlain ||
-                  kernel_type == DotProduct3x3KernelType::kStride2)
+      ASSERT_TRUE(
+          kernel_type == DotProduct3x3KernelType::kPlain ||
+          kernel_type == DotProduct3x3KernelType::kStride2 ||
+          kernel_type ==
+              DotProduct3x3KernelType::kWithDepthMultiplicationStride1 ||
+          kernel_type ==
+              DotProduct3x3KernelType::kWithDepthMultiplicationStride2)
           << "Kernel type = " << static_cast<int>(kernel_type);
 
       optimized_ops::depthwise_conv::DepthwiseConvDotProduct3x3<
@@ -644,7 +649,7 @@ INSTANTIATE_TEST_SUITE_P(
         Values(1000),                                  // tests_to_run
         Bool(),                                        // test_stride
         Bool(),                                        // test_pad
-        Values(false),                                 // test_depth_multiplier
+        Bool(),                                        // test_depth_multiplier
         Values(DepthwiseConvOutputRounding::kUpward),  // output_rounding
         Values(false)                                  // loose_tolerance
         ),

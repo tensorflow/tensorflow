@@ -7,7 +7,7 @@ load(
     "//tensorflow/core:platform/default/build_config_root.bzl",
     "tf_cuda_tests_tags",
 )
-load("//tensorflow:tensorflow.bzl", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_test", "tf_cuda_library", "if_cuda")
 
 licenses(["notice"])  # Apache 2.0
 
@@ -156,7 +156,6 @@ cc_library(
         "ir_emitter_unnested.h",
     ],
     deps = [
-        ":backend_configs",
         ":buffer_allocations",
         ":cudnn_conv_runner",
         ":elemental_ir_emitter",
@@ -164,8 +163,10 @@ cc_library(
         ":gpu_executable",
         ":hlo_to_ir_bindings",
         ":ir_emission_utils",
+        ":nccl_all_reduce_thunk",
         ":parallel_loop_emitter",
         ":partition_assignment",
+        ":thunk",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -179,6 +180,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:hlo",
         "//tensorflow/compiler/xla/service:hlo_casting_utils",
         "//tensorflow/compiler/xla/service:name_uniquer",
+        "//tensorflow/compiler/xla/service:pattern_matcher",
         "//tensorflow/compiler/xla/service:while_loop_analysis",
         "//tensorflow/compiler/xla/service/llvm_ir:buffer_assignment_util",
         "//tensorflow/compiler/xla/service/llvm_ir:dynamic_update_slice_util",
@@ -288,6 +290,40 @@ cc_library(
 )
 
 cc_library(
+    name = "thunk",
+    srcs = ["thunk.cc"],
+    hdrs = ["thunk.h"],
+    deps = [
+        ":buffer_allocations",
+        ":hlo_execution_profiler",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+    ],
+)
+
+tf_cuda_library(
+    name = "nccl_all_reduce_thunk",
+    srcs = ["nccl_all_reduce_thunk.cc"],
+    hdrs = ["nccl_all_reduce_thunk.h"],
+    deps = [
+        ":buffer_allocations",
+        ":hlo_execution_profiler",
+        ":thunk",
+        "@com_google_absl//absl/synchronization",
+        "//tensorflow/compiler/xla:util",
+        "//tensorflow/compiler/xla/service:buffer_assignment",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:stream_executor_no_cuda",
+        "//tensorflow/stream_executor/cuda:cuda_activation",
+        "//tensorflow/stream_executor/cuda:cuda_gpu_executor",
+    ] + if_cuda([
+        "@local_config_nccl//:nccl",
+    ]),
+)
+
+cc_library(
     name = "gpu_executable",
     srcs = [
         "conditional_thunk.cc",
@@ -303,7 +339,6 @@ cc_library(
         "memset_thunk.cc",
         "outfeed_thunk.cc",
         "sequential_thunk.cc",
-        "thunk.cc",
         "thunk_schedule.cc",
         "triangular_solve_thunk.cc",
         "tuple_thunk.cc",
@@ -323,7 +358,6 @@ cc_library(
         "memset_thunk.h",
         "outfeed_thunk.h",
         "sequential_thunk.h",
-        "thunk.h",
         "thunk_schedule.h",
         "triangular_solve_thunk.h",
         "tuple_thunk.h",
@@ -335,9 +369,11 @@ cc_library(
         ":hlo_execution_profiler",
         ":infeed_manager",
         ":ir_emission_utils",
+        ":nccl_all_reduce_thunk",
         ":outfeed_manager",
         ":partition_assignment",
         ":stream_assignment",
+        ":thunk",
         "//tensorflow/compiler/xla:array2d",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_tree",
@@ -770,6 +806,7 @@ cc_library(
         "//tensorflow/compiler/xla/service:tuple_simplifier",
         "//tensorflow/compiler/xla/service:while_loop_constant_sinking",
         "//tensorflow/compiler/xla/service:while_loop_simplifier",
+        "//tensorflow/compiler/xla/service:while_loop_trip_count_annotator",
         "//tensorflow/compiler/xla/service:zero_sized_hlo_elimination",
         "//tensorflow/compiler/xla/service/gpu:cudnn_batchnorm_rewriter",
         "//tensorflow/compiler/xla/service/gpu/llvm_gpu_backend",

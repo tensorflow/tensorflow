@@ -71,6 +71,7 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
+        "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
         "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:tf_optimizer",
@@ -87,6 +88,21 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "lite_v2_test",
+    srcs = ["lite_v2_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
         "no_windows",
     ],
     deps = [

@@ -2312,7 +2312,9 @@ def layer_norm(inputs,
     norm_axes = list(range(begin_norm_axis, inputs_rank))
     mean, variance = nn.moments(inputs, norm_axes, keep_dims=True)
     # Compute layer normalization using the batch_normalization function.
-    variance_epsilon = 1e-12
+    # Note that epsilon must be increased for float16 due to the limited
+    # representable range.
+    variance_epsilon = 1e-12 if dtype != dtypes.float16 else 1e-3
     outputs = nn.batch_normalization(
         inputs,
         mean,

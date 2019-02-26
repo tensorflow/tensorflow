@@ -160,36 +160,44 @@ class TrackableResource(base.Trackable):
 
     self._resource_handle = None
 
-  def create_resource(self):
+  def _create_resource(self):
     """A function that creates a resource handle."""
-    raise NotImplementedError("TrackableResource.create_resource not "
+    raise NotImplementedError("TrackableResource._create_resource not "
                               "implemented.")
 
-  def initialize(self):
+  # This method will be removed soon.
+  def create_resource(self):
+    return self._create_resource()
+
+  def _initialize(self):
     """A function that initializes the resource. Optional."""
     pass
+
+  # This method will be removed soon.
+  def initialize(self):
+    return self._initialize()
 
   @property
   def resource_handle(self):
     """Returns the resource handle associated with this Resource."""
     if self._resource_handle is None:
-      self._resource_handle = self.create_resource()
+      self._resource_handle = self._create_resource()
     return self._resource_handle
 
   def _list_functions_for_serialization(self):
     @def_function.function(input_signature=[], autograph=False)
     def _creator():
-      resource = self.create_resource()
+      resource = self._create_resource()
       return resource
 
     @def_function.function(input_signature=[], autograph=False)
     def _initializer():
-      self.initialize()
+      self._initialize()
       return 1  # Dummy return
 
     return {
-        "create_resource": _creator,
-        "initialize": _initializer,
+        "_create_resource": _creator,
+        "_initialize": _initializer,
     }
 
 

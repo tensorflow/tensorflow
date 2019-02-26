@@ -29,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/op_def.pb.h"
 #include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/framework/tensor_shape.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
@@ -179,12 +180,12 @@ bool PackedValuesNotEqual(T a, T b) {
 
 template <>
 bool PackedValuesNotEqual(float a, float b) {
-  return reinterpret_cast<int32&>(a) != reinterpret_cast<int32&>(b);
+  return reinterpret_cast<int32_t&>(a) != reinterpret_cast<int32_t&>(b);
 }
 
 template <>
 bool PackedValuesNotEqual(double a, double b) {
-  return reinterpret_cast<int64&>(a) != reinterpret_cast<int64&>(b);
+  return reinterpret_cast<int64_t&>(a) != reinterpret_cast<int64_t&>(b);
 }
 
 float QuantizedTypeMinAsFloat(DataType data_type) {
@@ -791,16 +792,26 @@ Status ConstantFolding::MaterializeConstantValuedNode(
       }
     }
     TF_RETURN_IF_ERROR(CheckAttrExists(*input_node, "value"));
-    const TensorProto& input_tensor = input_node->attr().at("value").tensor();
-    // TODO(rmlarsen): Handle the case where the value is stored in
-    // tensor_content.
-    if (!input_tensor.tensor_content().empty()) {
-      return Status::OK();
-    }
+
+    // Copy the input tensor to the fill node, set the output shape and data
+    // type, and change the node type to Const.
     TensorProto* tensor = (*node->mutable_attr())["value"].mutable_tensor();
-    // Copy the input tensor to the fill node, set the output shape, and
-    // change the nodd type to Const.
-    *tensor = input_tensor;
+    const TensorProto& input_tensor = input_node->attr().at("value").tensor();
+    if (!input_tensor.tensor_content().empty()) {
+      // Convert the value to repeated field format, so we can use the
+      // decompression mechanism to store only a single value in the constant
+      // node, even if the shape specified in the original Fill is large.
+      Tensor t;
+      if (!t.FromProto(input_tensor)) {
+        return errors::InvalidArgument(
+            "Could not construct Tensor form TensorProto in node: ",
+            input_node->name());
+      }
+      tensor->clear_tensor_content();
+      t.AsProtoField(tensor);
+    } else {
+      *tensor = input_tensor;
+    }
     *(tensor->mutable_tensor_shape()) = output_shape;
     (*node->mutable_attr())["dtype"].set_type(output_dtype);
     node->mutable_attr()->erase("T");
@@ -3394,6 +3405,20 @@ Status ConstantFolding::RunOptimizationPass(Cluster* cluster,
   return Status::OK();
 }
 
+namespace {
+Status CompressConstants(GraphDef* graph) {
+  for (int i = 0; i < graph->node_size(); ++i) {
+    NodeDef* node = graph->mutable_node(i);
+    if ((IsConstant(*node) || IsHostConstant(*node)) &&
+        HasNodeAttr(*node, "value")) {
+      AttrValue& attr_val = (*node->mutable_attr())["value"];
+      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+    }
+  }
+  return Status::OK();
+}
+}  // namespace
+
 Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
                                  GraphDef* optimized_graph) {
   // TensorFlow flushes denormals to zero and rounds to nearest, so we do
@@ -3432,6 +3457,7 @@ Status ConstantFolding::Optimize(Cluster* cluster, const GrapplerItem& item,
     TF_RETURN_IF_ERROR(
         RunOptimizationPass(cluster, item_to_optimize, optimized_graph));
   } while (graph_modified_ || optimized_graph->node_size() != node_count);
+  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
   *optimized_graph->mutable_library() = item.graph.library();
   *optimized_graph->mutable_versions() = item.graph.versions();
 

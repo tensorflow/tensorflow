@@ -591,7 +591,22 @@ class ParseSingleSequenceExampleOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->output_list("feature_list_dense_values",
                                          &feature_list_dense_values));
 
+#ifdef TENSORFLOW_LITE_PROTOS
     SequenceExample ex;
+#else
+    // Allocate the SequenceExample on an arena. Provides better memory locality
+    // and greatly speeds up destruction.
+    protobuf::ArenaOptions options;
+    // We have some hint of what the final proto size will be based on the size
+    // of the serialized bytes- use this to set a custom allocation strategy.
+    // Note that the default allocation strategy is quite conservative (min
+    // block size of 256 bytes, and a max of 8 kilobytes).
+    const size_t block_size = serialized_t().size() * 1.1;
+    options.start_block_size = std::max(options.start_block_size, block_size);
+    options.max_block_size = std::max(options.max_block_size, block_size);
+    protobuf::Arena arena(options);
+    auto& ex = *protobuf::Arena::CreateMessage<SequenceExample>(&arena);
+#endif
     OP_REQUIRES(
         ctx, ParseProtoUnlimited(&ex, serialized_t()),
         errors::InvalidArgument("Could not parse example input, value: '",

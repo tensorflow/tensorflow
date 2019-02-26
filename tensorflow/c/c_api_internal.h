@@ -25,7 +25,6 @@ limitations under the License.
 #include <vector>
 
 #ifndef __ANDROID__
-#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
 #endif
 #include "tensorflow/core/common_runtime/shape_refiner.h"
@@ -42,6 +41,7 @@ limitations under the License.
 namespace tensorflow {
 class Device;
 class DeviceMgr;
+class ServerInterface;
 }  // namespace tensorflow
 
 // Internal structures used by the C API. These are likely to change and should

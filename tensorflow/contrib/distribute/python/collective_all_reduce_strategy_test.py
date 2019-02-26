@@ -79,11 +79,11 @@ def create_test_objects(cluster_spec=None,
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators=num_gpus)
+          num_accelerators={'GPU': num_gpus})
       target = 'grpc://' + cluster_spec[task_type][task_id]
     else:
       cluster_resolver = SimpleClusterResolver(
-          ClusterSpec({}), num_accelerators=num_gpus)
+          ClusterSpec({}), num_accelerators={'GPU': num_gpus})
       target = ''
 
     strategy = MockCollectiveAllReduceStrategy(cluster_resolver)
@@ -555,7 +555,7 @@ class LocalCollectiveAllReduceStrategy(
           required_gpus=2,
           use_dataset=[True, False],
           use_core_strategy=[True, False]))
-  def testMakeInputFnIterator(self, use_dataset, use_core_strategy):
+  def DISABLED_testMakeInputFnIterator(self, use_dataset, use_core_strategy):
     num_gpus = 2
     if use_dataset:
       fn = lambda: dataset_ops.Dataset.range(5 * num_gpus)

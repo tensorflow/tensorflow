@@ -73,16 +73,18 @@ struct MatrixSetDiag<GPUDevice, Scalar> {
     if (input.data() == output.data()) {
       CudaLaunchConfig config =
           GetCudaLaunchConfig(batch_size * minsize, device);
-      MatrixSetDiagKernel<Scalar>
-          <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-              config.virtual_thread_count, m, n, minsize, diag.data(),
-              output.data());
+      TF_CHECK_OK(CudaLaunchKernel(MatrixSetDiagKernel<Scalar>,
+                                   config.block_count, config.thread_per_block,
+                                   0, device.stream(),
+                                   config.virtual_thread_count, m, n, minsize,
+                                   diag.data(), output.data()));
     } else {
       CudaLaunchConfig config = GetCudaLaunchConfig(batch_size * m * n, device);
-      MatrixCopyInputAndSetDiagKernel<Scalar>
-          <<<config.block_count, config.thread_per_block, 0, device.stream()>>>(
-              config.virtual_thread_count, m, n, minsize, input.data(),
-              diag.data(), output.data());
+      TF_CHECK_OK(CudaLaunchKernel(MatrixCopyInputAndSetDiagKernel<Scalar>,
+                                   config.block_count, config.thread_per_block,
+                                   0, device.stream(),
+                                   config.virtual_thread_count, m, n, minsize,
+                                   input.data(), diag.data(), output.data()));
     }
   }
 };

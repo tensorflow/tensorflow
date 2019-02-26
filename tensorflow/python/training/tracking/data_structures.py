@@ -59,16 +59,22 @@ class NoDependency(object):
 
 def _wrap_or_unwrap(value):
   """Wraps basic data structures, unwraps NoDependency objects."""
+  # pylint: disable=unidiomatic-typecheck
+  # Exact type checking to avoid mucking up custom logic in list/dict
+  # subclasses, e.g. collections.Counter.
   if isinstance(value, NoDependency):
     return value.value
   if isinstance(value, base.Trackable):
     return value  # Skip conversion for already trackable objects.
-  elif isinstance(value, dict):
+  elif type(value) == dict:
     return _DictWrapper(value)
-  elif isinstance(value, list):
+  elif type(value) == collections.OrderedDict:
+    return _DictWrapper(value)
+  elif type(value) == list:
     return _ListWrapper(value)
   else:
     return value
+  # pylint: enable=unidiomatic-typecheck
   # TODO(allenl): Handle other common data structures. Tuples will require
   # special casing (tuple subclasses are not weak referenceable, so replacement
   # with a wrapper that subclasses tuple on attribute assignment works poorly,
@@ -320,7 +326,7 @@ class List(TrackableDataStructure, collections.Sequence):
     return self * n
 
   def __radd__(self, other):
-    return self + other
+    return self.__class__(other) + self
 
   def __getitem__(self, key):
     return self._storage[key]
@@ -763,18 +769,19 @@ class _DictWrapper(Mapping, collections.MutableMapping):
         # dependency on the value (either because the value is not
         # trackable, or because it was wrapped in a NoDependency object).
         self._non_string_key = True
-    current_value = self._storage.setdefault(key, value)
-    if current_value is not value:
-      if ((not no_dep and isinstance(value, base.Trackable))
-          # We don't want to just check that the existing object is
-          # trackable, since it may have been wrapped in a NoDependency
-          # object.
-          or existing_dependency is not None):
-        # A trackable object was replaced under the same key; this means
-        # that restoring would be error-prone, so we'll throw an exception on
-        # save.
-        self._non_append_mutation = True
-      self._storage[key] = value
+    if key in self._storage:
+      previous_value = self._storage[key]
+      if previous_value is not value:
+        if ((not no_dep and isinstance(value, base.Trackable))
+            # We don't want to just check that the existing object is
+            # trackable, since it may have been wrapped in a NoDependency
+            # object.
+            or existing_dependency is not None):
+          # A trackable object was replaced under the same key; this means
+          # that restoring would be error-prone, so we'll throw an exception on
+          # save.
+          self._non_append_mutation = True
+    self._storage[key] = value
 
     self._update_snapshot()
 

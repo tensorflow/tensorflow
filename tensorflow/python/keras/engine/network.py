@@ -401,10 +401,7 @@ class Network(base_layer.Layer):
         raise RuntimeError('It looks like you are subclassing `Model` and you '
                            'forgot to call `super(YourClass, self).__init__()`.'
                            ' Always start with this line.')
-    # Keep track of trackable objects,
-    # for the needs of `self.save/save_weights`.
-    value = data_structures.sticky_attribute_assignment(
-        trackable=self, value=value, name=name)
+
     super(Network, self).__setattr__(name, value)
 
     # Keep track of metric instance created in subclassed model/layer.
@@ -521,11 +518,8 @@ class Network(base_layer.Layer):
   def _unfiltered_updates(self):
     updates = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        updates += layer._unfiltered_updates
-      else:
-        updates += layer.updates
-    updates += self._updates
+      updates += layer._unfiltered_updates
+    updates += list(self._updates)
     return updates
 
   @property
@@ -552,10 +546,7 @@ class Network(base_layer.Layer):
     """Used every step in eager to reset losses."""
     self._eager_losses = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        layer._clear_losses()
-      else:
-        layer._eager_losses = []
+      layer._clear_losses()
 
   @property
   def updates(self):

@@ -26,13 +26,14 @@ namespace while_kernel {
 
 namespace {
 
-// Propagate tensor shapes from `src_tensor_indices` in `src_subgraph`
+// Propagate tensor shapes and types from `src_tensor_indices` in `src_subgraph`
 // to `dst_tensor_indices` in `dst_subgraph`.
 template <typename SrcVector, typename DstVector>
-TfLiteStatus CopyTensorsShape(TfLiteContext* context, Subgraph* src_subgraph,
-                              const SrcVector& src_tensor_indices,
-                              Subgraph* dst_subgraph,
-                              const DstVector& dst_tensor_indices) {
+TfLiteStatus CopyTensorsShapeAndType(TfLiteContext* context,
+                                     Subgraph* src_subgraph,
+                                     const SrcVector& src_tensor_indices,
+                                     Subgraph* dst_subgraph,
+                                     const DstVector& dst_tensor_indices) {
   TF_LITE_ENSURE_EQ(context, src_tensor_indices.size(),
                     dst_tensor_indices.size());
   for (int i = 0; i < src_tensor_indices.size(); ++i) {
@@ -42,7 +43,7 @@ TfLiteStatus CopyTensorsShape(TfLiteContext* context, Subgraph* src_subgraph,
                           src_tensor->dims->data + src_tensor->dims->size);
     dst_subgraph->ResizeInputTensor(dst_tensor_indices[i], dims);
     TfLiteTensor* dst_tensor = dst_subgraph->tensor(dst_tensor_indices[i]);
-    TF_LITE_ENSURE_EQ(context, src_tensor->type, dst_tensor->type);
+    dst_tensor->type = src_tensor->type;
   }
   return kTfLiteOk;
 }
@@ -66,11 +67,26 @@ TfLiteStatus CopyTensorsData(TfLiteContext* context, Subgraph* src_subgraph,
   return kTfLiteOk;
 }
 
+TfLiteStatus CheckCondOutput(TfLiteContext* context,
+                             const TfLiteTensor* cond_output) {
+  // The condition output must be a single boolean value.
+  TF_LITE_ENSURE_EQ(context, cond_output->type, kTfLiteBool);
+  if (cond_output->dims->size == 0) {
+    // It's okay if it's a 0D scalar.
+    return kTfLiteOk;
+  }
+  // Otherwise it must be 1D with shape [1].
+  TF_LITE_ENSURE_EQ(context, cond_output->dims->size, 1);
+  TF_LITE_ENSURE_EQ(context, cond_output->dims->data[0], 1);
+  return kTfLiteOk;
+}
+
 }  // namespace
 
 struct OpData {
   int cond_subgraph_index;
   int body_subgraph_index;
+  bool cond_has_dynamic_output_tensors;
   bool body_has_dynamic_output_tensors;
 };
 
@@ -80,6 +96,7 @@ void* Init(TfLiteContext* context, const char* buffer, size_t length) {
   const flexbuffers::Map& m = flexbuffers::GetRoot(buffer_t, length).AsMap();
   op_data->cond_subgraph_index = m["cond_subgraph_index"].AsInt32();
   op_data->body_subgraph_index = m["body_subgraph_index"].AsInt32();
+  op_data->cond_has_dynamic_output_tensors = false;
   op_data->body_has_dynamic_output_tensors = false;
   return op_data;
 }
@@ -113,9 +130,9 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // Prepare and check the condition subgraph.
   TF_LITE_ENSURE_OK(
-      context,
-      CopyTensorsShape(context, this_subgraph, TfLiteIntArrayView(node->inputs),
-                       cond_subgraph, cond_subgraph->inputs()));
+      context, CopyTensorsShapeAndType(context, this_subgraph,
+                                       TfLiteIntArrayView(node->inputs),
+                                       cond_subgraph, cond_subgraph->inputs()));
   TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
   TfLiteTensor* cond_output =
       cond_subgraph->tensor(cond_subgraph->outputs()[0]);
@@ -123,17 +140,17 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // This should rarely happens. In most cases the output is static with shape
   // [1]. However theoretically intermediate tensors in the cond subgraph
   // can be dynamic.
-  TF_LITE_ENSURE(context, !IsDynamicTensor(cond_output));
-  // The condition output must be a single boolean value.
-  TF_LITE_ENSURE_EQ(context, cond_output->type, kTfLiteBool);
-  TF_LITE_ENSURE_EQ(context, cond_output->dims->size, 1);
-  TF_LITE_ENSURE_EQ(context, cond_output->dims->data[0], 1);
+  if (IsDynamicTensor(cond_output)) {
+    op_data->cond_has_dynamic_output_tensors = true;
+  } else {
+    TF_LITE_ENSURE_STATUS(CheckCondOutput(context, cond_output));
+  }
 
   // Prepare and check the body subgraph.
   TF_LITE_ENSURE_OK(
-      context,
-      CopyTensorsShape(context, this_subgraph, TfLiteIntArrayView(node->inputs),
-                       body_subgraph, body_subgraph->inputs()));
+      context, CopyTensorsShapeAndType(context, this_subgraph,
+                                       TfLiteIntArrayView(node->inputs),
+                                       body_subgraph, body_subgraph->inputs()));
   TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
   if (body_subgraph->HasDynamicTensors()) {
     op_data->body_has_dynamic_output_tensors = true;
@@ -226,15 +243,18 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     cond_subgraph->EnsureTensorDataIsReadable(cond_subgraph_output_index);
     TfLiteTensor* cond_output =
         cond_subgraph->tensor(cond_subgraph_output_index);
+    if (op_data->cond_has_dynamic_output_tensors) {
+      TF_LITE_ENSURE_STATUS(CheckCondOutput(context, cond_output));
+    }
 
     if (!cond_output->data.b[0]) {
       break;
     }
     if (op_data->body_has_dynamic_output_tensors) {
-      TF_LITE_ENSURE_OK(
-          context,
-          CopyTensorsShape(context, cond_subgraph, cond_subgraph->inputs(),
-                           body_subgraph, body_subgraph->inputs()));
+      TF_LITE_ENSURE_OK(context,
+                        CopyTensorsShapeAndType(
+                            context, cond_subgraph, cond_subgraph->inputs(),
+                            body_subgraph, body_subgraph->inputs()));
       TF_LITE_ENSURE_OK(context, body_subgraph->AllocateTensors());
     }
 
@@ -250,10 +270,10 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     }
 
     if (op_data->body_has_dynamic_output_tensors) {
-      TF_LITE_ENSURE_OK(
-          context,
-          CopyTensorsShape(context, body_subgraph, body_subgraph->outputs(),
-                           cond_subgraph, cond_subgraph->inputs()));
+      TF_LITE_ENSURE_OK(context,
+                        CopyTensorsShapeAndType(
+                            context, body_subgraph, body_subgraph->outputs(),
+                            cond_subgraph, cond_subgraph->inputs()));
       TF_LITE_ENSURE_OK(context, cond_subgraph->AllocateTensors());
     }
 
@@ -267,10 +287,11 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   // TODO(b/120234921): Optimize and avoid copying tensors between subgraphs.
   if (op_data->body_has_dynamic_output_tensors) {
     TF_LITE_ENSURE_OK(
-        context,
-        CopyTensorsShape(context, cond_subgraph, cond_subgraph->inputs(),
-                         this_subgraph, TfLiteIntArrayView(node->outputs)));
+        context, CopyTensorsShapeAndType(context, cond_subgraph,
+                                         cond_subgraph->inputs(), this_subgraph,
+                                         TfLiteIntArrayView(node->outputs)));
   }
+
   TF_LITE_ENSURE_OK(
       context,
       CopyTensorsData(context, cond_subgraph, cond_subgraph->inputs(),

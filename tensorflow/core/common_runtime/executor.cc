@@ -1280,7 +1280,7 @@ class ExecutorState {
 
   // Available via OpKernelContext to every OpKernel invocation.
   mutex num_deferred_ops_mu_;
-  condition_variable num_deferred_ops_cv_;
+  condition_variable no_deferred_ops_cv_;
   int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
 
   mutex mu_;
@@ -1648,7 +1648,9 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.dec_num_deferred_ops_function = [this]() {
     mutex_lock lock(num_deferred_ops_mu_);
     num_deferred_ops_--;
-    num_deferred_ops_cv_.notify_all();
+    if (num_deferred_ops_ == 0) {
+      no_deferred_ops_cv_.notify_all();
+    }
   };
 
   Status s;
@@ -2478,7 +2480,7 @@ void ExecutorState::Finish() {
   {
     mutex_lock lock(num_deferred_ops_mu_);
     while (num_deferred_ops_ > 0) {
-      num_deferred_ops_cv_.wait(lock);
+      no_deferred_ops_cv_.wait(lock);
     }
   }
 
@@ -2487,6 +2489,20 @@ void ExecutorState::Finish() {
   // device has finished all relevant work at this point.
   if (!device->AllowsSyncOnCompletion()) {
     status.Update(device->RefreshStatus());
+    if (!status.ok()) {
+      // In device async execution mode, it's possible for device execution to
+      // lag behind ExecutorState scheduling so much that this is the first
+      // place a device execution error surfaces.
+      // If so, all ExecutorState::NodeDone calls have already happened with OK
+      // status. This is the last defense where StartCancel must be called to
+      // abort all computation still running on any device.
+      // TODO(b/124523000): Always call Finish in a separate thread, so even if
+      // StartCancel blocks the current thread's execution, we won't encounter
+      // deadlocks caused by inter-op thread exhaustion.
+      if (cancellation_manager_) {
+        cancellation_manager_->StartCancel();
+      }
+    }
     delete this;
     runner([=]() { done_cb(status); });
     return;

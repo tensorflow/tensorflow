@@ -32,6 +32,7 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import control_flow_ops
@@ -397,7 +398,7 @@ def is_tpu_strategy(strategy):
 
 def is_dataset_shape_fully_defined(dataset):
   """Returns whether a dataset contains a final partial batch."""
-  shapes = nest.flatten(dataset.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
   unknown_shapes = [s for s in shapes if not s.is_fully_defined()]
   return not unknown_shapes
 
@@ -497,7 +498,7 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
 
 
 def get_batch_dimension(iterator):
-  shapes = nest.flatten(iterator.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(iterator))
   # Take the batch size from the first element, as it should be the same for
   # all.
   dims = shapes[0].dims
@@ -563,6 +564,11 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
+  # Expand 1-dimensional inputs.
+  # TODO(b/124535720): Remove once this standarize data logic is shared with
+  # main flow.
+  inputs, targets = nest.map_structure(training_utils.standardize_single_array,
+                                       (inputs, targets))
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
@@ -899,7 +905,7 @@ def distributed_scope(strategy, learning_phase):
     yield
 
 
-def filter_callbacks(callbacks_list):
+def filter_distributed_callbacks(callbacks_list):
   """Filter Callbacks based on the worker context when running multi-worker.
 
   Arguments:
@@ -908,7 +914,23 @@ def filter_callbacks(callbacks_list):
   Returns:
     The list of `Callback` instances that should be run on this worker.
   """
+
+  if not K.in_multi_worker_mode():
+    raise ValueError(
+        'filter_distributed_callbacks() should only be called when Keras '
+        'is in multi worker mode.')
+
   worker_context = dc_context.get_current_worker_context()
+  callbacks_list = callbacks_list or []
+  if not [
+      c for c in callbacks_list if isinstance(c, callbacks.ModelCheckpoint)
+  ]:
+    # TODO(rchao): Consider providing a ModelCheckpoint here if the user
+    # fails to.
+    logging.warning('ModelCheckpoint callback is not provided. '
+                    'Workers will need to restart training if any fails.')
+  # TODO(rchao): Add similar warning for restoring callback (to be designed).
+
   if callbacks_list is None or worker_context.is_chief:
     return callbacks_list
 

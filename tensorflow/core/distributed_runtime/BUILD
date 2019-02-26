@@ -426,7 +426,6 @@ cc_library(
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:metrics",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:worker_proto_cc",
         "//tensorflow/core/debug",
@@ -645,7 +644,7 @@ tf_cuda_cc_test(
         "manual",  # TODO(b/27683709): Re-enable when not flaky.
         "notap",  # TODO(b/27683709): Re-enable when not flaky.
         "noguitar",  # TODO(b/27683709): Re-enable when not flaky.
-        "nooss",  # TODO(b/27683709): Re-enable when not flaky.
+        "no_oss",  # TODO(b/27683709): Re-enable when not flaky.
     ],
     deps = [
         ":master",

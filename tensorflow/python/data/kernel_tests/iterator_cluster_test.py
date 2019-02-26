@@ -53,7 +53,8 @@ class IteratorClusterTest(test.TestCase):
 
     with ops.device("/job:worker/replica:0/task:0/cpu:0"):
       remote_it = iterator_ops.Iterator.from_string_handle(
-          iterator_3_handle, dataset_3.output_types, dataset_3.output_shapes)
+          iterator_3_handle, dataset_ops.get_legacy_output_types(dataset_3),
+          dataset_ops.get_legacy_output_shapes(dataset_3))
       get_next_op = remote_it.get_next()
 
     with session.Session(worker[0].target) as sess:
@@ -69,7 +70,8 @@ class IteratorClusterTest(test.TestCase):
     @function.Defun(dtypes.string)
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
-          h, dataset_3.output_types, dataset_3.output_shapes)
+          h, dataset_ops.get_legacy_output_types(dataset_3),
+          dataset_ops.get_legacy_output_shapes(dataset_3))
       return remote_iterator.get_next()
 
     with ops.device(device0):

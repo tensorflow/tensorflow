@@ -20,11 +20,12 @@ from __future__ import print_function
 
 import copy
 
-from tensorflow.contrib.distribute.python import mirrored_strategy
+
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import input_lib
+from tensorflow.python.distribute import mirrored_strategy
 from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import values
@@ -39,12 +40,14 @@ from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import device_setter
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import tf_export
 
 _LOCAL_CPU = "/device:CPU:0"
 _LOCAL_GPU_0 = "/device:GPU:0"
 
 
 # TODO(yuefengz): maybe cache variables on local CPU.
+@tf_export("distribute.experimental.ParameterServerStrategy")
 class ParameterServerStrategy(distribute_lib.DistributionStrategy):
   """A parameter server DistributionStrategy.
 
@@ -109,7 +112,8 @@ class ParameterServerStrategyExtended(
     else:
       self._initialize_local(cluster_resolver)
     # Save the num_gpus_per_worker for configure method.
-    self._num_gpus_per_worker = cluster_resolver.num_accelerators()
+    self._num_gpus_per_worker = (
+        cluster_resolver.num_accelerators().get("GPU", 0))
 
   def _initialize_multi_worker(self, cluster_resolver):
     """Initialize devices for multiple workers.
@@ -126,7 +130,7 @@ class ParameterServerStrategyExtended(
     Raises:
       ValueError: if the cluster doesn't have ps jobs.
     """
-    num_gpus = cluster_resolver.num_accelerators()
+    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
     cluster_spec = cluster_resolver.cluster_spec()
     task_type = cluster_resolver.task_type
     task_id = cluster_resolver.task_id
@@ -197,7 +201,7 @@ class ParameterServerStrategyExtended(
     """Initialize internal devices for local training."""
     worker_device = device_util.canonicalize("/device:CPU:0")
     self._input_host_device = numpy_dataset.SingleDevice(worker_device)
-    num_gpus = cluster_resolver.num_accelerators()
+    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
@@ -464,7 +468,7 @@ class ParameterServerStrategyExtended(
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators=self._num_gpus_per_worker)
+          num_accelerators={"GPU": self._num_gpus_per_worker})
       self._initialize_multi_worker(cluster_resolver)
 
     if session_config:

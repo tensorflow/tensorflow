@@ -338,7 +338,6 @@ Status GraphTransferer::TransformGraphToAddAggregatedInputNode(
     shapes.emplace_back(input_node_info_list.at(i).second.shape());
   }
 
-  NodeDef input_node_def;
   auto builder =
       NodeBuilder(AGGREGATED_INPUT_NODE_NAME, "RemoteFusedGraphExecute")
           .Input(std::vector<NodeBuilder::NodeOut>{})

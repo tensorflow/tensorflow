@@ -331,6 +331,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(FakeQuant)
     HANDLE_OPERATORTYPENAME_CASE(Mul)
     HANDLE_OPERATORTYPENAME_CASE(RandomUniform)
+    HANDLE_OPERATORTYPENAME_CASE(Elu)
     HANDLE_OPERATORTYPENAME_CASE(Relu)
     HANDLE_OPERATORTYPENAME_CASE(Relu1)
     HANDLE_OPERATORTYPENAME_CASE(Relu6)
@@ -425,6 +426,7 @@ const char* OperatorTypeName(OperatorType type) {
     HANDLE_OPERATORTYPENAME_CASE(ReverseV2)
     HANDLE_OPERATORTYPENAME_CASE(Cos)
     HANDLE_OPERATORTYPENAME_CASE(Where)
+    HANDLE_OPERATORTYPENAME_CASE(ReverseSequence)
     default:
       LOG(FATAL) << "Unhandled op type";
 #undef HANDLE_OPERATORTYPENAME_CASE
@@ -903,11 +905,6 @@ void CheckNonExistentIOArrays(const Model& model) {
   static constexpr char general_comment[] =
       "Is it a typo? To silence this message, pass this flag:  "
       "allow_nonexistent_arrays";
-  for (const auto& input_array : model.flags.input_arrays()) {
-    QCHECK(GetOpWithInput(model, input_array.name()))
-        << "Specified input array \"" << input_array.name()
-        << "\" is not consumed by any op in this graph. " << general_comment;
-  }
   for (const string& output_array : model.flags.output_arrays()) {
     if (IsConstantParameterArray(model, output_array)) {
       continue;  // It is OK to request that a constant be an output.

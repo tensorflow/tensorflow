@@ -17,13 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import abc
-import functools
-import six
-
 import numpy
 
 from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import python_state as core_python_state
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -129,29 +126,7 @@ class NumpyState(base.Trackable):
     super(NumpyState, self).__setattr__(name, value)
 
 
-@six.add_metaclass(abc.ABCMeta)
-class PythonStateWrapper(base.Trackable):
-  """Wraps a Python object for storage in an object-based checkpoint."""
-
-  @abc.abstractmethod
-  def _serialize(self):
-    """Callback for `PythonStringStateSaveable` to serialize the object."""
-
-  @abc.abstractmethod
-  def _deserialize(self, string_value):
-    """Callback for `PythonStringStateSaveable` to deserialize the object."""
-
-  def _gather_saveables_for_checkpoint(self):
-    """Specify callbacks for saving and restoring `array`."""
-    return {
-        "py_state": functools.partial(
-            base.PythonStringStateSaveable,
-            state_callback=self._serialize,
-            restore_callback=self._deserialize)
-        }
-
-
-class _NumpyWrapper(PythonStateWrapper):
+class _NumpyWrapper(core_python_state.PythonState):
   """Wraps a NumPy array for storage in an object-based checkpoint."""
 
   def __init__(self, array):
@@ -162,7 +137,7 @@ class _NumpyWrapper(PythonStateWrapper):
     """
     self.array = array
 
-  def _serialize(self):
+  def serialize(self):
     """Callback to serialize the array."""
     string_file = BytesIO()
     try:
@@ -172,7 +147,7 @@ class _NumpyWrapper(PythonStateWrapper):
       string_file.close()
     return serialized
 
-  def _deserialize(self, string_value):
+  def deserialize(self, string_value):
     """Callback to deserialize the array."""
     string_file = BytesIO(string_value)
     try:
