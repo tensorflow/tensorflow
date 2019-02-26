@@ -304,6 +304,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_numa_support",
+    define_values = {"with_numa_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Crosses between framework_shared_object and a bunch of other configurations
 # due to limitations in nested select() statements.
 config_setting(
