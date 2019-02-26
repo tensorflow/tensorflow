@@ -39,7 +39,7 @@ func @basic_ml() -> (index, index) {
 
 // CHECK-LABEL: @many_cfg
 func @many_cfg(f32, f32) -> (f32) {
-^bb0(%a : f32, %b : f32): 
+^bb0(%a : f32, %b : f32):
   // CHECK-NEXT: %0 = addf %arg0, %arg1 : f32
   %c = addf %a, %b : f32
   %d = addf %a, %b : f32
@@ -196,4 +196,37 @@ func @up_propagate_cfg() -> i32 {
 
   // CHECK-NEXT: return %1 : i32
   return %add : i32
+}
+
+/// The same test as above except that we are testing on a cfg embedded within
+/// an operation region.
+// CHECK-LABEL: func @up_propagate_region_cfg
+func @up_propagate_region_cfg() -> i32 {
+  // CHECK-NEXT: %0 = "foo.region"
+  %0 = "foo.region"() : () -> (i32) {
+    // CHECK-NEXT:  %c0_i32 = constant 0 : i32
+    // CHECK-NEXT: %true = constant 1 : i1
+    // CHECK-NEXT: cond_br
+
+    %1 = constant 0 : i32
+    %true = constant 1 : i1
+    cond_br %true, ^bb2, ^bb3(%1 : i32)
+
+  ^bb2: // CHECK: ^bb2:
+    // CHECK-NEXT: %c1_i32 = constant 1 : i32
+    // CHECK-NEXT: br
+
+    %c1_i32 = constant 1 : i32
+    br ^bb3(%c1_i32 : i32)
+
+  ^bb3(%arg : i32): // CHECK: ^bb3(%1: i32):
+    // CHECK-NEXT: %c1_i32_0 = constant 1 : i32
+    // CHECK-NEXT: %2 = addi %1, %c1_i32_0 : i32
+    // CHECK-NEXT: "foo.yield"(%2) : (i32) -> ()
+
+    %c1_i32_0 = constant 1 : i32
+    %2 = addi %arg, %c1_i32_0 : i32
+    "foo.yield" (%2) : (i32) -> ()
+  }
+  return %0 : i32
 }

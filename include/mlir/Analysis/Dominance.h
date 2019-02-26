@@ -23,31 +23,47 @@
 
 extern template class llvm::DominatorTreeBase<mlir::Block, false>;
 extern template class llvm::DominatorTreeBase<mlir::Block, true>;
-extern template class llvm::DomTreeNodeBase<mlir::Block>;
-
-namespace llvm {
-namespace DomTreeBuilder {
-
-using MLIRDomTree = llvm::DomTreeBase<mlir::Block>;
-using MLIRPostDomTree = llvm::PostDomTreeBase<mlir::Block>;
-
-// extern template void Calculate<MLIRDomTree>(MLIRDomTree &DT);
-// extern template void Calculate<MLIRPostDomTree>(MLIRPostDomTree &DT);
-
-} // namespace DomTreeBuilder
-} // namespace llvm
 
 namespace mlir {
-using DominatorTreeBase = llvm::DominatorTreeBase<Block, false>;
-using PostDominatorTreeBase = llvm::DominatorTreeBase<Block, true>;
 using DominanceInfoNode = llvm::DomTreeNodeBase<Block>;
+class Function;
 
-/// A class for computing basic dominance information.
-class DominanceInfo : public DominatorTreeBase {
-  using super = DominatorTreeBase;
+namespace detail {
+template <bool IsPostDom> class DominanceInfoBase {
+  using base = llvm::DominatorTreeBase<Block, IsPostDom>;
 
 public:
-  DominanceInfo(Function *F);
+  DominanceInfoBase(Function *function) { recalculate(function); }
+  DominanceInfoBase(DominanceInfoBase &&) = default;
+  DominanceInfoBase &operator=(DominanceInfoBase &&) = default;
+
+  DominanceInfoBase(const DominanceInfoBase &) = delete;
+  DominanceInfoBase &operator=(const DominanceInfoBase &) = delete;
+
+  /// Recalculate the dominance info for the provided function.
+  void recalculate(Function *function);
+
+  /// Get the root dominance node of the given block list.
+  DominanceInfoNode *getRootNode(const BlockList *blockList) {
+    assert(dominanceInfos.count(blockList) != 0);
+    return dominanceInfos[blockList]->getRootNode();
+  }
+
+protected:
+  using super = DominanceInfoBase<IsPostDom>;
+
+  /// Return true if the specified block A properly dominates block B.
+  bool properlyDominates(const Block *a, const Block *b);
+
+  /// A mapping of block lists to their base dominator tree.
+  DenseMap<const BlockList *, std::unique_ptr<base>> dominanceInfos;
+};
+} // end namespace detail
+
+/// A class for computing basic dominance information.
+class DominanceInfo : public detail::DominanceInfoBase</*IsPostDom=*/false> {
+public:
+  using super::super;
 
   /// Return true if instruction A properly dominates instruction B.
   bool properlyDominates(const Instruction *a, const Instruction *b);
@@ -65,27 +81,37 @@ public:
     return (Instruction *)a->getDefiningInst() == b || properlyDominates(a, b);
   }
 
-  /// Return true if the specified block A properly dominates block B.
-  bool properlyDominates(const Block *a, const Block *b);
-
   /// Return true if the specified block A dominates block B.
   bool dominates(const Block *a, const Block *b) {
     return a == b || properlyDominates(a, b);
   }
+
+  /// Return true if the specified block A properly dominates block B.
+  bool properlyDominates(const Block *a, const Block *b) {
+    return super::properlyDominates(a, b);
+  }
 };
 
 /// A class for computing basic postdominance information.
-class PostDominanceInfo : public PostDominatorTreeBase {
-  using super = PostDominatorTreeBase;
-
+class PostDominanceInfo : public detail::DominanceInfoBase</*IsPostDom=*/true> {
 public:
-  PostDominanceInfo(Function *F);
+  using super::super;
 
   /// Return true if instruction A properly postdominates instruction B.
   bool properlyPostDominates(const Instruction *a, const Instruction *b);
 
   /// Return true if instruction A postdominates instruction B.
   bool postDominates(const Instruction *a, const Instruction *b) {
+    return a == b || properlyPostDominates(a, b);
+  }
+
+  /// Return true if the specified block A properly postdominates block B.
+  bool properlyPostDominates(const Block *a, const Block *b) {
+    return super::properlyDominates(a, b);
+  }
+
+  /// Return true if the specified block A postdominates block B.
+  bool postDominates(const Block *a, const Block *b) {
     return a == b || properlyPostDominates(a, b);
   }
 };

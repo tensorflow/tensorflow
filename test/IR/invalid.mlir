@@ -892,3 +892,19 @@ func @negative_tensor_size() -> tensor<-1xi32>
 
 // expected-error @+1 {{expected non-function type}}
 func @negative_in_tensor_size() -> tensor<1x-1xi32>
+
+// -----
+
+func @invalid_nested_dominance() {
+  "foo.region"() : () -> () {
+    // expected-error @+1 {{operand #0 does not dominate this use}}
+    "foo.use" (%1) : (i32) -> ()
+    br ^bb2
+
+  ^bb2:
+    // expected-note @+1 {{operand defined here}}
+    %1 = constant 0 : i32
+    "foo.yield" () : () -> ()
+  }
+  return
+}

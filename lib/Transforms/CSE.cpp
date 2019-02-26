@@ -112,7 +112,8 @@ struct CSE : public FunctionPass {
   /// was marked for removal, false otherwise.
   bool simplifyOperation(Instruction *op);
 
-  void simplifyBlock(Block *bb);
+  void simplifyBlock(DominanceInfo &domInfo, Block *bb);
+  void simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList);
 
   PassResult runOnFunction(Function *f) override;
 
@@ -161,22 +162,30 @@ bool CSE::simplifyOperation(Instruction *op) {
   return false;
 }
 
-void CSE::simplifyBlock(Block *bb) {
+void CSE::simplifyBlock(DominanceInfo &domInfo, Block *bb) {
   for (auto &i : *bb) {
     // If the operation is simplified, we don't process any held block lists.
     if (simplifyOperation(&i))
       continue;
 
     // Simplify any held blocks.
-    for (auto &blockList : i.getBlockLists()) {
-      for (auto &b : blockList) {
-        ScopedMapTy::ScopeTy scope(knownValues);
-        simplifyBlock(&b);
-      }
-    }
+    for (auto &blockList : i.getBlockLists())
+      simplifyBlockList(domInfo, blockList);
   }
 }
-PassResult CSE::runOnFunction(Function *f) {
+
+void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
+  // If the block list is empty there is nothing to do.
+  if (blockList.empty())
+    return;
+
+  // If the block list only contains one block, then simplify it directly.
+  if (std::next(blockList.begin()) == blockList.end()) {
+    ScopedMapTy::ScopeTy scope(knownValues);
+    simplifyBlock(domInfo, &blockList.front());
+    return;
+  }
+
   // Note, deque is being used here because there was significant performance
   // gains over vector when the container becomes very large due to the
   // specific access patterns. If/when these performance issues are no
@@ -185,10 +194,9 @@ PassResult CSE::runOnFunction(Function *f) {
   // http://lists.llvm.org/pipermail/llvm-commits/Week-of-Mon-20120116/135228.html
   std::deque<std::unique_ptr<CFGStackNode>> stack;
 
-  // Process the nodes of the dom tree.
-  DominanceInfo domInfo(f);
-  stack.emplace_back(
-      std::make_unique<CFGStackNode>(knownValues, domInfo.getRootNode()));
+  // Process the nodes of the dom tree for this blocklist.
+  stack.emplace_back(std::make_unique<CFGStackNode>(
+      knownValues, domInfo.getRootNode(&blockList)));
 
   while (!stack.empty()) {
     auto &currentNode = stack.back();
@@ -196,7 +204,7 @@ PassResult CSE::runOnFunction(Function *f) {
     // Check to see if we need to process this node.
     if (!currentNode->processed) {
       currentNode->processed = true;
-      simplifyBlock(currentNode->node->getBlock());
+      simplifyBlock(domInfo, currentNode->node->getBlock());
     }
 
     // Otherwise, check to see if we need to process a child node.
@@ -210,6 +218,11 @@ PassResult CSE::runOnFunction(Function *f) {
       stack.pop_back();
     }
   }
+}
+
+PassResult CSE::runOnFunction(Function *f) {
+  DominanceInfo domInfo(f);
+  simplifyBlockList(domInfo, f->getBlockList());
 
   /// Erase any operations that were marked as dead during simplification.
   for (auto *op : opsToErase)

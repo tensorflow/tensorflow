@@ -24,71 +24,91 @@
 #include "mlir/IR/Instruction.h"
 #include "llvm/Support/GenericDomTreeConstruction.h"
 using namespace mlir;
+using namespace mlir::detail;
 
 template class llvm::DominatorTreeBase<Block, /*IsPostDom=*/false>;
 template class llvm::DominatorTreeBase<Block, /*IsPostDom=*/true>;
 template class llvm::DomTreeNodeBase<Block>;
 
-/// Compute the immediate-dominators map.
-DominanceInfo::DominanceInfo(Function *function) : DominatorTreeBase() {
-  // Build the dominator tree for the function.
-  recalculate(function->getBlockList());
+//===----------------------------------------------------------------------===//
+// DominanceInfoBase
+//===----------------------------------------------------------------------===//
+
+/// Recalculate the dominance info for the provided function.
+template <bool IsPostDom>
+void DominanceInfoBase<IsPostDom>::recalculate(Function *function) {
+  dominanceInfos.clear();
+
+  // Build the top level function dominance.
+  auto functionDominance = std::make_unique<base>();
+  functionDominance->recalculate(function->getBlockList());
+  dominanceInfos.try_emplace(&function->getBlockList(),
+                             std::move(functionDominance));
+
+  /// Build the dominance for each of the internal region block lists.
+  function->walk([&](Instruction *inst) {
+    for (auto &blockList : inst->getBlockLists()) {
+      // Don't compute dominance if the region is empty.
+      if (blockList.empty())
+        continue;
+      auto opDominance = std::make_unique<base>();
+      opDominance->recalculate(blockList);
+      dominanceInfos.try_emplace(&blockList, std::move(opDominance));
+    }
+  });
 }
 
-/// Compute the immediate-dominators map.
-PostDominanceInfo::PostDominanceInfo(Function *function)
-    : PostDominatorTreeBase() {
-  // Build the post dominator tree for the function.
-  recalculate(function->getBlockList());
-}
-
-bool DominanceInfo::properlyDominates(const Block *a, const Block *b) {
+/// Return true if the specified block A properly dominates block B.
+template <bool IsPostDom>
+bool DominanceInfoBase<IsPostDom>::properlyDominates(const Block *a,
+                                                     const Block *b) {
   // A block dominates itself but does not properly dominate itself.
   if (a == b)
     return false;
 
-  // If both blocks are in the same block list, then standard dominator
-  // information can resolve the query.
+  // If both blocks are not in the same block list, 'a' properly dominates 'b'
+  // if 'b' is defined in an instruction region that (recursively) ends up being
+  // dominated by 'a'. Walk up the list of containers enclosing B.
   auto *blockListA = a->getParent(), *blockListB = b->getParent();
-  if (blockListA == blockListB)
-    return DominatorTreeBase::properlyDominates(a, b);
+  if (blockListA != blockListB) {
+    Instruction *bAncestor;
+    do {
+      bAncestor = blockListB->getContainingInst();
+      // If 'bAncestor' is the top level function, then 'a' is a block
+      // that post dominates 'b'.
+      if (!bAncestor)
+        return IsPostDom;
 
-  // Otherwise, 'a' properly dominates 'b' if 'b' is defined in an instruction
-  // region that (recursively) ends up being dominated by 'a'. Walk up the list
-  // of containers enclosing B.
-  Instruction *bAncestor;
-  do {
-    bAncestor = blockListB->getContainingInst();
-    // If 'bAncestor' is the top level function, then 'a' is a block
-    // that doesn't dominate 'b'.
-    if (!bAncestor)
-      return false;
+      blockListB = bAncestor->getBlock()->getParent();
+    } while (blockListA != blockListB);
 
-    blockListB = bAncestor->getBlock()->getParent();
-  } while (blockListA != blockListB);
+    // Check to see if the ancestor of 'b' is the same block as 'a'.
+    b = bAncestor->getBlock();
+    if (a == b)
+      return true;
+  }
 
-  // Block A and a block B's ancestor lie in the same block list. (We need to
-  // use 'dominates' below as opposed to properlyDominates since this is an
-  // ancestor of B).
-  return DominatorTreeBase::dominates(a, bAncestor->getBlock());
+  // Otherwise, use the standard dominance functionality.
+  auto baseInfoIt = dominanceInfos.find(blockListA);
+  assert(baseInfoIt != dominanceInfos.end() && "block list info not found");
+  return baseInfoIt->second->properlyDominates(a, b);
 }
+
+template class mlir::detail::DominanceInfoBase</*IsPostDom=*/true>;
+template class mlir::detail::DominanceInfoBase</*IsPostDom=*/false>;
+
+//===----------------------------------------------------------------------===//
+// DominanceInfo
+//===----------------------------------------------------------------------===//
 
 /// Return true if instruction A properly dominates instruction B.
 bool DominanceInfo::properlyDominates(const Instruction *a,
                                       const Instruction *b) {
-  auto *aBlock = a->getBlock();
-  auto *bBlock = b->getBlock();
+  auto *aBlock = a->getBlock(), *bBlock = b->getBlock();
 
   // If the blocks are the same, then check if b is before a in the block.
   if (aBlock == bBlock)
     return a->isBeforeInBlock(b);
-
-  // If the blocks are different, but in the same function-level block list,
-  // then a standard block dominance query is sufficient.
-  auto *aFunction = aBlock->getParent()->getContainingFunction();
-  auto *bFunction = bBlock->getParent()->getContainingFunction();
-  if (aFunction && bFunction && aFunction == bFunction)
-    return DominatorTreeBase::properlyDominates(aBlock, bBlock);
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
   if (auto *bAncestor = aBlock->findAncestorInstInBlock(*b)) {
@@ -98,7 +118,8 @@ bool DominanceInfo::properlyDominates(const Instruction *a,
     return dominates(a, bAncestor);
   }
 
-  return false;
+  // If the blocks are different, check if a's block dominates b's.
+  return properlyDominates(aBlock, bBlock);
 }
 
 /// Return true if value A properly dominates instruction B.
@@ -111,21 +132,18 @@ bool DominanceInfo::properlyDominates(const Value *a, const Instruction *b) {
   return dominates(cast<BlockArgument>(a)->getOwner(), b->getBlock());
 }
 
+//===----------------------------------------------------------------------===//
+// PostDominanceInfo
+//===----------------------------------------------------------------------===//
+
 /// Returns true if statement 'a' properly postdominates statement b.
 bool PostDominanceInfo::properlyPostDominates(const Instruction *a,
                                               const Instruction *b) {
-  auto *aBlock = a->getBlock();
-  auto *bBlock = b->getBlock();
+  auto *aBlock = a->getBlock(), *bBlock = b->getBlock();
 
   // If the blocks are the same, check if b is before a in the block.
   if (aBlock == bBlock)
     return b->isBeforeInBlock(a);
-
-  // If the blocks are different, but in the same function-level block list,
-  // then a standard block dominance query is sufficient.
-  if (aBlock->getParent()->getContainingFunction() &&
-      bBlock->getParent()->getContainingFunction())
-    return PostDominatorTreeBase::properlyDominates(aBlock, bBlock);
 
   // Traverse up b's hierarchy to check if b's block is contained in a's.
   if (const auto *bAncestor = a->getBlock()->findAncestorInstInBlock(*b))
@@ -134,6 +152,6 @@ bool PostDominanceInfo::properlyPostDominates(const Instruction *a,
     // bAncestor.
     return postDominates(a, bAncestor);
 
-  // b's block is not contained in A's.
-  return false;
+  // If the blocks are different, check if a's block post dominates b's.
+  return properlyDominates(aBlock, bBlock);
 }
