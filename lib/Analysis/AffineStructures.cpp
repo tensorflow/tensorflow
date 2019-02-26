@@ -41,7 +41,7 @@ namespace {
 // See comments for SimpleAffineExprFlattener.
 // An AffineExprFlattener extends a SimpleAffineExprFlattener by recording
 // constraint information associated with mod's, floordiv's, and ceildiv's
-// in localVarCst.
+// in FlatAffineConstraints 'localVarCst'.
 struct AffineExprFlattener : public SimpleAffineExprFlattener {
 public:
   // Constraints connecting newly introduced local variables (for mod's and
@@ -50,7 +50,7 @@ public:
   FlatAffineConstraints localVarCst;
 
   AffineExprFlattener(unsigned nDims, unsigned nSymbols, MLIRContext *ctx)
-      : SimpleAffineExprFlattener(nDims, nSymbols, ctx) {
+      : SimpleAffineExprFlattener(nDims, nSymbols) {
     localVarCst.reset(nDims, nSymbols, /*numLocals=*/0);
   }
 
@@ -58,8 +58,9 @@ private:
   // Add a local identifier (needed to flatten a mod, floordiv, ceildiv expr).
   // The local identifier added is always a floordiv of a pure add/mul affine
   // function of other identifiers, coefficients of which are specified in
-  // dividend and with respect to a positive constant divisor. localExpr is the
-  // simplified tree expression (AffineExpr) corresponding to the quantifier.
+  // `dividend' and with respect to the positive constant `divisor'. localExpr
+  // is the simplified tree expression (AffineExpr) corresponding to the
+  // quantifier.
   void addLocalFloorDivId(ArrayRef<int64_t> dividend, int64_t divisor,
                           AffineExpr localExpr) override {
     SimpleAffineExprFlattener::addLocalFloorDivId(dividend, divisor, localExpr);

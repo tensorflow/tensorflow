@@ -260,15 +260,13 @@ public:
   // will be, and linearize this to std::vector<int64_t> to prevent
   // SmallVector moves on re-allocation.
   std::vector<SmallVector<int64_t, 8>> operandExprStack;
-  // Constraints connecting newly introduced local variables (for mod's and
-  // div's) to existing (dimensional and symbolic) ones. These are always
-  // inequalities.
 
   unsigned numDims;
   unsigned numSymbols;
-  // Number of newly introduced identifiers to flatten mod/floordiv/ceildiv
-  // expressions that could not be simplified.
+
+  // Number of newly introduced identifiers to flatten mod/floordiv/ceildiv's.
   unsigned numLocals;
+
   // AffineExpr's corresponding to the floordiv/ceildiv/mod expressions for
   // which new identifiers were introduced; if the latter do not get canceled
   // out, these expressions can be readily used to reconstruct the AffineExpr
@@ -277,15 +275,19 @@ public:
   // will be simplified to d0 + q, where q = (d0 + d1) ceildiv 2. (d0 + d1)
   // ceildiv 2 would be the local expression stored for q.
   SmallVector<AffineExpr, 4> localExprs;
-  MLIRContext *context;
 
-  SimpleAffineExprFlattener(unsigned numDims, unsigned numSymbols,
-                            MLIRContext *context);
+  SimpleAffineExprFlattener(unsigned numDims, unsigned numSymbols);
 
   virtual ~SimpleAffineExprFlattener() = default;
 
+  // Visitor method overrides.
   void visitMulExpr(AffineBinaryOpExpr expr);
   void visitAddExpr(AffineBinaryOpExpr expr);
+  void visitDimExpr(AffineDimExpr expr);
+  void visitSymbolExpr(AffineSymbolExpr expr);
+  void visitConstantExpr(AffineConstantExpr expr);
+  void visitCeilDivExpr(AffineBinaryOpExpr expr);
+  void visitFloorDivExpr(AffineBinaryOpExpr expr);
 
   //
   // t = expr mod c   <=>  t = expr - c*q and c*q <= expr <= c*q + c - 1
@@ -295,6 +297,16 @@ public:
   // 'expr - c * q' and c * q <= expr <= c * q + c - 1 are added to localVarCst.
   void visitModExpr(AffineBinaryOpExpr expr);
 
+protected:
+  // Add a local identifier (needed to flatten a mod, floordiv, ceildiv expr).
+  // The local identifier added is always a floordiv of a pure add/mul affine
+  // function of other identifiers, coefficients of which are specified in
+  // dividend and with respect to a positive constant divisor. localExpr is the
+  // simplified tree expression (AffineExpr) corresponding to the quantifier.
+  virtual void addLocalFloorDivId(ArrayRef<int64_t> dividend, int64_t divisor,
+                                  AffineExpr localExpr);
+
+private:
   // t = expr floordiv c   <=> t = q, c * q <= expr <= c * q + c - 1
   // A floordiv is thus flattened by introducing a new local variable q, and
   // replacing that expression with 'q' while adding the constraints
@@ -304,21 +316,6 @@ public:
   // A ceildiv is similarly flattened:
   // t = expr ceildiv c   <=> t =  (expr + c - 1) floordiv c
   void visitDivExpr(AffineBinaryOpExpr expr, bool isCeil);
-
-  void visitDimExpr(AffineDimExpr expr);
-  void visitSymbolExpr(AffineSymbolExpr expr);
-  void visitConstantExpr(AffineConstantExpr expr);
-  void visitCeilDivExpr(AffineBinaryOpExpr expr);
-  void visitFloorDivExpr(AffineBinaryOpExpr expr);
-
-protected:
-  // Add a local identifier (needed to flatten a mod, floordiv, ceildiv expr).
-  // The local identifier added is always a floordiv of a pure add/mul affine
-  // function of other identifiers, coefficients of which are specified in
-  // dividend and with respect to a positive constant divisor. localExpr is the
-  // simplified tree expression (AffineExpr) corresponding to the quantifier.
-  virtual void addLocalFloorDivId(ArrayRef<int64_t> dividend, int64_t divisor,
-                                  AffineExpr localExpr);
 
   int findLocalId(AffineExpr localExpr);
 

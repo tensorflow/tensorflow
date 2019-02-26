@@ -336,9 +336,8 @@ AffineExpr mlir::toAffineExpr(ArrayRef<int64_t> eq, unsigned numDims,
 }
 
 SimpleAffineExprFlattener::SimpleAffineExprFlattener(unsigned numDims,
-                                                     unsigned numSymbols,
-                                                     MLIRContext *context)
-    : numDims(numDims), numSymbols(numSymbols), numLocals(0), context(context) {
+                                                     unsigned numSymbols)
+    : numDims(numDims), numSymbols(numSymbols), numLocals(0) {
   operandExprStack.reserve(8);
 }
 
@@ -412,6 +411,7 @@ void SimpleAffineExprFlattener::visitModExpr(AffineBinaryOpExpr expr) {
   int64_t floorDivisor = rhsConst / static_cast<int64_t>(gcd);
 
   // Construct the AffineExpr form of the floordiv to store in localExprs.
+  MLIRContext *context = expr.getContext();
   auto dividendExpr =
       toAffineExpr(floorDividend, numDims, numSymbols, localExprs, context);
   auto divisorExpr = getAffineConstantExpr(floorDivisor, context);
@@ -495,6 +495,7 @@ void SimpleAffineExprFlattener::visitDivExpr(AffineBinaryOpExpr expr,
   // the ceil/floor expr (simplified up until here). Add an existential
   // quantifier to express its result, i.e., expr1 div expr2 is replaced
   // by a new identifier, q.
+  MLIRContext *context = expr.getContext();
   auto a = toAffineExpr(lhs, numDims, numSymbols, localExprs, context);
   auto b = getAffineConstantExpr(divisor, context);
 
@@ -533,7 +534,7 @@ void SimpleAffineExprFlattener::addLocalFloorDivId(ArrayRef<int64_t> dividend,
     subExpr.insert(subExpr.begin() + getLocalVarStartIndex() + numLocals, 0);
   localExprs.push_back(localExpr);
   numLocals++;
-  // dividend and divisor are ignored; an override of this method uses it.
+  // dividend and divisor are not used here; an override of this method uses it.
 }
 
 int SimpleAffineExprFlattener::findLocalId(AffineExpr localExpr) {
@@ -551,7 +552,7 @@ AffineExpr mlir::simplifyAffineExpr(AffineExpr expr, unsigned numDims,
   if (!expr.isPureAffine())
     return expr;
 
-  SimpleAffineExprFlattener flattener(numDims, numSymbols, expr.getContext());
+  SimpleAffineExprFlattener flattener(numDims, numSymbols);
   flattener.walkPostOrder(expr);
   ArrayRef<int64_t> flattenedExpr = flattener.operandExprStack.back();
   auto simplifiedExpr = toAffineExpr(flattenedExpr, numDims, numSymbols,
@@ -572,8 +573,7 @@ static bool getFlattenedAffineExprs(
     return true;
   }
 
-  SimpleAffineExprFlattener flattener(numDims, numSymbols,
-                                      exprs[0].getContext());
+  SimpleAffineExprFlattener flattener(numDims, numSymbols);
   // Use the same flattener to simplify each expression successively. This way
   // local identifiers / expressions are shared.
   for (auto expr : exprs) {
