@@ -90,7 +90,7 @@ bool FuncVerifier::verify() {
                                    fn.getName().c_str());
 
   // External functions have nothing more to check.
-  if (fn.empty())
+  if (fn.isExternal())
     return false;
 
   // Verify the first block has no predecessors.

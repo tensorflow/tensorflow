@@ -513,7 +513,7 @@ bool ModuleTranslation::convertFunctions() {
   // Convert functions.
   for (const Function &function : mlirModule) {
     // Ignore external functions.
-    if (function.empty())
+    if (function.isExternal())
       continue;
 
     if (convertOneFunction(function))

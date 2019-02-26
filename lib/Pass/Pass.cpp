@@ -37,7 +37,7 @@ void ModulePass::anchor() {}
 PassResult FunctionPass::runOnModule(Module *m) {
   for (auto &fn : *m) {
     // All function passes ignore external functions.
-    if (fn.empty())
+    if (fn.isExternal())
       continue;
 
     if (runOnFunction(&fn))

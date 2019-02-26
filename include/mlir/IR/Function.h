@@ -80,6 +80,9 @@ public:
   /// Unlink this function from its module and delete it.
   void erase();
 
+  /// Returns true if this function is external, i.e. it has no body.
+  bool isExternal() const { return empty(); }
+
   //===--------------------------------------------------------------------===//
   // Body Handling
   //===--------------------------------------------------------------------===//

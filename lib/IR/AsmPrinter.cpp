@@ -1301,7 +1301,7 @@ void FunctionPrinter::printFunctionSignature() {
   auto fnType = function->getType();
 
   // If this is an external function, don't print argument labels.
-  if (function->empty()) {
+  if (function->isExternal()) {
     interleaveComma(fnType.getInputs(),
                     [&](Type eltType) { printType(eltType); });
   } else {
