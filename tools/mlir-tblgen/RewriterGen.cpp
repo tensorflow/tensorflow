@@ -136,7 +136,17 @@ void PatternEmitter::emitConstantAttr(tblgen::ConstantAttr constAttr) {
 
 static Twine resultName(const StringRef &name) { return Twine("res_") + name; }
 
-static Twine boundArgName(const StringRef &name) { return Twine("s.") + name; }
+static Twine boundArgNameInMatch(const StringRef &name) {
+  // Bound value in the source pattern are grouped into a transient struct. That
+  // struct is hold in a local variable named as "state" in the match() method.
+  return Twine("state->") + name;
+}
+
+static Twine boundArgNameInRewrite(const StringRef &name) {
+  // Bound value in the source pattern are grouped into a transient struct. That
+  // struct is passed into the rewrite() method as a parameter with name `s`.
+  return Twine("s.") + name;
+}
 
 // Helper function to match patterns.
 void PatternEmitter::emitOpMatch(DagNode tree, int depth) {
@@ -271,7 +281,7 @@ void PatternEmitter::emitMatchMethod(DagNode tree) {
 
   auto deduceName = [&](const std::string &name) -> std::string {
     if (pattern.isArgBoundInSourcePattern(name)) {
-      return boundArgName(name).str();
+      return boundArgNameInMatch(name).str();
     }
     if (pattern.isResultBoundInSourcePattern(name)) {
       return resultName(name).str();
@@ -387,9 +397,7 @@ std::string PatternEmitter::handleReplaceWithValue(DagNode tree) {
   auto name = tree.getArgName(0);
   pattern.ensureArgBoundInSourcePattern(name);
 
-  // We are referencing some bound value in the source pattern. Those values are
-  // grouped into a transient struct named as `s`.
-  return boundArgName(name).str();
+  return boundArgNameInRewrite(name).str();
 }
 
 std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
@@ -438,7 +446,7 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
     auto name = tree.getArgName(index);
     if (this->pattern.isArgBoundInSourcePattern(name)) {
       // Bound in source pattern, explicitly named
-      return boundArgName(name).str();
+      return boundArgNameInRewrite(name).str();
     }
 
     // Bound in result pattern, explicitly named
@@ -494,10 +502,11 @@ std::string PatternEmitter::emitOpCreate(DagNode tree, int resultIndex,
 
     if (leaf.isUnspecified() || leaf.isOperandMatcher()) {
       pattern.ensureArgBoundInSourcePattern(patArgName);
-      os << formatv("/*{0}=*/s.{1}", opArgName, patArgName);
+      std::string result = boundArgNameInRewrite(patArgName).str();
+      os << formatv("/*{0}=*/{1}", opArgName, result);
     } else if (leaf.isAttrTransformer()) {
       pattern.ensureArgBoundInSourcePattern(patArgName);
-      std::string result = boundArgName(patArgName).str();
+      std::string result = boundArgNameInRewrite(patArgName).str();
       result = formatv(leaf.getTransformationTemplate().c_str(), result);
       os << formatv("/*{0}=*/{1}", opArgName, result);
     } else if (leaf.isConstantAttr()) {
@@ -539,7 +548,7 @@ std::string PatternEmitter::emitReplaceWithNativeBuilder(DagNode resultTree) {
     }
     if (!first)
       os << ",";
-    os << boundArgName(name);
+    os << boundArgNameInRewrite(name);
     first = false;
   }
   if (!printingAttr)
