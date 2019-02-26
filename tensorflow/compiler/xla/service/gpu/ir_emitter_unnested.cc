@@ -186,6 +186,7 @@ llvm::Function* IrEmitterUnnested::BuildKernelPrototype(
                              kernel_name.c_str(), module);
 
   kernel->setCallingConv(llvm::CallingConv::AMDGPU_KERNEL);
+  kernel->addFnAttr("amdgpu-flat-work-group-size", "1, 1024");
 
   // Add dereferenceable and alignment information to each of the kernel's
   // parameters.
