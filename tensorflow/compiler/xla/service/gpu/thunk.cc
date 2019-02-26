@@ -32,6 +32,8 @@ std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
       return os << "kCudnnBatchNormForwardInference";
     case Thunk::kCudnnBatchNormForwardTraining:
       return os << "kCudnnBatchNormForwardTraining";
+    case Thunk::kNcclAllReduce:
+      return os << "kNcclAllReduce";
     case Thunk::kFft:
       return os << "kFft";
     case Thunk::kGemm:
