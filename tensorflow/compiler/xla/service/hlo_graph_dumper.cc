@@ -829,8 +829,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return StrFormat("%s (%s)", constant->literal().ToString(),
-                       ShapeUtil::HumanString(constant->shape()));
+      return constant->literal().ToString();
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
