@@ -457,6 +457,7 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
+    tags = ["notsan"],  # TODO(b/126040872): Re-enable when fixed.
 )
 
 cuda_py_test(
