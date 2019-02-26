@@ -62,13 +62,11 @@ FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
 
-class CacheKey(
-    collections.namedtuple("CacheKey", [
-        "input_signature", "parent_graph", "device_functions",
-        "colocation_stack", "uses_xla"])):
+CacheKey = collections.namedtuple("CacheKey", [
+    "input_signature", "parent_graph", "device_functions",
+    "colocation_stack", "uses_xla"])
 
-  def replace(self, *args, **kwargs):
-    return self._replace(*args, **kwargs)
+CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
 
 def _flat_shape_list(*params):
