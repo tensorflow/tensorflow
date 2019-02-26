@@ -120,7 +120,7 @@ model = tflite::FlatBufferModel::BuildFromFile([graph_path UTF8String]);
 Behind the scenes, the model is loaded as a memory-mapped file. It offers faster
 load times and reduce the dirty pages in memory.
 
-Construct a `BuiltinOpResolver` to use the TensorFliw Lite buildin ops. Then,
+Construct a `BuiltinOpResolver` to use the TensorFlow Lite buildin ops. Then,
 create the interpreter object using `InterpreterBuilder` that takes the model
 file as argument as shown below.
 
