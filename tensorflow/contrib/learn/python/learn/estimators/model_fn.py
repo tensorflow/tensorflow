@@ -219,7 +219,7 @@ class ModelFnOps(
         used if a Servo request does not explicitly mention which head to infer
         on. Pass the key of the output alternative here that you want to
         designate as default. A separate ExportOutpout for this default head
-        wil be added to the export_outputs dict with the special key
+        will be added to the export_outputs dict with the special key
         signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY, unless there is
         already an enry in output_alternatives with this special key.
 
