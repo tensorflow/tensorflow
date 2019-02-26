@@ -563,7 +563,7 @@ tf_py_test(
 
 tf_py_test(
     name = "convolutional_recurrent_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/convolutional_recurrent_test.py"],
     additional_deps = [
         ":keras",
@@ -571,7 +571,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
 )
 
 cuda_py_test(
