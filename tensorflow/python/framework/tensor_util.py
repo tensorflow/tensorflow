@@ -944,7 +944,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   equivalent to calling
   `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.RaggedTensor, tf.Variable))`
   and also checks if all the component variables of a MirroredVariable or a
-  ReplicaLocalVariable are tensors.
+  SyncOnReadVariable are tensors.
 
   Args:
     x: A python object to check.

@@ -1222,8 +1222,6 @@ class TensorBoard(Callback):
           with self._train_writer.as_default():
             with summary_ops_v2.always_record_summaries():
               summary_ops_v2.graph(K.get_graph())
-              if self.model._is_graph_network:  # pylint: disable=protected-access
-                summary_ops_v2.keras_model('keras', self.model, step=0)
 
   def _close_writers(self):
     """Close all remaining open file writers owned by this callback.

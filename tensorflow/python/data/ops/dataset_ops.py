@@ -229,38 +229,6 @@ class DatasetV2(object):
     """
     raise NotImplementedError("Dataset._element_structure")
 
-  @property
-  def output_classes(self):
-    """Returns the class of each component of an element of this dataset.
-
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
-
-    Returns:
-      A nested structure of Python `type` objects corresponding to each
-      component of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
-
-  @property
-  def output_shapes(self):
-    """Returns the shape of each component of an element of this dataset.
-
-    Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
-      component of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
-
-  @property
-  def output_types(self):
-    """Returns the type of each component of an element of this dataset.
-
-    Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
-      of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_types()  # pylint: disable=protected-access
-
   def __repr__(self):
     output_shapes = nest.map_structure(str, get_legacy_output_shapes(self))
     output_shapes = str(output_shapes).replace("'", "")
@@ -1546,6 +1514,38 @@ class DatasetV1(DatasetV2):
     return iterator_ops.Iterator(
         iterator_resource, initializer, get_legacy_output_types(dataset),
         get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
+
+  @property
+  def output_classes(self):
+    """Returns the class of each component of an element of this dataset.
+
+    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+
+    Returns:
+      A nested structure of Python `type` objects corresponding to each
+      component of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
+
+  @property
+  def output_shapes(self):
+    """Returns the shape of each component of an element of this dataset.
+
+    Returns:
+      A nested structure of `tf.TensorShape` objects corresponding to each
+      component of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
+
+  @property
+  def output_types(self):
+    """Returns the type of each component of an element of this dataset.
+
+    Returns:
+      A nested structure of `tf.DType` objects corresponding to each component
+      of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_types()  # pylint: disable=protected-access
 
   @property
   def _element_structure(self):

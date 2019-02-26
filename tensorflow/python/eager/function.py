@@ -318,6 +318,7 @@ class _EagerDefinedFunction(object):
     self._num_outputs = len(self.signature.output_arg)
     self._output_types = [o.type for o in self.signature.output_arg]
     self._output_shapes = [o.shape for o in outputs]
+    self._control_captures = graph.control_captures
     self._func_graph_outputs = outputs
     self.grad_func_name = None
     self.python_grad_func = None
@@ -386,13 +387,14 @@ class _EagerDefinedFunction(object):
       g = ops.get_default_graph()
       self.add_to_graph(g)
       signature = self.signature
-      op = g.create_op(
-          signature.name,
-          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
-          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-          op_def=signature,
-          name="FunctionCall",
-          compute_shapes=False)
+      with ops.control_dependencies(self._control_captures):
+        op = g.create_op(
+            signature.name,
+            [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
+            tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
+            op_def=signature,
+            name="FunctionCall",
+            compute_shapes=False)
       outputs = op.outputs
       if not outputs:
         return op
@@ -405,13 +407,14 @@ class _EagerDefinedFunction(object):
       # creates `PartitionedCallOp` kernels by default, or remove the previous
       # branch if a TPU kernel is registered for `PartitionedCall`.
       with _InterpolateFunctionError(self):
-        outputs = functional_ops.partitioned_call(
-            args=args,
-            f=self,
-            tout=self._output_types,
-            executing_eagerly=executing_eagerly,
-            config=config,
-            executor_type=executor_type)
+        with ops.control_dependencies(self._control_captures):
+          outputs = functional_ops.partitioned_call(
+              args=args,
+              f=self,
+              tout=self._output_types,
+              executing_eagerly=executing_eagerly,
+              config=config,
+              executor_type=executor_type)
 
     if executing_eagerly:
       return outputs

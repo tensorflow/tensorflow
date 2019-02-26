@@ -22,11 +22,14 @@ limitations under the License.
 namespace xla {
 
 // Returns the precise trip count of the loop if it's statically known,
-// nullopt otherwise. max_value_returned limits the number of steps that are
-// evaluated while trying to brute force a loop trip count, trip counts larger
-// than max_value_returned result in nullopt.
-absl::optional<int64> ComputeWhileLoopTripCount(HloInstruction *while_op,
-                                                int64 max_value_returned = 128);
+// nullopt otherwise.
+//
+// max_brute_force_iters limits the number of steps that are evaluated while
+// trying to brute force a loop trip count. trip counts larger than
+// max_brute_force_iters may be returned if we can pattern-match the loop
+// condition.
+absl::optional<int64> ComputeWhileLoopTripCount(
+    HloInstruction *while_op, int64 max_brute_force_iters = 128);
 
 // Returns an upper bound on the trip count of the loop if it's statically
 // known, nullopt otherwise.

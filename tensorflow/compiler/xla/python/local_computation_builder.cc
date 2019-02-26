@@ -498,7 +498,8 @@ LocalOp ComputationBuilder::Collapse(const LocalOp& operand,
 LocalOp ComputationBuilder::AllToAll(
     const LocalOp& operand, int64 split_dimension, int64 concat_dimension,
     int64 split_count, absl::Span<const ReplicaGroup> replica_groups) {
-  std::vector<ReplicaGroup> rg(replica_groups.size());
+  std::vector<ReplicaGroup> rg;
+  rg.reserve(replica_groups.size());
   for (int i = 0; i < replica_groups.size(); ++i) {
     rg.push_back(replica_groups[i]);
   }

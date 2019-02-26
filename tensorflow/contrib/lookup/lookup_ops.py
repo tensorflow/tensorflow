@@ -325,7 +325,7 @@ class HashTable(InitializableLookupTableBase):
     super(HashTable, self).__init__(default_value, initializer)
     self._value_shape = self._default_value.get_shape()
 
-  def create_resource(self):
+  def _create_resource(self):
     table_ref = gen_lookup_ops.hash_table_v2(
         shared_name=self._shared_name,
         key_dtype=self._initializer.key_dtype,

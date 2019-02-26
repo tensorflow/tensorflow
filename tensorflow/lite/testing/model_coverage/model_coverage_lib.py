@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import os
 import numpy as np
 
 from tensorflow.core.framework import graph_pb2 as _graph_pb2
@@ -25,11 +26,48 @@ from tensorflow.lite.python import convert_saved_model as _convert_saved_model
 from tensorflow.lite.python import lite as _lite
 from tensorflow.python import keras as _keras
 from tensorflow.python.client import session as _session
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework.importer import import_graph_def as _import_graph_def
+from tensorflow.python.keras.preprocessing import image
 from tensorflow.python.lib.io import file_io as _file_io
+from tensorflow.python.platform import resource_loader as _resource_loader
+from tensorflow.python.saved_model import load as _load
 from tensorflow.python.saved_model import loader as _loader
 from tensorflow.python.saved_model import signature_constants as _signature_constants
 from tensorflow.python.saved_model import tag_constants as _tag_constants
+
+
+def get_filepath(filename, base_dir=None):
+  """Returns the full path of the filename.
+
+  Args:
+    filename: Subdirectory and name of the model file.
+    base_dir: Base directory containing model file.
+
+  Returns:
+    str.
+  """
+  if base_dir is None:
+    base_dir = "learning/brain/mobile/tflite_compat_models"
+  return os.path.join(_resource_loader.get_root_dir_with_all_resources(),
+                      base_dir, filename)
+
+
+def get_image(size):
+  """Returns an image loaded into an np.ndarray with dims [1, size, size, 3].
+
+  Args:
+    size: Size of image.
+
+  Returns:
+    np.ndarray.
+  """
+  img_filename = _resource_loader.get_path_to_datafile(
+      "testdata/grace_hopper.jpg")
+  img = image.load_img(img_filename, target_size=(size, size))
+  img_array = image.img_to_array(img)
+  img_array = np.expand_dims(img_array, axis=0)
+  return img_array
 
 
 def _convert(converter, **kwargs):
@@ -186,6 +224,32 @@ def compare_models(tflite_model, tf_eval_func, input_data=None, tolerance=5):
     np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
 
 
+def compare_models_v2(tflite_model, concrete_func, input_data=None,
+                      tolerance=5):
+  """Compares TensorFlow and TFLite models for TensorFlow 2.0.
+
+  Unless the input data is provided, the models are compared with random data.
+  Currently only 1 input and 1 output are supported by this function.
+
+  Args:
+    tflite_model: Serialized TensorFlow Lite model.
+    concrete_func: TensorFlow ConcreteFunction.
+    input_data: np.ndarray to pass into models during inference. (default None)
+    tolerance: Decimal place to check accuracy to. (default 5)
+  """
+  if input_data is None:
+    input_data = _generate_random_input_data(tflite_model)
+  input_data_func = constant_op.constant(input_data[0])
+
+  # Gets the TensorFlow results as a map from the output names to outputs.
+  # Converts the map into a list that is equivalent to the TFLite list.
+  tf_results_map = concrete_func(input_1=input_data_func)
+  tf_results = [tf_results_map[tf_results_map.keys()[0]]]
+  tflite_results = _evaluate_tflite_model(tflite_model, input_data)
+  for tf_result, tflite_result in zip(tf_results, tflite_results):
+    np.testing.assert_almost_equal(tf_result, tflite_result, tolerance)
+
+
 def test_frozen_graph_quant(filename,
                             input_arrays,
                             output_arrays,
@@ -313,6 +377,36 @@ def test_saved_model(directory,
 
   tf_eval_func = evaluate_saved_model(directory, tag_set, signature_key)
   compare_models(tflite_model, tf_eval_func, input_data=input_data)
+
+
+# TODO(nupurgarg): Remove input_shape parameter after bug with shapes is fixed.
+def test_saved_model_v2(directory,
+                        input_shape=None,
+                        signature_key=None,
+                        input_data=None,
+                        **kwargs):
+  """Validates the TensorFlow SavedModel converts to a TFLite model.
+
+  Converts the TensorFlow SavedModel to TFLite and checks the accuracy of the
+  model on random data.
+
+  Args:
+    directory: SavedModel directory to convert.
+    input_shape: Input shape for the single input array as a list of integers.
+    signature_key: Key identifying SignatureDef containing inputs and outputs.
+    input_data: np.ndarray to pass into models during inference. (default None)
+    **kwargs: Additional arguments to be passed into the converter.
+  """
+  model = _load.load(directory)
+  if not signature_key:
+    signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
+  concrete_func = model.signatures[signature_key]
+  concrete_func.inputs[0].set_shape(input_shape)
+
+  converter = _lite.TFLiteConverterV2.from_concrete_function(concrete_func)
+  tflite_model = _convert(converter, **kwargs)
+
+  compare_models_v2(tflite_model, concrete_func, input_data=input_data)
 
 
 def test_keras_model(filename,

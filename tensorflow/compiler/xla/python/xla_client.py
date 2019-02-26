@@ -30,9 +30,12 @@ import numpy as np
 import six
 from six.moves import xrange
 
-from tensorflow.compiler.xla import xla_data_pb2
+# Note this module does *not* depend on any Python protocol buffers. The XLA
+# Python bindings are currently packaged both as part of jaxlib and as part
+# of TensorFlow. If we use protocol buffers here, then importing both jaxlib
+# and TensorFlow may fail with duplicate protocol buffer message definitions.
+
 from tensorflow.compiler.xla.python import pywrap_xla as c_api
-from tensorflow.compiler.xla.service import hlo_pb2
 
 # Import the XRT backend, if available.
 try:
@@ -228,15 +231,6 @@ def BackendSpec(backend, target):
     raise ValueError('Unknown backend {}'.format(backend))
 
 
-def OpMetadataToProto(pyobj):
-  proto = xla_data_pb2.OpMetadata()
-  for field in _OP_METADATA_FIELDS:
-    attr = getattr(pyobj, field)
-    if attr is not None:
-      setattr(proto, field, attr)
-  return proto
-
-
 def CurrentSourceInfoMetadata(op_type=None, op_name=None, skip_frames=1):
   """Helper for use in source mapping that returns an OpMetadata object."""
   full_filename, lineno = inspect.stack()[skip_frames][1:3]
@@ -276,8 +270,7 @@ def _convert_padding_type_to_pad_values(padding_type, lhs_dims, rhs_dims,
     pad_sizes = [max((out_size - 1) * stride + filter_size - in_size, 0)
                  for out_size, stride, filter_size, in_size
                  in zip(out_shape, window_strides, rhs_dims, lhs_dims)]
-    return [(pad_size // 2, pad_size - pad_size // 2)
-            for pad_size in pad_sizes]
+    return [(pad_size // 2, pad_size - pad_size // 2) for pad_size in pad_sizes]
   else:
     msg = 'Unexpected PaddingType value: {}'
     raise ValueError(msg.format(padding_type))
@@ -349,29 +342,56 @@ _BINARY_OPS = [
 ]
 
 
+class PrimitiveType(enum.IntEnum):
+  """Python copy of the XLA PrimitiveType enum.
+
+  Must match the corresponding protocol buffer.
+  """
+  PRIMITIVE_TYPE_INVALID = 0
+  PRED = 1
+  S8 = 2
+  S16 = 3
+  S32 = 4
+  S64 = 5
+  U8 = 6
+  U16 = 7
+  U32 = 8
+  U64 = 9
+  BF16 = 16
+  F16 = 10
+  F32 = 11
+  F64 = 12
+  C64 = 15
+  C128 = 18
+  TUPLE = 13
+  OPAQUE = 14
+  TOKEN = 17
+
+
 XLA_ELEMENT_TYPE_TO_DTYPE = {
-    xla_data_pb2.PRED: np.dtype('bool'),
-    xla_data_pb2.S8: np.dtype('int8'),
-    xla_data_pb2.S16: np.dtype('int16'),
-    xla_data_pb2.S32: np.dtype('int32'),
-    xla_data_pb2.S64: np.dtype('int64'),
-    xla_data_pb2.U8: np.dtype('uint8'),
-    xla_data_pb2.U16: np.dtype('uint16'),
-    xla_data_pb2.U32: np.dtype('uint32'),
-    xla_data_pb2.U64: np.dtype('uint64'),
-    xla_data_pb2.F16: np.dtype('float16'),
-    xla_data_pb2.F32: np.dtype('float32'),
-    xla_data_pb2.F64: np.dtype('float64'),
-    xla_data_pb2.C64: np.dtype('complex64'),
-    xla_data_pb2.C128: np.dtype('complex128'),
-    xla_data_pb2.TUPLE: np.dtype(np.object),
+    PrimitiveType.PRED: np.dtype('bool'),
+    PrimitiveType.S8: np.dtype('int8'),
+    PrimitiveType.S16: np.dtype('int16'),
+    PrimitiveType.S32: np.dtype('int32'),
+    PrimitiveType.S64: np.dtype('int64'),
+    PrimitiveType.U8: np.dtype('uint8'),
+    PrimitiveType.U16: np.dtype('uint16'),
+    PrimitiveType.U32: np.dtype('uint32'),
+    PrimitiveType.U64: np.dtype('uint64'),
+    PrimitiveType.F16: np.dtype('float16'),
+    PrimitiveType.F32: np.dtype('float32'),
+    PrimitiveType.F64: np.dtype('float64'),
+    PrimitiveType.C64: np.dtype('complex64'),
+    PrimitiveType.C128: np.dtype('complex128'),
+    PrimitiveType.TUPLE: np.dtype(np.object),
 }
 
 # Note the conversion on the key. Numpy has a known issue wherein dtype hashing
 # doesn't work as expected (https://github.com/numpy/numpy/issues/7242). Thus,
 # when keying by dtype in this dict, we use the string form of dtypes.
-DTYPE_TO_XLA_ELEMENT_TYPE = {str(dt): et
-                             for et, dt in XLA_ELEMENT_TYPE_TO_DTYPE.items()}
+DTYPE_TO_XLA_ELEMENT_TYPE = {
+    str(dt): et for et, dt in XLA_ELEMENT_TYPE_TO_DTYPE.items()
+}
 
 
 def dtype_to_etype(dtype):
@@ -430,6 +450,13 @@ class LocalBuffer(object):
     self.delete()
 
 
+class Format(enum.IntEnum):
+  """Python copy of the Format protocol buffer enum."""
+  INVALID_FORMAT = 0
+  DENSE = 1
+  SPARSE = 2
+
+
 class Shape(object):
   """Represents an XLA shape.
 
@@ -459,8 +486,8 @@ class Shape(object):
     if (not isinstance(dimensions, tuple) or
         not all(isinstance(i, int) for i in dimensions)):
       dimensions = tuple(int(i) for i in dimensions)
-    return Shape(dimensions, np.dtype(element_type),
-                 minor_to_major=minor_to_major)
+    return Shape(
+        dimensions, np.dtype(element_type), minor_to_major=minor_to_major)
 
   @staticmethod
   def from_pyval(pyval):
@@ -539,8 +566,8 @@ class Shape(object):
     """Map f over each leaf-level array subshape.
 
     Args:
-      f: The function to apply. Whenever f returns None, the identity is
-        applied instead.
+      f: The function to apply. Whenever f returns None, the identity is applied
+        instead.
 
     Returns:
       A new Shape with the mapped leaves.
@@ -565,8 +592,8 @@ class Shape(object):
       raise ValueError('not an array shape')
     if not isinstance(minor_to_major, tuple):
       raise TypeError('minor_to_major must be a tuple')
-    updated = Shape.array_shape(
-        self.element_type(), self.dimensions(), minor_to_major)
+    updated = Shape.array_shape(self.element_type(), self.dimensions(),
+                                minor_to_major)
     updated._check_minor_to_major()  # pylint: disable=protected-access
     return updated
 
@@ -583,7 +610,7 @@ class Shape(object):
   def serialize(self, proto):
     """Serializes 'shape' into proto."""
     if self.is_tuple():
-      proto.element_type = xla_data_pb2.TUPLE
+      proto.element_type = PrimitiveType.TUPLE
       for shape in self.tuple_shapes():
         shape.serialize(proto.tuple_shapes.add())
     else:
@@ -591,7 +618,7 @@ class Shape(object):
       proto.dimensions.extend(self.dimensions())
       proto.is_dynamic_dimension.extend([False for _ in self.dimensions()])
       if self.minor_to_major():
-        proto.layout.format = xla_data_pb2.DENSE
+        proto.layout.format = Format.DENSE
         proto.layout.minor_to_major.extend(self.minor_to_major())
 
 
@@ -602,7 +629,7 @@ ProgramShape = collections.namedtuple('ProgramShape',
 def _wrap_shape(shape_info):
   dtype, dims = shape_info
   element_type = DTYPE_TO_XLA_ELEMENT_TYPE[str(dtype)]
-  if element_type == xla_data_pb2.TUPLE:
+  if element_type == PrimitiveType.TUPLE:
     shapes = tuple(_wrap_shape(subshape_info) for subshape_info in dims)
     return Shape.tuple_shape(shapes)
   else:
@@ -690,15 +717,14 @@ class Computation(object):
   def computation(self):
     return self._c_computation
 
-  def GetProto(self):
-    """Get the HloModuleProto proto object in this computation.
+  def GetSerializedProto(self):
+    """Gets the serialized HloModuleProto proto object in this computation.
 
     Returns:
-       An HloModuleProto proto object that has the whole-graph information.
+       A string containing a serialized HloModuleProto proto containing the
+       computation and its dependencies.
     """
-    serialized = self.computation.GetSerializedProto()
-    proto = hlo_pb2.HloModuleProto.FromString(serialized)
-    return proto
+    return self.computation.GetSerializedProto()
 
   def GetHloText(self):
     """Get the textual HLO representation of this computation.
@@ -867,12 +893,6 @@ class Executable(object):
       self._backend.delete_executable(self._c_executable)
 
 
-def _make_replica_group_proto(replica_group):
-  replica_group_proto = xla_data_pb2.ReplicaGroup()
-  replica_group_proto.replica_ids.extend(replica_group)
-  return replica_group_proto
-
-
 class ComputationBuilder(object):
   """XLA computation builder.
 
@@ -899,6 +919,7 @@ class ComputationBuilder(object):
       root: if not None, the operator containing the return value of the
         computation.
       backend: deprecated. Pass a `backend` to `Computation.Compile` instead.
+
     Returns:
       A `Computation`.
     """
@@ -938,8 +959,8 @@ class ComputationBuilder(object):
     """Enqueues a constant op onto the computation.
 
     Args:
-      value: value for the constant, as a np.array with an explicit dtype set
-             to one of the supported types.
+      value: value for the constant, as a np.array with an explicit dtype set to
+        one of the supported types.
 
     Returns:
       A LocalOp.
@@ -1008,9 +1029,9 @@ class ComputationBuilder(object):
     Args:
       shape: the parameter's shape as a Shape object.
       name: optional string name for the parameter.
-      parameter_num: parameter number in the computation function. If None,
-        the next linear parameter number is used. The default value capability
-        can be used for auto-numbering. If you're using auto-numbering for some
+      parameter_num: parameter number in the computation function. If None, the
+        next linear parameter number is used. The default value capability can
+        be used for auto-numbering. If you're using auto-numbering for some
         parameters, use it for *all* parameters to avoid clashes.
 
     Returns:
@@ -1027,8 +1048,8 @@ class ComputationBuilder(object):
     """Enqueues a Parameter op onto the computation.
 
     Args:
-      value: a Numpy array, or a nested tuple thereof, from which the
-        shape is inferred.
+      value: a Numpy array, or a nested tuple thereof, from which the shape is
+        inferred.
       name: as in ParameterWithShape.
       parameter_num: as in ParameterWithShape.
 
@@ -1083,8 +1104,8 @@ class ComputationBuilder(object):
     Args:
       operand: the operand LocalOp to broadcast.
       shape: tuple of integers, the expected output shape.
-      broadcast_dimensions: tuple of integers identifying which dimensions
-        of the output are to be broadcast into.
+      broadcast_dimensions: tuple of integers identifying which dimensions of
+        the output are to be broadcast into.
 
     Returns:
       A LocalOp representing the added broadcast-in-dimensions op.
@@ -1150,14 +1171,14 @@ class ComputationBuilder(object):
     Args:
       operand: LocalOp representing the array to pad.
       padding_value: LocalOp representing the scalar pad value.
-      padding_config: either an xla_data_pb2.PaddingConfig or a list of integer
-        triples (edge_padding_low, edge_padding_high, interior_padding)
-        representing the configuration of the padding operation.
+      padding_config: either a PaddingConfig or a list of integer triples
+        (edge_padding_low, edge_padding_high, interior_padding) representing the
+        configuration of the padding operation.
 
     Returns:
       A LocalOp representing the added Pad op.
     """
-    if not isinstance(padding_config, xla_data_pb2.PaddingConfig):
+    if isinstance(padding_config, tuple) or isinstance(padding_config, list):
       padding_config = GetPaddingConfigFromTriples(padding_config)
     return self._client.Pad(operand, padding_value, padding_config)
 
@@ -1203,7 +1224,8 @@ class ComputationBuilder(object):
     else:
       replica_groups = list(replica_groups)
       replica_groups_protos = [
-          _make_replica_group_proto(group) for group in replica_groups]
+          _make_replica_group_proto(group) for group in replica_groups
+      ]
     if not replica_groups:
       split_count = get_replica_count()
     else:
@@ -1230,7 +1252,8 @@ class ComputationBuilder(object):
       replica_groups = []  # special value for XLA API
     else:
       replica_groups = [
-          _make_replica_group_proto(group) for group in replica_groups]
+          _make_replica_group_proto(group) for group in replica_groups
+      ]
     return self._client.CrossReplicaSum(operand, replica_groups)
 
   def Collapse(self, operand, dimensions):
@@ -1258,8 +1281,8 @@ class ComputationBuilder(object):
     """Select and scatter op, used by the gradient of ReduceWindow.
 
     Args:
-      operand: LocalOp for array of dimension N and type T over
-        which the windows slide.
+      operand: LocalOp for array of dimension N and type T over which the
+        windows slide.
       select: Computation of type (T, T) -> Pred to apply to the elements of
         each window to indicate which element is selected.
       window_dimensions: sequence of N integers for dimensions of the window.
@@ -1274,8 +1297,8 @@ class ComputationBuilder(object):
       A LocalOp representing the added SelectAndScatter op.
     """
     pads = _convert_padding_type_to_pad_values(
-        padding, self.GetShape(operand).dimensions(),
-        window_dimensions, window_strides)
+        padding, self.GetShape(operand).dimensions(), window_dimensions,
+        window_strides)
     return self._client.SelectAndScatterWithGeneralPadding(
         operand, select.computation, window_dimensions, window_strides, pads,
         source, init_value, scatter.computation)
@@ -1329,8 +1352,8 @@ class ComputationBuilder(object):
 
     Args:
       operand: LocalOp for the N dimensional array to be sliced.
-      start_indices: LocalOp for the 1D array of N integers
-        containing the starting indices of the slice.
+      start_indices: LocalOp for the 1D array of N integers containing the
+        starting indices of the slice.
       slice_sizes: iterable of N integers containing the slice sizes in each
         dimension.
 
@@ -1347,6 +1370,7 @@ class ComputationBuilder(object):
       update: N dimensional array comprising the slice update.
       start_indices: Rank-1 array of N integers comprising the starting indices
         of the slice along each dimension.
+
     Returns:
       A LocalOp representing the added DynamicUpdateSlice op.
     """
@@ -1380,8 +1404,8 @@ class ComputationBuilder(object):
 
     Args:
       computation_to_apply: a Computation object.
-      operands: an iterable of LocalOp. The number and types of
-        operands must match the arity of computation_to_apply.
+      operands: an iterable of LocalOp. The number and types of operands must
+        match the arity of computation_to_apply.
 
     Returns:
       A LocalOp representing the added call op.
@@ -1458,8 +1482,8 @@ class ComputationBuilder(object):
       A LocalOp representing the added ReduceWindow op.
     """
     pads = _convert_padding_type_to_pad_values(
-        padding, self.GetShape(operand).dimensions(), window_dimensions,
-        window_strides)
+        padding,
+        self.GetShape(operand).dimensions(), window_dimensions, window_strides)
     return self._client.ReduceWindowWithGeneralPadding(
         operand, init_value, computation_to_apply.computation,
         window_dimensions, window_strides, (), (), pads)
@@ -1492,10 +1516,8 @@ class ComputationBuilder(object):
 
     Args:
       mu: A LocalOp to an F32 scalar specifying the mean.
-      sigma: A LocalOp to an F32 scalar specifying the standard
-        deviation.
+      sigma: A LocalOp to an F32 scalar specifying the standard deviation.
       dims: A 1D array-like of nonnegative integers specifying the dimensions.
-
     Returns: a LocalOp to the generated array of F32 values.
     """
     shape = Shape.array_shape(self.GetShape(mu).element_type(), dims)
@@ -1505,16 +1527,15 @@ class ComputationBuilder(object):
     """Enqueues an RngUniform operation onto the computation.
 
     Args:
-      a: a LocalOp to an F32, S32, or U32 scalar (consistent with
-        the type of b) specifying the low end of the interval [a, b) over which
-        values are generated.
-      b: a LocalOp to an F32, S32, or U32 scalar (consistent with
-        the type of a) specifying the high end of the interval [a, b) over which
-        values are generated.
+      a: a LocalOp to an F32, S32, or U32 scalar (consistent with the type of b)
+        specifying the low end of the interval [a, b) over which values are
+        generated.
+      b: a LocalOp to an F32, S32, or U32 scalar (consistent with the type of a)
+        specifying the high end of the interval [a, b) over which values are
+        generated.
       dims: A 1D array-like of nonnegative integers specifying the dimensions.
-
-    Returns: a LocalOp to the generated array of values with the
-      same numeric type (F32, S32, or U32) as the arguments a and b.
+    Returns: a LocalOp to the generated array of values with the same numeric
+      type (F32, S32, or U32) as the arguments a and b.
     """
     shape = Shape.array_shape(self.GetShape(a).element_type(), dims)
     return self._client.RngUniform(a, b, shape)
@@ -1526,7 +1547,6 @@ class ComputationBuilder(object):
       cond: a Computation for the loop condition, which has type T -> PRED
       body: a Computation for the loop body, which has type T -> T
       init: a LocalOp for the initial parameter, which has type T
-
     Returns: a LocalOp representing the While operation.
     """
     return self._client.While(cond.computation, body.computation, init)
@@ -1541,19 +1561,17 @@ class ComputationBuilder(object):
       true_computation: a Computation to apply to true_operand, type T_0 -> S
       false_operand: a ComputationDatahandle of type T_1
       false_computation: a Computation to apply to false_operand, type T_1 -> S
-
     Returns: a LocalOp representing the Conditional operation.
     """
-    return self._client.Conditional(
-        pred, true_operand, true_computation.computation, false_operand,
-        false_computation.computation)
+    return self._client.Conditional(pred, true_operand,
+                                    true_computation.computation, false_operand,
+                                    false_computation.computation)
 
   def IsConstant(self, operand):
     """Checks whether the given operand is a compile-time constant.
 
     Args:
       operand: a ComputationDataHandle to test.
-
     Returns: bool indicating whether `operand` is a compile-time constant,
       meaning its value does not depend on any parametersor, or on stateful
       operators such as `RngNormal` or `Infeed`.
@@ -1576,7 +1594,6 @@ class ComputationBuilder(object):
     Args:
       lhs: LocalOp for the rank 1 or rank 2 left-hand-side array.
       rhs: LocalOp for the rank 1 or rank 2 right-hand-side array.
-
     Returns: a LocalOp representing the Dot operation.
     """
     return self._client.Dot(lhs, rhs)
@@ -1587,14 +1604,13 @@ class ComputationBuilder(object):
     Args:
       lhs: LocalOp for the left-hand-side array.
       rhs: LocalOp for the right-hand-side array.
-      dimension_numbers: either an xla_data_pb2.DotDimensionNumbers or a nested
-        tuple ((lhs_contract, rhs_contract), (lhs_batch, rhs_batch)) of lists of
+      dimension_numbers: either a DotDimensionNumbers or a nested tuple
+        ((lhs_contract, rhs_contract), (lhs_batch, rhs_batch)) of lists of
         integers representing the dimensions to treat as contracting dimensions
         and batch dimensions on each input operand.
-
     Returns: a LocalOp representing the DotGeneral operation.
     """
-    if not isinstance(dimension_numbers, xla_data_pb2.DotDimensionNumbers):
+    if isinstance(dimension_numbers, tuple):
       dimension_numbers = GetDotDimensionsFromLists(dimension_numbers)
     return self._client.DotGeneral(lhs, rhs, dimension_numbers)
 
@@ -1607,15 +1623,15 @@ class ComputationBuilder(object):
       window_strides: length-N array-like of integer kernel strides.
       padding: PaddingType representing either 'SAME' or 'VALID' padding.
       feature_group_count: number of feature groups for grouped convolution.
-
     Returns: a LocalOp representing the Conv operation.
     """
     pads = _convert_padding_type_to_pad_values(
-        padding, self.GetShape(lhs).dimensions()[2:],
+        padding,
+        self.GetShape(lhs).dimensions()[2:],
         self.GetShape(rhs).dimensions()[2:], window_strides)
     return self.ConvGeneralDilated(
-        lhs, rhs, window_strides, pads, (), (),
-        dimension_numbers=None, feature_group_count=feature_group_count)
+        lhs, rhs, window_strides, pads, (), (), dimension_numbers=None,
+        feature_group_count=feature_group_count)
 
   def ConvWithGeneralPadding(self, lhs, rhs, window_strides, padding,
                              lhs_dilation, rhs_dilation, feature_group_count=1):
@@ -1640,7 +1656,7 @@ class ComputationBuilder(object):
   def _GetConvDimensionNumbers(self, num_spatial_dims):
     """Create ConvolutionDimensionNumbers proto for convolutions."""
     nd = num_spatial_dims
-    dimension_numbers = xla_data_pb2.ConvolutionDimensionNumbers()
+    dimension_numbers = ConvolutionDimensionNumbers()
     dimension_numbers.input_batch_dimension = 0
     dimension_numbers.input_feature_dimension = 1
     dimension_numbers.output_batch_dimension = 0
@@ -1664,35 +1680,33 @@ class ComputationBuilder(object):
       padding: length-N array-like of pairs of integers of (low, high) padding.
       lhs_dilation: length-N array-like of integer dilation factors.
       rhs_dilation: length-N array-like of integer dilation factors.
-      dimension_numbers: optional, either an
-        xla_data_pb2.ConvolutionDimensionNumbers proto instance or a tuple
-        (lhs_spec, rhs_spec, out_spec) where each element is a string of length
-        N+2 identifying by position (1) batch dimensions in lhs, rhs, and the
-        output with the character 'N', (2) feature dimensions in lhs and the
-        output with the character 'C', (3) input and output feature dimensions
-        in rhs with the characters 'I' and 'O' respectively, and (4) spatial
-        dimension correspondences between lhs, rhs, and the output using any
-        distinct characters. For example, to indicate dimension numbers
-        consistent with the Conv operation with two spatial dimensions, one
-        could use ('NCHW', 'OIHW', 'NCHW'). As another example, to indicate
-        dimension numbers consistent with the TensorFlow Conv2D operation, one
-        could use ('NHWC', 'HWIO', 'NHWC'). When using the latter form of
-        convolution dimension specification, window strides are associated with
-        spatial dimension character labels according to the order in which the
-        labels appear in the rhs_spec string, so that window_strides[0] is
-        matched with the dimension corresponding to the first character
-        appearing in rhs_spec that is not 'I' or 'O'. By default, use the same
-        dimension numbering as Conv and ConvWithGeneralPadding.
+      dimension_numbers: optional, either a ConvolutionDimensionNumbers object
+        or a tuple (lhs_spec, rhs_spec, out_spec). Each element is a string of
+        length N+2 identifying by position: (1) batch dimensions in lhs, rhs,
+          and the output with the character 'N', (2) feature dimensions in lhs
+          and the output with the character 'C', (3) input and output feature
+          dimensions in rhs with the characters 'I' and 'O' respectively, and
+          (4) spatial dimension correspondences between lhs, rhs, and the output
+          using any distinct characters. For example, to indicate dimension
+          numbers consistent with the Conv operation with two spatial
+          dimensions, one could use ('NCHW', 'OIHW', 'NCHW'). As another
+          example, to indicate dimension numbers consistent with the TensorFlow
+          Conv2D operation, one could use ('NHWC', 'HWIO', 'NHWC'). When using
+          the latter form of convolution dimension specification, window strides
+          are associated with spatial dimension character labels according to
+          the order in which the labels appear in the rhs_spec string, so that
+          window_strides[0] is matched with the dimension corresponding to the
+          first character appearing in rhs_spec that is not 'I' or 'O'. By
+          default, use the same dimension numbering as Conv and
+          ConvWithGeneralPadding.
       feature_group_count: number of feature groups for grouped convolution.
-
     Returns: a LocalOp representing the ConvGenralDilated operation.
     """
     if dimension_numbers is None:
       dimension_numbers = self._GetConvDimensionNumbers(len(window_strides))
-    elif not isinstance(dimension_numbers,
-                        xla_data_pb2.ConvolutionDimensionNumbers):
+    elif isinstance(dimension_numbers, tuple):
       lhs_spec, rhs_spec, out_spec = dimension_numbers
-      dimension_numbers = xla_data_pb2.ConvolutionDimensionNumbers()
+      dimension_numbers = ConvolutionDimensionNumbers()
 
       dimension_numbers.input_batch_dimension = lhs_spec.index('N')
       dimension_numbers.input_feature_dimension = lhs_spec.index('C')
@@ -1709,10 +1723,9 @@ class ComputationBuilder(object):
       dimension_numbers.output_spatial_dimensions.extend(
           sorted((i for i, c in enumerate(out_spec) if c not in {'N', 'C'}),
                  key=lambda i: rhs_spec.index(out_spec[i])))
-    return self._client.ConvGeneralDilated(lhs, rhs, window_strides, padding,
-                                           lhs_dilation, rhs_dilation,
-                                           dimension_numbers,
-                                           feature_group_count)
+    return self._client.ConvGeneralDilated(
+        lhs, rhs, window_strides, padding, lhs_dilation, rhs_dilation,
+        dimension_numbers, feature_group_count)
 
   def Sort(self, operand, dimension=-1):
     """Enqueues a sort operation onto the computation."""
@@ -1750,15 +1763,14 @@ class ComputationBuilder(object):
 
   def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
     """Enqueues a Gather operation onto the computation."""
-    return self._client.Gather(a, start_indices, dimension_numbers,
-                               slice_sizes)
+    return self._client.Gather(a, start_indices, dimension_numbers, slice_sizes)
 
   def Scatter(self, a, scatter_indices, updates, update_computation,
               dimension_numbers):
     """Enqueues a Scatter operation onto the computation."""
     return self._client.Scatter(
         a, scatter_indices, updates, update_computation.computation,
-        dimension_numbers,)
+        dimension_numbers)
 
 
 def _forward_methods_to_local_builder():
@@ -1798,7 +1810,6 @@ def _forward_methods_to_local_builder():
 
 
 _forward_methods_to_local_builder()
-
 
 _default_replica_count = 1
 
@@ -1852,22 +1863,111 @@ def register_cpu_custom_call_target(name, fn):
   c_api.RegisterCpuCustomCallTarget(name, fn)
 
 
+class PaddingConfigDimension(object):
+  """Python representation of a xla.PaddingConfigDimension protobuf."""
+  __slots__ = ('edge_padding_low', 'edge_padding_high', 'interior_padding')
+
+  def __init__(self):
+    self.edge_padding_low = []
+    self.edge_padding_high = []
+    self.interior_padding = []
+
+
+class PaddingConfig(object):
+  """Python representation of a xla.PaddingConfig protobuf."""
+  __slots__ = ('dimensions',)
+
+  def __init__(self):
+    self.dimensions = []
+
+
 def GetPaddingConfigFromTriples(triples):
   """Create PaddingConfig proto from list of triples of integers."""
-  padding_config = xla_data_pb2.PaddingConfig()
+  padding_config = PaddingConfig()
   for lo, hi, interior in triples:
-    dimension = padding_config.dimensions.add()
+    dimension = PaddingConfigDimension()
     dimension.edge_padding_low = lo
     dimension.edge_padding_high = hi
     dimension.interior_padding = interior
+    padding_config.dimensions.append(dimension)
   return padding_config
+
+
+class DotDimensionNumbers(object):
+  """Python representation of a xla.DotDimensionNumbers protobuf."""
+  __slots__ = ('lhs_contracting_dimensions', 'rhs_contracting_dimensions',
+               'lhs_batch_dimensions', 'rhs_batch_dimensions')
+
+  def __init__(self):
+    self.lhs_contracting_dimensions = []
+    self.rhs_contracting_dimensions = []
+    self.lhs_batch_dimensions = []
+    self.rhs_batch_dimensions = []
 
 
 def GetDotDimensionsFromLists(dimension_numbers):
   (lhs_contract, rhs_contract), (lhs_batch, rhs_batch) = dimension_numbers
-  dot_dims_proto = xla_data_pb2.DotDimensionNumbers()
+  dot_dims_proto = DotDimensionNumbers()
   dot_dims_proto.lhs_contracting_dimensions.extend(lhs_contract)
   dot_dims_proto.rhs_contracting_dimensions.extend(rhs_contract)
   dot_dims_proto.lhs_batch_dimensions.extend(lhs_batch)
   dot_dims_proto.rhs_batch_dimensions.extend(rhs_batch)
   return dot_dims_proto
+
+
+class ConvolutionDimensionNumbers(object):
+  """Python representation of a xla.ConvolutionDimensionNumbers protobuf."""
+  __slots__ = ('input_batch_dimension', 'input_feature_dimension',
+               'input_spatial_dimensions', 'kernel_input_feature_dimension',
+               'kernel_output_feature_dimension', 'kernel_spatial_dimensions',
+               'output_batch_dimension', 'output_feature_dimension',
+               'output_spatial_dimensions')
+
+  def __init__(self):
+    self.input_batch_dimension = 0
+    self.input_feature_dimension = 0
+    self.input_spatial_dimensions = []
+    self.kernel_input_feature_dimension = 0
+    self.kernel_output_feature_dimension = 0
+    self.kernel_spatial_dimensions = []
+    self.output_batch_dimension = 0
+    self.output_feature_dimension = 0
+    self.output_spatial_dimensions = []
+
+
+class GatherDimensionNumbers(object):
+  """Python representation of a xla.GatherDimensionNumbers protobuf."""
+  __slots__ = ('offset_dims', 'collapsed_slice_dims', 'start_index_map',
+               'index_vector_dim')
+
+  def __init__(self):
+    self.offset_dims = []
+    self.collapsed_slice_dims = []
+    self.start_index_map = []
+    self.index_vector_dim = 0
+
+
+class ScatterDimensionNumbers(object):
+  """Python representation of a xla.ScatterDimensionNumbers protobuf."""
+  __slots__ = ('update_window_dims', 'inserted_window_dims',
+               'scatter_dims_to_operand_dims', 'index_vector_dim')
+
+  def __init__(self):
+    self.update_window_dims = []
+    self.inserted_window_dims = []
+    self.scatter_dims_to_operand_dims = []
+    self.index_vector_dim = 0
+
+
+class ReplicaGroup(object):
+  """Python representation of a xla.ReplicaGroup protobuf."""
+  __slots__ = ('replica_ids',)
+
+  def __init__(self):
+    self.replica_ids = []
+
+
+def _make_replica_group_proto(replica_group):
+  replica_group_proto = ReplicaGroup()
+  replica_group_proto.replica_ids.extend(replica_group)
+  return replica_group_proto

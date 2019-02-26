@@ -1788,6 +1788,8 @@ cc_library(
     deps = [
         ":hlo",
         ":hlo_evaluator",
+        ":pattern_matcher",
+        "@com_google_absl//absl/base",
         "@com_google_absl//absl/types:optional",
     ],
 )
@@ -1844,6 +1846,36 @@ tf_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:test",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+cc_library(
+    name = "while_loop_trip_count_annotator",
+    srcs = ["while_loop_trip_count_annotator.cc"],
+    hdrs = ["while_loop_trip_count_annotator.h"],
+    deps = [
+        ":hlo",
+        ":hlo_pass",
+        ":while_loop_analysis",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:xla_data_proto",
+    ],
+)
+
+tf_cc_test(
+    name = "while_loop_trip_count_annotator_test",
+    srcs = ["while_loop_trip_count_annotator_test.cc"],
+    deps = [
+        ":pattern_matcher",
+        ":while_loop_simplifier",
+        ":while_loop_trip_count_annotator",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",  # fixdeps: keep
+        "//tensorflow/core:test",
     ],
 )
 

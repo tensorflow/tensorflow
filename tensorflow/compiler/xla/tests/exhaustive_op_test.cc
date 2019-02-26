@@ -610,6 +610,8 @@ XLA_TEST_P(ExhaustiveOpTest, Lgamma) {
   Run(Lgamma, std::lgamma);
 }
 
+XLA_TEST_P(ExhaustiveOpTest, Round) { Run(Round, std::round); }
+
 std::vector<std::pair<int64, int64>> CreateExhaustiveF32Ranges() {
   // We break up the 2^32-element space into small'ish chunks to keep peak
   // memory usage low.

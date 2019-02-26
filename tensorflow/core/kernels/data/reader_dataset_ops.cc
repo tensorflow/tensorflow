@@ -844,6 +844,11 @@ class TFRecordDatasetOp : public DatasetOpKernel {
             }
             out_tensors->pop_back();
             if (!errors::IsOutOfRange(s)) {
+              // In case of other errors e.g., DataLoss, we still move forward
+              // the file index so that it works with ignore_errors.
+              // Otherwise the same file will repeat.
+              ResetStreamsLocked();
+              ++current_file_index_;
               return s;
             }
 

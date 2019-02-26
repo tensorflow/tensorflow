@@ -777,7 +777,7 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
       self.assertAllEqual([2.0], self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/79881896 (control deps)")
+  @test_util.disable_control_flow_v2("b/79881896 (placeholder)")
   @test_util.run_v1_only("b/120545219")
   def testCondWithControl(self):
     with self.cached_session():
@@ -1218,7 +1218,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/79881896 (control deps)")
   @test_util.run_v1_only("b/120545219")
   def testWhileExternalControlDependencies(self):
     with self.cached_session():
@@ -1235,7 +1234,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(result, 2)
       self.assertAllEqual(v.read_value(), 1.0)
 
-  @test_util.disable_control_flow_v2("b/79881896 (control deps)")
   @test_util.run_v1_only("b/120545219")
   def testWhileExternalControlDependenciesNoInput(self):
     with self.cached_session():
@@ -1981,7 +1979,6 @@ class ControlFlowTest(test.TestCase):
             lambda x: x < 10, lambda x: x + array_ops.identity(c), [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
-  @test_util.disable_control_flow_v2("b/79881896 (control_deps)")
   @test_util.run_v1_only("b/120545219")
   def testWhileWithControl_5(self):
     with self.cached_session() as sess:

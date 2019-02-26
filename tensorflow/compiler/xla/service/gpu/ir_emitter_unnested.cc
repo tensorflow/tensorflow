@@ -926,13 +926,12 @@ Status IrEmitterUnnested::HandleWhile(HloInstruction* xla_while) {
                condition->root_instruction()->shape().element_type() == PRED)
       << "While condition computation must return bool";
   // Build ForThunk for conformant while loops, otherwise build WhileThunk.
-  // TODO(b/112163966): Move trip count computation earlier in the pipeline.
-  if (auto loop_trip_count = ComputeWhileLoopTripCount(xla_while)) {
-    AddThunkToThunkSequence(BuildForThunk(xla_while, *loop_trip_count));
-    VLOG(3) << "Built ForThunk for while: " << xla_while->name();
+  auto config = xla_while->backend_config<WhileLoopBackendConfig>();
+  if (config.ok() && config.ValueOrDie().has_known_trip_count()) {
+    AddThunkToThunkSequence(
+        BuildForThunk(xla_while, config.ValueOrDie().known_trip_count().n()));
   } else {
     AddThunkToThunkSequence(BuildWhileThunk(xla_while));
-    VLOG(3) << "Built WhileThunk for while: " << xla_while->name();
   }
   return Status::OK();
 }

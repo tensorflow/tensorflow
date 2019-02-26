@@ -116,7 +116,7 @@ class LookupInterface(trackable.TrackableResource):
     self._value_dtype = dtypes.as_dtype(value_dtype)
     super(LookupInterface, self).__init__()
 
-  def create_resource(self):
+  def _create_resource(self):
     raise NotImplementedError
 
   @property
@@ -168,10 +168,10 @@ class InitializableLookupTableBase(LookupInterface):
     if isinstance(initializer, trackable_base.Trackable):
       self._initializer = self._track_trackable(
           initializer, "_initializer")
-    self._resource_handle = self.create_resource()
-    self._init_op = self.initialize()
+    self._resource_handle = self._create_resource()
+    self._init_op = self._initialize()
 
-  def initialize(self):
+  def _initialize(self):
     return self._initializer.initialize(self)
 
   @property
@@ -276,7 +276,7 @@ class StaticHashTable(InitializableLookupTableBase):
     super(StaticHashTable, self).__init__(default_value, initializer)
     self._value_shape = self._default_value.get_shape()
 
-  def create_resource(self):
+  def _create_resource(self):
     table_ref = gen_lookup_ops.hash_table_v2(
         shared_name=self._shared_name,
         key_dtype=self._initializer.key_dtype,
@@ -849,14 +849,14 @@ class IdTableWithHashBuckets(LookupInterface):
       self._table_name = None
     super(IdTableWithHashBuckets, self).__init__(key_dtype, dtypes.int64)
 
-  def create_resource(self):
+  def _create_resource(self):
     if self._table is not None:
-      return self._table.create_resource()
+      return self._table._create_resource()  # pylint: disable=protected-access
     return None
 
-  def initialize(self):
+  def _initialize(self):
     if self._table is not None:
-      return self._table.initialize()
+      return self._table._initialize()  # pylint: disable=protected-access
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
 
@@ -1052,14 +1052,14 @@ class StaticVocabularyTable(LookupInterface):
       self._table_name = name.split("/")[-1]
     super(StaticVocabularyTable, self).__init__(lookup_key_dtype, dtypes.int64)
 
-  def create_resource(self):
+  def _create_resource(self):
     if self._table is not None:
-      return self._table.create_resource()
+      return self._table._create_resource()  # pylint: disable=protected-access
     return None
 
-  def initialize(self):
+  def _initialize(self):
     if self._table is not None:
-      return self._table.initialize()
+      return self._table._initialize()  # pylint: disable=protected-access
     with ops.name_scope(None, "init"):
       return control_flow_ops.no_op()
 
@@ -1563,13 +1563,13 @@ class MutableHashTable(LookupInterface):
       self._shared_name = "table_%d" % (ops.uid(),)
     super(MutableHashTable, self).__init__(key_dtype, value_dtype)
 
-    self._resource_handle = self.create_resource()
+    self._resource_handle = self._create_resource()
     if checkpoint:
       saveable = MutableHashTable._Saveable(self, name)
       if not context.executing_eagerly():
         ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
-  def create_resource(self):
+  def _create_resource(self):
     # The table must be shared if checkpointing is requested for multi-worker
     # training to work correctly. Use the node name if no shared_name has been
     # explicitly specified.
@@ -1820,13 +1820,13 @@ class DenseHashTable(LookupInterface):
       self._shared_name = "table_%d" % (ops.uid(),)
     super(DenseHashTable, self).__init__(key_dtype, value_dtype)
 
-    self._resource_handle = self.create_resource()
+    self._resource_handle = self._create_resource()
     if checkpoint:
       saveable = DenseHashTable._Saveable(self, name)
       if not context.executing_eagerly():
         ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
-  def create_resource(self):
+  def _create_resource(self):
     # The table must be shared if checkpointing is requested for multi-worker
     # training to work correctly. Use the node name if no shared_name has been
     # explicitly specified.

@@ -20,10 +20,12 @@ from __future__ import division
 from __future__ import print_function
 
 import abc
+import collections
 import functools
 import getpass
 import os
 import re
+import threading
 import time
 
 import six
@@ -32,6 +34,7 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import profiler as _profiler
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -974,3 +977,97 @@ def keras_model(name, data, step):
         tensor=constant_op.constant(json_string, dtype=dtypes.string),
         step=step,
         metadata=summary_metadata)
+
+
+_TraceContext = collections.namedtuple("TraceContext", ("graph", "profiler"))
+_current_trace_context_lock = threading.Lock()
+_current_trace_context = None
+
+
+@tf_export("summary.enable_trace", v1=[])
+def enable_trace(graph=True, profiler=False):
+  """Enables execution trace.
+
+  Args:
+    graph: whether to collect graphs used in execution
+    profiler: whether to enable profiler.
+
+  Returns:
+    None
+  """
+  if not context.context().executing_eagerly():
+    logging.warn("Must enable trace in eager mode.")
+    return
+
+  global _current_trace_context
+  with _current_trace_context_lock:
+    if _current_trace_context:
+      logging.warn("Trace already enabled")
+      return
+
+    if graph and not profiler:
+      context.context().enable_graph_collection()
+    if profiler:
+      context.context().enable_run_metadata()
+      _profiler.start()
+
+    _current_trace_context = _TraceContext(graph=graph, profiler=profiler)
+
+
+@tf_export("summary.export_trace", v1=[])
+def export_trace(name, step, profiler_outdir=None):
+  """Exports trace as a Summary and/or profile file.
+
+  Args:
+    name: A name for the summary to be written.
+    step: Required `int64`-castable monotonic step value.
+    profiler_outdir: Output directory for profiler. It is required when profiler
+      is enabled when trace was started. Otherwise, it is ignored.
+
+  Returns:
+    None
+  """
+  # TODO(stephanlee): See if we can remove profiler_outdir and infer it from
+  # the SummaryWriter's logdir.
+  global _current_trace_context
+
+  if not context.context().executing_eagerly():
+    logging.warn("Can only export trace while executing eagerly.")
+    return
+
+  with _current_trace_context_lock:
+    if _current_trace_context is None:
+      raise ValueError("Must enable trace before export.")
+    graph, profiler = _current_trace_context
+    if profiler and profiler_outdir is None:
+      raise ValueError("Required profiler_outdir is not specified")
+
+  run_meta = context.context().export_run_metadata()
+
+  if graph and not profiler:
+    run_metadata_graphs(name, run_meta, step)
+  else:
+    run_metadata(name, run_meta, step)
+
+  if profiler:
+    _profiler.save(profiler_outdir, _profiler.stop())
+
+  disable_trace()
+
+
+@tf_export("summary.disable_trace", v1=[])
+def disable_trace():
+  """Disables and resets the trace state."""
+  global _current_trace_context
+  with _current_trace_context_lock:
+    _current_trace_context = None
+
+  # Disabling run_metadata disables graph collection as well.
+  context.context().disable_run_metadata()
+
+  # profiler only has start and stop. One needs to stop in order to export
+  # and stopping when it is not running will raise an error.
+  try:
+    _profiler.stop()
+  except _profiler.ProfilerNotRunningError:
+    pass

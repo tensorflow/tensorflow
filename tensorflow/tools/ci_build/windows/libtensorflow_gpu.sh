@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -60,13 +60,16 @@ rm -f ${DIR}/tensorflow_jni.dll
 
 # Zip up the .dll, LICENSE and include files for the C library.
 mkdir -p ${DIR}/include/tensorflow/c
+mkdir -p ${DIR}/include/tensorflow/c/eager
 mkdir -p ${DIR}/lib
 cp bazel-bin/tensorflow/libtensorflow.so ${DIR}/lib/tensorflow.dll
 cp tensorflow/c/c_api.h ${DIR}/include/tensorflow/c
+cp tensorflow/c/eager/c_api.h ${DIR}/include/tensorflow/c/eager
 cp bazel-genfiles/tensorflow/tools/lib_package/include/tensorflow/c/LICENSE ${DIR}/include/tensorflow/c
 cd ${DIR}
 zip -j libtensorflow-gpu-windows-$(uname -m).zip \
   lib/tensorflow.dll \
+  include/tensorflow/c/eager/c_api.h \
   include/tensorflow/c/c_api.h \
   include/tensorflow/c/LICENSE
 rm -rf lib include
