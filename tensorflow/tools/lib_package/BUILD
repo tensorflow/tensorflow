@@ -44,10 +44,12 @@ pkg_tar(
     # with Python 3.
     tags = ["manual"],
     deps = [
+        ":cheaders",
+        ":eager_cheaders",
         ":ccheaders",
         ":coreheaders",
         # ":cclib",
-        # ":cclicenses",
+        ":cclicenses",
     ],
 )
 
