@@ -206,7 +206,7 @@ TEST(VerifyModel, TestRandomModificationIsNotAllowed) {
 
   std::string model_content(reinterpret_cast<char*>(builder.GetBufferPointer()),
                             builder.GetSize());
-  for (int i = 0; i < model_content.size(); i++) {
+  for (size_t i = 0; i < model_content.size(); i++) {
     model_content[i] = (model_content[i] + 137) % 255;
     EXPECT_FALSE(Verify(model_content.data(), model_content.size(),
                         MutableOpResolver{}, DefaultErrorReporter()))
