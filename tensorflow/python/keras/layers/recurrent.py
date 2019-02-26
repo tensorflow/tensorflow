@@ -137,6 +137,9 @@ class StackedRNNCells(Layer):
     new_nested_states = []
     for cell, states in zip(self.cells, nested_states):
       states = states if nest.is_sequence(states) else [states]
+      # TF cell does not wrap the state into list when there is only one state.
+      is_tf_rnn_cell = getattr(cell, '_is_tf_rnn_cell', None) is not None
+      states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
       if generic_utils.has_arg(cell.call, 'constants'):
         inputs, states = cell.call(inputs, states, constants=constants,
                                    **kwargs)
