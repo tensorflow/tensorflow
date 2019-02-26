@@ -777,3 +777,50 @@ transitive_hdrs(
         "//tensorflow/cc/tools:freeze_saved_model",
     ],
 )
+
+filegroup(
+    name = "client_headers",
+    srcs = ["client/client_session.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "framework_headers",
+    srcs = [
+        "framework/cc_op_gen.h",
+        "framework/grad_op_registry.h",
+        "framework/gradient_checker.h",
+        "framework/gradients.h",
+        "framework/ops.h",
+        "framework/scope.h",
+        "framework/scope_internal.h",
+        "framework/testutil.h",
+        "framework/while_gradients.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "gradient_headers",
+    srcs = ["gradients/grad_testutil.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "ops_headers",
+    srcs = [
+        "ops/const_op.h",
+        "ops/standard_ops.h",
+        "ops/while_loop.h"
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)
+
+filegroup(
+    name = "training_headers",
+    srcs = [
+        "training/coordinator.h",
+        "training/queue_runner.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)

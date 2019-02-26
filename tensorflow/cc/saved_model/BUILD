@@ -136,3 +136,15 @@ filegroup(
         "testdata/half_plus_two_v2/**",
     ]),
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "constants.h",
+        "loader.h",
+        "reader.h",
+        "signature_constants.h",
+        "tag_constants.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)

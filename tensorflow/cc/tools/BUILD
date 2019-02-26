@@ -41,3 +41,12 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "freeze_saved_model.h",
+    ],
+    visibility = ["//tensorflow:__subpackages__"],
+)

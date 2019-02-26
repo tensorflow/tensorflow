@@ -37,3 +37,10 @@ cc_library(
         "//tensorflow/core/profiler/internal:tfprof_stats",
     ],
 )
+
+
+filegroup(
+    name = "headers",
+    srcs = ["profiler.h"],
+    visibility = ["//tensorflow:__subpackages__"],
+)
