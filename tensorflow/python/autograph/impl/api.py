@@ -28,7 +28,6 @@ from enum import Enum
 
 # pylint:disable=g-bad-import-order
 import numpy as np
-import six
 # pylint:enable=g-bad-import-order
 
 
@@ -182,18 +181,18 @@ def _call_unconverted(f, args, kwargs):
   Returns:
     The return value of f(*args, **kwargs).
   """
-  if inspect_utils.istfmethodtarget(f):
-    return f.__self__.call(args, kwargs)
+  # TODO(mdan): This may be inconsistent in certain situations.
+  # If the function had already been annotated with @tf.function, it
+  # may be bound to the incorrect object. It's unclear if those situations
+  # are possible, but if they happen, we need to check if f is bound
+  # to a shim like WeakrefSelf and unpack it.
+
+  if tf_inspect.ismethod(f) and args:
+    f_self = inspect_utils.getmethodself(f)
+    if args[0] is f_self:
+      args = args[1:]
 
   return f(*args, **kwargs)
-
-
-def _is_known_loaded_type(f, module_name, entity_name):
-  if tf_inspect.ismethod(f):
-    f = six.get_unbound_function(f)
-  return (module_name in sys.modules and
-          hasattr(sys.modules[module_name], entity_name) and
-          isinstance(f, getattr(sys.modules[module_name], entity_name)))
 
 
 def converted_call(f, owner, options, args, kwargs):
@@ -220,12 +219,13 @@ def converted_call(f, owner, options, args, kwargs):
     return py_builtins.overload_of(f)(*args, **kwargs)
 
   # TODO(b/122265385): Remove this bypass.
-  if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
-      _is_known_loaded_type(f, 'wrapt', 'BoundFunctionWrapper')):
+  if ('wrapt' in sys.modules and
+      hasattr(sys.modules['wrapt'], 'FunctionWrapper') and
+      isinstance(f, sys.modules['wrapt'].FunctionWrapper)):
     logging.warn(
         'Entity {} appears to be decorated by wrapt, which is not yet supported'
         ' by AutoGraph. The function will be called without transformation.'
-        ' You may however apply AutoGraph before the decorator.'.format(f))
+        ' You may however apply AutoGraph before the decorator.'.format(f), 1)
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
     return _call_unconverted(f, args, kwargs)
 

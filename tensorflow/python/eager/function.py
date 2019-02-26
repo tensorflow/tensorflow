@@ -61,7 +61,6 @@ from tensorflow.python.util import tf_inspect
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
-
 class CacheKey(
     collections.namedtuple("CacheKey", [
         "input_signature", "parent_graph", "device_functions",
@@ -2020,23 +2019,13 @@ def defun_with_attributes(func=None,
 
 
 # When a method is bound to objects of this type, it allows AutoGraph to
-# recover a weak reference the original method's self pointer, so that it can
-# execute it consistent with class_method_to_instance_method's
-# bound_method_wrapper.
+# recover a weak reference the original method's self pointer. This uses the
+# mechanism from pyct.inspect_utils.getmethodclass.
 # TODO(b/119246461): This is not pretty. Use a descriptor instead?
-class TfMethodTarget(object):
-  """Binding target for methods replaced by function and defun."""
+class _WeakrefSelf(object):
 
-  def __init__(self, target, original_python_function):
-    self.weakrefself_target__ = target
-    self.weakrefself_func__ = weakref.ref(original_python_function)
-
-  @property
-  def target(self):
-    return self.weakrefself_target__()
-
-  def call(self, args, kwargs):
-    return self.weakrefself_func__()(*args, **kwargs)
+  def __init__(self, target):
+    self.ag_self_weakref__ = target
 
 
 def class_method_to_instance_method(original_function, instance):
@@ -2045,9 +2034,8 @@ def class_method_to_instance_method(original_function, instance):
 
   # Note: while we could bind to a weakref proxy instead, that causes the
   # bound method to be unhashable.
-  bound_method = types_lib.MethodType(
-      original_function.python_function,
-      TfMethodTarget(weak_instance, original_function.python_function))
+  bound_method = types_lib.MethodType(original_function.python_function,
+                                      _WeakrefSelf(weak_instance))
 
   # original_function is expected to be of one of the two `Function` types
   # (defined either in function.py or def_function.py).
@@ -2065,7 +2053,6 @@ def class_method_to_instance_method(original_function, instance):
 
     if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
       # If __wrapped__ was not replaced, then call original_function.
-      # TODO(mdan): For better consistency, use the wrapper's call().
       wrapped_fn = original_function.python_function
       if tf_inspect.ismethod(wrapped_fn):
         wrapped_fn = six.get_unbound_function(wrapped_fn)
