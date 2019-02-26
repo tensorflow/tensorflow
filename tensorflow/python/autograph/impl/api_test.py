@@ -402,21 +402,6 @@ class ApiTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
 
-  def test_converted_call_whitelisted_method_extra_self(self):
-
-    opts = converter.ConversionOptions()
-
-    model = sequential.Sequential([
-        core.Dense(2)
-    ])
-
-    x = api.converted_call(model.call, None, opts,
-                           (model, constant_op.constant([[0.0]])),
-                           {'training': True})
-
-    self.evaluate(variables.global_variables_initializer())
-    self.assertAllEqual([[0.0, 0.0]], self.evaluate(x))
-
   def test_converted_call_whitelisted_method_via_owner(self):
 
     opts = converter.ConversionOptions()
