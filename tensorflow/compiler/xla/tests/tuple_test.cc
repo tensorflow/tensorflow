@@ -557,7 +557,8 @@ XLA_TEST_F(TupleHloTest,
       ROOT outfeed = token[] outfeed(tuple, token0)
     }
   )";
-  auto module = ParseAndReturnVerifiedModule(testcase).ValueOrDie();
+  auto module = ParseAndReturnVerifiedModule(testcase, GetModuleConfigForTest())
+                     .ValueOrDie();
   auto param0 = LiteralUtil::CreateR1<float>({1, 2});
   auto param1 = LiteralUtil::CreateR1<float>({2, 3});
   auto param4 = LiteralUtil::CreateR0<bool>(false);
