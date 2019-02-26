@@ -323,25 +323,6 @@ TEST_F(OperatorTest, VersioningMaxTest) {
   EXPECT_EQ(op->GetVersion(int8_signature), 2);
 }
 
-TEST_F(OperatorTest, VersioningMinTest) {
-  TensorFlowMinimumOperator min_op;
-  min_op.inputs = {"input1"};
-  auto operator_by_type_map = BuildOperatorByTypeMap(false /*enable_flex_ops*/);
-  const BaseOperator* op = operator_by_type_map.at(min_op.type).get();
-
-  Model uint8_model;
-  Array& uint8_array = uint8_model.GetOrCreateArray(min_op.inputs[0]);
-  uint8_array.data_type = ArrayDataType::kUint8;
-  OperatorSignature uint8_signature = {.op = &min_op, .model = &uint8_model};
-  EXPECT_EQ(op->GetVersion(uint8_signature), 1);
-
-  Model int8_model;
-  Array& int8_array = int8_model.GetOrCreateArray(min_op.inputs[0]);
-  int8_array.data_type = ArrayDataType::kInt8;
-  OperatorSignature int8_signature = {.op = &min_op, .model = &int8_model};
-  EXPECT_EQ(op->GetVersion(int8_signature), 2);
-}
-
 TEST_F(OperatorTest, BuiltinReshape) {
   TensorFlowReshapeOperator op;
   op.shape = {1, 2, 4, 5, 8};
@@ -849,6 +830,10 @@ TEST_F(OperatorTest, VersioningLogisticTest) {
 
 TEST_F(OperatorTest, VersioningL2NormTest) {
   SimpleOutputVersioningTest<L2NormalizationOperator>();
+}
+
+TEST_F(OperatorTest, VersioningMinTest) {
+  SimpleVersioningTest<TensorFlowMinimumOperator>();
 }
 
 TEST_F(OperatorTest, VersioningAddTest) { SimpleVersioningTest<AddOperator>(); }
