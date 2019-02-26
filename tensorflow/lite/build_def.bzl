@@ -97,9 +97,10 @@ def tflite_linkopts():
 
 def tflite_jni_linkopts():
     """Defines linker flags to reduce size of TFLite binary with JNI."""
-    return tflite_jni_linkopts_unstripped() + [
-        "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.]
-    ] + select({
+    return tflite_jni_linkopts_unstripped() + select({
+        "//tensorflow:android": [
+            "-latomic",
+        ],
         "//tensorflow:debug": [],
         "//conditions:default": [
             "-s",  # Omit symbol table, for all non debug builds
