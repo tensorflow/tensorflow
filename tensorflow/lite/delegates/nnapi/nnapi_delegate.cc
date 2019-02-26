@@ -648,7 +648,7 @@ class NNAPIDelegateKernel {
             // Note that we add the squeeze dimensions even if the dimensions
             // were unspecified (empty), as NNAPI requires the operand.
             mapping_args.builder->AddVectorInt32Operand(
-                builtin->squeeze_dims,
+                builtin->num_squeeze_dims ? builtin->squeeze_dims : nullptr,
                 static_cast<uint32_t>(builtin->num_squeeze_dims));
             return ANEURALNETWORKS_SQUEEZE;
           };
