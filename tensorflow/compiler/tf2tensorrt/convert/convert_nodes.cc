@@ -693,9 +693,9 @@ string TFAttrs::get<string>(const string& key) const {
 }
 
 template <>
-std::vector<int> TFAttrs::get<std::vector<int>>(const string& key) const {
+std::vector<int64> TFAttrs::get<std::vector<int64>>(const string& key) const {
   auto attr = this->at(key)->list().i();
-  return std::vector<int>(attr.begin(), attr.end());
+  return std::vector<int64>(attr.begin(), attr.end());
 }
 
 template <>
@@ -727,7 +727,7 @@ bool TFAttrs::get<bool>(const string& key) const {
 }
 
 template <>
-int TFAttrs::get<int>(const string& key) const {
+int64 TFAttrs::get<int64>(const string& key) const {
   return this->at(key)->i();
 }
 
@@ -1728,7 +1728,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
   int c_index = (data_format == "NHWC") ? 3 : 1;
   int h_index = (data_format == "NHWC") ? 1 : 2;
   int w_index = (data_format == "NHWC") ? 2 : 3;
-  auto tf_dilations = attrs.get<std::vector<int>>("dilations");
+  auto tf_dilations = attrs.get<std::vector<int64>>("dilations");
   if (tf_dilations.size() != 4) {
     return errors::InvalidArgument(
         "Convolution dilations field must specify 4 dimensions, at ",
@@ -1746,7 +1746,7 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         ", at ", node_def.name());
   }
 
-  const auto tf_stride = attrs.get<std::vector<int>>("strides");
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
   if (tf_stride.size() != 4) {
     return errors::InvalidArgument(
         "Convolution strides field must specify 4 dimensions, at ",
@@ -2170,7 +2170,7 @@ Status ConvertSqueeze(OpConverterParams* params) {
   const int input_rank = input_dims.size();
   // Mark axes to remove by setting them to 0.
   TFAttrs attrs(node_def);
-  auto squeeze_dims = attrs.get<std::vector<int>>("squeeze_dims");
+  auto squeeze_dims = attrs.get<std::vector<int64>>("squeeze_dims");
   if (squeeze_dims.empty()) {
     return errors::Unimplemented(
         "Squeeze is only implemented for explicit dims, at ", node_def.name());
@@ -2485,14 +2485,14 @@ Status ConvertStridedSlice(OpConverterParams* params) {
   TFAttrs attrs(node_def);
   for (const string& attr :
        {"ellipsis_mask", "new_axis_mask", "shrink_axis_mask"}) {
-    int attr_val = attrs.get<int>(attr);
+    int attr_val = attrs.get<int64>(attr);
     if (attr_val != 0) {
       return errors::Unimplemented(
           attr, " is not supported for StridedSlice, at ", node_def.name());
     }
   }
-  const int begin_mask = attrs.get<int>("begin_mask");
-  const int end_mask = attrs.get<int>("end_mask");
+  const int begin_mask = attrs.get<int64>("begin_mask");
+  const int end_mask = attrs.get<int64>("end_mask");
   // Check that batch dimension is unmodified.
   const bool begin_is_modified = !(begin_mask & 1) && begin[0] != 0;
   const bool stride_is_modified = stride[0] != 1;
@@ -2589,10 +2589,10 @@ Status ConvertPool(OpConverterParams* params) {
         const_cast<nvinfer1::ITensor*>(tensor), {0, 3, 1, 2}, &tensor));
   }
 
-  const auto tf_stride = attrs.get<std::vector<int>>("strides");
+  const auto tf_stride = attrs.get<std::vector<int64>>("strides");
   const nvinfer1::DimsHW stride(tf_stride[h_index], tf_stride[w_index]);
 
-  const auto tf_kernel = attrs.get<std::vector<int>>("ksize");
+  const auto tf_kernel = attrs.get<std::vector<int64>>("ksize");
   const nvinfer1::DimsHW ksize(tf_kernel[h_index], tf_kernel[w_index]);
 
   auto tensor_dim = tensor->getDimensions();
