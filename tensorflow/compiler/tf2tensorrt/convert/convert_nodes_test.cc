@@ -711,23 +711,34 @@ TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
   TRT_TensorOrWeights tw(input_tensor);
   const nvinfer1::ITensor* output_tensor = nullptr;
 
-  // Shape size doesn't match.
-  ExpectStatus(converter_->PrepareTensorForShape(tw, GetTestDims({2, 3, 6}),
-                                                 &output_tensor),
-               error::INVALID_ARGUMENT, "Reshape shapes are not compatible");
+  for (bool validation_only : {false, true}) {
+    // Shape size doesn't match.
+    ExpectStatus(
+        converter_->PrepareTensorForShape(tw, GetTestDims({2, 3, 6}),
+                                          validation_only, &output_tensor),
+        error::INVALID_ARGUMENT, "Reshape shapes are not compatible");
 
-  // TODO(aaroey): we should check the case where uninferred dimensions are not
-  // an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
+    // TODO(aaroey): we should check the case where uninferred dimensions are
+    // not an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
 
-  // Infer shape, ok.
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({-1, 2}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({15, 2}, output_tensor->getDimensions());
+    // Infer shape, ok.
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({-1, 2}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({15, 2}, output_tensor->getDimensions());
+    }
 
-  // Regular shape.
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({10, 3}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    // Regular shape.
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({10, 3}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    }
+  }
 }
 
 TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
@@ -735,9 +746,15 @@ TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
       weight_store_->GetTempWeights(DT_FLOAT, GetTestDims({2, 3, 5}));
   TRT_TensorOrWeights tw(weights);
   const nvinfer1::ITensor* output_tensor = nullptr;
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({10, 3}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+  for (bool validation_only : {false, true}) {
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({10, 3}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    }
+  }
 }
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
