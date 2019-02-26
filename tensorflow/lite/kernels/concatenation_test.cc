@@ -12,8 +12,8 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
-#include <cstdarg>
 #include <gtest/gtest.h>
+#include <cstdarg>
 #include "tensorflow/lite/interpreter.h"
 #include "tensorflow/lite/kernels/register.h"
 #include "tensorflow/lite/kernels/test_util.h"
@@ -99,6 +99,16 @@ TEST(ConcatenationOpTest, ThreeDimensionalOneInput) {
   m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
   m0.Invoke();
   EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 3, 4, 7}));
+}
+
+TEST(ConcatenationOpTest, FiveDimensionalOneInput) {
+  ConcatenationOpModel m0({TensorType_FLOAT32, {2, 1, 2, 1, 3}}, /*axis=*/2,
+                          /*num_inputs=*/1);
+  m0.SetInput(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f,
+                  11.0f, 12.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
 }
 
 TEST(ConcatenationOpTest, OneTrivialInput) {
@@ -263,6 +273,83 @@ TEST(ConcatenationOpTest, FourInputsQuantizedMixedRangeClampingLogic) {
                   255, 0, 255, 255, 255, 0, 255, 255,  //
                   0, 0, 255, 255, 0, 255, 255, 255,    //
               }));
+}
+
+TEST(ConcatenationOpTest, ThreeDimensionalNonQuantizedOneInput) {
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {2, 1, 2}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/1,
+      /*num_inputs=*/1);
+  m0.SetInput(0, {1.0f, 3.0f, 4.0f, 7.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(),
+              ElementsAreArray(ArrayFloatNear({1.0f, 3.0f, 4.0f, 7.0f})));
+}
+
+TEST(ConcatenationOpTest, OneTrivialNonQuantizedInput) {
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {1}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/0,
+      /*num_inputs=*/1);
+  m0.SetInput(0, {5.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(), ::testing::ElementsAre(5));
+}
+
+TEST(ConcatenationOpTest, TwoDimensionalNonQuantizedOneInput) {
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/0,
+      /*num_inputs=*/1);
+  m0.SetInput(0, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(ConcatenationOpTest, TwoInputsTwoAxesNegativeAxesNonQuantized) {
+  // We will concatenate two tensors along different dimensions.
+  auto tensor0 = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
+  auto tensor1 = {7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
+
+  QuantizedConcatenationOpModel m0(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/0,
+      /*num_inputs=*/2);
+  m0.SetInput(0, tensor0);
+  m0.SetInput(1, tensor1);
+  m0.Invoke();
+  EXPECT_THAT(m0.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+
+  QuantizedConcatenationOpModel m0_negative(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/-2,
+      /*num_inputs=*/2);
+  m0_negative.SetInput(0, tensor0);
+  m0_negative.SetInput(1, tensor1);
+  m0_negative.Invoke();
+  EXPECT_THAT(m0_negative.GetOutput(),
+              ElementsAreArray({1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}));
+
+  QuantizedConcatenationOpModel m1(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/1,
+      /*num_inputs=*/2);
+  m1.SetInput(0, tensor0);
+  m1.SetInput(1, tensor1);
+  m1.Invoke();
+  EXPECT_THAT(m1.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+
+  QuantizedConcatenationOpModel m1_negative(
+      {TensorType_UINT8, {2, 3}, 0, std::numeric_limits<uint8_t>::max()},
+      /*axis=*/-1,
+      /*num_inputs=*/2);
+  m1_negative.SetInput(0, tensor0);
+  m1_negative.SetInput(1, tensor1);
+  m1_negative.Invoke();
+  EXPECT_THAT(m1_negative.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 
 }  // namespace

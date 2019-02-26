@@ -32,12 +32,6 @@ namespace ops {
 namespace builtin {
 namespace concatenation {
 
-// This file has two implementation of Concatenation.
-enum KernelType {
-  kReference,
-  kGenericOptimized,
-};
-
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
@@ -54,7 +48,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
 
   // TODO(ahentz): These are limitations of our implementation that could be
   // removed with a bit of effort.
-  TF_LITE_ENSURE(context, t0->dims->size <= 4);
   TF_LITE_ENSURE_EQ(context, params->activation, kTfLiteActNone);
   TF_LITE_ENSURE(context,
                  input_type == kTfLiteFloat32 || input_type == kTfLiteUInt8 ||
@@ -100,7 +93,6 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   return context->ResizeTensor(context, output, output_size);
 }
 
-template <KernelType kernel_type>
 TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
   auto* params =
       reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data);
@@ -140,25 +132,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 
   switch (output->type) {  // Already know in/outtypes are same.
     case kTfLiteFloat32:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, float);
-      } else {
-        TF_LITE_CONCATENATION(optimized_ops, float);
-      }
+      TF_LITE_CONCATENATION(reference_ops, float);
       break;
     case kTfLiteInt32:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, int32);
-      } else {
-        TF_LITE_CONCATENATION(optimized_ops, int32);
-      }
+      TF_LITE_CONCATENATION(reference_ops, int32);
       break;
     case kTfLiteUInt8:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION_QUANTIZED(reference_ops);
-      } else {
-        TF_LITE_CONCATENATION_QUANTIZED(optimized_ops);
-      }
+      TF_LITE_CONCATENATION_QUANTIZED(reference_ops);
       break;
     case kTfLiteInt8: {
       if (kernel_type == kReference) {
@@ -168,16 +148,12 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
       }
     } break;
     case kTfLiteInt64:
-      if (kernel_type == kReference) {
-        TF_LITE_CONCATENATION(reference_ops, int64_t);
-      } else {
-        TF_LITE_CONCATENATION(optimized_ops, int64_t);
-      }
+      TF_LITE_CONCATENATION(reference_ops, int64_t);
       break;
 
     default:
-      context->ReportError(context,
-                           "Only float32 and uint8 are currently supported.");
+      context->ReportError(context, "Type '%s' is not supported currently.",
+                           TfLiteTypeGetName(output->type));
       return kTfLiteError;
   }
 
@@ -192,23 +168,13 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
 }  // namespace concatenation
 
 TfLiteRegistration* Register_CONCATENATION_REF() {
-  static TfLiteRegistration r = {
-      nullptr, nullptr, concatenation::Prepare,
-      concatenation::Eval<concatenation::kReference>};
-  return &r;
-}
-
-TfLiteRegistration* Register_CONCATENATION_GENERIC_OPT() {
-  static TfLiteRegistration r = {
-      nullptr, nullptr, concatenation::Prepare,
-      concatenation::Eval<concatenation::kGenericOptimized>};
+  static TfLiteRegistration r = {nullptr, nullptr, concatenation::Prepare,
+                                 concatenation::Eval};
   return &r;
 }
 
 TfLiteRegistration* Register_CONCATENATION() {
-  // TODO(ahentz): It turns out the two versions of Concatenation are almost
-  // identical, so we should consider removing one.
-  return Register_CONCATENATION_GENERIC_OPT();
+  return Register_CONCATENATION_REF();
 }
 
 }  // namespace builtin
