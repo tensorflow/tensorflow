@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding_metadata.h"
 #include "tensorflow/compiler/xla/window_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
 namespace {
@@ -216,16 +217,49 @@ HloInstructionProto HloTriangularSolveInstruction::ToProto() const {
   return proto;
 }
 
+namespace {
+
+// Converts a protocol buffer message (e.g., TriangularSolveOptions) to a vector
+// of "key=value" attribute strings generically, using protocol buffer
+// reflection.
+//
+// Currently implements a small subset of cases; feel free to add more as
+// needed.
+std::vector<string> AttributeProtoToStringVector(
+    const tensorflow::protobuf::Message& message) {
+  const tensorflow::protobuf::Reflection* reflection = message.GetReflection();
+  std::vector<const tensorflow::protobuf::FieldDescriptor*> fields;
+  reflection->ListFields(message, &fields);
+
+  std::vector<string> output;
+  for (const tensorflow::protobuf::FieldDescriptor* field : fields) {
+    string s = absl::StrCat(field->name(), "=");
+    CHECK(!field->is_repeated()) << "Repeated fields aren't implemented";
+    switch (field->type()) {
+      case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+        bool val = reflection->GetBool(message, field);
+        absl::StrAppend(&s, val ? "true" : "false");
+        break;
+      }
+      case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
+        const tensorflow::protobuf::EnumValueDescriptor* evd =
+            reflection->GetEnum(message, field);
+        absl::StrAppend(&s, evd->name());
+        break;
+      }
+      default:
+        LOG(FATAL) << "Unimplemented field type: " << field->DebugString();
+    }
+    output.push_back(std::move(s));
+  }
+  return output;
+}
+
+}  // namespace
+
 std::vector<string> HloTriangularSolveInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
-  return {
-      StrCat("left_side=",
-             triangular_solve_options_.left_side() ? "true" : "false"),
-      StrCat("lower=", triangular_solve_options_.lower() ? "true" : "false"),
-      StrCat("unit_diagonal=",
-             triangular_solve_options_.unit_diagonal() ? "true" : "false"),
-      StrCat("transpose_a=", TriangularSolveOptions_Transpose_Name(
-                                 triangular_solve_options_.transpose_a()))};
+  return AttributeProtoToStringVector(triangular_solve_options_);
 }
 
 bool HloTriangularSolveInstruction::IdenticalSlowPath(

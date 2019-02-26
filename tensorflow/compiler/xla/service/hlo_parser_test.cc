@@ -577,6 +577,19 @@ ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
 
 )"
 },
+// Triangular solve
+{
+"TriangularSolve",
+R"(HloModule TriangularSolve_module
+
+ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] {
+  %a.1 = f32[4,4]{1,0} parameter(0)
+  %b.2 = f32[3,4]{1,0} parameter(1)
+  ROOT %triangular-solve.3 = f32[3,4]{1,0} triangular-solve(f32[4,4]{1,0} %a.1, f32[3,4]{1,0} %b.2), lower=true, transpose_a=NO_TRANSPOSE
+}
+
+)"
+},
 // Dynamic slice
 {
 "DynamicSlice",
