@@ -49,21 +49,24 @@ For example, `vector<4 x f32>` converts to `!llvm.type<"<4 x float>">`.
 
 Memref types in MLIR have both static and dynamic information associated with
 them. The dynamic information comprises the buffer pointer as well as sizes of
-any dynamically sized dimensions. They are converted into LLVM IR structure
-types. The first element of the structure is a pointer to the memref's element
-type converted using these rules. Follow as many elements as memref has dynamic
-sizes, all of the MLIR `index` type converted using these rules.
+any dynamically sized dimensions. Memref types are converted into either LLVM IR
+pointer types if they are fully statically shaped; or to LLVM IR structure types
+if they contain dynamic sizes. In the latter case, the first element of the
+structure is a pointer to the converted (using these rules) memref element type,
+followed by as many elements as the memref has dynamic sizes. The type of each
+of these size arguments will be the LLVM type that results from converting 
+the MLIR `index` type.
 
 Examples:
 
 ```mlir {.mlir}
-// All of the following are converted to a single-element structure because
+// All of the following are converted to just a pointer type because
 // of fully static sizes.
 memref<f32>
 memref<1 x f32>
 memref<10x42x42x43x123 x f32>
 // resulting type
-!llvm.type<"{float*}">
+!llvm.type<"float*">
 
 // All of the following are converted to a three-element structure
 memref<?x? x f32>
