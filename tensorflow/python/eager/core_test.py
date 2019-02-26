@@ -311,7 +311,7 @@ class TFETest(test_util.TensorFlowTestCase):
                  three.dtype.as_datatype_enum))
       context.async_wait()
     context.async_clear_error()
-    context.execution_mode = context.SYNC
+    context.context().execution_mode = context.SYNC
 
   def testExecuteTooManyNumOutputs(self):
     # num_outputs provided is 50, but only one output is produced.
