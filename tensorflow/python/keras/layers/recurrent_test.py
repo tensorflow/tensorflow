@@ -218,6 +218,61 @@ class RNNTest(keras_parameterized.TestCase):
     y_np_2 = model.predict(x_np)
     self.assertAllClose(y_np, y_np_2, atol=1e-4)
 
+  def test_minimal_rnn_cell_abstract_rnn_cell(self):
+
+    class MinimalRNNCell(keras.layers.AbstractRNNCell):
+
+      def __init__(self, units, **kwargs):
+        self.units = units
+        super(MinimalRNNCell, self).__init__(**kwargs)
+
+      @property
+      def state_size(self):
+        return self.units
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                      initializer='uniform',
+                                      name='kernel')
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer='uniform',
+            name='recurrent_kernel')
+        self.built = True
+
+      def call(self, inputs, states):
+        prev_output = states[0]
+        h = keras.backend.dot(inputs, self.kernel)
+        output = h + keras.backend.dot(prev_output, self.recurrent_kernel)
+        return output, output
+
+      @property
+      def output_size(self):
+        return self.units
+
+    cell = MinimalRNNCell(32)
+    x = keras.Input((None, 5))
+    layer = keras.layers.RNN(cell)
+    y = layer(x)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer="rmsprop",
+        loss="mse",
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
+
+    # Test stacking.
+    cells = [MinimalRNNCell(8),
+             MinimalRNNCell(16),
+             MinimalRNNCell(32)]
+    layer = keras.layers.RNN(cells)
+    y = layer(x)
+    model = keras.models.Model(x, y)
+    model.compile(optimizer='rmsprop',
+                  loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
+
   def test_rnn_with_time_major(self):
     batch = 10
     time_step = 5

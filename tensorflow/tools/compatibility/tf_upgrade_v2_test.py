@@ -1236,6 +1236,13 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_contrib_rnn_cell(self):
+    text = "tf.contrib.rnn.RNNCell"
+    expected = "tf.compat.v1.nn.rnn_cell.RNNCell"
+    # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_flags_bare(self):
     _, _, errors, _ = self._upgrade("tf.flags")
     self.assertIn("tf.flags has been removed", errors[0])
