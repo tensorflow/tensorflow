@@ -697,8 +697,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         // Use the resource manager in the iterator context to get / create
         // a cache.
         ResourceMgr* mgr = ctx->resource_mgr();
-        const string name =
-            strings::StrCat(prefix(), "::", dataset()->name(), "::MemoryCache");
+        const string name = strings::StrCat(
+            prefix(), "::", dataset()->node_name(), "::MemoryCache");
         TF_RETURN_IF_ERROR(mgr->LookupOrCreate<MemoryCache>(
             "tf_data", name, &cache_, [](MemoryCache** cache) {
               *cache = new MemoryCache();
