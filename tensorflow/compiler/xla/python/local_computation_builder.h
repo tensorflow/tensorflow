@@ -87,7 +87,7 @@ class LocalShapedBuffer {
   // analogous to std::unique_ptr::release().
   ShapedBuffer Release();
 
-  // Destructures a tuple-valued LocalShapedBuffer into its constitutent
+  // Destructures a tuple-valued LocalShapedBuffer into its constituent
   // elements in LocalShapedBufferTuple form.
   StatusOr<LocalShapedBufferTuple*> DestructureTuple();
 
