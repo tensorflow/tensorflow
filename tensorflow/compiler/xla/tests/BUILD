@@ -1602,6 +1602,39 @@ xla_test(
 )
 
 xla_test(
+    name = "multi_device_all_reduce_test",
+    srcs = ["multi_device_all_reduce_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
+    ],
+)
+
+xla_test(
     name = "bitcast_convert_test",
     srcs = ["bitcast_convert_test.cc"],
     deps = [
