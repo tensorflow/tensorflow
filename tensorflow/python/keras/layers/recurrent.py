@@ -1107,8 +1107,136 @@ class AbstractRNNCell(Layer):
     return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
 
 
+class DropoutRNNCellMixin(object):
+  """Object that hold dropout related fields for RNN Cell.
+
+  This class is not a standalone RNN cell. It suppose to be used with a RNN cell
+  by multiple inheritance. Any cell that mix with class should have following
+  fields:
+    dropout: a float number within range [0, 1). The ratio that the input
+      tensor need to dropout.
+    recurrent_dropout: a float number within range [0, 1). The ratio that the
+      recurrent state weights need to dropout.
+  This object will create and cache created dropout masks, and reuse them for
+  the incoming data, so that the same mask is used for every batch input.
+  """
+
+  def __init__(self, *args, **kwargs):
+    # Note that the following two masks will be used in "graph function" mode,
+    # e.g. these masks are symbolic tensors. In eager mode, the `eager_*_mask`
+    # tensors will be generated differently than in the "graph function" case,
+    # and they will be cached.
+    # Also note that in graph mode, we still cache those masks only because the
+    # RNN could be created with `unroll=True`. In that case, the `cell.call()`
+    # function will be invoked multiple times, and we want to ensure same mask
+    # is used every time.
+    self._dropout_mask = None
+    self._recurrent_dropout_mask = None
+    self._eager_dropout_mask = None
+    self._eager_recurrent_dropout_mask = None
+    super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
+
+  def reset_dropout_mask(self):
+    """Reset the cached dropout masks if any.
+
+    This is important for the RNN layer to invoke this in it call() method so
+    that the cached mask is cleared before calling the cell.call(). The mask
+    should be cached across the timestep within the same batch, but shouldn't
+    be cached between batches. Otherwise it will introduce unreasonable bias
+    against certain index of data within the batch.
+    """
+    self._dropout_mask = None
+    self._eager_dropout_mask = None
+
+  def reset_recurrent_dropout_mask(self):
+    """Reset the cached recurrent dropout masks if any.
+
+    This is important for the RNN layer to invoke this in it call() method so
+    that the cached mask is cleared before calling the cell.call(). The mask
+    should be cached across the timestep within the same batch, but shouldn't
+    be cached between batches. Otherwise it will introduce unreasonable bias
+    against certain index of data within the batch.
+    """
+    self._recurrent_dropout_mask = None
+    self._eager_recurrent_dropout_mask = None
+
+  def get_dropout_mask_for_cell(self, inputs, training, count=1):
+    """Get the dropout mask for RNN cell's input.
+
+    It will create mask based on context if there isn't any existing cached
+    mask. If a new mask is generated, it will update the cache in the cell.
+
+    Args:
+      inputs: the input tensor whose shape will be used to generate dropout
+        mask.
+      training: boolean tensor, whether its in training mode, dropout will be
+        ignored in non-training mode.
+      count: int, how many dropout mask will be generated. It is useful for cell
+        that has internal weights fused together.
+    Returns:
+      List of mask tensor, generated or cached mask based on context.
+    """
+    if self.dropout == 0:
+      return None
+    if (not context.executing_eagerly() and self._dropout_mask is None
+        or context.executing_eagerly() and self._eager_dropout_mask is None):
+      # Generate new mask and cache it based on context.
+      dp_mask = _generate_dropout_mask(
+          array_ops.ones_like(inputs),
+          self.dropout,
+          training=training,
+          count=count)
+      if context.executing_eagerly():
+        self._eager_dropout_mask = dp_mask
+      else:
+        self._dropout_mask = dp_mask
+    else:
+      # Reuse the existing mask.
+      dp_mask = (self._eager_dropout_mask
+                 if context.executing_eagerly() else self._dropout_mask)
+    return dp_mask
+
+  def get_recurrent_dropout_mask_for_cell(self, inputs, training, count=1):
+    """Get the recurrent dropout mask for RNN cell.
+
+    It will create mask based on context if there isn't any existing cached
+    mask. If a new mask is generated, it will update the cache in the cell.
+
+    Args:
+      inputs: the input tensor whose shape will be used to generate dropout
+        mask.
+      training: boolean tensor, whether its in training mode, dropout will be
+        ignored in non-training mode.
+      count: int, how many dropout mask will be generated. It is useful for cell
+        that has internal weights fused together.
+    Returns:
+      List of mask tensor, generated or cached mask based on context.
+    """
+    if self.recurrent_dropout == 0:
+      return None
+    if (not context.executing_eagerly() and self._recurrent_dropout_mask is None
+        or context.executing_eagerly()
+        and self._eager_recurrent_dropout_mask is None):
+      # Generate new mask and cache it based on context.
+      rec_dp_mask = _generate_dropout_mask(
+          array_ops.ones_like(inputs),
+          self.recurrent_dropout,
+          training=training,
+          count=count)
+      if context.executing_eagerly():
+        self._eager_recurrent_dropout_mask = rec_dp_mask
+      else:
+        self._recurrent_dropout_mask = rec_dp_mask
+    else:
+      # Reuse the existing mask.
+      rec_dp_mask = (self._eager_recurrent_dropout_mask
+                     if context.executing_eagerly()
+                     else self._recurrent_dropout_mask)
+    return rec_dp_mask
+
+
 @keras_export('keras.layers.SimpleRNNCell')
-class SimpleRNNCell(Layer):
+class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   """Cell class for SimpleRNN.
 
   Arguments:
@@ -1185,8 +1313,6 @@ class SimpleRNNCell(Layer):
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.state_size = self.units
     self.output_size = self.units
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -1215,20 +1341,9 @@ class SimpleRNNCell(Layer):
 
   def call(self, inputs, states, training=None):
     prev_output = states[0]
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(prev_output),
-          self.recurrent_dropout,
-          training=training)
-
-    dp_mask = self._dropout_mask
-    rec_dp_mask = self._recurrent_dropout_mask
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        prev_output, training)
 
     if dp_mask is not None:
       h = K.dot(inputs * dp_mask, self.kernel)
@@ -1401,8 +1516,8 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell._dropout_mask = None
-    self.cell._recurrent_dropout_mask = None
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -1507,7 +1622,7 @@ class SimpleRNN(RNN):
 
 
 @keras_export('keras.layers.GRUCell')
-class GRUCell(Layer):
+class GRUCell(DropoutRNNCellMixin, Layer):
   """Cell class for the GRU layer.
 
   Arguments:
@@ -1604,8 +1719,6 @@ class GRUCell(Layer):
     self.reset_after = reset_after
     self.state_size = self.units
     self.output_size = self.units
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -1644,24 +1757,9 @@ class GRUCell(Layer):
   def call(self, inputs, states, training=None):
     h_tm1 = states[0]  # previous memory
 
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=3)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(h_tm1),
-          self.recurrent_dropout,
-          training=training,
-          count=3)
-
-    # dropout matrices for input units
-    dp_mask = self._dropout_mask
-    # dropout matrices for recurrent units
-    rec_dp_mask = self._recurrent_dropout_mask
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        h_tm1, training, count=3)
 
     if self.use_bias:
       if not self.reset_after:
@@ -1938,8 +2036,8 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell._dropout_mask = None
-    self.cell._recurrent_dropout_mask = None
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2062,7 +2160,7 @@ class GRU(RNN):
 
 
 @keras_export('keras.layers.GRU', v1=[])
-class UnifiedGRU(GRU):
+class UnifiedGRU(DropoutRNNCellMixin, GRU):
   """Gated Recurrent Unit - Cho et al. 2014.
 
   Based on available runtime hardware and constraints, this layer
@@ -2222,7 +2320,6 @@ class UnifiedGRU(GRU):
         time_major=time_major,
         reset_after=reset_after,
         **kwargs)
-    self._dropout_mask = None
     # CuDNN uses following setting by default and not configurable.
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
@@ -2242,8 +2339,6 @@ class UnifiedGRU(GRU):
     if mask is not None or not self.could_use_cudnn:
       # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
-      self.cell._dropout_mask = None
-      self.cell._recurrent_dropout_mask = None
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -2288,15 +2383,11 @@ class UnifiedGRU(GRU):
     if self.go_backwards:
       # Reverse time axis.
       inputs = K.reverse(inputs, 0 if self.time_major else 1)
-    if 0 < self.dropout < 1:
-      if self._dropout_mask is None:
-        self._dropout_mask = _generate_dropout_mask(
-            array_ops.ones_like(inputs),
-            self.dropout,
-            training=training,
-            count=3)
 
-      inputs *= self._dropout_mask[0]
+    self.reset_dropout_mask()
+    dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
+    if dropout_mask is not None:
+      inputs *= dropout_mask[0]
     if ops.executing_eagerly_outside_functions():
       # Under eager context, the device placement is already known. Prefer the
       # GPU implementation when GPU is available.
@@ -2457,7 +2548,7 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
 
 
 @keras_export('keras.layers.LSTMCell')
-class LSTMCell(Layer):
+class LSTMCell(DropoutRNNCellMixin, Layer):
   """Cell class for the LSTM layer.
 
   Arguments:
@@ -2557,8 +2648,6 @@ class LSTMCell(Layer):
     self.implementation = implementation
     self.state_size = [self.units, self.units]
     self.output_size = self.units
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -2621,27 +2710,12 @@ class LSTMCell(Layer):
     return c, o
 
   def call(self, inputs, states, training=None):
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=4)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(states[0]),
-          self.recurrent_dropout,
-          training=training,
-          count=4)
-
-    # dropout matrices for input units
-    dp_mask = self._dropout_mask
-    # dropout matrices for recurrent units
-    rec_dp_mask = self._recurrent_dropout_mask
-
     h_tm1 = states[0]  # previous memory state
     c_tm1 = states[1]  # previous carry state
+
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        h_tm1, training, count=4)
 
     if self.implementation == 1:
       if 0 < self.dropout < 1.:
@@ -2967,8 +3041,8 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell._dropout_mask = None
-    self.cell._recurrent_dropout_mask = None
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -3091,7 +3165,7 @@ class LSTM(RNN):
 
 
 @keras_export('keras.layers.LSTM', v1=[])
-class UnifiedLSTM(LSTM):
+class UnifiedLSTM(DropoutRNNCellMixin, LSTM):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
   Based on available runtime hardware and constraints, this layer
@@ -3234,7 +3308,6 @@ class UnifiedLSTM(LSTM):
     self.state_spec = [
         InputSpec(shape=(None, dim)) for dim in (self.units, self.units)
     ]
-    self._dropout_mask = None
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
         recurrent_dropout == 0 and not unroll and use_bias)
@@ -3278,15 +3351,10 @@ class UnifiedLSTM(LSTM):
         # Reverse time axis.
         inputs = K.reverse(inputs, 0 if self.time_major else 1)
 
-      if 0 < self.dropout < 1:
-        if self._dropout_mask is None:
-          self._dropout_mask = _generate_dropout_mask(
-              array_ops.ones_like(inputs),
-              self.dropout,
-              training=training,
-              count=4)
-
-        inputs *= self._dropout_mask[0]
+      self.reset_dropout_mask()
+      dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
+      if dropout_mask is not None:
+        inputs *= dropout_mask[0]
 
       if ops.executing_eagerly_outside_functions():
         # Under eager context, the device placement is already known. Prefer the

@@ -3402,7 +3402,7 @@ def rnn(step_function,
   if unroll:
     if not time_steps:
       raise ValueError('Unrolling requires a fixed number of timesteps.')
-    states = initial_states
+    states = tuple(initial_states)
     successive_states = []
     successive_outputs = []
 
@@ -3434,7 +3434,8 @@ def rnn(step_function,
       for i in range(time_steps):
         inp = _get_input_tensor(i)
         mask_t = mask_list[i]
-        output, new_states = step_function(inp, states + constants)
+        output, new_states = step_function(inp,
+                                           tuple(states) + tuple(constants))
         tiled_mask_t = _expand_mask(mask_t, output)
 
         if not successive_outputs:
@@ -3469,7 +3470,7 @@ def rnn(step_function,
     else:
       for i in range(time_steps):
         inp = _get_input_tensor(i)
-        output, states = step_function(inp, states + constants)
+        output, states = step_function(inp, tuple(states) + tuple(constants))
         successive_outputs.append(output)
         successive_states.append(states)
       last_output = successive_outputs[-1]
