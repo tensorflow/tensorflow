@@ -39,6 +39,7 @@
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/Module.h"
 #include "llvm/Support/PrettyStackTrace.h"
+#include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
 using namespace mlir;
 
@@ -66,7 +67,33 @@ public:
     return failure(message, fn);
   }
 
-  bool verifyAttribute(Attribute attr, const Instruction &op);
+  template <typename ErrorContext>
+  bool verifyAttribute(Attribute attr, const ErrorContext &ctx) {
+    if (!attr.isOrContainsFunction())
+      return false;
+
+    // If we have a function attribute, check that it is non-null and in the
+    // same module as the operation that refers to it.
+    if (auto fnAttr = attr.dyn_cast<FunctionAttr>()) {
+      if (!fnAttr.getValue())
+        return failure("attribute refers to deallocated function!", ctx);
+
+      if (fnAttr.getValue()->getModule() != fn.getModule())
+        return failure("attribute refers to function '" +
+                           Twine(fnAttr.getValue()->getName()) +
+                           "' defined in another module!",
+                       ctx);
+      return false;
+    }
+
+    // Otherwise, we must have an array attribute, remap the elements.
+    for (auto elt : attr.cast<ArrayAttr>().getValue()) {
+      if (verifyAttribute(elt, ctx))
+        return true;
+    }
+
+    return false;
+  }
 
   bool verify();
   bool verifyBlock(const Block &block, bool isTopLevel);
@@ -74,7 +101,8 @@ public:
   bool verifyDominance(const Block &block);
   bool verifyInstDominance(const Instruction &inst);
 
-  explicit FuncVerifier(const Function &fn) : fn(fn) {}
+  explicit FuncVerifier(const Function &fn)
+      : fn(fn), attrNameRegex("^:?[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
 
 private:
   /// The function being checked.
@@ -82,6 +110,9 @@ private:
 
   /// Dominance information for this function, when checking dominance.
   DominanceInfo *domInfo = nullptr;
+
+  /// Regex checker for attribute names.
+  llvm::Regex attrNameRegex;
 };
 } // end anonymous namespace
 
@@ -93,10 +124,24 @@ bool FuncVerifier::verify() {
   if (fn.isExternal())
     return false;
 
+  // Check that the function name is valid.
+  llvm::Regex funcNameRegex("^[a-zA-Z][a-zA-Z_0-9\\.\\$]*$");
+  if (!funcNameRegex.match(fn.getName().strref()))
+    return failure("invalid function name '" + fn.getName().strref() + "'", fn);
+
   // Verify the first block has no predecessors.
   auto *firstBB = &fn.front();
   if (!firstBB->hasNoPredecessors())
     return failure("entry block of function may not have predecessors", fn);
+
+  /// Verify that all of the attributes are okay.
+  for (auto attr : fn.getAttrs()) {
+    if (!attrNameRegex.match(attr.first))
+      return failure("invalid attribute name '" + attr.first.strref() + "'",
+                     fn);
+    if (verifyAttribute(attr.second, fn))
+      return true;
+  }
 
   // Verify that the argument list of the function and the arg list of the first
   // block line up.
@@ -130,34 +175,6 @@ bool FuncVerifier::verify() {
   }
 
   domInfo = nullptr;
-  return false;
-}
-
-// Check that function attributes are all well formed.
-bool FuncVerifier::verifyAttribute(Attribute attr, const Instruction &op) {
-  if (!attr.isOrContainsFunction())
-    return false;
-
-  // If we have a function attribute, check that it is non-null and in the
-  // same module as the operation that refers to it.
-  if (auto fnAttr = attr.dyn_cast<FunctionAttr>()) {
-    if (!fnAttr.getValue())
-      return failure("attribute refers to deallocated function!", op);
-
-    if (fnAttr.getValue()->getModule() != fn.getModule())
-      return failure("attribute refers to function '" +
-                         Twine(fnAttr.getValue()->getName()) +
-                         "' defined in another module!",
-                     op);
-    return false;
-  }
-
-  // Otherwise, we must have an array attribute, remap the elements.
-  for (auto elt : attr.cast<ArrayAttr>().getValue()) {
-    if (verifyAttribute(elt, op))
-      return true;
-  }
-
   return false;
 }
 
@@ -224,10 +241,11 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
       return failure("reference to operand defined in another function", op);
   }
 
-  // Verify all attributes are ok.  We need to check Function attributes, since
-  // they are actually mutable (the function they refer to can be deleted), and
-  // we have to check array attributes that can refer to them.
+  /// Verify that all of the attributes are okay.
   for (auto attr : op.getAttrs()) {
+    if (!attrNameRegex.match(attr.first))
+      return failure("invalid attribute name '" + attr.first.strref() + "'",
+                     op);
     if (verifyAttribute(attr.second, op))
       return true;
   }

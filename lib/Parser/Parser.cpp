@@ -520,8 +520,8 @@ Type Parser::parseExtendedType() {
       return nullptr;
   } else {
     // Otherwise, form a new unknown type.
-    result = UnknownType::get(Identifier::get(identifier, state.context),
-                              typeData, state.context);
+    result = UnknownType::getChecked(Identifier::get(identifier, state.context),
+                                     typeData, state.context, loc);
   }
 
   // Consume the '>'.

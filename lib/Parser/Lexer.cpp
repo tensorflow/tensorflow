@@ -221,7 +221,8 @@ Token Lexer::lexAtIdentifier(const char *tokStart) {
   if (!isalpha(*curPtr++))
     return emitError(curPtr-1, "expected letter in @ identifier");
 
-  while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_')
+  while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_' ||
+         *curPtr == '$' || *curPtr == '.')
     ++curPtr;
   return formToken(Token::at_identifier, tokStart);
 }

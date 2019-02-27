@@ -20,6 +20,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "llvm/ADT/Twine.h"
 #include "llvm/Support/ManagedStatic.h"
+#include "llvm/Support/Regex.h"
 using namespace mlir;
 
 // Registry for all dialect allocation functions.
@@ -60,8 +61,7 @@ void mlir::registerAllDialects(MLIRContext *context) {
 
 Dialect::Dialect(StringRef namePrefix, MLIRContext *context)
     : namePrefix(namePrefix), context(context) {
-  assert(!namePrefix.contains('.') &&
-         "Dialect names cannot contain '.' characters.");
+  assert(isValidNamespace(namePrefix) && "invalid dialect namespace");
   registerDialect(context);
 }
 
@@ -73,4 +73,13 @@ Type Dialect::parseType(StringRef tyData, Location loc,
   context->emitError(loc, "dialect '" + getNamespace() +
                               "' provides no type parsing hook");
   return Type();
+}
+
+/// Utility function that returns if the given string is a valid dialect
+/// namespace.
+bool Dialect::isValidNamespace(StringRef str) {
+  if (str.empty())
+    return true;
+  llvm::Regex dialectNameRegex("^[a-zA-Z_][a-zA-Z_0-9\\$]*$");
+  return dialectNameRegex.match(str);
 }

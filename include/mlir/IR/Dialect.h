@@ -103,6 +103,10 @@ public:
 
   virtual ~Dialect();
 
+  /// Utility function that returns if the given string is a valid dialect
+  /// namespace.
+  static bool isValidNamespace(StringRef str);
+
 protected:
   /// Note: The namePrefix can be empty, but it must not contain '.' characters.
   /// Note: If the name is non empty, then all operations belonging to this

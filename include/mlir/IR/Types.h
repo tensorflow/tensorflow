@@ -289,11 +289,23 @@ public:
   static UnknownType get(Identifier dialect, StringRef typeData,
                          MLIRContext *context);
 
+  /// Get or create a new UnknownType with the provided dialect and string data.
+  /// If the given identifier is not a valid namespace for a dialect, then a
+  /// null type is returned.
+  static UnknownType getChecked(Identifier dialect, StringRef typeData,
+                                MLIRContext *context, Location location);
+
   /// Returns the dialect namespace of the unknown type.
   Identifier getDialectNamespace() const;
 
   /// Returns the raw type data of the unknown type.
   StringRef getTypeData() const;
+
+  /// Verify the construction of an unknown type.
+  static bool verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                           MLIRContext *context,
+                                           Identifier dialect,
+                                           StringRef typeData);
 
   static bool kindof(unsigned kind) { return kind == Kind::Unknown; }
 

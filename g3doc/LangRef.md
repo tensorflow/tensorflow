@@ -173,7 +173,7 @@ Syntax:
 
 ``` {.ebnf}
 // Identifiers
-bare-id ::= letter (letter|digit|[_])*
+bare-id ::= (letter|[_]) (letter|digit|[_$.])*
 bare-id-list ::= bare-id (`,` bare-id)*
 suffix-id ::= digit+ | ((letter|id-punct) (letter|id-punct|digit)*)
 

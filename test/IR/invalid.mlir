@@ -908,3 +908,8 @@ func @invalid_nested_dominance() {
   }
   return
 }
+
+// -----
+
+// expected-error @+1 {{invalid dialect namespace 'invalid.dialect'}}
+func @invalid_unknown_type_dialect_name() -> !invalid.dialect<"">

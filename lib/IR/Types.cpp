@@ -18,6 +18,7 @@
 #include "mlir/IR/Types.h"
 #include "TypeDetail.h"
 #include "mlir/IR/Dialect.h"
+#include "llvm/ADT/Twine.h"
 
 using namespace mlir;
 using namespace mlir::detail;
@@ -58,6 +59,11 @@ UnknownType UnknownType::get(Identifier dialect, StringRef typeData,
   return Base::get(context, Type::Kind::Unknown, dialect, typeData);
 }
 
+UnknownType UnknownType::getChecked(Identifier dialect, StringRef typeData,
+                                    MLIRContext *context, Location location) {
+  return Base::getChecked(location, context, Kind::Unknown, dialect, typeData);
+}
+
 /// Returns the dialect namespace of the unknown type.
 Identifier UnknownType::getDialectNamespace() const {
   return static_cast<ImplType *>(type)->dialectNamespace;
@@ -66,6 +72,20 @@ Identifier UnknownType::getDialectNamespace() const {
 /// Returns the raw type data of the unknown type.
 StringRef UnknownType::getTypeData() const {
   return static_cast<ImplType *>(type)->typeData;
+}
+
+/// Verify the construction of an unknown type.
+bool UnknownType::verifyConstructionInvariants(llvm::Optional<Location> loc,
+                                               MLIRContext *context,
+                                               Identifier dialect,
+                                               StringRef typeData) {
+  if (!Dialect::isValidNamespace(dialect.strref())) {
+    if (loc)
+      context->emitError(*loc, "invalid dialect namespace '" +
+                                   dialect.strref() + "'");
+    return true;
+  }
+  return false;
 }
 
 // Define type identifiers.
