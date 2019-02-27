@@ -43,7 +43,7 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
     return "";
   }
 
-  auto node_name = [cycles, &graph](int node_id) {
+  auto node_name = [&graph](int node_id) {
     if (!FastBoundsCheck(node_id, graph.num_node_ids())) {
       return string("(null)");
     }

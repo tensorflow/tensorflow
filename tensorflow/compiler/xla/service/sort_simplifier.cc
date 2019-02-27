@@ -14,12 +14,15 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
-#include "tensorflow/compiler/xla/service/hlo_computation.h"
-#include "tensorflow/compiler/xla/service/hlo_instruction.h"
-#include "tensorflow/compiler/xla/statusor.h"
+
+#include <memory>
+#include <vector>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/statusor.h"
 
 namespace xla {
 namespace {
@@ -39,8 +42,7 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
     return false;
   }
 
-  // Index 0 is the sorting key used by the sort HLO itself.
-  absl::flat_hash_set<int64> used_indices{0};
+  absl::flat_hash_set<int64> used_indices;
   for (const HloInstruction* user : sort->users()) {
     if (user->opcode() != HloOpcode::kGetTupleElement) {
       // Can't analyse users other then get-tuple-element.
@@ -49,15 +51,25 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
     used_indices.insert(user->tuple_index());
   }
 
+  // Also note which parameters are used by the comparator computation.
+  auto comparator = sort->to_apply();
+  for (int64 i = 0; i < sort->operand_count() * 2; ++i) {
+    if (comparator->parameter_instruction(i)->user_count() > 0) {
+      // operand i corresponds to parameters 2 * i and 2 * i + 1 of the
+      // computation.
+      used_indices.insert(i / 2);
+    }
+  }
+
   if (used_indices.size() == sort->operand_count()) {
     // All operands are used.
     return false;
   }
 
-  std::vector<HloInstruction*> operands{sort->mutable_operand(0)};
-  std::vector<Shape> new_shapes{sort->operand(0)->shape()};
-  for (int64 i = 1; i < sort->operand_count(); ++i) {
-    if (used_indices.count(i)) {
+  std::vector<HloInstruction*> operands;
+  std::vector<Shape> new_shapes;
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    if (used_indices.contains(i)) {
       operands.push_back(sort->mutable_operand(i));
       new_shapes.push_back(sort->operand(i)->shape());
     }
@@ -68,6 +80,32 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
                              : ShapeUtil::MakeTupleShape(new_shapes);
   HloInstruction* new_sort = computation->AddInstruction(
       sort->CloneWithNewOperands(new_sort_shape, operands));
+  absl::flat_hash_map<const HloInstruction*, std::unique_ptr<HloInstruction>>
+      replacements;
+  int64 parameter_number = 0;
+  for (int64 i = 0; i < sort->operand_count(); ++i) {
+    auto* old_lhs_parameter = comparator->parameter_instruction(i * 2);
+    auto* old_rhs_parameter = comparator->parameter_instruction(i * 2 + 1);
+    if (used_indices.contains(i)) {
+      Shape scalar_shape =
+          ShapeUtil::MakeShape(sort->operand(i)->shape().element_type(), {});
+      replacements[old_lhs_parameter] = HloInstruction::CreateParameter(
+          parameter_number, scalar_shape,
+          absl::StrCat("p.", parameter_number / 2, ".lhs"));
+      ++parameter_number;
+      replacements[old_rhs_parameter] = HloInstruction::CreateParameter(
+          parameter_number, scalar_shape,
+          absl::StrCat("p.", parameter_number / 2, ".rhs"));
+      ++parameter_number;
+    } else {
+      replacements[old_lhs_parameter] = nullptr;
+      replacements[old_rhs_parameter] = nullptr;
+    }
+  }
+  HloModule* module = sort->GetModule();
+  HloComputation* new_compare = module->AddEmbeddedComputation(
+      comparator->CloneWithReplacements(std::move(replacements)));
+  new_sort->set_to_apply(new_compare);
 
   // Map from original get-tuple-element tuple index to new HLO instruction
   absl::flat_hash_map<int64, HloInstruction*> result_map;
@@ -83,7 +121,8 @@ StatusOr<bool> RemoveUnusedOperandFromSort(HloInstruction* sort) {
       }
     }
   } else {
-    result_map[0] = new_sort;
+    CHECK_EQ(used_indices.size(), 1);
+    result_map[*used_indices.begin()] = new_sort;
   }
   std::vector<HloInstruction*> users(sort->users().begin(),
                                      sort->users().end());

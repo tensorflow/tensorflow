@@ -41,7 +41,9 @@ from tensorflow.python.keras.optimizer_v2 import adagrad
 from tensorflow.python.keras.optimizer_v2 import adam
 from tensorflow.python.keras.optimizer_v2 import adamax
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import nadam
+from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.keras.optimizer_v2 import rmsprop
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import clip_ops
@@ -111,6 +113,13 @@ class OptimizerTest(test.TestCase):
       self.assertAllClose([-6.5, -5.5], self.evaluate(var0))
       # var1 = [0., 1.] - 0.5 * [3, 3]
       self.assertAllClose([-1.5, -0.5], self.evaluate(var1))
+
+      sgd.learning_rate = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.5)
+      if context.executing_eagerly():
+        sgd.minimize(loss, [var0, var1])
+      else:
+        self.evaluate(opt_op)
 
   @test_util.run_in_graph_and_eager_modes
   def testPrecomputedGradient(self):
@@ -279,6 +288,33 @@ class OptimizerTest(test.TestCase):
       lr3 = opt3._get_hyper('learning_rate')
       self.evaluate(variables.global_variables_initializer())
       self.assertEqual(self.evaluate(lr), self.evaluate(lr3))
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConfigWithLearningRateDecay(self):
+    with self.cached_session():
+      decay_schedule = learning_rate_schedule.InverseTimeDecay(
+          0.5, decay_steps=1.0, decay_rate=0.1)
+      step = 10
+      opt = gradient_descent.SGD(decay_schedule)
+      config = opt.get_config()
+      opt2 = gradient_descent.SGD.from_config(config)
+      # assert both are equal float values.
+      self.assertAllEqual(
+          decay_schedule(step),
+          opt._get_hyper('learning_rate')(step))
+      self.assertAllEqual(
+          decay_schedule(step),
+          opt2._get_hyper('learning_rate')(step))
+      var0 = variables.Variable([[1.0], [2.0]], dtype=dtypes.float32)
+      loss = lambda: 3 * var0
+      # learning rate variable created when calling minimize.
+      opt.minimize(loss, [var0])
+      self.evaluate(variables.global_variables_initializer())
+      config = opt.get_config()
+      opt3 = gradient_descent.SGD.from_config(config)
+      self.assertAllEqual(
+          self.evaluate(opt._get_hyper('learning_rate')(step)),
+          opt3._get_hyper('learning_rate')(step))
 
   @test_util.run_in_graph_and_eager_modes
   def testGradClipValue(self):
@@ -500,6 +536,17 @@ class OptimizerTest(test.TestCase):
     new_step_value = self.evaluate(global_step)
     self.assertEqual(new_step_value, init_step_value + 1)
 
+  def testVarKey(self):
+    with context.graph_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+      self.assertTrue(a._in_graph_mode)
+      self.assertTrue(b._in_graph_mode)
+      var_key = optimizer_v2._var_key(a)
+      self.assertEqual('var', var_key)
+      var_key = optimizer_v2._var_key(b)
+      self.assertEqual('var_1', var_key)
+
 
 @keras_parameterized.run_with_all_model_types
 class OptimizersCompatibilityTest(keras_parameterized.TestCase):
@@ -672,6 +719,23 @@ class OptimizerWithFunctionTest(test.TestCase):
 
       self.assertAllClose([0., 1.], fn(), atol=1e-4)
       self.assertAllClose([-1, 0.], fn(), atol=1e-4)
+
+  def testVarKeyWithVarCreatedInEager(self):
+    with context.eager_mode():
+      a = variables.Variable([1., 2.], name='var')
+      b = variables.Variable([1.], name='var')
+
+      @test_util.also_run_as_tf_function
+      def var_key_test():
+        self.assertFalse(a._in_graph_mode)
+        self.assertFalse(b._in_graph_mode)
+        var_key_a = optimizer_v2._var_key(a)
+        self.assertStartsWith(var_key_a, 'var_')
+        var_key_b = optimizer_v2._var_key(b)
+        self.assertStartsWith(var_key_b, 'var_')
+        self.assertNotEquals(var_key_a, var_key_b)
+
+      var_key_test()
 
 
 if __name__ == '__main__':

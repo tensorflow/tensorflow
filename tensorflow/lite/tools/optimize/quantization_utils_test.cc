@@ -176,6 +176,31 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelQuantization) {
   EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
 }
 
+TEST(QuantizationUtilsTest, SymmetricPerChannelQuantizeValues) {
+  // Set up an input with [3, 1, 1, 2] size and 0 is the channel index.
+  const std::vector<float> input = {
+      13.0, 21.0,  // Channel 1.
+      21.0, 22.0,  // Channel 2.
+      31.0, 40.0,  // Channel 3.
+  };
+  const std::vector<float> scales_inv = {2, 0.5, 3};
+  const std::vector<int32_t> dimension = {3, 1, 1, 2};
+  const int channel_index = 0;
+
+  // Create holder for output data.
+  std::vector<int8_t> output_data(3 * 1 * 1 * 2);
+
+  // Call SymmetricPerChannelQuantizeValues and verify the result.
+  SymmetricPerChannelQuantizeValues(input.data(), scales_inv, dimension,
+                                    channel_index, &output_data);
+  const std::vector<int8_t> expected_output_data = {
+      26, 42,   // Channel 1.
+      11, 11,   // Channel 2.
+      93, 120,  // Channel 3.
+  };
+  EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
+}
+
 }  // namespace
 }  // namespace utils
 }  // namespace optimize

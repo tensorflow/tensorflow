@@ -41,14 +41,20 @@ Status OptimizationPassRegistry::RunGrouping(
         Status s = pass->Run(options);
         if (!s.ok()) return s;
         if (VLOG_IS_ON(1)) {
-          DumpGraphToFile(
-              strings::StrCat("after_phase_", phase.first, "_", pass->name()),
-              **options.graph);
+          if (options.graph) {
+            DumpGraphToFile(
+                strings::StrCat(
+                    "after_phase_", phase.first, "_", pass->name(), "_",
+                    reinterpret_cast<uintptr_t>((*options.graph).get())),
+                **options.graph);
+          }
           if (options.partition_graphs) {
             for (auto& part : *options.partition_graphs) {
               DumpGraphToFile(
-                  strings::StrCat("after_phase_", phase.first, "_",
-                                  pass->name(), "_partition_", part.first),
+                  strings::StrCat(
+                      "after_phase_", phase.first, "_", pass->name(),
+                      "_partition_", part.first, "_",
+                      reinterpret_cast<uintptr_t>(part.second.get())),
                   *part.second);
             }
           }

@@ -296,11 +296,16 @@ StatusOr<std::unique_ptr<HloModuleConfig>> Service::CreateModuleConfig(
     computation_layout->mutable_result_layout()->SetToDefaultLayout();
   }
 
-  config->set_replica_count(options_.number_of_replicas());
   if (execution_options != nullptr) {
+    if (execution_options->num_replicas() > 0) {
+      config->set_replica_count(execution_options->num_replicas());
+    } else {
+      config->set_replica_count(options_.number_of_replicas());
+    }
     config->set_seed(execution_options->seed());
     config->set_debug_options(execution_options->debug_options());
   } else {
+    config->set_replica_count(options_.number_of_replicas());
     config->set_debug_options(GetDebugOptionsFromFlags());
   }
 
@@ -363,6 +368,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module, CreateModuleFromProto(*proto, config));
+    TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*module));
     module_group->push_back(std::move(module));
   }
 

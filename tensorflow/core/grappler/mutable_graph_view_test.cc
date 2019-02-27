@@ -209,6 +209,546 @@ TEST(MutableGraphViewTest, AddSubgraphAndFailIfFunctionDifferent) {
             "different function definition with the same name: XTimesTwo.");
 }
 
+TEST(MutableGraphViewTest, UpdateNodeNoDedupControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("bar_1", "Switch", {}, {}), NDef("bar_2", "Identity", {"bar_1:1"}),
+       NDef("other", "NotImportant", {}, {}),
+       NDef("foo_1", "NotImportant", {"bar_2", "other", "bar_2:1", "^bar_2"}),
+       NDef("foo_2", "NotImportant", {"other:1", "bar_2:2", "^bar_2"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  AttrValue list_value;
+  list_value.mutable_list()->add_type(DT_FLOAT);
+  TF_EXPECT_OK(
+      graph.UpdateNode("bar_2", "IdentityN", kDevice, {{"T", list_value}}));
+
+  CheckNode(graph, "bar_1", "Switch", "", {}, {}, {"bar_2"});
+  CheckNode(graph, "bar_2", "IdentityN", kDevice, {{"T", list_value}},
+            {"bar_1:1"}, {"foo_1", "foo_1:2", "^foo_1", "foo_2:1", "^foo_2"});
+  CheckNode(graph, "other", "NotImportant", "", {}, {}, {"foo_1:1", "foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"bar_2", "other", "bar_2:1", "^bar_2"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"other:1", "bar_2:2", "^bar_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateNodeDedupControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("bar_1", "Switch", {}, {}), NDef("bar_2", "Identity", {"bar_1:1"}),
+       NDef("other", "NotImportant", {}, {}),
+       NDef("foo_1", "NotImportant", {"bar_2", "other", "bar_2:1", "^bar_2"}),
+       NDef("foo_2", "NotImportant", {"other:1", "bar_2:2", "^bar_2"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateNode("bar_2", "NotImportant", kDevice, {}));
+
+  CheckNode(graph, "bar_1", "Switch", "", {}, {}, {"bar_2"});
+  CheckNode(graph, "bar_2", "NotImportant", kDevice, {}, {"bar_1:1"},
+            {"foo_1", "foo_1:2", "foo_2:1"});
+  CheckNode(graph, "other", "NotImportant", "", {}, {}, {"foo_1:1", "foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"bar_2", "other", "bar_2:1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {}, {"other:1", "bar_2:2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateNodeSwitchNoControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def =
+      test::function::GDef({NDef("foo", "NotImportant", {}, {}),
+                            NDef("bar", "NotImportant", {"foo:1"})},
+                           /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateNode("foo", "Switch", kDevice, {}));
+
+  CheckNode(graph, "foo", "Switch", kDevice, {}, {}, {"bar"});
+  CheckNode(graph, "bar", "NotImportant", "", {}, {"foo:1"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateNodeSwitchControlDependency) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def =
+      test::function::GDef({NDef("foo", "NotImportant", {}, {}),
+                            NDef("bar", "NotImportant", {"^foo"})},
+                           /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  AttrValue attr;
+  attr.set_type(DT_FLOAT);
+  Status s = graph.UpdateNode("foo", "Switch", kDevice, {{"T", attr}});
+  EXPECT_FALSE(s.ok());
+  string expected_msg =
+      "MutableGraphView::UpdateNodeOp(node_name='foo', op='Switch', "
+      "device='/device:foo:0', attrs={('T', type: DT_FLOAT)}) error: can't "
+      "change node op to Switch when node drives a control dependency "
+      "(alternatively, we could add the identity node needed, but it seems "
+      "like an unlikely event and probably a mistake).";
+  EXPECT_EQ(s.error_message(), expected_msg);
+
+  CheckNode(graph, "foo", "NotImportant", "", {}, {}, {"^bar"});
+  CheckNode(graph, "bar", "NotImportant", "", {}, {"^foo"}, {});
+
+  CheckGraph(graph);
+}
+
+absl::flat_hash_map<string, std::vector<string>> GetNodeInputsFromGraph(
+    const GraphDef& graph, absl::string_view node_to_exclude) {
+  absl::flat_hash_map<string, std::vector<string>> node_inputs;
+  for (const auto& node : graph.node()) {
+    if (node.name() == node_to_exclude) {
+      continue;
+    }
+    node_inputs[node.name()] =
+        std::vector<string>(node.input().begin(), node.input().end());
+  }
+  return node_inputs;
+}
+
+void CheckUnmodifiedNodeFanins(
+    const GraphDef& graph, absl::string_view node_to_exclude,
+    const absl::flat_hash_map<string, std::vector<string>>&
+        unmodified_node_inputs) {
+  for (const auto& node : graph.node()) {
+    if (node.name() == node_to_exclude) {
+      continue;
+    }
+    auto it = unmodified_node_inputs.find(node.name());
+    ASSERT_NE(it, unmodified_node_inputs.end());
+    ASSERT_EQ(it->second.size(), node.input_size());
+    for (int i = 0; i < node.input_size(); ++i) {
+      EXPECT_EQ(node.input(i), it->second[i]);
+    }
+  }
+}
+
+void TestUpdateNodeName(absl::string_view from_node_name, bool node_exists,
+                        absl::string_view to_node_name, bool update_fanouts,
+                        bool success, const string& error_msg,
+                        absl::Span<const string> expected_fanins) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {"a"}),
+       NDef("c", "NotImportant", {}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node = graph.GetNode(from_node_name);
+  if (node_exists) {
+    EXPECT_NE(node, nullptr);
+  } else {
+    EXPECT_EQ(node, nullptr);
+  }
+
+  absl::flat_hash_map<string, std::vector<string>> unmodified_node_inputs =
+      GetNodeInputsFromGraph(graph_def, from_node_name);
+
+  Status s = graph.UpdateNodeName(from_node_name, to_node_name, update_fanouts);
+  EXPECT_EQ(s.ok(), success);
+  string updated_node_name;
+  if (success) {
+    updated_node_name = string(to_node_name);
+  } else {
+    updated_node_name = string(from_node_name);
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
+  if (node_exists) {
+    EXPECT_EQ(node->name(), updated_node_name);
+    CompareNodeFanins(graph, node, expected_fanins);
+  }
+
+  CheckUnmodifiedNodeFanins(graph_def, updated_node_name,
+                            unmodified_node_inputs);
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateNodeName) {
+  string error_msg;
+  // Node has no fanouts.
+  TestUpdateNodeName("b", /*node_exists=*/true, "d", /*update_fanouts=*/false,
+                     /*success=*/true, error_msg, {"a"});
+  // Node has fanouts and rename to self.
+  TestUpdateNodeName("b", /*node_exists=*/true, "b", /*update_fanouts=*/false,
+                     /*success=*/true, error_msg, {"a"});
+  // Node has no fanouts and rename to self.
+  TestUpdateNodeName("a", /*node_exists=*/true, "a", /*update_fanouts=*/false,
+                     /*success=*/true, error_msg, {});
+
+  // New node name is in use.
+  error_msg =
+      "MutableGraphView::UpdateNodeName(from_node_name='c', to_node_name='b', "
+      "update_fanouts=false) error: can't update node name because new node "
+      "name is in use.";
+  TestUpdateNodeName("c", /*node_exists=*/true, "b", /*update_fanouts=*/false,
+                     /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::UpdateNodeName(from_node_name='a', to_node_name='b', "
+      "update_fanouts=true) error: can't update node name because new node "
+      "name is in use.";
+  TestUpdateNodeName("a", /*node_exists=*/true, "b", /*update_fanouts=*/true,
+                     /*success=*/false, error_msg, {});
+  // Node has fanouts.
+  error_msg =
+      "MutableGraphView::UpdateNodeName(from_node_name='a', to_node_name='d', "
+      "update_fanouts=false) error: can't update node name because node has "
+      "fanouts.";
+  TestUpdateNodeName("a", /*node_exists=*/true, "d", /*update_fanouts=*/false,
+                     /*success=*/false, error_msg, {});
+  // Node does not exist.
+  error_msg =
+      "MutableGraphView::UpdateNodeName(from_node_name='d', to_node_name='e', "
+      "update_fanouts=false) error: node 'd' was not found.";
+  TestUpdateNodeName("d", /*node_exists=*/false, "e", /*update_fanouts=*/false,
+                     /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::UpdateNodeName(from_node_name='d', to_node_name='e', "
+      "update_fanouts=true) error: node 'd' was not found.";
+  TestUpdateNodeName("d", /*node_exists=*/false, "e", /*update_fanouts=*/true,
+                     /*success=*/false, error_msg, {});
+}
+
+TEST(MutableGraphViewTest, UpdateNodeNameWithFanouts) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {"a:2"}),
+       NDef("c", "NotImportant", {"b", "^a"}),
+       NDef("d", "NotImportant", {"^b", "^a"}),
+       NDef("e", "NotImportant", {"b:2", "c:4", "b:1", "^a"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateNodeName("b", "f", /*update_fanouts=*/true));
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"f", "^c", "^d", "^e"});
+  CheckNode(graph, "f", "NotImportant", "", {}, {"a:2"},
+            {"c", "^d", "e", "e:2"});
+  CheckNode(graph, "c", "NotImportant", "", {}, {"f", "^a"}, {"e:1"});
+  CheckNode(graph, "d", "NotImportant", "", {}, {"^f", "^a"}, {});
+  CheckNode(graph, "e", "NotImportant", "", {}, {"f:2", "c:4", "f:1", "^a"},
+            {});
+
+  CheckGraph(graph);
+}
+
+GraphDef SimpleSwapNodeNamesMutationGraph() {
+  return test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("switch_1", "Switch", {"a"}),
+       NDef("identity_1", "Identity", {"switch_1:1"}),
+       NDef("b", "NotImportant", {}, {}), NDef("switch_2", "Switch", {"b"}),
+       NDef("identity_2", "Identity", {"switch_2:0"}),
+       NDef("foo_1", "NotImportant", {"identity_1", "^identity_1"}),
+       NDef("foo_2", "NotImportant", {"identity_2", "^identity_2"})},
+      /*funcs=*/{});
+}
+
+void TestSwapNodeNames(bool update_fanouts) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.SwapNodeNames("foo_1", "foo_2", update_fanouts));
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_1"});
+  CheckNode(graph, "switch_1", "Switch", "", {}, {"a"}, {"identity_1"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_1:1"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"switch_2"});
+  CheckNode(graph, "switch_2", "Switch", "", {}, {"b"}, {"identity_2"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_2:0"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNames) {
+  TestSwapNodeNames(/*update_fanouts=*/false);
+  TestSwapNodeNames(/*update_fanouts=*/true);
+}
+
+void TestSwapNodeNamesWithSameNames(bool update_fanouts) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.SwapNodeNames("identity_1", "identity_1", update_fanouts));
+
+  // No changes to graph.
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_1"});
+  CheckNode(graph, "switch_1", "Switch", "", {}, {"a"}, {"identity_1"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_1:1"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"switch_2"});
+  CheckNode(graph, "switch_2", "Switch", "", {}, {"b"}, {"identity_2"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_2:0"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNamesSameName) {
+  TestSwapNodeNamesWithSameNames(/*update_fanouts=*/false);
+  TestSwapNodeNamesWithSameNames(/*update_fanouts=*/true);
+}
+
+TEST(MutableGraphView, SwapNodeNamesBetweenSwitches) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(
+      graph.SwapNodeNames("switch_1", "switch_2", /*update_fanouts=*/false));
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_2"});
+  CheckNode(graph, "switch_2", "Switch", "", {}, {"a"}, {"identity_2"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_1:1"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"switch_1"});
+  CheckNode(graph, "switch_1", "Switch", "", {}, {"b"}, {"identity_1"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_2:0"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNamesBetweenSwitchesAndUpdateFanouts) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(
+      graph.SwapNodeNames("switch_1", "switch_2", /*update_fanouts=*/true));
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_2"});
+  CheckNode(graph, "switch_2", "Switch", "", {}, {"a"}, {"identity_1"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_2:1"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"switch_1"});
+  CheckNode(graph, "switch_1", "Switch", "", {}, {"b"}, {"identity_2"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_1:0"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNamesSwitchAndNonSwitch) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.SwapNodeNames("a", "switch_1", /*update_fanouts=*/false));
+
+  // Dedup controls and fix self loop.
+  CheckNode(graph, "switch_1", "NotImportant", "", {}, {}, {"a", "identity_1"});
+  CheckNode(graph, "a", "Switch", "", {}, {"switch_1"}, {});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_1:1"}, {"foo_1"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"switch_2"});
+  CheckNode(graph, "switch_2", "Switch", "", {}, {"b"}, {"identity_2"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_2:0"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {}, {"identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNamesSwitchAndNonSwitchAndUpdateFanouts) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.SwapNodeNames("a", "switch_1", /*update_fanouts=*/true));
+
+  CheckNode(graph, "switch_1", "NotImportant", "", {}, {}, {"a"});
+  CheckNode(graph, "a", "Switch", "", {}, {"switch_1"}, {"identity_1"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"a:1"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"switch_2"});
+  CheckNode(graph, "switch_2", "Switch", "", {}, {"b"}, {"identity_2"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_2:0"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNamesNonSwitchAndSwitch) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.SwapNodeNames("switch_2", "b", /*update_fanouts=*/false));
+
+  // Dedup controls and fix self loop.
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_1"});
+  CheckNode(graph, "switch_1", "Switch", "", {}, {"a"}, {"identity_1"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_1:1"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "switch_2", "NotImportant", "", {}, {}, {"b", "identity_2"});
+  CheckNode(graph, "b", "Switch", "", {}, {"switch_2"}, {});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_2:0"}, {"foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {}, {"identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNamesNonSwitchAndSwitchAndUpdateFanouts) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.SwapNodeNames("switch_2", "b", /*update_fanouts=*/true));
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_1"});
+  CheckNode(graph, "switch_1", "Switch", "", {}, {"a"}, {"identity_1"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_1:1"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "switch_2", "NotImportant", "", {}, {}, {"b"});
+  CheckNode(graph, "b", "Switch", "", {}, {"switch_2"}, {"identity_2"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"b:0"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+void TestSwapNodeNamesSimpleSelfLoop(bool update_fanouts) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {"b:7"}), NDef("b", "NotImportant", {"a:10"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.SwapNodeNames("a", "b", update_fanouts));
+
+  // No self loops.
+  CheckNode(graph, "a", "NotImportant", "", {}, {"b:10"}, {"b:0"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {"a:7"}, {"a:0"});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphView, SwapNodeNamesSelfLoops) {
+  TestSwapNodeNamesSimpleSelfLoop(/*update_fanouts=*/false);
+  TestSwapNodeNamesSimpleSelfLoop(/*update_fanouts=*/true);
+}
+
+void TestSwapNodeNamesError(absl::string_view from_node_name,
+                            absl::string_view to_node_name, bool update_fanouts,
+                            const string& error_msg) {
+  GraphDef graph_def = SimpleSwapNodeNamesMutationGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  Status s = graph.SwapNodeNames(from_node_name, to_node_name, update_fanouts);
+  EXPECT_EQ(s.ok(), false);
+  EXPECT_EQ(s.error_message(), error_msg);
+
+  // No changes to graph.
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"switch_1"});
+  CheckNode(graph, "switch_1", "Switch", "", {}, {"a"}, {"identity_1"});
+  CheckNode(graph, "identity_1", "Identity", "", {}, {"switch_1:1"},
+            {"foo_1", "^foo_1"});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"switch_2"});
+  CheckNode(graph, "switch_2", "Switch", "", {}, {"b"}, {"identity_2"});
+  CheckNode(graph, "identity_2", "Identity", "", {}, {"switch_2:0"},
+            {"foo_2", "^foo_2"});
+  CheckNode(graph, "foo_1", "NotImportant", "", {},
+            {"identity_1", "^identity_1"}, {});
+  CheckNode(graph, "foo_2", "NotImportant", "", {},
+            {"identity_2", "^identity_2"}, {});
+
+  CheckGraph(graph);
+}
+
+// TODO(lyandy): add tests with update_fanouts == true.
+TEST(MutableGraphView, SwapNodeNamesError) {
+  string error_msg;
+  // Missing nodes.
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='foo_3', "
+      "to_node_name='foo_2', update_fanouts=false) error: node 'foo_3' was not "
+      "found.";
+  TestSwapNodeNamesError("foo_3", "foo_2", /*update_fanouts=*/false, error_msg);
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='foo_3', "
+      "to_node_name='foo_2', update_fanouts=true) error: node 'foo_3' was not "
+      "found.";
+  TestSwapNodeNamesError("foo_3", "foo_2", /*update_fanouts=*/true, error_msg);
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='foo_1', "
+      "to_node_name='foo_4', update_fanouts=false) error: node 'foo_4' was not "
+      "found.";
+  TestSwapNodeNamesError("foo_1", "foo_4", /*update_fanouts=*/false, error_msg);
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='foo_1', "
+      "to_node_name='foo_4', update_fanouts=true) error: node 'foo_4' was not "
+      "found.";
+  TestSwapNodeNamesError("foo_1", "foo_4", /*update_fanouts=*/true, error_msg);
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='foo_5', "
+      "to_node_name='foo_6', update_fanouts=false) error: node 'foo_5' was not "
+      "found.";
+  TestSwapNodeNamesError("foo_5", "foo_6", /*update_fanouts=*/false, error_msg);
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='foo_5', "
+      "to_node_name='foo_6', update_fanouts=true) error: node 'foo_5' was not "
+      "found.";
+  TestSwapNodeNamesError("foo_5", "foo_6", /*update_fanouts=*/true, error_msg);
+
+  // Switch control dependencies.
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='switch_2', "
+      "to_node_name='identity_1', update_fanouts=false) error: can't swap node "
+      "name 'switch_2' as it will become a Switch control dependency.";
+  TestSwapNodeNamesError("switch_2", "identity_1", /*update_fanouts=*/false,
+                         error_msg);
+  error_msg =
+      "MutableGraphView::SwapNodeNames(from_node_name='identity_2', "
+      "to_node_name='switch_1', update_fanouts=false) error: can't swap node "
+      "name 'switch_1' as it will become a Switch control dependency.";
+  TestSwapNodeNamesError("identity_2", "switch_1", /*update_fanouts=*/false,
+                         error_msg);
+}
+
 TEST(MutableGraphViewTest, AddAndUpdateFanouts) {
   // Actual node.op() is not important in this test.
   GraphDef graph_def = test::function::GDef(
@@ -365,36 +905,6 @@ GraphDef SimpleMutateFaninGraph() {
   return graph_def;
 }
 
-absl::flat_hash_map<string, std::vector<string>> GetNodeInputsFromGraph(
-    const GraphDef& graph, absl::string_view node_to_exclude) {
-  absl::flat_hash_map<string, std::vector<string>> node_inputs;
-  for (const auto& node : graph.node()) {
-    if (node.name() == node_to_exclude) {
-      continue;
-    }
-    node_inputs[node.name()] =
-        std::vector<string>(node.input().begin(), node.input().end());
-  }
-  return node_inputs;
-}
-
-void CheckUnmodifiedNodeFanins(
-    const GraphDef& graph, absl::string_view node_to_exclude,
-    const absl::flat_hash_map<string, std::vector<string>>&
-        unmodified_node_inputs) {
-  for (const auto& node : graph.node()) {
-    if (node.name() == node_to_exclude) {
-      continue;
-    }
-    auto it = unmodified_node_inputs.find(node.name());
-    ASSERT_NE(it, unmodified_node_inputs.end());
-    ASSERT_EQ(it->second.size(), node.input_size());
-    for (int i = 0; i < node.input_size(); ++i) {
-      EXPECT_EQ(node.input(i), it->second[i]);
-    }
-  }
-}
-
 void TestAddRegularFanin(absl::string_view node_name, bool node_exists,
                          const TensorId& fanin_to_add, bool success,
                          const string& error_msg,
@@ -522,9 +1032,153 @@ TEST(MutableGraphViewTest, AddRegularFanin) {
   // Add self to create cycle.
   error_msg =
       "MutableGraphView::AddRegularFanin(node_name='foo_6', fanin='foo_6:2') "
-      "error: can't add regular fanin 'foo_6:2' to self.";
+      "error: can't add fanin 'foo_6:2' to self.";
   TestAddRegularFanin("foo_6", /*node_exists=*/true, {"foo_6", 2},
                       /*success=*/false, error_msg, {"^a", "^b"});
+}
+
+void TestAddRegularFaninByPort(absl::string_view node_name, bool node_exists,
+                               int port, const TensorId& fanin_to_add,
+                               bool success, const string& error_msg,
+                               absl::Span<const string> expected_fanins) {
+  GraphDef graph_def = SimpleMutateFaninGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node = graph.GetNode(node_name);
+  if (node_exists) {
+    EXPECT_NE(node, nullptr);
+  } else {
+    EXPECT_EQ(node, nullptr);
+  }
+
+  absl::flat_hash_map<string, std::vector<string>> unmodified_node_inputs =
+      GetNodeInputsFromGraph(graph_def, node_name);
+
+  Status s = graph.AddRegularFaninByPort(node_name, port, fanin_to_add);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
+  if (node_exists) {
+    CompareNodeFanins(graph, node, expected_fanins);
+  }
+
+  CheckUnmodifiedNodeFanins(graph_def, node_name, unmodified_node_inputs);
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, AddRegularFaninByPort) {
+  string error_msg;
+  // Add input at start to node with some inputs and no controls.
+  TestAddRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/0, {"d", 2},
+                            /*success=*/true, error_msg,
+                            {"d:2", "b", "a:1", "a:1"});
+  // Add input at end to node with some inputs and no controls.
+  TestAddRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/3, {"d", 2},
+                            /*success=*/true, error_msg,
+                            {"b", "a:1", "a:1", "d:2"});
+  // Add input in middle to node with some inputs and no controls.
+  TestAddRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/2, {"d", 2},
+                            /*success=*/true, error_msg,
+                            {"b", "a:1", "d:2", "a:1"});
+  // Add input at start to node with some inputs and some controls.
+  TestAddRegularFaninByPort("foo_2", /*node_exists=*/true, /*port=*/0, {"d", 2},
+                            /*success=*/true, error_msg,
+                            {"d:2", "b", "^c", "^a"});
+  // Add input at end to node with some inputs and some controls.
+  TestAddRegularFaninByPort("foo_2", /*node_exists=*/true, /*port=*/1, {"d", 2},
+                            /*success=*/true, error_msg,
+                            {"b", "d:2", "^c", "^a"});
+  // Add input in middle to node with some inputs and some controls, and dedup
+  // controls.
+  TestAddRegularFaninByPort("foo_4", /*node_exists=*/true, /*port=*/2, {"d", 2},
+                            /*success=*/true, error_msg,
+                            {"a", "b:2", "d:2", "b:2", "^c"});
+  // Add input to node with no inputs and no controls.
+  TestAddRegularFaninByPort("foo_5", /*node_exists=*/true, /*port=*/0, {"d", 2},
+                            /*success=*/true, error_msg, {"d:2"});
+  // Add input to node with no inputs and some controls.
+  TestAddRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/0, {"d", 2},
+                            /*success=*/true, error_msg, {"d:2", "^b", "^a"});
+  // Add fanin should dedup control.
+  TestAddRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/0, {"b", 2},
+                            /*success=*/true, error_msg, {"b:2", "^a"});
+
+  // Add controlling fanin.
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_4', port=2, "
+      "fanin='^d') error: fanin '^d' must be a regular tensor id.";
+  TestAddRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/2, {"d", Graph::kControlSlot},
+      /*success=*/false, error_msg, {"a", "b:2", "b:2", "^c", "^d"});
+
+  // Add fanin at out of bounds port.
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_5', port=-1, "
+      "fanin='d:2') error: port must be in range [0, 0].";
+  TestAddRegularFaninByPort("foo_5", /*node_exists=*/true, /*port=*/-1,
+                            {"d", 2},
+                            /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_5', port=1, "
+      "fanin='d:2') error: port must be in range [0, 0].";
+  TestAddRegularFaninByPort("foo_5", /*node_exists=*/true, /*port=*/1, {"d", 2},
+                            /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_6', port=-1, "
+      "fanin='d:2') error: port must be in range [0, 0].";
+  TestAddRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/-1,
+                            {"d", 2},
+                            /*success=*/false, error_msg, {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_6', port=1, "
+      "fanin='d:2') error: port must be in range [0, 0].";
+  TestAddRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/1, {"d", 2},
+                            /*success=*/false, error_msg, {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_4', port=-1, "
+      "fanin='d:2') error: port must be in range [0, 3].";
+  TestAddRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/-1, {"d", 2},
+      /*success=*/false, error_msg, {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_4', port=4, "
+      "fanin='d:2') error: port must be in range [0, 3].";
+  TestAddRegularFaninByPort("foo_4", /*node_exists=*/true, /*port=*/4, {"d", 2},
+                            /*success=*/false, error_msg,
+                            {"a", "b:2", "b:2", "^c", "^d"});
+
+  // Add fanin to node where node is missing.
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_missing', "
+      "port=0, fanin='a:0') error: node 'foo_missing' was not found.";
+  TestAddRegularFaninByPort("foo_missing", /*node_exists=*/false, /*port=*/0,
+                            {"a", 0},
+                            /*success=*/false, error_msg, {});
+  // Add fanin to node where fanin is missing.
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_1', port=0, "
+      "fanin='bar_missing:0') error: node 'bar_missing' was not found.";
+  TestAddRegularFaninByPort("foo_1", /*node_exists=*/true, /*port=*/0,
+                            {"bar_missing", 0},
+                            /*success=*/false, error_msg, {"a"});
+  // Add fanin to node where node and fanin are missing.
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_missing', "
+      "port=0, fanin='bar_missing:0') error: node 'foo_missing' was not found.";
+  TestAddRegularFaninByPort("foo_missing", /*node_exists=*/false, /*port=*/0,
+                            {"bar_missing", 0},
+                            /*success=*/false, error_msg, {});
+
+  // Add self to create cycle.
+  error_msg =
+      "MutableGraphView::AddRegularFaninByPort(node_name='foo_6', port=0, "
+      "fanin='foo_6:2') error: can't add fanin 'foo_6:2' to self.";
+  TestAddRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/0,
+                            {"foo_6", 2},
+                            /*success=*/false, error_msg, {"^a", "^b"});
 }
 
 void CheckFanoutRemoved(const MutableGraphView& graph, const TensorId& fanin,
@@ -674,9 +1328,112 @@ TEST(MutableGraphViewTest, RemoveRegularFanin) {
   // Remove self.
   error_msg =
       "MutableGraphView::RemoveRegularFanin(node_name='foo_6', "
-      "fanin='foo_6:2') error: can't remove regular fanin 'foo_6:2' from self.";
+      "fanin='foo_6:2') error: can't remove fanin 'foo_6:2' from self.";
   TestRemoveRegularFanin("foo_6", /*node_exists=*/true, {"foo_6", 2},
                          /*success=*/false, error_msg, {"^a", "^b"});
+}
+
+void TestRemoveRegularFaninByPort(absl::string_view node_name, bool node_exists,
+                                  int port, bool success,
+                                  const string& error_msg,
+                                  absl::Span<const string> expected_fanins) {
+  GraphDef graph_def = SimpleMutateFaninGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node = graph.GetNode(node_name);
+  if (node_exists) {
+    EXPECT_NE(nullptr, node);
+  } else {
+    EXPECT_EQ(nullptr, node);
+  }
+
+  absl::flat_hash_map<string, std::vector<string>> unmodified_node_inputs =
+      GetNodeInputsFromGraph(graph_def, node_name);
+
+  Status s = graph.RemoveRegularFaninByPort(node_name, port);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
+  if (node_exists) {
+    CompareNodeFanins(graph, node, expected_fanins);
+  }
+
+  CheckUnmodifiedNodeFanins(graph_def, node_name, unmodified_node_inputs);
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, RemoveRegularFaninByPort) {
+  string error_msg;
+  // Remove input at start of node with some inputs and no controls.
+  TestRemoveRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/0,
+                               /*success=*/true, error_msg, {"a:1", "a:1"});
+  // Remove input at end of node with some inputs and no controls.
+  TestRemoveRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/2,
+                               /*success=*/true, error_msg, {"b", "a:1"});
+  // Remove input in middle of node with some inputs and no controls.
+  TestRemoveRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/1,
+                               /*success=*/true, error_msg, {"b", "a:1"});
+  // Remove input at start of node with some inputs and some controls.
+  TestRemoveRegularFaninByPort("foo_4", /*node_exists=*/true, /*port=*/0,
+                               /*success=*/true, error_msg,
+                               {"b:2", "b:2", "^d", "^c"});
+  // Remove input at end of node with some inputs and some controls.
+  TestRemoveRegularFaninByPort("foo_4", /*node_exists=*/true, /*port=*/2,
+                               /*success=*/true, error_msg,
+                               {"a", "b:2", "^d", "^c"});
+  // Remove input in middle of node with some inputs and some controls.
+  TestRemoveRegularFaninByPort("foo_4", /*node_exists=*/true, /*port=*/1,
+                               /*success=*/true, error_msg,
+                               {"a", "b:2", "^d", "^c"});
+
+  // Remove input from node with no inputs and no controls.
+  error_msg =
+      "MutableGraphView::RemoveRegularFaninByPort(node_name='foo_5', port=0) "
+      "error: no available ports as node has no regular fanins.";
+  TestRemoveRegularFaninByPort("foo_5", /*node_exists=*/true, /*port=*/0,
+                               /*success=*/false, error_msg, {});
+  // Remove input from node with no inputs and some controls.
+  error_msg =
+      "MutableGraphView::RemoveRegularFaninByPort(node_name='foo_6', port=1) "
+      "error: no available ports as node has no regular fanins.";
+  TestRemoveRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/1,
+                               /*success=*/false, error_msg, {"^a", "^b"});
+
+  // Remove fanin at out of bounds port.
+  error_msg =
+      "MutableGraphView::RemoveRegularFaninByPort(node_name='foo_3', port=-1) "
+      "error: port must be in range [0, 2].";
+  TestRemoveRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/-1,
+                               /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::RemoveRegularFaninByPort(node_name='foo_3', port=3) "
+      "error: port must be in range [0, 2].";
+  TestRemoveRegularFaninByPort("foo_3", /*node_exists=*/true, /*port=*/3,
+                               /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::RemoveRegularFaninByPort(node_name='foo_4', port=-1) "
+      "error: port must be in range [0, 2].";
+  TestRemoveRegularFaninByPort("foo_4", /*node_exists=*/true, /*port=*/-1,
+                               /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::RemoveRegularFaninByPort(node_name='foo_4', port=3) "
+      "error: port must be in range [0, 2].";
+  TestRemoveRegularFaninByPort("foo_4", /*node_exists=*/true, /*port=*/3,
+                               /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+
+  // Remove fanin from node where node is missing.
+  error_msg =
+      "MutableGraphView::RemoveRegularFaninByPort(node_name='foo_missing', "
+      "port=0) error: node 'foo_missing' was not found.";
+  TestRemoveRegularFaninByPort("foo_missing", /*node_exists=*/false, /*port=*/0,
+                               /*success=*/false, error_msg, {});
 }
 
 void TestRemoveAllFanins(absl::string_view node_name, bool node_exists,
@@ -860,7 +1617,8 @@ TEST(MutableGraphViewTest, UpdateFanin) {
   // Update fanin of node where to fanin is missing.
   error_msg =
       "MutableGraphView::UpdateFanin(node_name='foo_1', from_fanin='a:0', "
-      "to_fanin='to_bar_missing:1') error: node 'a' was not found.";
+      "to_fanin='to_bar_missing:1') error: node 'to_bar_missing' was not "
+      "found.";
   TestUpdateFanin("foo_1", /*node_exists=*/true, {"a", 0},
                   {"to_bar_missing", 1}, /*success=*/false, error_msg, {"a"});
   // Update fanin of node where from/to fanins and node are missing.
@@ -954,6 +1712,394 @@ TEST(MutableGraphViewTest, UpdateFaninToNodeAsSwitchControl) {
   TestUpdateFaninFromFaninToNodeAsSwitchControl({"a", Graph::kControlSlot});
 }
 
+void TestUpdateRegularFaninByPort(absl::string_view node_name, bool node_exists,
+                                  int port, const TensorId& fanin, bool success,
+                                  const string& error_msg,
+                                  absl::Span<const string> expected_fanins) {
+  GraphDef graph_def = SimpleMutateFaninGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node = graph.GetNode(node_name);
+  if (node_exists) {
+    EXPECT_NE(node, nullptr);
+  } else {
+    EXPECT_EQ(node, nullptr);
+  }
+
+  absl::flat_hash_map<string, std::vector<string>> unmodified_node_inputs =
+      GetNodeInputsFromGraph(graph_def, node_name);
+
+  Status s = graph.UpdateRegularFaninByPort(node_name, port, fanin);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
+  if (node_exists) {
+    CompareNodeFanins(graph, node, expected_fanins);
+  }
+
+  CheckUnmodifiedNodeFanins(graph_def, node_name, unmodified_node_inputs);
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateRegularFaninByPort) {
+  string error_msg;
+  // Update input at start to node with some inputs and no controls.
+  TestUpdateRegularFaninByPort(
+      "foo_3", /*node_exists=*/true, /*port=*/0, {"d", 2},
+      /*success=*/true, error_msg, {"d:2", "a:1", "a:1"});
+  // Update input at end to node with some inputs and no controls.
+  TestUpdateRegularFaninByPort(
+      "foo_3", /*node_exists=*/true, /*port=*/2, {"d", 2},
+      /*success=*/true, error_msg, {"b", "a:1", "d:2"});
+  // Update input in middle to node with some inputs and no controls.
+  TestUpdateRegularFaninByPort(
+      "foo_3", /*node_exists=*/true, /*port=*/1, {"d", 2},
+      /*success=*/true, error_msg, {"b", "d:2", "a:1"});
+  // Update input at start to node with some inputs and some controls, and dedup
+  // controls.
+  TestUpdateRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/0, {"d", 2},
+      /*success=*/true, error_msg, {"d:2", "b:2", "b:2", "^c"});
+  // Update input at end to node with some inputs and some controls, and dedup
+  // controls.
+  TestUpdateRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/2, {"d", 2},
+      /*success=*/true, error_msg, {"a", "b:2", "d:2", "^c"});
+  // Update input in middle to node with some inputs and some controls and
+  // dedup controls.
+  TestUpdateRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/1, {"d", 2},
+      /*success=*/true, error_msg, {"a", "d:2", "b:2", "^c"});
+
+  // Update input to controlling fanin.
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_4', port=1, "
+      "fanin='^d') error: fanin '^d' must be a regular tensor id.";
+  TestUpdateRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/1, {"d", Graph::kControlSlot},
+      /*success=*/false, error_msg, {"a", "b:2", "b:2", "^c", "^d"});
+
+  // Update fanin at out of bounds port.
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_5', port=-1, "
+      "fanin='d:2') error: no available ports as node has no regular fanins.";
+  TestUpdateRegularFaninByPort("foo_5", /*node_exists=*/true, /*port=*/-1,
+                               {"d", 2},
+                               /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_5', port=0, "
+      "fanin='d:2') error: no available ports as node has no regular fanins.";
+  TestUpdateRegularFaninByPort("foo_5", /*node_exists=*/true, /*port=*/0,
+                               {"d", 2},
+                               /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_5', port=1, "
+      "fanin='d:2') error: no available ports as node has no regular fanins.";
+  TestUpdateRegularFaninByPort("foo_5", /*node_exists=*/true, /*port=*/1,
+                               {"d", 2},
+                               /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_6', port=-1, "
+      "fanin='d:2') error: no available ports as node has no regular fanins.";
+  TestUpdateRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/-1,
+                               {"d", 2},
+                               /*success=*/false, error_msg, {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_6', port=0, "
+      "fanin='d:2') error: no available ports as node has no regular fanins.";
+  TestUpdateRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/0,
+                               {"d", 2},
+                               /*success=*/false, error_msg, {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_6', port=1, "
+      "fanin='d:2') error: no available ports as node has no regular fanins.";
+  TestUpdateRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/1,
+                               {"d", 2},
+                               /*success=*/false, error_msg, {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_3', port=-1, "
+      "fanin='d:2') error: port must be in range [0, 2].";
+  TestUpdateRegularFaninByPort(
+      "foo_3", /*node_exists=*/true, /*port=*/-1, {"d", 2},
+      /*success=*/false, error_msg, {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_3', port=3, "
+      "fanin='d:2') error: port must be in range [0, 2].";
+  TestUpdateRegularFaninByPort(
+      "foo_3", /*node_exists=*/true, /*port=*/3, {"d", 2},
+      /*success=*/false, error_msg, {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_4', port=-1, "
+      "fanin='d:2') error: port must be in range [0, 2].";
+  TestUpdateRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/-1, {"d", 2},
+      /*success=*/false, error_msg, {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_4', port=3, "
+      "fanin='d:2') error: port must be in range [0, 2].";
+  TestUpdateRegularFaninByPort(
+      "foo_4", /*node_exists=*/true, /*port=*/3, {"d", 2},
+      /*success=*/false, error_msg, {"a", "b:2", "b:2", "^c", "^d"});
+
+  // Update fanin to node where node is missing.
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_missing', "
+      "port=0, fanin='a:0') error: node 'foo_missing' was not found.";
+  TestUpdateRegularFaninByPort("foo_missing", /*node_exists=*/false,
+                               /*port=*/0, {"a", 0},
+                               /*success=*/false, error_msg, {});
+  // Update fanin to node where fanin is missing.
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_1', port=0, "
+      "fanin='bar_missing:0') error: node 'bar_missing' was not "
+      "found.";
+  TestUpdateRegularFaninByPort("foo_1", /*node_exists=*/true, /*port=*/0,
+                               {"bar_missing", 0},
+                               /*success=*/false, error_msg, {"a"});
+  // Update fanin to node where node and fanin are missing.
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_missing', "
+      "port=0, fanin='bar_missing:0') error: node 'foo_missing' was not found.";
+  TestUpdateRegularFaninByPort("foo_missing", /*node_exists=*/false,
+                               /*port=*/0, {"bar_missing", 0},
+                               /*success=*/false, error_msg, {});
+
+  // Update self to create cycle.
+  error_msg =
+      "MutableGraphView::UpdateRegularFaninByPort(node_name='foo_6', port=0, "
+      "fanin='foo_6:2') error: can't add fanin 'foo_6:2' to self.";
+  TestUpdateRegularFaninByPort("foo_6", /*node_exists=*/true, /*port=*/0,
+                               {"foo_6", 2},
+                               /*success=*/false, error_msg, {"^a", "^b"});
+}
+
+void TestSwapRegularFaninsByPorts(absl::string_view node_name, bool node_exists,
+                                  int from_port, int to_port, bool success,
+                                  const string& error_msg,
+                                  absl::Span<const string> expected_fanins) {
+  GraphDef graph_def = SimpleMutateFaninGraph();
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node = graph.GetNode(node_name);
+  if (node_exists) {
+    EXPECT_NE(node, nullptr);
+  } else {
+    EXPECT_EQ(node, nullptr);
+  }
+
+  absl::flat_hash_map<string, std::vector<string>> unmodified_node_inputs =
+      GetNodeInputsFromGraph(graph_def, node_name);
+
+  Status s = graph.SwapRegularFaninsByPorts(node_name, from_port, to_port);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
+  if (node_exists) {
+    CompareNodeFanins(graph, node, expected_fanins);
+  }
+
+  CheckUnmodifiedNodeFanins(graph_def, node_name, unmodified_node_inputs);
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, SwapRegularFaninsByPorts) {
+  string error_msg;
+  // Swapping first and last regular fanins
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/2, /*success=*/true, error_msg,
+                               {"a:1", "a:1", "b"});
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/2,
+                               /*to_port=*/0, /*success=*/true, error_msg,
+                               {"a:1", "a:1", "b"});
+  // Swapping first and last regular fanins, in node with controls.
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/2, /*success=*/true, error_msg,
+                               {"b:2", "b:2", "a", "^c", "^d"});
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/2,
+                               /*to_port=*/0, /*success=*/true, error_msg,
+                               {"b:2", "b:2", "a", "^c", "^d"});
+  // Swapping middle regular fanin.
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/1, /*success=*/true, error_msg,
+                               {"a:1", "b", "a:1"});
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/1,
+                               /*to_port=*/0, /*success=*/true, error_msg,
+                               {"a:1", "b", "a:1"});
+  // Swapping middle regular fanin, in node with controls.
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/1, /*success=*/true, error_msg,
+                               {"b:2", "a", "b:2", "^c", "^d"});
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/1,
+                               /*to_port=*/0, /*success=*/true, error_msg,
+                               {"b:2", "a", "b:2", "^c", "^d"});
+  // Swapping same port.
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/1,
+                               /*to_port=*/1, /*success=*/true, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+  // Swapping same fanin but different port.
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/1,
+                               /*to_port=*/2, /*success=*/true, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+
+  // Swaping fanins at out of bounds ports.
+  // Node with no regular fanins and no controls.
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_5', "
+      "from_port=-1, to_port=0) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_5", /*node_exists=*/true, /*from_port=*/-1,
+                               /*to_port=*/0, /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_5', "
+      "from_port=0, to_port=-1) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_5", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/-1, /*success=*/false, error_msg,
+                               {});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_5', "
+      "from_port=0, to_port=0) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_5", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/0, /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_5', "
+      "from_port=0, to_port=1) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_5", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/1, /*success=*/false, error_msg, {});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_5', "
+      "from_port=1, to_port=0) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_5", /*node_exists=*/true, /*from_port=*/1,
+                               /*to_port=*/0, /*success=*/false, error_msg, {});
+  // Node with no regular fanins and some controls.
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_6', "
+      "from_port=-1, to_port=0) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_6", /*node_exists=*/true, /*from_port=*/-1,
+                               /*to_port=*/0, /*success=*/false, error_msg,
+                               {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_6', "
+      "from_port=0, to_port=-1) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_6", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/-1, /*success=*/false, error_msg,
+                               {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_6', "
+      "from_port=0, to_port=0) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_6", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/0, /*success=*/false, error_msg,
+                               {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_6', "
+      "from_port=0, to_port=1) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_6", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/1, /*success=*/false, error_msg,
+                               {"^a", "^b"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_6', "
+      "from_port=1, to_port=0) error: no available ports as node has no "
+      "regular fanins.";
+  TestSwapRegularFaninsByPorts("foo_6", /*node_exists=*/true, /*from_port=*/1,
+                               /*to_port=*/0, /*success=*/false, error_msg,
+                               {"^a", "^b"});
+  // Node with regular fanins and no controls.
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_3', "
+      "from_port=-1, to_port=0) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/-1,
+                               /*to_port=*/0, /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_3', "
+      "from_port=0, to_port=-1) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/-1, /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_3', "
+      "from_port=0, to_port=3) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/3, /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_3', "
+      "from_port=3, to_port=0) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/3,
+                               /*to_port=*/0, /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_3', "
+      "from_port=-1, to_port=3) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/-1,
+                               /*to_port=*/3, /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_3', "
+      "from_port=3, to_port=-1) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_3", /*node_exists=*/true, /*from_port=*/3,
+                               /*to_port=*/-1, /*success=*/false, error_msg,
+                               {"b", "a:1", "a:1"});
+  // Node with regular fanins and controls.
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_4', "
+      "from_port=-1, to_port=0) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/-1,
+                               /*to_port=*/0, /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_4', "
+      "from_port=0, to_port=-1) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/-1, /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_4', "
+      "from_port=0, to_port=3) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/0,
+                               /*to_port=*/3, /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_4', "
+      "from_port=3, to_port=0) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/3,
+                               /*to_port=*/0, /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_4', "
+      "from_port=-1, to_port=3) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/-1,
+                               /*to_port=*/3, /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_4', "
+      "from_port=3, to_port=-1) error: port must be in range [0, 2].";
+  TestSwapRegularFaninsByPorts("foo_4", /*node_exists=*/true, /*from_port=*/3,
+                               /*to_port=*/-1, /*success=*/false, error_msg,
+                               {"a", "b:2", "b:2", "^c", "^d"});
+
+  // Swapping fanin to node where node is missing.
+  error_msg =
+      "MutableGraphView::SwapRegularFaninsByPorts(node_name='foo_missing', "
+      "from_port=0, to_port=1) error: node 'foo_missing' was not found.";
+  TestSwapRegularFaninsByPorts("foo_missing", /*node_exists=*/false,
+                               /*from_port=*/0, /*to_port=*/1,
+                               /*success=*/false, error_msg, {});
+}
+
 TEST(MutableGraphViewTest, DedupControllingFaninsOnGraphInit) {
   GraphDef graph_def = test::function::GDef(
       {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
@@ -1011,7 +2157,7 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnAddFanin) {
   CheckGraph(graph);
 }
 
-TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnAddFanin) {
+TEST(MutableGraphViewTest, NoDedupControllingFaninsOnAddFanin) {
   GraphDef graph_def = test::function::GDef(
       {NDef("a", "Switch", {}, {}), NDef("b", "Identity", {"a:1"}),
        NDef("c", "", {}, {}), NDef("d", "", {}, {})},
@@ -1025,11 +2171,60 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnAddFanin) {
   CheckNode(graph, "c", "", "", {}, {"b:2", "^b"}, {});
   TF_EXPECT_OK(graph.AddControllingFanin("c", {"b", Graph::kControlSlot}));
   CheckNode(graph, "c", "", "", {}, {"b:2", "^b"}, {});
+  TF_EXPECT_OK(graph.AddRegularFanin("c", {"b", 2}));
+  CheckNode(graph, "c", "", "", {}, {"b:2", "b:2", "^b"}, {});
 
   TF_EXPECT_OK(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
   CheckNode(graph, "d", "", "", {}, {"^b"}, {});
   TF_EXPECT_OK(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
   CheckNode(graph, "d", "", "", {}, {"^b"}, {});
+
+  CheckNode(graph, "a", "Switch", "", {}, {}, {"b"});
+  CheckNode(graph, "b", "Identity", "", {}, {"a:1"},
+            {"c:0", "c:1", "^c", "^d"});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, DedupControllingFaninsOnAddFaninByPort) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def =
+      test::function::GDef({NDef("a", "NotImportant", {}, {}),
+                            NDef("b", "NotImportant", {"c", "^a"}),
+                            NDef("c", "NotImportant", {"a:1"})},
+                           /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.AddRegularFaninByPort("b", 0, {"a", 2}));
+  CheckNode(graph, "b", "NotImportant", "", {}, {"a:2", "c"}, {});
+
+  TF_EXPECT_OK(graph.AddControllingFanin("c", {"a", Graph::kControlSlot}));
+  CheckNode(graph, "c", "NotImportant", "", {}, {"a:1"}, {"b:1"});
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b:0", "c:0"});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, NoDedupControllingFaninsOnAddFaninByPort) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "Switch", {}, {}), NDef("b", "Identity", {"a:1"}),
+       NDef("c", "", {}, {}), NDef("d", "", {"c:2"}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.AddRegularFaninByPort("d", 1, {"b", 2}));
+  CheckNode(graph, "d", "", "", {}, {"c:2", "b:2"}, {});
+  TF_EXPECT_OK(graph.AddControllingFanin("d", {"b", Graph::kControlSlot}));
+  CheckNode(graph, "d", "", "", {}, {"c:2", "b:2", "^b"}, {});
+  TF_EXPECT_OK(graph.AddRegularFaninByPort("d", 0, {"b", 2}));
+  CheckNode(graph, "d", "", "", {}, {"b:2", "c:2", "b:2", "^b"}, {});
+
+  CheckNode(graph, "a", "Switch", "", {}, {}, {"b:0"});
+  CheckNode(graph, "b", "Identity", "", {}, {"a:1"}, {"d:0", "d:2", "^d"});
+  CheckNode(graph, "c", "", "", {}, {}, {"d:1"});
 
   CheckGraph(graph);
 }
@@ -1052,7 +2247,7 @@ TEST(MutableGraphViewTest, DedupControllingFaninsOnUpdateFanin) {
   CheckGraph(graph);
 }
 
-TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnUpdateFanin) {
+TEST(MutableGraphViewTest, NoDedupControllingFaninsOnUpdateFanin) {
   GraphDef graph_def = test::function::GDef(
       {NDef("a", "Switch", {}, {}), NDef("b", "Identity", {"a:1"}),
        NDef("c", "Identity", {"a:2"}), NDef("d", "NotImportant", {"c", "^b"}),
@@ -1070,6 +2265,50 @@ TEST(MutableGraphViewTest, NoDedupControlFlowControllingFaninsOnUpdateFanin) {
 
   TF_EXPECT_OK(graph.UpdateFanin("e", {"c", 3}, {"c", Graph::kControlSlot}));
   CheckNode(graph, "e", "NotImportant", "", {}, {"^c"}, {});
+
+  CheckNode(graph, "a", "Switch", "", {}, {}, {"b:0", "c:0"});
+  CheckNode(graph, "b", "Identity", "", {}, {"a:1"}, {});
+  CheckNode(graph, "c", "Identity", "", {}, {"a:2"}, {"d:0", "^d", "^e"});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, DedupControllingFaninsOnUpdateFaninByPort) {
+  // Actual node.op() is not important in this test.
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}), NDef("b", "NotImportant", {}, {}),
+       NDef("c", "NotImportant", {"a:1", "^b"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateRegularFaninByPort("c", 0, {"b", 2}));
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {});
+  CheckNode(graph, "b", "NotImportant", "", {}, {}, {"c"});
+  CheckNode(graph, "c", "NotImportant", "", {}, {"b:2"}, {});
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, NoDedupControllingFaninsOnUpdateFaninByPort) {
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "Switch", {}, {}), NDef("b", "Identity", {"a:1"}),
+       NDef("c", "Identity", {"a:2"}), NDef("d", "NotImportant", {"c", "^b"}),
+       NDef("e", "NotImportant", {"b", "^c"})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateRegularFaninByPort("d", 0, {"b", 1}));
+  CheckNode(graph, "d", "NotImportant", "", {}, {"b:1", "^b"}, {});
+
+  TF_EXPECT_OK(graph.UpdateRegularFaninByPort("e", 0, {"c", 2}));
+  CheckNode(graph, "e", "NotImportant", "", {}, {"c:2", "^c"}, {});
+
+  CheckNode(graph, "a", "Switch", "", {}, {}, {"b:0", "c:0"});
+  CheckNode(graph, "b", "Identity", "", {}, {"a:1"}, {"d:0", "^d"});
+  CheckNode(graph, "c", "Identity", "", {}, {"a:2"}, {"e:0", "^e"});
 
   CheckGraph(graph);
 }
@@ -1229,8 +2468,7 @@ TEST(MutableGraphViewTest, AddControllingFaninSwitch) {
   EXPECT_FALSE(s.ok());
   string expected_msg =
       "MutableGraphView::AddControllingFanin(node_name='a', fanin='^b') error: "
-      "can't add controlling fanin '^b' as it will become a Switch control "
-      "dependency.";
+      "can't add fanin '^b' as it will become a Switch control dependency.";
   EXPECT_EQ(s.error_message(), expected_msg);
 
   ASSERT_EQ(graph.graph()->node_size(), 2);
@@ -1338,7 +2576,7 @@ void TestAddControllingFaninSelfLoops(absl::string_view node_name,
 TEST(MutableGraphViewTest, AddControllingFaninSelfLoops) {
   string error_msg =
       "MutableGraphView::AddControllingFanin(node_name='a', fanin='^a') error: "
-      "can't add controlling fanin '^a' to self.";
+      "can't add fanin '^a' to self.";
   TestAddControllingFaninSelfLoops("a", {"a", Graph::kControlSlot}, error_msg);
 
   // Adding Switch control dependency to Identity consumer. Node `c` is
@@ -1348,7 +2586,7 @@ TEST(MutableGraphViewTest, AddControllingFaninSelfLoops) {
   // be added.
   error_msg =
       "MutableGraphView::AddControllingFanin(node_name='c', fanin='b:0') "
-      "error: can't add found controlling fanin '^c' to self.";
+      "error: can't add found fanin '^c' to self.";
   TestAddControllingFaninSelfLoops("c", {"b", 0}, error_msg);
 
   // Adding Switch control dependency to Identity consumer. Node `d` is
@@ -1358,7 +2596,7 @@ TEST(MutableGraphViewTest, AddControllingFaninSelfLoops) {
   // be added.
   error_msg =
       "MutableGraphView::AddControllingFanin(node_name='d', fanin='b:1') "
-      "error: can't add found controlling fanin '^d' to self.";
+      "error: can't add found fanin '^d' to self.";
   TestAddControllingFaninSelfLoops("d", {"b", 1}, error_msg);
 }
 
@@ -1382,7 +2620,7 @@ TEST(MutableGraphViewTest, AddControllingFaninSelfLoopsGeneratedIdentity) {
   EXPECT_FALSE(s.ok());
   string expected_msg =
       "MutableGraphView::AddControllingFanin(node_name='ConstantFoldingCtrl/"
-      "b_1', fanin='b:1') error: can't add generated controlling fanin "
+      "b_1', fanin='b:1') error: can't add generated fanin "
       "'^ConstantFoldingCtrl/b_1' to self.";
   EXPECT_EQ(s.error_message(), expected_msg);
 
@@ -1475,7 +2713,7 @@ TEST(MutableGraphViewTest, RemoveControllingFaninSelfLoop) {
   EXPECT_FALSE(s.ok());
   string expected_msg =
       "MutableGraphView::RemoveControllingFanin(node_name='c', "
-      "fanin_node_name='c') error: can't remove controlling fanin '^c' from "
+      "fanin_node_name='c') error: can't remove fanin '^c' from "
       "self.";
   EXPECT_EQ(s.error_message(), expected_msg);
 
@@ -1484,6 +2722,109 @@ TEST(MutableGraphViewTest, RemoveControllingFaninSelfLoop) {
   CheckNode(graph, "a", "NotImportant", "", {}, {}, {"b", "c"});
   CheckNode(graph, "b", "NotImportant", "", {}, {"a"}, {"c:1"});
   CheckNode(graph, "c", "NotImportant", "", {}, {"a", "b"}, {});
+
+  CheckGraph(graph);
+}
+
+void TestUpdateAllRegularFaninsToControlling(
+    absl::string_view node_name, bool node_exists, bool success,
+    const string& error_msg, absl::Span<const string> expected_fanins) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}),
+       NDef("switch", "Switch", {}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("b", "NotImportant", {"switch:1"}, {}),
+       NDef("ConstantFoldingCtrl/switch_1", "Identity", {"switch:1"},
+            {{"T", DT_FLOAT}}, kDevice),
+       NDef("c", "NotImportant", {"a", "^b"}, {}),
+       NDef("d", "NotImportant", {"b", "c"}, {}),
+       NDef("e", "NotImportant", {"^d"}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node = graph.GetNode(node_name);
+  if (node_exists) {
+    EXPECT_NE(node, nullptr);
+  } else {
+    EXPECT_EQ(node, nullptr);
+  }
+
+  absl::flat_hash_map<string, std::vector<string>> unmodified_node_inputs =
+      GetNodeInputsFromGraph(graph_def, node_name);
+
+  Status s = graph.UpdateAllRegularFaninsToControlling(node_name);
+  EXPECT_EQ(s.ok(), success);
+  if (!success) {
+    EXPECT_EQ(s.error_message(), error_msg);
+  }
+  if (node_exists) {
+    CompareNodeFanins(graph, node, expected_fanins);
+  }
+
+  CheckUnmodifiedNodeFanins(graph_def, node_name, unmodified_node_inputs);
+
+  CheckGraph(graph);
+}
+
+TEST(MutableGraphViewTest, UpdateAllRegularFaninsToControlling) {
+  string error_msg;
+  // Nodes with some regular fanins and some controls.
+  TestUpdateAllRegularFaninsToControlling("a", /*node_exists=*/true,
+                                          /*success=*/true, error_msg, {});
+  TestUpdateAllRegularFaninsToControlling("c", /*node_exists=*/true,
+                                          /*success=*/true, error_msg,
+                                          {"^a", "^b"});
+  TestUpdateAllRegularFaninsToControlling("d", /*node_exists=*/true,
+                                          /*success=*/true, error_msg,
+                                          {"^b", "^c"});
+  TestUpdateAllRegularFaninsToControlling("e", /*node_exists=*/true,
+                                          /*success=*/true, error_msg, {"^d"});
+
+  // Use existing Identity to pin control dependency of Switch.
+  TestUpdateAllRegularFaninsToControlling("b", /*node_exists=*/true,
+                                          /*success=*/true, error_msg,
+                                          {"^ConstantFoldingCtrl/switch_1"});
+
+  // Missing node.
+  error_msg =
+      "MutableGraphView::UpdateAllRegularFaninsToControlling(node_name='f') "
+      "error: node 'f' was not found.";
+  TestUpdateAllRegularFaninsToControlling("f", /*node_exists=*/false,
+                                          /*success=*/false, error_msg, {});
+
+  // Error in getting controlling fanin.
+  error_msg =
+      "MutableGraphView::UpdateAllRegularFaninsToControlling(node_name='"
+      "ConstantFoldingCtrl/switch_1') error: can't add found fanin "
+      "'^ConstantFoldingCtrl/switch_1' to self.";
+  TestUpdateAllRegularFaninsToControlling("ConstantFoldingCtrl/switch_1",
+                                          /*node_exists=*/true,
+                                          /*success=*/false, error_msg,
+                                          {"switch:1"});
+}
+
+TEST(MutableGraphViewTest, UpdateAllRegularFaninsToControllingConsumingSwitch) {
+  constexpr char kDevice[] = "/device:foo:0";
+  GraphDef graph_def = test::function::GDef(
+      {NDef("a", "NotImportant", {}, {}),
+       NDef("switch", "Switch", {}, {{"T", DT_FLOAT}}, kDevice),
+       NDef("b", "NotImportant", {"switch:1"}, {})},
+      /*funcs=*/{});
+
+  MutableGraphView graph(&graph_def);
+
+  TF_EXPECT_OK(graph.UpdateAllRegularFaninsToControlling("b"));
+
+  EXPECT_EQ(graph.graph()->node_size(), 4);
+
+  CheckNode(graph, "a", "NotImportant", "", {}, {}, {});
+  CheckNode(graph, "switch", "Switch", kDevice, {{"T", DT_FLOAT}}, {},
+            {"ConstantFoldingCtrl/switch_1"});
+  CheckNode(graph, "b", "NotImportant", "", {},
+            {"^ConstantFoldingCtrl/switch_1"}, {});
+  CheckNode(graph, "ConstantFoldingCtrl/switch_1", "Identity", kDevice,
+            {{"T", DT_FLOAT}}, {"switch:1"}, {"^b"});
 
   CheckGraph(graph);
 }

@@ -79,6 +79,7 @@ struct FunctionBody {
   DataTypeVector ret_types;
   gtl::InlinedVector<Node*, 4> arg_nodes;
   gtl::InlinedVector<Node*, 4> ret_nodes;
+  gtl::InlinedVector<Node*, 4> control_ret_nodes;
 
   FunctionBody() {}
   FunctionBody(const FunctionDef& f, DataTypeSlice arg_types,
@@ -160,6 +161,8 @@ FunctionBody* SymbolicGradient(const FunctionBody& f);
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly. "override_device" specifies whether inlining should replace
 // explicitly specified devices inside fbody with the callee's device.
+//
+// TODO(ezhulenev): Return Status::error if function inlining failed.
 void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                         Node* caller, const FunctionBody* fbody,
                         bool override_device = true);

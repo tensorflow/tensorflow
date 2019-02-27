@@ -59,13 +59,13 @@ from tensorflow.python.util.lazy_loader import LazyLoader
 from tensorflow.python.util.tf_export import tf_export
 
 # This is to avoid a circular dependency:
-# cond_v2 -> gradients_impl -> control_flow_ops
+# cond_v2 -> gradients_util -> control_flow_ops
 cond_v2 = LazyLoader("cond_v2", globals(),
                      "tensorflow.python.ops.cond_v2")
 
 # This is to avoid circular dependencies:
 # while_v2 -> control_flow_ops
-# while_v2 -> gradients_impl -> control_flow_ops
+# while_v2 -> gradients_util -> control_flow_ops
 while_v2 = LazyLoader("while_v2", globals(),
                       "tensorflow.python.ops.while_v2")
 
@@ -3443,6 +3443,12 @@ def while_loop(cond,
         if try_to_pack and not isinstance(loop_vars, (list, _basetuple)):
           packed = True
           loop_vars = (loop_vars,)
+
+      def convert(x):
+        if isinstance(x, tensor_array_ops.TensorArray):
+          return x
+        return ops.convert_to_tensor(x)
+      loop_vars = nest.map_structure(convert, loop_vars)
       if maximum_iterations is not None:
         return loop_vars[1]
       else:
@@ -3619,7 +3625,7 @@ def group(*inputs, **kwargs):
       """A sort key that allows None to be compared to strings."""
       return "" if dev is None else dev
 
-    for dev in sorted(six.iterkeys(ops_on_device), key=device_key):
+    for dev in sorted(ops_on_device, key=device_key):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
 
     with ops.control_dependencies(deps):

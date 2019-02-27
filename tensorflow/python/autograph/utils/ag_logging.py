@@ -40,23 +40,45 @@ if hasattr(sys, 'ps1') or hasattr(sys, 'ps2'):
 def set_verbosity(level, alsologtostdout=False):
   """Sets the AutoGraph verbosity level.
 
-  # Debug logging in AutoGraph
+  _Debug logging in AutoGraph_
 
-  More verbose logging is useful to enable when filing bug reports or debugging
-  things.
+  More verbose logging is useful to enable when filing bug reports or doing
+  more in-depth debugging.
 
   There are two controls that control the logging verbosity:
+
    * The `set_verbosity` function
+
    * The `AUTOGRAPH_VERBOSITY` environment variable
+
   `set_verbosity` takes precedence over the environment variable.
 
-  By default, logs are output to absl's default logger, with INFO level. They
-  can be mirrored to stdout by using the `alsologtostdout` argument. Mirroring
-  is enabled by default when Python runs in interactive mode.
+  For example:
+
+  ```python
+  import os
+  import tensorflow as tf
+
+  os.environ['AUTOGRAPH_VERBOSITY'] = 5
+  # Verbosity is now 5
+
+  tf.autograph.set_verbosity(0)
+  # Verbosity is now 0
+
+  os.environ['AUTOGRAPH_VERBOSITY'] = 1
+  # No effect, because set_verbosity was already called.
+  ```
+
+  Logs entries are output to [absl](https://abseil.io)'s default output,
+  with `INFO` level.
+  Logs can be mirrored to stdout by using the `alsologtostdout` argument.
+  Mirroring is enabled by default when Python runs in interactive mode.
 
   Args:
-    level: int, the verbosity level; uses the same scale as vlog
-    alsologtostdout: bool, whether to ech log messages to stdout
+    level: int, the verbosity level; larger values specify increased verbosity;
+      0 means no logging. When reporting bugs, it is recommended to set this
+      value to a larges number, like 10.
+    alsologtostdout: bool, whether to also output log messages to `sys.stdout`.
   """
   global verbosity_level
   global echo_log_to_stdout
@@ -66,7 +88,24 @@ def set_verbosity(level, alsologtostdout=False):
 
 @tf_export('autograph.trace')
 def trace(*args):
-  """Traces argument information at compilation time."""
+  """Traces argument information at compilation time.
+
+  `trace` is useful when debugging, and it always executes during the tracing
+  phase, that is, when the TF graph is constructed.
+
+  _Example usage_
+
+  ```python
+  import tensorflow as tf
+
+  for i in tf.range(10):
+    tf.autograph.trace(i)
+  # Output: <Tensor ...>
+  ```
+
+  Args:
+    *args: Arguments to print to `sys.stdout`.
+  """
   print(*args)
 
 
@@ -74,11 +113,18 @@ def get_verbosity():
   global verbosity_level
   if verbosity_level is not None:
     return verbosity_level
-  return os.getenv(VERBOSITY_VAR_NAME, DEFAULT_VERBOSITY)
+  return int(os.getenv(VERBOSITY_VAR_NAME, DEFAULT_VERBOSITY))
 
 
 def has_verbosity(level):
   return get_verbosity() >= level
+
+
+def error(level, msg, *args, **kwargs):
+  if has_verbosity(level):
+    logging.error(msg, *args, **kwargs)
+    if echo_log_to_stdout:
+      print(msg % args)
 
 
 def log(level, msg, *args, **kwargs):
@@ -88,5 +134,11 @@ def log(level, msg, *args, **kwargs):
       print(msg % args)
 
 
+def warn(msg, *args, **kwargs):
+  logging.warn(msg, *args, **kwargs)
+  if echo_log_to_stdout:
+    print('WARNING:', msg % args)
+
+
 def warn_first_n(msg, *args, **kwargs):
-  logging.log_first_n(logging.WARNING, msg, *args, **kwargs)
+  logging.log_first_n(logging.WARN, msg, *args, **kwargs)

@@ -1103,6 +1103,8 @@ void BuildBuildGraphOptions(const RunStepRequestWrapper& req,
       req.options().experimental().collective_graph_key();
   if (config.experimental().collective_deterministic_sequential_execution()) {
     opts->collective_order = GraphCollectiveOrder::kEdges;
+  } else if (config.experimental().collective_nccl()) {
+    opts->collective_order = GraphCollectiveOrder::kAttrs;
   }
 }
 

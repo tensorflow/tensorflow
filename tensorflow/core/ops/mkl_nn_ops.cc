@@ -46,6 +46,7 @@ REGISTER_OP("_MklFusedConv2D")
     .Attr("T: {float}")
     .Attr("num_args: int >= 0")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
@@ -202,6 +203,7 @@ REGISTER_OP("_MklQuantizedConv2D")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -246,6 +248,7 @@ REGISTER_OP("_MklQuantizedConv2DAndRequantize")
     .Attr("out_type: quantizedtype = DT_QINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -290,6 +293,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBias")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -338,6 +342,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndRequantize")
     .Attr("out_type: quantizedtype = DT_QINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -379,6 +384,7 @@ REGISTER_OP("_MklQuantizedConv2DAndRelu")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -423,6 +429,7 @@ REGISTER_OP("_MklQuantizedConv2DAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -467,6 +474,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndRelu")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -515,6 +523,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -562,6 +571,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndRelu")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -617,6 +627,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -674,6 +685,7 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -688,6 +700,50 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       TF_RETURN_IF_ERROR(c->WithRank(c->input(8), 0, &unused));
       c->set_output(1, c->Scalar());
       c->set_output(2, c->Scalar());
+      return Status::OK();
+    });
+
+REGISTER_OP("_MklDepthwiseConv2dNativeBackpropInput")
+    .Input("input_sizes: int32")
+    .Input("filter: T")
+    .Input("out_backprop: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(0, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
+      return Status::OK();
+    });
+
+REGISTER_OP("_MklDepthwiseConv2dNativeBackpropFilter")
+    .Input("input: T")
+    .Input("filter_sizes: int32")
+    .Input("out_backprop: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Input("mkl_out_backprop: uint8")
+    .Output("output: T")
+    .Output("mkl_output: uint8")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("strides: list(int)")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn([](InferenceContext* c) {
+      ShapeHandle s;
+      TF_RETURN_IF_ERROR(c->MakeShapeFromShapeTensor(1, &s));
+      TF_RETURN_IF_ERROR(c->WithRank(s, 4, &s));
+      c->set_output(0, s);
       return Status::OK();
     });
 

@@ -689,6 +689,17 @@ Status MarkForCompilationPass::Run(
     TF_RETURN_IF_ERROR(DeadnessAnalysis::Run(**options.graph, &deadness));
   }
 
+  bool deadness_analysis_disabled =
+      GetMarkForCompilationPassFlags()
+          ->tf_xla_disable_deadness_safety_checks_for_debugging;
+
+  if (deadness_analysis_disabled) {
+    LOG(WARNING) << "Deadness analysis was manually disabled via "
+                    "--tf_xla_disable_deadness_safety_checks_for_debugging; "
+                    "auto-clustering "
+                    "is unsound!";
+  }
+
   auto is_compilable = [&](const Node* node, const DeviceType& device_type) {
     const XlaOpRegistry::DeviceRegistration* registration;
     if (!XlaOpRegistry::GetCompilationDevice(device_type.type(),
@@ -721,9 +732,12 @@ Status MarkForCompilationPass::Run(
     // and some are dead) then don't compile it.  XLA cannot represent the
     // deadness semantics of these nodes correctly and auto-clustering these
     // nodes can cause deadness to propagate to nodes that should be live.
-    if (node->IsMerge() || deadness->HasInputsWithMismatchingDeadness(*node)) {
-      VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
-      return false;
+    if (!deadness_analysis_disabled) {
+      if (node->IsMerge() ||
+          deadness->HasInputsWithMismatchingDeadness(*node)) {
+        VLOG(2) << "Rejecting " << node->name() << ": mismatching deadness.";
+        return false;
+      }
     }
 
     // Check for fusable ops only if requested.
@@ -1162,6 +1176,8 @@ Status MarkForCompilationPass::RunImpl(
       if (absl::optional<absl::string_view> cluster_name =
               GetXlaClusterForNode(*n)) {
         n->set_name(absl::StrCat(*cluster_name, "/", n->name()));
+      } else if (n->type_string() == "VarHandleOp") {
+        n->set_name(absl::StrCat("varhandle/", n->name()));
       } else {
         // There is room for improvement here.  In particular, it may help to
         // split these unclustered nodes into classes where every node in a

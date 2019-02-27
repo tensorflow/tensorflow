@@ -317,7 +317,12 @@ xla_test(
     name = "conv_depthwise_backprop_filter_test",
     timeout = "long",
     srcs = ["conv_depthwise_backprop_filter_test.cc"],
-    shard_count = 1,
+    # these backends do not natively handle batch group counts.
+    blacklisted_backends = [
+        "gpu",
+        "cpu",
+    ],
+    shard_count = 6,
     deps = [
         "//tensorflow/compiler/xla:execution_options_util",
         "//tensorflow/compiler/xla:status_macros",
@@ -669,23 +674,21 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_f32_elementwise_op_test",
-    size = "enormous",
-    srcs = ["exhaustive_f32_elementwise_op_test.cc"],
-    backends = [
-        "cpu",
-        "gpu",
-    ],
+    name = "exhaustive_op_test",
+    srcs = ["exhaustive_op_test.cc"],
+    real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
-        "broken",
-        "manual",
-        "notap",
+        "optonly",
+        # This is a big test that we skip for capacity reasons in OSS testing.
+        "no_oss",
     ],
     deps = [
         ":client_library_test_base",
         ":literal_test_util",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:constants",
+        "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/base",
@@ -834,6 +837,7 @@ xla_test(
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
+        "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/tests:client_library_test_base",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
         "//tensorflow/compiler/xla/tests:literal_test_util",
@@ -1143,7 +1147,7 @@ xla_test(
 xla_test(
     name = "reduce_test",
     srcs = ["reduce_test.cc"],
-    shard_count = 40,
+    shard_count = 31,
     tags = [
         "optonly",
     ],
@@ -1391,8 +1395,8 @@ xla_test(
 )
 
 xla_test(
-    name = "fmax_test",
-    srcs = ["fmax_test.cc"],
+    name = "fmax_fmin_test",
+    srcs = ["fmax_fmin_test.cc"],
     deps = [
         "//tensorflow/compiler/xla/client:local_client",
         "//tensorflow/compiler/xla/client:xla_builder",
@@ -1594,6 +1598,39 @@ xla_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core:test",
+    ],
+)
+
+xla_test(
+    name = "multi_device_all_reduce_test",
+    srcs = ["multi_device_all_reduce_test.cc"],
+    backends = ["gpu"],
+    tags = [
+        "manual",
+        "multi_gpu",
+        "no_oss",
+        "notap",
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:test_helpers",
+        "//tensorflow/compiler/xla:xla_data_proto",
+        "//tensorflow/compiler/xla/client:local_client",
+        "//tensorflow/compiler/xla/service:hlo",
+        "//tensorflow/compiler/xla/service:hlo_parser",
+        "//tensorflow/compiler/xla/service:hlo_runner",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:test_utils",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/memory",
+        "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/types:span",
     ],
 )
 
@@ -2155,5 +2192,28 @@ xla_test(
         ":xla_internal_test_main",  # fixdeps: keep
         "//tensorflow/compiler/xla:debug_options_flags",
         "//tensorflow/compiler/xla:test",
+    ],
+)
+
+xla_test(
+    name = "triangular_solve_test",
+    srcs = ["triangular_solve_test.cc"],
+    tags = [
+        "enable_for_xla_interpreter",
+        "noasan",  # sometimes times out, http://b/78650012
+    ],
+    deps = [
+        "//tensorflow/compiler/xla:array2d",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla:test",
+        "//tensorflow/compiler/xla:types",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:math",
+        "//tensorflow/compiler/xla/client/lib:matrix",
+        "//tensorflow/compiler/xla/tests:client_library_test_base",
+        "//tensorflow/compiler/xla/tests:literal_test_util",
+        "//tensorflow/compiler/xla/tests:xla_internal_test_main",
+        "//tensorflow/core:test",
     ],
 )

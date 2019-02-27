@@ -191,6 +191,7 @@ Status GatherComputationsByAllocationType(
           case HloOpcode::kReduceWindow:
           case HloOpcode::kScatter:
           case HloOpcode::kSelectAndScatter:
+          case HloOpcode::kSort:
           case HloOpcode::kFusion:
             // Map/reduce etc computations are always thread-local.
             worklist.push_back(std::make_pair(subcomputation,
@@ -752,7 +753,8 @@ namespace {
 bool MayInterfereAcrossSubcomputations(BufferAssignment* assignment,
                                        const LogicalBuffer& a_buffer,
                                        const LogicalBuffer& b_buffer) {
-  auto call_graph = assignment->liveness().hlo_ordering().call_graph();
+  const CallGraph& call_graph =
+      assignment->liveness().hlo_ordering().call_graph();
   const HloInstruction* a_ancestor;
   const HloInstruction* b_ancestor;
   std::tie(a_ancestor, b_ancestor) =

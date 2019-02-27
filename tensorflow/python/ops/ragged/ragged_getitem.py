@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
@@ -150,6 +151,27 @@ def _ragged_getitem(rt_input, key_list):
   else:
     starts = rt_input.row_splits[:-1]
     limits = rt_input.row_splits[1:]
+    if context.executing_eagerly():
+      # In python, __getitem__ should throw IndexError for out of bound
+      # indices. This will allow iteration run correctly as python will
+      # translate IndexError into StopIteration for next()/__next__().
+      # Below is an example:
+      #    import tensorflow as tf
+      #    r = tf.ragged.constant([[1., 2.], [3., 4., 5.], [6.]])
+      #    for elem in r:
+      #      print(elem)
+      # In non eager mode, the exception is thrown when session runs
+      # so we don't know if out of bound happens before.
+      # In eager mode, however, it is possible to find out when to
+      # throw out of bound IndexError.
+      # In the following row_key >= len(starts) is checked. In case of
+      # TypeError which happens when row_key is not an integer, the exception
+      # will simply be ignored as it will be processed later anyway.
+      try:
+        if int(row_key) >= len(starts):
+          raise IndexError("Row key {} out of bounds".format(row_key))
+      except (TypeError, ValueError):
+        pass
     row = rt_input.values[starts[row_key]:limits[row_key]]
     return row.__getitem__(inner_keys)
 

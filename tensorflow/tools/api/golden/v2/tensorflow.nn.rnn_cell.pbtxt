@@ -5,15 +5,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "LSTMStateTuple"
-    mtype: "<type \'type\'>"
-  }
-  member {
     name: "RNNCell"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "ResidualWrapper"
     mtype: "<type \'type\'>"
   }
 }

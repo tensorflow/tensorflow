@@ -44,7 +44,9 @@ class GraphVerifier {
   virtual string name() const = 0;
 
   // Implement an algorithm to verify the specified graph.
-  virtual Status Verify(const GraphDef& graph, std::vector<string>* errors) = 0;
+  // The return value is a Status that represents a concatenation of Status of
+  // each verification step.
+  virtual Status Verify(const GraphDef& graph) = 0;
 };
 
 }  // end namespace grappler

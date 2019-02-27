@@ -127,7 +127,19 @@ void SymmetricPerChannelQuantization(const float* const input,
   }
 
   // Quantize the values.
-  memset(indices, 0, 4 * sizeof(int));
+  SymmetricPerChannelQuantizeValues(input, scale_invs, dimension,
+                                    channel_dim_index, output_value);
+}
+
+void SymmetricPerChannelQuantizeValues(const float* const input,
+                                       const std::vector<float>& scales_inv,
+                                       const std::vector<int>& dimension,
+                                       int32_t channel_dim_index,
+                                       std::vector<int8_t>* output_value) {
+  // Quantize the values.
+  int indices[4];
+  RuntimeShape tensor_dims{dimension[0], dimension[1], dimension[2],
+                           dimension[3]};
   for (indices[0] = 0; indices[0] < dimension[0]; indices[0]++) {
     for (indices[1] = 0; indices[1] < dimension[1]; indices[1]++) {
       for (indices[2] = 0; indices[2] < dimension[2]; indices[2]++) {
@@ -136,7 +148,7 @@ void SymmetricPerChannelQuantization(const float* const input,
           int index = Offset(tensor_dims, indices);
           const float val = input[index];
           const int32_t quantized_value =
-              static_cast<int32_t>(TfLiteRound(val * scale_invs[channel_idx]));
+              static_cast<int32_t>(TfLiteRound(val * scales_inv[channel_idx]));
           output_value->at(index) = std::min<int8_t>(
               kMaxQuantizedValue,
               std::max<int8_t>(kMinQuantizedValue, quantized_value));

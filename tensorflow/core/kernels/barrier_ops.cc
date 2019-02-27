@@ -247,7 +247,6 @@ class Barrier : public ResourceBase {
           keys = t[1];
           values.insert(values.begin(), t.begin() + 2, t.end());
           callback(indices, keys, values);
-          return;
         });
   }
 
@@ -509,7 +508,7 @@ class BarrierOpKernel : public AsyncOpKernel {
     Barrier* barrier = nullptr;
     OP_REQUIRES_OK_ASYNC(ctx, GetResourceFromContext(ctx, "handle", &barrier),
                          callback);
-    ComputeAsync(ctx, barrier, [this, callback, barrier]() {
+    ComputeAsync(ctx, barrier, [callback, barrier]() {
       barrier->Unref();
       callback();
     });
@@ -618,7 +617,6 @@ class TakeManyOp : public BarrierOpKernel {
             values_output.set(i, values[i]);
           }
           callback();
-          return;
         });
   }
 

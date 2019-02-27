@@ -296,7 +296,7 @@ static StatusOr<HloInstruction*> PermuteBatchAndOffsetDims(
 // [3,1] out of operand into an accumulator of shape [4,3,1].  We then
 // reshape this result to [2,2,3] and finally transpose it to [2,3,2].
 
-StatusOr<HloInstruction*> GatherExpander::ExpandGather(
+StatusOr<HloInstruction*> GatherExpander::ExpandInstruction(
     HloInstruction* gather_instr) {
   CHECK(!ShapeUtil::IsZeroElementArray(gather_instr->shape()));
 
@@ -361,25 +361,11 @@ StatusOr<HloInstruction*> GatherExpander::ExpandGather(
                                    output_rank);
 }
 
-StatusOr<bool> GatherExpander::Run(HloModule* module) {
-  auto is_nontrivial_gather = [](HloInstruction* inst) {
-    return inst->opcode() == HloOpcode::kGather &&
-           // Avoid expanding gather ops that produce zero sized tensors,
-           // instead punt these to ZeroSizedHloElimination.
-           !ShapeUtil::IsZeroElementArray(inst->shape());
-  };
-
-  std::vector<HloInstruction*> gather_instrs;
-  for (HloComputation* computation : module->MakeNonfusionComputations()) {
-    absl::c_copy_if(computation->instructions(),
-                    std::back_inserter(gather_instrs), is_nontrivial_gather);
-  }
-
-  for (HloInstruction* inst : gather_instrs) {
-    TF_ASSIGN_OR_RETURN(HloInstruction * expanded_root, ExpandGather(inst));
-    TF_RETURN_IF_ERROR(inst->parent()->ReplaceInstruction(inst, expanded_root));
-  }
-
-  return !gather_instrs.empty();
+bool GatherExpander::InstructionMatchesPattern(HloInstruction* inst) {
+  return inst->opcode() == HloOpcode::kGather &&
+         // Avoid expanding gather ops that produce zero sized tensors,
+         // instead punt these to ZeroSizedHloElimination.
+         !ShapeUtil::IsZeroElementArray(inst->shape());
 }
+
 }  // namespace xla

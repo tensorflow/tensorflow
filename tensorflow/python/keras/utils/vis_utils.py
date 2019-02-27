@@ -78,7 +78,7 @@ def model_to_dot(model, show_shapes=False, show_layer_names=True, rankdir='TB'):
   if isinstance(model, Sequential):
     if not model.built:
       model.build()
-  layers = model.layers
+  layers = model._layers
 
   # Create graph nodes.
   for layer in layers:
@@ -145,6 +145,10 @@ def plot_model(model,
           a string specifying the format of the plot:
           'TB' creates a vertical plot;
           'LR' creates a horizontal plot.
+
+  Returns:
+      A Jupyter notebook Image object if Jupyter is installed.
+      This enables in-line display of the model plots in notebooks.
   """
   dot = model_to_dot(model, show_shapes, show_layer_names, rankdir)
   _, extension = os.path.splitext(to_file)
@@ -152,4 +156,13 @@ def plot_model(model,
     extension = 'png'
   else:
     extension = extension[1:]
+  # Save image to disk.
   dot.write(to_file, format=extension)
+  # Return the image as a Jupyter Image object, to be displayed in-line.
+  # Note that we cannot easily detect whether the code is running in a
+  # notebook, and thus we always return the Image if Jupyter is available.
+  try:
+    from IPython import display
+    return display.Image(filename=to_file)
+  except ImportError:
+    pass

@@ -37,6 +37,7 @@ tensorflow/third_party/toolchains/clang6/README.md
 tensorflow/third_party/toolchains/clang6/repo.bzl
 tensorflow/third_party/toolchains/clang6/CROSSTOOL.tpl
 tensorflow/third_party/toolchains/clang6/clang.BUILD
+tensorflow/third_party/toolchains/preconfig/ubuntu14.04/gcc7-nvcc-cuda10.0/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/BUILD
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/tensorrt5/build_defs.bzl
 tensorflow/third_party/toolchains/preconfig/ubuntu14.04/py3/BUILD
@@ -119,6 +120,7 @@ tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/MatMatProdu
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool
 tensorflow/third_party/eigen3/unsupported/Eigen/SpecialFunctions
 tensorflow/third_party/eigen3/unsupported/Eigen/MatrixFunctions
+tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/LICENSE
 tensorflow/third_party/eigen3/BUILD
 tensorflow/third_party/systemlibs/build_defs.bzl.tpl
@@ -244,5 +246,6 @@ tensorflow/third_party/eigen.BUILD
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template_v1.__init__.py
+tensorflow/compat_template.__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/__init__.py

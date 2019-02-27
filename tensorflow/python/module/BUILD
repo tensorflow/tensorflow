@@ -13,7 +13,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:util",
         "//tensorflow/python:variables",
-        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python/training/tracking",
         "@six_archive//:six",
     ],
 )
@@ -23,6 +23,7 @@ tf_py_test(
     srcs = ["module_test.py"],
     additional_deps = [
         ":module",
+        "@absl_py//absl/testing:parameterized",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python/compat:v2_compat",
         "//tensorflow/python:variables",

@@ -15,8 +15,18 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
-# TODO(priyag): Figure out testonly issues that are preventing us from
-# including our tests in pip for now.
+py_library(
+    name = "distribute_test_lib_pip",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":combinations",
+        ":keras_correctness_test_lib",
+        ":keras_test_lib",
+        ":multi_worker_test_base",
+        ":single_loss_example",
+        ":strategy_test_lib",
+    ],
+)
 
 cuda_py_test(
     name = "values_test",
@@ -38,9 +48,6 @@ cuda_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/estimator:estimator_py",
     ],
-    tags = [
-        "no_pip",
-    ],
 )
 
 cuda_py_test(
@@ -57,9 +64,6 @@ cuda_py_test(
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
-    ],
-    tags = [
-        "no_pip",
     ],
 )
 
@@ -115,7 +119,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -124,17 +127,17 @@ py_library(
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
-        "@six_archive//:six",
+        "//tensorflow/python/distribute:one_device_strategy",
+    ],
+)
+
+cuda_py_test(
+    name = "one_device_strategy_test",
+    srcs = ["one_device_strategy_test.py"],
+    additional_deps = [
+        ":strategy_test_lib",
+        ":combinations",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -143,30 +146,16 @@ py_library(
     srcs = ["collective_all_reduce_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":mirrored_strategy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:collective_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python/distribute:cross_device_ops",
-        "//tensorflow/python/distribute:cross_device_utils",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:multi_worker_util",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
     ],
 )
 
 py_library(
     name = "strategy_test_lib",
-    testonly = 1,
     srcs = ["strategy_test_lib.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
@@ -185,15 +174,12 @@ py_library(
 
 py_library(
     name = "combinations",
-    testonly = 1,
     srcs = ["combinations.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
     deps = [
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":parameter_server_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/optimizer_v2:training",
@@ -202,6 +188,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras/optimizer_v2",
         "@absl_py//absl/testing:parameterized",
     ],
 )
@@ -209,26 +196,8 @@ py_library(
 py_test(
     name = "combinations_test",
     srcs = ["combinations_test.py"],
-    tags = [
-        "no_pip",
-    ],
     deps = [
         ":combinations",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-py_test(
-    name = "one_device_strategy_test",
-    srcs = ["one_device_strategy_test.py"],
-    srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
-    deps = [
-        ":one_device_strategy",
-        ":strategy_test_lib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -258,18 +227,13 @@ cuda_py_test(
     tags = [
         "guitar",
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
 py_library(
     name = "multi_worker_test_base",
-    testonly = 1,
     srcs = ["multi_worker_test_base.py"],
     srcs_version = "PY2AND3",
-    tags = [
-        "no_pip",
-    ],
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
@@ -338,7 +302,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -348,7 +311,6 @@ distribute_py_test(
     main = "minimize_loss_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
     deps = [
         ":combinations",
@@ -382,9 +344,6 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
-    tags = [
-        "no_pip",
-    ],
 )
 
 cuda_py_test(
@@ -402,7 +361,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -425,7 +383,6 @@ cuda_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
-        "no_pip",
         "tf_integration_test",
     ],
 )
@@ -436,10 +393,10 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
-        "no_pip",
         "tf_integration_test",
     ],
 )
@@ -469,7 +426,6 @@ cuda_py_test(
     shard_count = 48,
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
         # TODO(b/118768923): Re-enable {a,m,t}san test.
         "noasan",
         "nomsan",
@@ -497,7 +453,6 @@ distribute_py_test(
     main = "step_fn_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
     deps = [
         ":combinations",
@@ -527,10 +482,10 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         ":monitor",
-        ":one_device_strategy",
         ":single_loss_example",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
@@ -538,7 +493,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -555,15 +509,13 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
     ],
-    tags = [
-        "no_pip",
-    ],
 )
 
 cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":multi_worker_test_base",
         ":mirrored_strategy",
@@ -579,16 +531,15 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
 py_library(
     name = "keras_test_lib",
-    testonly = 1,
     srcs = [
         "keras_backward_compat_test.py",
         "keras_test.py",
+        "keras_utils_test.py",
     ],
     deps = [
         ":combinations",
@@ -607,16 +558,34 @@ py_library(
 distribute_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
+    full_precision = True,
     main = "keras_test.py",
-    shard_count = 16,
+    shard_count = 32,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_pip",
         "no_windows_gpu",
         "notsan",
     ],
     deps = [
+        ":keras_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_utils_test",
+    srcs = ["keras_utils_test.py"],
+    full_precision = True,
+    main = "keras_utils_test.py",
+    shard_count = 32,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_test",
         ":keras_test_lib",
     ],
 )
@@ -627,11 +596,10 @@ distribute_py_test(
     srcs = ["keras_backward_compat_test.py"],
     full_precision = True,
     main = "keras_backward_compat_test.py",
-    shard_count = 16,
+    shard_count = 31,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_pip",
         "no_windows_gpu",
         "notsan",
     ],
@@ -642,7 +610,6 @@ distribute_py_test(
 
 py_library(
     name = "keras_correctness_test_lib",
-    testonly = 1,
     srcs = [
         "keras_correctness_test_base.py",
         "keras_dnn_correctness_test.py",
@@ -677,9 +644,7 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_pip",
         "no_windows_gpu",
-        "notap",  # TODO(b/123097760): Fix and re-enable the test.
         "notsan",
     ],
     deps = [
@@ -699,7 +664,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_pip",
         "no_windows_gpu",
         "notsan",
     ],
@@ -720,7 +684,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_pip",
         "no_windows_gpu",
         "notsan",
     ],
@@ -741,7 +704,6 @@ distribute_py_test(
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
-        "no_pip",
         "no_windows_gpu",
         "notsan",
     ],
@@ -777,7 +739,6 @@ distribute_py_test(
     main = "metrics_v1_test.py",
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
     deps = [
         ":combinations",
@@ -804,7 +765,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -815,7 +775,6 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         "//tensorflow/python:client_testlib",
-        "//tensorflow/python:checkpoint_utils_test",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:training",
         "//tensorflow/python:variable_scope",
@@ -823,7 +782,6 @@ cuda_py_test(
     ],
     tags = [
         "multi_and_single_gpu",
-        "no_pip",
     ],
 )
 
@@ -838,12 +796,11 @@ tf_xla_py_test(
     ],
     tags = [
         "no_oss",
-        "no_pip",
     ],
     deps = [
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:util",
     ],
 )

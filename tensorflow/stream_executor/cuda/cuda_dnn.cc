@@ -40,7 +40,6 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/mathutil.h"
 #include "tensorflow/stream_executor/lib/threadpool.h"
 #include "tensorflow/stream_executor/logging.pb.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/scratch_allocator.h"
@@ -58,7 +57,7 @@ limitations under the License.
 #pragma clang diagnostic warning "-Wmismatched-tags"
 
 namespace stream_executor {
-namespace cuda {
+namespace gpu {
 
 PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kCuDnnPlugin);
 
@@ -137,7 +136,7 @@ class CudnnHandle {
  public:
   // Takes ownership of the executor context and the lock to access cuDNN
   // using handle.
-  CudnnHandle(cuda::ScopedActivateExecutorContext context, mutex_lock lock,
+  CudnnHandle(gpu::ScopedActivateExecutorContext context, mutex_lock lock,
               cudnnHandle_t handle)
       : context_(std::move(context)), lock_(std::move(lock)), handle_(handle) {}
 
@@ -146,162 +145,12 @@ class CudnnHandle {
   cudnnHandle_t handle() const { return handle_; }
 
  private:
-  cuda::ScopedActivateExecutorContext context_;
+  gpu::ScopedActivateExecutorContext context_;
   mutex_lock lock_;
   cudnnHandle_t handle_;  // Not owned.
 };
 
 }  // namespace
-
-#ifdef PLATFORM_GOOGLE
-// This macro wraps a global identifier, given by __name, in a callable
-// structure that loads the DLL symbol out of the DSO handle in a thread-safe
-// manner on first use. This dynamic loading technique is used to avoid DSO
-// dependencies on vendor libraries which may or may not be available in the
-// deployed binary environment.
-#define STREAM_EXECUTOR_CUDNN_WRAP(__name)   \
-  struct WrapperShim__##__name {             \
-    template <typename... Args>              \
-    cudnnStatus_t operator()(Args... args) { \
-      return ::__name(args...);              \
-    }                                        \
-  } __name;
-
-#else
-#define STREAM_EXECUTOR_CUDNN_WRAP(__name)                                \
-  struct DynLoadShim__##__name {                                          \
-    static const char* kName;                                             \
-    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
-    static void* GetDsoHandle() {                                         \
-      auto s = internal::CachedDsoLoader::GetCudnnDsoHandle();            \
-      return s.ValueOrDie();                                              \
-    }                                                                     \
-    static FuncPtrT LoadOrDie() {                                         \
-      void* f;                                                            \
-      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
-                                                          kName, &f);     \
-      CHECK(s.ok()) << "could not find " << kName                         \
-                    << " in cudnn DSO; dlerror: " << s.error_message();   \
-      return reinterpret_cast<FuncPtrT>(f);                               \
-    }                                                                     \
-    static FuncPtrT DynLoad() {                                           \
-      static FuncPtrT f = LoadOrDie();                                    \
-      return f;                                                           \
-    }                                                                     \
-    template <typename... Args>                                           \
-    cudnnStatus_t operator()(Args... args) {                              \
-      return DynLoad()(args...);                                          \
-    }                                                                     \
-  } __name;                                                               \
-  const char* DynLoadShim__##__name::kName = #__name;
-#endif
-
-// clang-format off
-#define CUDNN_ROUTINE_EACH_V7000_UNDER(__macro)               \
-  __macro(cudnnActivationForward)                             \
-  __macro(cudnnAddTensor)                                     \
-  __macro(cudnnBatchNormalizationBackward)                    \
-  __macro(cudnnBatchNormalizationForwardInference)            \
-  __macro(cudnnBatchNormalizationForwardTraining)             \
-  __macro(cudnnConvolutionBackwardBias)                       \
-  __macro(cudnnConvolutionBackwardData)                       \
-  __macro(cudnnConvolutionBackwardFilter)                     \
-  __macro(cudnnConvolutionBiasActivationForward)              \
-  __macro(cudnnConvolutionForward)                            \
-  __macro(cudnnCreate)                                        \
-  __macro(cudnnCreateActivationDescriptor)                    \
-  __macro(cudnnCreateConvolutionDescriptor)                   \
-  __macro(cudnnCreateDropoutDescriptor)                       \
-  __macro(cudnnCreateFilterDescriptor)                        \
-  __macro(cudnnCreateLRNDescriptor)                           \
-  __macro(cudnnCreatePersistentRNNPlan)                       \
-  __macro(cudnnCreatePoolingDescriptor)                       \
-  __macro(cudnnCreateRNNDescriptor)                           \
-  __macro(cudnnCreateTensorDescriptor)                        \
-  __macro(cudnnDestroy)                                       \
-  __macro(cudnnDestroyActivationDescriptor)                   \
-  __macro(cudnnDestroyConvolutionDescriptor)                  \
-  __macro(cudnnDestroyDropoutDescriptor)                      \
-  __macro(cudnnDestroyFilterDescriptor)                       \
-  __macro(cudnnDestroyLRNDescriptor)                          \
-  __macro(cudnnDestroyPersistentRNNPlan)                      \
-  __macro(cudnnDestroyPoolingDescriptor)                      \
-  __macro(cudnnDestroyRNNDescriptor)                          \
-  __macro(cudnnDestroyTensorDescriptor)                       \
-  __macro(cudnnDropoutGetStatesSize)                          \
-  __macro(cudnnGetActivationDescriptor)                       \
-  __macro(cudnnGetConvolutionBackwardDataAlgorithm)           \
-  __macro(cudnnGetConvolutionBackwardDataWorkspaceSize)       \
-  __macro(cudnnGetConvolutionBackwardFilterAlgorithm)         \
-  __macro(cudnnGetConvolutionBackwardFilterWorkspaceSize)     \
-  __macro(cudnnGetConvolutionForwardAlgorithm)                \
-  __macro(cudnnGetConvolutionForwardWorkspaceSize)            \
-  __macro(cudnnGetConvolutionNdDescriptor)                    \
-  __macro(cudnnGetConvolutionNdForwardOutputDim)              \
-  __macro(cudnnGetFilterNdDescriptor)                         \
-  __macro(cudnnGetProperty)                                   \
-  __macro(cudnnGetRNNLinLayerBiasParams)                      \
-  __macro(cudnnGetRNNLinLayerMatrixParams)                    \
-  __macro(cudnnGetRNNParamsSize)                              \
-  __macro(cudnnGetRNNTrainingReserveSize)                     \
-  __macro(cudnnGetRNNWorkspaceSize)                           \
-  __macro(cudnnLRNCrossChannelBackward)                       \
-  __macro(cudnnLRNCrossChannelForward)                        \
-  __macro(cudnnPoolingBackward)                               \
-  __macro(cudnnPoolingForward)                                \
-  __macro(cudnnRNNBackwardData)                               \
-  __macro(cudnnRNNBackwardWeights)                            \
-  __macro(cudnnRNNForwardInference)                           \
-  __macro(cudnnRNNForwardTraining)                            \
-  __macro(cudnnSetActivationDescriptor)                       \
-  __macro(cudnnSetConvolutionNdDescriptor)                    \
-  __macro(cudnnSetDropoutDescriptor)                          \
-  __macro(cudnnSetFilterNdDescriptor)                         \
-  __macro(cudnnSetLRNDescriptor)                              \
-  __macro(cudnnSetPersistentRNNPlan)                          \
-  __macro(cudnnSetPoolingNdDescriptor)                        \
-  __macro(cudnnSetRNNDescriptor)                              \
-  __macro(cudnnSetRNNDescriptor_v6)                           \
-  __macro(cudnnSetStream)                                     \
-  __macro(cudnnSetTensor4dDescriptor)                         \
-  __macro(cudnnSetTensorNdDescriptor)                         \
-  __macro(cudnnTransformTensor)
-
-// clang-format on
-
-CUDNN_ROUTINE_EACH_V7000_UNDER(STREAM_EXECUTOR_CUDNN_WRAP)
-#undef CUDNN_ROUTINE_EACH_V7000_UNDER
-
-#if CUDNN_VERSION >= 7000
-// clang-format off
-#define CUDNN_ROUTINE_EACH_V7000(__macro)                    \
-  __macro(cudnnSetRNNMatrixMathType)                         \
-  __macro(cudnnSetConvolutionMathType)                       \
-  __macro(cudnnSetConvolutionGroupCount)
-
-// clang-format on
-
-CUDNN_ROUTINE_EACH_V7000(STREAM_EXECUTOR_CUDNN_WRAP)
-#undef CUDNN_ROUTINE_EACH_V7000
-#endif
-
-#if CUDNN_VERSION >= 7201
-// clang-format off
-#define CUDNN_ROUTINE_EACH_V7210(__macro)                     \
-  __macro(cudnnCreateRNNDataDescriptor)                       \
-  __macro(cudnnDestroyRNNDataDescriptor)                      \
-  __macro(cudnnRNNBackwardDataEx)                             \
-  __macro(cudnnRNNBackwardWeightsEx)                          \
-  __macro(cudnnRNNForwardInferenceEx)                         \
-  __macro(cudnnRNNForwardTrainingEx)                          \
-  __macro(cudnnSetRNNDataDescriptor)                          \
-  __macro(cudnnSetRNNPaddingMode)
-
-// clang-format on
-
-CUDNN_ROUTINE_EACH_V7210(STREAM_EXECUTOR_CUDNN_WRAP)
-#undef CUDNN_ROUTINE_EACH_V7210
-#endif
 
 // Wraps a cuDNN handle and provides access to it through CudnnHandle
 // instances, which also locks a mutex, acquires the CUDA context, and sets
@@ -314,7 +163,7 @@ class CudnnAccess {
   explicit CudnnAccess(cudnnHandle_t handle) : handle_(handle) {}
 
   ~CudnnAccess() {
-    mutex_lock lock(mutex_);
+    mutex_lock lock(*mutex_);
     cudnnDestroy(handle_);
   }
 
@@ -334,22 +183,29 @@ class CudnnAccess {
   // The legacy default stream synchronizes with all other streams and it is
   // therefore a bad idea (performance wise) to call any cuDNN APIs that
   // enqueue work in the stream.
-  CudnnHandle GetHandle(CUDAExecutor* executor, Stream* stream) {
-    mutex_lock lock(mutex_);
-    cuda::ScopedActivateExecutorContext context(executor);
-    CUstream cu_stream = stream ? AsCUDAStreamValue(stream) : cudaStreamLegacy;
-    auto status = cudnnSetStream(handle_, cu_stream);
+  CudnnHandle GetHandle(GpuExecutor* executor, Stream* stream) {
+    mutex_lock lock(*mutex_);
+    gpu::ScopedActivateExecutorContext context(executor);
+    CUstream cu_stream = stream ? AsGpuStreamValue(stream) : cudaStreamLegacy;
+    const auto status = cudnnSetStream(handle_, cu_stream);
     CHECK_EQ(status, CUDNN_STATUS_SUCCESS) << "Failed to set cuDNN stream.";
     return CudnnHandle(std::move(context), std::move(lock), handle_);
   }
 
  private:
   // Guards the enqueueing of cuDNN operations via the handle_ below.
-  mutex mutex_;
+  //
+  // The mutex is static to work around b/124313574: calling cuDNN concurrently
+  // with different handles is not thread safe, even though the documentation
+  // suggests it is:
+  // https://docs.nvidia.com/deeplearning/sdk/cudnn-developer-guide/index.html#thread-safety.
+  static mutex* mutex_;
 
   // cuDNN library handle.
-  cudnnHandle_t handle_ GUARDED_BY(mutex_);  // Owned.
+  cudnnHandle_t handle_ GUARDED_BY(*mutex_);  // Owned.
 };
+
+mutex* CudnnAccess::mutex_ = new mutex;
 
 namespace {
 
@@ -448,12 +304,12 @@ port::Status GetLoadedCudnnVersion(CudnnVersion* version) {
 
 }  // namespace
 
-CudnnSupport::CudnnSupport(CUDAExecutor* parent) : parent_(parent) {}
+CudnnSupport::CudnnSupport(GpuExecutor* parent) : parent_(parent) {}
 
 port::Status CudnnSupport::Init() {
   ScopedActivateExecutorContext context(parent_);
   cudnnHandle_t cudnn_handle = nullptr;
-  auto status = cudnnCreate(&cudnn_handle);
+  const auto status = cudnnCreate(&cudnn_handle);
   if (status == CUDNN_STATUS_SUCCESS) {
     CudnnVersion source_version(CUDNN_MAJOR, CUDNN_MINOR, CUDNN_PATCHLEVEL);
 
@@ -481,14 +337,14 @@ port::Status CudnnSupport::Init() {
   CHECK_EQ(cudnn_handle, nullptr);
   LOG(ERROR) << "Could not create cudnn handle: " << ToString(status);
   if (status == CUDNN_STATUS_NOT_INITIALIZED) {
-    auto result = cuda::Diagnostician::FindKernelDriverVersion();
+    auto result = gpu::Diagnostician::FindKernelDriverVersion();
     if (!result.ok()) {
       LOG(ERROR) << "Error retrieving driver version: "
-                 << DriverVersionStatusToString(result);
+                 << cuda::DriverVersionStatusToString(result);
     } else {
       const auto& version = result.ValueOrDie();
       LOG(ERROR) << "Possibly insufficient driver version: "
-                 << DriverVersionToString(version);
+                 << cuda::DriverVersionToString(version);
     }
   }
 
@@ -784,7 +640,6 @@ bool BatchnormSpatialPersistentEnabled() {
 }
 
 // A helper function to decide whether to enable deterministic functionality.
-// TODO(pr/24355): Support all cuDNN functionality (currently only convolution).
 bool RequireDeterminism() {
   static bool is_enabled = [] {
     bool is_enabled = false;
@@ -887,10 +742,13 @@ class CudnnPoolingDescriptor {
     std::transform(shape64.cbegin(), shape64.cend(), shape.begin(),
                    &CheckedNarrowing<int64, int>);
     bool propagate_nans = pooling_descriptor.propagate_nans();
+    const auto cudnn_max_pooling_mode = RequireDeterminism()
+                                            ? CUDNN_POOLING_MAX_DETERMINISTIC
+                                            : CUDNN_POOLING_MAX;
     CHECK_CUDNN_OK(cudnnSetPoolingNdDescriptor(
         handle_.get(),
         (pooling_descriptor.mode() == dnn::PoolingMode::kMaximum
-             ? CUDNN_POOLING_MAX
+             ? cudnn_max_pooling_mode
              : CUDNN_POOLING_AVERAGE_COUNT_EXCLUDE_PADDING),
         propagate_nans ? CUDNN_PROPAGATE_NAN : CUDNN_NOT_PROPAGATE_NAN, nd,
         shape.data(), padding.data(), strides.data()));
@@ -1151,7 +1009,7 @@ class CudnnRnnParamsDescriptor {
 }  // namespace
 
 class CudnnRnnDescriptor : public dnn::RnnDescriptor {
-  CudnnRnnDescriptor(const CudnnHandle& cudnn, cuda::RnnDescriptor rnn_desc,
+  CudnnRnnDescriptor(const CudnnHandle& cudnn, gpu::RnnDescriptor rnn_desc,
                      PersistentRnnPlan rnn_plan, int num_layers,
                      int hidden_size, int input_size, int batch_size,
                      cudnnRNNInputMode_t input_mode,
@@ -1191,7 +1049,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
         CudnnDropoutDescriptor dropout_desc,
         CudnnDropoutDescriptor::Create(cudnn, dropout, seed, state_allocator));
 
-    cuda::RnnDescriptor rnn_desc = CreateRnnDescriptor();
+    gpu::RnnDescriptor rnn_desc = CreateRnnDescriptor();
     cudnnRNNAlgo_t rnn_algo = ToCudnnRNNAlgo(algorithm_config.algorithm());
 
     // TODO: allow the user to choose an algorithm.
@@ -1282,7 +1140,7 @@ class CudnnRnnDescriptor : public dnn::RnnDescriptor {
   }
 
  private:
-  cuda::RnnDescriptor rnn_desc_;
+  gpu::RnnDescriptor rnn_desc_;
   PersistentRnnPlan rnn_plan_;
   int num_layers_;
   int hidden_size_;
@@ -1401,15 +1259,14 @@ port::StatusOr<CudnnRnnParamsDescriptor> CudnnRnnParamsDescriptor::Create(
 
 class CudnnRnnSequenceTensorDescriptor
     : public dnn::RnnSequenceTensorDescriptor {
-  CudnnRnnSequenceTensorDescriptor(CUDAExecutor* parent, int max_seq_length,
+  CudnnRnnSequenceTensorDescriptor(GpuExecutor* parent, int max_seq_length,
                                    int batch_size, int data_size,
                                    cudnnDataType_t data_type,
 #if CUDNN_VERSION >= 7201
                                    RNNDataDescriptor data_handle,
 #endif
                                    TensorDescriptor handle)
-      : parent_(parent),
-        max_seq_length_(max_seq_length),
+      : max_seq_length_(max_seq_length),
         batch_size_(batch_size),
         data_size_(data_size),
         data_type_(data_type),
@@ -1425,7 +1282,7 @@ class CudnnRnnSequenceTensorDescriptor
       default;
 
   static port::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
-      CUDAExecutor* parent, int max_seq_length, int batch_size, int data_size,
+      GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       cudnnDataType_t data_type) {
     CHECK_GT(max_seq_length, 0);
     int dims[] = {batch_size, data_size, 1};
@@ -1444,7 +1301,7 @@ class CudnnRnnSequenceTensorDescriptor
   }
 
   static port::StatusOr<CudnnRnnSequenceTensorDescriptor> Create(
-      CUDAExecutor* parent, int max_seq_length, int batch_size, int data_size,
+      GpuExecutor* parent, int max_seq_length, int batch_size, int data_size,
       const absl::Span<const int>& seq_lengths, cudnnDataType_t data_type) {
 #if CUDNN_VERSION >= 7201
     CHECK_GT(max_seq_length, 0);
@@ -1496,7 +1353,6 @@ class CudnnRnnSequenceTensorDescriptor
   }
 
  private:
-  CUDAExecutor* parent_;
   int max_seq_length_;
   int batch_size_;
   int data_size_;
@@ -1511,11 +1367,10 @@ class CudnnRnnSequenceTensorDescriptor
 
 class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
  public:
-  CudnnRnnStateTensorDescriptor(CUDAExecutor* parent, int num_layers,
+  CudnnRnnStateTensorDescriptor(GpuExecutor* parent, int num_layers,
                                 int batch_size, int data_size,
                                 cudnnDataType_t data_type)
-      : parent_(parent),
-        handle_(CreateTensorDescriptor()),
+      : handle_(CreateTensorDescriptor()),
         num_layers_(num_layers),
         batch_size_(batch_size),
         data_size_(data_size),
@@ -1535,7 +1390,6 @@ class CudnnRnnStateTensorDescriptor : public dnn::RnnStateTensorDescriptor {
   int data_size() const { return data_size_; }
 
  private:
-  CUDAExecutor* parent_;
   TensorDescriptor handle_;
   int num_layers_;
   int batch_size_;
@@ -1699,14 +1553,14 @@ port::Status CudnnSupport::DoRnnForwardImpl(
     }
   }
 
-  std::unique_ptr<CUDATimer, TimerDeleter> timer;
+  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   const bool is_profiling = output_profile_result != nullptr;
   if (is_profiling) {
-    timer.reset(new CUDATimer(parent_));
+    timer.reset(new GpuTimer(parent_));
     // The start and stop of the timer should be as close to the Cudnn call as
     // possible. It is still possible for other threads to issue workload on
     // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
+    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to start timer");
     }
   }
@@ -1791,7 +1645,7 @@ port::Status CudnnSupport::DoRnnForwardImpl(
   }
 
   if (is_profiling) {
-    if (!timer->Stop(AsCUDAStream(stream))) {
+    if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
     auto algo_desc = *rnn_desc.algorithm_config().algorithm();
@@ -1842,14 +1696,14 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
                       CreateRnnWorkspace(stream, cudnn, rnn_desc, input_desc,
                                          workspace_allocator));
 
-  std::unique_ptr<CUDATimer, TimerDeleter> timer;
+  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   const bool is_profiling = output_profile_result != nullptr;
   if (is_profiling) {
-    timer.reset(new CUDATimer(parent_));
+    timer.reset(new GpuTimer(parent_));
     // The start and stop of the timer should be as close to the Cudnn call as
     // possible. It is still possible for other threads to issue workload on
     // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
+    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to start timer");
     }
   }
@@ -1948,7 +1802,7 @@ port::Status CudnnSupport::DoRnnBackwardImpl(
   }
 
   if (is_profiling) {
-    if (!timer->Stop(AsCUDAStream(stream))) {
+    if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
     auto algo_desc = *rnn_desc.algorithm_config().algorithm();
@@ -2508,7 +2362,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionForwardAlgorithm(
     algo_desc = dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/true);
   }
 
-  auto scratch_or = AllocateCudnnConvolutionForwardWorkspace(
+  const auto scratch_or = AllocateCudnnConvolutionForwardWorkspace(
       stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
       scratch_allocator);
 
@@ -2557,7 +2411,7 @@ port::StatusOr<dnn::AlgorithmDesc> GetCudnnConvolutionBackwardDataAlgorithm(
     algo_desc = dnn::AlgorithmDesc(algo, /*use_tensor_ops=*/true);
   }
 
-  auto scratch_or = AllocateCudnnConvolutionBackwardDataWorkspace(
+  const auto scratch_or = AllocateCudnnConvolutionBackwardDataWorkspace(
       stream, cudnn, input_nd, filter, conv, output_nd, *algo_desc,
       scratch_allocator);
 
@@ -2915,18 +2769,18 @@ port::Status CudnnSupport::DoConvolve(
 
   const bool is_profiling = output_profile_result != nullptr;
 
-  std::unique_ptr<CUDATimer, TimerDeleter> timer;
+  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   if (is_profiling) {
-    timer.reset(new CUDATimer(parent_));  // NOLINT
+    timer.reset(new GpuTimer(parent_));  // NOLINT
     // The start and stop of the timer should be as close to the Cudnn call as
     // possible. It is still possible for other threads to issue workload on
     // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
+    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to start timer");
     }
   }
 
-  auto get_fwd_bugs = [&]() -> port::Status {
+  const auto get_fwd_bugs = [&]() -> port::Status {
     // Report an error if we might be hitting a cuDNN bug that accesses illegal
     // memory. See nvbugs/2138754, b/80018418.
     if (CUDNN_VERSION < 7300) {
@@ -2937,7 +2791,7 @@ port::Status CudnnSupport::DoConvolve(
         return port::Status::OK();
       }
       // Checks that a*b is within the valid range (as provided by NVIDIA).
-      auto check_sizes = [](size_t a, size_t b) {
+      const auto check_sizes = [](size_t a, size_t b) {
         if ((a * b * 4608 - 1) >> 31 == 0) {
           return port::Status::OK();
         }
@@ -2991,7 +2845,7 @@ port::Status CudnnSupport::DoConvolve(
     return port::Status::OK();
   };
 
-  auto get_bwd_filter_bugs = [&]() -> port::Status {
+  const auto get_bwd_filter_bugs = [&]() -> port::Status {
     // Report an error if we might be hitting a cuDNN bug that produces
     // incorrect results. See nvbugs/2072856
     if (CUDNN_VERSION < 7300) {
@@ -3110,7 +2964,7 @@ port::Status CudnnSupport::DoConvolve(
   }
 
   if (is_profiling) {
-    if (!timer->Stop(AsCUDAStream(stream))) {
+    if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
     output_profile_result->set_algorithm(algorithm_desc);
@@ -3175,13 +3029,13 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
           stream, cudnn, algorithm_config, conv_input_nd, filter, conv,
           output_nd, scratch_allocator, &scratch));
 
-  std::unique_ptr<CUDATimer, TimerDeleter> timer;
+  std::unique_ptr<GpuTimer, GpuTimerDeleter> timer;
   if (is_profiling) {
-    timer.reset(new CUDATimer(parent_));  // NOLINT
+    timer.reset(new GpuTimer(parent_));  // NOLINT
     // The start and stop of the timer should be as close to the Cudnn call as
     // possible. It is still possible for other threads to issue workload on
     // to this stream. So it could take multiple profiling measurements.
-    if (!timer->Init() || !timer->Start(AsCUDAStream(stream))) {
+    if (!timer->Init() || !timer->Start(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to start timer");
     }
   }
@@ -3234,7 +3088,7 @@ port::Status CudnnSupport::DoFusedConvolveImpl(
       /*yDesc=*/output_nd.handle(), /*y=*/output_data->opaque()));
 
   if (is_profiling) {
-    if (!timer->Stop(AsCUDAStream(stream))) {
+    if (!timer->Stop(AsGpuStream(stream))) {
       return port::Status(port::error::INTERNAL, "Failed to stop timer");
     }
     output_profile_result->set_algorithm(algo_desc);
@@ -3677,7 +3531,7 @@ bool CudnnSupport::DoTransformTensor(Stream* stream,
   CudnnTensorDescriptor output_tensor_desc(
       output_desc, ToCudnnDataType(output_type, output_desc.layout()));
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnTransformTensor(
         cudnn.handle(), &scale, input_tensor_desc.handle(), input_data.opaque(),
         &beta, output_tensor_desc.handle(), output_data->opaque()));
@@ -3910,7 +3764,7 @@ bool CudnnSupport::DoBiasAdd(Stream* stream,
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnAddTensor(
         cudnn.handle(), &alpha, bias_descriptor.handle(), biases.opaque(),
         &beta, input_descriptor.handle(), output_data->opaque()));
@@ -3935,7 +3789,7 @@ bool CudnnSupport::DoActivate(Stream* stream,
   float beta = 0.0;
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnActivationForward(
         cudnn.handle(), activation_desc.handle(), &alpha, input_nd.handle(),
         input_data.opaque(), &beta, input_nd.handle(), output_data->opaque()));
@@ -3960,7 +3814,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -3985,7 +3839,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -4010,7 +3864,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnTensorDescriptor dest_desc(output_dimensions, CUDNN_DATA_HALF);
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -4035,7 +3889,7 @@ bool CudnnSupport::DoPoolForward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingForward(
         cudnn.handle(), pooling_desc.handle(), &alpha, src_desc.handle(),
         input_data.opaque(), &beta, dest_desc.handle(), output_data->opaque()));
@@ -4063,7 +3917,7 @@ bool CudnnSupport::DoPoolBackward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
         cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
@@ -4093,7 +3947,7 @@ bool CudnnSupport::DoPoolBackward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
         cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
@@ -4123,7 +3977,7 @@ bool CudnnSupport::DoPoolBackward(
   CudnnPoolingDescriptor pooling_desc(pooling_dimensions);
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnPoolingBackward(
         cudnn.handle(), pooling_desc.handle(), &alpha, dest_desc.handle(),
         output_data.opaque(), dest_desc.handle(), input_diff_data.opaque(),
@@ -4132,13 +3986,6 @@ bool CudnnSupport::DoPoolBackward(
     return port::Status::OK();
   }();
   return IsStatusOk(status, /*report_error=*/true);
-}
-
-bool CudnnSupport::DoNormalize(
-    Stream* stream, const dnn::NormalizeDescriptor& normalize_descriptor,
-    const DeviceMemory<float>& input_data, DeviceMemory<float>* output_data) {
-  LOG(FATAL) << "not yet implemented";  // TODO(leary)
-  return false;
 }
 
 bool CudnnSupport::DoNormalizeWithDimensions(
@@ -4166,7 +4013,7 @@ bool CudnnSupport::DoNormalizeWithDimensions(
   auto cudnn = cudnn_->GetHandle(parent_, stream);
 
   // Launch the normalization.
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnLRNCrossChannelForward(
         cudnn.handle(), normalize.handle(), CUDNN_LRN_CROSS_CHANNEL_DIM1,
         &alpha, dims.handle(), input_data.opaque(), &beta, dims.handle(),
@@ -4200,7 +4047,7 @@ bool CudnnSupport::DoNormalizeBackwardWithDimensions(
   float beta = 0.0f;
 
   auto cudnn = cudnn_->GetHandle(parent_, stream);
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnLRNCrossChannelBackward(
         cudnn.handle(), normalize.handle(), CUDNN_LRN_CROSS_CHANNEL_DIM1,
         &alpha, dims.handle(), normalized_data.opaque(), dims.handle(),
@@ -4323,7 +4170,7 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
 
   int dn = batch_descriptor.ndims() + 2;
   std::vector<int> dims(dn);  // in BDYX
-  auto status = [&] {
+  const auto status = [&] {
     RETURN_IF_CUDNN_ERROR(cudnnGetConvolutionNdForwardOutputDim(
         conv.handle(), input_nd.handle(), filter.handle(), dn, dims.data()));
     output_batch_descriptor->set_count(dims[0])
@@ -4339,22 +4186,22 @@ bool CudnnSupport::DeriveOutputBatchDescriptor(
   return IsStatusOk(status, /*report_error=*/true);
 }
 
-}  // namespace cuda
+}  // namespace gpu
 
 void initialize_cudnn() {
   port::Status status =
       PluginRegistry::Instance()->RegisterFactory<PluginRegistry::DnnFactory>(
-          cuda::kCudaPlatformId, cuda::kCuDnnPlugin, "cuDNN",
+          cuda::kCudaPlatformId, gpu::kCuDnnPlugin, "cuDNN",
           [](internal::StreamExecutorInterface* parent) -> dnn::DnnSupport* {
-            cuda::CUDAExecutor* cuda_executor =
-                dynamic_cast<cuda::CUDAExecutor*>(parent);
+            gpu::GpuExecutor* cuda_executor =
+                dynamic_cast<gpu::GpuExecutor*>(parent);
             if (cuda_executor == nullptr) {
               LOG(ERROR) << "Attempting to initialize an instance of the cuDNN "
                          << "support library with a non-CUDA StreamExecutor";
               return nullptr;
             }
 
-            cuda::CudnnSupport* dnn = new cuda::CudnnSupport(cuda_executor);
+            gpu::CudnnSupport* dnn = new gpu::CudnnSupport(cuda_executor);
             if (!dnn->Init().ok()) {
               // Note: Init() will log a more specific error.
               delete dnn;
@@ -4369,7 +4216,7 @@ void initialize_cudnn() {
   }
 
   PluginRegistry::Instance()->SetDefaultFactory(
-      cuda::kCudaPlatformId, PluginKind::kDnn, cuda::kCuDnnPlugin);
+      cuda::kCudaPlatformId, PluginKind::kDnn, gpu::kCuDnnPlugin);
 }
 
 }  // namespace stream_executor

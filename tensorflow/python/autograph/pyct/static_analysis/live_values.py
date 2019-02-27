@@ -40,7 +40,7 @@ class LiveValueResolver(transformer.Base):
   def visit_ClassDef(self, node):
     self.generic_visit(node)
     anno.setanno(
-        node, 'live_val', self.transformer_ctx.entity_info.namespace[node.name])
+        node, 'live_val', self.ctx.info.namespace[node.name])
     return node
 
   def visit_Name(self, node):
@@ -54,8 +54,8 @@ class LiveValueResolver(transformer.Base):
       if not is_defined:
         if node.id in self.literals:
           anno.setanno(node, 'live_val', self.literals[node.id])
-        elif node.id in self.transformer_ctx.entity_info.namespace:
-          obj = self.transformer_ctx.entity_info.namespace[node.id]
+        elif node.id in self.ctx.info.namespace:
+          obj = self.ctx.info.namespace[node.id]
           anno.setanno(node, 'live_val', obj)
           if hasattr(obj, '__name__'):
             anno.setanno(node, 'fqn', (obj.__name__,))
@@ -87,8 +87,8 @@ class LiveValueResolver(transformer.Base):
         def_, = defs
         # Note: param_of is a weakref.
         if def_.param_of and def_.param_of() is self.enclosing_entities[0]:
-          if node.id in self.transformer_ctx.entity_info.arg_values:
-            obj = self.transformer_ctx.entity_info.arg_values[node.id]
+          if node.id in self.ctx.info.arg_values:
+            obj = self.ctx.info.arg_values[node.id]
             anno.setanno(node, 'live_val', obj)
             anno.setanno(node, 'fqn', (obj.__class__.__name__,))
     return node

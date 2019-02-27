@@ -36,19 +36,6 @@ class CastOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("Truncate", &use_truncation_));
   }
 
-  xla::PrimitiveType GetUnsignedIntTypeOfSameWidth(int64 src_bitwidth) {
-    switch (src_bitwidth) {
-      case 16:
-        return xla::U16;
-      case 32:
-        return xla::U32;
-      case 64:
-        return xla::U64;
-      default:
-        return xla::PRIMITIVE_TYPE_INVALID;
-    }
-  }
-
   void Compile(XlaOpKernelContext* ctx) override {
     xla::XlaBuilder* builder = ctx->builder();
     xla::XlaOp input = ctx->Input(0);
@@ -85,7 +72,7 @@ class CastOp : public XlaOpKernel {
         // source datatype.
         int64 mask = ~((1L << mantissa_difference) - 1);
         xla::PrimitiveType same_width_int =
-            GetUnsignedIntTypeOfSameWidth(src_bitwidth);
+            xla::primitive_util::UnsignedIntegralTypeForBitWidth(src_bitwidth);
         OP_REQUIRES(ctx, same_width_int != xla::PRIMITIVE_TYPE_INVALID,
                     errors::Unimplemented("Unexpected type bitwidth"));
         input = xla::BitcastConvertType(

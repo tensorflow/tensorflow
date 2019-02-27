@@ -24,11 +24,15 @@ import pickle
 
 import numpy as np
 
+from tensorflow.core.framework import tensor_pb2
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import cpp_shape_inference_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
@@ -741,7 +745,6 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
 
   @test_util.run_in_graph_and_eager_modes
   @test_util.run_v1_only("b/120545219")
-  @test_util.disable_xla("This test never passed for XLA")
   def testDestroyResource(self):
     v = resource_variable_ops.ResourceVariable(3.0, name="var0")
     self.evaluate(variables.global_variables_initializer())
@@ -1034,6 +1037,59 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
       with self.session(copy_to_graph) as session:
         with self.assertRaises(errors.InvalidArgumentError):
           session.run(copied.initializer)
+
+  def create_variant_shape_and_type_data(self):
+    variant_shape_and_type_data = (
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleData())
+    variant_shape_and_type_data.is_set = True
+    stored_shape = tensor_shape.TensorShape([None, 4]).as_proto()
+    stored_dtype = dtypes.float32.as_datatype_enum
+    # NOTE(ebrevdo): shape_and_type lacks append() in some versions of protobuf.
+    variant_shape_and_type_data.shape_and_type.extend([
+        cpp_shape_inference_pb2.CppShapeInferenceResult.HandleShapeAndType(
+            shape=stored_shape, dtype=stored_dtype)])
+    return variant_shape_and_type_data
+
+  @def_function.function
+  def create_constant_variant(self, value):
+    value = constant_op.constant(
+        tensor_pb2.TensorProto(
+            dtype=dtypes.variant.as_datatype_enum,
+            tensor_shape=tensor_shape.TensorShape([]).as_proto(),
+            variant_val=[
+                tensor_pb2.VariantTensorDataProto(
+                    # Match registration in variant_op_registry.cc
+                    type_name=b"int",
+                    metadata=np.array(value, dtype=np.int32).tobytes())
+            ]))
+    return value
+
+  # TODO(ebrevdo): Add run_in_graph_and_eager_modes once we can create
+  # EagerTensor constants with TensorProto inputs.
+  @test_util.run_in_graph_and_eager_modes()
+  def testVariantInitializer(self):
+    variant_shape_and_type_data = self.create_variant_shape_and_type_data()
+    value = self.create_constant_variant(3)
+    initializer = array_ops.fill([3], value)
+    resource_variable_ops._set_handle_shapes_and_types(  # pylint: disable=protected-access
+        initializer, variant_shape_and_type_data,
+        graph_mode=not context.executing_eagerly())
+    v = resource_variable_ops.ResourceVariable(initializer)
+    read = array_ops.identity(v)
+    read_variant_shape_and_type = (
+        resource_variable_ops.get_eager_safe_handle_data(read))
+    self.assertEqual(
+        read_variant_shape_and_type, variant_shape_and_type_data)
+    gather = v.sparse_read([0])
+    gather_variant_shape_and_type = (
+        resource_variable_ops.get_eager_safe_handle_data(gather))
+    self.assertEqual(
+        gather_variant_shape_and_type, variant_shape_and_type_data)
+    # Make sure initializer runs.
+    if not context.executing_eagerly():
+      self.evaluate(v.initializer)
+      self.evaluate(read.op)
+      self.evaluate(gather.op)
 
 
 class _MixedPrecisionVariableTest(test_util.TensorFlowTestCase):

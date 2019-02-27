@@ -15,13 +15,27 @@ cc_library(
 
 cc_library(
     name = "nnapi_implementation",
-    srcs = [
-        "nnapi_implementation.cc",
-    ],
+    srcs = select({
+        "//tensorflow:ios": [
+            "nnapi_implementation_disabled.cc",
+        ],
+        "//tensorflow:windows": [
+            "nnapi_implementation_disabled.cc",
+        ],
+        "//conditions:default": [
+            "nnapi_implementation.cc",
+        ],
+    }),
     hdrs = [
         "nnapi_implementation.h",
     ],
-    linkopts = ["-ldl"],
+    linkopts = ["-ldl"] + select({
+        "//tensorflow:android": [],
+        "//tensorflow:darwin": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//conditions:default": ["-lrt"],
+    }),
     deps = [
         "//tensorflow/lite/nnapi:nnapi_lib",
     ],

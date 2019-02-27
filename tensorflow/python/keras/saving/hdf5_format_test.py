@@ -40,7 +40,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
-from tensorflow.python.training.checkpointable import util as checkpointable
+from tensorflow.python.training.tracking import util as trackable
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -348,13 +348,16 @@ class TestWholeModelSaving(test.TestCase):
           optimizer=keras.optimizers.RMSprop(lr=0.0001),
           metrics=[
               keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.CategoricalCrossentropy(
+                  name='cce', label_smoothing=constant_op.constant(0.2)),
           ],
           weighted_metrics=[
-              keras.metrics.categorical_accuracy,
-              keras.metrics.CategoricalAccuracy()
+              keras.metrics.categorical_crossentropy,
+              keras.metrics.CategoricalCrossentropy(
+                  name='cce', label_smoothing=constant_op.constant(0.2)),
           ],
           sample_weight_mode='temporal')
+
       x = np.random.random((1, 3))
       y = np.random.random((1, 3, 3))
       model.train_on_batch(x, y)
@@ -640,7 +643,6 @@ class TestWholeModelSaving(test.TestCase):
       os.remove(fname)
 
   def test_saving_model_with_long_weights_names(self):
-    self.skipTest('b/120921503')
     if h5py is None:
       self.skipTest('h5py required to run this test')
 
@@ -992,7 +994,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_incompatible_checkpoint(self):
-    save_path = checkpointable.Checkpoint().save(
+    save_path = trackable.Checkpoint().save(
         os.path.join(self.get_temp_dir(), 'ckpt'))
     m = keras.Model()
     with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):

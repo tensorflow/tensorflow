@@ -37,11 +37,11 @@ class VariantTensorDataProto;
 // separate so that kernels do not need to depend on protos.
 class VariantTensorData {
  public:
-  VariantTensorData();
+  VariantTensorData() = default;
+
   // TODO(b/118823936): This silently returns if the proto is invalid.
   // Consider calling FromProto explicitly instead.
   VariantTensorData(VariantTensorDataProto proto);
-  ~VariantTensorData();
 
   // Name of the type of objects being serialized.
   const string& type_name() const { return type_name_; }
@@ -67,6 +67,11 @@ class VariantTensorData {
   const Tensor& tensors(int index) const;
   const std::vector<Tensor>& tensors() const;
   Tensor* add_tensors();
+
+  // A more general version of add_tensors. Parameters are perfectly forwarded
+  // to the constructor of the tensor added here.
+  template <typename... TensorConstructorArgs>
+  Tensor* add_tensor(TensorConstructorArgs&&... args);
 
   // Conversion to and from VariantTensorDataProto
   void ToProto(VariantTensorDataProto* proto) const;

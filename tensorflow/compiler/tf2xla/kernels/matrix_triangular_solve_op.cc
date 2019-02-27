@@ -15,7 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
-#include "tensorflow/compiler/xla/client/lib/triangular_solve.h"
+#include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 
 namespace tensorflow {
 namespace {
@@ -31,7 +32,10 @@ class MatrixTriangularSolveOp : public XlaOpKernel {
   void Compile(XlaOpKernelContext* ctx) override {
     auto result = xla::TriangularSolve(
         ctx->Input(0), ctx->Input(1), /*left_side=*/true,
-        /*lower=*/lower_, /*transpose_a=*/adjoint_, /*conjugate_a=*/adjoint_);
+        /*lower=*/lower_, /*unit_diagonal=*/false,
+        /*transpose_a=*/
+        adjoint_ ? xla::TriangularSolveOptions::ADJOINT
+                 : xla::TriangularSolveOptions::NO_TRANSPOSE);
     ctx->SetOutput(0, result);
   }
 

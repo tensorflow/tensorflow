@@ -40,6 +40,7 @@ from tensorflow.python.saved_model import loader
 from tensorflow.python.saved_model import save as save_lib
 from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
+from tensorflow.python.training import rmsprop
 
 
 class TraceModelCallTest(keras_parameterized.TestCase):
@@ -204,6 +205,37 @@ class ModelSaveTest(keras_parameterized.TestCase):
     self.assertAllClose(
         {model.output_names[0]: model.predict_on_batch(inputs)},
         _import_and_infer(save_dir, {model.input_names[0]: np.ones((8, 5))}))
+
+
+class ExtractModelMetricsTest(test.TestCase):
+
+  def test_extract_model_metrics(self):
+    a = keras.layers.Input(shape=(3,), name='input_a')
+    b = keras.layers.Input(shape=(3,), name='input_b')
+
+    dense = keras.layers.Dense(4, name='dense')
+    c = dense(a)
+    d = dense(b)
+    e = keras.layers.Dropout(0.5, name='dropout')(c)
+
+    model = keras.models.Model([a, b], [d, e])
+    extract_metrics = saving_utils.extract_model_metrics(model)
+    self.assertEqual(None, extract_metrics)
+
+    extract_metric_names = [
+        'dense_loss', 'dropout_loss', 'dense_binary_accuracy',
+        'dropout_binary_accuracy'
+    ]
+    model_metric_names = ['loss'] + extract_metric_names
+    model.compile(
+        loss='mae',
+        metrics=[keras.metrics.BinaryAccuracy()],
+        optimizer=rmsprop.RMSPropOptimizer(learning_rate=0.01),
+        run_eagerly=None)
+    extract_metrics = saving_utils.extract_model_metrics(model)
+    self.assertEqual(set(model_metric_names), set(model.metrics_names))
+    self.assertEqual(set(extract_metric_names), set(extract_metrics.keys()))
+
 
 if __name__ == '__main__':
   test.main()

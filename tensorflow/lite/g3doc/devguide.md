@@ -92,7 +92,7 @@ formats:
 
 TensorFlow models may be saved as a .pb or .pbtxt `tf.GraphDef` file. In order
 to convert the `tf.GraphDef` file to TensorFlow Lite, the model must first be
-frozen. This process invovles several file formats including the `frozen
+frozen. This process involves several file formats including the `frozen
 GraphDef`:
 
 *   `tf.GraphDef` (.pb or .pbtxt) — A protobuf that represents the TensorFlow
@@ -166,7 +166,7 @@ Refer to the [ops compatibility guide](tf_ops_compatibility.md) for
 troubleshooting help, and if that doesn't help, please
 [file an issue](https://github.com/tensorflow/tensorflow/issues).
 
-### Graph vizualization tool
+### Graph Visualization tool
 
 The [development repo](https://github.com/tensorflow/tensorflow) contains a tool
 to visualize TensorFlow Lite models after conversion. To build the
@@ -250,7 +250,9 @@ tflite_quantized_model=converter.convert()
 open(“quantized_model.tflite”, “wb”).write(tflite_quantized_model)
 ```
 
-Read the full documentation [here](performance/post_training_quantization) and see a tutorial [here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb).
+Read the full documentation [here](performance/post_training_quantization.md)
+and see a tutorial
+[here](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb).
 
 ### GPU
 Run on GPU GPUs are designed to have high throughput for massively

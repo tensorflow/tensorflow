@@ -33,8 +33,8 @@ from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils.generic_utils import make_batches
 from tensorflow.python.keras.utils.generic_utils import slice_arrays
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -142,7 +142,9 @@ def model_iteration(model,
 
   # Enter DistributionStrategy scope.
   if model._distribution_strategy:
-    scope = model._distribution_strategy.scope()
+    scope = distributed_training_utils.distributed_scope(
+        strategy=model._distribution_strategy,
+        learning_phase=(1 if mode == ModeKeys.TRAIN else 0))
     scope.__enter__()
 
   # Get step function and loop type.
@@ -174,6 +176,16 @@ def model_iteration(model,
   # to properly reinitialize and reuse in multiple validation passes.
   val_iterator = None
   if isinstance(val_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    if validation_steps is None:
+      # Because we pass an iterator feed instead of a Dataset to the eval
+      # model_iteration() call, it will not trigger the dataset-input path
+      # that determines the number of steps required. To avoid this issue,
+      # set validation_steps here if validation_steps is None.
+      validation_steps = training_utils.infer_steps_for_dataset(
+          val_inputs,
+          validation_steps,
+          epochs=epochs,
+          steps_name='validation_steps')
     val_iterator = _get_iterator(val_inputs, model._distribution_strategy)
     val_inputs = _prepare_feed_values(
         model, val_iterator, val_targets, val_sample_weights, ModeKeys.TEST)
@@ -211,9 +223,8 @@ def model_iteration(model,
     aggregator = training_utils.MetricsAggregator(use_steps,
                                                   num_samples_or_steps)
 
-  if model._compile_distribution and not validation_in_fit:
-    distributed_training_utils._copy_weights_to_distributed_model(
-        model, model._distributed_model)
+  if model._compile_distribution:
+    distributed_training_utils._copy_weights_to_distributed_model(model, mode)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -251,8 +262,28 @@ def model_iteration(model,
           actual_inputs = ins() if callable(ins) else ins
           batch_outs = f(actual_inputs)
         except errors.OutOfRangeError:
-          if not is_dataset:
+          if is_dataset:
+            # The dataset passed by the user ran out of batches.
+            # Now we know the cardinality of the dataset.
+            # If steps_per_epoch was specified, then running out of data is
+            # unexpected, so we stop training and inform the user.
+            if steps_per_epoch:
+              callbacks.model.stop_training = True
+              logging.warning(
+                  'Your dataset ran out of data; interrupting training. '
+                  'Make sure that your dataset can generate at least '
+                  '`%s * epochs` batches (in this case, %d batches). '
+                  'You may need to use the repeat() function when '
+                  'building your dataset.'
+                  % (steps_name, steps_per_epoch * epochs))
+            elif step > 0:
+              steps_per_epoch = step
+              aggregator.num_samples_or_steps = steps_per_epoch
+              progbar.params['steps'] = steps_per_epoch
+              progbar.progbar.target = steps_per_epoch
+          else:
             # We ran out of batches while the user passed an iterator (legacy).
+            callbacks.model.stop_training = True
             logging.warning(
                 'Your dataset iterator ran out of data; '
                 'interrupting training. Make sure that your iterator '
@@ -260,15 +291,6 @@ def model_iteration(model,
                 'batches (in this case, %d batches). You may need to'
                 'use the repeat() function when building your '
                 'dataset.' % (steps_name, steps_per_epoch * epochs))
-            callbacks.model.stop_training = True
-          else:
-            # The dataset passed by the user ran out of batches.
-            # Now we know the cardinality of the dataset.
-            if step > 0:
-              steps_per_epoch = step
-              aggregator.num_samples_or_steps = steps_per_epoch
-              progbar.params['steps'] = steps_per_epoch
-              progbar.progbar.target = steps_per_epoch
           break
 
         if not isinstance(batch_outs, list):
@@ -353,6 +375,13 @@ def model_iteration(model,
     if (do_validation and
         training_utils.should_run_validation(validation_freq, epoch) and
         not callbacks.model.stop_training):
+
+      if model._compile_distribution:
+        # Since we create a new clone from the original model we need to copy
+        # the weights back to the original model before we can run validation.
+        distributed_training_utils._copy_weights_to_original_model(
+            model, ModeKeys.TRAIN)
+
       val_results = model_iteration(
           model,
           val_inputs,
@@ -385,10 +414,9 @@ def model_iteration(model,
   callbacks._call_end_hook(mode)
 
   if model._distribution_strategy:
-    if model._compile_distribution and not validation_in_fit:
+    if model._compile_distribution:
       # TODO(priyag, psv): Copy back metrics to the original model as well?
-      distributed_training_utils._copy_weights_to_original_model(
-          model, model._distributed_model, mode)
+      distributed_training_utils._copy_weights_to_original_model(model, mode)
     scope.__exit__(None, None, None)
 
   if mode == ModeKeys.TRAIN:

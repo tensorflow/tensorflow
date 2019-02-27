@@ -19,6 +19,7 @@ limitations under the License.
 #include <stack>
 
 #include "absl/types/span.h"
+#include "absl/types/variant.h"
 #include "tensorflow/compiler/tf2xla/host_compute_metadata.pb.h"
 #include "tensorflow/compiler/tf2xla/xla_compilation_device.h"
 #include "tensorflow/compiler/tf2xla/xla_expression.h"
@@ -124,7 +125,8 @@ class XlaCompiler {
     DataType type = DT_INVALID;
 
     // The shape of the argument. For:
-    // * a parameter: the shape of the parameter.
+    // * a parameter: the shape of the parameter. We allow setting the xla shape
+    //   if known. This helps avoid conversions to and from TensorShape.
     // * a constant: ignored; the shape given by constant_value is used
     //     instead.
     // * an uninitialized resource: ignored. We don't yet know the shape of an
@@ -133,7 +135,7 @@ class XlaCompiler {
     // * an initialized TensorArray or Stack resource: the shape of an entry in
     //   the TensorArray/Stack. Note this is the size of a single entry, not the
     //   XLA data structure that represents the complete stack/array.
-    TensorShape shape;
+    absl::variant<TensorShape, xla::Shape> shape;
 
     // The value of the argument, if it is a compile-time constant. Must be a
     // host-memory tensor.
@@ -165,6 +167,12 @@ class XlaCompiler {
 
     // Returns a human-readable summary of the argument.
     string HumanString() const;
+
+    // Returns the dimension sizes for either TensorShape or xla::Shape.
+    std::vector<int64> DimensionSizes() const;
+
+    // Returns the human-readable string for either TensorShape or xla::Shape.
+    string ShapeHumanString() const;
   };
 
   // Options pertaining to an individual call to CompileGraph() or
