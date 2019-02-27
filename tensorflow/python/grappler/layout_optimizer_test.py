@@ -254,6 +254,7 @@ class LayoutOptimizerTest(test.TestCase):
       else:
         saver.save(sess, checkpoint_path)
 
+  @test_util.deprecated_graph_mode_only
   def testTwoConvLayers(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -354,6 +355,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_map_nhwc_to_nchw('SplitV-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testPadWithConstPaddings(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -388,6 +390,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('Pad-1-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReduceSum(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -417,6 +420,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testCast(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -447,6 +451,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nchw_to_nhwc('Cast-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testSqueeze(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -477,6 +482,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testSqueezeAlongHW(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -507,6 +513,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testSqueezeAlongNHW(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -537,6 +544,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReduceSumAlongHWC(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -566,6 +574,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReduceSumAlongNHW(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -595,6 +604,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReduceSumAlongC(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -624,6 +634,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReduceSumAlongCKeepDims(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -654,6 +665,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nchw_to_nhwc('Sum-0-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReduceSumAlongHKeepDims(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -683,6 +695,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReduceSumAlongWCKeepDims(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -712,6 +725,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testConcatWithControlDependency(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -828,6 +842,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_vec_nhwc_to_nchw('Tile-1', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testReverseWithConstDims(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -897,6 +912,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_map_nhwc_to_nchw('ReverseV2-1', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testSelectOp(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -960,6 +976,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testSelectOpScalarCondition(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -1178,6 +1195,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('StridedSlice-3-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testStridedSliceWithMask1011(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -1213,6 +1231,7 @@ class LayoutOptimizerTest(test.TestCase):
       self.assertIn('strided_slice-3-LayoutOptimizer', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testStridedSliceWithMask0111(self):
     if test.is_gpu_available(cuda_only=True):
       random_seed.set_random_seed(0)
@@ -1355,6 +1374,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nhwc_to_nchw('Conv2D-0', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testLoop(self):
     if test.is_gpu_available(cuda_only=True):
       output = _loop()
@@ -1382,6 +1402,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nchw_to_nhwc('map/while/MaxPool_1-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testLoopWithBranch(self):
     if test.is_gpu_available(cuda_only=True):
       output = _loop_with_branch()
@@ -1406,6 +1427,7 @@ class LayoutOptimizerTest(test.TestCase):
       self._assert_trans_nchw_to_nhwc('map/while/Add_1-0-2', nodes)
       self.assertAllClose(output_val_ref, output_val, atol=1e-3)
 
+  @test_util.deprecated_graph_mode_only
   def testLoopWithVecAnd4D(self):
     if test.is_gpu_available(cuda_only=True):
       output = _loop_with_vec_and_4d()
