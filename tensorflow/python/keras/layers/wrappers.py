@@ -418,8 +418,8 @@ class Bidirectional(Wrapper):
                        'Merge mode should be one of '
                        '{"sum", "mul", "ave", "concat", None}')
     if getattr(layer, 'zero_output_for_mask', None) is not None:
-      # Force the zero_output_for_mask to be True if it presents.
-      layer.zero_output_for_mask = True
+      # Force the zero_output_for_mask to be True if returning sequences.
+      layer.zero_output_for_mask = layer.return_sequences
 
     self.forward_layer = copy.copy(layer)
     config = layer.get_config()
