@@ -951,7 +951,7 @@ bool FlatAffineConstraints::isEmpty() const {
     // that aren't the intended use case for FlatAffineConstraints. This is
     // needed since FM has a worst case exponential complexity in theory.
     if (tmpCst.getNumConstraints() >= kExplosionFactor * getNumIds()) {
-      LLVM_DEBUG(llvm::dbgs() << "FM constraint explosion detected");
+      LLVM_DEBUG(llvm::dbgs() << "FM constraint explosion detected\n");
       return false;
     }
 
@@ -1009,10 +1009,12 @@ void FlatAffineConstraints::GCDTightenInequalities() {
     for (unsigned j = 1; j < numCols - 1; ++j) {
       gcd = llvm::GreatestCommonDivisor64(gcd, std::abs(atIneq(i, j)));
     }
-    if (gcd > 0) {
+    if (gcd > 0 && gcd != 1) {
       int64_t gcdI = static_cast<int64_t>(gcd);
-      atIneq(i, numCols - 1) =
-          gcdI * mlir::floorDiv(atIneq(i, numCols - 1), gcdI);
+      // Tighten the constant term and normalize the constraint by the GCD.
+      atIneq(i, numCols - 1) = mlir::floorDiv(atIneq(i, numCols - 1), gcdI);
+      for (unsigned j = 0, e = numCols - 1; j < e; ++j)
+        atIneq(i, j) /= gcdI;
     }
   }
 }
@@ -1235,7 +1237,8 @@ static inline void negateInequality(FlatAffineConstraints *cst, unsigned r) {
   }
 }
 
-// A more complex check to eliminate redundant inequalities.
+// A more complex check to eliminate redundant inequalities. Uses FourierMotzkin
+// to check if a constraint is redundant.
 void FlatAffineConstraints::removeRedundantInequalities() {
   SmallVector<bool, 32> redun(getNumInequalities(), false);
   // To check if an inequality is redundant, we replace the inequality by its
@@ -2010,13 +2013,20 @@ void FlatAffineConstraints::print(raw_ostream &os) const {
 
 void FlatAffineConstraints::dump() const { print(llvm::errs()); }
 
-/// Removes duplicate constraints and trivially true constraints: a constraint
-/// of the form <non-negative constant> >= 0 is considered a trivially true
-/// constraint.
+/// Removes duplicate constraints, trivially true constraints, and constraints
+/// that can be detected as redundant as a result of differing only in their
+/// constant term part. A constraint of the form <non-negative constant> >= 0 is
+/// considered trivially true.
 //  Uses a DenseSet to hash and detect duplicates followed by a linear scan to
 //  remove duplicates in place.
 void FlatAffineConstraints::removeTrivialRedundancy() {
-  DenseSet<ArrayRef<int64_t>> rowSet;
+  SmallDenseSet<ArrayRef<int64_t>, 8> rowSet;
+
+  // A map used to detect redundancy stemming from constraints that only differ
+  // in their constant term. The value stored is <row position, const term>
+  // for a given row.
+  SmallDenseMap<ArrayRef<int64_t>, std::pair<unsigned, int64_t>>
+      rowsWithoutConstTerm;
 
   // Check if constraint is of the form <non-negative-constant> >= 0.
   auto isTriviallyValid = [&](unsigned r) -> bool {
@@ -2028,12 +2038,34 @@ void FlatAffineConstraints::removeTrivialRedundancy() {
   };
 
   // Detect and mark redundant constraints.
-  std::vector<bool> redunIneq(getNumInequalities(), false);
+  SmallVector<bool, 256> redunIneq(getNumInequalities(), false);
   for (unsigned r = 0, e = getNumInequalities(); r < e; r++) {
     int64_t *rowStart = inequalities.data() + numReservedCols * r;
     auto row = ArrayRef<int64_t>(rowStart, getNumCols());
     if (isTriviallyValid(r) || !rowSet.insert(row).second) {
       redunIneq[r] = true;
+      continue;
+    }
+
+    // Among constraints that only differ in the constant term part, mark
+    // everything other than the one with the smallest constant term redundant.
+    // (eg: among i - 16j - 5 >= 0, i - 16j - 1 >=0, i - 16j - 7 >= 0, the
+    // former two are redundant).
+    int64_t constTerm = atIneq(r, getNumCols() - 1);
+    auto rowWithoutConstTerm = ArrayRef<int64_t>(rowStart, getNumCols() - 1);
+    const auto &ret =
+        rowsWithoutConstTerm.insert({rowWithoutConstTerm, {r, constTerm}});
+    if (!ret.second) {
+      // Check if the other constraint has a higher constant term.
+      auto &val = ret.first->second;
+      if (val.second > constTerm) {
+        // The stored row is redundant. Mark it so, and update with this one.
+        redunIneq[val.first] = true;
+        val = {r, constTerm};
+      } else {
+        // The one stored makes this one redundant.
+        redunIneq[r] = true;
+      }
     }
   }
 
@@ -2147,7 +2179,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
       bool ret = gaussianEliminateId(pos);
       (void)ret;
       assert(ret && "Gaussian elimination guaranteed to succeed");
-      LLVM_DEBUG(llvm::dbgs() << "FM output:\n");
+      LLVM_DEBUG(llvm::dbgs() << "FM output (through Gaussian):\n");
       LLVM_DEBUG(dump());
       return;
     }
@@ -2286,6 +2318,10 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
     newFac.addEquality(eq);
   }
 
+  // GCD tightening and normalization allows detection of more trivially
+  // redundant constraints.
+  newFac.GCDTightenInequalities();
+  newFac.normalizeConstraintsByGCD();
   newFac.removeTrivialRedundancy();
   clearAndCopyFrom(newFac);
   LLVM_DEBUG(llvm::dbgs() << "FM output:\n");

@@ -195,3 +195,27 @@ func @out_of_bounds() {
   }
   return
 }
+
+// -----
+
+// This test case accesses within bounds. Without removal of a certain type of
+// trivially redundant constraints (those differing only in their constant
+// term), the number of constraints here explodes, and this would return out of
+// bounds errors conservatively due to FlatAffineConstraints::kExplosionFactor.
+#map3 = (d0, d1) -> ((d0 * 72 + d1) floordiv 2304 + ((((d0 * 72 + d1) mod 2304) mod 1152) mod 9) floordiv 3)
+#map4 = (d0, d1) -> ((d0 * 72 + d1) mod 2304 - (((d0 * 72 + d1) mod 2304) floordiv 1152) * 1151 - ((((d0 * 72 + d1) mod 2304) mod 1152) floordiv 9) * 9 - (((((d0 * 72 + d1) mod 2304) mod 1152) mod 9) floordiv 3) * 3)
+#map5 = (d0, d1) -> (((((d0 * 72 + d1) mod 2304) mod 1152) floordiv 9) floordiv 8)
+// CHECK-LABEL: func @test_complex_mod_floordiv
+func @test_complex_mod_floordiv(%arg0: memref<4x4x16x1xf32>) {
+  %c0 = constant 0 : index
+  %0 = alloc() : memref<1x2x3x3x16x1xf32>
+  for %i0 = 0 to 64 {
+    for %i1 = 0 to 9 {
+      %2 = affine.apply #map3(%i0, %i1)
+      %3 = affine.apply #map4(%i0, %i1)
+      %4 = affine.apply #map5(%i0, %i1)
+      %5 = load %arg0[%2, %c0, %4, %c0] : memref<4x4x16x1xf32>
+    }
+  }
+  return
+}

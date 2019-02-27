@@ -613,12 +613,15 @@ public:
   /// hyper-rectangular on the specified contiguous set of identifiers.
   bool isHyperRectangular(unsigned pos, unsigned num) const;
 
-  /// Removes duplicates and trivially true constraints: a constraint of the
-  /// form <non-negative constant> >= 0 is considered a trivially true
-  /// constraint.
+  /// Removes duplicate constraints, trivially true constraints, and constraints
+  /// that can be detected as redundant as a result of differing only in their
+  /// constant term part. A constraint of the form <non-negative constant> >= 0
+  /// is considered trivially true. This method is a linear time method on the
+  /// constraints, does a single scan, and updates in place.
   void removeTrivialRedundancy();
 
-  /// A more expensive check to detect redundant inequalities.
+  /// A more expensive check to detect redundant inequalities thatn
+  /// removeTrivialRedundancy.
   void removeRedundantInequalities();
 
   // Removes all equalities and inequalities.
