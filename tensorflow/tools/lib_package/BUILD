@@ -283,7 +283,7 @@ pkg_tar(
     srcs = [
         "//tensorflow/core:platform_default_headers",
     ],
-    package_dir = "platform/default",
+    package_dir = "default",
     tags = ["manual"],
 )
 
@@ -292,7 +292,7 @@ pkg_tar(
     srcs = [
         "//tensorflow/core:platform_windows_headers",
     ],
-    package_dir = "platform/windows",
+    package_dir = "windows",
     tags = ["manual"],
 )
 
