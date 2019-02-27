@@ -73,8 +73,9 @@ TEST(BasicInterpreter, TestAllocateTensorsResetVariableTensors) {
   int tensor_index;
   ASSERT_EQ(interpreter.AddTensors(1, &tensor_index), kTfLiteOk);
   constexpr int kTensorSize = 16;
+  TfLiteQuantizationParams quant;
   interpreter.SetTensorParametersReadWrite(tensor_index, kTfLiteFloat32, "",
-                                           {kTensorSize}, {}, true);
+                                           {kTensorSize}, quant, true);
   interpreter.SetVariables({tensor_index});
   ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
   TfLiteTensor* tensor = interpreter.tensor(tensor_index);
@@ -168,6 +169,55 @@ TEST(BasicInterpreter, CheckAllocate) {
     ASSERT_EQ(interpreter.tensor(1)->bytes, 4 * test.size);
     ASSERT_NE(interpreter.tensor(1)->data.raw, nullptr);
   }
+}
+
+TEST(BasicInterpreter, CheckQuantization) {
+  Interpreter interpreter;
+  ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
+  interpreter.SetInputs({0, 1});
+  interpreter.SetOutputs({});
+  TfLiteType tensor_type = kTfLiteInt8;
+  const uint8_t int8s[] = {3, 4};
+  float scale = 0.5f;
+  int32_t zero_point = 12;
+
+  TfLiteQuantization rw_quantization;
+  rw_quantization.type = kTfLiteAffineQuantization;
+  auto* rw_affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  rw_affine_quantization->scale = TfLiteFloatArrayCreate(1);
+  rw_affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+  rw_affine_quantization->scale->data[0] = scale;
+  rw_affine_quantization->zero_point->data[0] = zero_point;
+  rw_quantization.params = rw_affine_quantization;
+
+  TfLiteQuantization ro_quantization;
+  ro_quantization.type = kTfLiteAffineQuantization;
+  auto* ro_affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  ro_affine_quantization->scale = TfLiteFloatArrayCreate(1);
+  ro_affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+  ro_affine_quantization->scale->data[0] = scale;
+  ro_affine_quantization->zero_point->data[0] = zero_point;
+  ro_quantization.params = ro_affine_quantization;
+
+  ASSERT_EQ(interpreter.SetTensorParametersReadWrite(0, tensor_type, "", {3},
+                                                     rw_quantization),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.SetTensorParametersReadOnly(
+                1, tensor_type, "", {2}, ro_quantization,
+                reinterpret_cast<const char*>(int8s), 2),
+            kTfLiteOk);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+  // Check that the legacy scale and zero_point are set correctly.
+  ASSERT_EQ(interpreter.tensor(0)->params.scale, scale);
+  ASSERT_EQ(interpreter.tensor(0)->params.zero_point, zero_point);
+  ASSERT_EQ(interpreter.tensor(0)->quantization.type, rw_quantization.type);
+  ASSERT_EQ(interpreter.tensor(0)->quantization.type, rw_quantization.type);
+  ASSERT_EQ(interpreter.tensor(1)->params.scale, scale);
+  ASSERT_EQ(interpreter.tensor(1)->params.zero_point, zero_point);
+  ASSERT_EQ(interpreter.tensor(1)->quantization.type, ro_quantization.type);
+  ASSERT_EQ(interpreter.tensor(1)->quantization.type, ro_quantization.type);
 }
 
 TEST(BasicInterpreter, CheckResize) {

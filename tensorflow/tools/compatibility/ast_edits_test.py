@@ -39,7 +39,10 @@ following new APIs:
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
+
+import ast
 import six
+
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test as test_lib
 from tensorflow.tools.compatibility import ast_edits
@@ -55,6 +58,15 @@ class NoUpdateSpec(ast_edits.APIChangeSpec):
     self.symbol_renames = {}
     self.function_warnings = {}
     self.change_to_function = {}
+    self.module_deprecations = {}
+
+
+class ModuleDeprecationSpec(NoUpdateSpec):
+  """A specification which deprecates 'a.b'."""
+
+  def __init__(self):
+    NoUpdateSpec.__init__(self)
+    self.module_deprecations.update({"a.b": (ast_edits.ERROR, "a.b is evil.")})
 
 
 class RenameKeywordSpec(NoUpdateSpec):
@@ -168,6 +180,15 @@ class TestAstEdits(test_util.TensorFlowTestCase):
         upgrader.process_opened_file("test.py", in_file,
                                      "test_out.py", out_file))
     return (count, report, errors), out_file.getvalue()
+
+  def testModuleDeprecation(self):
+    text = "a.b.c(a.b.x)"
+    (_, _, errors), new_text = self._upgrade(ModuleDeprecationSpec(), text)
+    self.assertEqual(text, new_text)
+    self.assertIn("Using member a.b.c", errors[0])
+    self.assertIn("1:0", errors[0])
+    self.assertIn("Using member a.b.c", errors[0])
+    self.assertIn("1:6", errors[1])
 
   def testNoTransformIfNothingIsSupplied(self):
     text = "f(a, b, kw1=c, kw2=d)\n"
@@ -414,7 +435,7 @@ class TestAstEdits(test_util.TensorFlowTestCase):
 
       def __init__(self):
         NoUpdateSpec.__init__(self)
-        self.function_warnings = {"*.foo": "not good"}
+        self.function_warnings = {"*.foo": (ast_edits.WARNING, "not good")}
 
     texts = ["object.foo()", "get_object().foo()",
              "get_object().foo()", "object.foo().bar()"]
@@ -429,6 +450,13 @@ class TestAstEdits(test_util.TensorFlowTestCase):
       (_, report, _), _ = self._upgrade(FooWarningSpec(), text)
       self.assertNotIn("not good", report)
 
+  def testFullNameNode(self):
+    t = ast_edits.full_name_node("a.b.c")
+    self.assertEquals(
+        ast.dump(t),
+        "Attribute(value=Attribute(value=Name(id='a', ctx=Load()), attr='b', "
+        "ctx=Load()), attr='c', ctx=Load())"
+    )
 
 if __name__ == "__main__":
   test_lib.main()

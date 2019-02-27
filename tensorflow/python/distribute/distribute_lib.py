@@ -37,7 +37,6 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import custom_gradient
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
-from tensorflow.python.ops.losses import losses_impl
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
@@ -79,14 +78,14 @@ class UpdateContext(object):
 # Public utility functions.
 
 
-@tf_export("distribute.get_loss_reduction")
+@tf_export(v1=["distribute.get_loss_reduction"])
 def get_loss_reduction():
-  """`tf.distribute.ReduceOp` corresponding to the last loss reduction."""
-  loss_reduction = ops.get_default_graph()._last_loss_reduction  # pylint: disable=protected-access
-  if (loss_reduction == losses_impl.Reduction.SUM or
-      loss_reduction == losses_impl.ReductionV2.SUM):
-    return reduce_util.ReduceOp.SUM
-  return reduce_util.ReduceOp.MEAN
+  """DEPRECATED: Now always returns `tf.distribute.ReduceOp.SUM`.
+
+  We now always make the complete adjustment when computing the loss, so
+  code should always add gradients/losses across replicas, never average.
+  """
+  return reduce_util.ReduceOp.SUM
 
 
 # ------------------------------------------------------------------------------
@@ -333,36 +332,6 @@ class DistributionStrategy(object):
     """DEPRECATED: use extended.colocate_vars_with() instead."""
     return self._extended.colocate_vars_with(colocate_with_variable)
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED
-  def distribute_dataset(self, dataset_fn):
-    """Return a `dataset` split across all replicas.  DEPRECATED.
-
-    DEPRECATED: Please use `make_dataset_iterator` or
-    `make_input_fn_iterator` instead.
-
-    Suitable for providing input to `extended.call_for_each_replica()` by
-    creating an iterator:
-
-    ```
-    def dataset_fn():
-      return tf.data.Dataset.from_tensors([[1.]]).repeat()
-
-    with strategy.scope():
-      distributed_dataset = strategy.distribute_dataset(dataset_fn)
-      iterator = distributed_dataset.make_initializable_iterator()
-      replica_results = strategy.extended.call_for_each_replica(
-          replica_fn, args=(iterator.get_next(),))
-    ```
-
-    Args:
-      dataset_fn: A function that returns a `tf.data.Dataset` with per-replica
-        batching.
-
-    Returns:
-      A `PerReplicaDataset` that will produce data for each replica.
-    """
-    return self._extended._distribute_dataset(dataset_fn)  # pylint: disable=protected-access
-
   def make_dataset_iterator(self, dataset):
     """Makes an iterator for input provided via `dataset`.
 
@@ -500,10 +469,11 @@ class DistributionStrategy(object):
         inputs = input_iterator.get_next()
         return self._extended.call_for_each_replica(fn, args=(inputs,))
 
-  @doc_controls.do_not_generate_docs  # DEPRECATED, moving to `extended`
-  def broadcast(self, tensor, destinations=None):
-    """DEPRECATED: use extended.broadcast_to() instead."""
-    return self._extended.broadcast_to(tensor, destinations)
+  # TODO(b/121296772,b/121300973): Add logical_device argument (default of 0).
+  def broadcast(self, tensor):
+    """Broadcasts `tensor` to all replicas, returning a per-replica value."""
+    _require_cross_replica_context_extended(self._extended)
+    return self._extended._broadcast(tensor)  # pylint: disable=protected-access
 
   def reduce(self, reduce_op, value):
     """Reduce `value` across replicas.
@@ -755,11 +725,9 @@ class DistributionStrategyExtended(object):
     a variable (which by definition will have locality V(`v`), though
     will match another locality if inside a `colocate_vars_with`
     scope).
-  * `d.make_dataset_iterator(dataset)` (or the deprecated
-    `d.distribute_dataset(dataset).make_one_shot_iterator()`): in cross-replica
+  * `d.make_dataset_iterator(dataset)`: in cross-replica
     context, produces an iterator with locality T
-  * `d.extended.broadcast_to(t)`: in cross-replica context, produces a value
-    with locality M
+  * `d.broadcast(t)`: in cross-replica context, produces a value with locality M
   * `d.extended.broadcast_to(t, v)`: in cross-replica context, produces a value
     with locality V(`v`)
   * `d.extended.call_for_each_replica(fn, ...)`: in cross-replica context, runs
@@ -965,21 +933,6 @@ class DistributionStrategyExtended(object):
     """Validate `colocate_with_variable` argument to `colocate_vars_with`."""
     pass
 
-  def _call_dataset_fn(self, dataset_fn):
-    """Call the `dataset_fn` with `input_context` as argument."""
-    result = dataset_fn()
-    if not isinstance(result, dataset_ops.DatasetV2):
-      raise ValueError(
-          "dataset_fn() must return a tf.data.Dataset when using a "
-          "tf.distribute.Strategy.")
-    return result
-
-  # TODO(josh11b): `PerReplicaDataset` currently only implements a few methods of
-  # Dataset API such as make_one_shot_iterator and make_initializable_iterator.
-  # Extend to implement more functionality of datasets.
-  def _distribute_dataset(self, dataset_fn):
-    raise NotImplementedError("must be implemented in descendants")
-
   def _make_dataset_iterator(self, dataset):
     raise NotImplementedError("must be implemented in descendants")
 
@@ -1024,6 +977,9 @@ class DistributionStrategyExtended(object):
     _require_cross_replica_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     return self._broadcast_to(tensor, destinations)
+
+  def _broadcast(self, tensor):
+    return self._broadcast_to(tensor, None)  # Default implementation
 
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")
@@ -1545,9 +1501,6 @@ class _DefaultDistributionExtended(DistributionStrategyExtended):
 
   def variable_created_in_scope(self, v):
     return v._distribute_strategy is None  # pylint: disable=protected-access
-
-  def _distribute_dataset(self, dataset_fn):
-    return self._call_dataset_fn(dataset_fn)
 
   def _make_dataset_iterator(self, dataset):
     return _DefaultDistributionExtended.DefaultInputIterator(dataset)

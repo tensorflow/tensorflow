@@ -70,13 +70,20 @@ Status MakeXlaCompilerArgumentsFromInputs(
       arg.name = resource->name();
       VLOG(2) << "    resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
-              << " shape: " << arg.shape.DebugString()
+              << " shape: " << arg.ShapeHumanString()
               << " initialized: " << arg.initialized;
 
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
       arg.type = ctx->input_type(i);
-      arg.shape = ctx->InputShape(i);
+
+      xla::XlaBuilder* builder = ctx->builder();
+      xla::XlaOp handle = ctx->Input(i);
+      auto shape_or_status = builder->GetShape(handle);
+      if (!shape_or_status.ok()) {
+        return shape_or_status.status();
+      }
+      arg.shape = shape_or_status.ValueOrDie();
     }
   }
   return Status::OK();
@@ -341,8 +348,11 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   VLOG(1) << "Done building while loop";
 }
 
-REGISTER_XLA_OP(Name("While").AllowResourceTypes(), XlaWhileOp);
-REGISTER_XLA_OP(Name("StatelessWhile").AllowResourceTypes(), XlaWhileOp);
-REGISTER_XLA_OP(Name("XlaWhile").AllowResourceTypes(), XlaWhileOp);
+REGISTER_XLA_OP(Name("While").AllowResourceTypes().AllowVariantTypes(),
+                XlaWhileOp);
+REGISTER_XLA_OP(Name("StatelessWhile").AllowResourceTypes().AllowVariantTypes(),
+                XlaWhileOp);
+REGISTER_XLA_OP(Name("XlaWhile").AllowResourceTypes().AllowVariantTypes(),
+                XlaWhileOp);
 
 }  // namespace tensorflow

@@ -75,7 +75,6 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertAllEqual(expected.dense_shape,
                           self.evaluate(actual.dense_shape))
 
-  @test_util.run_deprecated_v1
   def testFromNone(self):
     value_structure = structure.TensorStructure(dtypes.float32, [])
     opt = optional_ops.Optional.none_from_structure(value_structure)
@@ -269,9 +268,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
        optional_ops.OptionalStructure(
            structure.TensorStructure(dtypes.float32, []))),
   )
-  @test_util.run_deprecated_v1
-  def testSkipEagerOptionalStructure(self, tf_value_fn,
-                                     expected_value_structure):
+  def testOptionalStructure(self, tf_value_fn, expected_value_structure):
     tf_value = tf_value_fn()
     opt = optional_ops.Optional.from_value(tf_value)
 
@@ -306,6 +303,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
       self.assertEqual(
           self.evaluate(tf_value), self.evaluate(round_trip_opt.get_value()))
 
+  # NOTE: This test is specific to graph mode and is skipped in eager mode.
   @parameterized.named_parameters(
       ("Tensor", np.array([1, 2, 3], dtype=np.int32),
        lambda: constant_op.constant([4, 5, 6], dtype=dtypes.int32), True),
@@ -331,7 +329,7 @@ class OptionalTest(test_base.DatasetTestBase, parameterized.TestCase):
     if not works_on_gpu and test.is_gpu_available():
       self.skipTest("Test case not yet supported on GPU.")
     ds = dataset_ops.Dataset.from_tensors(np_value).repeat(3)
-    iterator = ds.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(ds)
     next_elem = iterator_ops.get_next_as_optional(iterator)
     self.assertIsInstance(next_elem, optional_ops.Optional)
     self.assertTrue(

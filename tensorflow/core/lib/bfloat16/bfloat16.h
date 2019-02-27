@@ -372,6 +372,14 @@ struct bfloat16 {
     return x;
   }
 
+  static bfloat16 min_positive_normal() {
+    bfloat16 x;
+    x.value = 0x0080;  // 0x1p-126
+    return x;
+  }
+
+  bool IsZero() const { return (value & 0x7FFF) == ZERO_VALUE; }
+
   uint16_t value;
 
   // A value that represents "not a number".

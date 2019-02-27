@@ -107,6 +107,9 @@ template <typename IndexType, typename OutputMapper, bool ConjugateLhs,
           bool ConjugateRhs>
 struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
                           ConjugateLhs, ConjugateRhs> {
+  static_assert(!ConjugateLhs, "MKL-DNN kernel doesn't support ConjugateLhs");
+  static_assert(!ConjugateRhs, "MKL-DNN kernel doesn't support ConjugateRhs");
+
   EIGEN_DONT_INLINE
   void operator()(const OutputMapper& output, const float* blockA,
                   const float* blockB, const IndexType rows,
@@ -122,11 +125,11 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
     const int n = static_cast<int>(cols);
     const int k = static_cast<int>(depth);
 
-    const char transposeA = ConjugateLhs ? 'Y' : 'N';
-    const char transposeB = ConjugateRhs ? 'Y' : 'N';
+    const char transposeA = 'N';
+    const char transposeB = 'N';
 
-    const int ldA = ConjugateLhs ? k : m;
-    const int ldB = ConjugateRhs ? n : k;
+    const int ldA = m;
+    const int ldB = k;
     const int ldC = static_cast<int>(output.stride());
 
     const float beta = 1.0;
@@ -197,7 +200,8 @@ class TensorContractionBlocking<float, float, float, StorageIndex,
     // We split Kth dimensions in roughly equal slices.
     StorageIndex target_k_slices =
         (std::max)(StorageIndex(1), Eigen::divup(k, kc_));
-    StorageIndex packet_size = 8;
+    StorageIndex packet_size = internal::packet_traits<Scalar>::size;
+    if (packet_size < 8) packet_size = 8;
     StorageIndex target_bk =
         Eigen::divup(k / target_k_slices, packet_size) * packet_size;
     kc_ = (std::min)(k, target_bk);

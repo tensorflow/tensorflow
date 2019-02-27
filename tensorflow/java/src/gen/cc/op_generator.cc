@@ -516,7 +516,7 @@ bool CanGenerateOp(const OpDef& op_def, const ApiDef& api_def) {
     return false;
   }
   for (const auto& attr : op_def.attr()) {
-    if (attr.type() == "func") {
+    if (attr.type() == "func" || attr.type() == "list(func)") {
       return false;  // TODO(karllessard) add support for function attributes
     }
   }

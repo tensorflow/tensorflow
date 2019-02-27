@@ -29,33 +29,6 @@ tf_cc_binary(
     ],
 )
 
-cc_library(
-    name = "dumped_computation_to_graphviz_library",
-    srcs = ["dumped_computation_to_graphviz.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:xla_data_proto",
-        "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_binary(
-    name = "dumped_computation_to_graphviz",
-    deps = [
-        ":dumped_computation_to_graphviz_library",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-    ],
-)
-
 tf_cc_binary(
     name = "show_signature",
     srcs = ["show_signature.cc"],
@@ -205,26 +178,6 @@ tf_cc_binary(
 )
 
 tf_cc_binary(
-    name = "dumped_computation_to_tf_graphdef",
-    srcs = ["dumped_computation_to_tf_graphdef.cc"],
-    deps = [
-        "//tensorflow/compiler/xla:debug_options_flags",
-        "//tensorflow/compiler/xla:statusor",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla/client",
-        "//tensorflow/compiler/xla/client:client_library",
-        "//tensorflow/compiler/xla/client:local_client",
-        "//tensorflow/compiler/xla/client:xla_computation",
-        "//tensorflow/compiler/xla/service",
-        "//tensorflow/compiler/xla/service:hlo_graph_dumper",
-        "//tensorflow/compiler/xla/service:hlo_proto",
-        "//tensorflow/compiler/xla/service:interpreter_plugin",
-        "//tensorflow/core:lib",
-        "@com_google_absl//absl/types:span",
-    ],
-)
-
-tf_cc_binary(
     name = "hlo_proto_to_json",
     srcs = ["hlo_proto_to_json.cc"],
     deps = [
@@ -281,4 +234,10 @@ tf_cc_binary(
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
     ],
+)
+
+sh_test(
+    name = "interactive_graphviz_build_only_test",
+    srcs = ["interactive_graphviz_test.sh"],
+    data = [":interactive_graphviz"],
 )

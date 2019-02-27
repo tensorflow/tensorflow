@@ -64,6 +64,8 @@ class EagerOperation {
 
   void SetUseXla(bool use_xla) { use_xla_ = use_xla; }
 
+  string DebugString() const;
+
  private:
   tensorflow::EagerContext* ctx_;  // Must outlive the EagerOperation.
   const tensorflow::string name_;

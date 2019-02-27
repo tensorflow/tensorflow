@@ -206,7 +206,7 @@ class WrapFunctionTest(test.TestCase):
         fetches=(f_wrapped.graph.get_operation_by_name('increment'),
                  f_wrapped.graph.get_tensor_by_name('other:0')))
     first_output, second_output = increments(constant_op.constant(2))
-    self.assertEqual(['Placeholder:0', 'Placeholder_1:0'],
+    self.assertEqual(['step:0', 'increment/resource:0'],
                      [t.name for t in increments.inputs])
     self.assertIs(None, first_output)
     self.assertEqual(1, second_output.numpy())
@@ -216,6 +216,31 @@ class WrapFunctionTest(test.TestCase):
         fetches=f_wrapped.graph.get_tensor_by_name('other:0'))
     self.assertEqual(1, does_not_increment(constant_op.constant(3)).numpy())
     self.assertEqual(3, v.numpy())
+
+  def testPruneStatefulOpsFromWrappedFunc(self):
+
+    v0 = variables.Variable(0)
+    v1 = variables.Variable(0)
+
+    # When we wrap a function, we expect it to be executed with 'tf.Graph`
+    # rules: it's allowed to prune all ops that are not in transitive fanin of
+    # the fetches.
+    def f(x):
+      v0.assign_add(1, name='increment_v0')
+      v1.assign_add(1, name='increment_v1')
+      return x
+
+    f_wrapped = wrap_function.wrap_function(f, [1])
+
+    self.assertEqual(1, f_wrapped().numpy())
+    self.assertEqual(0, v0.numpy())
+    self.assertEqual(0, v1.numpy())
+
+    f_wrapped_with_name = wrap_function.wrap_function(f, [2], name='func')
+
+    self.assertEqual(2, f_wrapped_with_name().numpy())
+    self.assertEqual(0, v0.numpy())
+    self.assertEqual(0, v1.numpy())
 
 
 if __name__ == '__main__':

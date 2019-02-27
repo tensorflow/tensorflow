@@ -48,6 +48,7 @@ class Thunk {
     kCudnnBatchNormBackward,
     kCudnnBatchNormForwardInference,
     kCudnnBatchNormForwardTraining,
+    kNcclAllReduce,
     kFft,
     kGemm,
     kInfeed,
@@ -56,6 +57,7 @@ class Thunk {
     kMemzero,
     kOutfeed,
     kSequential,
+    kTriangularSolve,
     kTuple,
     kWhile,
   };

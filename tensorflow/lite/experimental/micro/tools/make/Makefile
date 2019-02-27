@@ -30,18 +30,26 @@ TARGET_ARCH := $(HOST_ARCH)
 # STM32F746NG board, using the CMSIS library's implementations where possible.
 ALL_TAGS := $(TAGS) $(TARGET)
 
+# This is obviously horrible.  We need to generate these 3 versions of the
+# include directories from one source.
 INCLUDES := \
 -I. \
--I$(MAKEFILE_DIR)/../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../ \
--I$(MAKEFILE_DIR)/../../../../../../../ \
 -I$(MAKEFILE_DIR)/downloads/ \
 -I$(MAKEFILE_DIR)/downloads/gemmlowp \
--I$(MAKEFILE_DIR)/downloads/flatbuffers/include \
--I$(OBJDIR)
-# This is at the end so any globally-installed frameworks like protobuf don't
-# override local versions in the source tree.
-INCLUDES += -I/usr/local/include
+-I$(MAKEFILE_DIR)/downloads/flatbuffers/include
+
+# Same list of paths, but now relative to the generated project files.
+GENERATED_PROJECT_INCLUDES := \
+-I. \
+-I./third_party/gemmlowp \
+-I./third_party/flatbuffers/include
+
+# Same list of paths, but now in the format the generate_keil_project.py
+# script expects them.
+PROJECT_INCLUDES := \
+. \
+third_party/gemmlowp \
+third_party/flatbuffers/include
 
 TEST_SCRIPT := tensorflow/lite/experimental/micro/testing/test_linux_binary.sh
 
@@ -118,12 +126,24 @@ third_party/flatbuffers/LICENSE.txt
 
 MAKE_PROJECT_FILES := \
   README_MAKE.md \
-  Makefile
+  Makefile \
+  .vscode/tasks.json
 
 MBED_PROJECT_FILES := \
   README_MBED.md \
   mbed-os.lib \
-  mbed_app.json
+  mbed_app.json \
+  .vscode/tasks.json
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
+
+ALL_PROJECT_TARGETS :=
+
+KEIL_PROJECT_FILES := \
+  README_KEIL.md \
+  keil_project.uvprojx
 
 # These target-specific makefiles should modify or replace options like
 # CXXFLAGS or LIBS to work for a specific targetted architecture. All logic
@@ -156,8 +176,8 @@ include $(wildcard tensorflow/lite/experimental/micro/examples/*/Makefile.inc)
 MICROLITE_LIB_OBJS := $(addprefix $(OBJDIR), \
 $(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(MICROLITE_CC_SRCS))))
 
-MICROLITE_TEST_TARGETS := $(addprefix $(BINDIR), \
-$(patsubst %_test.cc,%.test_target,$(MICROLITE_TEST_SRCS)))
+MICROLITE_LIB_OBJS += $(addprefix $(OBJDIR), \
+$(patsubst %.S,%.o,$(patsubst %.cc,%.o,$(patsubst %.c,%.o,$(THIRD_PARTY_CC_SRCS)))))
 
 # For normal manually-created TensorFlow C++ source files.
 $(OBJDIR)%.o: %.cc
@@ -197,11 +217,21 @@ $(BINDIR)%_test : $(OBJDIR)%_test.o $(MICROLITE_LIB_PATH)
 $(BINDIR)%.test_target: $(BINDIR)%_test
 	$(TEST_SCRIPT) $< '~~~ALL TESTS PASSED~~~'
 
+# snease: Add %.bin rule here since BINDIR is now defined
+# These are microcontroller-specific rules for converting the ELF output
+# of the linker into a binary image that can be loaded directly.
+OBJCOPY := $(TARGET_TOOLCHAIN_PREFIX)objcopy
+$(BINDIR)%.bin: $(BINDIR)%
+	@mkdir -p $(dir $@)
+	$(OBJCOPY) $< $@ -O binary
+
 # Generate standalone makefile projects for all of the test targets.
 $(foreach TEST_TARGET,$(MICROLITE_TEST_SRCS),\
 $(eval $(call microlite_test,$(notdir $(basename $(TEST_TARGET))),$(TEST_TARGET))))
 
-test: test_micro_speech $(MICROLITE_TEST_TARGETS)
+test: $(MICROLITE_TEST_TARGETS)
+
+generate_projects: $(ALL_PROJECT_TARGETS)
 
 # Gets rid of all generated files.
 clean:

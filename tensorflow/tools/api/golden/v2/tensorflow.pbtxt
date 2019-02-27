@@ -5,6 +5,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "CriticalSection"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "DType"
     mtype: "<type \'type\'>"
   }
@@ -18,6 +22,10 @@ tf_module {
   }
   member {
     name: "IndexedSlices"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Module"
     mtype: "<type \'type\'>"
   }
   member {
@@ -169,6 +177,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "initializers"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "int16"
     mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
@@ -209,8 +221,16 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "metrics"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "name_scope"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "nest"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "newaxis"
@@ -223,6 +243,10 @@ tf_module {
   member {
     name: "ones_initializer"
     mtype: "<type \'type\'>"
+  }
+  member {
+    name: "optimizers"
+    mtype: "<type \'module\'>"
   }
   member {
     name: "qint16"
@@ -269,12 +293,12 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "resource"
-    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
+    name: "raw_ops"
+    mtype: "<type \'module\'>"
   }
   member {
-    name: "rnn"
-    mtype: "<type \'module\'>"
+    name: "resource"
+    mtype: "<class \'tensorflow.python.framework.dtypes.DType\'>"
   }
   member {
     name: "saved_model"
@@ -310,6 +334,10 @@ tf_module {
   }
   member {
     name: "test"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tpu"
     mtype: "<type \'module\'>"
   }
   member {
@@ -469,6 +497,10 @@ tf_module {
     argspec: "args=[\'t\', \'clip_value_min\', \'clip_value_max\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
+    name: "combined_non_max_suppression"
+    argspec: "args=[\'boxes\', \'scores\', \'max_output_size_per_class\', \'max_total_size\', \'iou_threshold\', \'score_threshold\', \'pad_per_class\', \'name\'], varargs=None, keywords=None, defaults=[\'False\', \'None\'], "
+  }
+  member_method {
     name: "complex"
     argspec: "args=[\'real\', \'imag\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -511,10 +543,6 @@ tf_module {
   member_method {
     name: "device"
     argspec: "args=[\'device_name\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
-    name: "div_no_nan"
-    argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "divide"
@@ -605,6 +633,10 @@ tf_module {
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_static_value"
+    argspec: "args=[\'tensor\', \'partial\'], varargs=None, keywords=None, defaults=[\'False\'], "
+  }
+  member_method {
     name: "gradients"
     argspec: "args=[\'ys\', \'xs\', \'grad_ys\', \'name\', \'gate_gradients\', \'aggregation_method\', \'stop_gradients\', \'unconnected_gradients\'], varargs=None, keywords=None, defaults=[\'None\', \'gradients\', \'False\', \'None\', \'None\', \'UnconnectedGradients.NONE\'], "
   }
@@ -651,6 +683,10 @@ tf_module {
   member_method {
     name: "init_scope"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "is_tensor"
+    argspec: "args=[\'x\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "less"
@@ -743,6 +779,10 @@ tf_module {
   member_method {
     name: "not_equal"
     argspec: "args=[\'x\', \'y\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "numpy_function"
+    argspec: "args=[\'func\', \'inp\', \'Tout\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "one_hot"

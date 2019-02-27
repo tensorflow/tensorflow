@@ -90,20 +90,26 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantizationWithUnitScale) {
 
   ASSERT_TRUE(weights_tensor->quantization);
   const int out_channel_size = weights_tensor->shape[0];
-
-  // Bias tensor doesn't contain quantization info.
-  ASSERT_FALSE(bias_tensor->quantization);
-
+  ASSERT_TRUE(bias_tensor->quantization);
+  ASSERT_TRUE(weights_tensor->quantization);
+  const std::vector<float>& bias_scales = bias_tensor->quantization->scale;
   const std::vector<float>& weights_scales =
       weights_tensor->quantization->scale;
 
+  const std::vector<int64_t>& weights_zero_points =
+      weights_tensor->quantization->zero_point;
+
+  ASSERT_EQ(bias_scales.size(), out_channel_size);
   ASSERT_EQ(weights_scales.size(), out_channel_size);
+  ASSERT_EQ(weights_zero_points.size(), out_channel_size);
   ASSERT_EQ(input_tensor->quantization->scale.size(), 1);
   ASSERT_EQ(output_tensor->quantization->scale.size(), 1);
 
 
   for (size_t i = 0; i < out_channel_size; i++) {
     EXPECT_EQ(weights_scales[i], 1);
+    EXPECT_EQ(bias_scales[i], 1);
+    EXPECT_EQ(weights_zero_points[i], 0);
   }
 
   EXPECT_EQ(input_tensor->quantization->scale[0], 1);
@@ -183,17 +189,27 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
 
   ASSERT_TRUE(weights_tensor->quantization);
   const int out_channel_size = weights_tensor->shape[0];
-
-  // Bias tensor doesn't contain quantization info.
-  ASSERT_FALSE(bias_tensor->quantization);
-
+  ASSERT_TRUE(bias_tensor->quantization);
   ASSERT_TRUE(weights_tensor->quantization);
+  const std::vector<float>& bias_scales = bias_tensor->quantization->scale;
   const std::vector<float>& weights_scales =
       weights_tensor->quantization->scale;
+  const std::vector<int64_t>& weights_zero_points =
+      weights_tensor->quantization->zero_point;
 
+  ASSERT_EQ(bias_scales.size(), out_channel_size);
   ASSERT_EQ(weights_scales.size(), out_channel_size);
+  ASSERT_EQ(weights_zero_points.size(), out_channel_size);
   ASSERT_EQ(input_tensor->quantization->scale.size(), 1);
   ASSERT_EQ(output_tensor->quantization->scale.size(), 1);
+
+  const float eps = 1e-7;
+
+  // Bias scale should be input * per_channel_weight_scale.
+  for (size_t i = 0; i < out_channel_size; i++) {
+    EXPECT_NEAR(bias_scales[i],
+                input_tensor->quantization->scale[0] * weights_scales[i], eps);
+  }
 
   const auto bias_buffer = model.buffers[bias_tensor->buffer].get();
   ASSERT_EQ(bias_buffer->data.size(), sizeof(int32_t) * bias_tensor->shape[0]);
@@ -205,10 +221,8 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
       reinterpret_cast<const float*>(original_bias_buffer->data()->data());
 
   for (size_t i = 0; i < out_channel_size; i++) {
-    const float bias_scale =
-        input_tensor->quantization->scale[0] * weights_scales[i];
-    auto dequantized_value = bias_values[i] * bias_scale;
-    EXPECT_NEAR(dequantized_value, bias_float_buffer[i], bias_scale / 2);
+    auto dequantized_value = bias_values[i] * bias_scales[i];
+    EXPECT_NEAR(dequantized_value, bias_float_buffer[i], bias_scales[i] / 2);
   }
 
   const auto weights_buffer = model.buffers[weights_tensor->buffer].get();
@@ -225,9 +239,11 @@ TEST(SubgraphQuantizerTest, VerifyConvQuantization) {
     for (size_t j = 0; j < num_values_in_channel; j++) {
       size_t element_idx = channel_idx * out_channel_size + j;
       auto scale = weights_scales[channel_idx];
+      auto zero_point = weights_zero_points[channel_idx];
       auto dequantized_value = weight_values[element_idx] * scale;
       EXPECT_NEAR(dequantized_value, weights_float_buffer[element_idx],
                   scale / 2);
+      EXPECT_EQ(zero_point, 0);
     }
   }
 }
@@ -275,6 +291,7 @@ TEST(SubgraphQuantizerTest, VerifySoftmaxQuantization) {
   ASSERT_EQ(op->outputs.size(), 1);
   auto float_graph = readonly_model->subgraphs()->Get(0);
 
+  // Verify input.
   ASSERT_EQ(float_graph->tensors()->Get(op->inputs[0])->type(),
             TensorType_FLOAT32);
   ASSERT_EQ(float_graph->tensors()->Get(op->outputs[0])->type(),
@@ -290,12 +307,18 @@ TEST(SubgraphQuantizerTest, VerifySoftmaxQuantization) {
   VerifyAsymmetricQuantizationScale(*float_input_quant_params,
                                     *input_quant_params);
 
+  // Verify output.
   auto float_output_quant_params =
       float_graph->tensors()->Get(op->outputs[0])->quantization();
   auto output_quant_params =
       subgraph->tensors[op->outputs[0]]->quantization.get();
-  VerifyAsymmetricQuantizationScale(*float_output_quant_params,
-                                    *output_quant_params);
+  ASSERT_EQ(float_output_quant_params->min()->size(), 1);
+  ASSERT_EQ(float_output_quant_params->max()->size(), 1);
+
+  ASSERT_EQ(output_quant_params->scale.size(), 1);
+  ASSERT_EQ(output_quant_params->zero_point.size(), 1);
+  ASSERT_EQ(1.0f / 256.0f, output_quant_params->scale[0]);
+  ASSERT_EQ(-128, output_quant_params->zero_point[0]);
 }
 
 TEST(SubgraphQuantizerTest, VerifyAvgPoolQuantization) {
@@ -368,7 +391,10 @@ int main(int argc, char** argv) {
   };
 
   const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
-  CHECK(parse_result) << "Required test_model_file";
+  if (!parse_result) {
+    std::cerr << "Required test_model_file\n";
+    std::abort();
+  }
   g_test_model_dir =
       new tensorflow::string(tensorflow::io::Dirname(model_file));
   ::tensorflow::port::InitMain(argv[0], &argc, &argv);

@@ -132,7 +132,7 @@ def assert_ops_in_graph(expected_ops, graph):
 
 
 @tf_export("test.assert_equal_graph_def", v1=[])
-def assert_equal_graph_def_v2(actual, expected):
+def assert_equal_graph_def_v2(expected, actual):
   """Asserts that two `GraphDef`s are (mostly) the same.
 
   Compares two `GraphDef` protos for equality, ignoring versions and ordering of
@@ -141,8 +141,8 @@ def assert_equal_graph_def_v2(actual, expected):
   ignores randomized attribute values that may appear in V2 checkpoints.
 
   Args:
-    actual: The `GraphDef` we have.
     expected: The `GraphDef` we expected.
+    actual: The `GraphDef` we have.
 
   Raises:
     AssertionError: If the `GraphDef`s do not match.
@@ -1012,10 +1012,12 @@ def py_func_if_in_function(f):
     if not ops.get_default_graph()._building_function:
       return f(*args, **kwds)
 
-    tensor_args, tensor_indices = zip(*[(x, i)
-                                        for i, x in enumerate(args)
-                                        if isinstance(x, (ops.Tensor,
-                                                          variables.Variable))])
+    tensor_args = []
+    tensor_indices = []
+    for i, arg in enumerate(args):
+      if isinstance(arg, (ops.Tensor, variables.Variable)):
+        tensor_args.append(arg)
+        tensor_indices.append(i)
 
     def inner_f(*inner_tensor_args):
       my_args = list(args)
@@ -1460,7 +1462,7 @@ def disable_all_xla(description):
       value = getattr(cls, name)
       if callable(value) and name.startswith(
           "test") and not name == "test_session":
-        setattr(cls, name, base_decorator(value))
+        setattr(cls, name, base_decorator(description)(value))
     return cls
 
   return disable_all_impl
@@ -1658,8 +1660,13 @@ class TensorFlowTestCase(googletest.TestCase):
     else:
       try:
         if sparse_tensor.is_sparse(tensor):
-          return sparse_tensor.SparseTensorValue(tensor.indices, tensor.values,
-                                                 tensor.dense_shape)
+          return sparse_tensor.SparseTensorValue(tensor.indices.numpy(),
+                                                 tensor.values.numpy(),
+                                                 tensor.dense_shape.numpy())
+        elif isinstance(tensor, ops.IndexedSlices):
+          return ops.IndexedSlicesValue(values=tensor.values.numpy(),
+                                        indices=tensor.indices.numpy(),
+                                        dense_shape=tensor.dense_shape.numpy())
         return tensor.numpy()
       except AttributeError as e:
         six.raise_from(ValueError("Unsupported type %s." % type(tensor)), e)

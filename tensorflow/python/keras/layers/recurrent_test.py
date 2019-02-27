@@ -40,7 +40,8 @@ from tensorflow.python.ops import special_math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import util as checkpointable_util
+from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import nest
 
 # Used for nested input/output/state RNN test.
@@ -216,6 +217,61 @@ class RNNTest(keras_parameterized.TestCase):
     model.set_weights(weights)
     y_np_2 = model.predict(x_np)
     self.assertAllClose(y_np, y_np_2, atol=1e-4)
+
+  def test_minimal_rnn_cell_abstract_rnn_cell(self):
+
+    class MinimalRNNCell(keras.layers.AbstractRNNCell):
+
+      def __init__(self, units, **kwargs):
+        self.units = units
+        super(MinimalRNNCell, self).__init__(**kwargs)
+
+      @property
+      def state_size(self):
+        return self.units
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                      initializer='uniform',
+                                      name='kernel')
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer='uniform',
+            name='recurrent_kernel')
+        self.built = True
+
+      def call(self, inputs, states):
+        prev_output = states[0]
+        h = keras.backend.dot(inputs, self.kernel)
+        output = h + keras.backend.dot(prev_output, self.recurrent_kernel)
+        return output, output
+
+      @property
+      def output_size(self):
+        return self.units
+
+    cell = MinimalRNNCell(32)
+    x = keras.Input((None, 5))
+    layer = keras.layers.RNN(cell)
+    y = layer(x)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer="rmsprop",
+        loss="mse",
+        run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
+
+    # Test stacking.
+    cells = [MinimalRNNCell(8),
+             MinimalRNNCell(16),
+             MinimalRNNCell(32)]
+    layer = keras.layers.RNN(cells)
+    y = layer(x)
+    model = keras.models.Model(x, y)
+    model.compile(optimizer='rmsprop',
+                  loss='mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.train_on_batch(np.zeros((6, 5, 5)), np.zeros((6, 32)))
 
   def test_rnn_with_time_major(self):
     batch = 10
@@ -715,7 +771,7 @@ class RNNTest(keras_parameterized.TestCase):
         [tuple(o.as_list()) for o in output_shape],
         expected_output_shape)
 
-  def test_checkpointable_dependencies(self):
+  def test_trackable_dependencies(self):
     rnn = keras.layers.SimpleRNN
     x = np.random.random((2, 2, 2))
     y = np.random.random((2, 2))
@@ -728,8 +784,9 @@ class RNNTest(keras_parameterized.TestCase):
     model.fit(x, y, epochs=1, batch_size=1)
 
     # check whether the model variables are present in the
-    # checkpointable list of objects
-    checkpointed_objects = set(checkpointable_util.list_objects(model))
+    # trackable list of objects
+    checkpointed_objects = object_identity.ObjectIdentitySet(
+        trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
@@ -1162,6 +1219,30 @@ class RNNTest(keras_parameterized.TestCase):
       result_1[5, 3:] = 0
       self.assertAllClose(result_1, result_2)
 
+  def test_unroll_single_step(self):
+    """Even if the time dimension is only one, we should be able to unroll."""
+    cell = keras.layers.SimpleRNNCell(5)
+    x = keras.Input((1, 5))
+    layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
+    y = layer(x)
+    model = keras.models.Model(x, y)
+    model.compile(
+        optimizer='rmsprop',
+        loss='mse',
+        run_eagerly=testing_utils.should_run_eagerly())
+
+    np_x = np.ones((6, 1, 5))
+    result = model.predict(np_x)
+    self.assertEqual((6, 1, 5), result.shape)
+
+  def test_unroll_zero_step(self):
+    """If the time dimension is None, we should fail to unroll."""
+    cell = keras.layers.SimpleRNNCell(5)
+    x = keras.Input((None, 5))
+    layer = keras.layers.RNN(cell, return_sequences=True, unroll=True)
+    with self.assertRaisesRegexp(ValueError, 'Cannot unroll a RNN.*'):
+      layer(x)
+
 
 class Minimal2DRNNCell(keras.layers.Layer):
   """The minimal 2D RNN cell is a simple combination of 2 1-D RNN cell.
@@ -1269,3 +1350,4 @@ class NestedCell(keras.layers.Layer):
 
 if __name__ == '__main__':
   test.main()
+

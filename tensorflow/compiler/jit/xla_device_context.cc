@@ -29,7 +29,10 @@ limitations under the License.
 namespace tensorflow {
 
 // The allocator used for Tensors assigned to the XLA device.
-XlaDeviceAllocator::XlaDeviceAllocator() {}
+XlaDeviceAllocator::XlaDeviceAllocator(
+    stream_executor::StreamExecutor* stream_executor)
+    : stream_executor_(stream_executor) {}
+
 XlaDeviceAllocator::~XlaDeviceAllocator() = default;
 
 string XlaDeviceAllocator::Name() { return "xla"; }
@@ -48,7 +51,21 @@ void XlaDeviceAllocator::DeallocateRaw(void* ptr) {
   delete XlaTensor::FromOpaquePointer(ptr);
 }
 
-void XlaDeviceAllocator::GetStats(AllocatorStats* stats) { stats->Clear(); }
+absl::optional<AllocatorStats> XlaDeviceAllocator::GetStats() {
+  absl::optional<stream_executor::AllocatorStats> se_stats =
+      stream_executor_->GetAllocatorStats();
+  if (!se_stats) {
+    return absl::nullopt;
+  }
+
+  tensorflow::AllocatorStats tf_stats;
+  tf_stats.num_allocs = se_stats->num_allocs;
+  tf_stats.bytes_in_use = se_stats->bytes_in_use;
+  tf_stats.peak_bytes_in_use = se_stats->peak_bytes_in_use;
+  tf_stats.largest_alloc_size = se_stats->largest_alloc_size;
+  tf_stats.bytes_limit = se_stats->bytes_limit;
+  return tf_stats;
+}
 
 XlaDeviceContext::XlaDeviceContext(
     std::shared_ptr<se::Stream> compute_stream,
@@ -131,7 +148,7 @@ void XlaDeviceContext::CopyCPUTensorToDevice(const Tensor* cpu_tensor,
         xla::ShapeUtil::MakeShape(shape.element_type(),
                                   xla::AsInt64Slice(shape.dimensions())));
 
-    VLOG(1) << "Transfer to device as literal: " << literal.ToString() << " "
+    VLOG(2) << "Transfer to device as literal: " << literal.ToString() << " "
             << xla_tensor->shaped_buffer().ToString();
     if (UseMultipleStreams() &&
         !transfer_manager_->CanShapedBufferBeAccessedNow(
@@ -214,7 +231,7 @@ void XlaDeviceContext::CopyDeviceTensorToCPU(const Tensor* device_tensor,
       device_to_host_stream_.get(), xla_tensor->shaped_buffer(), literal,
       [ref, xla_tensor, done](xla::Status status) {
         done([&]() -> Status {
-          VLOG(1) << "Transfer from device as literal: "
+          VLOG(2) << "Transfer from device as literal: "
                   << xla_tensor->shaped_buffer().ToString();
           return status;
         }());

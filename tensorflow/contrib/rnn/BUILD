@@ -103,26 +103,6 @@ cuda_py_tests(
 )
 
 cuda_py_tests(
-    name = "core_rnn_cell_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/core_rnn_cell_test.py"],
-    additional_deps = [
-        ":rnn_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:rnn",
-        "//tensorflow/python:rnn_cell",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "@absl_py//absl/testing:parameterized",
-    ],
-)
-
-cuda_py_tests(
     name = "rnn_test",
     size = "medium",
     srcs = ["python/kernel_tests/rnn_test.py"],
@@ -142,32 +122,6 @@ cuda_py_tests(
     tags = [
         "optonly",
     ],
-)
-
-cuda_py_tests(
-    name = "core_rnn_test",
-    size = "medium",
-    srcs = ["python/kernel_tests/core_rnn_test.py"],
-    additional_deps = [
-        ":rnn_py",
-        "//third_party/py/numpy",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:client_testlib",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:framework_for_generated_wrappers",
-        "//tensorflow/python:framework_test_lib",
-        "//tensorflow/python:gradients",
-        "//tensorflow/python:init_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python:platform",
-        "//tensorflow/python:rnn",
-        "//tensorflow/python:tensor_array_ops",
-        "//tensorflow/python:util",
-        "//tensorflow/python:variable_scope",
-        "//tensorflow/python:variables",
-        "//tensorflow/python/eager:context",
-    ],
-    shard_count = 10,
 )
 
 tf_py_test(
@@ -388,6 +342,13 @@ py_binary(
     name = "checkpoint_convert",
     srcs = ["python/tools/checkpoint_convert.py"],
     srcs_version = "PY2AND3",
+    deps = [":checkpoint_convert_lib"],
+)
+
+py_library(
+    name = "checkpoint_convert_lib",
+    srcs = ["python/tools/checkpoint_convert.py"],
+    srcs_version = "PY2AND3",
     deps = [
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework_ops",
@@ -406,7 +367,7 @@ py_test(
     srcs_version = "PY2AND3",
     tags = ["no_pip"],
     deps = [
-        ":checkpoint_convert",
+        ":checkpoint_convert_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:session",

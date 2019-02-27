@@ -56,8 +56,10 @@ class ParallelInterleaveBenchmark(test.Benchmark):
 
   def _benchmark(self, dataset_fn, iters, num_elements):
     with ops.Graph().as_default():
-      iterator = dataset_ops.make_one_shot_iterator(dataset_fn())
-      next_element = iterator.get_next()
+      options = dataset_ops.Options()
+      options.experimental_optimization.apply_default_optimizations = False
+      dataset = dataset_fn().with_options(options)
+      next_element = dataset_ops.make_one_shot_iterator(dataset).get_next()
       with session.Session() as sess:
         deltas = []
         for _ in range(iters):

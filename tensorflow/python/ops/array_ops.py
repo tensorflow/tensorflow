@@ -67,16 +67,20 @@ def identity(input, name=None):  # pylint: disable=redefined-builtin
   Returns:
     A `Tensor`. Has the same type as `input`.
   """
-  if context.executing_eagerly():
+  if context.executing_eagerly() and not hasattr(input, "graph"):
     input = ops.convert_to_tensor(input)
-    in_device = input.device
+    in_device = input.backing_device
     # TODO(ashankar): Does 'identity' need to invoke execution callbacks?
     context_device = context.context().device_name
     if not context_device:
       context_device = "/job:localhost/replica:0/task:0/device:CPU:0"
-    if context_device != in_device:
-      return input._copy()  # pylint: disable=protected-access
-    return input
+    if context_device == in_device:
+      return input
+    else:
+      copied = input._copy()  # pylint: disable=protected-access
+      if hasattr(copied, "_handle_data"):
+        copied._handle_data = input._handle_data  # pylint: disable=protected-access
+      return copied
   else:
     ret = gen_array_ops.identity(input, name=name)
     # Propagate handle data for happier shape inference for resource variables.
@@ -1460,14 +1464,14 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
 
-  If `num_or_size_splits` is an integer type, then `value` is split
-  along dimension `axis` into `num_split` smaller tensors.
-  Requires that `num_split` evenly divides `value.shape[axis]`.
+  If `num_or_size_splits` is an integer, then `value` is split along dimension
+  `axis` into `num_split` smaller tensors. This requires that `num_split` evenly
+  divides `value.shape[axis]`.
 
-  If `num_or_size_splits` is not an integer type, it is presumed to be a Tensor
-  `size_splits`, then splits `value` into `len(size_splits)` pieces. The shape
-  of the `i`-th piece has the same size as the `value` except along dimension
-  `axis` where the size is `size_splits[i]`.
+  If `num_or_size_splits` is a 1-D Tensor (or list), we call it `size_splits`
+  and `value` is split into `len(size_splits)` elements. The shape of the `i`-th
+  element has the same size as the `value` except along dimension `axis` where
+  the size is `size_splits[i]`.
 
   For example:
 
@@ -1485,13 +1489,13 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   Args:
     value: The `Tensor` to split.
-    num_or_size_splits: Either a 0-D integer `Tensor` indicating the number of
-      splits along split_dim or a 1-D integer `Tensor` containing
+    num_or_size_splits: Either an integer indicating the number of
+      splits along split_dim or a 1-D integer `Tensor` or Python list containing
       the sizes of each output tensor along split_dim. If a scalar then it must
       evenly divide `value.shape[axis]`; otherwise the sum of sizes along the
       split dimension must match that of the `value`.
-    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
-      Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
+    axis: An integer or scalar `int32` `Tensor`. The dimension along which to
+    split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
       inferred from the shape of `size_splits`.
     name: A name for the operation (optional).
@@ -1506,9 +1510,15 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     ValueError: If `num` is unspecified and cannot be inferred.
   """
   size_splits = ops.convert_to_tensor(num_or_size_splits)
-  if size_splits._rank() == 0 and size_splits.dtype.is_integer:
+  if isinstance(num_or_size_splits,
+                six.integer_types + (tensor_shape.Dimension,)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
+
+  if size_splits._rank() == 0:
+    raise ValueError(
+        "Rank-0 tensors are not supported as the num_or_size_splits argument "
+        "to split. Argument provided: %s" % (num_or_size_splits,))
 
   if num is None:
     size_splits_shape = size_splits._shape_tuple()
@@ -2662,7 +2672,10 @@ def required_space_to_batch_paddings(input_shape,
 
 @tf_export(v1=["nn.space_to_batch", "space_to_batch"])
 @deprecation.deprecated_endpoints("space_to_batch")
-def space_to_batch(input, paddings, block_size, name=None):  # pylint: disable=redefined-builtin
+def space_to_batch(  # pylint: disable=missing-docstring
+    input, paddings, block_size=None, name=None, block_shape=None):  # pylint: disable=redefined-builtin
+  block_size = deprecation.deprecated_argument_lookup(
+      "block_shape", block_shape, "block_size", block_size)
   result = space_to_batch_nd(
       input,
       paddings=paddings,
@@ -2718,7 +2731,9 @@ depth_to_space_v2.__doc__ = gen_array_ops.depth_to_space.__doc__
 
 
 @tf_export(v1=["batch_to_space"])
-def batch_to_space(input, crops, block_size, name=None):  # pylint: disable=redefined-builtin
+def batch_to_space(input, crops, block_size, name=None, block_shape=None):  # pylint: disable=redefined-builtin,missing-docstring
+  block_size = deprecation.deprecated_argument_lookup(
+      "block_shape", block_shape, "block_size", block_size)
   result = batch_to_space_nd(
       input,
       crops=crops,
@@ -3076,6 +3091,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
 
     if maxlen is None:
       maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
+      maxlen = gen_math_ops.maximum(constant(0, maxlen.dtype), maxlen)
     else:
       maxlen = ops.convert_to_tensor(maxlen)
     if maxlen.get_shape().ndims is not None and maxlen.get_shape().ndims != 0:
@@ -3266,11 +3282,11 @@ def gather(params,
            validate_indices=None,
            name=None,
            axis=None,
-           batch_dims=0):  # pylint: disable=g-doc-args
+           batch_dims=0):
   r"""Gather slices from params axis axis according to indices.
 
-  Gather slices from params axis axis according to indices.  `indices` must be
-  an integer tensor of any dimension (usually 0-D or 1-D).
+  Gather slices from params axis `axis` according to `indices`.  `indices` must
+  be an integer tensor of any dimension (usually 0-D or 1-D).
 
   For 0-D (scalar) `indices`:
 
@@ -3320,23 +3336,24 @@ def gather(params,
       `axis + 1`.
     indices: The index `Tensor`.  Must be one of the following types: `int32`,
       `int64`. Must be in range `[0, params.shape[axis])`.
+    validate_indices: Deprecated, does nothing.
+    name: A name for the operation (optional).
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
       negative indexes.
     batch_dims: An `integer`.  The number of batch dimensions.  Must be less
-      than `ndims(inices)`.
-    name: A name for the operation (optional).
+      than `rank(indices)`.
 
   Returns:
     A `Tensor`. Has the same type as `params`.
   """
   del validate_indices
-  if axis is None:
-    axis = batch_dims
   if batch_dims != 0:
     with ops.name_scope(name, "Gather", [params, indices, axis]):
       return _batch_gather(params, indices, batch_dims, axis)
+  if axis is None:
+    axis = batch_dims
   if axis != 0:
     # Note that we do a sparse_read here to avoid snapshotting the entire
     # resource variable and doing a gather, which can be inefficient and lead to
@@ -3365,7 +3382,7 @@ gather.__doc__ = gather_v2.__doc__ = gen_array_ops.gather_v2.__doc__
 @dispatch.add_dispatch_support
 @deprecation.deprecated(
     "2017-10-25", "`tf.batch_gather` is deprecated, please use `tf.gather` "
-    "with `batch_dims=-1` instead.")  # pylint: disable=missing-docstring
+    "with `batch_dims` instead.")  # pylint: disable=missing-docstring
 def batch_gather(params, indices, name=None):
   """Gather slices from params according to indices with leading batch dims."""
   with ops.name_scope(name, "BatchGather", [params, indices]):
@@ -3383,15 +3400,15 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   This operation assumes that the leading `batch_dims` dimensions of `indices`
   and `params` are batch dimensions; and performs a `tf.gather` operation within
   each batch. (If `batch_dims` is not specified, then it defaults to
-  `ndims(indices) - 1`.)  In the case in which `batch_dims==0`, this operation
+  `rank(indices)-1`.)  In the case in which `batch_dims==0`, this operation
   is equivalent to `tf.gather`.
 
   Args:
     params: A Tensor. The tensor from which to gather values.
     indices: A Tensor. Must be one of the following types: int32, int64. Index
       tensor. Must be in range `[0, params.shape[batch_dims]]`.
-    batch_dims: An integer.  The number of batch dimensions.  Must be less than
-      ndims(inices).  Defaults to `ndims(indices) - 1` if not specified.
+    batch_dims: An integer or none.  The number of batch dimensions.  Must be
+      less than `rank(indices)`.  Defaults to `rank(indices) - 1` if None.
     axis: A `Tensor`. Must be one of the following types: `int32`, `int64`. The
       `axis` in `params` to gather `indices` from. Must be greater than or equal
       to `batch_dims`.  Defaults to the first non-batch dimension. Supports
@@ -3417,10 +3434,10 @@ def _batch_gather(params, indices, batch_dims, axis=None):
   if batch_dims < 0:
     batch_dims += indices_ndims
   if batch_dims < 0 or batch_dims >= indices_ndims:
-    raise ValueError("batch_dims = %d must be less than ndims(indices) = %d" %
+    raise ValueError("batch_dims = %d must be less than rank(indices) = %d" %
                      (batch_dims, indices_ndims))
   if params.shape.ndims is not None and batch_dims >= params.shape.ndims:
-    raise ValueError("batch_dims = %d must be less than ndims(params) = %d" %
+    raise ValueError("batch_dims = %d must be less than rank(params) = %d" %
                      (batch_dims, params.shape.ndims))
 
   # Handle axis by transposing the axis dimension to be the first non-batch
@@ -3649,7 +3666,22 @@ def extract_image_patches_v2(
   return gen_array_ops.extract_image_patches(
       images, sizes, strides, rates, padding, name)
 
-extract_image_patches_deprecation = deprecation.deprecated_args(
+
+@tf_export(v1=["image.extract_image_patches", "extract_image_patches"])
+@deprecation.deprecated_args(
     None, "ksizes is deprecated, use sizes instead", "ksizes")
-tf_export(v1=["image.extract_image_patches", "extract_image_patches"])(
-    extract_image_patches_deprecation(gen_array_ops.extract_image_patches))
+def extract_image_patches(  # pylint: disable=missing-docstring
+    images,
+    ksizes=None,
+    strides=None,
+    rates=None,
+    padding=None,
+    name=None,
+    sizes=None):
+  ksizes = deprecation.deprecated_argument_lookup(
+      "sizes", sizes, "ksizes", ksizes)
+  return gen_array_ops.extract_image_patches(
+      images, ksizes, strides, rates, padding, name)
+
+
+extract_image_patches.__doc__ = gen_array_ops.extract_image_patches.__doc__

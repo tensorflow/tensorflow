@@ -272,7 +272,6 @@ static PyObject* TF_GetColocationGroups(GItem item) {
     if (!s.ok()) {
       continue;
     }
-    int i = 0;
     for (const auto& arg : op_def->input_arg()) {
       if (!arg.is_ref()) {
         continue;

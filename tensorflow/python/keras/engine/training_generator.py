@@ -33,8 +33,8 @@ from tensorflow.python.keras import callbacks as cbks
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import data_utils
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 
 
@@ -46,6 +46,7 @@ def model_iteration(model,
                     callbacks=None,
                     validation_data=None,
                     validation_steps=None,
+                    validation_freq=1,
                     class_weight=None,
                     max_queue_size=10,
                     workers=1,
@@ -74,6 +75,13 @@ def model_iteration(model,
         `keras.utils.data_utils.Sequence` object or Eager Iterator or Dataset.
       validation_steps: Total number of steps (batches of samples) before
         declaring validation finished.
+      validation_freq: Only relevant if validation data is provided. Integer or
+        `collections.Container` instance (e.g. list, tuple, etc.). If an
+        integer, specifies how many training epochs to run before a new
+        validation run is performed, e.g. `validation_freq=2` runs
+        validation every 2 epochs. If a Container, specifies the epochs on
+        which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
+        validation at the end of the 1st, 2nd, and 10th epochs.
       class_weight: Dictionary mapping class indices to a weight for the class.
       max_queue_size: Integer. Maximum size for the generator queue. If
         unspecified, `max_queue_size` will default to 10.
@@ -132,7 +140,6 @@ def model_iteration(model,
       shuffle=shuffle)
 
   do_validation = validation_data is not None
-  should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   is_sequence = isinstance(generator, data_utils.Sequence)
   _validate_arguments(is_sequence, is_dataset, use_multiprocessing, workers,
                       steps_per_epoch, validation_data, validation_steps, mode,
@@ -142,12 +149,14 @@ def model_iteration(model,
       model, mode, class_weight=class_weight)
 
   # Create the queue for the generator.
-  output_generator, enqueuer = _make_enqueued_generator(
-      generator,
-      workers=workers,
-      use_multiprocessing=use_multiprocessing,
-      max_queue_size=max_queue_size,
-      shuffle=shuffle)
+  enqueuer = None
+  if not is_dataset:
+    generator, enqueuer = _make_enqueued_generator(
+        generator,
+        workers=workers,
+        use_multiprocessing=use_multiprocessing,
+        max_queue_size=max_queue_size,
+        shuffle=shuffle)
 
   num_samples_or_steps, use_steps = _get_num_samples_or_steps(
       data, steps_per_epoch)
@@ -173,9 +182,10 @@ def model_iteration(model,
   else:
     aggregator = training_utils.MetricsAggregator(True, steps_per_epoch)
 
+  should_set_learning_phase = context.executing_eagerly() and model.run_eagerly
   if should_set_learning_phase:
     old_learning_phase = backend.learning_phase()
-    backend.set_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
+    backend.set_eager_learning_phase(1 if mode == ModeKeys.TRAIN else 0)
 
   callbacks.model.stop_training = False
   callbacks._call_begin_hook(mode)
@@ -200,10 +210,30 @@ def model_iteration(model,
 
     step = 0
     while step < target_steps:
-      batch_data = _get_next_batch(output_generator, mode)
+      batch_data = _get_next_batch(generator, mode)
       if batch_data is None:
-        if not is_dataset:
+        if is_dataset:
+          # The dataset passed by the user ran out of batches.
+          # Now we know the cardinality of the dataset.
+          # If steps_per_epoch was specified, then running out of data is
+          # unexpected, so we stop training and inform the user.
+          if steps_per_epoch:
+            callbacks.model.stop_training = True
+            logging.warning(
+                'Your dataset ran out of data; interrupting training. '
+                'Make sure that your dataset can generate at least '
+                '`%s * epochs` batches (in this case, %d batches). '
+                'You may need to use the repeat() function when '
+                'building your dataset.'
+                % (steps_name, steps_per_epoch * epochs))
+          elif step > 0:
+            steps_per_epoch = step
+            aggregator.num_samples_or_steps = steps_per_epoch
+            progbar.params['steps'] = steps_per_epoch
+            progbar.progbar.target = steps_per_epoch
+        else:
           # We ran out of batches while the user passed an iterator (legacy).
+          callbacks.model.stop_training = True
           logging.warning(
               'Your dataset iterator ran out of data; '
               'interrupting training. Make sure that your iterator '
@@ -211,16 +241,6 @@ def model_iteration(model,
               'batches (in this case, %d batches). You may need to'
               'use the repeat() function when building your '
               'dataset.' % (steps_name, steps_per_epoch * epochs))
-          callbacks.model.stop_training = True
-        else:
-          # The dataset passed by the user ran out of batches.
-          # Now we know the cardinality of the dataset.
-          # assert steps_per_epoch is None
-          if step > 0:
-            steps_per_epoch = step
-            aggregator.num_samples_or_steps = steps_per_epoch
-            progbar.params['steps'] = steps_per_epoch
-            progbar.progbar.target = steps_per_epoch
         break
 
       # `batch_size` used for validation data if validation
@@ -232,13 +252,32 @@ def model_iteration(model,
       callbacks._call_batch_hook(mode, 'begin', step, batch_logs)
       progbar.on_batch_begin(step, batch_logs)
 
+      is_deferred = not model._is_compiled
       batch_outs = batch_function(*batch_data)
       if not isinstance(batch_outs, list):
         batch_outs = [batch_outs]
 
-      # Aggregate results.
       if step == 0:
         aggregator.create(batch_outs)
+
+        if is_deferred:
+          # Set callbacks params. We do this here when model is compiled only
+          # in the first iteration of this loop (deferred build scenario).
+          cbks.set_callback_parameters(
+              callbacks,
+              model,
+              do_validation=do_validation,
+              batch_size=batch_size,
+              epochs=epochs,
+              steps_per_epoch=steps_per_epoch,
+              samples=num_samples_or_steps,
+              verbose=verbose,
+              mode=mode)
+
+          progbar.params = callbacks.params
+          progbar.params['verbose'] = verbose
+
+      # Aggregate results.
       aggregator.aggregate(batch_outs)
 
       # Callbacks batch end.
@@ -257,7 +296,9 @@ def model_iteration(model,
       results = results[0]
 
     # Run the test loop every epoch during training.
-    if do_validation and not callbacks.model.stop_training:
+    if (do_validation and
+        training_utils.should_run_validation(validation_freq, epoch) and
+        not callbacks.model.stop_training):
       val_results = model_iteration(
           model,
           validation_data,
@@ -292,7 +333,7 @@ def model_iteration(model,
     enqueuer.stop()
 
   if should_set_learning_phase:
-    backend.set_learning_phase(old_learning_phase)
+    backend.set_eager_learning_phase(old_learning_phase)
 
   if mode == ModeKeys.TRAIN:
     return model.history
@@ -307,10 +348,10 @@ predict_generator = functools.partial(
     model_iteration, mode=ModeKeys.PREDICT, shuffle=False)
 
 
-def _get_next_batch(output_generator, mode):
+def _get_next_batch(generator, mode):
   """Retrieves the next batch of input data."""
   try:
-    generator_output = next(output_generator)
+    generator_output = next(generator)
   except (StopIteration, errors.OutOfRangeError):
     return None
   if not isinstance(generator_output, tuple):
@@ -400,7 +441,9 @@ def convert_to_generator_like(data,
       and may be `None` or `[None]`.
     batch_size: Used when creating a generator out of tuples of NumPy arrays or
       EagerTensors.
-    steps_per_epoch: Steps of the generator to run each epoch.
+    steps_per_epoch: Steps of the generator to run each epoch. If `None` the
+      number of steps will be read from the data (for
+      `keras.utils.data_utils.Sequence` types).
     epochs: Total number of epochs to run.
     shuffle: Whether the data should be shuffled.
 
@@ -421,7 +464,8 @@ def convert_to_generator_like(data,
   if data_utils.is_generator_or_sequence(data) or isinstance(
       data, iterator_ops.EagerIterator):
     if isinstance(data, data_utils.Sequence):
-      steps_per_epoch = len(data)
+      if steps_per_epoch is None:
+        steps_per_epoch = len(data)
     return data, steps_per_epoch
   if isinstance(data, dataset_ops.DatasetV2):
     return dataset_ops.make_one_shot_iterator(data), steps_per_epoch

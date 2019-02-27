@@ -44,6 +44,7 @@ UniqueTfLiteTensor MakeLiteTensor(const std::vector<int>& shape,
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
   tensor->data.raw = nullptr;
   tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(T), tensor.get());
   memcpy(tensor->data.raw, data.data(), data.size() * sizeof(T));
   return tensor;
@@ -62,6 +63,7 @@ UniqueTfLiteTensor MakeLiteTensor<string>(const std::vector<int>& shape,
   tensor->dims = ConvertVectorToTfLiteIntArray(shape);
   tensor->data.raw = nullptr;
   tensor->is_variable = false;
+  memset(&tensor->quantization, 0, sizeof(TfLiteQuantization));
   TfLiteTensorRealloc(data.size() * sizeof(string), tensor.get());
 
   DynamicBuffer b;
@@ -220,15 +222,6 @@ TEST(BufferMapTest, TensorFlowOverwritesTfLite) {
   EXPECT_TRUE(buffer_map.IsTensorFlowTensor(0));
   EXPECT_THAT(GetTensorData<float>(buffer_map.GetTensor(0)),
               ElementsAre(0, 0, 0, 0.123f, 0, 0));
-}
-
-TEST(BufferMapTest, Forwardable) {
-  BufferMap buffer_map;
-  EXPECT_FALSE(buffer_map.IsForwardable(0));
-  buffer_map.SetForwardable(0);
-  EXPECT_TRUE(buffer_map.IsForwardable(0));
-  buffer_map.ClearForwardable();
-  EXPECT_FALSE(buffer_map.IsForwardable(0));
 }
 
 }  // namespace

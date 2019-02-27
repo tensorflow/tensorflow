@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -436,6 +437,7 @@ class BatchNormalizationTest(test.TestCase):
       self._test_training(
           x_shape, dtype, [6], np.float32, use_gpu=False, data_format='NHWC')
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradShape1(self):
     for is_training in [True, False]:
       x_shape = [1, 1, 6, 1]
@@ -463,6 +465,7 @@ class BatchNormalizationTest(test.TestCase):
             data_format='NHWC',
             is_training=is_training)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradShape2(self):
     for is_training in [True, False]:
       x_shape = [1, 1, 6, 2]
@@ -483,6 +486,7 @@ class BatchNormalizationTest(test.TestCase):
             data_format='NHWC',
             is_training=is_training)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradShape3(self):
     for is_training in [True, False]:
       x_shape = [1, 2, 1, 6]
@@ -496,6 +500,7 @@ class BatchNormalizationTest(test.TestCase):
               data_format='NCHW',
               is_training=is_training)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradShape4(self):
     for is_training in [True, False]:
       x_shape = [5, 7, 11, 4]
@@ -523,6 +528,7 @@ class BatchNormalizationTest(test.TestCase):
             data_format='NHWC',
             is_training=is_training)
 
+  @test_util.run_deprecated_v1
   @test_util.disable_xla('This test never passed for XLA')
   def testBatchNormGradShape5(self):
     for is_training in [True, False]:
@@ -582,6 +588,7 @@ class BatchNormalizationTest(test.TestCase):
           is_training=is_training,
           err_tolerance=err_tolerance)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradGradConfig1(self):
     config = {
         'shape': [2, 3, 4, 5],
@@ -590,6 +597,7 @@ class BatchNormalizationTest(test.TestCase):
     }
     self._testBatchNormGradGrad(config)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradGradConfig2(self):
     config = {
         'shape': [2, 3, 2, 2],
@@ -598,6 +606,7 @@ class BatchNormalizationTest(test.TestCase):
     }
     self._testBatchNormGradGrad(config)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradGradConfig3(self):
     config = {
         'shape': [2, 3, 4, 5],
@@ -606,6 +615,7 @@ class BatchNormalizationTest(test.TestCase):
     }
     self._testBatchNormGradGrad(config)
 
+  @test_util.run_deprecated_v1
   def testBatchNormGradGradConfig4(self):
     config = {
         'shape': [2, 3, 2, 2],

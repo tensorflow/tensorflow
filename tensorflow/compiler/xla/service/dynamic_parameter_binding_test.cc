@@ -33,7 +33,15 @@ limitations under the License.
 
 namespace xla {
 namespace {
-class DynamicParameterBindingTest : public HloTestBase {};
+class DynamicParameterBindingTest : public HloTestBase {
+ protected:
+  // Serialize and then deserialize a binding.
+  void SerializeAndDeserialize(DynamicParameterBinding* binding) {
+    DynamicParameterBindingProto proto = binding->ToProto();
+    TF_ASSERT_OK_AND_ASSIGN(*binding,
+                            DynamicParameterBinding::CreateFromProto(proto));
+  }
+};
 
 TEST_F(DynamicParameterBindingTest, SimpleBinding) {
   // 'b' is a dynamic shape; 'a' represents the real size of b's first
@@ -56,15 +64,20 @@ ENTRY main {
       binding.Bind(DynamicParameterBinding::DynamicParameter{0, {}},
                    DynamicParameterBinding::DynamicDimension{1, {}, 0}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/1,
-                                                    /*parameter_index=*/{},
-                                                    /*dimension=*/0});
-  EXPECT_TRUE(param);
-  EXPECT_EQ(param->parameter_num, 0);
-  EXPECT_EQ(param->parameter_index, ShapeIndex({}));
-  TF_EXPECT_OK(binding.Verify(*module));
+  auto test = [&](const DynamicParameterBinding& binding) {
+    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/1,
+                                                      /*parameter_index=*/{},
+                                                      /*dimension=*/0});
+    EXPECT_TRUE(param);
+    EXPECT_EQ(param->parameter_num, 0);
+    EXPECT_EQ(param->parameter_index, ShapeIndex({}));
+    TF_EXPECT_OK(binding.Verify(*module));
+  };
+  test(binding);
+  SerializeAndDeserialize(&binding);
+  test(binding);
 }
 
 TEST_F(DynamicParameterBindingTest, TupleBinding) {
@@ -89,16 +102,21 @@ ENTRY main {
       binding.Bind(DynamicParameterBinding::DynamicParameter{0, {0}},
                    DynamicParameterBinding::DynamicDimension{0, {1}, 0}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
-                                                    /*parameter_index=*/{1},
-                                                    /*dimension=*/0});
+  auto test = [&](const DynamicParameterBinding& binding) {
+    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
+                                                      /*parameter_index=*/{1},
+                                                      /*dimension=*/0});
 
-  EXPECT_TRUE(param);
-  EXPECT_EQ(param->parameter_num, 0);
-  EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
-  TF_EXPECT_OK(binding.Verify(*module));
+    EXPECT_TRUE(param);
+    EXPECT_EQ(param->parameter_num, 0);
+    EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
+    TF_EXPECT_OK(binding.Verify(*module));
+  };
+  test(binding);
+  SerializeAndDeserialize(&binding);
+  test(binding);
 }
 
 TEST_F(DynamicParameterBindingTest, TupleBindingWithMultiDimension) {
@@ -127,26 +145,35 @@ ENTRY main {
       binding.Bind(DynamicParameterBinding::DynamicParameter{0, {0}},
                    DynamicParameterBinding::DynamicDimension{0, {1}, 1}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
-                                                    /*parameter_index=*/{1},
-                                                    /*dimension=*/0});
+  auto test = [&](const DynamicParameterBinding& binding) {
+    absl::optional<DynamicParameterBinding::DynamicParameter> param =
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
+                                                      /*parameter_index=*/{1},
+                                                      /*dimension=*/0});
 
-  EXPECT_TRUE(param);
-  EXPECT_EQ(param->parameter_num, 0);
-  EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
+    EXPECT_TRUE(param);
+    EXPECT_EQ(param->parameter_num, 0);
+    EXPECT_EQ(param->parameter_index, ShapeIndex({0}));
 
-  absl::optional<DynamicParameterBinding::DynamicParameter> param2 =
-      binding.GetBinding(
-          DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
-                                                    /*parameter_index=*/{1},
-                                                    /*dimension=*/0});
-  EXPECT_TRUE(param2);
-  EXPECT_EQ(param2->parameter_num, 0);
-  EXPECT_EQ(param2->parameter_index, ShapeIndex({0}));
+    absl::optional<DynamicParameterBinding::DynamicParameter> param2 =
 
-  TF_EXPECT_OK(binding.Verify(*module));
+        binding.GetBinding(
+            DynamicParameterBinding::DynamicDimension{/*parameter_num=*/0,
+                                                      /*parameter_index=*/{1},
+                                                      /*dimension=*/0});
+    EXPECT_TRUE(param2);
+    EXPECT_EQ(param2->parameter_num, 0);
+    EXPECT_EQ(param2->parameter_index, ShapeIndex({0}));
+    TF_EXPECT_OK(binding.Verify(*module));
+  };
+
+  test(binding);
+
+  SerializeAndDeserialize(&binding);
+
+  // Test the binding again after deserialization.
+  test(binding);
 }
 
 }  // namespace

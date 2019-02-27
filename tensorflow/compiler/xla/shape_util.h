@@ -398,7 +398,9 @@ class ShapeUtil {
   // Returns a value shape such that shape.has_layout().
   static Shape MakeShapeWithLayout(PrimitiveType element_type,
                                    absl::Span<const int64> dimensions,
-                                   absl::Span<const int64> minor_to_major);
+                                   absl::Span<const int64> minor_to_major,
+                                   absl::Span<const Tile> tiles = {},
+                                   int64 element_size_in_bits = 0);
 
   static Shape MakeShapeWithSparseLayout(PrimitiveType element_type,
                                          absl::Span<const int64> dimensions,
@@ -675,11 +677,9 @@ class ShapeUtil {
 
   template <typename FnType>
   static void ForEachIndex(const Shape& shape, const FnType& visitor_function) {
-    ForEachIndexWithStatus(shape,
-                           [&](absl::Span<const int64> indices) {
-                             return StatusOr<bool>(visitor_function(indices));
-                           })
-        .IgnoreError();
+    ForEachIndexWithStatus(shape, [&](absl::Span<const int64> indices) {
+      return StatusOr<bool>(visitor_function(indices));
+    }).IgnoreError();
   }
 
   // A parallel version of ForEachIndex(WithStatus). This can only be used if

@@ -1,0 +1,38 @@
+path: "tensorflow.distribute.cluster_resolver.GCEClusterResolver"
+tf_class {
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.gce_cluster_resolver.GCEClusterResolver\'>"
+  is_instance: "<class \'tensorflow.python.distribute.cluster_resolver.cluster_resolver.ClusterResolver\'>"
+  is_instance: "<type \'object\'>"
+  member {
+    name: "environment"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "rpc_layer"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_id"
+    mtype: "<type \'property\'>"
+  }
+  member {
+    name: "task_type"
+    mtype: "<type \'property\'>"
+  }
+  member_method {
+    name: "__init__"
+    argspec: "args=[\'self\', \'project\', \'zone\', \'instance_group\', \'port\', \'task_type\', \'task_id\', \'rpc_layer\', \'credentials\', \'service\'], varargs=None, keywords=None, defaults=[\'worker\', \'0\', \'grpc\', \'default\', \'None\'], "
+  }
+  member_method {
+    name: "cluster_spec"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "master"
+    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'rpc_layer\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "num_accelerators"
+    argspec: "args=[\'self\', \'task_type\', \'task_id\', \'config_proto\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
+  }
+}

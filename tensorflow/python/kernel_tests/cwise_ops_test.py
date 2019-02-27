@@ -595,7 +595,7 @@ class MinMaxOpTest(test.TestCase):
 
   def testScalar(self):
     x = np.random.rand(1, 3, 2) * 100.
-    y = np.asscalar(np.random.rand(1) * 100.)  # should broadcast
+    y = np.random.rand(1).item() * 100.  # should broadcast
     # dropped np.float64, int64 because TF automatically converts to 32 bit
     for t in [np.float32, np.int32]:
       self._compare(x.astype(t), t(y), use_gpu=False)

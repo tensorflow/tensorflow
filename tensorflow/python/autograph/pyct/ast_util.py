@@ -283,12 +283,17 @@ def parallel_walk(node, other):
     n = node_stack.pop()
     o = other_stack.pop()
 
-    if (not isinstance(n, (ast.AST, gast.AST)) or
-        not isinstance(o, (ast.AST, gast.AST)) or
+    if (not isinstance(n, (ast.AST, gast.AST, str)) or
+        not isinstance(o, (ast.AST, gast.AST, str)) or
         n.__class__.__name__ != o.__class__.__name__):
-      raise ValueError('inconsistent nodes: {} and {}'.format(n, o))
+      raise ValueError('inconsistent nodes: {} ({}) and {} ({})'.format(
+          n, n.__class__.__name__, o, o.__class__.__name__))
 
     yield n, o
+
+    if isinstance(n, str):
+      assert isinstance(o, str), 'The check above should have ensured this'
+      continue
 
     for f in n._fields:
       n_child = getattr(n, f, None)
@@ -315,8 +320,8 @@ def parallel_walk(node, other):
                 f, n_child, o_child))
 
 
-class FunctionDefMatcher(gast.NodeVisitor):
-  """Finds nodes that match a given function's signature."""
+class LambdaDefinitionMatcher(gast.NodeVisitor):
+  """Finds lambda nodes that match a given lambda's signature."""
 
   def __init__(self, fn):
     self.fn = fn
@@ -349,26 +354,6 @@ class FunctionDefMatcher(gast.NodeVisitor):
 
     return True
 
-  def _argspec_compatible(self, node):
-    arg_spec = tf_inspect.getfullargspec(self.fn)
-
-    node_args = tuple(self._arg_name(arg) for arg in node.args.args)
-    if len(node_args) != len(arg_spec.args) and node.args.vararg is None:
-      return False
-
-    if arg_spec.varargs is not None and node.args.vararg is None:
-      return False
-
-    if arg_spec.varkw is not None and node.args.kwarg is None:
-      return False
-
-    node_kwonlyargs = tuple(self._arg_name(arg) for arg in node.args.kwonlyargs)
-    if (len(node_kwonlyargs) != len(arg_spec.kwonlyargs) and
-        node.args.kwarg is None):
-      return False
-
-    return True
-
   def visit_Lambda(self, node):
     self.generic_visit(node)
 
@@ -379,27 +364,8 @@ class FunctionDefMatcher(gast.NodeVisitor):
 
     self.matching_nodes.append(node)
 
-  def visit_FunctionDef(self, node):
-    self.generic_visit(node)
-
-    if self.fn.__name__ != node.name:
-      return
-
-    # Decorators have the ability to modify a function's signature. They usually
-    # claim that the result is indistinguishable from the original function,
-    # but it's very difficult to fool this test. As a consequence, we relax the
-    # verification and just check that the arguments are compatible.
-    if node.decorator_list:
-      if not self._argspec_compatible(node):
-        return
-    else:
-      if not self._argspec_matches(node):
-        return
-
-    self.matching_nodes.append(node)
-
 
 def find_matching_definitions(node, f):
-  matcher = FunctionDefMatcher(f)
+  matcher = LambdaDefinitionMatcher(f)
   matcher.visit(node)
   return tuple(matcher.matching_nodes)

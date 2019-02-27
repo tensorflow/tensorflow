@@ -110,6 +110,10 @@ from tensorflow.python.keras.layers.noise import GaussianDropout
 
 # Normalization layers.
 from tensorflow.python.keras.layers.normalization import BatchNormalization
+from tensorflow.python.keras.layers.normalization import LayerNormalization
+
+# Kernelized layers.
+from tensorflow.python.keras.layers.kernelized import RandomFourierFeatures
 
 # Pooling layers.
 from tensorflow.python.keras.layers.pooling import MaxPooling1D
@@ -141,6 +145,7 @@ from tensorflow.python.keras.layers.pooling import GlobalMaxPool3D
 
 # Recurrent layers.
 from tensorflow.python.keras.layers.recurrent import RNN
+from tensorflow.python.keras.layers.recurrent import AbstractRNNCell
 from tensorflow.python.keras.layers.recurrent import StackedRNNCells
 from tensorflow.python.keras.layers.recurrent import SimpleRNNCell
 from tensorflow.python.keras.layers.recurrent import GRUCell

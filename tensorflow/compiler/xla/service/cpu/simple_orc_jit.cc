@@ -240,18 +240,7 @@ bool RegisterKnownJITSymbols() {
   REGISTER_CPU_RUNTIME_SYMBOL(ParallelForkJoin);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseInfeedBufferAfterDequeue);
   REGISTER_CPU_RUNTIME_SYMBOL(ReleaseOutfeedBufferAfterPopulation);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortPRED);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS8);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU8);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF16);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF32);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortS64);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortU64);
-  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSortF64);
+  REGISTER_CPU_RUNTIME_SYMBOL(KeyValueSort);
 
   registry->Register("__gnu_f2h_ieee", reinterpret_cast<void*>(__gnu_f2h_ieee));
   registry->Register("__gnu_h2f_ieee", reinterpret_cast<void*>(__gnu_h2f_ieee));
@@ -346,6 +335,11 @@ bool RegisterKnownJITSymbols() {
   registry->Register("__bzero", reinterpret_cast<void*>(bzero));
   registry->Register("memset_pattern16",
                      reinterpret_cast<void*>(memset_pattern16));
+#endif
+
+#ifdef MEMORY_SANITIZER
+  registry->Register("__msan_unpoison",
+                     reinterpret_cast<void*>(__msan_unpoison));
 #endif
 
   return true;

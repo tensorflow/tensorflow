@@ -7,7 +7,9 @@ licenses(["notice"])  # Apache 2.0
 
 exports_files(["LICENSE"])
 
+load("//tensorflow:tensorflow.bzl", "check_deps")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_rocm")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("//tensorflow:tensorflow.bzl", "tf_cuda_library")
 load("//tensorflow/core:platform/default/build_config_root.bzl", "if_static")
@@ -42,6 +44,7 @@ tf_cuda_library(
         "//tensorflow/stream_executor/cuda:cuda_platform_id",
         "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ] + select({
         "@local_config_cuda//cuda:darwin": ["IOKit"],
         "//conditions:default": [],
@@ -50,6 +53,7 @@ tf_cuda_library(
         "//tensorflow:using_cuda_nvcc": ["//tensorflow/stream_executor/cuda:all_runtime"],
         "//tensorflow:using_cuda_clang_with_dynamic_build": [],
         "//tensorflow:using_cuda_nvcc_with_dynamic_build": [],
+        "//tensorflow:using_rocm_hipcc": ["//tensorflow/stream_executor/rocm:all_runtime"],
         "//conditions:default": [],
     }),
 )
@@ -68,6 +72,18 @@ cc_library(
 )
 
 cc_library(
+    name = "stream_executor_rocm",
+    deps = [
+        ":stream_executor_no_cuda",
+        ":rocm",
+    ] + if_static(
+        ["//tensorflow/stream_executor/rocm:all_runtime"],
+    ) + select({
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
     name = "stream_executor_no_cuda",
     deps = [
         "//tensorflow/stream_executor",
@@ -79,6 +95,7 @@ cc_library(
         "//tensorflow/stream_executor/host:host_platform",
         "//tensorflow/stream_executor/host:host_platform_id",
         "//tensorflow/stream_executor/platform:dso_loader",
+        "//tensorflow/stream_executor/rocm:rocm_platform_id",
     ],
 )
 
@@ -265,6 +282,31 @@ cc_library(
     deps = [
         "@local_config_cuda//cuda:cudart",
     ],
+)
+
+# Check that libtensorflow_framework.so does not depend on cuda shared libraries.
+check_deps(
+    name = "libtensorflow_cuda_check_deps",
+    disallowed_deps = [
+        ":cuda",
+        "@local_config_cuda//cuda:cublas",
+        "@local_config_cuda//cuda:cuda_driver",
+        "@local_config_cuda//cuda:cudnn",
+        "@local_config_cuda//cuda:curand",
+        "@local_config_cuda//cuda:cusolver",
+    ],
+    deps = ["//tensorflow:libtensorflow_framework.so"],
+)
+
+cc_library(
+    name = "rocm",
+    data = [],
+    linkopts = select({
+        "//conditions:default": [
+            "-Wl,-rpath,../local_config_rocm/rocm/rocm/lib",
+        ],
+    }),
+    deps = [],
 )
 
 cc_library(

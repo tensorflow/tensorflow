@@ -27,7 +27,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 
 
-# TODO(b/117581999): Add eager coverage
+# TODO(b/117581999): Add eager specific test.
 class RestructuredDatasetTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1
@@ -48,10 +48,11 @@ class RestructuredDatasetTest(test_base.DatasetTestBase):
       # pylint: disable=protected-access
       new = batching._RestructuredDataset(dataset, new_types, new_shape_lists)
       # pylint: enable=protected-access
-      self.assertEqual(new_types, new.output_types)
+      self.assertEqual(new_types, dataset_ops.get_legacy_output_types(new))
       if new_shape_lists is not None:
         for expected_shape_list, shape in zip(
-            nest.flatten(new_shape_lists), nest.flatten(new.output_shapes)):
+            nest.flatten(new_shape_lists),
+            nest.flatten(dataset_ops.get_legacy_output_shapes(new))):
           if expected_shape_list is None:
             self.assertIs(None, shape.ndims)
           else:

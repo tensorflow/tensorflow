@@ -26,7 +26,9 @@ limitations under the License.
 #include "tensorflow/cc/framework/scope_internal.h"
 #include "tensorflow/cc/ops/while_loop.h"
 #include "tensorflow/cc/saved_model/loader.h"
+#include "tensorflow/core/distributed_runtime/server_lib.h"
 #include "tensorflow/core/framework/op_gen_lib.h"
+#include "tensorflow/core/kernels/logging_ops.h"
 #endif
 #include "tensorflow/c/c_api_internal.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
@@ -256,6 +258,74 @@ int64_t TF_Dim(const TF_Tensor* t, int dim_index) {
 }
 size_t TF_TensorByteSize(const TF_Tensor* t) { return t->buffer->size(); }
 void* TF_TensorData(const TF_Tensor* t) { return t->buffer->data(); }
+
+int64_t TF_TensorElementCount(const TF_Tensor* t) {
+  int64_t result = 1;
+  int rank = TF_NumDims(t);
+  for (int dim = 0; dim < rank; ++dim) {
+    result *= TF_Dim(t, dim);
+  }
+  return result;
+}
+
+// Returns the number of elements that would be present in a tensor with the
+// given shape.
+static int64_t ShapeNumElements(const int64_t* dims, int num_dims) {
+  int64_t result = 1;
+  for (int dim = 0; dim < num_dims; ++dim) {
+    result *= dims[dim];
+  }
+  return result;
+}
+
+static void UnrefIfNonNull(::tensorflow::TensorBuffer* buf) {
+  if (buf != nullptr) {
+    buf->Unref();
+  }
+}
+
+static void RefIfNonNull(::tensorflow::TensorBuffer* buf) {
+  if (buf != nullptr) {
+    buf->Ref();
+  }
+}
+
+void TF_TensorBitcastFrom(const TF_Tensor* from, TF_DataType type,
+                          TF_Tensor* to, const int64_t* new_dims,
+                          int num_new_dims, TF_Status* status) {
+  TF_SetStatus(status, TF_OK, "");
+  size_t in_size = TF_DataTypeSize(TF_TensorType(from));
+  if (in_size == 0) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "input tensor has a zero-sized data type");
+    return;
+  }
+  size_t out_size = TF_DataTypeSize(type);
+  if (out_size == 0) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "output tensor has a zero-sized data type");
+    return;
+  }
+
+  if (ShapeNumElements(new_dims, num_new_dims) * out_size !=
+      TF_TensorElementCount(from) * in_size) {
+    TF_SetStatus(status, TF_INVALID_ARGUMENT,
+                 "input tensor is not compatible with output shape");
+    return;
+  }
+
+  tensorflow::TensorShapeProto p;
+  for (int i = 0; i < num_new_dims; ++i) {
+    p.add_dim()->set_size(new_dims[i]);
+  }
+  to->shape = tensorflow::TensorShape(p);
+  to->dtype = type;
+  if (to->buffer != from->buffer) {
+    UnrefIfNonNull(to->buffer);
+    to->buffer = from->buffer;
+    RefIfNonNull(to->buffer);
+  }
+}
 
 // --------------------------------------------------------------------------
 size_t TF_StringEncode(const char* src, size_t src_len, char* dst,
@@ -572,7 +642,7 @@ TF_Tensor* TF_TensorFromTensor(const tensorflow::Tensor& src,
                       dimvec.size(), base, size, DeleteArray, base);
 }
 
-Status MessageToBuffer(const tensorflow::protobuf::Message& in,
+Status MessageToBuffer(const tensorflow::protobuf::MessageLite& in,
                        TF_Buffer* out) {
   if (out->data != nullptr) {
     return InvalidArgument("Passing non-empty TF_Buffer is invalid.");
@@ -1240,6 +1310,13 @@ void TF_SetAttrTypeList(TF_OperationDescription* desc, const char* attr_name,
   desc->node_builder.Attr(
       attr_name, ArraySlice<const DataType>(
                      reinterpret_cast<const DataType*>(values), num_values));
+}
+
+void TF_SetAttrPlaceholder(TF_OperationDescription* desc, const char* attr_name,
+                           const char* placeholder) {
+  tensorflow::AttrValue attr_value;
+  attr_value.set_placeholder(placeholder);
+  desc->node_builder.Attr(attr_name, attr_value);
 }
 
 void TF_SetAttrFuncName(TF_OperationDescription* desc, const char* attr_name,
@@ -2886,4 +2963,11 @@ void TF_DeleteServer(TF_Server* server) {
   delete server;
 #endif
 }
+
+void TF_RegisterLogListener(void (*listener)(const char*)) {
+#ifndef __ANDROID__
+  tensorflow::logging::RegisterListener(listener);
+#endif
+}
+
 }  // end extern "C"

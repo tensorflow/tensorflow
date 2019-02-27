@@ -32,11 +32,16 @@ namespace tensorflow {
 // * a constant tensor.
 // * an xla::XlaOp, representing a symbolic XLA value.
 // * a resource, e.g., a variable, represented as an XlaResource pointer.
+// * a tensor list, represented by a tuple of tensors and the list length.
 //
 // Constant tensors are mostly an optimization to avoid passing large constants
 // to XLA, but are also sometimes used to represent tensors that have no XLA
 // representation, for example, DT_STRING tensors. A canonical use case might be
 // an error message string.
+//
+// Tensor lists are very similar to xla::XlaOp, however they require some
+// specific logic around shape management since the tuples are not supported by
+// TensorFlow.
 class XlaExpression {
  public:
   enum class Kind {
@@ -44,6 +49,7 @@ class XlaExpression {
     kConstant,
     kXlaOp,
     kResource,
+    kTensorList,
   };
 
   XlaExpression();
@@ -61,6 +67,9 @@ class XlaExpression {
   // types is not 1-1, the TF type must also be provided; in general it cannot
   // be derived from the XLA type.
   static XlaExpression XlaOp(xla::XlaOp value, DataType dtype);
+
+  // Builds a tensor list expression.
+  static XlaExpression TensorList(xla::XlaOp tensor_list);
 
   // Builds a resource expression.
   static XlaExpression Resource(XlaResource* resource);
@@ -100,7 +109,8 @@ class XlaExpression {
 
   DataType dtype_ = DT_INVALID;
 
-  // The XLA handle of the expression's computation, if kind_ == kXlaOp.
+  // The XLA handle of the expression's computation, if kind_ == kXlaOp or
+  // a tuple expression if kind_ == kTensorList.
   xla::XlaOp handle_;
 
   // The value of the constant, if kind_ == kConstant.

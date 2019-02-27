@@ -96,8 +96,8 @@ TEST_P(ShapeTest, Agrees) {
   }
 }
 
-INSTANTIATE_TEST_CASE_P(AgreeBroadcast, ShapeTest,
-                        ::testing::ValuesIn(CreateShapePairs()));
+INSTANTIATE_TEST_SUITE_P(AgreeBroadcast, ShapeTest,
+                         ::testing::ValuesIn(CreateShapePairs()));
 
 static const char kNegativeValuesMessage[] =
     "Tensor shape should not include negative values";

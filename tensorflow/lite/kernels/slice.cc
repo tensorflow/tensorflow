@@ -204,6 +204,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
     case kTfLiteInt64:
       TF_LITE_SLICE(int64_t, kernel_type);
       break;
+    case kTfLiteInt8:
+      TF_LITE_SLICE(int8_t, kernel_type);
+      break;
     case kTfLiteUInt8:
       TF_LITE_SLICE(uint8_t, kernel_type);
       break;

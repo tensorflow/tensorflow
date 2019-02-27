@@ -23,7 +23,6 @@ import gast
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import ast_util
-from tensorflow.python.autograph.pyct import parser
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct.static_analysis import annos
 
@@ -173,14 +172,12 @@ class ControlFlowTransformer(converter.Base):
         s for s in created_in_body if not s.is_composite())
     basic_created_in_orelse = tuple(
         s for s in created_in_orelse if not s.is_composite())
-    if basic_created_in_body != basic_created_in_orelse:
-      raise ValueError(
-          'if statement may not initialize all variables: the true branch'
-          ' creates %s, while the false branch creates %s. Make sure all'
-          ' these variables are initialized either in both'
-          ' branches or before the if statement.' %
-          (self._fmt_symbols(basic_created_in_body),
-           self._fmt_symbols(basic_created_in_orelse)))
+
+    # These variables are defined only in a single branch. This is fine in
+    # Python so we pass them through. Another backend, e.g. Tensorflow, may need
+    # to handle these cases specially or throw an Error.
+    possibly_undefined = (set(basic_created_in_body) ^
+                          set(basic_created_in_orelse))
 
     # Alias the closure variables inside the conditional functions, to allow
     # the functions access to the respective variables.
@@ -247,10 +244,28 @@ class ControlFlowTransformer(converter.Base):
         aliased_new_names=aliased_orelse_new_names,
         body=node_orelse,
         returns=returned_from_orelse)
+    undefined_assigns = self._create_undefined_assigns(possibly_undefined)
+
     cond_expr = self._create_cond_expr(cond_results, cond_var_name, body_name,
                                        orelse_name)
 
-    return cond_assign + body_def + orelse_def + cond_expr
+    return (undefined_assigns
+            + cond_assign
+            + body_def
+            + orelse_def
+            + cond_expr)
+
+  def _create_undefined_assigns(self, undefined_symbols):
+    assignments = []
+    for s in undefined_symbols:
+      template = '''
+        var = ag__.Undefined(symbol_name)
+      '''
+      assignments += templates.replace(
+          template,
+          var=s,
+          symbol_name=gast.Str(s.ssf()))
+    return assignments
 
   def _get_loop_state(self, node):
     body_scope = anno.getanno(node, annos.NodeAnno.BODY_SCOPE)
@@ -265,26 +280,15 @@ class ControlFlowTransformer(converter.Base):
     # the loop state, regardless of whether they are later used or not.
     loop_state = body_scope.modified & live_in
 
-    undefined_lives = loop_state - defined_in
+    # Variable that are used or defined inside the loop, but not defined
+    # before entering the loop
+    undefined_lives = ((loop_state - defined_in)
+                       | ((body_scope.modified - live_in) & live_out))
     # Only simple variables must be defined. The composite ones will be
     # implicitly checked at runtime.
     undefined_simple_lives = {v for v in undefined_lives if v.is_simple()}
-    if undefined_simple_lives:
-      raise NameError(
-          'cannot convert loop: it includes symbols that are undefined'
-          ' when entering the loop: {}'.format(
-              self._fmt_symbols(undefined_simple_lives)))
 
-    live_defs_in_loop = (body_scope.modified - live_in) & live_out
-    if live_defs_in_loop:
-      # TODO(mdan): Include reference to explanation why.
-      raise NotImplementedError(
-          'cannot convert loop: it includes symbols that are defined'
-          ' inside the loop, but used later: {}. To fix, initialize'
-          ' these symbols before the loop'.format(
-              self._fmt_symbols(live_defs_in_loop)))
-
-    return loop_state, reserved_symbols
+    return loop_state, reserved_symbols, undefined_simple_lives
 
   def _state_constructs(self, loop_state, reserved_symbols):
     loop_state = list(loop_state)
@@ -297,19 +301,18 @@ class ControlFlowTransformer(converter.Base):
         if str(name) != ssf
     }
 
+    state_ast_tuple = gast.Tuple([n.ast() for n in loop_state], None)
+
     if len(loop_state) == 1:
       loop_state = loop_state[0]
       state_ssf = state_ssf[0]
-      state_ast_tuple = loop_state
-    else:
-      state_ast_tuple = gast.Tuple([n.ast() for n in loop_state], None)
 
     return loop_state, state_ssf, state_ast_tuple, ssf_map
 
   def visit_While(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undef = self._get_loop_state(node)
 
     # Note: one might expect we can dispatch based on the loop condition.
     # But because that is dependent on the state, it cannot be evaluated ahead
@@ -327,8 +330,7 @@ class ControlFlowTransformer(converter.Base):
     cond_scope = anno.getanno(node, annos.NodeAnno.COND_SCOPE)
     cond_closure = set()
     for s in cond_scope.read:
-      cond_closure.update(s.support_set)
-    cond_closure -= loop_state
+      cond_closure |= s.support_set
 
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
@@ -374,67 +376,108 @@ class ControlFlowTransformer(converter.Base):
           extra_deps=tuple(s.ast() for s in cond_closure),
       )
 
-    return node
+    undefined_assigns = self._create_undefined_assigns(possibly_undef)
+    return undefined_assigns + node
+
+  def _create_for_loop_early_stopping(self, loop_state, state_ssf,
+                                      state_ast_tuple, original_node,
+                                      extra_test_name, extra_test,
+                                      body_name, loop_body):
+    """Create node for for-loop with early stopping (e.g. break or return)."""
+    template = """
+      def extra_test_name(state_ssf):
+        return extra_test_expr
+      def body_name(loop_vars, state_ssf):
+        # Workaround for PEP-3113
+        iterate = loop_vars
+        body
+        return state_ssf,
+      state_ast_tuple = ag__.for_stmt(
+          iter_, extra_test_name, body_name, (state,))
+    """
+    return templates.replace(
+        template,
+        state=loop_state,
+        state_ssf=state_ssf,
+        state_ast_tuple=state_ast_tuple,
+        iter_=original_node.iter,
+        iterate=original_node.target,
+        extra_test_name=extra_test_name,
+        extra_test_expr=extra_test,
+        body_name=body_name,
+        body=loop_body)
+
+  def _create_for_loop_with_state(self, loop_state, state_ssf, state_ast_tuple,
+                                  original_node, body_name, loop_body):
+    """Create node for for-loop with loop-carried state, no early stopping."""
+    template = """
+      def body_name(loop_vars, state_ssf):
+        # Workaround for PEP-3113
+        iterate = loop_vars
+        body
+        return state_ssf,
+      state_ast_tuple = ag__.for_stmt(
+          iter_, None, body_name, (state,))
+    """
+    return templates.replace(
+        template,
+        state=loop_state,
+        state_ssf=state_ssf,
+        state_ast_tuple=state_ast_tuple,
+        iter_=original_node.iter,
+        iterate=original_node.target,
+        body_name=body_name,
+        body=loop_body)
+
+  def _create_for_loop_without_state(self, original_node, body_name, loop_body):
+    """Create node for for-loop with loop-carried state, no early stopping."""
+    template = """
+      def body_name(loop_vars):
+        # Workaround for PEP-3113
+        iterate = loop_vars
+        body
+        return ()
+      ag__.for_stmt(iter_, None, body_name, ())
+    """
+    return templates.replace(
+        template,
+        iter_=original_node.iter,
+        iterate=original_node.target,
+        body_name=body_name,
+        body=loop_body)
 
   def visit_For(self, node):
     self.generic_visit(node)
 
-    loop_state, reserved_symbols = self._get_loop_state(node)
+    loop_state, reserved_symbols, possibly_undef = self._get_loop_state(node)
     loop_state, state_ssf, state_ast_tuple, ssf_map = self._state_constructs(
         loop_state, reserved_symbols)
     node_body = ast_util.rename_symbols(node.body, ssf_map)
-    if anno.hasanno(node, 'extra_test'):
-      extra_test = anno.getanno(node, 'extra_test')
-      extra_test = ast_util.rename_symbols(extra_test, ssf_map)
-    else:
-      extra_test = parser.parse_expression('True')
+    body_name = self.ctx.namer.new_symbol('loop_body', reserved_symbols)
 
+    has_extra_test = anno.hasanno(node, 'extra_test')
     if loop_state:
-      template = """
-        def extra_test_name(state_ssf):
-          return extra_test_expr
-        def body_name(loop_vars, state_ssf):
-          # Workaround for PEP-3113
-          iterate = loop_vars
-          body
-          return state_ssf,
-        state_ast_tuple = ag__.for_stmt(
-            iter_, extra_test_name, body_name, (state,))
-      """
-      node = templates.replace(
-          template,
-          state=loop_state,
-          state_ssf=state_ssf,
-          state_ast_tuple=state_ast_tuple,
-          iter_=node.iter,
-          iterate=node.target,
-          extra_test_name=self.ctx.namer.new_symbol('extra_test',
-                                                    reserved_symbols),
-          extra_test_expr=extra_test,
-          body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
-          body=node_body)
+      if has_extra_test:
+        # Loop with early stopping (e.g. break or return)
+        extra_test = anno.getanno(node, 'extra_test')
+        extra_test = ast_util.rename_symbols(extra_test, ssf_map)
+        extra_test_name = self.ctx.namer.new_symbol('extra_test',
+                                                    reserved_symbols)
+        node = self._create_for_loop_early_stopping(
+            loop_state, state_ssf, state_ast_tuple, node, extra_test_name,
+            extra_test, body_name, node_body)
+      else:
+        # Loop with loop-carried state and no early stopping
+        node = self._create_for_loop_with_state(
+            loop_state, state_ssf, state_ast_tuple, node, body_name, node_body)
     else:
-      template = """
-        def extra_test_name():
-          return extra_test_expr
-        def body_name(loop_vars):
-          # Workaround for PEP-3113
-          iterate = loop_vars
-          body
-          return ()
-        ag__.for_stmt(iter_, extra_test_name, body_name, ())
-      """
-      node = templates.replace(
-          template,
-          iter_=node.iter,
-          iterate=node.target,
-          extra_test_name=self.ctx.namer.new_symbol('extra_test',
-                                                    reserved_symbols),
-          extra_test_expr=extra_test,
-          body_name=self.ctx.namer.new_symbol('loop_body', reserved_symbols),
-          body=node_body)
+      # Loop with no loop-carried state and no early stopping
+      assert not has_extra_test, ('Early stoppiong (e.g. break and/or return) '
+                                  'should create state variables.')
+      node = self._create_for_loop_without_state(node, body_name, node_body)
 
-    return node
+    undefined_assigns = self._create_undefined_assigns(possibly_undef)
+    return undefined_assigns + node
 
 
 def transform(node, ctx):

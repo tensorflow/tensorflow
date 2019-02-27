@@ -20,7 +20,6 @@ from __future__ import print_function
 
 import contextlib
 import copy
-import functools
 import threading
 
 from tensorflow.python import pywrap_tensorflow
@@ -214,15 +213,16 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
                      kwargs["name"])
   elif synchronization == variable_scope.VariableSynchronization.ON_READ:
     # Variables that are to be synced on read are replica local.
-    is_replica_local = True
+    is_sync_on_read = True
     kwargs["trainable"] = False
   elif (synchronization == variable_scope.VariableSynchronization.ON_WRITE or
         synchronization == variable_scope.VariableSynchronization.AUTO):
     # `AUTO` synchronization for `MirroredStrategy` is `ON_WRITE`.
-    is_replica_local = False
+    is_sync_on_read = False
   else:
-    raise ValueError("Invalid variable synchronization mode: " +
-                     synchronization + " for variable: " + kwargs["name"])
+    raise ValueError(
+        "Invalid variable synchronization mode: %s for variable: %s" %
+        (synchronization, kwargs["name"]))
 
   # Get aggregation value
   aggregation = kwargs.pop("aggregation",
@@ -233,8 +233,9 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
       variable_scope.VariableAggregation.MEAN,
       variable_scope.VariableAggregation.ONLY_FIRST_REPLICA
   ):
-    raise ValueError("Invalid variable aggregation mode: " + aggregation +
-                     " for variable: " + kwargs["name"])
+    raise ValueError(
+        "Invalid variable aggregation mode: %s for variable: %s" %
+        (aggregation, kwargs["name"]))
 
   # Ignore user-specified caching device, not needed for mirrored variables.
   kwargs.pop("caching_device", None)
@@ -246,8 +247,8 @@ def _create_mirrored_variable(strategy, device_map, logical_device,  # pylint: d
     devices = device_map.logical_to_actual_devices(logical_device)
     value_list = real_mirrored_creator(devices, *args, **kwargs)
 
-    if is_replica_local:
-      result = values.ReplicaLocalVariable(
+    if is_sync_on_read:
+      result = values.SyncOnReadVariable(
           strategy, device_map, value_list, aggregation,
           logical_device=logical_device)
     else:
@@ -414,7 +415,7 @@ class MirroredStrategy(distribute_lib.DistributionStrategy):
   This strategy uses one replica per device and sync replication for its
   multi-GPU version.
 
-  The multi-worker version will be added in the fture.
+  The multi-worker version will be added in the future.
 
   Args:
     devices: a list of device strings.
@@ -455,7 +456,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     assert devices, "Must specify at least one device."
     devices = tuple(device_util.resolve(d) for d in devices)
     assert len(set(devices)) == len(devices), (
-        "No duplicates allowed in `devices` argument: %s" % devices)
+        "No duplicates allowed in `devices` argument: %s" % (devices,))
     # TODO(josh11b): Require at least 2 devices?
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(self._device_map)
@@ -532,7 +533,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
                   init_value = value_list[0].initial_value
                   return array_ops.identity(init_value)
             kwargs["initial_value"] = initial_value_fn
-          with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+          with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
             # Don't record operations (e.g. other variable reads) during
             # variable creation.
             with tape.stop_recording():
@@ -547,17 +548,6 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_distributed_variable(colocate_with_variable, self)
-
-  def _distribute_dataset(self, dataset_fn):
-    if self._local_mode:
-      worker_index = 0
-      return input_lib.PerReplicaDataset(
-          self._call_dataset_fn(dataset_fn), self._input_workers, worker_index)
-    else:
-      return input_lib.MultiWorkerDataset(
-          functools.partial(self._call_dataset_fn, dataset_fn),
-          self._input_workers,
-          auto_shard=False)
 
   def _make_dataset_iterator(self, dataset):
     return input_lib.DatasetIterator(
@@ -729,7 +719,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
 
   def read_var(self, replica_local_var):
     """Read the aggregate value of a replica-local variable."""
-    if isinstance(replica_local_var, values.ReplicaLocalVariable):
+    if isinstance(replica_local_var, values.SyncOnReadVariable):
       return replica_local_var._get_cross_replica()  # pylint: disable=protected-access
     assert isinstance(replica_local_var, values.Mirrored)
     return array_ops.identity(replica_local_var.get())
@@ -784,8 +774,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   def _global_batch_size(self):
     """`make_dataset_iterator` and `make_numpy_iterator` use global batch size.
 
-    `distribute_dataset` and `make_input_fn_iterator` assume per-replica
-    batching.
+    `make_input_fn_iterator` assumes per-replica batching.
 
     Returns:
       Boolean.
@@ -864,7 +853,7 @@ class _MirroredReplicaThread(threading.Thread):
           _enter_graph(self._init_graph, self._init_in_eager), \
           _enter_graph(self.graph, self.in_eager,
                        self._variable_creator_stack), \
-          context.context().device_policy(self.context_device_policy), \
+          context.device_policy(self.context_device_policy), \
           MirroredReplicaContext(self.distribution, constant_op.constant(
               self.replica_id, dtypes.int32)), \
           ops.device(self.device_map.logical_to_actual_devices(0)[

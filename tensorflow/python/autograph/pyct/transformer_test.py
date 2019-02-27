@@ -28,14 +28,15 @@ from tensorflow.python.platform import test
 
 class TransformerTest(test.TestCase):
 
-  def _simple_source_info(self):
-    return transformer.EntityInfo(
+  def _simple_context(self):
+    entity_info = transformer.EntityInfo(
         source_code=None,
         source_file=None,
         namespace=None,
         arg_values=None,
         arg_types=None,
         owner_type=None)
+    return transformer.Context(entity_info)
 
   def test_entity_scope_tracking(self):
 
@@ -52,7 +53,7 @@ class TransformerTest(test.TestCase):
         anno.setanno(node, 'enclosing_entities', self.enclosing_entities)
         return self.generic_visit(node)
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def test_function():
       a = 0
@@ -126,7 +127,7 @@ class TransformerTest(test.TestCase):
         self.state[CondState].exit()
         return node
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def test_function(a):
       a = 1
@@ -192,7 +193,7 @@ class TransformerTest(test.TestCase):
       def visit_For(self, node):
         return self._annotate_result(node)
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def test_function(a):
       """Docstring."""
@@ -231,7 +232,7 @@ class TransformerTest(test.TestCase):
         self.exit_local_scope()
         return node
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     def no_exit(a):
       if a > 0:
@@ -270,7 +271,7 @@ class TransformerTest(test.TestCase):
       z = y
       return z
 
-    tr = TestTransformer(self._simple_source_info())
+    tr = TestTransformer(self._simple_context())
 
     node, _ = parser.parse_entity(test_function)
     node = tr.visit(node)
@@ -301,7 +302,7 @@ class TransformerTest(test.TestCase):
       if x > 0:
         return x
 
-    tr = BrokenTransformer(self._simple_source_info())
+    tr = BrokenTransformer(self._simple_context())
 
     node, _ = parser.parse_entity(test_function)
     with self.assertRaises(ValueError) as cm:
@@ -332,7 +333,7 @@ class TransformerTest(test.TestCase):
       if x > 0:
         return x
 
-    tr = BrokenTransformer(self._simple_source_info())
+    tr = BrokenTransformer(self._simple_context())
 
     node, _ = parser.parse_entity(test_function)
     with self.assertRaises(ValueError) as cm:

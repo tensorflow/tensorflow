@@ -115,7 +115,6 @@ void BuildConstNode(std::initializer_list<int64_t> shape,
     s->add_dim()->set_size(d);
   }
 
-  // TODO(ahentz): also need to test via tensor_content()
   switch (dtype) {
     case DT_FLOAT:
       for (int64_t i = 0; i < num_elements; ++i) {
@@ -257,8 +256,8 @@ std::vector<tensorflow::DataType> TestTypes() {
   return {DT_FLOAT, DT_INT32, DT_INT64, DT_BOOL, DT_QUINT8, DT_COMPLEX64};
 }
 
-INSTANTIATE_TEST_CASE_P(ShapeImportTest, ShapeImportTest,
-                        ::testing::ValuesIn(TestTypes()));
+INSTANTIATE_TEST_SUITE_P(ShapeImportTest, ShapeImportTest,
+                         ::testing::ValuesIn(TestTypes()));
 
 class ContentImportTest : public ::testing::Test {
  public:
@@ -385,6 +384,127 @@ std::vector<std::pair<tensorflow::DataType, ArrayDataType>> UnaryTestTypes() {
           {DT_INT64, ArrayDataType::kInt64}};
 }
 
+class TensorContentTest : public ::testing::Test {
+ public:
+  template <ArrayDataType T>
+  std::vector<DataType<T>> ImportAndGetData(const NodeDef& node) {
+    Model model;
+    auto status = ImportNode(node, &model);
+    CHECK(status.ok()) << status.error_message();
+    const auto& nodearray = model.GetArray("Node1");
+    return nodearray.GetBuffer<T>().data;
+  }
+  template <class T>
+  void NodeWithTensorContent(std::initializer_list<int64_t> shape,
+                             tensorflow::DataType dtype, int64_t num_elements,
+                             NodeDef* node) {
+    node->set_op("Const");
+    node->set_name("Node1");
+
+    // An attribute describing the type of this const node.
+    AttrValue dtype_attr;
+    SetAttrValue(dtype, &dtype_attr);
+    (*node->mutable_attr())["dtype"] = dtype_attr;
+
+    auto allocated_content = absl::make_unique<T[]>(num_elements);
+
+    // An attribute describing the content of this const node.
+    tensorflow::TensorProto t;
+    t.set_dtype(dtype);
+    auto* s = t.mutable_tensor_shape();
+    for (const auto& d : shape) {
+      s->add_dim()->set_size(d);
+    }
+
+    switch (dtype) {
+      case DT_FLOAT:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i / 10000.0 + 1;
+        }
+        break;
+      case DT_INT32:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i % std::numeric_limits<int>::max() + 1;
+        }
+        break;
+      case DT_QUINT8:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i % std::numeric_limits<uint8_t>::max() + 1;
+        }
+        break;
+      case DT_INT64:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = i + 1;
+        }
+        break;
+      case DT_STRING:
+        break;
+      case DT_BOOL:
+        for (int64_t i = 0; i < num_elements; ++i) {
+          allocated_content[i] = ((i % 2) == 0);
+        }
+        break;
+      default:
+        break;
+    }
+    t.set_tensor_content(
+        string(reinterpret_cast<const char*>(allocated_content.get()),
+               num_elements * sizeof(T)));
+
+    AttrValue value_attr;
+    SetAttrValue(t, &value_attr);
+    (*node->mutable_attr())["value"] = value_attr;
+
+    allocated_content.reset();
+  }
+};
+
+TEST_F(TensorContentTest, Int64) {
+  constexpr ArrayDataType kType = ArrayDataType::kInt64;
+
+  NodeDef node;
+  NodeWithTensorContent<int64_t>({1, 2, 3}, DT_INT64, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+}
+
+TEST_F(TensorContentTest, Int32) {
+  constexpr ArrayDataType kType = ArrayDataType::kInt32;
+
+  NodeDef node;
+  NodeWithTensorContent<int>({1, 2, 3}, DT_INT32, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+}
+
+TEST_F(TensorContentTest, Float) {
+  constexpr ArrayDataType kType = ArrayDataType::kFloat;
+
+  NodeDef node;
+  NodeWithTensorContent<float>({1, 2, 3}, DT_FLOAT, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node),
+              ElementsAre(1.0000, 1.0001, 1.0002, 1.0003, 1.0004, 1.0005));
+}
+
+TEST_F(TensorContentTest, Quint8) {
+  constexpr ArrayDataType kType = ArrayDataType::kUint8;
+
+  NodeDef node;
+  NodeWithTensorContent<uint8_t>({1, 2, 3}, DT_QUINT8, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 2, 3, 4, 5, 6));
+}
+
+TEST_F(TensorContentTest, Bool) {
+  constexpr ArrayDataType kType = ArrayDataType::kBool;
+
+  NodeDef node;
+  NodeWithTensorContent<bool>({1, 2, 3}, DT_BOOL, 6, &node);
+
+  EXPECT_THAT(ImportAndGetData<kType>(node), ElementsAre(1, 0, 1, 0, 1, 0));
+}
+
 class TypeImportTest : public ::testing::TestWithParam<
                            std::pair<tensorflow::DataType, ArrayDataType>> {
  protected:
@@ -418,8 +538,8 @@ TEST_P(TypeImportTest, BasicTypeInference) {
           model.operators[0].get());
   ASSERT_THAT(op->output_data_types, ::testing::ElementsAre(GetParam().second));
 }
-INSTANTIATE_TEST_CASE_P(BasicTypeInference, TypeImportTest,
-                        ::testing::ValuesIn(UnaryTestTypes()));
+INSTANTIATE_TEST_SUITE_P(BasicTypeInference, TypeImportTest,
+                         ::testing::ValuesIn(UnaryTestTypes()));
 
 TEST(ImportTest, TypeInferenceWithFixedOutputType) {
   // Create an op that has a fixed output type (bool).

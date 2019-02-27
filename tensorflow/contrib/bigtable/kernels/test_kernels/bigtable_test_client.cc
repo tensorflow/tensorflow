@@ -335,6 +335,17 @@ grpc::Status BigtableTestClient::ReadModifyWriteRow(
   return grpc::Status(grpc::StatusCode::UNIMPLEMENTED,
                       "ReadModifyWriteRow not implemented.");
 }
+std::unique_ptr<grpc::ClientAsyncResponseReaderInterface<
+    google::bigtable::v2::ReadModifyWriteRowResponse>>
+BigtableTestClient::AsyncReadModifyWriteRow(
+    grpc::ClientContext* context,
+    google::bigtable::v2::ReadModifyWriteRowRequest const& request,
+    grpc::CompletionQueue* cq) {
+  LOG(WARNING) << "Call to AsyncReadModifyWriteRow:" << __func__
+               << "(); this will likely cause a crash!";
+  return nullptr;
+}
+
 std::unique_ptr<
     grpc::ClientReaderInterface<google::bigtable::v2::ReadRowsResponse>>
 BigtableTestClient::ReadRows(
@@ -405,6 +416,17 @@ BigtableTestClient::AsyncCheckAndMutateRow(
     grpc::ClientContext* context,
     const google::bigtable::v2::CheckAndMutateRowRequest& request,
     grpc::CompletionQueue* cq) {
+  LOG(WARNING) << "Call to InMemoryDataClient::" << __func__
+               << "(); this will likely cause a crash!";
+  return nullptr;
+}
+
+std::unique_ptr<
+    grpc::ClientAsyncReaderInterface<google::bigtable::v2::ReadRowsResponse>>
+BigtableTestClient::AsyncReadRows(
+    grpc::ClientContext* context,
+    const google::bigtable::v2::ReadRowsRequest& request,
+    grpc::CompletionQueue* cq, void* tag) {
   LOG(WARNING) << "Call to InMemoryDataClient::" << __func__
                << "(); this will likely cause a crash!";
   return nullptr;

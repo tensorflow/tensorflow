@@ -35,8 +35,6 @@ class BiasAddTest(test.TestCase):
 
   def _npBias(self, inputs, bias):
     assert len(bias.shape) == 1
-    print(inputs.shape)
-    print(bias.shape)
     assert inputs.shape[-1] == bias.shape[0]
     return inputs + bias.reshape(([1] * (len(inputs.shape) - 1)) +
                                  [bias.shape[0]])

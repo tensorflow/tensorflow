@@ -17,53 +17,26 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import time
-
-from tensorflow.python.client import session
+from tensorflow.python.data.benchmarks import benchmark_base
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.platform import test
-
-_NUMPY_RANDOM_SEED = 42
 
 
-class RangeBenchmark(test.Benchmark):
+class RangeBenchmark(benchmark_base.DatasetBenchmarkBase):
   """Benchmarks for `tf.data.Dataset.range()`."""
 
-  def _benchmarkRangeHelper(self, modeling_enabled):
-    num_elements = 10000000 if modeling_enabled else 50000000
-    options = dataset_ops.Options()
-    options.experimental_autotune = modeling_enabled
-
-    # Use `Dataset.skip()` and `Dataset.take()` to perform the iteration in
-    # C++, and focus on the minimal overheads (excluding Python invocation
-    # costs).
-    dataset = dataset_ops.Dataset.range(num_elements).skip(
-        num_elements - 1).take(1).with_options(options)
-    iterator = dataset_ops.make_initializable_iterator(dataset)
-    next_element = iterator.get_next()
-
-    with session.Session() as sess:
-      # Run once to warm up the session caches.
-      sess.run(iterator.initializer)
-      sess.run(next_element)
-
-      # Run once for timing.
-      sess.run(iterator.initializer)
-      start = time.time()
-      sess.run(next_element)
-      end = time.time()
-
-      time_per_element = (end - start) / num_elements
-      print("Average time per element (%s modeling): %f nanoseconds" % (
-          "with" if modeling_enabled else "without", time_per_element * 1e9))
-      self.report_benchmark(iters=num_elements, wall_time=time_per_element,
-                            name="benchmark_tf_data_dataset_range%s"
-                            % ("_with_modeling" if modeling_enabled else ""))
-
-  def benchmarkRange(self):
+  def benchmark_range(self):
     for modeling_enabled in [False, True]:
-      self._benchmarkRangeHelper(modeling_enabled)
+      num_elements = 10000000 if modeling_enabled else 50000000
+      options = dataset_ops.Options()
+      options.experimental_autotune = modeling_enabled
+      dataset = dataset_ops.Dataset.range(num_elements)
+      dataset = dataset.with_options(options)
+
+      self.run_and_report_benchmark(
+          dataset,
+          num_elements=num_elements,
+          name="modeling_%s" % ("on" if modeling_enabled else "off"))
 
 
 if __name__ == "__main__":
-  test.main()
+  benchmark_base.test.main()

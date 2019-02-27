@@ -256,7 +256,7 @@ class Conv2DTest(test.TestCase):
       tensors.append(_SetupVal(data_format, use_gpu))
     values = self.evaluate(tensors)
     for i in range(1, len(values)):
-      self.assertAllClose(values[0], values[i], rtol=1e-5, atol=1e-5)
+      self.assertAllClose(values[0], values[i], rtol=1e-3, atol=1e-3)
 
   def _ComputeReferenceDilatedConv(self, tensor_in_sizes, filter_in_sizes,
                                    stride, dilation, padding, data_format,
@@ -297,7 +297,7 @@ class Conv2DTest(test.TestCase):
     return expected, computed
 
   def _VerifyDilatedConvValues(self, tensor_in_sizes, filter_in_sizes, strides,
-                               padding, dilations):
+                               padding, dilations, rtol=1e-4):
     expected_results = []
     computed_results = []
     for data_format, use_gpu in GetTestConfigs():
@@ -313,7 +313,7 @@ class Conv2DTest(test.TestCase):
         tf_logging.debug("expected = %s", e_value)
         tf_logging.debug("actual = %s", c_value)
         self.assertAllClose(
-            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=1e-4)
+            e_value.flatten(), c_value.flatten(), atol=tolerance, rtol=rtol)
 
   def _VerifyValues(self,
                     tensor_in_sizes,
@@ -1703,6 +1703,7 @@ class Conv2DTest(test.TestCase):
         tf_logging.debug("conv_2d gradient error = %s", err)
         self.assertLess(err, max_err)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideOne(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1720,6 +1721,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideOne(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1737,6 +1739,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideTwo(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1754,6 +1757,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideTwo(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1771,6 +1775,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideThree(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1788,6 +1793,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientValidPaddingStrideThree(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1805,6 +1811,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideOne(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1822,6 +1829,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideOne(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1839,6 +1847,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideTwo(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1856,6 +1865,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideTwo(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1873,6 +1883,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testInputGradientSamePaddingStrideThree(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1890,6 +1901,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStrideThree(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1907,6 +1919,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientSamePaddingStride2x1(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1924,6 +1937,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testInputGradientKernelSizeMatchesInputSize(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -1941,6 +1955,7 @@ class Conv2DTest(test.TestCase):
           data_format=data_format,
           use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testFilterGradientKernelSizeMatchesInputSize(self):
     for (data_format, use_gpu) in GetTestConfigs():
       self.ConstructAndTestGradient(
@@ -2200,6 +2215,7 @@ class Conv2DTest(test.TestCase):
             data_format=data_format,
             use_gpu=use_gpu)
 
+  @test_util.run_deprecated_v1
   def testShapeFunctionEdgeCases(self):
     # All shapes unknown.
     c1 = nn_ops.conv2d(
@@ -2286,6 +2302,8 @@ class Conv2DTest(test.TestCase):
           strides=[1, 1, 1, 1],
           padding=[0, 0, 0, 0])
 
+  @test_util.run_deprecated_v1
+  @test_util.disable_xla("b/123337890")  # Error messages differ
   def testOpEdgeCases(self):
     with self.cached_session() as sess:
       # Illegal strides.
@@ -2891,7 +2909,8 @@ def GetInceptionFwdDilatedConvTest(input_size, filter_size, stride, padding):
           filter_in_sizes=filter_size,
           strides=[stride, stride],
           dilations=[2, 2],
-          padding=padding)
+          padding=padding,
+          rtol=5e-4)
 
   return Test
 

@@ -20,9 +20,9 @@ from __future__ import print_function
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -112,13 +112,21 @@ def get_reachable_from_inputs(inputs, targets=None):
 
   while queue:
     x = queue.pop()
+    if isinstance(x, tuple(_user_convertible_tensor_types)):
+      # Can't find consumers of user-specific types.
+      continue
+
     if isinstance(x, ops.Operation):
       outputs = x.outputs[:] or []
       outputs += x._control_outputs  # pylint: disable=protected-access
     elif isinstance(x, variables.Variable):
       outputs = [x.op]
     elif tensor_util.is_tensor(x):
-      outputs = x.consumers()
+      try:
+        outputs = x.consumers()
+      except AttributeError:
+        # `RaggedTensors` have no `.consumers()` method.
+        continue
     else:
       raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
 
@@ -313,7 +321,9 @@ def is_symbolic_tensor(tensor):
   """
   if isinstance(tensor, variables.Variable):
     return not context.executing_eagerly()
-  if isinstance(tensor, (ops.Tensor, sparse_tensor.SparseTensor)):
+  if isinstance(tensor, composite_tensor.CompositeTensor):
+    return tensor._is_graph_tensor  # pylint: disable=protected-access
+  if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
   if isinstance(tensor, tuple(_user_convertible_tensor_types)):
     return hasattr(ops.convert_to_tensor(tensor), 'graph')
@@ -351,3 +361,7 @@ def register_symbolic_tensor_type(cls):
   """
   global _user_convertible_tensor_types
   _user_convertible_tensor_types.add(cls)
+
+
+def is_tensor_or_variable(x):
+  return tensor_util.is_tensor(x) or isinstance(x, variables.Variable)

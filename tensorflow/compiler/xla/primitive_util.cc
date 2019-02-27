@@ -18,10 +18,26 @@ limitations under the License.
 #include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "tensorflow/compiler/xla/util.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
 namespace primitive_util {
+
+int SignificandWidth(PrimitiveType type) {
+  switch (type) {
+    case F32:
+      return std::numeric_limits<float>::digits;
+    case F64:
+      return std::numeric_limits<double>::digits;
+    case BF16:
+      return kBFloat16MantissaBits + 1;
+    case F16:
+      return 11;
+    default:
+      LOG(FATAL) << "Not a floating data type " << type;
+  }
+}
 
 bool IsFloatingPointType(PrimitiveType type) {
   return type == F16 || type == F32 || type == F64 || type == BF16;
@@ -78,6 +94,21 @@ int BitWidth(PrimitiveType type) {
 
     default:
       LOG(FATAL) << "Unhandled primitive type " << type;
+  }
+}
+
+xla::PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth) {
+  switch (src_bitwidth) {
+    case 8:
+      return xla::U8;
+    case 16:
+      return xla::U16;
+    case 32:
+      return xla::U32;
+    case 64:
+      return xla::U64;
+    default:
+      return xla::PRIMITIVE_TYPE_INVALID;
   }
 }
 

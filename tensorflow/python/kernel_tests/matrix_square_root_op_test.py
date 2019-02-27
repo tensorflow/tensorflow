@@ -114,7 +114,7 @@ class SquareRootOpTest(test.TestCase):
       sqrt2 = gen_linalg_ops.matrix_square_root(square2)
       all_ops = [sqrt1, sqrt2]
       sqrt = self.evaluate(all_ops)
-      self.assertAllEqual(sqrt[0], sqrt[1])
+      self.assertAllClose(sqrt[0], sqrt[1])
 
 
 if __name__ == "__main__":

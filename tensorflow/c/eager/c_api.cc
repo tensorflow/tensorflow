@@ -356,6 +356,8 @@ TFE_TensorHandle* TFE_NewTensorHandle(TF_Tensor* t, TF_Status* status) {
 
 void TFE_DeleteTensorHandle(TFE_TensorHandle* h) {
   if (h == nullptr) return;
+  VLOG(1) << "Deleting tensor handle " << h << " with internal handle "
+          << h->handle;
   if (h->handle) {
     h->handle->Unref();
   }
@@ -712,6 +714,7 @@ void TFE_OpSetAttrFunctionList(TFE_Op* op, const char* attr_name,
 
 void TFE_Execute(TFE_Op* op, TFE_TensorHandle** retvals, int* num_retvals,
                  TF_Status* status) {
+  VLOG(1) << "Calling TFE_Execute() on op " << op;
   tensorflow::gtl::InlinedVector<tensorflow::TensorHandle*, 2> handle_retvals(
       *num_retvals);
   status->status =
@@ -754,12 +757,18 @@ void TFE_ContextAddFunction(TFE_Context* ctx, TF_Function* function,
   status->status = ctx->context.AddFunctionDef(function->fdef);
 }
 
+unsigned char TFE_ContextHasFunction(TFE_Context* ctx, const char* name) {
+  return ctx->context.FindFunctionDef(name) != nullptr;
+}
+
 void TFE_ContextEnableRunMetadata(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreMetadata(true);
+  ctx->context.SetShouldStoreGraphs(true);
+  ctx->context.SetShouldStoreStepStats(true);
 }
 
 void TFE_ContextDisableRunMetadata(TFE_Context* ctx) {
-  ctx->context.SetShouldStoreMetadata(false);
+  ctx->context.SetShouldStoreGraphs(false);
+  ctx->context.SetShouldStoreStepStats(false);
 }
 
 }  // extern "C"

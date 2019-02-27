@@ -15,9 +15,9 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/metric_table_report.h"
 
-#include <cctype>
 #include <unordered_map>
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 #include "tensorflow/core/platform/logging.h"
@@ -249,7 +249,7 @@ string MetricTableReport::MetricString(double metric) {
   string output;
   // Copy leading non-digit characters unconditionally.
   // This picks up the leading sign.
-  while (!sp1.empty() && !isdigit(sp1[0])) {
+  while (!sp1.empty() && !absl::ascii_isdigit(sp1[0])) {
     output.push_back(sp1[0]);
     sp1.remove_prefix(1);
   }

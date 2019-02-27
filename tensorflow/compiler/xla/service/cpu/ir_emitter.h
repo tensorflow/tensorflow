@@ -72,13 +72,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //              index in the profiling array.
   // computation_to_profile_idx: the mapping from HLO computations to their
   //              index in the profiling array.
+  // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             std::unordered_map<const HloInstruction*, int64>
                 instruction_to_profile_idx,
             std::unordered_map<const HloComputation*, int64>
                 computation_to_profile_idx,
-            const TargetMachineFeatures* target_machine);
+            const TargetMachineFeatures* target_machine,
+            bool emit_code_for_msan);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -249,14 +251,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Emits code that computes the address of the given buffer allocation slice.
   llvm::Value* EmitBufferPointer(const BufferAllocation::Slice& slice,
                                  const Shape& target_shape);
-
-  // Emits a function into the current module. This can be used for
-  // computations embedded inside other computations, such as the
-  // function that a map operation applies.
-  StatusOr<llvm::Function*> EmitFunction(
-      HloComputation* function,  // The function to emit.
-      absl::string_view
-          function_name_suffix);  // Used for LLVM IR register names.
 
   // Emits a call to a thread local function (e.g. to the computation nested
   // within a reduce or a map).  Thread local callees (by definition) only write
@@ -581,6 +575,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   std::vector<const HloComputation*> thread_local_computations_;
   std::vector<const HloComputation*> global_computations_;
+
+  bool emit_code_for_msan_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

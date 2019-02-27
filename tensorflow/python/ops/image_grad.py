@@ -44,7 +44,8 @@ def _ResizeNearestNeighborGrad(op, grad):
   grads = gen_image_ops.resize_nearest_neighbor_grad(
       grad,
       image_shape,
-      align_corners=op.get_attr("align_corners"))
+      align_corners=op.get_attr("align_corners"),
+      half_pixel_centers=op.get_attr("half_pixel_centers"))
   return [grads, None]
 
 
@@ -60,7 +61,10 @@ def _ResizeBilinearGrad(op, grad):
     The gradients w.r.t. the input.
   """
   grad0 = gen_image_ops.resize_bilinear_grad(
-      grad, op.inputs[0], align_corners=op.get_attr("align_corners"))
+      grad,
+      op.inputs[0],
+      align_corners=op.get_attr("align_corners"),
+      half_pixel_centers=op.get_attr("half_pixel_centers"))
   return [grad0, None]
 
 
@@ -79,7 +83,10 @@ def _ResizeBicubicGrad(op, grad):
   grad0 = None
   if op.inputs[0].dtype in allowed_types:
     grad0 = gen_image_ops.resize_bicubic_grad(
-        grad, op.inputs[0], align_corners=op.get_attr("align_corners"))
+        grad,
+        op.inputs[0],
+        align_corners=op.get_attr("align_corners"),
+        half_pixel_centers=op.get_attr("half_pixel_centers"))
   return [grad0, None]
 
 

@@ -29,6 +29,10 @@ limitations under the License.
 namespace xla {
 namespace primitive_util {
 
+// Returns the count of significand (mantissa) bits for float datatypes.
+// For non-float datatypes, results in a LOG(FATAL).
+int SignificandWidth(PrimitiveType type);
+
 // The number of exponent bits in a BF16 value.
 const int kBFloat16ExponentBits = 8;
 
@@ -146,6 +150,8 @@ bool IsArrayType(PrimitiveType primitive_type);
 
 // Returns the number of bits in the representation for a given type.
 int BitWidth(PrimitiveType type);
+
+PrimitiveType UnsignedIntegralTypeForBitWidth(int64 src_bitwidth);
 
 // Returns the real, imag component type underlying the given complex type.
 // LOG(FATAL)'s if complex_type is not complex.

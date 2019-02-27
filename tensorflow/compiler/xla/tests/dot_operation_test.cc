@@ -19,6 +19,7 @@ limitations under the License.
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/array2d.h"
 #include "tensorflow/compiler/xla/array3d.h"
+#include "tensorflow/compiler/xla/client/lib/matrix.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
@@ -1157,6 +1158,53 @@ XLA_TEST_F(DotOperationTest, DotRank2AndRank2NonDefaultContractionDims) {
   ComputeAndCompareR2<float>(&builder, expected, {}, error_spec_);
 }
 
+using EinsumParamType =
+    std::tuple<std::vector<int64>, std::vector<int64>, string>;
+class EinsumTest : public DotOperationTest,
+                   public ::testing::WithParamInterface<EinsumParamType> {};
+XLA_TEST_P(EinsumTest, SimpleEinsumTest) {
+  XlaBuilder builder(TestName());
+  auto x = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<0>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  auto y = AddParam(
+      MakeFakeLiteral(ShapeUtil::MakeShape(F32, std::get<1>(GetParam())))
+          .ValueOrDie(),
+      &builder);
+  Einsum(x, y, std::get<2>(GetParam()));
+  ComputeAndCompare(&builder, {}, ErrorSpec{1e-3, 1e-3});
+}
+
+std::vector<EinsumParamType> GetEinsumTestCases() {
+  using v = std::vector<int64>;
+  using p = EinsumParamType;
+  std::vector<p> test_cases = {
+      p{v{5, 6}, v{6, 7}, "mk,kn->mn"},
+      p{v{5, 6}, v{6, 7}, "mk,kn->nm"},
+      p{v{5, 6, 11}, v{6, 11, 7}, "mkB,kBn->nmB"},
+      p{v{31, 55, 11}, v{55, 11, 29}, "mkB,kBn->nmB"},
+      p{v{31, 55, 11}, v{55, 11, 29}, "mkB,kBn->Bnm"},
+      p{v{8, 55, 11, 3}, v{55, 11, 3, 29}, "mkBC,kBCn->BCnm"},
+      p{v{5, 6}, v{6, 7}, "ab,cd->dcba"},
+      p{v{6}, v{6, 7}, "b,bc->c"},
+      p{v{5, 6, 7}, v{5, 6, 7}, "abc,abc->ab"},
+      p{v{5, 6, 7}, v{7, 6, 5}, "abc,cba->ca"},
+      p{v{77}, v{77}, "a,a->a"},
+      p{v{77}, v{77, 55}, "a,ab->ba"},
+      p{v{2, 3, 77}, v{77, 2, 3, 55}, "ija,aijb->baij"},
+      p{v{55}, v{}, "a,->a"},
+      p{v{11, 111}, v{11}, "ab,a->ab"},
+      p{v{16, 34}, v{16, 34}, "ab,ab->ab"},
+      p{v{16, 3, 34}, v{3, 16, 34}, "abc,bac->abc"},
+      p{v{5, 19}, v{}, "ab,->ab"},
+  };
+  return test_cases;
+}
+
+INSTANTIATE_TEST_CASE_P(Einsum, EinsumTest,
+                        ::testing::ValuesIn(GetEinsumTestCases()));
+
 class DotOperationTextTest : public HloTestBase {};
 
 XLA_TEST_F(DotOperationTextTest, DotReorderedDotDims) {
@@ -1187,6 +1235,130 @@ ENTRY %test {
 )";
 
   EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DotWithNoDnums) {
+  absl::string_view hlo_string =
+      R"(
+HloModule DotWithNoDnums
+
+ENTRY %test {
+  %lhs = f32[2,3]{1,0} parameter(0)
+  %rhs = f32[4,5]{1,0} parameter(1)
+  ROOT %dot = f32[2,3,4,5]{3,2,1,0} dot(%lhs, %rhs)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{1e-3, 1e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, Einsum) {
+  absl::string_view hlo_string =
+      R"(
+HloModule Einsum
+
+ENTRY %test {
+  %lhs = f32[8,64,96]{2,1,0} parameter(0)
+  %rhs = f32[96,32,4]{2,1,0} parameter(1)
+  ROOT %dot = f32[8,64,32,4]{3,2,1,0}  dot(%lhs, %rhs), lhs_contracting_dims={2}, rhs_contracting_dims={0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_1) {
+  // Tests for a caching bug in the XLA CPU backend.
+  absl::string_view hlo_string =
+      R"(
+HloModule CpuTiledDotEmitterCachingBug
+
+ENTRY main {
+  lhs = f32[20,40] parameter(0)
+  rhs_0 = f32[40,1] parameter(2)
+  rhs_1 = f32[1,40] parameter(1)
+
+  dot_0 = f32[20,1] dot(lhs, rhs_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_1 = f32[20,1] dot(lhs, rhs_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  ROOT result = f32[20,1] divide(dot_0, dot_1)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, CpuTiledDotEmitterCachingBug_2) {
+  // Tests for a caching bug in the XLA CPU backend.
+  absl::string_view hlo_string =
+      R"(
+HloModule CpuTiledDotEmitterCachingBug
+
+ENTRY main {
+  lhs_0 = f32[20,40] parameter(0)
+  rhs_0 = f32[40,1] parameter(1)
+  lhs_1 = f32[1,40] parameter(2)
+  rhs_1 = f32[20,40] parameter(3)
+
+  dot_0 = f32[20,1] dot(lhs_0, rhs_0), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  dot_1 = f32[1,20] dot(lhs_1, rhs_1), lhs_contracting_dims={1}, rhs_contracting_dims={1}
+
+  dot_0_reshaped = f32[20] reshape(dot_0)
+  dot_1_reshaped = f32[20] reshape(dot_1)
+
+  ROOT result = f32[20] divide(dot_0_reshaped, dot_1_reshaped)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuIntegerDotCodegen)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule SmallIntegerDot
+
+ENTRY SmallIntegerDot {
+  arg0 = s32[1,2,2] parameter(0)
+  arg1 = s32[1,2,1] parameter(1)
+  ROOT dot = s32[1,2,1] dot(arg0, arg1), lhs_batch_dims={0}, lhs_contracting_dims={2}, rhs_batch_dims={0}, rhs_contracting_dims={1}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, DISABLED_ON_CPU(GpuTransposeOutput)) {
+  absl::string_view hlo_string =
+      R"(
+HloModule TransposeOutput
+
+ENTRY TransposeOutput {
+  p0 = f32[32,32] parameter(0)
+  p1 = f32[32,64] parameter(1)
+  dot = f32[32,64] dot(p0, p1), lhs_contracting_dims={0}, rhs_contracting_dims={0}
+  ROOT tr = f32[64,32] transpose(dot), dimensions={1,0}
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
+}
+
+XLA_TEST_F(DotOperationTextTest, MatrixVectorComplex) {
+  absl::string_view hlo_string =
+      R"(
+HloModule MatrixVectorComplex
+
+ENTRY MatrixVectorComplex {
+  p0 = c64[5,5] parameter(0)
+  p1 = c64[5,1] parameter(1)
+  p2 = c64[5,1] parameter(2)
+  dot = c64[5,1] dot(p0, p1), lhs_contracting_dims={1}, rhs_contracting_dims={0}
+  ROOT add = c64[5,1] add(dot, p2)
+}
+)";
+
+  EXPECT_TRUE(RunAndCompare(hlo_string, ErrorSpec{4e-3, 4e-3}));
 }
 
 }  // namespace

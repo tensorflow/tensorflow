@@ -380,7 +380,12 @@ std::shared_ptr<Node> Model::AddNode(Node::Factory factory, const string& name,
     output_ = node;
   }
   if (output) {
+    VLOG(3) << "Adding " << node->name() << "(id:" << node->id()
+            << ") as input for " << output->name() << "(id:" << output->id()
+            << ")";
     output->add_input(node);
+  } else {
+    VLOG(3) << "Adding " << node->name() << "(id:" << node->id() << ")";
   }
   collect_resource_usage_ =
       collect_resource_usage_ || node->has_tunable_parameters();
@@ -493,10 +498,13 @@ void Model::RecordStop(const string& name, bool start_output) {
 void Model::RemoveNode(const string& name) {
   mutex_lock l(mu_);
   auto node = gtl::FindOrNull(lookup_table_, name);
-  if (node && (*node)->output()) {
-    (*node)->output()->remove_input(*node);
+  if (node) {
+    if ((*node)->output()) {
+      (*node)->output()->remove_input(*node);
+    }
+    VLOG(3) << "Removing " << (*node)->name() << "(id:" << (*node)->id() << ")";
+    remove_node_hook_(*node);
   }
-  remove_node_hook_(*node);
   lookup_table_.erase(name);
 }
 

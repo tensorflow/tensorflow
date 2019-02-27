@@ -155,13 +155,16 @@ py_library(
 
 py_test(
     name = "head_test",
-    size = "large",
+    size = "medium",
     srcs = [
         "head_test.py",
     ],
-    shard_count = 4,
+    shard_count = 10,
     srcs_version = "PY2AND3",
-    tags = ["no_pip_gpu"],  # b/63391119
+    tags = [
+        "no_pip_gpu",  # b/63391119
+        "notap",  # b/124520733
+    ],
     deps = [
         ":estimators",
         ":feature_keys",
@@ -281,6 +284,7 @@ py_library(
         "input_pipeline.py",
     ],
     srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
     deps = [
         ":feature_keys",
         ":model_utils",

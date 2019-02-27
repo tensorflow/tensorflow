@@ -16,7 +16,6 @@ limitations under the License.
 // Tests that we call into Eigen for dot operations as needed.
 
 #include <algorithm>
-#include <cctype>
 #include <string>
 
 #include "absl/strings/str_cat.h"

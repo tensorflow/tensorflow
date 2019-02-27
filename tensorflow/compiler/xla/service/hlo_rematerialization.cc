@@ -57,6 +57,15 @@ using ::tensorflow::strings::HumanReadableNumBytes;
 
 // Returns true if the given instruction is rematerializable.
 bool IsRematerializable(const HloInstruction* instruction) {
+  if (instruction->opcode() == HloOpcode::kCopy) {
+    if (LayoutUtil::Equal(instruction->shape().layout(),
+                          instruction->operand(0)->shape().layout())) {
+      // Don't rematerialize copies added by copy insertion (layout doesn't
+      // change).
+      return false;
+    }
+  }
+
   // Don't rematerialize instructions with side effects or instructions which
   // cannot be cloned safely.
   switch (instruction->opcode()) {
@@ -179,7 +188,8 @@ class InstructionList {
   Item* CreateItem(HloInstruction* inst) {
     Item* item = new Item;
     item->instruction = inst;
-    CHECK(item_map_.insert({inst, item}).second) << "inserting inst twice";
+    CHECK(item_map_.insert({inst, item}).second)
+        << "inserting inst twice " << inst->name();
     return item;
   }
 
@@ -417,11 +427,12 @@ class MemoryUsageTracker {
   // the given uses.
   Buffer& RematerializeBuffer(const Buffer& original_buffer, Item* remat_item,
                               ItemList&& rematerialized_uses) {
-    CHECK(original_buffer.defining_instruction->placed);
-    CHECK(!original_buffer.has_indirect_uses);
-    CHECK(!original_buffer.live_out);
+    CHECK(original_buffer.defining_instruction->placed)
+        << original_buffer.defining_instruction->instruction->name();
+    CHECK(!original_buffer.has_indirect_uses) << original_buffer.ToString();
+    CHECK(!original_buffer.live_out) << original_buffer.ToString();
     for (Item* use : rematerialized_uses) {
-      CHECK(!use->placed);
+      CHECK(!use->placed) << use->instruction->name();
     }
     return NewBuffer(remat_item, original_buffer.size,
                      std::move(rematerialized_uses), /*live_out=*/false,
@@ -674,8 +685,8 @@ Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
           << ", remat_instruction = " << remat_item->instruction->name();
 
   TF_RET_CHECK(in_progress_item_ != nullptr);
-  TF_RET_CHECK(original_item->placed);
-  TF_RET_CHECK(!remat_item->placed);
+  TF_RET_CHECK(original_item->placed) << original_item->instruction->name();
+  TF_RET_CHECK(!remat_item->placed) << remat_item->instruction->name();
 
   // Construct the list of buffers used and defined by the rematerialization.
   remat_item->buffers_used = original_item->buffers_used;
@@ -704,7 +715,7 @@ Status MemoryUsageTracker::AddRematerializedInstruction(Item* original_item,
     ItemList unplaced_users;
     for (Item* user : old_buffer.users) {
       if (user->placed) {
-        CHECK(IsFinished(user));
+        CHECK(IsFinished(user)) << user->instruction->name();
         placed_users.push_back(user);
       } else {
         unplaced_users.push_back(user);
@@ -1089,7 +1100,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
         Item* successor_item = instruction_list.GetItem(successor);
         // Assert to make sure we never remat an operation with control
         // successor already placed.
-        CHECK(!successor_item->placed);
+        CHECK(!successor_item->placed) << successor_item->instruction->name();
         place_before.push_back(successor_item);
       }
       instruction_list.InsertBeforeInstructions(remat_item, place_before);
@@ -1159,7 +1170,7 @@ StatusOr<bool> HloRematerialization::RematerializeComputation(
   // Verify some invariants on the memory tracker.
   CHECK_EQ(memory_tracker.memory_usage(), 0);
   for (auto* instruction : computation->instructions()) {
-    CHECK(memory_tracker.IsPlaced(instruction));
+    CHECK(memory_tracker.IsPlaced(instruction)) << instruction->name();
   }
 
   VLOG(1) << "In computation " << computation->name() << " rematerialized "

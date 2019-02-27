@@ -39,7 +39,6 @@ cc_library(
         "//tensorflow/compiler/xla/service:logical_buffer",
         "//tensorflow/core:lib",
         "@com_google_absl//absl/container:flat_hash_map",
-        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@llvm//:core",
     ],

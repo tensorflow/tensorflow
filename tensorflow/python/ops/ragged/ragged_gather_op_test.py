@@ -17,7 +17,6 @@
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
-
 from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -25,8 +24,8 @@ from tensorflow.python.framework import errors
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops.ragged import ragged_array_ops
 from tensorflow.python.ops.ragged import ragged_factory_ops
+from tensorflow.python.ops.ragged import ragged_gather_ops
 from tensorflow.python.ops.ragged import ragged_test_util
 from tensorflow.python.platform import googletest
 
@@ -41,35 +40,35 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
                                                  ['e']])
     ragged_indices = ragged_factory_ops.constant([[3, 1, 2], [1], [], [0]])
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, ragged_indices),
+        ragged_gather_ops.gather(params, ragged_indices),
         [[b'd', b'b', b'c'], [b'b'], [], [b'a']])
     self.assertRaggedEqual(
-        ragged_array_ops.gather(ragged_params, indices),
+        ragged_gather_ops.gather(ragged_params, indices),
         [[b'e'], [b'd'], [], [b'd'], [b'a', b'b', b'c']])
     self.assertRaggedEqual(
-        ragged_array_ops.gather(ragged_params, ragged_indices),
+        ragged_gather_ops.gather(ragged_params, ragged_indices),
         [[[b'e'], [b'd'], []], [[b'd']], [], [[b'a', b'b', b'c']]])
 
   def testTensorParamsAndTensorIndices(self):
     params = ['a', 'b', 'c', 'd', 'e']
     indices = [2, 0, 2, 1]
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, indices), [b'c', b'a', b'c', b'b'])
-    self.assertIsInstance(ragged_array_ops.gather(params, indices), ops.Tensor)
+        ragged_gather_ops.gather(params, indices), [b'c', b'a', b'c', b'b'])
+    self.assertIsInstance(ragged_gather_ops.gather(params, indices), ops.Tensor)
 
   def testRaggedParamsAndTensorIndices(self):
     params = ragged_factory_ops.constant([['a', 'b'], ['c', 'd', 'e'], ['f'],
                                           [], ['g']])
     indices = [2, 0, 2, 1]
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, indices),
+        ragged_gather_ops.gather(params, indices),
         [[b'f'], [b'a', b'b'], [b'f'], [b'c', b'd', b'e']])
 
   def testTensorParamsAndRaggedIndices(self):
     params = ['a', 'b', 'c', 'd', 'e']
     indices = ragged_factory_ops.constant([[2, 1], [1, 2, 0], [3]])
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, indices),
+        ragged_gather_ops.gather(params, indices),
         [[b'c', b'b'], [b'b', b'c', b'a'], [b'd']])
 
   def testRaggedParamsAndRaggedIndices(self):
@@ -77,7 +76,7 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
                                           [], ['g']])
     indices = ragged_factory_ops.constant([[2, 1], [1, 2, 0], [3]])
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, indices),
+        ragged_gather_ops.gather(params, indices),
         [[[b'f'], [b'c', b'd', b'e']],                # [[p[2], p[1]      ],
          [[b'c', b'd', b'e'], [b'f'], [b'a', b'b']],  #  [p[1], p[2], p[0]],
          [[]]]                                        #  [p[3]            ]]
@@ -88,14 +87,14 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
                                           [], ['g']])
     indices = 1
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, indices), [b'c', b'd', b'e'])
+        ragged_gather_ops.gather(params, indices), [b'c', b'd', b'e'])
 
   def test3DRaggedParamsAnd2DTensorIndices(self):
     params = ragged_factory_ops.constant([[['a', 'b'], []],
                                           [['c', 'd'], ['e'], ['f']], [['g']]])
     indices = [[1, 2], [0, 1], [2, 2]]
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, indices),
+        ragged_gather_ops.gather(params, indices),
         [[[[b'c', b'd'], [b'e'], [b'f']], [[b'g']]],            # [[p1, p2],
          [[[b'a', b'b'], []], [[b'c', b'd'], [b'e'], [b'f']]],  #  [p0, p1],
          [[[b'g']], [[b'g']]]]                                  #  [p2, p2]]
@@ -109,7 +108,7 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
         inner_shape=(2,))
     params = ['a', 'b', 'c', 'd', 'e', 'f', 'g']
     self.assertRaggedEqual(
-        ragged_array_ops.gather(params, indices),
+        ragged_gather_ops.gather(params, indices),
         [[[[b'd', b'e'], [b'a', b'g']], []],
          [[[b'c', b'b'], [b'b', b'a']], [[b'c', b'f']], [[b'c', b'd']]],
          [[[b'b', b'a']]]])  # pyformat: disable
@@ -121,13 +120,13 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
     ragged_indices = ragged_factory_ops.constant([[0, 3]])
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'indices\[1\] = 3 is not in \[0, 3\)'):
-      self.evaluate(ragged_array_ops.gather(tensor_params, ragged_indices))
+      self.evaluate(ragged_gather_ops.gather(tensor_params, ragged_indices))
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'indices\[2\] = 2 is not in \[0, 2\)'):
-      self.evaluate(ragged_array_ops.gather(ragged_params, tensor_indices))
+      self.evaluate(ragged_gather_ops.gather(ragged_params, tensor_indices))
     with self.assertRaisesRegexp(errors.InvalidArgumentError,
                                  r'indices\[1\] = 3 is not in \[0, 2\)'):
-      self.evaluate(ragged_array_ops.gather(ragged_params, ragged_indices))
+      self.evaluate(ragged_gather_ops.gather(ragged_params, ragged_indices))
 
   def testUnknownIndicesRankError(self):
     if context.executing_eagerly():
@@ -137,7 +136,7 @@ class RaggedGatherOpTest(ragged_test_util.RaggedTensorTestCase):
     indices = array_ops.placeholder_with_default(indices, None)
     self.assertRaisesRegexp(ValueError,
                             r'indices\.shape\.ndims must be known statically',
-                            ragged_array_ops.gather, params, indices)
+                            ragged_gather_ops.gather, params, indices)
 
 
 if __name__ == '__main__':

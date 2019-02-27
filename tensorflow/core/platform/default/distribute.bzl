@@ -11,6 +11,7 @@ def distribute_py_test(
         main = None,
         args = [],
         shard_count = 1,
+        full_precision = False,
         **kwargs):
     """Generates py_test targets for CPU and GPU.
 
@@ -26,6 +27,7 @@ def distribute_py_test(
         **kwargs: extra keyword arguments to the test.
     """
 
+    _ignore = (full_precision)
     cuda_py_test(
         name = name,
         srcs = srcs,

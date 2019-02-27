@@ -47,9 +47,7 @@ from tensorflow.python.training import gradient_descent
 
 # Global config for grappler setting that is used for graph mode test.
 _rewrites = rewriter_config_pb2.RewriterConfig()
-_rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
-_customer_optimizer = _rewrites.custom_optimizers.add()
-_customer_optimizer.name = 'ExperimentalImplementationSelector'
+_rewrites.implementation_selector = rewriter_config_pb2.RewriterConfig.ON
 _rewrites.min_graph_nodes = -1
 _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
@@ -632,6 +630,29 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
     out7 = model.predict(right_padded_input)
 
     self.assertAllClose(out7, out6, atol=1e-5)
+
+  def test_stateful_LSTM_training(self):
+    # See b/123587692 for more context.
+    vocab_size = 20
+    embedding_dim = 10
+    batch_size = 8
+    timestep = 12
+    units = 5
+    x = np.random.randint(0, vocab_size, size=(batch_size, timestep))
+    y = np.random.randint(0, vocab_size, size=(batch_size, timestep))
+
+    model = keras.Sequential([
+        keras.layers.Embedding(vocab_size, embedding_dim,
+                               batch_input_shape=[batch_size, timestep]),
+        keras.layers.UnifiedLSTM(units,
+                                 return_sequences=True,
+                                 stateful=True),
+        keras.layers.Dense(vocab_size)
+    ])
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, epochs=1, shuffle=False)
 
 
 class LSTMLayerGraphOnlyTest(test.TestCase):

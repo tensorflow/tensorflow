@@ -60,6 +60,7 @@ RELEASE_BUILD=0
 TEST_TARGET="//${PY_TEST_DIR}/tensorflow/python/..."
 PROJECT_NAME=""
 EXTRA_BUILD_FLAGS=""
+EXTRA_TEST_FLAGS=""
 
 # --skip_test            Skip running tests
 # --enable_remote_cache  Add options to enable remote cache for build and test
@@ -89,6 +90,13 @@ while [[ $# -gt 0 ]]; do
       fi
       PROJECT_NAME="$1"
       ;;
+    --extra_test_flags)
+      shift
+      if [[ -z "$1" ]]; then
+        break
+      fi
+      EXTRA_TEST_FLAGS="$1"
+      ;;
     *)
   esac
   shift
@@ -104,7 +112,11 @@ else
 fi
 
 if [[ "$TF_NIGHTLY" == 1 ]]; then
-  python tensorflow/tools/ci_build/update_version.py --nightly
+  if [[ ${PROJECT_NAME} == *"2.0_preview"* ]]; then
+    python tensorflow/tools/ci_build/update_version.py --version=2.0.0 --nightly
+  else
+    python tensorflow/tools/ci_build/update_version.py --nightly
+  fi
   if [ -z ${PROJECT_NAME} ]; then
     EXTRA_PIP_FLAGS="--nightly_flag"
   else
@@ -120,6 +132,10 @@ if ! grep -q "import %workspace%/${TMP_BAZELRC}" .bazelrc; then
 fi
 
 run_configure_for_cpu_build
+
+bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS}  \
+  --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
+  tensorflow/lite:framework tensorflow/lite/examples/minimal:minimal || exit $?
 
 bazel build --announce_rc --config=opt ${EXTRA_BUILD_FLAGS} \
   tensorflow/tools/pip_package:build_pip_package \
@@ -148,6 +164,7 @@ N_JOBS="${NUMBER_OF_PROCESSORS}"
 # Define no_tensorflow_py_deps=true so that every py_test has no deps anymore,
 # which will result testing system installed tensorflow
 bazel test --announce_rc --config=opt -k --test_output=errors \
+  ${EXTRA_TEST_FLAGS} \
   --define=no_tensorflow_py_deps=true --test_lang_filters=py \
   --test_tag_filters=-no_pip,-no_windows,-no_oss,-gpu \
   --build_tag_filters=-no_pip,-no_windows,-no_oss,-gpu --build_tests_only \

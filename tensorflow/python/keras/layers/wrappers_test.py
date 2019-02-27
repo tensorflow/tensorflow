@@ -23,10 +23,12 @@ import copy
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import util as checkpointable_util
+from tensorflow.python.training.tracking import object_identity
+from tensorflow.python.training.tracking import util as trackable_util
 
 
 class _RNNCellWithConstants(keras.layers.Layer):
@@ -87,8 +89,8 @@ class TimeDistributedTest(test.TestCase):
     model.get_config()
 
     # check whether the model variables are present in the
-    # checkpointable list of objects
-    checkpointed_objects = set(checkpointable_util.list_objects(model))
+    # trackable list of objects
+    checkpointed_objects = set(trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
@@ -158,8 +160,8 @@ class TimeDistributedTest(test.TestCase):
       # test layers that need learning_phase to be set
       np.random.seed(1234)
       x = keras.layers.Input(shape=(3, 2))
-      y = keras.layers.TimeDistributed(
-          keras.layers.Dropout(.999))(x, training=True)
+      y = keras.layers.TimeDistributed(keras.layers.Dropout(.999))(
+          x, training=True)
       model = keras.models.Model(x, y)
       y = model.predict(np.random.random((10, 3, 2)))
       self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
@@ -256,6 +258,28 @@ class TimeDistributedTest(test.TestCase):
       self.assertEqual((mask_outputs_val[1]).all(),
                        model_input.all())
 
+  def test_TimeDistributed_with_different_time_shapes(self):
+    time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    ph_1 = keras.backend.placeholder(shape=(None, 10, 13))
+    out_1 = time_dist(ph_1)
+    self.assertEqual(out_1.shape.as_list(), [None, 10, 5])
+
+    ph_2 = keras.backend.placeholder(shape=(None, 1, 13))
+    out_2 = time_dist(ph_2)
+    self.assertEqual(out_2.shape.as_list(), [None, 1, 5])
+
+    ph_3 = keras.backend.placeholder(shape=(None, 1, 18))
+    with self.assertRaisesRegexp(ValueError, 'is incompatible with layer'):
+      time_dist(ph_3)
+
+  def test_TimeDistributed_with_invalid_dimensions(self):
+    time_dist = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    ph = keras.backend.placeholder(shape=(None, 10))
+    with self.assertRaisesRegexp(
+        ValueError,
+        '`TimeDistributed` Layer should be passed an `input_shape `'):
+      time_dist(ph)
+
 
 class BidirectionalTest(test.TestCase):
 
@@ -280,8 +304,9 @@ class BidirectionalTest(test.TestCase):
         model.fit(x, y, epochs=1, batch_size=1)
 
         # check whether the model variables are present in the
-        # checkpointable list of objects
-        checkpointed_objects = set(checkpointable_util.list_objects(model))
+        # trackable list of objects
+        checkpointed_objects = object_identity.ObjectIdentitySet(
+            trackable_util.list_objects(model))
         for v in model.variables:
           self.assertIn(v, checkpointed_objects)
 
@@ -374,7 +399,6 @@ class BidirectionalTest(test.TestCase):
       model.compile(loss='mse', optimizer='sgd')
       model.fit(x, y, epochs=1, batch_size=1)
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_Bidirectional_merged_value(self):
     rnn = keras.layers.LSTM
     samples = 2
@@ -402,10 +426,10 @@ class BidirectionalTest(test.TestCase):
             rnn(units, return_sequences=True), merge_mode=merge_mode)
         f_merged = keras.backend.function([inputs], _to_list(layer(inputs)))
         f_forward = keras.backend.function([inputs],
-                                           [layer.forward_layer.call(inputs)])
+                                           [layer.forward_layer(inputs)])
         f_backward = keras.backend.function(
             [inputs],
-            [keras.backend.reverse(layer.backward_layer.call(inputs), 1)])
+            [keras.backend.reverse(layer.backward_layer(inputs), 1)])
 
         y_merged = f_merged(x)
         y_expected = _to_list(merge_func(f_forward(x)[0], f_backward(x)[0]))
@@ -419,9 +443,9 @@ class BidirectionalTest(test.TestCase):
             rnn(units, return_state=True), merge_mode=merge_mode)
         f_merged = keras.backend.function([inputs], layer(inputs))
         f_forward = keras.backend.function([inputs],
-                                           layer.forward_layer.call(inputs))
+                                           layer.forward_layer(inputs))
         f_backward = keras.backend.function([inputs],
-                                            layer.backward_layer.call(inputs))
+                                            layer.backward_layer(inputs))
         n_states = len(layer.layer.states)
 
         y_merged = f_merged(x)
@@ -505,8 +529,10 @@ class BidirectionalTest(test.TestCase):
       layer.trainable = True
       assert len(layer.trainable_weights) == 6
 
-  @tf_test_util.run_v1_only('b/120545219')
   def test_Bidirectional_updates(self):
+    if context.executing_eagerly():
+      self.skipTest('layer.updates is only available in graph mode.')
+
     with self.cached_session():
       x = keras.layers.Input(shape=(3, 2))
       x_reachable_update = x * x
@@ -534,10 +560,15 @@ class BidirectionalTest(test.TestCase):
       assert len(layer.losses) == 4
       assert len(layer.get_losses_for(None)) == 4
       assert not layer.get_losses_for(x)
+
+      # Create a random tensor that is not conditional on the inputs.
+      with keras.backend.get_graph().as_default():
+        const_tensor = constant_op.constant(1)
+
       layer.forward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.forward_layer.add_loss(1, inputs=None)
+      layer.forward_layer.add_loss(const_tensor, inputs=None)
       layer.backward_layer.add_loss(x_reachable_loss, inputs=x)
-      layer.backward_layer.add_loss(1, inputs=None)
+      layer.backward_layer.add_loss(const_tensor, inputs=None)
       assert len(layer.losses) == 8
       assert len(layer.get_losses_for(None)) == 6
       assert len(layer.get_losses_for(x)) == 2
@@ -674,3 +705,4 @@ def _to_list(ls):
 
 if __name__ == '__main__':
   test.main()
+

@@ -48,17 +48,17 @@ DOCLINES = __doc__.split('\n')
 _VERSION = '1.12.0'
 
 REQUIRED_PACKAGES = [
-    'absl-py >= 0.1.6',
+    'absl-py >= 0.7.0',
     'astor >= 0.6.0',
     'gast >= 0.2.0',
-    'google_pasta >= 0.1.1',
+    'google_pasta >= 0.1.2',
     'keras_applications >= 1.0.6',
     'keras_preprocessing >= 1.0.5',
-    'numpy >= 1.13.3',
+    'numpy >= 1.14.5, < 2.0',
     'six >= 1.10.0',
     'protobuf >= 3.6.1',
-    'tensorboard >= 1.12.0, < 1.13.0',
-    'tensorflow_estimator >= 1.10.0',
+    'tensorboard >= 1.13.0, < 1.14.0',
+    'tensorflow_estimator >= 1.13.0rc0, < 1.14.0rc0',
     'termcolor >= 1.1.0',
 ]
 
@@ -87,7 +87,7 @@ else:
 if 'tf_nightly' in project_name:
   for i, pkg in enumerate(REQUIRED_PACKAGES):
     if 'tensorboard' in pkg:
-      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.13.0a0, < 1.14.0a0'
+      REQUIRED_PACKAGES[i] = 'tb-nightly >= 1.14.0a0, < 1.15.0a0'
     elif 'tensorflow_estimator' in pkg and '2.0' in project_name:
       REQUIRED_PACKAGES[i] = 'tensorflow-estimator-2.0-preview'
     elif 'tensorflow_estimator' in pkg:
@@ -284,6 +284,7 @@ setup(
         'Programming Language :: Python :: 3.4',
         'Programming Language :: Python :: 3.5',
         'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3.7',
         'Topic :: Scientific/Engineering',
         'Topic :: Scientific/Engineering :: Mathematics',
         'Topic :: Scientific/Engineering :: Artificial Intelligence',
