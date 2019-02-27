@@ -684,19 +684,22 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
 }
 
 Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
-  // Compute the cost of the true and false computations and take the maximum
-  // from those for each property.
+  // Compute the cost of the branch computations and take the maximum from those
+  // for each property.
   TF_ASSIGN_OR_RETURN(
-      const Properties true_computation_properties,
-      ProcessUnnestedSubcomputation(conditional->true_computation()));
-  TF_ASSIGN_OR_RETURN(
-      const Properties false_computation_properties,
-      ProcessUnnestedSubcomputation(conditional->false_computation()));
-  current_properties_ = true_computation_properties;
-  for (const auto& property : false_computation_properties) {
-    if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_, property)) {
-      current_properties_[property.first] =
-          std::max(current_properties_[property.first], property.second);
+      const Properties branch0_computation_properties,
+      ProcessUnnestedSubcomputation(conditional->branch_computation(0)));
+  current_properties_ = branch0_computation_properties;
+  for (int j = 1; j < conditional->branch_count(); ++j) {
+    TF_ASSIGN_OR_RETURN(
+        const Properties branch_computation_properties,
+        ProcessUnnestedSubcomputation(conditional->branch_computation(j)));
+    for (const auto& property : branch_computation_properties) {
+      if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_,
+                                               property)) {
+        auto& current_property = current_properties_[property.first];
+        current_property = std::max(current_property, property.second);
+      }
     }
   }
   current_should_compute_bottleneck_time_ = false;

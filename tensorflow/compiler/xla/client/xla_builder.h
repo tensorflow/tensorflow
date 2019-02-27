@@ -529,6 +529,10 @@ class XlaBuilder {
                     const XlaOp& false_operand,
                     const XlaComputation& false_computation);
 
+  XlaOp Conditional(const XlaOp& branch_index,
+                    absl::Span<const XlaComputation* const> branch_computations,
+                    absl::Span<const XlaOp> branch_operands);
+
   XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                         const int mantissa_bits);
 
@@ -946,6 +950,10 @@ class XlaBuilder {
                            const XlaComputation& true_computation,
                            const XlaOp& false_operand,
                            const XlaComputation& false_computation);
+  friend XlaOp Conditional(
+      const XlaOp& branch_index,
+      absl::Span<const XlaComputation* const> branch_computations,
+      absl::Span<const XlaOp> branch_operands);
   friend XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                const int mantissa_bits);
   friend XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
@@ -1775,6 +1783,15 @@ XlaOp Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                   const XlaComputation& true_computation,
                   const XlaOp& false_operand,
                   const XlaComputation& false_computation);
+
+// Enqueues either a predicated (if/else) or indexed (switch/case/default)
+// conditional node onto the computation. N >= 1 branch_computations and
+// branch_operands are matched by index. branch_index selects the branch that
+// will be executed. Out of range branch_index uses the N-1'th
+// branch_computation as default.
+XlaOp Conditional(const XlaOp& branch_index,
+                  absl::Span<const XlaComputation* const> branch_computations,
+                  absl::Span<const XlaOp> branch_operands);
 
 // Enqueues a ReducePrecision node onto the computation.
 XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,

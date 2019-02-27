@@ -2024,41 +2024,32 @@ Status CheckWhileBuffersShareAllocation(
 // Checks that the buffers used in a conditional instruction are shared with the
 // operands and result as follows:
 //   * The result buffer of the conditional should share the allocation with the
-//     result buffers of the true and false computations.
-//   * The buffer of operand 1 should share the allocation with the buffer of
-//     the parameter 0 instruction of the true computation.
-//   * The buffer of operand 2 should share the allocation with the buffer of
-//     the parameter 0 instruction of the false computation.
+//     result buffers of each branch computation.
+//   * The buffer of operand b+1 should share the allocation with the buffer of
+//     the parameter 0 instruction of the b'th computation.
 Status CheckConditionalBuffersShareAllocation(
     const HloInstruction* conditional,
     const BufferAssignment& buffer_assignment) {
   TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
       conditional->shape(),
       [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
-        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
-            conditional, conditional->true_computation()->root_instruction(),
-            index, buffer_assignment));
-        TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
-            conditional, conditional->false_computation()->root_instruction(),
-            index, buffer_assignment));
+        for (auto branch_computation : conditional->branch_computations()) {
+          TF_RETURN_IF_ERROR(CheckHloBuffersShareAllocation(
+              conditional, branch_computation->root_instruction(), index,
+              buffer_assignment));
+        }
         return Status::OK();
       }));
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      conditional->operand(1)->shape(),
-      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
-        return CheckHloBuffersShareAllocation(
-            conditional->operand(1),
-            conditional->true_computation()->parameter_instruction(0), index,
-            buffer_assignment);
-      }));
-  TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
-      conditional->operand(2)->shape(),
-      [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
-        return CheckHloBuffersShareAllocation(
-            conditional->operand(2),
-            conditional->false_computation()->parameter_instruction(0), index,
-            buffer_assignment);
-      }));
+  for (int j = 0; j < conditional->branch_count(); ++j) {
+    TF_RETURN_IF_ERROR(ShapeUtil::ForEachSubshapeWithStatus(
+        conditional->operand(j + 1)->shape(),
+        [&](const Shape& /*subshape*/, const ShapeIndex& index) -> Status {
+          return CheckHloBuffersShareAllocation(
+              conditional->operand(j + 1),
+              conditional->branch_computation(j)->parameter_instruction(0),
+              index, buffer_assignment);
+        }));
+  }
   return Status::OK();
 }
 
@@ -2111,22 +2102,20 @@ std::unique_ptr<Thunk> IrEmitterUnnested::BuildConditionalThunk(
   TF_CHECK_OK(CheckConditionalBuffersShareAllocation(
       hlo, ir_emitter_context_->buffer_assignment()));
 
-  HloComputation* true_computation = hlo->true_computation();
-  IrEmitterUnnested ir_emitter_true(hlo_module_config_, true_computation,
-                                    ir_emitter_context_);
-  TF_CHECK_OK(true_computation->Accept(&ir_emitter_true));
-
-  HloComputation* false_computation = hlo->false_computation();
-  IrEmitterUnnested ir_emitter_false(hlo_module_config_, false_computation,
-                                     ir_emitter_context_);
-  TF_CHECK_OK(false_computation->Accept(&ir_emitter_false));
+  std::vector<BufferAllocation::Slice> branch_operands;
+  std::vector<ThunkSequence> branch_thunks;
+  for (int j = 0; j < hlo->branch_count(); ++j) {
+    branch_operands.emplace_back(GetAllocationSlice(*hlo->operand(j + 1)));
+    HloComputation* branch_computation = hlo->branch_computation(j);
+    IrEmitterUnnested ir_emitter(hlo_module_config_, branch_computation,
+                                 ir_emitter_context_);
+    TF_CHECK_OK(branch_computation->Accept(&ir_emitter));
+    branch_thunks.push_back(std::move(*ir_emitter.ConsumeThunkSequence()));
+  }
 
   return absl::make_unique<ConditionalThunk>(
-      GetAllocationSlice(*hlo->operand(0)),
-      GetAllocationSlice(*hlo->operand(1)),
-      GetAllocationSlice(*hlo->operand(2)),
-      std::move(*ir_emitter_true.ConsumeThunkSequence()),
-      std::move(*ir_emitter_false.ConsumeThunkSequence()), hlo);
+      GetAllocationSlice(*hlo->operand(0)), branch_operands,
+      std::move(branch_thunks), hlo);
 }
 
 Status IrEmitterUnnested::EmitTargetElementLoopInThunk(
