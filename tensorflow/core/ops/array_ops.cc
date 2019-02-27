@@ -1368,8 +1368,12 @@ REGISTER_OP("UniqueV2")
     .Attr("Taxis: {int32,int64} = DT_INT64")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      c->set_output(0, c->Vector(InferenceContext::kUnknownDim));
-      c->set_output(1, c->input(0));
+      int32 rank = InferenceContext::Rank(c->input(0));
+      std::vector<DimensionHandle> dims;
+      dims.assign(rank, c->MakeDim(InferenceContext::kUnknownDim));
+
+      c->set_output(0, c->MakeShape(dims));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     });
 
@@ -1399,10 +1403,13 @@ REGISTER_OP("UniqueWithCountsV2")
     .Attr("Taxis: {int32,int64} = DT_INT64")
     .Attr("out_idx: {int32, int64} = DT_INT32")
     .SetShapeFn([](InferenceContext* c) {
-      auto uniq = c->Vector(InferenceContext::kUnknownDim);
-      c->set_output(0, uniq);
-      c->set_output(1, c->input(0));
-      c->set_output(2, uniq);
+      int32 rank = InferenceContext::Rank(c->input(0));
+      std::vector<DimensionHandle> dims;
+      dims.assign(rank, c->MakeDim(InferenceContext::kUnknownDim));
+
+      c->set_output(0, c->MakeShape(dims));
+      c->set_output(1, c->Vector(InferenceContext::kUnknownDim));
+      c->set_output(2, c->Vector(InferenceContext::kUnknownDim));
       return Status::OK();
     });
 
