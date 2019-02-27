@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/llvm_ir/kernel_tiling.h"
 #include "tensorflow/compiler/xla/layout_util.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_helper.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -156,12 +157,9 @@ IrArray::Index KernelMappingScheme::GetUnnormalizedIndex(
                           unnormalized_shape, b_);
 }
 
-IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty,
-    LLVMTargetFeatures& llvm_target_features) {
-  llvm::Intrinsic::ID groupid_intrinsic = 
-     llvm_target_features.GetIntrinsicID("__block_id_x");
-  llvm::Value* block_id = llvm_ir::EmitCallToIntrinsic(
-      groupid_intrinsic, {}, {}, b_);
+IrArray::Index KernelMappingScheme::EmitBlockIndex(llvm::Type* index_ty) {
+  llvm::Value* block_id = llvm_ir::EmitCallToTargetIntrinsic(
+      kBlock_id_x, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetNumberOfBlocks(),
                             llvm::cast<llvm::Instruction>(block_id));
   llvm::Value* linear_block_id =
@@ -218,14 +216,11 @@ llvm::GlobalVariable* KernelMappingScheme::GetSharedMemoryBufferForElementType(
 }
 
 std::tuple<llvm::Value*, llvm::Value*>
-KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty,
-    LLVMTargetFeatures& llvm_target_features) {
+KernelMappingScheme::EmitThreadYXCoordinate(llvm::Type* index_ty) {
   // Calculate (y, x) coordinate of the thread in the 2D view of thread block
   // defined by (num_thread_y, num_thread_x) from thread_id.
-  llvm::Intrinsic::ID tid_intrinsic = 
-     llvm_target_features.GetIntrinsicID("__thread_id_x");
-  llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToIntrinsic(
-      tid_intrinsic, {}, {}, b_);
+  llvm::CallInst* thread_id_raw = llvm_ir::EmitCallToTargetIntrinsic(
+      kThread_id_x, {}, {}, b_);
   llvm_ir::AddRangeMetadata(0, GetThreadsPerBlock(), thread_id_raw);
   llvm::Value* thread_id_int =
       b_->CreateIntCast(thread_id_raw, index_ty,

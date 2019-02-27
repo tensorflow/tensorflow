@@ -16,6 +16,8 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_LLVM_UTIL_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_LLVM_IR_LLVM_UTIL_H_
 
+#include "llvm_target_helper.h"
+
 #include <stdint.h>
 #include <string>
 #include <vector>
@@ -104,6 +106,14 @@ string SanitizeFunctionName(string function_name);
 // overloaded type.
 llvm::CallInst* EmitCallToIntrinsic(
     llvm::Intrinsic::ID intrinsic_id, absl::Span<llvm::Value* const> operands,
+    absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
+
+// Emits a call to the specified target intrinsic with the given operands. Overloaded
+// intrinsics (for example, "minnum") must include a type in overloaded_types
+// for each overloaded type. Typically, overloaded intrinsics have only a single
+// overloaded type.
+llvm::CallInst* EmitCallToTargetIntrinsic(
+    TargetIntrinsicID intrinsic_id, absl::Span<llvm::Value* const> operands,
     absl::Span<llvm::Type* const> overloaded_types, llvm::IRBuilder<>* b);
 
 // Emit float max. Emit maxnum intrinsic is fast math is disabled, or
