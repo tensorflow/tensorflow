@@ -304,7 +304,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:argmax_op",
     ],
 )
 
