@@ -574,6 +574,22 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     # Even though we didn't use it, an event file will have been created.
     self.assertEqual(1, len(gfile.Glob(os.path.join(logdir, '*'))))
 
+  def testCreate_immediateSetAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        summary_ops.create_file_writer_v2(logdir).set_as_default()
+        summary_ops.flush()
+    finally:
+      # Ensure we clean up no matter how the test executes.
+      context.context().summary_writer_resource = None
+
+  def testCreate_immediateAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        summary_ops.flush()
+
   def testNoSharing(self):
     # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
@@ -687,7 +703,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       writer = summary_ops.create_file_writer_v2(
           logdir, max_queue=999999, flush_millis=999999)
-      with writer.as_default(), summary_ops.always_record_summaries():
+      with writer.as_default():
         get_total = lambda: len(events_from_logdir(logdir))
         # Note: First tf.Event is always file_version.
         self.assertEqual(1, get_total())

@@ -142,7 +142,7 @@ class _EagerContext(threading.local):
     self.mode = default_execution_mode
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
-    self.summary_writer_resource = None
+    self.summary_writer = None
     self.summary_recording = None
     self.summary_step = None
     self.scalar_cache = {}
@@ -517,14 +517,14 @@ class Context(object):
     self._eager_context.scope_name = s
 
   @property
-  def summary_writer_resource(self):
-    """Returns summary writer resource."""
-    return self._eager_context.summary_writer_resource
+  def summary_writer(self):
+    """Returns default summary writer for the current thread."""
+    return self._eager_context.summary_writer
 
-  @summary_writer_resource.setter
-  def summary_writer_resource(self, resource):
-    """Sets summary writer resource."""
-    self._eager_context.summary_writer_resource = resource
+  @summary_writer.setter
+  def summary_writer(self, writer):
+    """Sets default summary writer for the current thread."""
+    self._eager_context.summary_writer = writer
 
   @property
   def summary_recording(self):

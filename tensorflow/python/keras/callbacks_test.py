@@ -986,18 +986,17 @@ class _MockSummaryFile(object):
 def _mock_summary_api():
   summary_file = _MockSummaryFile()
 
-  # Keep track of the logdir associated with each created resource.
+  # Keep track of the logdir associated with each created writer.
   # (There doesn't seem to be an easy way to get this information after
   # the fact.)
-  resource_logdirs = {}
+  writer_logdirs = {}
   real_create_file_writer = summary_ops_v2.create_file_writer
 
   def mock_create_file_writer(logdir, *args, **kwargs):
     writer = real_create_file_writer(logdir, *args, **kwargs)
-    resource = writer._resource
-    assert resource is not None
-    assert resource not in resource_logdirs, (resource, resource_logdirs)
-    resource_logdirs[resource] = logdir
+    assert writer is not None
+    assert writer not in writer_logdirs, (writer, writer_logdirs)
+    writer_logdirs[writer] = logdir
     return writer
 
   def make_mock_summary(summary_set):
@@ -1005,24 +1004,18 @@ def _mock_summary_api():
     def mock_summary(tag, *args, **kwargs):
       del args  # unused
       del kwargs  # unused
-      resource = context.context().summary_writer_resource
-      logdir = resource_logdirs[resource]
+      logdir = writer_logdirs[context.context().summary_writer]
       summary_set.add(_ObservedSummary(logdir=logdir, tag=tag))
 
     return mock_summary
 
-  with test.mock.patch.object(summary_ops_v2,
-                              'create_file_writer',
-                              mock_create_file_writer), \
-        test.mock.patch.object(summary_ops_v2,
-                               'scalar',
-                               make_mock_summary(summary_file.scalars)), \
-        test.mock.patch.object(summary_ops_v2,
-                               'histogram',
-                               make_mock_summary(summary_file.histograms)), \
-        test.mock.patch.object(summary_ops_v2,
-                               'image',
-                               make_mock_summary(summary_file.images)):
+  patches = {
+      'create_file_writer': mock_create_file_writer,
+      'scalar': make_mock_summary(summary_file.scalars),
+      'histogram': make_mock_summary(summary_file.histograms),
+      'image': make_mock_summary(summary_file.images),
+  }
+  with test.mock.patch.multiple(summary_ops_v2, **patches):
     yield summary_file
 
 
