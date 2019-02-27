@@ -40,18 +40,6 @@ void RunTestPermutation(const std::vector<int>& shape,
     input[i] = i;
   }
 
-  // Create reversed and padded perms.
-  int reversed_perms[4];
-  for (int output_k = 0, input_k = shape.size() - 1; output_k < shape.size();
-       output_k++, input_k--) {
-    reversed_perms[output_k] = shape.size() - perms[input_k] - 1;
-  }
-  // Unused dimensions should not be permuted so pad with identity transform
-  // subset.
-  for (int k = shape.size(); k < 4; k++) {
-    reversed_perms[k] = k;
-  }
-
   // Make input and output shapes.
   const RuntimeShape input_shape = GetTensorShape(shape);
   RuntimeShape output_shape(perms.size());
