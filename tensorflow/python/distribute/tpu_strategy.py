@@ -235,7 +235,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
         d.name: i for i, d in enumerate(self._tpu_metadata.devices)
         if "device:TPU:" in d.name
     }
-    self._host_device = self.get_host_cpu_device(0)
+    self._host_device = tpu_strategy_util.get_first_tpu_host_device(
+        self._tpu_cluster_resolver)
     self._tpu_devices = tuple(sorted(self._device_index.keys()))
     # Only create variables for the number of replicas we're running.
     self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
@@ -279,7 +280,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
-        numpy_input, numpy_dataset.SingleDevice(self.get_host_cpu_device(0)),
+        numpy_input, numpy_dataset.SingleDevice(self._host_device),
         session)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
@@ -347,8 +348,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     assert isinstance(initial_loop_values, list)
     initial_loop_values = initial_loop_values * self._num_replicas_in_sync
 
-    # Put the while loop op on host 0.
-    with ops.device(self.get_host_cpu_device(0)):
+    # Put the while loop op on TPU host 0.
+    with ops.device(self._host_device):
       replicate_outputs = training_loop.repeat(iterations, rewrite_fn,
                                                initial_loop_values)
 
@@ -591,15 +592,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
         return result
       else:
         return nest.map_structure(self._unwrap, result)
-
-  def get_host(self, host_id):
-    if self._tpu_cluster_resolver.get_master() in ("", "local"):
-      return "/replica:0/task:0"
-    job_name = self._tpu_cluster_resolver.get_job_name() or "tpu_worker"
-    return "/job:%s/task:%d" % (job_name, host_id)
-
-  def get_host_cpu_device(self, host_id):
-    return self.get_host(host_id) + "/device:CPU:0"
 
   def _configure(self,
                  session_config=None,
