@@ -1005,7 +1005,8 @@ def keras_model(name, data, step=None):
   """Writes a Keras model as JSON to as a Summary.
 
   Writing the Keras model configuration allows the TensorBoard graph plugin to
-  render a conceptual graph, as opposed to graph of ops.
+  render a conceptual graph, as opposed to graph of ops. In case the model fails
+  to serialze as JSON, it ignores and returns False.
 
   Args:
     name: A name for this summary. The summary tag used for TensorBoard will be
@@ -1016,7 +1017,7 @@ def keras_model(name, data, step=None):
       not be None.
 
   Returns:
-    True on success, or false if no summary was written because no default
+    True on success, or False if no summary was written because no default
     summary writer was available.
 
   Raises:
@@ -1030,7 +1031,12 @@ def keras_model(name, data, step=None):
   # version number = 1
   summary_metadata.plugin_data.content = b"1"
 
-  json_string = data.to_json()
+  try:
+    json_string = data.to_json()
+  except Exception as exc:  # pylint: disable=broad-except
+    # An exception should not break a model code.
+    logging.warn("Model failed to serialize as JSON. Ignoring... %s" % exc)
+    return False
 
   with summary_scope(name, "graph_keras_model", [data, step]) as (tag, _):
     return write(
