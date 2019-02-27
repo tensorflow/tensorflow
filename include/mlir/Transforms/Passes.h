@@ -72,8 +72,11 @@ FunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 /// Creates an simplification pass for affine structures.
 FunctionPass *createSimplifyAffineStructuresPass();
 
-/// Creates a loop fusion pass which fuses loops.
-FunctionPass *createLoopFusionPass();
+/// Creates a loop fusion pass which fuses loops. Buffers of size less than or
+/// equal to `localBufSizeThreshold` are promoted to memory space
+/// `fastMemorySpace'.
+FunctionPass *createLoopFusionPass(unsigned fastMemorySpace = 0,
+                                   uint64_t localBufSizeThreshold = 0);
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.

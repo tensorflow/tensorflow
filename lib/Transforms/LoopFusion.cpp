@@ -67,9 +67,11 @@ static llvm::cl::opt<unsigned> clFusionFastMemorySpace(
     llvm::cl::desc("Faster memory space number to promote fusion buffers to"),
     llvm::cl::cat(clOptionsCategory));
 
-static llvm::cl::opt<unsigned> clFusionLocalBufThreshold(
+// A local buffer of size less than or equal to this size is promoted to fast
+// memory.
+static llvm::cl::opt<unsigned long long> clFusionLocalBufThreshold(
     "fusion-local-buf-threshold", llvm::cl::Hidden,
-    llvm::cl::desc("Threshold size (bytes) for promoting local buffers to fast "
+    llvm::cl::desc("Threshold size (KiB) for promoting local buffers to fast "
                    "memory space"),
     llvm::cl::cat(clOptionsCategory));
 
@@ -85,14 +87,17 @@ namespace {
 // and add support for more general loop fusion algorithms.
 
 struct LoopFusion : public FunctionPass {
-  LoopFusion() : FunctionPass(&LoopFusion::passID) {}
+  LoopFusion(unsigned fastMemorySpace = 0, uint64_t localBufSizeThreshold = 0)
+      : FunctionPass(&LoopFusion::passID),
+        localBufSizeThreshold(localBufSizeThreshold),
+        fastMemorySpace(fastMemorySpace) {}
 
   PassResult runOnFunction(Function *f) override;
   constexpr static PassID passID = {};
 
-  // Any local buffers smaller than this size will be created in
+  // Any local buffers smaller than this size (in bytes) will be created in
   // `fastMemorySpace` if provided.
-  unsigned localBufSizeThreshold = 1024;
+  uint64_t localBufSizeThreshold;
   Optional<unsigned> fastMemorySpace = None;
 
   // The amount of additional computation that is tolerated while fusing
@@ -102,7 +107,10 @@ struct LoopFusion : public FunctionPass {
 
 } // end anonymous namespace
 
-FunctionPass *mlir::createLoopFusionPass() { return new LoopFusion; }
+FunctionPass *mlir::createLoopFusionPass(unsigned fastMemorySpace,
+                                         uint64_t localBufSizeThreshold) {
+  return new LoopFusion(fastMemorySpace, localBufSizeThreshold);
+}
 
 namespace {
 
@@ -632,7 +640,7 @@ struct LoopNestStatsCollector {
       unsigned count = 0;
       stats->opCountMap[forInst] = 0;
       for (auto &inst : *forOp->getBody()) {
-        if (!(inst.isa<AffineForOp>() || inst.isa<AffineIfOp>()))
+        if (!inst.isa<AffineForOp>() && !inst.isa<AffineIfOp>())
           ++count;
       }
       stats->opCountMap[forInst] = count;
@@ -1048,7 +1056,7 @@ static Value *createPrivateMemRef(OpPointer<AffineForOp> forOp,
                                   Instruction *srcStoreOpInst,
                                   unsigned dstLoopDepth,
                                   Optional<unsigned> fastMemorySpace,
-                                  unsigned localBufSizeThreshold) {
+                                  uint64_t localBufSizeThreshold) {
   auto *forInst = forOp->getInstruction();
 
   // Create builder to insert alloc op just before 'forOp'.
@@ -1102,7 +1110,7 @@ static Value *createPrivateMemRef(OpPointer<AffineForOp> forOp,
   uint64_t bufSize =
       getMemRefEltSizeInBytes(oldMemRefType) * numElements.getValue();
   unsigned newMemSpace;
-  if (bufSize < localBufSizeThreshold && fastMemorySpace.hasValue()) {
+  if (bufSize <= localBufSizeThreshold && fastMemorySpace.hasValue()) {
     newMemSpace = fastMemorySpace.getValue();
   } else {
     newMemSpace = oldMemRefType.getMemorySpace();
@@ -1414,7 +1422,8 @@ static bool isFusionProfitable(Instruction *srcOpInst,
     LLVM_DEBUG({
       std::stringstream msg;
       msg << "  evaluating fusion profitability at depth : " << i << "\n"
-          << std::setprecision(2) << "   additional compute fraction: "
+          << std::fixed << std::setprecision(2)
+          << "   additional compute fraction: "
           << 100.0 * additionalComputeFraction << "%\n"
           << "   storage reduction factor: " << storageReduction << "x\n"
           << "   fused nest cost: " << fusedLoopNestComputeCost << "\n"
@@ -1795,8 +1804,14 @@ public:
 } // end anonymous namespace
 
 PassResult LoopFusion::runOnFunction(Function *f) {
+  // Override if a command line argument was provided.
   if (clFusionFastMemorySpace.getNumOccurrences() > 0) {
     fastMemorySpace = clFusionFastMemorySpace.getValue();
+  }
+
+  // Override if a command line argument was provided.
+  if (clFusionLocalBufThreshold.getNumOccurrences() > 0) {
+    localBufSizeThreshold = clFusionLocalBufThreshold * 1024;
   }
 
   MemRefDependenceGraph g;
