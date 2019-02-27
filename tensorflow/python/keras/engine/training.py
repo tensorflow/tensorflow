@@ -63,6 +63,7 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
+from tensorflow.python.util.compat import collections_abc
 
 try:
   from scipy.sparse import issparse  # pylint: disable=g-import-not-at-top
@@ -603,9 +604,9 @@ class Model(network.Network):
             or a dataset iterator, and 'validation_steps' is None, validation
             will run until the `validation_data` dataset is exhausted.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections.Container` instance (e.g. list, tuple, etc.). If an
-            integer, specifies how many training epochs to run before a new
-            validation run is performed, e.g. `validation_freq=2` runs
+            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            If an integer, specifies how many training epochs to run before a
+            new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
             which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
             validation at the end of the 1st, 2nd, and 10th epochs.
@@ -1048,7 +1049,7 @@ class Model(network.Network):
     # at this point.
     if self.run_eagerly or self._distribution_strategy:
       inputs = training_utils.cast_if_floating_dtype(inputs)
-      if isinstance(inputs, collections.Sequence):
+      if isinstance(inputs, collections_abc.Sequence):
         # Unwrap lists with only one input, as we do when training on batch
         if len(inputs) == 1:
           inputs = inputs[0]
@@ -1126,9 +1127,9 @@ class Model(network.Network):
             Optional for `Sequence`: if unspecified, will use
             the `len(validation_data)` as a number of steps.
         validation_freq: Only relevant if validation data is provided. Integer
-            or `collections.Container` instance (e.g. list, tuple, etc.). If an
-            integer, specifies how many training epochs to run before a new
-            validation run is performed, e.g. `validation_freq=2` runs
+            or `collections_abc.Container` instance (e.g. list, tuple, etc.).
+            If an integer, specifies how many training epochs to run before a
+            new validation run is performed, e.g. `validation_freq=2` runs
             validation every 2 epochs. If a Container, specifies the epochs on
             which to run validation, e.g. `validation_freq=[1, 2, 10]` runs
             validation at the end of the 1st, 2nd, and 10th epochs.

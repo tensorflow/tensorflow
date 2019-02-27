@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import contextlib
 import copy
 import json
@@ -50,6 +49,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 original_run_std_server = dc._run_std_server  # pylint: disable=protected-access
@@ -353,7 +353,7 @@ class MultiWorkerTestBase(test.TestCase):
     self.assertEqual(self._result, len(threads))
 
 
-class MockOsEnv(collections.Mapping):
+class MockOsEnv(collections_abc.Mapping):
   """A class that allows per-thread TF_CONFIG."""
 
   def __init__(self, *args):

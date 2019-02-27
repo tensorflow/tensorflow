@@ -18,8 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 import six
 
 from tensorflow.python.framework import constant_op
@@ -31,6 +29,7 @@ from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -49,14 +48,14 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   correct results.
 
   For example:
-  
+
   ```python
   A = tf.constant([[1, 20, 13], [3, 21, 13]])
   B = tf.clip_by_value(A, clip_value_min=0, clip_value_max=3) # [[1, 3, 3],[3, 3, 3]]
-  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError` 
+  C = tf.clip_by_value(A, clip_value_min=0., clip_value_max=3.) # throws `TypeError`
   as input and clip_values are of different dtype
   ```
-  
+
   Args:
     t: A `Tensor` or `IndexedSlices`.
     clip_value_min: A 0-D (scalar) `Tensor`, or a `Tensor` with the same shape
@@ -71,8 +70,8 @@ def clip_by_value(t, clip_value_min, clip_value_max,
   Raises:
     ValueError: If the clip tensors would trigger array broadcasting
       that would make the returned tensor larger than the input.
-    TypeError: If dtype of the input is `int32` and dtype of 
-    the `clip_value_min' or `clip_value_max` is `float32`  
+    TypeError: If dtype of the input is `int32` and dtype of
+    the `clip_value_min' or `clip_value_max` is `float32`
   """
   with ops.name_scope(name, "clip_by_value",
                       [t, clip_value_min, clip_value_max]) as name:
@@ -208,7 +207,7 @@ def global_norm(t_list, name=None):
   Raises:
     TypeError: If `t_list` is not a sequence.
   """
-  if (not isinstance(t_list, collections.Sequence)
+  if (not isinstance(t_list, collections_abc.Sequence)
       or isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)
@@ -282,7 +281,7 @@ def clip_by_global_norm(t_list, clip_norm, use_norm=None, name=None):
   Raises:
     TypeError: If `t_list` is not a sequence.
   """
-  if (not isinstance(t_list, collections.Sequence)
+  if (not isinstance(t_list, collections_abc.Sequence)
       or isinstance(t_list, six.string_types)):
     raise TypeError("t_list should be a sequence")
   t_list = list(t_list)

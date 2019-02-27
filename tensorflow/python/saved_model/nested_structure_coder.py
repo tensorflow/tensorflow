@@ -39,6 +39,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
 from tensorflow.python.util import compat
+from tensorflow.python.util.compat import collections_abc
 
 
 class NotEncodableError(Exception):
@@ -153,7 +154,7 @@ def _is_named_tuple(instance):
   if not isinstance(instance, tuple):
     return False
   return (hasattr(instance, "_fields") and
-          isinstance(instance._fields, collections.Sequence) and
+          isinstance(instance._fields, collections_abc.Sequence) and
           all(isinstance(f, six.string_types) for f in instance._fields))
 
 

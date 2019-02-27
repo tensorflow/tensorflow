@@ -53,6 +53,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.losses import util as tf_losses_utils
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -1025,7 +1026,7 @@ def get_loss_function(loss):
     return loss
 
   # Deserialize loss configuration, if needed.
-  if isinstance(loss, collections.Mapping):
+  if isinstance(loss, collections_abc.Mapping):
     loss = losses.get(loss)
 
   # Custom callable class.
@@ -1245,7 +1246,7 @@ def prepare_loss_functions(loss, output_names):
       ValueError: If loss is a dict with keys not in model output names,
           or if loss is a list with len not equal to model outputs.
   """
-  if isinstance(loss, collections.Mapping):
+  if isinstance(loss, collections_abc.Mapping):
     generic_utils.check_for_unexpected_keys('loss', loss, output_names)
     loss_functions = []
     for name in output_names:
@@ -1257,7 +1258,7 @@ def prepare_loss_functions(loss, output_names):
       loss_functions.append(get_loss_function(loss.get(name, None)))
   elif isinstance(loss, six.string_types):
     loss_functions = [get_loss_function(loss) for _ in output_names]
-  elif isinstance(loss, collections.Sequence):
+  elif isinstance(loss, collections_abc.Sequence):
     if len(loss) != len(output_names):
       raise ValueError('When passing a list as loss, it should have one entry '
                        'per model outputs. The model has {} outputs, but you '
@@ -1747,9 +1748,9 @@ def should_run_validation(validation_freq, epoch):
       raise ValueError('`validation_freq` can not be less than 1.')
     return one_indexed_epoch % validation_freq == 0
 
-  if not isinstance(validation_freq, collections.Container):
+  if not isinstance(validation_freq, collections_abc.Container):
     raise ValueError('`validation_freq` must be an Integer or '
-                     '`collections.Container` (e.g. list, tuple, etc.)')
+                     '`collections_abc.Container` (e.g. list, tuple, etc.)')
   return one_indexed_epoch in validation_freq
 
 

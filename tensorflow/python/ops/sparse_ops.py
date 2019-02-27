@@ -23,7 +23,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import numbers
 
 import numpy as np
@@ -46,6 +45,7 @@ from tensorflow.python.util import compat
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import dispatch
 from tensorflow.python.util import tf_inspect
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import get_canonical_name_for_symbol
 from tensorflow.python.util.tf_export import tf_export
 
@@ -1658,10 +1658,10 @@ def sparse_merge_impl(sp_ids,
                       type(vocab_size))
     vocab_size = [vocab_size]
   else:
-    if not isinstance(sp_ids, collections.Iterable):
+    if not isinstance(sp_ids, collections_abc.Iterable):
       raise TypeError("sp_ids has to be a SparseTensor or list thereof. "
                       "Found %s" % type(sp_ids))
-    if not isinstance(vocab_size, collections.Iterable):
+    if not isinstance(vocab_size, collections_abc.Iterable):
       raise TypeError("vocab_size has to be a list of Tensors or Python ints. "
                       "Found %s" % type(vocab_size))
     for dim in vocab_size:

@@ -17,14 +17,13 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
-
 from tensorflow.python.compat import compat
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.data.util import structure
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import gen_experimental_dataset_ops
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -53,7 +52,7 @@ class _ScanDataset(dataset_ops.UnaryDataset):
                            input_dataset.element_spec),
           add_to_graph=False)
       if not (
-          isinstance(wrapped_func.output_types, collections.Sequence) and
+          isinstance(wrapped_func.output_types, collections_abc.Sequence) and
           len(wrapped_func.output_types) == 2):
         raise TypeError("The scan function must return a pair comprising the "
                         "new state and the output value.")

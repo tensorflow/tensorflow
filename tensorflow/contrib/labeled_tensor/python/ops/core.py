@@ -41,11 +41,12 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.util.compat import collections_abc
 
 # pylint: disable=invalid-name
 
 # Types coercible to Axis.labels
-# We use this instead of collections.Sequence to exclude strings.
+# We use this instead of collections_abc.Sequence to exclude strings.
 LabelsLike = tc.Union(np.ndarray, range, list, tuple)
 
 # Types coercible to a tf.compat.v1.Dimension
@@ -195,7 +196,7 @@ def as_axis(axis_data):
   return axis
 
 
-class Axes(collections.Mapping):
+class Axes(collections_abc.Mapping):
   """Axis names and indices for a tensor.
 
   It is an ordered mapping, with keys given by axis name and values given
@@ -719,7 +720,7 @@ def transpose(labeled_tensor, axis_order=None, name=None):
 @tc.accepts(LabeledTensorLike,
             tc.Collection(
                 tc.Union(string_types,
-                         tc.Tuple(string_types, collections.Hashable))),
+                         tc.Tuple(string_types, collections_abc.Hashable))),
             tc.Optional(string_types))
 def expand_dims(labeled_tensor, axes, name=None):
   """Insert dimensions of size 1.
@@ -1055,7 +1056,7 @@ def align(labeled_tensor_0, labeled_tensor_1, name=None):
 
 
 @tc.returns(types.FunctionType)
-@tc.accepts(string_types, collections.Callable)
+@tc.accepts(string_types, collections_abc.Callable)
 def define_unary_op(op_name, elementwise_function):
   """Define a unary operation for labeled tensors.
 
@@ -1124,7 +1125,7 @@ sigmoid = define_unary_op('sigmoid', math_ops.sigmoid)
 
 
 @tc.returns(types.FunctionType)
-@tc.accepts(string_types, collections.Callable)
+@tc.accepts(string_types, collections_abc.Callable)
 def define_binary_op(op_name, elementwise_function):
   """Define a binary operation that broadcasts labeled tensors.
 

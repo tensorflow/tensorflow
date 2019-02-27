@@ -18,7 +18,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 import functools
 import itertools
 import unittest
@@ -31,6 +30,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 
 
 class TestCase(test.TestCase, parameterized.TestCase):
@@ -312,7 +312,7 @@ def _test_or_class_decorator(test_or_class, single_method_decorator):
     The decorated result.
   """
   def _decorate_test_or_class(obj):
-    if isinstance(obj, collections.Iterable):
+    if isinstance(obj, collections_abc.Iterable):
       return itertools.chain.from_iterable(
           single_method_decorator(method) for method in obj)
     if isinstance(obj, type):

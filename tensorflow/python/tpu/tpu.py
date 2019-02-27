@@ -19,7 +19,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import attr_value_pb2
@@ -41,6 +40,7 @@ from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.util import compat
 from tensorflow.python.util import nest
+from tensorflow.python.util.compat import collections_abc
 from tensorflow.python.util.tf_export import tf_export
 
 ops.NotDifferentiable("TPUReplicatedInput")
@@ -1022,7 +1022,7 @@ def _postprocess_flat_outputs(outputs):
   if outputs is None:
     outputs = tuple()
   # If the computation only returned one value, makes it a tuple.
-  if not isinstance(outputs, collections.Sequence):
+  if not isinstance(outputs, collections_abc.Sequence):
     outputs = (outputs,)
 
   # Append `no_op` here so that fetching any return value of this function

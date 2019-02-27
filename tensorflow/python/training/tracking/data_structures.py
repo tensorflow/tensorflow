@@ -35,6 +35,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.saved_model import revived_types
 from tensorflow.python.training.tracking import base
 from tensorflow.python.training.tracking import layer_utils
+from tensorflow.python.util.compat import collections_abc
 
 
 class NoDependency(object):
@@ -249,7 +250,7 @@ class TrackableDataStructure(base.Trackable):
     return self is other
 
 
-class List(TrackableDataStructure, collections.Sequence):
+class List(TrackableDataStructure, collections_abc.Sequence):
   """An append-only sequence type which is trackable.
 
   Maintains checkpoint dependencies on its contents (which must also be
@@ -371,7 +372,7 @@ class List(TrackableDataStructure, collections.Sequence):
 # TODO(tomhennigan) Update to collections.UserList?
 # TODO(allenl): Try switching this to wrapt.ObjectProxy again when we drop
 # Python 3.4 support (may still be tricky).
-class ListWrapper(List, collections.MutableSequence,
+class ListWrapper(List, collections_abc.MutableSequence,
                   # Shadowed, but there for isinstance checks.
                   list):
   """Wraps the built-in `list` to support restore-on-create for variables.
@@ -579,7 +580,7 @@ class ListWrapper(List, collections.MutableSequence,
     }
 
 
-class Mapping(TrackableDataStructure, collections.Mapping):
+class Mapping(TrackableDataStructure, collections_abc.Mapping):
   """An append-only trackable mapping data structure with string keys.
 
   Maintains checkpoint dependencies on its contents (which must also be

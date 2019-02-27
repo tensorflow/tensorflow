@@ -35,12 +35,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as _collections
-
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.framework import sparse_tensor as _sparse_tensor
+from tensorflow.python.util.compat import collections_abc as _collections_abc
 
 
 def _sorted(dict_):
@@ -71,7 +70,7 @@ def _sequence_like(instance, args):
     return type(instance)((key, result[key]) for key in instance)
   elif (isinstance(instance, tuple) and
         hasattr(instance, "_fields") and
-        isinstance(instance._fields, _collections.Sequence) and
+        isinstance(instance._fields, _collections_abc.Sequence) and
         all(isinstance(f, _six.string_types) for f in instance._fields)):
     # This is a namedtuple
     return type(instance)(*args)

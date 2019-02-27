@@ -34,12 +34,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import collections as _collections
-
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.compat import collections_abc as _collections_abc
 
 
 _SHALLOW_TREE_HAS_INVALID_KEYS = (
@@ -170,7 +169,7 @@ def _yield_sorted_items(iterable):
   Yields:
     The iterable's (key, value) pairs, in order of sorted keys.
   """
-  if isinstance(iterable, _collections.Mapping):
+  if isinstance(iterable, _collections_abc.Mapping):
     # Iterate through dictionaries in a deterministic order by sorting the
     # keys. Notice this means that we ignore the original order of `OrderedDict`
     # instances. This is intentional, to avoid potential bugs caused by mixing
@@ -205,14 +204,14 @@ is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
 
 @tf_export("nest.is_nested")
 def is_nested(seq):
-  """Returns true if its input is a collections.Sequence (except strings).
+  """Returns true if its input is a collections.abc.Sequence (except strings).
 
   Args:
     seq: an input sequence.
 
   Returns:
-    True if the sequence is a not a string and is a collections.Sequence or a
-    dict.
+    True if the sequence is a not a string and is a collections.abc.Sequence
+    or a dict.
   """
   return is_sequence(seq)
 
@@ -344,7 +343,7 @@ def flatten_dict_items(dictionary):
     ValueError: If any key and value do not have the same structure layout, or
     if keys are not unique.
   """
-  if not isinstance(dictionary, (dict, _collections.Mapping)):
+  if not isinstance(dictionary, (dict, _collections_abc.Mapping)):
     raise TypeError("input must be a dictionary")
   flat_dictionary = {}
   for i, v in _six.iteritems(dictionary):
@@ -714,8 +713,8 @@ def assert_shallow_structure(shallow_tree,
             (_is_type_spec(shallow_tree) or _is_type_spec(input_tree))):
         pass  # Compatibility will be checked below.
 
-      elif not (isinstance(shallow_tree, _collections.Mapping)
-                and isinstance(input_tree, _collections.Mapping)):
+      elif not (isinstance(shallow_tree, _collections_abc.Mapping)
+                and isinstance(input_tree, _collections_abc.Mapping)):
         raise TypeError(_STRUCTURES_HAVE_MISMATCHING_TYPES.format(
             input_type=type(input_tree),
             shallow_type=type(shallow_tree)))
@@ -753,7 +752,7 @@ def assert_shallow_structure(shallow_tree,
             _INPUT_TREE_SMALLER_THAN_SHALLOW_TREE.format(
                 input_size=len(input_tree), shallow_size=len(shallow_tree)))
 
-    if isinstance(shallow_tree, _collections.Mapping):
+    if isinstance(shallow_tree, _collections_abc.Mapping):
       absent_keys = set(shallow_tree) - set(input_tree)
       if absent_keys:
         raise ValueError(_SHALLOW_TREE_HAS_INVALID_KEYS
@@ -1315,5 +1314,5 @@ def flatten_with_tuple_paths(structure, expand_composites=False):
                   flatten(structure, expand_composites=expand_composites)))
 
 
-_pywrap_tensorflow.RegisterType("Mapping", _collections.Mapping)
-_pywrap_tensorflow.RegisterType("Sequence", _collections.Sequence)
+_pywrap_tensorflow.RegisterType("Mapping", _collections_abc.Mapping)
+_pywrap_tensorflow.RegisterType("Sequence", _collections_abc.Sequence)
