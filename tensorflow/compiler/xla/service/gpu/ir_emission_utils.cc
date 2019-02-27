@@ -24,7 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_helper.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
@@ -208,18 +208,15 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 }
 
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
-                                     llvm::IRBuilder<>* builder, 
-                                     llvm_ir::LLVMTargetFeatures& llvm_target_features) {
+                                     llvm::IRBuilder<>* builder) {
   int bit_width = value->getType()->getPrimitiveSizeInBits();
   llvm::Value* all_warps_mask = builder->getInt32(-1);
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-    llvm::Intrinsic::ID shfl_down_intrinsic =
-      llvm_target_features.GetIntrinsicID("__shfl_down");
-    return llvm_ir::EmitCallToIntrinsic(
-        shfl_down_intrinsic,
-        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {},
+    return llvm_ir::EmitCallToTargetIntrinsic(
+         llvm_ir::kShfl_down_f32,
+        {all_warps_mask, value, offset, builder->getInt32(kWarpSize - 1)}, {}, 
         builder);
   }
 
@@ -234,8 +231,8 @@ llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
   for (int i = 0; i < num_segments; ++i) {
     x = builder->CreateInsertElement(
         x,
-        llvm_ir::EmitCallToIntrinsic(
-            llvm::Intrinsic::nvvm_shfl_sync_down_i32,
+        llvm_ir::EmitCallToTargetIntrinsic(
+            llvm_ir::kShfl_down_i32,
             {all_warps_mask, builder->CreateExtractElement(x, i), offset,
              builder->getInt32(kWarpSize - 1)},
             {}, builder),
@@ -279,21 +276,16 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b, 
-                             llvm_ir::LLVMTargetFeatures& llvm_target_features) {
-
-  llvm::Intrinsic::ID tid_intrinsic =
-      llvm_target_features.GetIntrinsicID("__thread_id_x");
-  llvm::Intrinsic::ID group_id_intrinsic =
-      llvm_target_features.GetIntrinsicID("__block_id_x");
-
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b) {
   return b->CreateAnd(
       b->CreateICmpEQ(
           b->getInt32(0),
-          llvm_ir::EmitCallToIntrinsic(tid_intrinsic, {}, {}, b)),
+          llvm_ir::EmitCallToTargetIntrinsic(
+              llvm_ir::kThread_id_x, {}, {}, b)),
       b->CreateICmpEQ(
           b->getInt32(0),
-          llvm_ir::EmitCallToIntrinsic(group_id_intrinsic, {}, {}, b)));
+          llvm_ir::EmitCallToTargetIntrinsic(
+              llvm_ir::kThread_id_x, {}, {}, b)));
 }
 
 }  // namespace gpu

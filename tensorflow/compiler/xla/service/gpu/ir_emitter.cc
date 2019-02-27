@@ -38,7 +38,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -56,17 +55,14 @@ using llvm_ir::SetToFirstInsertPoint;
 namespace gpu {
 
 IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
-                     IrEmitterContext* ir_emitter_context, bool is_nested,
-                     llvm_ir::LLVMTargetFeatures* llvm_target_features)
+                     IrEmitterContext* ir_emitter_context, bool is_nested)
     : ir_emitter_context_(ir_emitter_context),
       module_(ir_emitter_context->llvm_module()),
       b_(module_->getContext()),
       bindings_(ir_emitter_context->hlo_module(),
                 &ir_emitter_context->buffer_assignment(), &b_, module_,
                 is_nested),
-      hlo_module_config_(hlo_module_config),
-      llvm_target_features_(*llvm_target_features) {
-
+      hlo_module_config_(hlo_module_config) {
 }
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {

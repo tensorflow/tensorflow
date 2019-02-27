@@ -22,8 +22,6 @@ limitations under the License.
 #include "llvm/IR/Value.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
-#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
-
 
 // TODO(jlebar): Move functions related to cublas/cudnn to a separate file; they
 // don't belong in "ir_emission_utils".
@@ -168,11 +166,11 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
 //
 // https://docs.nvidia.com/cuda/parallel-thread-execution/#data-movement-and-conversion-instructions-shfl-sync
 llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
-                                     llvm::IRBuilder<>* builder, llvm_ir::LLVMTargetFeatures& llvm_target_features);
+                                     llvm::IRBuilder<>* builder);
 
 // Emits code that determines whether the current thread is thread 0 within
 // block 0 of the kernel.
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b, llvm_ir::LLVMTargetFeatures& llvm_target_features);
+llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b);
 
 }  // namespace gpu
 }  // namespace xla
