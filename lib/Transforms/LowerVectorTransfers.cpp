@@ -424,25 +424,22 @@ public:
   }
 };
 
-struct LowerVectorTransfersPass : public FunctionPass {
-  LowerVectorTransfersPass()
-      : FunctionPass(&LowerVectorTransfersPass::passID) {}
-
-  PassResult runOnFunction(Function *fn) override {
+struct LowerVectorTransfersPass
+    : public FunctionPass<LowerVectorTransfersPass> {
+  PassResult runOnFunction() {
+    Function *f = &getFunction();
     applyMLPatternsGreedily<VectorTransferExpander<VectorTransferReadOp>,
-                            VectorTransferExpander<VectorTransferWriteOp>>(fn);
+                            VectorTransferExpander<VectorTransferWriteOp>>(f);
     return success();
   }
 
   // Thread-safe RAII context with local scope. BumpPtrAllocator freed on exit.
   edsc::ScopedEDSCContext raiiContext;
-
-  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
 
-FunctionPass *mlir::createLowerVectorTransfersPass() {
+FunctionPassBase *mlir::createLowerVectorTransfersPass() {
   return new LowerVectorTransfersPass();
 }
 

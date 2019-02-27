@@ -71,34 +71,30 @@ static llvm::cl::opt<unsigned>
 namespace {
 /// Loop unroll jam pass. Currently, this just unroll jams the first
 /// outer loop in a Function.
-struct LoopUnrollAndJam : public FunctionPass {
+struct LoopUnrollAndJam : public FunctionPass<LoopUnrollAndJam> {
   Optional<unsigned> unrollJamFactor;
   static const unsigned kDefaultUnrollJamFactor = 4;
 
   explicit LoopUnrollAndJam(Optional<unsigned> unrollJamFactor = None)
-      : FunctionPass(&LoopUnrollAndJam::passID),
-        unrollJamFactor(unrollJamFactor) {}
+      : unrollJamFactor(unrollJamFactor) {}
 
-  PassResult runOnFunction(Function *f) override;
+  PassResult runOnFunction() override;
   bool runOnAffineForOp(OpPointer<AffineForOp> forOp);
-
-  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
 
-FunctionPass *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
+FunctionPassBase *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
   return new LoopUnrollAndJam(
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 
-PassResult LoopUnrollAndJam::runOnFunction(Function *f) {
+PassResult LoopUnrollAndJam::runOnFunction() {
   // Currently, just the outermost loop from the first loop nest is
   // unroll-and-jammed by this pass. However, runOnAffineForOp can be called on
-  // any for Inst.
-  auto &entryBlock = f->front();
-  if (!entryBlock.empty())
-    if (auto forOp = entryBlock.front().dyn_cast<AffineForOp>())
-      runOnAffineForOp(forOp);
+  // any for operation.
+  auto &entryBlock = getFunction().front();
+  if (auto forOp = entryBlock.front().dyn_cast<AffineForOp>())
+    runOnAffineForOp(forOp);
 
   return success();
 }

@@ -242,16 +242,12 @@ Optional<SmallVector<Value *, 8>> static expandAffineMap(
 }
 
 namespace {
-class LowerAffinePass : public FunctionPass {
-public:
-  LowerAffinePass() : FunctionPass(&passID) {}
-  PassResult runOnFunction(Function *function) override;
+struct LowerAffinePass : public FunctionPass<LowerAffinePass> {
+  PassResult runOnFunction() override;
 
   bool lowerAffineFor(OpPointer<AffineForOp> forOp);
   bool lowerAffineIf(AffineIfOp *ifOp);
   bool lowerAffineApply(AffineApplyOp *op);
-
-  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
 
@@ -608,12 +604,12 @@ bool LowerAffinePass::lowerAffineApply(AffineApplyOp *op) {
 // construction.  When an Value is used, it gets replaced with the
 // corresponding Value that has been defined previously.  The value flow
 // starts with function arguments converted to basic block arguments.
-PassResult LowerAffinePass::runOnFunction(Function *function) {
+PassResult LowerAffinePass::runOnFunction() {
   SmallVector<Instruction *, 8> instsToRewrite;
 
   // Collect all the For instructions as well as AffineIfOps and AffineApplyOps.
   // We do this as a prepass to avoid invalidating the walker with our rewrite.
-  function->walk([&](Instruction *inst) {
+  getFunction().walk([&](Instruction *inst) {
     if (inst->isa<AffineApplyOp>() || inst->isa<AffineForOp>() ||
         inst->isa<AffineIfOp>())
       instsToRewrite.push_back(inst);
@@ -638,7 +634,9 @@ PassResult LowerAffinePass::runOnFunction(Function *function) {
 
 /// Lowers If and For instructions within a function into their lower level CFG
 /// equivalent blocks.
-FunctionPass *mlir::createLowerAffinePass() { return new LowerAffinePass(); }
+FunctionPassBase *mlir::createLowerAffinePass() {
+  return new LowerAffinePass();
+}
 
 static PassRegistration<LowerAffinePass>
     pass("lower-affine",

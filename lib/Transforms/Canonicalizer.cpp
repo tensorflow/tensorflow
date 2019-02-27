@@ -33,30 +33,30 @@ using namespace mlir;
 namespace {
 
 /// Canonicalize operations in functions.
-struct Canonicalizer : public FunctionPass {
-  Canonicalizer() : FunctionPass(&Canonicalizer::passID) {}
-  PassResult runOnFunction(Function *fn) override;
-
-  constexpr static PassID passID = {};
+struct Canonicalizer : public FunctionPass<Canonicalizer> {
+  PassResult runOnFunction() override;
 };
 } // end anonymous namespace
 
-PassResult Canonicalizer::runOnFunction(Function *fn) {
-  auto *context = fn->getContext();
+PassResult Canonicalizer::runOnFunction() {
   OwningRewritePatternList patterns;
+  auto &func = getFunction();
 
   // TODO: Instead of adding all known patterns from the whole system lazily add
   // and cache the canonicalization patterns for ops we see in practice when
   // building the worklist.  For now, we just grab everything.
-  for (auto *op : fn->getContext()->getRegisteredOperations())
+  auto *context = func.getContext();
+  for (auto *op : context->getRegisteredOperations())
     op->getCanonicalizationPatterns(patterns, context);
 
-  applyPatternsGreedily(fn, std::move(patterns));
+  applyPatternsGreedily(&func, std::move(patterns));
   return success();
 }
 
 /// Create a Canonicalizer pass.
-FunctionPass *mlir::createCanonicalizerPass() { return new Canonicalizer(); }
+FunctionPassBase *mlir::createCanonicalizerPass() {
+  return new Canonicalizer();
+}
 
 static PassRegistration<Canonicalizer> pass("canonicalize",
                                             "Canonicalize operations");

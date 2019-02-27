@@ -30,28 +30,28 @@ namespace mlir {
 
 class AffineForOp;
 template <typename T> class ConstOpPointer;
-class FunctionPass;
-class ModulePass;
+class FunctionPassBase;
+class ModulePassBase;
 
 /// Creates a constant folding pass.
-FunctionPass *createConstantFoldPass();
+FunctionPassBase *createConstantFoldPass();
 
 /// Creates an instance of the Canonicalizer pass.
-FunctionPass *createCanonicalizerPass();
+FunctionPassBase *createCanonicalizerPass();
 
 /// Creates a pass to perform common sub expression elimination.
-FunctionPass *createCSEPass();
+FunctionPassBase *createCSEPass();
 
 /// Creates a pass to vectorize loops, operations and data types using a
 /// target-independent, n-D super-vector abstraction.
-FunctionPass *createVectorizePass();
+FunctionPassBase *createVectorizePass();
 
 /// Creates a pass to allow independent testing of vectorizer functionality with
 /// FileCheck.
-FunctionPass *createVectorizerTestPass();
+FunctionPassBase *createVectorizerTestPass();
 
 /// Creates a pass to lower super-vectors to target-dependent HW vectors.
-FunctionPass *createMaterializeVectorsPass();
+FunctionPassBase *createMaterializeVectorsPass();
 
 /// Creates a loop unrolling pass with the provided parameters.
 /// 'getUnrollFactor' is a function callback for clients to supply a function
@@ -59,7 +59,7 @@ FunctionPass *createMaterializeVectorsPass();
 /// factors supplied through other means. If -1 is passed as the unrollFactor
 /// and no callback is provided, anything passed from the command-line (if at
 /// all) or the default unroll factor is used (LoopUnroll:kDefaultUnrollFactor).
-FunctionPass *
+FunctionPassBase *
 createLoopUnrollPass(int unrollFactor = -1, int unrollFull = -1,
                      const std::function<unsigned(ConstOpPointer<AffineForOp>)>
                          &getUnrollFactor = nullptr);
@@ -67,49 +67,49 @@ createLoopUnrollPass(int unrollFactor = -1, int unrollFull = -1,
 /// Creates a loop unroll jam pass to unroll jam by the specified factor. A
 /// factor of -1 lets the pass use the default factor or the one on the command
 /// line if provided.
-FunctionPass *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
+FunctionPassBase *createLoopUnrollAndJamPass(int unrollJamFactor = -1);
 
 /// Creates an simplification pass for affine structures.
-FunctionPass *createSimplifyAffineStructuresPass();
+FunctionPassBase *createSimplifyAffineStructuresPass();
 
 /// Creates a loop fusion pass which fuses loops. Buffers of size less than or
 /// equal to `localBufSizeThreshold` are promoted to memory space
 /// `fastMemorySpace'.
-FunctionPass *createLoopFusionPass(unsigned fastMemorySpace = 0,
-                                   uint64_t localBufSizeThreshold = 0);
+FunctionPassBase *createLoopFusionPass(unsigned fastMemorySpace = 0,
+                                       uint64_t localBufSizeThreshold = 0);
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
-FunctionPass *createPipelineDataTransferPass();
+FunctionPassBase *createPipelineDataTransferPass();
 
 /// Lowers affine control flow instructions (ForStmt, IfStmt and AffineApplyOp)
 /// to equivalent lower-level constructs (flow of basic blocks and arithmetic
 /// primitives).
-FunctionPass *createLowerAffinePass();
+FunctionPassBase *createLowerAffinePass();
 
 /// Creates a pass to perform tiling on loop nests.
-FunctionPass *createLoopTilingPass();
+FunctionPassBase *createLoopTilingPass();
 
 /// Promotes all accessed memref regions to the specified faster memory space
 /// while generating DMAs to move data.
-FunctionPass *createDmaGenerationPass(
+FunctionPassBase *createDmaGenerationPass(
     unsigned slowMemorySpace, unsigned fastMemorySpace,
     int minDmaTransferSize = 1024,
     uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max());
 
 /// Creates a pass to lower VectorTransferReadOp and VectorTransferWriteOp.
-FunctionPass *createLowerVectorTransfersPass();
+FunctionPassBase *createLowerVectorTransfersPass();
 
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.
-FunctionPass *createMemRefDataFlowOptPass();
+FunctionPassBase *createMemRefDataFlowOptPass();
 
 /// Creates a pass to strip debug information from a function.
-FunctionPass *createStripDebugInfoPass();
+FunctionPassBase *createStripDebugInfoPass();
 
 /// Creates a pass to convert Standard and Builtin dialects into the LLVMIR
 /// dialect.
-ModulePass *createConvertToLLVMIRPass();
+ModulePassBase *createConvertToLLVMIRPass();
 
 } // end namespace mlir
 

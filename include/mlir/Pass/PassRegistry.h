@@ -96,7 +96,7 @@ void registerPass(StringRef arg, StringRef description, const PassID *passID,
 ///   static PassRegistration<MyPass> Unused("unused", "Unused pass");
 template <typename ConcretePass> struct PassRegistration {
   PassRegistration(StringRef arg, StringRef description) {
-    registerPass(arg, description, &ConcretePass::passID,
+    registerPass(arg, description, PassID::getID<ConcretePass>(),
                  [&]() { return new ConcretePass(); });
   }
 };

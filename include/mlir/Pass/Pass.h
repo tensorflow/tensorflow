@@ -42,9 +42,6 @@ public:
 
   virtual ~Pass() = default;
 
-  /// TODO: This is deprecated and should be removed.
-  virtual PassResult runOnModule(Module *m) { return failure(); }
-
   /// Returns the unique identifier that corresponds to this pass.
   const PassID *getPassID() const { return passIDAndKind.getPointer(); }
 
@@ -73,31 +70,6 @@ private:
 
   /// Represents a unique identifier for the pass and its kind.
   llvm::PointerIntPair<const PassID *, 1, Kind> passIDAndKind;
-};
-
-/// Deprecated Function and Module Pass definitions.
-/// TODO(riverriddle) Remove these.
-class ModulePass : public Pass {
-public:
-  explicit ModulePass(const PassID *passID) : Pass(passID, Kind::ModulePass) {}
-
-  virtual PassResult runOnModule(Module *m) override = 0;
-
-private:
-  /// Out of line virtual method to ensure vtables and metadata are emitted to a
-  /// single .o file.
-  virtual void anchor();
-};
-class FunctionPass : public Pass {
-public:
-  explicit FunctionPass(const PassID *passID)
-      : Pass(passID, Kind::FunctionPass) {}
-
-  /// Implement this function to be run on every function in the module.
-  virtual PassResult runOnFunction(Function *fn) = 0;
-
-  // Iterates over all functions in a module, halting upon failure.
-  virtual PassResult runOnModule(Module *m) override;
 };
 
 namespace detail {
@@ -173,10 +145,6 @@ private:
   /// The current execution state for the pass.
   llvm::Optional<detail::PassExecutionState<Module>> passState;
 
-  /// TODO(riverriddle) Remove this using directive when the old pass
-  /// functionality is removed.
-  using Pass::runOnModule;
-
   /// Allow access to 'run'.
   friend detail::ModulePassExecutor;
 };
@@ -195,9 +163,7 @@ protected:
   /// TODO(riverriddle) Provide additional utilities for cloning, getting the
   /// derived class name, etc..
 };
-
-// TODO(riverriddle): Move these to the mlir namespace when the current passes
-// have been ported.
+} // end namespace detail
 
 /// A model for providing function pass specific utilities.
 ///
@@ -210,14 +176,14 @@ protected:
 /// Derived function passes are expected to provide the following:
 ///   - A 'PassResult runOnFunction()' method.
 template <typename T>
-using FunctionPass = PassModel<Function, T, FunctionPassBase>;
+using FunctionPass = detail::PassModel<Function, T, FunctionPassBase>;
 
 /// A model for providing module pass specific utilities.
 ///
 /// Derived module passes are expected to provide the following:
 ///   - A 'PassResult runOnModule()' method.
-template <typename T> using ModulePass = PassModel<Module, T, ModulePassBase>;
-} // end namespace detail
+template <typename T>
+using ModulePass = detail::PassModel<Module, T, ModulePassBase>;
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASS_H

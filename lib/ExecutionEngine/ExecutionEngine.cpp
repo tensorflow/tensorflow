@@ -22,7 +22,7 @@
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR.h"
 #include "mlir/Transforms/Passes.h"
 
@@ -168,35 +168,20 @@ static inline Error make_string_error(const llvm::Twine &message) {
 // - CSE
 // - canonicalization
 // - affine lowering
-static std::vector<std::unique_ptr<mlir::Pass>>
-getDefaultPasses(const std::vector<const mlir::PassInfo *> &mlirPassInfoList) {
-  std::vector<std::unique_ptr<mlir::Pass>> passList;
-  passList.reserve(mlirPassInfoList.size() + 4);
+static void
+getDefaultPasses(PassManager &manager,
+                 const std::vector<const mlir::PassInfo *> &mlirPassInfoList) {
   // Run each of the passes that were selected.
   for (const auto *passInfo : mlirPassInfoList) {
-    passList.emplace_back(passInfo->createPass());
+    manager.addPass(passInfo->createPass());
   }
-  // Append the extra passes for lowering to MLIR.
-  passList.emplace_back(mlir::createConstantFoldPass());
-  passList.emplace_back(mlir::createCSEPass());
-  passList.emplace_back(mlir::createCanonicalizerPass());
-  passList.emplace_back(mlir::createLowerAffinePass());
-  passList.emplace_back(mlir::createConvertToLLVMIRPass());
-  return passList;
-}
 
-// Run the passes sequentially on the given module.
-// Return `nullptr` immediately if any of the passes fails.
-static bool runPasses(const std::vector<std::unique_ptr<mlir::Pass>> &passes,
-                      Module *module) {
-  for (const auto &pass : passes) {
-    mlir::PassResult result = pass->runOnModule(module);
-    if (result == mlir::PassResult::Failure || module->verify()) {
-      llvm::errs() << "Pass failed\n";
-      return true;
-    }
-  }
-  return false;
+  // Append the extra passes for lowering to MLIR.
+  manager.addPass(mlir::createConstantFoldPass());
+  manager.addPass(mlir::createCSEPass());
+  manager.addPass(mlir::createCanonicalizerPass());
+  manager.addPass(mlir::createLowerAffinePass());
+  manager.addPass(mlir::createConvertToLLVMIRPass());
 }
 
 // Setup LLVM target triple from the current machine.
@@ -295,7 +280,10 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
   if (!expectedJIT)
     return expectedJIT.takeError();
 
-  if (runPasses(getDefaultPasses({}), m))
+  // Construct and run the default MLIR pipeline.
+  PassManager manager;
+  getDefaultPasses(manager, {});
+  if (manager.run(m))
     return make_string_error("passes failed");
 
   auto llvmModule = translateModuleToLLVMIR(*m);

@@ -28,7 +28,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
-#include "mlir/Pass/Pass.h"
+#include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/TensorFlow/ControlFlowOps.h"
 #include "mlir/TensorFlow/Passes.h"
@@ -125,16 +125,13 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     return OptFailure;
 
   // Run each of the passes that were selected.
-  for (const auto *passInfo : *passList) {
-    std::unique_ptr<Pass> pass(passInfo->createPass());
-    PassResult result = pass->runOnModule(module.get());
-    if (result)
-      return OptFailure;
-
-    // Verify that the result of the pass is still valid.
-    if (module->verify())
-      return OptFailure;
-  }
+  // TODO(riverriddle) Make sure that the verifer is run after each pass when it
+  // is no longer run by default within the PassManager.
+  PassManager pm;
+  for (const auto *passInfo : *passList)
+    pm.addPass(passInfo->createPass());
+  if (pm.run(module.get()))
+    return OptFailure;
 
   std::string errorMessage;
   auto output = openOutputFile(outputFilename, &errorMessage);

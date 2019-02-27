@@ -23,26 +23,25 @@
 using namespace mlir;
 
 namespace {
-struct StripDebugInfo : public FunctionPass {
-  StripDebugInfo() : FunctionPass(&StripDebugInfo::passID) {}
-
-  PassResult runOnFunction(Function *f) override;
-
-  constexpr static PassID passID = {};
+struct StripDebugInfo : public FunctionPass<StripDebugInfo> {
+  PassResult runOnFunction() override;
 };
 } // end anonymous namespace
 
-PassResult StripDebugInfo::runOnFunction(Function *f) {
-  UnknownLoc unknownLoc = UnknownLoc::get(f->getContext());
+PassResult StripDebugInfo::runOnFunction() {
+  Function &func = getFunction();
+  UnknownLoc unknownLoc = UnknownLoc::get(func.getContext());
 
   // Strip the debug info from the function and its instructions.
-  f->setLoc(unknownLoc);
-  f->walk([&](Instruction *inst) { inst->setLoc(unknownLoc); });
+  func.setLoc(unknownLoc);
+  func.walk([&](Instruction *inst) { inst->setLoc(unknownLoc); });
   return success();
 }
 
 /// Creates a pass to strip debug information from a function.
-FunctionPass *mlir::createStripDebugInfoPass() { return new StripDebugInfo(); }
+FunctionPassBase *mlir::createStripDebugInfoPass() {
+  return new StripDebugInfo();
+}
 
 static PassRegistration<StripDebugInfo>
     pass("strip-debuginfo", "Strip debug info from functions and instructions");

@@ -65,7 +65,7 @@ namespace {
 /// full unroll threshold was specified, in which case, fully unrolls all loops
 /// with trip count less than the specified threshold. The latter is for testing
 /// purposes, especially for testing outer loop unrolling.
-struct LoopUnroll : public FunctionPass {
+struct LoopUnroll : public FunctionPass<LoopUnroll> {
   const Optional<unsigned> unrollFactor;
   const Optional<bool> unrollFull;
   // Callback to obtain unroll factors; if this has a callable target, takes
@@ -76,21 +76,19 @@ struct LoopUnroll : public FunctionPass {
                       Optional<bool> unrollFull = None,
                       const std::function<unsigned(ConstOpPointer<AffineForOp>)>
                           &getUnrollFactor = nullptr)
-      : FunctionPass(&LoopUnroll::passID), unrollFactor(unrollFactor),
-        unrollFull(unrollFull), getUnrollFactor(getUnrollFactor) {}
+      : unrollFactor(unrollFactor), unrollFull(unrollFull),
+        getUnrollFactor(getUnrollFactor) {}
 
-  PassResult runOnFunction(Function *f) override;
+  PassResult runOnFunction() override;
 
   /// Unroll this for inst. Returns false if nothing was done.
   bool runOnAffineForOp(OpPointer<AffineForOp> forOp);
 
   static const unsigned kDefaultUnrollFactor = 4;
-
-  constexpr static PassID passID = {};
 };
 } // end anonymous namespace
 
-PassResult LoopUnroll::runOnFunction(Function *f) {
+PassResult LoopUnroll::runOnFunction() {
   // Gathers all innermost loops through a post order pruned walk.
   struct InnermostLoopGatherer {
     // Store innermost loops as we walk.
@@ -132,7 +130,7 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
     // Gathers all loops with trip count <= minTripCount. Do a post order walk
     // so that loops are gathered from innermost to outermost (or else unrolling
     // an outer one may delete gathered inner ones).
-    f->walkPostOrder<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
+    getFunction().walkPostOrder<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
       Optional<uint64_t> tripCount = getConstantTripCount(forOp);
       if (tripCount.hasValue() && tripCount.getValue() <= clUnrollFullThreshold)
         loops.push_back(forOp);
@@ -146,9 +144,10 @@ PassResult LoopUnroll::runOnFunction(Function *f) {
                                 ? clUnrollNumRepetitions
                                 : 1;
   // If the call back is provided, we will recurse until no loops are found.
+  Function *func = &getFunction();
   for (unsigned i = 0; i < numRepetitions || getUnrollFactor; i++) {
     InnermostLoopGatherer ilg;
-    ilg.walkPostOrder(f);
+    ilg.walkPostOrder(func);
     auto &loops = ilg.loops;
     if (loops.empty())
       break;
@@ -184,7 +183,7 @@ bool LoopUnroll::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   return loopUnrollByFactor(forOp, kDefaultUnrollFactor);
 }
 
-FunctionPass *mlir::createLoopUnrollPass(
+FunctionPassBase *mlir::createLoopUnrollPass(
     int unrollFactor, int unrollFull,
     const std::function<unsigned(ConstOpPointer<AffineForOp>)>
         &getUnrollFactor) {

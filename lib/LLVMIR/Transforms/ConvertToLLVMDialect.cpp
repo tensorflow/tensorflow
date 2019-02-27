@@ -1137,13 +1137,10 @@ static void ensureDistinctSuccessors(Module *m) {
 
 /// A pass converting MLIR Standard and Builtin operations into the LLVM IR
 /// dialect.
-class LLVMLowering : public ModulePass, public DialectConversion {
+class LLVMLowering : public ModulePass<LLVMLowering>, public DialectConversion {
 public:
-  LLVMLowering() : ModulePass(&passID) {}
-
-  constexpr static PassID passID = {};
-
-  PassResult runOnModule(Module *m) override {
+  PassResult runOnModule() override {
+    Module *m = &getModule();
     uniqueSuccessorsWithArguments(m);
     return DialectConversion::convert(m) ? failure() : success();
   }
@@ -1203,7 +1200,7 @@ private:
   llvm::Module *module;
 };
 
-ModulePass *mlir::createConvertToLLVMIRPass() { return new LLVMLowering; }
+ModulePassBase *mlir::createConvertToLLVMIRPass() { return new LLVMLowering(); }
 
 static PassRegistration<LLVMLowering>
     pass("convert-to-llvmir", "Convert all functions to the LLVM IR dialect");

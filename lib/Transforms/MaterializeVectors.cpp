@@ -196,12 +196,8 @@ struct MaterializationState {
   DenseMap<const Value *, Value *> *substitutionsMap;
 };
 
-struct MaterializeVectorsPass : public FunctionPass {
-  MaterializeVectorsPass() : FunctionPass(&MaterializeVectorsPass::passID) {}
-
-  PassResult runOnFunction(Function *f) override;
-
-  constexpr static PassID passID = {};
+struct MaterializeVectorsPass : public FunctionPass<MaterializeVectorsPass> {
+  PassResult runOnFunction() override;
 };
 
 } // end anonymous namespace
@@ -733,11 +729,12 @@ static bool materialize(Function *f,
   return false;
 }
 
-PassResult MaterializeVectorsPass::runOnFunction(Function *f) {
+PassResult MaterializeVectorsPass::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
   // TODO(ntv): Check to see if this supports arbitrary top-level code.
+  Function *f = &getFunction();
   if (f->getBlocks().size() != 1)
     return success();
 
@@ -771,7 +768,7 @@ PassResult MaterializeVectorsPass::runOnFunction(Function *f) {
   return fail ? PassResult::Failure : PassResult::Success;
 }
 
-FunctionPass *mlir::createMaterializeVectorsPass() {
+FunctionPassBase *mlir::createMaterializeVectorsPass() {
   return new MaterializeVectorsPass();
 }
 

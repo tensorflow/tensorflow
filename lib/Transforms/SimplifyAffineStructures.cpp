@@ -36,18 +36,14 @@ namespace {
 /// the Function. This is mainly to test the simplifyAffineExpr method.
 /// TODO(someone): This should just be defined as a canonicalization pattern
 /// on AffineMap and driven from the existing canonicalization pass.
-struct SimplifyAffineStructures : public FunctionPass {
-  explicit SimplifyAffineStructures()
-      : FunctionPass(&SimplifyAffineStructures::passID) {}
-
-  PassResult runOnFunction(Function *f) override;
-
-  constexpr static PassID passID = {};
+struct SimplifyAffineStructures
+    : public FunctionPass<SimplifyAffineStructures> {
+  PassResult runOnFunction() override;
 };
 
 } // end anonymous namespace
 
-FunctionPass *mlir::createSimplifyAffineStructuresPass() {
+FunctionPassBase *mlir::createSimplifyAffineStructuresPass() {
   return new SimplifyAffineStructures();
 }
 
@@ -61,8 +57,8 @@ static IntegerSet simplifyIntegerSet(IntegerSet set) {
   return set;
 }
 
-PassResult SimplifyAffineStructures::runOnFunction(Function *f) {
-  f->walk([&](Instruction *opInst) {
+PassResult SimplifyAffineStructures::runOnFunction() {
+  getFunction().walk([&](Instruction *opInst) {
     for (auto attr : opInst->getAttrs()) {
       if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
         MutableAffineMap mMap(mapAttr.getValue());

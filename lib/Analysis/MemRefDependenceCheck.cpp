@@ -37,19 +37,14 @@ namespace {
 
 // TODO(andydavis) Add common surrounding loop depth-wise dependence checks.
 /// Checks dependences between all pairs of memref accesses in a Function.
-struct MemRefDependenceCheck : public FunctionPass {
+struct MemRefDependenceCheck : public FunctionPass<MemRefDependenceCheck> {
   SmallVector<Instruction *, 4> loadsAndStores;
-  explicit MemRefDependenceCheck()
-      : FunctionPass(&MemRefDependenceCheck::passID) {}
-
-  PassResult runOnFunction(Function *f) override;
-
-  constexpr static PassID passID = {};
+  PassResult runOnFunction() override;
 };
 
 } // end anonymous namespace
 
-FunctionPass *mlir::createMemRefDependenceCheckPass() {
+FunctionPassBase *mlir::createMemRefDependenceCheckPass() {
   return new MemRefDependenceCheck();
 }
 
@@ -116,10 +111,10 @@ static void checkDependences(ArrayRef<Instruction *> loadsAndStores) {
 
 // Walks the Function 'f' adding load and store ops to 'loadsAndStores'.
 // Runs pair-wise dependence checks.
-PassResult MemRefDependenceCheck::runOnFunction(Function *f) {
+PassResult MemRefDependenceCheck::runOnFunction() {
   // Collect the loads and stores within the function.
   loadsAndStores.clear();
-  f->walk([&](Instruction *inst) {
+  getFunction().walk([&](Instruction *inst) {
     if (inst->isa<LoadOp>() || inst->isa<StoreOp>())
       loadsAndStores.push_back(inst);
   });

@@ -74,18 +74,17 @@ namespace {
 /// memory capacity provided.
 // TODO(bondhugula): We currently can't generate DMAs correctly when stores are
 // strided. Check for strided stores.
-struct DmaGeneration : public FunctionPass {
+struct DmaGeneration : public FunctionPass<DmaGeneration> {
   explicit DmaGeneration(unsigned slowMemorySpace = 0,
                          unsigned fastMemorySpace = clFastMemorySpace,
                          int minDmaTransferSize = 1024,
                          uint64_t fastMemCapacityBytes = clFastMemoryCapacity *
                                                          1024)
-      : FunctionPass(&DmaGeneration::passID), slowMemorySpace(slowMemorySpace),
-        fastMemorySpace(fastMemorySpace),
+      : slowMemorySpace(slowMemorySpace), fastMemorySpace(fastMemorySpace),
         minDmaTransferSize(minDmaTransferSize),
         fastMemCapacityBytes(fastMemCapacityBytes) {}
 
-  PassResult runOnFunction(Function *f) override;
+  PassResult runOnFunction() override;
   bool runOnBlock(Block *block);
   uint64_t runOnBlock(Block::iterator begin, Block::iterator end);
 
@@ -115,8 +114,6 @@ struct DmaGeneration : public FunctionPass {
 
   // Constant zero index to avoid too many duplicates.
   Value *zeroIndex = nullptr;
-
-  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
@@ -125,10 +122,10 @@ struct DmaGeneration : public FunctionPass {
 /// buffers in 'fastMemorySpace', and replaces memory operations to the former
 /// by the latter. Only load op's handled for now.
 /// TODO(bondhugula): extend this to store op's.
-FunctionPass *mlir::createDmaGenerationPass(unsigned slowMemorySpace,
-                                            unsigned fastMemorySpace,
-                                            int minDmaTransferSize,
-                                            uint64_t fastMemCapacityBytes) {
+FunctionPassBase *mlir::createDmaGenerationPass(unsigned slowMemorySpace,
+                                                unsigned fastMemorySpace,
+                                                int minDmaTransferSize,
+                                                uint64_t fastMemCapacityBytes) {
   return new DmaGeneration(slowMemorySpace, fastMemorySpace, minDmaTransferSize,
                            fastMemCapacityBytes);
 }
@@ -757,7 +754,8 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   return totalDmaBuffersSizeInBytes;
 }
 
-PassResult DmaGeneration::runOnFunction(Function *f) {
+PassResult DmaGeneration::runOnFunction() {
+  Function *f = &getFunction();
   FuncBuilder topBuilder(f);
   zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
 

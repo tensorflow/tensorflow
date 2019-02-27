@@ -91,7 +91,7 @@ private:
 /// An adaptor module pass used to run function passes over all of the
 /// non-external functions of a module.
 class ModuleToFunctionPassAdaptor
-    : public detail::ModulePass<ModuleToFunctionPassAdaptor> {
+    : public ModulePass<ModuleToFunctionPassAdaptor> {
 public:
   ModuleToFunctionPassAdaptor() = default;
   ModuleToFunctionPassAdaptor(ModuleToFunctionPassAdaptor &&) = default;

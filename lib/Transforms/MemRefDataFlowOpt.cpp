@@ -69,10 +69,8 @@ namespace {
 // currently only eliminates the stores only if no other loads/uses (other
 // than dealloc) remain.
 //
-struct MemRefDataFlowOpt : public FunctionPass {
-  explicit MemRefDataFlowOpt() : FunctionPass(&MemRefDataFlowOpt::passID) {}
-
-  PassResult runOnFunction(Function *f) override;
+struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
+  PassResult runOnFunction() override;
 
   void forwardStoreToLoad(OpPointer<LoadOp> loadOp);
 
@@ -83,15 +81,13 @@ struct MemRefDataFlowOpt : public FunctionPass {
 
   DominanceInfo *domInfo = nullptr;
   PostDominanceInfo *postDomInfo = nullptr;
-
-  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
 
 /// Creates a pass to perform optimizations relying on memref dataflow such as
 /// store to load forwarding, elimination of dead stores, and dead allocs.
-FunctionPass *mlir::createMemRefDataFlowOptPass() {
+FunctionPassBase *mlir::createMemRefDataFlowOptPass() {
   return new MemRefDataFlowOpt();
 }
 
@@ -213,22 +209,22 @@ void MemRefDataFlowOpt::forwardStoreToLoad(OpPointer<LoadOp> loadOp) {
   loadOpsToErase.push_back(loadOpInst);
 }
 
-PassResult MemRefDataFlowOpt::runOnFunction(Function *f) {
+PassResult MemRefDataFlowOpt::runOnFunction() {
   // Only supports single block functions at the moment.
-  if (f->getBlocks().size() != 1)
+  Function &f = getFunction();
+  if (f.getBlocks().size() != 1)
     return success();
 
-  DominanceInfo theDomInfo(f);
+  DominanceInfo theDomInfo(&f);
   domInfo = &theDomInfo;
-  PostDominanceInfo thePostDomInfo(f);
+  PostDominanceInfo thePostDomInfo(&f);
   postDomInfo = &thePostDomInfo;
 
   loadOpsToErase.clear();
   memrefsToErase.clear();
 
   // Walk all load's and perform load/store forwarding.
-  f->walk<LoadOp>(
-      [&](OpPointer<LoadOp> loadOp) { forwardStoreToLoad(loadOp); });
+  f.walk<LoadOp>([&](OpPointer<LoadOp> loadOp) { forwardStoreToLoad(loadOp); });
 
   // Erase all load op's whose results were replaced with store fwd'ed ones.
   for (auto *loadOp : loadOpsToErase) {

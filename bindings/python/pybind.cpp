@@ -31,36 +31,6 @@ namespace mlir {
 namespace edsc {
 namespace python {
 
-static std::vector<std::unique_ptr<mlir::Pass>> getDefaultPasses(
-    const std::vector<const mlir::PassInfo *> &mlirPassInfoList = {}) {
-  std::vector<std::unique_ptr<mlir::Pass>> passList;
-  passList.reserve(mlirPassInfoList.size() + 4);
-  // Run each of the passes that were selected.
-  for (const auto *passInfo : mlirPassInfoList) {
-    passList.emplace_back(passInfo->createPass());
-  }
-  // Append the extra passes for lowering to MLIR.
-  passList.emplace_back(mlir::createConstantFoldPass());
-  passList.emplace_back(mlir::createCSEPass());
-  passList.emplace_back(mlir::createCanonicalizerPass());
-  passList.emplace_back(mlir::createLowerAffinePass());
-  return passList;
-}
-
-// Run the passes sequentially on the given module.
-// Return `nullptr` immediately if any of the passes fails.
-static bool runPasses(const std::vector<std::unique_ptr<mlir::Pass>> &passes,
-                      Module *module) {
-  for (const auto &pass : passes) {
-    mlir::PassResult result = pass->runOnModule(module);
-    if (result == mlir::PassResult::Failure || module->verify()) {
-      llvm::errs() << "Pass failed\n";
-      return true;
-    }
-  }
-  return false;
-}
-
 namespace py = pybind11;
 
 struct PythonBindable;

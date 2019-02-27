@@ -38,21 +38,18 @@ using namespace mlir;
 
 namespace {
 
-struct PipelineDataTransfer : public FunctionPass {
-  PipelineDataTransfer() : FunctionPass(&PipelineDataTransfer::passID) {}
-  PassResult runOnFunction(Function *f) override;
+struct PipelineDataTransfer : public FunctionPass<PipelineDataTransfer> {
+  PassResult runOnFunction() override;
   PassResult runOnAffineForOp(OpPointer<AffineForOp> forOp);
 
   std::vector<OpPointer<AffineForOp>> forOps;
-
-  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
 
 /// Creates a pass to pipeline explicit movement of data across levels of the
 /// memory hierarchy.
-FunctionPass *mlir::createPipelineDataTransferPass() {
+FunctionPassBase *mlir::createPipelineDataTransferPass() {
   return new PipelineDataTransfer();
 }
 
@@ -142,14 +139,14 @@ static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
 }
 
 /// Returns success if the IR is in a valid state.
-PassResult PipelineDataTransfer::runOnFunction(Function *f) {
+PassResult PipelineDataTransfer::runOnFunction() {
   // Do a post order walk so that inner loop DMAs are processed first. This is
   // necessary since 'for' instructions nested within would otherwise become
   // invalid (erased) when the outer loop is pipelined (the pipelined one gets
   // deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
   forOps.clear();
-  f->walkPostOrder<AffineForOp>(
+  getFunction().walkPostOrder<AffineForOp>(
       [&](OpPointer<AffineForOp> forOp) { forOps.push_back(forOp); });
   bool ret = false;
   for (auto forOp : forOps) {

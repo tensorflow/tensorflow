@@ -47,12 +47,10 @@ static llvm::cl::list<unsigned> clTileSizes(
 namespace {
 
 /// A pass to perform loop tiling on all suitable loop nests of a Function.
-struct LoopTiling : public FunctionPass {
-  LoopTiling() : FunctionPass(&LoopTiling::passID) {}
-  PassResult runOnFunction(Function *f) override;
+struct LoopTiling : public FunctionPass<LoopTiling> {
+  PassResult runOnFunction() override;
 
   constexpr static unsigned kDefaultTileSize = 4;
-  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
@@ -65,7 +63,7 @@ static llvm::cl::opt<unsigned>
 
 /// Creates a pass to perform loop tiling on all suitable loop nests of an
 /// Function.
-FunctionPass *mlir::createLoopTilingPass() { return new LoopTiling(); }
+FunctionPassBase *mlir::createLoopTilingPass() { return new LoopTiling(); }
 
 // Move the loop body of AffineForOp 'src' from 'src' into the specified
 // location in destination's body.
@@ -255,9 +253,9 @@ getTileableBands(Function *f,
         getMaximalPerfectLoopNest(forOp);
 }
 
-PassResult LoopTiling::runOnFunction(Function *f) {
+PassResult LoopTiling::runOnFunction() {
   std::vector<SmallVector<OpPointer<AffineForOp>, 6>> bands;
-  getTileableBands(f, &bands);
+  getTileableBands(&getFunction(), &bands);
 
   for (auto &band : bands) {
     // Set up tile sizes; fill missing tile sizes at the end with default tile

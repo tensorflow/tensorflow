@@ -86,14 +86,12 @@ namespace {
 // TODO(andydavis) Extend this pass to check for fusion preventing dependences,
 // and add support for more general loop fusion algorithms.
 
-struct LoopFusion : public FunctionPass {
+struct LoopFusion : public FunctionPass<LoopFusion> {
   LoopFusion(unsigned fastMemorySpace = 0, uint64_t localBufSizeThreshold = 0)
-      : FunctionPass(&LoopFusion::passID),
-        localBufSizeThreshold(localBufSizeThreshold),
+      : localBufSizeThreshold(localBufSizeThreshold),
         fastMemorySpace(fastMemorySpace) {}
 
-  PassResult runOnFunction(Function *f) override;
-  constexpr static PassID passID = {};
+  PassResult runOnFunction() override;
 
   // Any local buffers smaller than this size (in bytes) will be created in
   // `fastMemorySpace` if provided.
@@ -107,8 +105,8 @@ struct LoopFusion : public FunctionPass {
 
 } // end anonymous namespace
 
-FunctionPass *mlir::createLoopFusionPass(unsigned fastMemorySpace,
-                                         uint64_t localBufSizeThreshold) {
+FunctionPassBase *mlir::createLoopFusionPass(unsigned fastMemorySpace,
+                                             uint64_t localBufSizeThreshold) {
   return new LoopFusion(fastMemorySpace, localBufSizeThreshold);
 }
 
@@ -1802,7 +1800,7 @@ public:
 
 } // end anonymous namespace
 
-PassResult LoopFusion::runOnFunction(Function *f) {
+PassResult LoopFusion::runOnFunction() {
   // Override if a command line argument was provided.
   if (clFusionFastMemorySpace.getNumOccurrences() > 0) {
     fastMemorySpace = clFusionFastMemorySpace.getValue();
@@ -1814,7 +1812,7 @@ PassResult LoopFusion::runOnFunction(Function *f) {
   }
 
   MemRefDependenceGraph g;
-  if (g.init(f))
+  if (g.init(&getFunction()))
     GreedyFusion(&g).run(localBufSizeThreshold, fastMemorySpace);
   return success();
 }

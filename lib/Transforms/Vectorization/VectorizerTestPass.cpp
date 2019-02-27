@@ -83,20 +83,17 @@ static llvm::cl::opt<bool> clTestNormalizeMaps(
 
 namespace {
 
-struct VectorizerTestPass : public FunctionPass {
+struct VectorizerTestPass : public FunctionPass<VectorizerTestPass> {
   static constexpr auto kTestAffineMapOpName = "test_affine_map";
   static constexpr auto kTestAffineMapAttrName = "affine_map";
-  VectorizerTestPass() : FunctionPass(&VectorizerTestPass::passID) {}
 
-  PassResult runOnFunction(Function *f) override;
+  PassResult runOnFunction() override;
   void testVectorShapeRatio(Function *f);
   void testForwardSlicing(Function *f);
   void testBackwardSlicing(Function *f);
   void testSlicing(Function *f);
   void testComposeMaps(Function *f);
   void testNormalizeMaps(Function *f);
-
-  constexpr static PassID passID = {};
 };
 
 } // end anonymous namespace
@@ -263,11 +260,12 @@ void VectorizerTestPass::testNormalizeMaps(Function *f) {
   }
 }
 
-PassResult VectorizerTestPass::runOnFunction(Function *f) {
+PassResult VectorizerTestPass::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
   // Only support single block functions at this point.
+  Function *f = &getFunction();
   if (f->getBlocks().size() != 1)
     return success();
 
@@ -292,7 +290,7 @@ PassResult VectorizerTestPass::runOnFunction(Function *f) {
   return PassResult::Success;
 }
 
-FunctionPass *mlir::createVectorizerTestPass() {
+FunctionPassBase *mlir::createVectorizerTestPass() {
   return new VectorizerTestPass();
 }
 

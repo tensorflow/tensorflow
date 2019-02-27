@@ -80,11 +80,7 @@ struct SimpleOperationInfo : public llvm::DenseMapInfo<Instruction *> {
 
 namespace {
 /// Simple common sub-expression elimination.
-struct CSE : public FunctionPass {
-  CSE() : FunctionPass(&CSE::passID) {}
-
-  constexpr static PassID passID = {};
-
+struct CSE : public FunctionPass<CSE> {
   /// Shared implementation of operation elimination and scoped map definitions.
   using AllocatorTy = llvm::RecyclingAllocator<
       llvm::BumpPtrAllocator,
@@ -115,7 +111,7 @@ struct CSE : public FunctionPass {
   void simplifyBlock(DominanceInfo &domInfo, Block *bb);
   void simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList);
 
-  PassResult runOnFunction(Function *f) override;
+  PassResult runOnFunction() override;
 
 private:
   /// A scoped hash table of defining operations within a function.
@@ -220,9 +216,9 @@ void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
   }
 }
 
-PassResult CSE::runOnFunction(Function *f) {
-  DominanceInfo domInfo(f);
-  simplifyBlockList(domInfo, f->getBlockList());
+PassResult CSE::runOnFunction() {
+  DominanceInfo domInfo(&getFunction());
+  simplifyBlockList(domInfo, getFunction().getBlockList());
 
   /// Erase any operations that were marked as dead during simplification.
   for (auto *op : opsToErase)
@@ -232,7 +228,7 @@ PassResult CSE::runOnFunction(Function *f) {
   return success();
 }
 
-FunctionPass *mlir::createCSEPass() { return new CSE(); }
+FunctionPassBase *mlir::createCSEPass() { return new CSE(); }
 
 static PassRegistration<CSE>
     pass("cse", "Eliminate common sub-expressions in functions");

@@ -26,18 +26,14 @@ using namespace mlir;
 
 namespace {
 /// Simple constant folding pass.
-struct ConstantFold : public FunctionPass {
-  ConstantFold() : FunctionPass(&ConstantFold::passID) {}
-
+struct ConstantFold : public FunctionPass<ConstantFold> {
   // All constants in the function post folding.
   SmallVector<Value *, 8> existingConstants;
   // Operations that were folded and that need to be erased.
   std::vector<Instruction *> opInstsToErase;
 
   void foldInstruction(Instruction *op);
-  PassResult runOnFunction(Function *f) override;
-
-  constexpr static PassID passID = {};
+  PassResult runOnFunction() override;
 };
 } // end anonymous namespace
 
@@ -96,11 +92,11 @@ void ConstantFold::foldInstruction(Instruction *op) {
 // For now, we do a simple top-down pass over a function folding constants.  We
 // don't handle conditional control flow, block arguments, folding
 // conditional branches, or anything else fancy.
-PassResult ConstantFold::runOnFunction(Function *f) {
+PassResult ConstantFold::runOnFunction() {
   existingConstants.clear();
   opInstsToErase.clear();
 
-  f->walk([&](Instruction *inst) { foldInstruction(inst); });
+  getFunction().walk([&](Instruction *inst) { foldInstruction(inst); });
 
   // At this point, these operations are dead, remove them.
   // TODO: This is assuming that all constant foldable operations have no
@@ -122,7 +118,7 @@ PassResult ConstantFold::runOnFunction(Function *f) {
 }
 
 /// Creates a constant folding pass.
-FunctionPass *mlir::createConstantFoldPass() { return new ConstantFold(); }
+FunctionPassBase *mlir::createConstantFoldPass() { return new ConstantFold(); }
 
 static PassRegistration<ConstantFold>
     pass("constant-fold", "Constant fold operations in functions");

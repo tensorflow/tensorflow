@@ -29,24 +29,6 @@ using namespace mlir;
 /// single .o file.
 void Pass::anchor() {}
 
-/// Out of line virtual method to ensure vtables and metadata are emitted to a
-/// single .o file.
-void ModulePass::anchor() {}
-
-/// Function passes walk a module and look at each function with their
-/// corresponding hooks and terminates upon error encountered.
-PassResult FunctionPass::runOnModule(Module *m) {
-  for (auto &fn : *m) {
-    // All function passes ignore external functions.
-    if (fn.isExternal())
-      continue;
-
-    if (runOnFunction(&fn))
-      return failure();
-  }
-  return success();
-}
-
 /// Forwarding function to execute this pass.
 PassResult FunctionPassBase::run(Function *fn) {
   /// Initialize the pass state.

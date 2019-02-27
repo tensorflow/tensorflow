@@ -37,22 +37,18 @@ using namespace mlir;
 namespace {
 
 /// Checks for out of bound memef access subscripts..
-struct MemRefBoundCheck : public FunctionPass {
-  explicit MemRefBoundCheck() : FunctionPass(&MemRefBoundCheck::passID) {}
-
-  PassResult runOnFunction(Function *f) override;
-
-  constexpr static PassID passID = {};
+struct MemRefBoundCheck : public FunctionPass<MemRefBoundCheck> {
+  PassResult runOnFunction() override;
 };
 
 } // end anonymous namespace
 
-FunctionPass *mlir::createMemRefBoundCheckPass() {
+FunctionPassBase *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
 }
 
-PassResult MemRefBoundCheck::runOnFunction(Function *f) {
-  f->walk([](Instruction *opInst) {
+PassResult MemRefBoundCheck::runOnFunction() {
+  getFunction().walk([](Instruction *opInst) {
     if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
       boundCheckLoadOrStoreOp(loadOp);
     } else if (auto storeOp = opInst->dyn_cast<StoreOp>()) {
