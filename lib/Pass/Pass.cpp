@@ -21,6 +21,7 @@
 
 #include "mlir/Pass/Pass.h"
 #include "mlir/IR/Module.h"
+#include "mlir/Pass/PassManager.h"
 
 using namespace mlir;
 
@@ -41,6 +42,64 @@ PassResult FunctionPass::runOnModule(Module *m) {
       continue;
 
     if (runOnFunction(&fn))
+      return failure();
+  }
+  return success();
+}
+
+/// Forwarding function to execute this pass.
+PassResult FunctionPassBase::run(Function *fn) {
+  /// Initialize the pass state.
+  passState.emplace(fn);
+
+  /// Invoke the virtual runOnFunction function.
+  return runOnFunction();
+}
+
+/// Forwarding function to execute this pass.
+PassResult ModulePassBase::run(Module *module) {
+  /// Initialize the pass state.
+  passState.emplace(module);
+
+  /// Invoke the virtual runOnModule function.
+  return runOnModule();
+}
+
+/// Run all of the passes in this manager over the current function.
+bool detail::FunctionPassExecutor::run(Function *function) {
+  for (auto &pass : passes) {
+    /// Create an execution state for this pass.
+    if (pass->run(function))
+      return true;
+    // TODO: This should be opt-out and handled separately.
+    if (function->verify())
+      return true;
+  }
+  return false;
+}
+
+/// Run all of the passes in this manager over the current module.
+bool detail::ModulePassExecutor::run(Module *module) {
+  for (auto &pass : passes) {
+    if (pass->run(module))
+      return true;
+    // TODO: This should be opt-out and handled separately.
+    if (module->verify())
+      return true;
+  }
+  return false;
+}
+
+/// Execute the held function pass over all non-external functions within the
+/// module.
+PassResult detail::ModuleToFunctionPassAdaptor::runOnModule() {
+  for (auto &func : getModule()) {
+    // Skip external functions.
+    if (func.isExternal())
+      continue;
+
+    // Run the held function pipeline over the current function.
+    if (fpe.run(&func))
       return failure();
   }
   return success();

@@ -31,9 +31,17 @@
 
 namespace mlir {
 class Pass;
-class PassID;
 
 using PassAllocatorFunction = std::function<Pass *()>;
+
+/// A special type used by transformation passes to provide an address that can
+/// act as a unique identifier during pass registration.
+struct alignas(8) PassID {
+  template <typename PassT> static PassID *getID() {
+    static PassID id;
+    return &id;
+  }
+};
 
 /// Structure to group information about a pass (argument to invoke via
 /// mlir-opt, description, pass allocator and unique ID).
