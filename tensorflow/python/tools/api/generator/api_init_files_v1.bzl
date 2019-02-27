@@ -37,6 +37,8 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "lite/experimental/__init__.py",
     "lite/experimental/nn/__init__.py",
     "logging/__init__.py",
+    "lookup/__init__.py",
+    "lookup/experimental/__init__.py",
     "losses/__init__.py",
     "manip/__init__.py",
     "math/__init__.py",
