@@ -1488,17 +1488,22 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
   }
 }
 
-// Adds slice lower/upper bounds from 'lbMaps'/'upMaps' to the constraint
-// system. This function assumes that position 'lbMaps.size' == 'ubMaps.size',
-// and that positions [0, lbMaps.size) represent dimensional identifiers which
-// correspond to the loop IVs whose iteration bounds are being sliced.
+// Adds slice lower bounds represented by lower bounds in 'lbMaps' and upper
+// bounds in 'ubMaps' to each value in `values' that appears in the constraint
+// system. Note that both lower/upper bounds share the same operand list
+// 'operands'.
+// This function assumes 'values.size' == 'lbMaps.size' == 'ubMaps.size', and
+// skips any null AffineMaps in 'lbMaps' or 'ubMaps'.
 // Note that both lower/upper bounds use operands from 'operands'.
 // Returns true on success. Returns false for unimplemented cases such as
 // semi-affine expressions or expressions with mod/floordiv.
-bool FlatAffineConstraints::addSliceBounds(ArrayRef<AffineMap> lbMaps,
+bool FlatAffineConstraints::addSliceBounds(ArrayRef<Value *> values,
+                                           ArrayRef<AffineMap> lbMaps,
                                            ArrayRef<AffineMap> ubMaps,
                                            ArrayRef<Value *> operands) {
+  assert(values.size() == lbMaps.size());
   assert(lbMaps.size() == ubMaps.size());
+
   // Record positions of the operands in the constraint system.
   SmallVector<unsigned, 8> positions;
   for (const auto &operand : operands) {
@@ -1510,6 +1515,7 @@ bool FlatAffineConstraints::addSliceBounds(ArrayRef<AffineMap> lbMaps,
 
   auto addLowerOrUpperBound = [&](unsigned pos, AffineMap boundMap,
                                   bool lower) -> bool {
+    assert(pos < getNumIds());
     FlatAffineConstraints localVarCst;
     std::vector<SmallVector<int64_t, 8>> flatExprs;
     if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
@@ -1539,12 +1545,20 @@ bool FlatAffineConstraints::addSliceBounds(ArrayRef<AffineMap> lbMaps,
   };
 
   for (unsigned i = 0, e = lbMaps.size(); i < e; ++i) {
-    if (!addLowerOrUpperBound(i, lbMaps[i], /*lower=*/true))
-      return false;
-    if (!addLowerOrUpperBound(i, ubMaps[i], /*lower=*/false))
-      return false;
-  }
+    assert(lbMaps[i].getNumInputs() == operands.size());
+    assert(ubMaps[i].getNumInputs() == operands.size());
+    unsigned pos;
+    if (!findId(*values[i], &pos))
+      continue;
 
+    if (AffineMap lbMap = lbMaps[i])
+      if (!addLowerOrUpperBound(pos, lbMap, /*lower=*/true))
+        return false;
+
+    if (AffineMap ubMap = ubMaps[i])
+      if (!addLowerOrUpperBound(pos, ubMap, /*lower=*/false))
+        return false;
+  }
   return true;
 }
 

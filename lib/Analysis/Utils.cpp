@@ -222,7 +222,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
       }
     }
     // Add upper/lower bounds from 'sliceState' to 'cst'.
-    if (!cst.addSliceBounds(sliceState->lbs, sliceState->ubs,
+    if (!cst.addSliceBounds(sliceState->ivs, sliceState->lbs, sliceState->ubs,
                             sliceState->lbOperands[0]))
       return false;
   }
@@ -464,6 +464,9 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
   // Project out dimensions other than those up to 'dstLoopDepth'.
   dependenceConstraints.projectOut(numSrcLoopIVs + dstLoopDepth,
                                    numDstLoopIVs - dstLoopDepth);
+
+  // Add src loop IV values to 'sliceState'.
+  dependenceConstraints.getIdValues(0, numSrcLoopIVs, &sliceState->ivs);
 
   // Set up lower/upper bound affine maps for the slice.
   sliceState->lbs.resize(numSrcLoopIVs, AffineMap());

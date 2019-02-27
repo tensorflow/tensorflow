@@ -62,11 +62,14 @@ void getLoopIVs(const Instruction &inst,
 /// surrounding this instruction.
 unsigned getNestingDepth(const Instruction &stmt);
 
-/// ComputationSliceState aggregates loop bound AffineMaps and their associated
-/// operands for a set of loops within a loop nest (typically the set of loops
-/// surrounding a store operation). Loop bound AffineMaps which are non-null
-/// represent slices of that loop's iteration space.
+/// ComputationSliceState aggregates loop IVs, loop bound AffineMaps and their
+/// associated operands for a set of loops within a loop nest (typically the
+/// set of loops surrounding a store operation). Loop bound AffineMaps which
+/// are non-null represent slices of that loop's iteration space.
 struct ComputationSliceState {
+  // List of sliced loop IVs (ordered from outermost to innermost).
+  // EX: 'ivs[i]' has lower bound 'lbs[i]' and upper bound 'ubs[i]'.
+  SmallVector<Value *, 4> ivs;
   // List of lower bound AffineMaps.
   SmallVector<AffineMap, 4> lbs;
   // List of upper bound AffineMaps.

@@ -1868,3 +1868,50 @@ func @slice_tile(%arg1: memref<32x8xf32>, %arg2: memref<32x8xf32>, %0 : f32) -> 
 // CHECK-NEXT:  }
 // CHECK-NEXT:  return %arg1 : memref<32x8xf32>
 // CHECK-NEXT:}
+
+// -----
+
+// Test case which illustrates fix for b/126454413
+func @test_add_slice_bounds() {
+  %a = alloc() : memref<10xf32>
+  %b = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+  %c0 = constant 0 : index
+
+  for %i0 = 0 to 10 {
+    for %i1 = 0 to 10 {
+      for %i2 = 0 to 10 {
+        %a0 = affine.apply (d0) -> (d0) (%i0)
+        %a1 = affine.apply (d0) -> (d0) (%i0)
+        %a2 = affine.apply (d0, d1) -> (d0 - d1) (%a0, %a1)
+        store %cf7, %a[%a2] : memref<10xf32>
+      }
+    }
+  }
+  for %i3 = 0 to 10 {
+    for %i4 = 0 to 10 {
+      for %i5 = 0 to 10 {
+        %v0 = load %a[%c0] : memref<10xf32>
+      }
+    }
+  }
+
+// CHECK:        for %i0 = 0 to 10 {
+// CHECK-NEXT:     for %i1 = 0 to 10 {
+// CHECK-NEXT:       for %i2 = 0 to 10 {
+// CHECK-NEXT:         %2 = affine.apply #map2(%i0)
+// CHECK-NEXT:         %3 = affine.apply #map2(%i0)
+// CHECK-NEXT:         %4 = affine.apply #map3(%2, %3)
+// CHECK-NEXT:         store %cst, %0[%4] : memref<10xf32>
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   }
+// CHECK-NEXT:   for %i3 = 0 to 10 {
+// CHECK-NEXT:     for %i4 = 0 to 10 {
+// CHECK-NEXT:       for %i5 = 0 to 10 {
+// CHECK-NEXT:         %5 = load %0[%c0] : memref<10xf32>
+// CHECK-NEXT:       }
+// CHECK-NEXT:     }
+// CHECK-NEXT:   }
+  return
+}
