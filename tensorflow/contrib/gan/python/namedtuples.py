@@ -197,7 +197,7 @@ class GANLoss(
   """
 
 
-  class GANAuxiliaryLoss(
+class GANAuxiliaryLoss(
     collections.namedtuple('GANAuxiliaryLoss', (
         'gradient_penalty_weight',
         'gradient_penalty_epsilon',

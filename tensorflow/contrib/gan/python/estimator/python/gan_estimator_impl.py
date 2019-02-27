@@ -115,7 +115,7 @@ class GANEstimator(estimator.Estimator):
                config=None,
                warm_start_from=None,
                is_chief=True,
-               auxiliary_loss_settings=None):
+               gan_auxiliary_loss=None):
     """Initializes a GANEstimator instance.
 
     Args:
@@ -243,12 +243,13 @@ def _get_estimator_spec(
           gradient_penalty_epsilon=gan_auxiliary_loss.gradient_penalty_epsilon,
           gradient_penalty_target=gan_auxiliary_loss.gradient_penalty_target,
           gradient_penalty_one_sided=
-              gan_auxiliary_loss.gradient_penalty_one_sided,
+          gan_auxiliary_loss.gradient_penalty_one_sided,
           mutual_information_penalty_weight=
-              gan_auxiliary_loss.mutual_information_penalty_weight,
-          aux_cond_generator_weight=gan_auxiliary_loss.aux_cond_generator_weight,
+          gan_auxiliary_loss.mutual_information_penalty_weight,
+          aux_cond_generator_weight=
+          gan_auxiliary_loss.aux_cond_generator_weight,
           aux_cond_discriminator_weight=
-              gan_auxiliary_loss.aux_cond_discriminator_weight,
+          gan_auxiliary_loss.aux_cond_discriminator_weight,
           tensor_pool_fn=gan_auxiliary_loss.tensor_pool_fn,
           add_summaries=use_loss_summaries)
     if mode == model_fn_lib.ModeKeys.EVAL:
