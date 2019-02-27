@@ -410,7 +410,8 @@ class MklConcatOp : public OpKernel {
         }
         AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
                                   dnn_shape_dst);
-        CHECK_NOTNULL(dst_tensor);
+        DCHECK(dst_tensor == nullptr)
+            << "Output tensor pointer is NULL";
 
         dst_md =
             dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout() : dst_md;
@@ -446,7 +447,8 @@ class MklConcatOp : public OpKernel {
 
         AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
                                   dnn_shape_dst);
-        CHECK_NOTNULL(dst_tensor);
+        DCHECK(dst_tensor == nullptr)
+            << "Output tensor pointer is NULL";
       }
 
     } catch (mkldnn::error& e) {
