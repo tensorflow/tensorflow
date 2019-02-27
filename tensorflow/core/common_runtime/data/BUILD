@@ -33,3 +33,12 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ] + tf_protos_all(),
 )
+
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "standalone.h",
+    ],
+    visibility = ["//visibility:public"],
+)

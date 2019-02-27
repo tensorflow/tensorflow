@@ -276,3 +276,19 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "attr_builder.h",
+        "context.h",
+        "copy_to_device_node.h",
+        "eager_executor.h",
+        "eager_operation.h",
+        "execute.h",
+        "execute_node.h",
+        "kernel_and_device.h",
+        "tensor_handle.h",
+    ],
+    visibility = ["//visibility:public"],
+)

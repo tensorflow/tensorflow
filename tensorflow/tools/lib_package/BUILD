@@ -200,6 +200,7 @@ pkg_tar(
     tags = ["manual"],
 )
 
+# to be completed
 pkg_tar(
     name = "coreheaders",
     package_dir = "include/tensorflow/core",
@@ -210,14 +211,79 @@ pkg_tar(
     # with Python 3.
     tags = ["manual"],
     deps = [
+        ":common_runtime_coreheaders",
+        # ":debug_coreheaders",
+        # ":distributed_runtime_coreheaders",
         ":framework_coreheaders",
-        ":graph_coreheaders",
-        ":lib_core_coreheaders",
-        ":lib_strings_coreheaders",
+        # ":graph_coreheaders",
+        # ":grappler_coreheaders",
         ":kernel_coreheaders",
+        # ":lib_coreheaders",
+        # ":nccl_coreheaders",
+        # ":ops_coreheaders",
         ":platform_coreheaders",
+        # ":profiler_coreheaders",
+        # ":protobuf_coreheaders",
         ":public_coreheaders",
+        # ":summary_coreheaders",
+        # ":tpu_coreheaders",
+        # ":user_ops_coreheaders",
+        # ":util_coreheaders",
+        # ":lib_core_coreheaders",
+        # ":lib_strings_coreheaders",
     ],
+)
+
+
+pkg_tar(
+    name = "common_runtime_coreheaders",
+    srcs = [
+        "//tensorflow/core:common_runtime_headers",
+    ],
+    package_dir = "common_runtime",
+    tags = ["manual"],
+    deps = [
+        "common_runtime_data_coreheaders",
+        "common_runtime_eager_coreheaders",
+        "common_runtime_gpu_coreheaders",
+        "common_runtime_sycl_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "common_runtime_data_coreheaders",
+    srcs = [
+        "//tensorflow/core/common_runtime/data:headers",
+    ],
+    package_dir = "data",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "common_runtime_eager_coreheaders",
+    srcs = [
+        "//tensorflow/core/common_runtime/eager:headers",
+    ],
+    package_dir = "eager",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "common_runtime_gpu_coreheaders",
+    srcs = [
+        "//tensorflow/core:common_runtime_gpu_headers",
+    ],
+    package_dir = "gpu",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "common_runtime_sycl_coreheaders",
+    srcs = [
+        "//tensorflow/core:common_runtime_sycl_headers",
+    ],
+    package_dir = "sycl",
+    tags = ["manual"],
 )
 
 pkg_tar(
