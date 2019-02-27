@@ -166,11 +166,6 @@ private:
   const OperationProperties opProperties;
 };
 
-/// NamedAttribute is used for operation attribute lists, it holds an
-/// identifier for the name and a value for the attribute.  The attribute
-/// pointer should always be non-null.
-using NamedAttribute = std::pair<Identifier, Attribute>;
-
 class OperationName {
 public:
   using RepresentationUnion =

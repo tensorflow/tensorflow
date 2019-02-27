@@ -19,7 +19,6 @@
 #include "AffineExprDetail.h"
 #include "AffineMapDetail.h"
 #include "AttributeDetail.h"
-#include "AttributeListStorage.h"
 #include "IntegerSetDetail.h"
 #include "LocationDetail.h"
 #include "TypeDetail.h"

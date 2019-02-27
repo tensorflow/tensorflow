@@ -16,7 +16,6 @@
 // =============================================================================
 
 #include "mlir/IR/Function.h"
-#include "AttributeListStorage.h"
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/MLIRContext.h"
@@ -30,9 +29,7 @@ using namespace mlir;
 Function::Function(Location location, StringRef name, FunctionType type,
                    ArrayRef<NamedAttribute> attrs)
     : name(Identifier::get(name, type.getContext())), location(location),
-      type(type), blocks(this) {
-  setAttributes(attrs);
-}
+      type(type), attrs(type.getContext(), attrs), blocks(this) {}
 
 Function::~Function() {
   // Instructions may have cyclic references, which need to be dropped before we
@@ -42,13 +39,6 @@ Function::~Function() {
 
   // Clean up function attributes referring to this function.
   FunctionAttr::dropFunctionReference(this);
-}
-
-ArrayRef<NamedAttribute> Function::getAttrs() const {
-  if (attrs)
-    return attrs->getElements();
-  else
-    return {};
 }
 
 MLIRContext *Function::getContext() const { return getType().getContext(); }
@@ -160,7 +150,7 @@ void Function::cloneInto(Function *dest, BlockAndValueMapping &mapper) const {
     assert((insertPair.second || insertPair.first->second == attr.second) &&
            "the two functions have incompatible attributes");
   }
-  dest->setAttributes(newAttrs.takeVector());
+  dest->setAttrs(newAttrs.takeVector());
 
   // Clone the block list.
   blocks.cloneInto(&dest->blocks, mapper, dest->getContext());
@@ -193,11 +183,6 @@ Function *Function::clone(BlockAndValueMapping &mapper) const {
 Function *Function::clone() const {
   BlockAndValueMapping mapper;
   return clone(mapper);
-}
-
-/// Set the attributes held by this function.
-void Function::setAttributes(ArrayRef<NamedAttribute> attrs) {
-  this->attrs = AttributeListStorage::get(attrs, getContext());
 }
 
 //===----------------------------------------------------------------------===//

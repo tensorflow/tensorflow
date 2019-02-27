@@ -34,18 +34,12 @@
 #include "llvm/ADT/ilist.h"
 
 namespace mlir {
-class AttributeListStorage;
 class BlockAndValueMapping;
 class FunctionType;
 class MLIRContext;
 class Module;
 template <typename ObjectType, typename ElementType> class ArgumentIterator;
 template <typename T> class OpPointer;
-
-/// NamedAttribute is used for function attribute lists, it holds an
-/// identifier for the name and a value for the attribute.  The attribute
-/// pointer should always be non-null.
-using NamedAttribute = std::pair<Identifier, Attribute>;
 
 /// This is the base class for all of the MLIR function types.
 class Function : public llvm::ilist_node_with_parent<Function, Module> {
@@ -65,9 +59,6 @@ public:
 
   /// Return the type of this function.
   FunctionType getType() const { return type; }
-
-  /// Returns all of the attributes on this function.
-  ArrayRef<NamedAttribute> getAttrs() const;
 
   MLIRContext *getContext() const;
   Module *getModule() { return module; }
@@ -180,6 +171,46 @@ public:
   llvm::iterator_range<const_args_iterator> getArguments() const;
 
   //===--------------------------------------------------------------------===//
+  // Attributes
+  //===--------------------------------------------------------------------===//
+
+  /// Functions may optionally carry a list of attributes that associate
+  /// constants to names.  Attributes may be dynamically added and removed over
+  /// the lifetime of an function.
+
+  /// Return all of the attributes on this instruction.
+  ArrayRef<NamedAttribute> getAttrs() const { return attrs.getAttrs(); }
+
+  /// Set the attributes held by this function.
+  void setAttrs(ArrayRef<NamedAttribute> attributes) {
+    attrs.setAttrs(getContext(), attributes);
+  }
+
+  /// Return the specified attribute if present, null otherwise.
+  Attribute getAttr(Identifier name) const { return attrs.get(name); }
+  Attribute getAttr(StringRef name) const { return attrs.get(name); }
+
+  template <typename AttrClass> AttrClass getAttrOfType(Identifier name) const {
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
+  }
+
+  template <typename AttrClass> AttrClass getAttrOfType(StringRef name) const {
+    return getAttr(name).dyn_cast_or_null<AttrClass>();
+  }
+
+  /// If the an attribute exists with the specified name, change it to the new
+  /// value.  Otherwise, add a new attribute with the specified name/value.
+  void setAttr(Identifier name, Attribute value) {
+    attrs.set(getContext(), name, value);
+  }
+
+  /// Remove the attribute with the specified name if it exists.  The return
+  /// value indicates whether the attribute was present or not.
+  NamedAttributeList::RemoveResult removeAttr(Identifier name) {
+    return attrs.remove(getContext(), name);
+  }
+
+  //===--------------------------------------------------------------------===//
   // Other
   //===--------------------------------------------------------------------===//
 
@@ -226,9 +257,6 @@ public:
   void cloneInto(Function *dest, BlockAndValueMapping &mapper) const;
 
 private:
-  /// Set the attributes held by this function.
-  void setAttributes(ArrayRef<NamedAttribute> attrs = {});
-
   /// The name of the function.
   Identifier name;
 
@@ -242,7 +270,7 @@ private:
   FunctionType type;
 
   /// This holds general named attributes for the function.
-  AttributeListStorage *attrs;
+  NamedAttributeList attrs;
 
   /// The contents of the body.
   BlockList blocks;

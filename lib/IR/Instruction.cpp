@@ -16,7 +16,6 @@
 // =============================================================================
 
 #include "mlir/IR/Instruction.h"
-#include "AttributeListStorage.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
@@ -243,12 +242,7 @@ Instruction::Instruction(Location location, OperationName name,
                          ArrayRef<NamedAttribute> attributes,
                          MLIRContext *context)
     : location(location), numResults(numResults), numSuccs(numSuccessors),
-      numBlockLists(numBlockLists), name(name) {
-  assert(llvm::all_of(attributes,
-                      [](const NamedAttribute &attr) { return attr.second; }) &&
-         "Attributes cannot have null entries");
-  this->attrs = AttributeListStorage::get(attributes, context);
-}
+      numBlockLists(numBlockLists), name(name), attrs(context, attributes) {}
 
 // Instructions are deleted through the destroy() member because they are
 // allocated via malloc.
@@ -487,12 +481,6 @@ bool Instruction::use_empty() const {
   return true;
 }
 
-ArrayRef<NamedAttribute> Instruction::getAttrs() const {
-  if (!attrs)
-    return {};
-  return attrs->getElements();
-}
-
 bool Instruction::isReturn() const { return isa<ReturnOp>(); }
 
 void Instruction::setSuccessor(Block *block, unsigned index) {
@@ -521,45 +509,6 @@ auto Instruction::getSuccessorOperands(unsigned index) -> operand_range {
   return {operand_iterator(this, succOperandIndex),
           operand_iterator(this,
                            succOperandIndex + getNumSuccessorOperands(index))};
-}
-
-/// If an attribute exists with the specified name, change it to the new
-/// value.  Otherwise, add a new attribute with the specified name/value.
-void Instruction::setAttr(Identifier name, Attribute value) {
-  assert(value && "attributes may never be null");
-  auto origAttrs = getAttrs();
-
-  SmallVector<NamedAttribute, 8> newAttrs(origAttrs.begin(), origAttrs.end());
-  auto *context = getContext();
-
-  // If we already have this attribute, replace it.
-  for (auto &elt : newAttrs)
-    if (elt.first == name) {
-      elt.second = value;
-      attrs = AttributeListStorage::get(newAttrs, context);
-      return;
-    }
-
-  // Otherwise, add it.
-  newAttrs.push_back({name, value});
-  attrs = AttributeListStorage::get(newAttrs, context);
-}
-
-/// Remove the attribute with the specified name if it exists.  The return
-/// value indicates whether the attribute was present or not.
-auto Instruction::removeAttr(Identifier name) -> RemoveResult {
-  auto origAttrs = getAttrs();
-  for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
-    if (origAttrs[i].first == name) {
-      SmallVector<NamedAttribute, 8> newAttrs;
-      newAttrs.reserve(origAttrs.size() - 1);
-      newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
-      newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
-      attrs = AttributeListStorage::get(newAttrs, getContext());
-      return RemoveResult::Removed;
-    }
-  }
-  return RemoveResult::NotFound;
 }
 
 /// Attempt to constant fold this operation with the specified constant

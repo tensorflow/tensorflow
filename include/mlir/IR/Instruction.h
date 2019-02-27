@@ -34,7 +34,6 @@
 #include "llvm/Support/TrailingObjects.h"
 
 namespace mlir {
-class AttributeListStorage;
 class BlockAndValueMapping;
 template <typename OpType> class ConstOpPointer;
 class Location;
@@ -389,31 +388,16 @@ public:
   // Attributes
   //===--------------------------------------------------------------------===//
 
-  // Operations may optionally carry a list of attributes that associate
+  // Instructions may optionally carry a list of attributes that associate
   // constants to names.  Attributes may be dynamically added and removed over
-  // the lifetime of an operation.
-  //
-  // We assume there will be relatively few attributes on a given operation
-  // (maybe a dozen or so, but not hundreds or thousands) so we use linear
-  // searches for everything.
+  // the lifetime of an instruction.
 
-  /// Return all of the attributes on this operation.
-  ArrayRef<NamedAttribute> getAttrs() const;
+  /// Return all of the attributes on this instruction.
+  ArrayRef<NamedAttribute> getAttrs() const { return attrs.getAttrs(); }
 
   /// Return the specified attribute if present, null otherwise.
-  Attribute getAttr(Identifier name) const {
-    for (auto elt : getAttrs())
-      if (elt.first == name)
-        return elt.second;
-    return nullptr;
-  }
-
-  Attribute getAttr(StringRef name) const {
-    for (auto elt : getAttrs())
-      if (elt.first.is(name))
-        return elt.second;
-    return nullptr;
-  }
+  Attribute getAttr(Identifier name) const { return attrs.get(name); }
+  Attribute getAttr(StringRef name) const { return attrs.get(name); }
 
   template <typename AttrClass> AttrClass getAttrOfType(Identifier name) const {
     return getAttr(name).dyn_cast_or_null<AttrClass>();
@@ -425,13 +409,15 @@ public:
 
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
-  void setAttr(Identifier name, Attribute value);
-
-  enum class RemoveResult { Removed, NotFound };
+  void setAttr(Identifier name, Attribute value) {
+    attrs.set(getContext(), name, value);
+  }
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
-  RemoveResult removeAttr(Identifier name);
+  NamedAttributeList::RemoveResult removeAttr(Identifier name) {
+    return attrs.remove(getContext(), name);
+  }
 
   //===--------------------------------------------------------------------===//
   // Blocks
@@ -722,7 +708,7 @@ private:
   OperationName name;
 
   /// This holds general named attributes for the operation.
-  AttributeListStorage *attrs;
+  NamedAttributeList attrs;
 
   // allow ilist_traits access to 'block' field.
   friend struct llvm::ilist_traits<Instruction>;

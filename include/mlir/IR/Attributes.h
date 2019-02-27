@@ -28,6 +28,7 @@ class Dialect;
 class Function;
 class FunctionAttr;
 class FunctionType;
+class Identifier;
 class IntegerSet;
 class Location;
 class MLIRContext;
@@ -53,6 +54,8 @@ struct DenseIntElementsAttributeStorage;
 struct DenseFPElementsAttributeStorage;
 struct OpaqueElementsAttributeStorage;
 struct SparseElementsAttributeStorage;
+
+class AttributeListStorage;
 
 } // namespace detail
 
@@ -530,6 +533,46 @@ template <typename U> U Attribute::cast() const {
 inline ::llvm::hash_code hash_value(Attribute arg) {
   return ::llvm::hash_value(arg.attr);
 }
+
+/// NamedAttribute is used for named attribute lists, it holds an identifier for
+/// the name and a value for the attribute. The attribute pointer should always
+/// be non-null.
+using NamedAttribute = std::pair<Identifier, Attribute>;
+
+/// A NamedAttributeList is used to manage a list of named attributes. This
+/// provides simple interfaces for adding/removing/finding attributes from
+/// within a raw AttributeListStorage.
+///
+/// We assume there will be relatively few attributes on a given function
+/// (maybe a dozen or so, but not hundreds or thousands) so we use linear
+/// searches for everything.
+class NamedAttributeList {
+public:
+  NamedAttributeList(MLIRContext *context, ArrayRef<NamedAttribute> attributes);
+
+  /// Return all of the attributes on this operation.
+  ArrayRef<NamedAttribute> getAttrs() const;
+
+  /// Replace the held attributes with ones provided in 'newAttrs'.
+  void setAttrs(MLIRContext *context, ArrayRef<NamedAttribute> attributes);
+
+  /// Return the specified attribute if present, null otherwise.
+  Attribute get(StringRef name) const;
+  Attribute get(Identifier name) const;
+
+  /// If the an attribute exists with the specified name, change it to the new
+  /// value.  Otherwise, add a new attribute with the specified name/value.
+  void set(MLIRContext *context, Identifier name, Attribute value);
+
+  enum class RemoveResult { Removed, NotFound };
+
+  /// Remove the attribute with the specified name if it exists.  The return
+  /// value indicates whether the attribute was present or not.
+  RemoveResult remove(MLIRContext *context, Identifier name);
+
+private:
+  detail::AttributeListStorage *attrs;
+};
 
 } // end namespace mlir.
 

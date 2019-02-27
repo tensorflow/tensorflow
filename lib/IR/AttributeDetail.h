@@ -24,6 +24,7 @@
 
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/StandardTypes.h"
@@ -148,6 +149,36 @@ struct SparseElementsAttributeStorage : public ElementsAttributeStorage {
   DenseElementsAttr values;
 };
 
+/// A raw list of named attributes stored as a trailing array.
+class AttributeListStorage final
+    : private llvm::TrailingObjects<AttributeListStorage, NamedAttribute> {
+  friend class llvm::TrailingObjects<AttributeListStorage, NamedAttribute>;
+
+public:
+  /// Given a list of NamedAttribute's, canonicalize the list (sorting
+  /// by name) and return the unique'd result.  Note that the empty list is
+  /// represented with a null pointer.
+  static AttributeListStorage *get(ArrayRef<NamedAttribute> attrs,
+                                   MLIRContext *context);
+
+  /// Return the element constants for this aggregate constant.  These are
+  /// known to all be constants.
+  ArrayRef<NamedAttribute> getElements() const {
+    return {getTrailingObjects<NamedAttribute>(), numElements};
+  }
+
+private:
+  // This is used by the llvm::TrailingObjects base class.
+  size_t numTrailingObjects(OverloadToken<NamedAttribute>) const {
+    return numElements;
+  }
+  AttributeListStorage() = delete;
+  AttributeListStorage(const AttributeListStorage &) = delete;
+  AttributeListStorage(unsigned numElements) : numElements(numElements) {}
+
+  /// This is the number of attributes.
+  const unsigned numElements;
+};
 } // namespace detail
 } // namespace mlir
 

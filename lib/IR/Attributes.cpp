@@ -447,3 +447,80 @@ Attribute SparseElementsAttr::getValue(ArrayRef<uint64_t> index) const {
   // Otherwise, return the held sparse value element.
   return getValues().getValue(it->second);
 }
+
+/// NamedAttributeList
+
+NamedAttributeList::NamedAttributeList(MLIRContext *context,
+                                       ArrayRef<NamedAttribute> attributes) {
+  setAttrs(context, attributes);
+}
+
+/// Return all of the attributes on this operation.
+ArrayRef<NamedAttribute> NamedAttributeList::getAttrs() const {
+  return attrs ? attrs->getElements() : llvm::None;
+}
+
+/// Replace the held attributes with ones provided in 'newAttrs'.
+void NamedAttributeList::setAttrs(MLIRContext *context,
+                                  ArrayRef<NamedAttribute> attributes) {
+  // Don't create an attribute list if there are no attributes.
+  if (attributes.empty()) {
+    attrs = nullptr;
+    return;
+  }
+
+  assert(llvm::all_of(attributes,
+                      [](const NamedAttribute &attr) { return attr.second; }) &&
+         "attributes cannot have null entries");
+  attrs = AttributeListStorage::get(attributes, context);
+}
+
+/// Return the specified attribute if present, null otherwise.
+Attribute NamedAttributeList::get(StringRef name) const {
+  for (auto elt : getAttrs())
+    if (elt.first.is(name))
+      return elt.second;
+  return nullptr;
+}
+Attribute NamedAttributeList::get(Identifier name) const {
+  return get(name.strref());
+}
+
+/// If the an attribute exists with the specified name, change it to the new
+/// value.  Otherwise, add a new attribute with the specified name/value.
+void NamedAttributeList::set(MLIRContext *context, Identifier name,
+                             Attribute value) {
+  assert(value && "attributes may never be null");
+
+  // If we already have this attribute, replace it.
+  auto origAttrs = getAttrs();
+  SmallVector<NamedAttribute, 8> newAttrs(origAttrs.begin(), origAttrs.end());
+  for (auto &elt : newAttrs)
+    if (elt.first == name) {
+      elt.second = value;
+      attrs = AttributeListStorage::get(newAttrs, context);
+      return;
+    }
+
+  // Otherwise, add it.
+  newAttrs.push_back({name, value});
+  attrs = AttributeListStorage::get(newAttrs, context);
+}
+
+/// Remove the attribute with the specified name if it exists.  The return
+/// value indicates whether the attribute was present or not.
+auto NamedAttributeList::remove(MLIRContext *context, Identifier name)
+    -> RemoveResult {
+  auto origAttrs = getAttrs();
+  for (unsigned i = 0, e = origAttrs.size(); i != e; ++i) {
+    if (origAttrs[i].first == name) {
+      SmallVector<NamedAttribute, 8> newAttrs;
+      newAttrs.reserve(origAttrs.size() - 1);
+      newAttrs.append(origAttrs.begin(), origAttrs.begin() + i);
+      newAttrs.append(origAttrs.begin() + i + 1, origAttrs.end());
+      attrs = AttributeListStorage::get(newAttrs, context);
+      return RemoveResult::Removed;
+    }
+  }
+  return RemoveResult::NotFound;
+}
