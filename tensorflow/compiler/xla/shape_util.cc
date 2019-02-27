@@ -462,10 +462,14 @@ ShapeUtil::MakeShapeWithDescendingLayoutAndSamePhysicalLayout(
               shape.is_dynamic_dimension(i) ? "<=" : "", shape.dimensions(i));
   }
   result += "]";
-  if (!IsScalar(shape) && shape.IsArray()) {
-    if (LayoutUtil::HasLayout(shape)) {
-      StrAppend(&result, LayoutUtil::HumanString(shape.layout()));
+  if (IsScalar(shape)) {
+    string layout_str = LayoutUtil::HumanString(shape.layout());
+    // Don't print "{}" as layout for scalars.
+    if (layout_str != "{}") {
+      StrAppend(&result, layout_str);
     }
+  } else if (shape.IsArray() && LayoutUtil::HasLayout(shape)) {
+    StrAppend(&result, LayoutUtil::HumanString(shape.layout()));
   }
   return result;
 }
