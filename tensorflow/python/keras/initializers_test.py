@@ -21,6 +21,7 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.platform import test
@@ -202,6 +203,15 @@ class KerasInitializersTest(test.TestCase):
     tn = keras.initializers.get('truncated_normal')
     self.assertEqual(tn.mean, 0.0)
     self.assertEqual(tn.stddev, 0.05)
+
+  def test_initializer_v2_get(self):
+    tf2_force_enabled = tf2._force_enable  # pylint: disable=protected-access
+    try:
+      tf2.enable()
+      rn = keras.initializers.get('random_normal')
+      self.assertIn('init_ops_v2', rn.__class__.__module__)
+    finally:
+      tf2._force_enable = tf2_force_enabled  # pylint: disable=protected-access
 
 
 if __name__ == '__main__':

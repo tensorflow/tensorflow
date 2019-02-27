@@ -804,3 +804,17 @@ class _RandomGenerator(object):
       op = random_ops.truncated_normal
     return op(
         shape=shape, mean=mean, stddev=stddev, dtype=dtype, seed=self.seed)
+
+# Compatibility aliases
+
+# pylint: disable=invalid-name
+zero = zeros = Zeros
+one = ones = Ones
+constant = Constant
+uniform = random_uniform = RandomUniform
+normal = random_normal = RandomNormal
+truncated_normal = TruncatedNormal
+identity = Identity
+orthogonal = Orthogonal
+glorot_normal = GlorotNormal
+glorot_uniform = GlorotUniform
