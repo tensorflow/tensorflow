@@ -143,7 +143,10 @@ class I<int width>
   int bitwidth = width;
 }
 def I1  : I<1>;
+def I8  : I<8>;
+def I16 : I<16>;
 def I32 : I<32>;
+def I64 : I<64>;
 
 // Floating point types.
 class FloatBase<CPred pred, string descr> : Type<pred, descr>;
@@ -159,6 +162,7 @@ class F<int width>
   int bitwidth = width;
 }
 
+def F16 : F<16>;
 def F32 : F<32>;
 def F64 : F<64>;
 
