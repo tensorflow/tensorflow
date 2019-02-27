@@ -22,6 +22,7 @@
 #include "mlir/ExecutionEngine/ExecutionEngine.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Module.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Target/LLVMIR.h"
 #include "mlir/Transforms/Passes.h"
@@ -161,20 +162,20 @@ static inline Error make_string_error(const llvm::Twine &message) {
                                              llvm::inconvertibleErrorCode());
 }
 
-// Given a list of PassInfo coming from a higher level, creates the passes to
-// run as an owning vector and appends the extra required passes to lower to
-// LLVMIR.  Currently, these extra passes are:
+// Given a list of PassRegistryEntry coming from a higher level, populates the
+// given pass manager and appends the default set of required passes to lower to
+// LLVMIR.
+// Currently, these passes are:
 // - constant folding
 // - CSE
 // - canonicalization
 // - affine lowering
-static void
-getDefaultPasses(PassManager &manager,
-                 const std::vector<const mlir::PassInfo *> &mlirPassInfoList) {
+static void getDefaultPasses(
+    PassManager &manager,
+    const std::vector<const mlir::PassRegistryEntry *> &mlirPassRegistryList) {
   // Run each of the passes that were selected.
-  for (const auto *passInfo : mlirPassInfoList) {
-    manager.addPass(passInfo->createPass());
-  }
+  for (const auto *passEntry : mlirPassRegistryList)
+    passEntry->addToPipeline(manager);
 
   // Append the extra passes for lowering to MLIR.
   manager.addPass(mlir::createConstantFoldPass());

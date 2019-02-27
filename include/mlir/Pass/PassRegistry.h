@@ -31,6 +31,10 @@
 
 namespace mlir {
 class Pass;
+class PassManager;
+
+/// A registry function that adds passes to the given pass manager.
+using PassRegistryFunction = std::function<void(PassManager &)>;
 
 using PassAllocatorFunction = std::function<Pass *()>;
 
@@ -43,22 +47,15 @@ struct alignas(8) PassID {
   }
 };
 
-/// Structure to group information about a pass (argument to invoke via
-/// mlir-opt, description, pass allocator and unique ID).
-class PassInfo {
+/// Structure to group information about a passes and pass pipelines (argument
+/// to invoke via mlir-opt, description, pass pipeline builder).
+class PassRegistryEntry {
 public:
-  /// PassInfo constructor should not be invoked directly, instead use
-  /// PassRegistration or registerPass.
-  PassInfo(StringRef arg, StringRef description, const PassID *passID,
-           PassAllocatorFunction allocator)
-      : arg(arg), description(description), allocator(allocator),
-        passID(passID) {}
-
-  /// Returns an allocated instance of this pass.
-  Pass *createPass() const {
-    assert(allocator &&
-           "Cannot call createPass on PassInfo without default allocator");
-    return allocator();
+  /// Adds this pass registry entry to the given pass manager.
+  void addToPipeline(PassManager &pm) const {
+    assert(builder &&
+           "Cannot call addToPipeline on PassRegistryEntry without builder");
+    builder(pm);
   }
 
   /// Returns the command line option that may be passed to 'mlir-opt' that will
@@ -68,6 +65,11 @@ public:
   /// Returns a description for the pass, this never returns null.
   StringRef getPassDescription() const { return description; }
 
+protected:
+  PassRegistryEntry(StringRef arg, StringRef description,
+                    PassRegistryFunction builder)
+      : arg(arg), description(description), builder(builder) {}
+
 private:
   // The argument with which to invoke the pass via mlir-opt.
   StringRef arg;
@@ -75,20 +77,43 @@ private:
   // Description of the pass.
   StringRef description;
 
-  // Allocator to construct an instance of this pass.
-  PassAllocatorFunction allocator;
+  // Function to register this entry to a pass manager pipeline.
+  PassRegistryFunction builder;
+};
 
+/// A structure to represent the information of a registered pass pipeline.
+class PassPipelineInfo : public PassRegistryEntry {
+public:
+  PassPipelineInfo(StringRef arg, StringRef description,
+                   PassRegistryFunction builder)
+      : PassRegistryEntry(arg, description, builder) {}
+};
+
+/// A structure to represent the information for a derived pass class.
+class PassInfo : public PassRegistryEntry {
+public:
+  /// PassInfo constructor should not be invoked directly, instead use
+  /// PassRegistration or registerPass.
+  PassInfo(StringRef arg, StringRef description, const PassID *passID,
+           PassAllocatorFunction allocator);
+
+private:
   // Unique identifier for pass.
   const PassID *passID;
 };
 
-/// Register a specific dialect creation function with the system, typically
-/// used through the PassRegistration template.
+/// Register a specific dialect pipeline registry function with the system,
+/// typically used through the PassPipelineRegistration template.
+void registerPassPipeline(StringRef arg, StringRef description,
+                          const PassRegistryFunction &function);
+
+/// Register a specific dialect pass allocator function with the system,
+/// typically used through the PassRegistration template.
 void registerPass(StringRef arg, StringRef description, const PassID *passID,
                   const PassAllocatorFunction &function);
 
 /// PassRegistration provides a global initializer that registers a Pass
-/// allocation routine.
+/// allocation routine for a concrete pass instance.
 ///
 /// Usage:
 ///
@@ -97,12 +122,38 @@ void registerPass(StringRef arg, StringRef description, const PassID *passID,
 template <typename ConcretePass> struct PassRegistration {
   PassRegistration(StringRef arg, StringRef description) {
     registerPass(arg, description, PassID::getID<ConcretePass>(),
-                 [&]() { return new ConcretePass(); });
+                 [] { return new ConcretePass(); });
   }
 };
 
+/// PassPipelineRegistration provides a global initializer that registers a Pass
+/// pipeline builder routine.
+///
+/// Usage:
+///
+///   // At namespace scope.
+///   void pipelineBuilder(PassManager &pm) {
+///      pm.addPass(new MyPass());
+///      pm.addPass(new MyOtherPass());
+///   }
+///
+///   static PassPipelineRegistration Unused("unused", "Unused pass",
+///                                          pipelineBuilder);
+struct PassPipelineRegistration {
+  PassPipelineRegistration(StringRef arg, StringRef description,
+                           PassRegistryFunction builder) {
+    registerPassPipeline(arg, description, builder);
+  }
+
+  /// Constructor that accepts a pass allocator function instead of the standard
+  /// registry function. This is useful for registering specializations of
+  /// existing passes.
+  PassPipelineRegistration(StringRef arg, StringRef description,
+                           PassAllocatorFunction allocator);
+};
+
 /// Adds command line option for each registered pass.
-struct PassNameParser : public llvm::cl::parser<const PassInfo *> {
+struct PassNameParser : public llvm::cl::parser<const PassRegistryEntry *> {
   PassNameParser(llvm::cl::Option &opt);
 
   void printOptionInfo(const llvm::cl::Option &O,

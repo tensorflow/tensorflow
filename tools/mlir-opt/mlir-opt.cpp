@@ -28,6 +28,7 @@
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
 #include "mlir/Parser.h"
+#include "mlir/Pass/Pass.h"
 #include "mlir/Pass/PassManager.h"
 #include "mlir/Support/FileUtilities.h"
 #include "mlir/TensorFlow/ControlFlowOps.h"
@@ -67,7 +68,7 @@ static cl::opt<bool>
                                "expected-* lines on the corresponding line"),
                       cl::init(false));
 
-static std::vector<const mlir::PassInfo *> *passList;
+static std::vector<const mlir::PassRegistryEntry *> *passList;
 
 enum OptResult { OptSuccess, OptFailure };
 
@@ -128,8 +129,8 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
   // TODO(riverriddle) Make sure that the verifer is run after each pass when it
   // is no longer run by default within the PassManager.
   PassManager pm;
-  for (const auto *passInfo : *passList)
-    pm.addPass(passInfo->createPass());
+  for (const auto *passEntry : *passList)
+    passEntry->addToPipeline(pm);
   if (pm.run(module.get()))
     return OptFailure;
 
@@ -364,8 +365,8 @@ int main(int argc, char **argv) {
   InitLLVM y(argc, argv);
 
   // Parse pass names in main to ensure static initialization completed.
-  llvm::cl::list<const mlir::PassInfo *, bool, mlir::PassNameParser> passList(
-      "", llvm::cl::desc("Compiler passes to run"));
+  llvm::cl::list<const mlir::PassRegistryEntry *, bool, mlir::PassNameParser>
+      passList("", llvm::cl::desc("Compiler passes to run"));
   ::passList = &passList;
   cl::ParseCommandLineOptions(argc, argv, "MLIR modular optimizer driver\n");
 
