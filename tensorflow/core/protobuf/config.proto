@@ -250,6 +250,9 @@ message IPUOptions {
 
   // Options controlling the configuration of pooling operations
   repeated PoplarOptionFlag pooling_options = 8;
+
+  // Retain control dependencies from the Tensorflow graph
+  bool retain_control_dependencies = 9;
 };
 
 // Options passed to the graph optimizer

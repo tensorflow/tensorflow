@@ -550,6 +550,12 @@ absl::optional<Trace> HloMatcher::FindNextMatchingOp(
     // The list of instructions visited while searching for each pattern
     std::set<HloInstruction*> visited = {user};
 
+    // If we ignored an AddDependency op, then `inst` won't be an operand of
+    // `user`, so we give up
+    if (!user->IsUserOf(inst)) {
+      continue;
+    }
+
     // Traverse from inst
     Trace start_trace = {{user, user->operand_index(inst)}};
     to_visit.push(start_trace);
@@ -678,6 +684,13 @@ bool HloMatcher::MatchPatternSingleOutput(HloInstruction* root,
 
       for (unsigned int i = 0; i < node.GetOperands().size(); i++) {
         HloInstruction* operand = inst->mutable_operand(i);
+
+        // Look through AddDepedency nodes
+        if (operand->opcode() == HloOpcode::kAddDependency) {
+          match.dependency_predecessors.push_back(operand);
+          operand = operand->mutable_operand(0);
+        }
+
         int n = node.GetOperands()[i];
 
         if (n >= match.instruction_mapping.size()) {
@@ -821,6 +834,7 @@ bool HloMatcher::MatchPatternStart(HloComputation* computation) {
 
 StatusOr<bool> HloMatcher::Run(HloModule* module) {
   bool matched = false;
+
   if (root_computation_only_) {
     HloComputation* comp = module->entry_computation();
     matched = MatchPatternStart(comp);
@@ -867,8 +881,12 @@ HloInstruction* HloMatcher::OutlineExpressionFromComputation(
   auto pattern = patterns_[matched.pattern_idx];
   HloModule* module = computation->parent();
 
-  // First we need to update the graph with any instructions that will be
-  // reordered
+  // Unlink the AddDependency instructions from the matched pattern
+  for (auto* dep : matched.dependency_predecessors) {
+    dep->ReplaceAllUsesWith(dep->mutable_operand(0));
+  }
+
+  // We need to update the graph with any instructions that will be reordered
   auto modified_instructions = ReorderGraph(matched);
   // A map from original instructions to their new counterparts
   absl::flat_hash_map<NodeId, HloInstruction*> outlined;
@@ -917,6 +935,9 @@ HloInstruction* HloMatcher::OutlineExpressionFromComputation(
     }
   }
 
+  // For keeping track of any AfterAll instructions found in the outline
+  std::vector<HloInstruction*> after_all;
+
   // Now outline all the remaining nodes
   while (!to_outline.empty()) {
     // Get an instruction which is ready to be outlined.
@@ -925,6 +946,13 @@ HloInstruction* HloMatcher::OutlineExpressionFromComputation(
 
     HloInstruction* old_inst = matched.instruction_mapping.at(node_id);
     HloInstruction* new_inst = builder.AddInstruction(old_inst->Clone());
+
+    for (auto* u : old_inst->users()) {
+      if (u->opcode() == HloOpcode::kAfterAll) {
+        after_all.push_back(u);
+      }
+    }
+
     outlined[node_id] = new_inst;
     outlined_node_ids.insert(node_id);
     // Replace all the operands
@@ -1019,6 +1047,28 @@ HloInstruction* HloMatcher::OutlineExpressionFromComputation(
     HloInstruction* old_inst =
         matched.instruction_mapping.at(pattern.GetOutputs()[0]);
     TF_CHECK_OK(old_inst->ReplaceAllUsesWith(fusion));
+  }
+
+  // Create new dependencies in place of the old ones
+  for (auto* dep : matched.dependency_predecessors) {
+    auto new_dep =
+        computation->AddInstruction(HloInstruction::CreateAddDependency(
+            fusion->mutable_operand(0), dep->mutable_operand(1)));
+    fusion->ReplaceOperandWith(0, new_dep);
+  }
+
+  std::set<HloInstruction*> deps_set;
+  for (auto dep : matched.dependency_predecessors) {
+    deps_set.insert(dep);
+  }
+
+  for (auto dep : deps_set) {
+    computation->RemoveInstruction(dep);
+  }
+
+  // Move the AfterAll instructions to the fusion output
+  for (auto* u : after_all) {
+    u->ReplaceOperandWith(0, fusion);
   }
 
   // Remove all the dead instructions in the graph after outlining.

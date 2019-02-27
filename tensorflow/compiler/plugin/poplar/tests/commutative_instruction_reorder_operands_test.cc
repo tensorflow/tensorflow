@@ -46,12 +46,6 @@ HloModule top
   auto* module = module_or_status.ValueOrDie().get();
   auto* comp = module->entry_computation();
 
-  {
-    const auto* root_inst = comp->root_instruction();
-    EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kBroadcast);
-    EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kParameter);
-  }
-
   CommutativeInstructionReorderOperands ciro;
   EXPECT_TRUE(ciro.Run(module).ValueOrDie());
 
@@ -59,6 +53,70 @@ HloModule top
     const auto* root_inst = comp->root_instruction();
     EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kParameter);
     EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kBroadcast);
+  }
+}
+
+TEST_F(CommutativeInstructionReorderOperandsTest, ReorderWithAddDependency1) {
+  std::string hlo_string = R"(
+HloModule top
+
+%cluster_1  {
+  i1 = f16[] parameter(0)
+  aa = token[] after-all()
+  i2 = f16[2, 2] parameter(1)
+  ad = f16[2, 2] add-dependency(i2, aa)
+  b1 = f16[2, 2] broadcast(i1), dimensions={0, 1}
+  ROOT a1 = f16[2, 2] add(b1, ad)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+  auto* module = module_or_status.ValueOrDie().get();
+  auto* comp = module->entry_computation();
+
+  CommutativeInstructionReorderOperands ciro;
+  EXPECT_TRUE(ciro.Run(module).ValueOrDie());
+
+  {
+    const auto* root_inst = comp->root_instruction();
+    EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kAddDependency);
+    EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kBroadcast);
+  }
+}
+
+TEST_F(CommutativeInstructionReorderOperandsTest, ReorderWithAddDependency2) {
+  std::string hlo_string = R"(
+HloModule top
+
+%cluster_1  {
+  i1 = f16[] parameter(0)
+  aa = token[] after-all()
+  i2 = f16[2, 2] parameter(1)
+  b1 = f16[2, 2] broadcast(i1), dimensions={0, 1}
+  ad = f16[2, 2] add-dependency(b1, aa)
+  ROOT a1 = f16[2, 2] add(ad, i2)
+}
+  )";
+
+  HloModuleConfig config;
+  config.set_debug_options(GetDebugOptionsForTest());
+
+  auto module_or_status = ParseHloString(hlo_string, config);
+  EXPECT_TRUE(module_or_status.ok());
+  auto* module = module_or_status.ValueOrDie().get();
+  auto* comp = module->entry_computation();
+
+  CommutativeInstructionReorderOperands ciro;
+  EXPECT_TRUE(ciro.Run(module).ValueOrDie());
+
+  {
+    const auto* root_inst = comp->root_instruction();
+    EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kParameter);
+    EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kAddDependency);
   }
 }
 
@@ -81,12 +139,6 @@ HloModule top
   EXPECT_TRUE(module_or_status.ok());
   auto* module = module_or_status.ValueOrDie().get();
   auto* comp = module->entry_computation();
-
-  {
-    const auto* root_inst = comp->root_instruction();
-    EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kExp);
-    EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kParameter);
-  }
 
   CommutativeInstructionReorderOperands ciro;
   EXPECT_FALSE(ciro.Run(module).ValueOrDie());
@@ -119,12 +171,6 @@ HloModule top
   auto* module = module_or_status.ValueOrDie().get();
   auto* comp = module->entry_computation();
 
-  {
-    const auto* root_inst = comp->root_instruction();
-    EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kPad);
-    EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kParameter);
-  }
-
   CommutativeInstructionReorderOperands ciro;
   EXPECT_TRUE(ciro.Run(module).ValueOrDie());
 
@@ -155,12 +201,6 @@ HloModule top
   EXPECT_TRUE(module_or_status.ok());
   auto* module = module_or_status.ValueOrDie().get();
   auto* comp = module->entry_computation();
-
-  {
-    const auto* root_inst = comp->root_instruction();
-    EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kAdd);
-    EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kParameter);
-  }
 
   CommutativeInstructionReorderOperands ciro;
   EXPECT_FALSE(ciro.Run(module).ValueOrDie());
@@ -195,14 +235,6 @@ HloModule top
 
   auto* b1 = comp->GetInstructionWithName("b1");
   auto* b2 = comp->GetInstructionWithName("b2");
-
-  {
-    const auto* root_inst = comp->root_instruction();
-    EXPECT_THAT(root_inst->operand(0)->opcode(), HloOpcode::kBroadcast);
-    EXPECT_THAT(root_inst->operand(1)->opcode(), HloOpcode::kBroadcast);
-    EXPECT_THAT(root_inst->operand(0), b1);
-    EXPECT_THAT(root_inst->operand(1), b2);
-  }
 
   CommutativeInstructionReorderOperands ciro;
   EXPECT_FALSE(ciro.Run(module).ValueOrDie());

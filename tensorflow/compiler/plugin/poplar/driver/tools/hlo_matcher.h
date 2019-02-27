@@ -171,6 +171,7 @@ struct HloMatcherMatched {
   unsigned pattern_idx;
   absl::flat_hash_map<NodeId, HloInstruction*> instruction_mapping;
   std::vector<Trace> replacement_traces;
+  std::vector<HloInstruction*> dependency_predecessors;
 
   HloMatcherMatched(HloComputation* computation, const unsigned pattern_idx)
       : computation(computation), pattern_idx(pattern_idx) {}

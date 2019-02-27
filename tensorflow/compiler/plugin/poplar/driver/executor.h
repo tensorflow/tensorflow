@@ -294,6 +294,10 @@ class PoplarExecutor : public se::internal::StreamExecutorInterface {
 
   poplar::OptionFlags GetPoolingOptions() const { return pooling_options_; }
 
+  bool RetainControlDependencies() const {
+    return current_config_.retain_control_dependencies();
+  }
+
   void AddCompileBeginEventRecord(const std::string& module_name,
                                   const std::string& xla_graph);
 

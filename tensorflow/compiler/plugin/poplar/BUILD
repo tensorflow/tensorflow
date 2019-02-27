@@ -65,6 +65,7 @@ cc_library(
         "driver/passes/computation_flattener.cc",
         "driver/passes/constant_slice_folding.cc",
         "driver/passes/convolution_classifier.cc",
+        "driver/passes/dependency_replacer.cc",
         "driver/passes/expression_outliner.cc",
         "driver/passes/forward_allocation.cc",
         "driver/passes/fuse_max_pool.cc",
@@ -101,6 +102,7 @@ cc_library(
         "driver/passes/computation_flattener.h",
         "driver/passes/constant_slice_folding.h",
         "driver/passes/convolution_classifier.h",
+        "driver/passes/dependency_replacer.h",
         "driver/passes/expression_outliner.h",
         "driver/passes/forward_allocation.h",
         "driver/passes/fuse_max_pool.h",
@@ -673,6 +675,17 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "dependency_replacer_test",
+    srcs = ["tests/dependency_replacer_test.cc"],
+    size = "small",
+    deps = [
+        ":optimizers",
+        "//tensorflow/compiler/xla/service:hlo_matchers",
+        "//tensorflow/compiler/xla/tests:hlo_test_base",
+    ],
+)
+
+tf_cc_test(
     name = "constant_slice_folding_test",
     srcs = ["tests/constant_slice_folding_test.cc"],
     size = "small",
@@ -1229,6 +1242,7 @@ test_suite(
         "conversions_test",
         "convolution_classifier_test",
         "deferred_allocation_visitor_test",
+        "dependency_replacer_test",
         "device_test",
         "dynamic_slice_layout_test",
         "estimator_test",

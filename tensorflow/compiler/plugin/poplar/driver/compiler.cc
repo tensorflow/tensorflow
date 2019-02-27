@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/computation_flattener.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/constant_slice_folding.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/dependency_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_max_pool.h"
@@ -329,6 +330,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     simplifier_opts.set_enable_window_reduce_to_reduce_replacement(false);
 
     HloPassPipeline pipeline("IPU");
+    if (!poplarExecutor->RetainControlDependencies()) {
+      pipeline.AddPass<DependencyReplacer>(false);
+    }
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<HloComputationNameUniquify>();
     pipeline.AddPass<NotSupportedGatherExpander>();
@@ -373,6 +377,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<NonLinearityRecomputaion>(
         poplarExecutor->NonLinearityRecomputaionEnabled());
     pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<DependencyReplacer>(true);
     pipeline.AddPass<InplaceFinder>(resources.annotations);
     pipeline.AddPass<ShardingPass>();
     pipeline.AddPass<HloDCE>();
