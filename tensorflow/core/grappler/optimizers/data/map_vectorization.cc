@@ -51,6 +51,7 @@ constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
 constexpr char kChooseFastestOp[] = "ExperimentalChooseFastestDataset";
+constexpr char kPrefetchOp[] = "PrefetchDataset";
 constexpr int kAutotune = -1;
 
 // Returns a FunctionDef containing a MapDefun op that wraps the original
@@ -455,6 +456,33 @@ Status AddNewMapNode(const NodeDef& old_map_node, const NodeDef& old_batch_node,
   return Status::OK();
 }
 
+Status AddNewPrefetchNode(const NodeDef& old_prefetch_node,
+                          const NodeDef& old_batch_node,
+                          const NodeDef& new_map_node, MutableGraphView* graph,
+                          NodeDef** new_prefetch_node) {
+  NodeDef prefetch_node;
+  prefetch_node.set_op(kPrefetchOp);
+  graph_utils::SetUniqueGraphNodeName(kPrefetchOp, graph->graph(),
+                                      &prefetch_node);
+
+  // `input_dataset`
+  prefetch_node.add_input(new_map_node.name());
+
+  // `buffer_size` = kAutotune
+  // TODO(rachelim): Evaluate the performance of other potential transformations
+  // to `buffer_size`, e.g. ceil(old buffer size // batch size)
+  auto autotune_val =
+      graph_utils::AddScalarConstNode(static_cast<int64>(kAutotune), graph);
+  prefetch_node.add_input(autotune_val->name());
+
+  for (const auto& key : {"output_shapes", "output_types"}) {
+    graph_utils::CopyAttribute(key, new_map_node, &prefetch_node);
+  }
+
+  *new_prefetch_node = graph->AddNode(std::move(prefetch_node));
+  return Status::OK();
+}
+
 Status AddNewChooseFastestNode(gtl::ArraySlice<NodeDef> input_nodes,
                                MutableGraphView* graph,
                                NodeDef** new_choose_fastest_node) {
@@ -484,11 +512,13 @@ Status AddNewChooseFastestNode(gtl::ArraySlice<NodeDef> input_nodes,
 bool FindMapAndBatchPattern(const MutableGraphView& graph, const NodeDef& node,
                             const FunctionLibraryDefinition& function_library,
                             const NodeDef** batch_node_output,
+                            const NodeDef** optional_prefetch_node_output,
                             const NodeDef** map_node_output,
                             const NodeDef** input_node_output,
                             const FunctionDef** map_fn_output) {
   const FunctionDef*& map_fn = *map_fn_output;
   const NodeDef*& batch_node = *batch_node_output;
+  const NodeDef*& optional_prefetch_node = *optional_prefetch_node_output;
   const NodeDef*& map_node = *map_node_output;
   const NodeDef*& input_node = *input_node_output;
 
@@ -497,10 +527,16 @@ bool FindMapAndBatchPattern(const MutableGraphView& graph, const NodeDef& node,
     map_node = &node;
   } else if (node.op() == kBatchOp || node.op() == kBatchV2Op) {
     batch_node = &node;
-    map_node = graph_utils::GetInputNode(*batch_node, graph);
-    if (map_node->op() != kMapOp && map_node->op() != kParallelMapOp) {
+    auto tmp_input_node = graph_utils::GetInputNode(*batch_node, graph);
+    if (tmp_input_node->op() == kPrefetchOp) {
+      optional_prefetch_node = tmp_input_node;
+      tmp_input_node = graph_utils::GetInputNode(*tmp_input_node, graph);
+    }
+    if (tmp_input_node->op() != kMapOp &&
+        tmp_input_node->op() != kParallelMapOp) {
       return false;
     }
+    map_node = tmp_input_node;
     if (!IsOutputShapesFullyDefined(*map_node)) {
       // If any of the map func outputs have an unknown shape, don't
       // optimize, so that batching errors surface as before.
@@ -550,11 +586,13 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
   for (const NodeDef& node : item.graph.node()) {
     FunctionLibraryDefinition function_library(OpRegistry::Global(), *library);
     const NodeDef* map_node;
+    const NodeDef* optional_prefetch_node = nullptr;
     const NodeDef* batch_node;
     const NodeDef* input_node;
     const FunctionDef* map_func;
     if (!FindMapAndBatchPattern(graph, node, function_library, &batch_node,
-                                &map_node, &input_node, &map_func)) {
+                                &optional_prefetch_node, &map_node, &input_node,
+                                &map_func)) {
       continue;
     }
 
@@ -569,10 +607,22 @@ Status MapVectorization::OptimizeAndCollectStats(Cluster* cluster,
     NodeDef* new_map_node;
     TF_RETURN_IF_ERROR(AddNewMapNode(*map_node, *batch_node, *new_batch_node,
                                      *vectorized_func, &graph, &new_map_node));
+    NodeDef* final_node = new_map_node;
+
+    if (optional_prefetch_node) {
+      // If the original pipeline was .map().prefetch().batch(), the new
+      // pipeline is .batch().map().prefetch()
+      NodeDef* new_prefetch_node;
+      TF_RETURN_IF_ERROR(AddNewPrefetchNode(*optional_prefetch_node,
+                                            *batch_node, *new_map_node, &graph,
+                                            &new_prefetch_node));
+
+      final_node = new_prefetch_node;
+    }
 
     NodeDef* new_choose_fastest_node;
     TF_RETURN_IF_ERROR(AddNewChooseFastestNode(
-        {*new_map_node, *batch_node}, &graph, &new_choose_fastest_node));
+        {*final_node, *batch_node}, &graph, &new_choose_fastest_node));
 
     // Make output of Batch point to ChooseFastest instead.
     TF_RETURN_IF_ERROR(graph.UpdateFanouts(batch_node->name(),
