@@ -1891,6 +1891,10 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
                                });
 }
 
+Status IrEmitter::HandleAllToAll(HloInstruction*) {
+  return Unimplemented("AllToAll is not implemented on CPU.");
+}
+
 Status IrEmitter::HandleSend(HloInstruction* send) {
   // TODO(b/33942983): Support Send/Recv on CPU.
   return Unimplemented("Send is not implemented on CPU.");
