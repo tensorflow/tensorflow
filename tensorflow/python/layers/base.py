@@ -436,8 +436,8 @@ class Layer(base_layer.Layer):
             getter=vs.get_variable)
 
         if regularizer:
-          if context.executing_eagerly() or _should_add_regularizer(
-              variable, existing_variables):
+          if (ops.executing_eagerly_outside_functions()
+              or _should_add_regularizer(variable, existing_variables)):
             self._handle_weight_regularization(name, variable, regularizer)
 
         if init_graph is not None:
