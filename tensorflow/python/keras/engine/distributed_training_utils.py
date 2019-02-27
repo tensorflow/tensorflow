@@ -398,7 +398,7 @@ def is_tpu_strategy(strategy):
 
 def is_dataset_shape_fully_defined(dataset):
   """Returns whether a dataset contains a final partial batch."""
-  shapes = nest.flatten(dataset.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
   unknown_shapes = [s for s in shapes if not s.is_fully_defined()]
   return not unknown_shapes
 
@@ -498,7 +498,7 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
 
 
 def get_batch_dimension(iterator):
-  shapes = nest.flatten(iterator.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(iterator))
   # Take the batch size from the first element, as it should be the same for
   # all.
   dims = shapes[0].dims

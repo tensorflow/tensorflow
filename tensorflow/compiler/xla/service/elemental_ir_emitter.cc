@@ -784,7 +784,7 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexPower(
   auto q = FAdd(FMul(c, arg_lhs), FMul(half_d, ln_aa_p_bb));
   TF_ASSIGN_OR_RETURN(auto cos_q, EmitCos(component_type, q));
   TF_ASSIGN_OR_RETURN(auto sin_q, EmitSin(component_type, q));
-  // 0^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
+  // d^c is 0 if d is 0 and c > 0. 0^0 is defined to be 1.0, see
   // Branch Cuts for Complex Elementary Functions or Much Ado About
   // Nothing's Sign Bit, W. Kahan, Section 10.
   return Select(
@@ -2169,7 +2169,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalDot(
   }
   lhs_index.InsertAt(lhs_contracting_dim, inner_loop->GetIndVarValue());
 
-  for (int64 i = 0; i < rhs_dims - 1; i++) {
+  int64 num_batch_dims = dim_numbers.rhs_batch_dimensions_size();
+  for (int64 i = 0; i < num_batch_dims; i++) {
+    rhs_index.push_back(dot_result_index[dim_numbers.rhs_batch_dimensions(i)]);
+  }
+  for (int64 i = 0; i < rhs_dims - 1 - num_batch_dims; i++) {
     rhs_index.push_back(dot_result_index[lhs_dims - 1 + i]);
   }
   rhs_index.InsertAt(rhs_contracting_dim, inner_loop->GetIndVarValue());
@@ -2435,6 +2439,15 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
               &operand_to_generator](const IrArray::Index& dot_result_index)
                  -> StatusOr<llvm::Value*> {
         return EmitElementalDot(hlo, operand_to_generator, dot_result_index);
+      };
+    case HloOpcode::kReplicaId:
+      return [this, hlo](const IrArray::Index&) -> StatusOr<llvm::Value*> {
+        if (hlo_module_config_.replica_count() != 1) {
+          return Unimplemented("Replication is not implemented on CPU/GPU.");
+        }
+        llvm::Type* type = llvm_ir::PrimitiveTypeToIrType(
+            hlo->shape().element_type(), module_);
+        return llvm::ConstantInt::getNullValue(type);
       };
     default:
       return [hlo](const IrArray::Index& index) {

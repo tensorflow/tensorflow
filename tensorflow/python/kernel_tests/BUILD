@@ -290,6 +290,19 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+cuda_py_test(
+    name = "cudnn_determinism_test",
+    size = "small",
+    srcs = ["cudnn_determinism_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
 tf_py_test(
     name = "decode_csv_op_test",
     size = "small",
@@ -1093,12 +1106,14 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary_ops_v2",
+        "@six_archive//:six",
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
         "//tensorflow/python:variables",

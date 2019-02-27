@@ -46,7 +46,7 @@ class GetSerializedResourceOp : public OpKernel {
     SerializableResourceBase* resource = nullptr;
     OP_REQUIRES_OK(context, context->resource_manager()->Lookup(
                                 container, resource_name, &resource));
-    ::tensorflow::core::ScopedUnref sc(resource);
+    core::ScopedUnref sc(resource);
 
     // Serialize the resource as output.
     string serialized_resource;

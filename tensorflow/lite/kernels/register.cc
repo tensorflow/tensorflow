@@ -138,6 +138,7 @@ TfLiteRegistration* Register_ADD_N();
 TfLiteRegistration* Register_GATHER_ND();
 TfLiteRegistration* Register_WHERE();
 TfLiteRegistration* Register_ELU();
+TfLiteRegistration* Register_REVERSE_SEQUENCE();
 
 TfLiteStatus UnsupportedTensorFlowOp(TfLiteContext* context, TfLiteNode* node) {
   context->ReportError(
@@ -368,6 +369,7 @@ BuiltinOpResolver::BuiltinOpResolver() {
   AddBuiltin(BuiltinOperator_GATHER_ND, Register_GATHER_ND());
   AddBuiltin(BuiltinOperator_WHERE, Register_WHERE());
   AddBuiltin(BuiltinOperator_ELU, Register_ELU());
+  AddBuiltin(BuiltinOperator_REVERSE_SEQUENCE, Register_REVERSE_SEQUENCE());
 
   // TODO(andrewharp, ahentz): Move these somewhere more appropriate so that
   // custom ops aren't always included by default.

@@ -1613,7 +1613,7 @@ def set_run_eagerly_for_dict_structure(model, x):
     model.run_eagerly = True
   if (isinstance(x, (iterator_ops.Iterator, iterator_ops.EagerIterator,
                      dataset_ops.DatasetV2))):
-    for item in x.output_shapes:
+    for item in dataset_ops.get_legacy_output_shapes(x):
       if isinstance(item, dict):
         model.run_eagerly = True
         return

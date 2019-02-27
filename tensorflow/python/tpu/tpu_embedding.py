@@ -308,7 +308,8 @@ class TPUEmbedding(object):
                batch_size,
                mode,
                master,
-               optimization_parameters=None):
+               optimization_parameters=None,
+               cluster_def=None):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -324,6 +325,7 @@ class TPUEmbedding(object):
       optimization_parameters: `AdagradParameters`, `AdamParameters`,
         `Stochasticgradientdescentparameters`. Must be set in training and must
         be `None` in inference.
+      cluster_def: A ClusterDef object describing the TPU cluster.
 
     Raises:
       ValueError: if any input is invalid.
@@ -341,14 +343,20 @@ class TPUEmbedding(object):
     self._batch_size = batch_size
 
     self._master = master
+    self._cluster_def = cluster_def
     self._tpu_system_metadata = (
-        tpu_system_metadata_lib._query_tpu_system_metadata(self._master))  # pylint: disable=protected-access
+        tpu_system_metadata_lib._query_tpu_system_metadata(  # pylint: disable=protected-access
+            self._master, cluster_def=self._cluster_def))
     if self._tpu_system_metadata.num_cores == 0:
       raise ValueError('TPUEmbedding needs TPUs, but master {} does not have '
                        'TPUs.'.format(self._master))
     self._num_hosts = self._tpu_system_metadata.num_hosts
-    self._hosts = [device.name for device in self._tpu_system_metadata.devices
-                   if 'device:CPU:' in device.name]
+    master_job_name = tpu_system_metadata_lib.master_job(self._master,
+                                                         self._cluster_def)
+    self._hosts = sorted([
+        device.name for device in self._tpu_system_metadata.devices
+        if 'device:CPU:' in device.name and (master_job_name is None or
+                                             master_job_name in device.name)])
     self._num_cores_per_host = self._tpu_system_metadata.num_of_cores_per_host
     self._num_cores = self._tpu_system_metadata.num_cores
 

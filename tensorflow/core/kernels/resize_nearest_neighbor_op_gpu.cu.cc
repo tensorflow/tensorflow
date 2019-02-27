@@ -112,11 +112,11 @@ struct ResizeNearestNeighbor<GPUDevice, T, align_corners> {
     if (output_size == 0) return true;
 
     CudaLaunchConfig config = GetCudaLaunchConfig(output_size, d);
-    CudaLaunchKernel(ResizeNearestNeighborNHWC<T, align_corners>,
-                     config.block_count, config.thread_per_block, 0, d.stream(),
-                     output_size, input.data(), in_height, in_width, channels,
-                     out_height, out_width, height_scale, width_scale,
-                     output.data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        ResizeNearestNeighborNHWC<T, align_corners>, config.block_count,
+        config.thread_per_block, 0, d.stream(), output_size, input.data(),
+        in_height, in_width, channels, out_height, out_width, height_scale,
+        width_scale, output.data()));
     return d.ok();
   }
 };

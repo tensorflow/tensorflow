@@ -150,6 +150,25 @@ class RepresentativeDataset(object):
     self.output_gen = output_gen
 
 
+@_tf_export("lite.TargetSpec")
+class TargetSpec(object):
+  """Specification of target device.
+
+  Details about target device. Converter optimizes the generated model for
+  specific device.
+
+  Attributes:
+    supported_ops: Experimental flag, subject to change. Set of OpsSet options
+      supported by the device. (default set([OpsSet.TFLITE_BUILTINS]))
+  """
+
+  def __init__(self, supported_ops=None):
+    if supported_ops is None:
+      supported_ops = set([OpsSet.TFLITE_BUILTINS])
+    self.supported_ops = supported_ops
+
+
+@_tf_export("lite.TFLiteConverter", v1=[])
 class TFLiteConverterV2(object):
   """Converts a TensorFlow model into TensorFlow Lite model.
 
@@ -159,8 +178,8 @@ class TFLiteConverterV2(object):
       created for any op that is unknown. The developer will need to provide
       these to the TensorFlow Lite runtime with a custom resolver. (default
       False)
-    target_ops: Experimental flag, subject to change. Set of OpsSet options
-      indicating which converter to use. (default set([OpsSet.TFLITE_BUILTINS]))
+    target_spec: Experimental flag, subject to change. Specification of target
+      device.
     optimizations: Experimental flag, subject to change, A list of optimizations
       to apply when converting the model. The converter applies the
       optimizations by giving priority to the optimizations specified earlier in
@@ -168,7 +187,7 @@ class TFLiteConverterV2(object):
       optimize.OPTIMIZE_FOR_LATENCY]` requires the converter to do both size and
       latency optimizations giving priority to size optimizations over latency
       optimizations.
-    representative_dataset: a representative dataset that can be used to
+    representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use the
       dataset to evaluate different optimizations.
 
@@ -190,7 +209,7 @@ class TFLiteConverterV2(object):
     """
     self._func = func
     self.allow_custom_ops = False
-    self.target_ops = set([OpsSet.TFLITE_BUILTINS])
+    self.target_spec = TargetSpec()
     self.representative_dataset = None
     self.optimizations = []
 
@@ -248,11 +267,11 @@ class TFLiteConverterV2(object):
 
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):
-        raise TypeError("representative_dataset must be an instance of "
-                        "RepresentativeDataset")
+        raise TypeError("`representative_dataset` must be an instance of "
+                        "`RepresentativeDataset`")
       if self.representative_dataset.input_gen is None:
         raise ValueError(
-            "Provide an input generator for representative_dataset")
+            "Provide an input generator for `representative_dataset`")
 
     # TODO(shashishekhar): For now use optimizations order is ignored.
     # Both size and latency optimizations decide whether to apply post
@@ -269,7 +288,7 @@ class TFLiteConverterV2(object):
         "input_format": constants.TENSORFLOW_GRAPHDEF,
         "allow_custom_ops": self.allow_custom_ops,
         "post_training_quantize": weights_only_quantize_flag,
-        "target_ops": self.target_ops,
+        "target_ops": self.target_spec.supported_ops,
     }
 
     # Converts model.
@@ -287,7 +306,7 @@ class TFLiteConverterV2(object):
     return result
 
 
-@_tf_export("lite.TFLiteConverter")
+@_tf_export(v1=["lite.TFLiteConverter"])
 class TFLiteConverter(object):
   """Convert a TensorFlow model into `output_format` using TOCO.
 
@@ -349,7 +368,7 @@ class TFLiteConverter(object):
       `[optimize.OPTIMIZE_FOR_SIZE, optimize.OPTIMIZE_FOR_LATENCY]` requires
       the converter to do both size and latency optimizations giving priority
       to size optimizations over latency optimizations.
-    representative_dataset: a representative dataset that can be used to
+    representative_dataset: A representative dataset that can be used to
       generate input and output samples for the model. The converter can use
       the dataset to evaluate different optimizations.
 

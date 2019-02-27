@@ -725,9 +725,10 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
     self._dataset = dataset
     self._tpu_assignment = tpu_assignment
-    dummy_x_shape = dataset.output_shapes[0].as_list()
+    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+    dummy_x_shape = dataset_output_shapes[0].as_list()
     dummy_x_shape[0] *= tpu_assignment.num_towers
-    dummy_y_shape = dataset.output_shapes[1].as_list()
+    dummy_y_shape = dataset_output_shapes[1].as_list()
     dummy_y_shape[0] *= tpu_assignment.num_towers
     self._iterator = dataset_ops.make_initializable_iterator(dataset)
     K.get_session().run(self._iterator.initializer)
@@ -743,23 +744,26 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
     # Use dummy numpy inputs for the rest of Keras' shape checking. We
     # intercept them when building the model.
+    dataset_output_types = dataset_ops.get_legacy_output_types(dataset)
     self._dummy_x = np.zeros(
-        dummy_x_shape, dtype=dataset.output_types[0].as_numpy_dtype)
+        dummy_x_shape, dtype=dataset_output_types[0].as_numpy_dtype)
     self._dummy_y = np.zeros(
-        dummy_y_shape, dtype=dataset.output_types[1].as_numpy_dtype)
+        dummy_y_shape, dtype=dataset_output_types[1].as_numpy_dtype)
 
     input_specs = []
-    if isinstance(self._iterator.output_shapes, tuple):
-      assert isinstance(self._iterator.output_types, tuple)
-      assert len(self._iterator.output_shapes) == len(
-          self._iterator.output_types)
-      for i in range(len(self._iterator.output_shapes)):
-        spec = tensor_spec.TensorSpec(self._iterator.output_shapes[i],
-                                      self._iterator.output_types[i])
+    iterator_output_shapes = dataset_ops.get_legacy_output_shapes(
+        self._iterator)
+    iterator_output_types = dataset_ops.get_legacy_output_types(self._iterator)
+    if isinstance(iterator_output_shapes, tuple):
+      assert isinstance(iterator_output_types, tuple)
+      assert len(iterator_output_shapes) == len(iterator_output_types)
+      for i in range(len(iterator_output_shapes)):
+        spec = tensor_spec.TensorSpec(iterator_output_shapes[i],
+                                      iterator_output_types[i])
         input_specs.append(spec)
-    elif isinstance(self._iterator.output_shapes, tensor_shape.TensorShape):
-      spec = tensor_spec.TensorSpec(self._iterator.output_shapes,
-                                    self._iterator.output_types)
+    elif isinstance(iterator_output_shapes, tensor_shape.TensorShape):
+      spec = tensor_spec.TensorSpec(iterator_output_shapes,
+                                    iterator_output_types)
       input_specs.append(spec)
 
     # Pre-process the inputs and get_next_ops before caching.
@@ -770,24 +774,26 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
 
   def _verify_dataset_shape(self, dataset):
     """Verifies a dataset is of an appropriate shape for TPUs."""
+    dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+    dataset_output_classes = dataset_ops.get_legacy_output_classes(dataset)
     if not isinstance(dataset, dataset_ops.DatasetV2):
       raise ValueError('The function passed as the `x` parameter did not '
                        'return a `tf.data.Dataset`.')
-    if not isinstance(dataset.output_classes, tuple):
+    if not isinstance(dataset_output_classes, tuple):
       raise ValueError('The dataset must return a tuple of tf.Tensors, '
-                       'instead it returns: %s' % dataset.output_classes)
-    if len(dataset.output_classes) != 2:
+                       'instead it returns: %s' % dataset_output_classes)
+    if len(dataset_output_classes) != 2:
       raise ValueError('The dataset must return a 2-element tuple, got '
-                       '%s output classes instead.' % (dataset.output_classes,))
-    for i, cls in enumerate(dataset.output_classes):
+                       '%s output classes instead.' % (dataset_output_classes,))
+    for i, cls in enumerate(dataset_output_classes):
       if cls != ops.Tensor:
         raise ValueError('The dataset returned a non-Tensor type (%s) at '
                          'index %d.' % (cls, i))
-    for i, shape in enumerate(dataset.output_shapes):
+    for i, shape in enumerate(dataset_output_shapes):
       if not shape:
         raise ValueError('The dataset returns a scalar tensor in '
                          'tuple index %d. Did you forget to batch? '
-                         '(Output shapes: %s).' % (i, dataset.output_shapes))
+                         '(Output shapes: %s).' % (i, dataset_output_shapes))
       for j, dim in enumerate(shape):
         if dim.value is None:
           if j == 0:
@@ -800,7 +806,7 @@ class TPUDatasetInfeedManager(TPUInfeedManager):
               'currently requires static shapes. The provided '
               'dataset only has a partially defined shape. '
               '(Dimension %d of output tensor %d is not statically known '
-              'for output shapes: %s.%s)' % (j, i, dataset.output_shapes, hint))
+              'for output shapes: %s.%s)' % (j, i, dataset_output_shapes, hint))
 
   @property
   def dummy_x(self):

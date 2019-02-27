@@ -313,7 +313,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     self.assertEqual(dataset_3.output_types, iterator.output_types)
     self.assertEqual(dataset_4.output_types, iterator.output_types)
-    self.assertEqual([None], iterator.output_shapes.as_list())
+    self.assertEqual(
+        [None], dataset_ops.get_legacy_output_shapes(iterator).as_list())
 
     with self.cached_session() as sess:
       # The iterator is initially uninitialized.
@@ -408,12 +409,14 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
     handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
     feedable_iterator = iterator_ops.Iterator.from_string_handle(
-        handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
+        handle_placeholder, dataset_ops.get_legacy_output_types(dataset_3),
+        dataset_ops.get_legacy_output_shapes(dataset_3))
     next_element = feedable_iterator.get_next()
 
-    self.assertEqual(dataset_3.output_types, feedable_iterator.output_types)
-    self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
-    self.assertEqual([], feedable_iterator.output_shapes)
+    self.assertTrue(dataset_ops.get_structure(dataset_3).is_compatible_with(
+        dataset_ops.get_structure(feedable_iterator)))
+    self.assertTrue(dataset_ops.get_structure(dataset_4).is_compatible_with(
+        dataset_ops.get_structure(feedable_iterator)))
 
     with self.cached_session() as sess:
       iterator_3_handle = sess.run(iterator_3.string_handle())
@@ -465,12 +468,14 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
 
       handle_placeholder = array_ops.placeholder(dtypes.string, shape=[])
       feedable_iterator = iterator_ops.Iterator.from_string_handle(
-          handle_placeholder, dataset_3.output_types, dataset_3.output_shapes)
+          handle_placeholder, dataset_ops.get_legacy_output_types(dataset_3),
+          dataset_ops.get_legacy_output_shapes(dataset_3))
       next_element = feedable_iterator.get_next()
 
-      self.assertEqual(dataset_3.output_types, feedable_iterator.output_types)
-      self.assertEqual(dataset_4.output_types, feedable_iterator.output_types)
-      self.assertEqual([], feedable_iterator.output_shapes)
+      self.assertTrue(dataset_ops.get_structure(dataset_3).is_compatible_with(
+          dataset_ops.get_structure(feedable_iterator)))
+      self.assertTrue(dataset_ops.get_structure(dataset_4).is_compatible_with(
+          dataset_ops.get_structure(feedable_iterator)))
 
       with self.cached_session() as sess:
         iterator_3_handle = sess.run(iterator_3.string_handle())
@@ -601,7 +606,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     @function.Defun(dtypes.string)
     def _remote_fn(h):
       remote_iterator = iterator_ops.Iterator.from_string_handle(
-          h, dataset_3.output_types, dataset_3.output_shapes)
+          h, dataset_ops.get_legacy_output_types(dataset_3),
+          dataset_ops.get_legacy_output_shapes(dataset_3))
       return remote_iterator.get_next()
 
     with ops.device("/job:localhost/replica:0/task:0/cpu:0"):
@@ -677,7 +683,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     @function.Defun(dtypes.string)
     def loading_func(h):
       remote_itr = iterator_ops.Iterator.from_string_handle(
-          h, itr.output_types, itr.output_shapes)
+          h, dataset_ops.get_legacy_output_types(itr),
+          dataset_ops.get_legacy_output_shapes(itr))
       return remote_itr.get_next()
 
     def map_fn(target, handle):
@@ -714,7 +721,8 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     def _remote_fn(h):
       handle = script_ops.py_func(_encode_raw, [h], dtypes.string)
       remote_iterator = iterator_ops.Iterator.from_string_handle(
-          handle, dataset_3.output_types, dataset_3.output_shapes)
+          handle, dataset_ops.get_legacy_output_types(dataset_3),
+          dataset_ops.get_legacy_output_shapes(dataset_3))
       return remote_iterator.get_next()
 
     with ops.device("/job:localhost/replica:0/task:0/device:GPU:0"):
@@ -865,9 +873,12 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     self.assertTrue(iterator._element_structure.is_compatible_with(
         expected_element_structure))
 
-    self.assertEqual(expected_output_classes, iterator.output_classes)
-    self.assertEqual(expected_output_types, iterator.output_types)
-    self.assertEqual(expected_output_shapes, iterator.output_shapes)
+    self.assertEqual(expected_output_classes,
+                     dataset_ops.get_legacy_output_classes(iterator))
+    self.assertEqual(expected_output_types,
+                     dataset_ops.get_legacy_output_types(iterator))
+    self.assertEqual(expected_output_shapes,
+                     dataset_ops.get_legacy_output_shapes(iterator))
 
   def testIteratorGetNextName(self):
     with ops.Graph().as_default():

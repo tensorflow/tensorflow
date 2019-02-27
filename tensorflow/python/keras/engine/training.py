@@ -206,6 +206,12 @@ class Model(Network):
             `optimizer`, `loss`, `metrics` or `sample_weight_mode`.
     """
     run_eagerly = kwargs.pop('run_eagerly', None)
+    if run_eagerly and getattr(self, '_contains_symbolic_tensors', False):
+      raise ValueError(
+          'We currently do not support enabling `run_eagerly` on compile if '
+          '`model.add_loss(tensor)` or `model.add_metric(tensor)` '
+          'has been called.')
+
     self._run_eagerly = run_eagerly
     optimizer = optimizers.get(optimizer)
 
@@ -240,6 +246,23 @@ class Model(Network):
       if target_tensors:
         raise ValueError('target_tensors is not supported with '
                          'DistributionStrategy.')
+
+      if run_eagerly:
+        raise ValueError(
+            'We currently do not support enabling `run_eagerly` with '
+            'distribution strategy.')
+
+      if getattr(self, '_contains_symbolic_tensors', False):
+        raise ValueError(
+            'We currently do not support compiling the model with distribution '
+            'strategy if `model.add_loss(tensor)` or `model.add_metric(tensor)`'
+            ' has been called.')
+
+      if not self.built or not self.inputs or not self.outputs:
+        raise ValueError(
+            'We currently do not support distribution strategy with a '
+            '`Sequential` model that is created without `input_shape`/'
+            '`input_dim` set in its first layer or a subclassed model.')
 
     loss = loss or {}
 
@@ -614,11 +637,15 @@ class Model(Network):
             next epoch. When training with input tensors such as
             TensorFlow data tensors, the default `None` is equal to
             the number of samples in your dataset divided by
-            the batch size, or 1 if that cannot be determined.
+            the batch size, or 1 if that cannot be determined. If x is a
+            `tf.data` dataset or a dataset iterator, and 'steps_per_epoch'
+            is None, the epoch will run until the input dataset is exhausted.
         validation_steps: Only relevant if `validation_data` is provided and
             is a dataset or dataset iterator. Total number of steps (batches of
             samples) to draw before stopping when performing validation
-            at the end of every epoch.
+            at the end of every epoch. If validation_data is a `tf.data` dataset
+            or a dataset iterator, and 'validation_steps' is None, validation
+            will run until the `validation_data` dataset is exhausted.
         validation_freq: Only relevant if validation data is provided. Integer
             or `collections.Container` instance (e.g. list, tuple, etc.). If an
             integer, specifies how many training epochs to run before a new
@@ -903,6 +930,8 @@ class Model(Network):
             Total number of steps (batches of samples)
             before declaring the evaluation round finished.
             Ignored with the default value of `None`.
+            If x is a `tf.data` dataset or a dataset iterator, and `steps` is
+            None, 'evaluate' will run until the dataset is exhausted.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during evaluation.
             See [callbacks](/api_docs/python/tf/keras/callbacks).
@@ -1051,7 +1080,9 @@ class Model(Network):
         verbose: Verbosity mode, 0 or 1.
         steps: Total number of steps (batches of samples)
             before declaring the prediction round finished.
-            Ignored with the default value of `None`.
+            Ignored with the default value of `None`. If x is a `tf.data`
+            dataset or a dataset iterator, and `steps` is None, `predict` will
+            run until the input dataset is exhausted.
         callbacks: List of `keras.callbacks.Callback` instances.
             List of callbacks to apply during prediction.
             See [callbacks](/api_docs/python/tf/keras/callbacks).
@@ -1765,7 +1796,7 @@ class Model(Network):
         if isinstance(x, (dataset_ops.DatasetV2, iterator_ops.Iterator,
                           iterator_ops.EagerIterator)):
           ds_batch_size = tensor_shape.as_dimension(
-              nest.flatten(x.output_shapes)[0][0]).value
+              nest.flatten(dataset_ops.get_legacy_output_shapes(x))[0][0]).value
           if ds_batch_size is not None and ds_batch_size != static_batch_size:
             raise ValueError('The batch output shape of your `Dataset` is {}, '
                              'which is incompatible with the specified batch '
@@ -2736,10 +2767,17 @@ class Model(Network):
         # itself isn't dynamic.
         # Obtain symbolic outputs by calling the model.
         with K.get_graph().as_default():
+          contains_symbolic_tensors = getattr(
+              self, '_contains_symbolic_tensors', False)
           if self._expects_training_arg:
             outputs = self.call(inputs, training=training)
           else:
             outputs = self.call(inputs)
+          # Reset to the previously saved value. If `call()` had `add_metric`
+          # or `add_loss`, then `_contains_symbolic_tensors` will have been set
+          # to True since we are not in `__call__` context. Hence we are
+          # resetting to the old value here.
+          self._contains_symbolic_tensors = contains_symbolic_tensors
       else:
         # Case: network's `call` is dynamic.
         try:

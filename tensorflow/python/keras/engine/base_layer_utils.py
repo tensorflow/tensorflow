@@ -123,9 +123,9 @@ def make_variable(name,
       variable_dtype = None
     else:
       # Instantiate initializer if provided initializer is a type object.
-      if isinstance(initializer, type(init_ops.Initializer)):
-        initializer = initializer(dtype=dtype)
-      elif isinstance(initializer, type(init_ops_v2.Initializer)):
+      if isinstance(
+          initializer,
+          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
         initializer = initializer()
       init_val = lambda: initializer(shape, dtype=dtype)
       variable_dtype = dtype.base_dtype
@@ -308,12 +308,17 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if getattr(_call_context, 'in_call', False) or all(
+  if is_in_call_context() or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
     return False
   return uses_keras_history(tensors)
+
+
+def is_in_call_context():
+  """Returns true if inside of a model/layer '__call__'."""
+  return getattr(_call_context, 'in_call', False)
 
 
 def uses_keras_history(tensors):
@@ -376,7 +381,7 @@ def mark_checked(tensors):
 @tf_contextlib.contextmanager
 def call_context():
   """Scope that marks when we are currently inside a Layer/Model's `call`."""
-  was_in_call = getattr(_call_context, 'in_call', False)
+  was_in_call = is_in_call_context()
   _call_context.in_call = True
   try:
     yield

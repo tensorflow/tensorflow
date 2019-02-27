@@ -237,13 +237,13 @@ class InitializableLookupTableBase(LookupInterface):
       return values
 
 
-class HashTable(InitializableLookupTableBase):
+class StaticHashTable(InitializableLookupTableBase):
   """A generic hash table implementation.
 
   Example usage:
 
   ```python
-  table = tf.HashTable(
+  table = tf.lookup.StaticHashTable(
       tf.KeyValueTensorInitializer(keys, values), -1)
   out = table.lookup(input_tensor)
   table.init.run()
@@ -273,7 +273,7 @@ class HashTable(InitializableLookupTableBase):
     self._shared_name = self._initializer._shared_name  # pylint: disable=protected-access
     self._name = name or "hash_table"
     self._table_name = None
-    super(HashTable, self).__init__(default_value, initializer)
+    super(StaticHashTable, self).__init__(default_value, initializer)
     self._value_shape = self._default_value.get_shape()
 
   def create_resource(self):
@@ -309,6 +309,10 @@ class HashTable(InitializableLookupTableBase):
     exported_values.set_shape(exported_keys.get_shape().concatenate(
         self._value_shape))
     return exported_keys, exported_values
+
+
+# For backwards compatibility. This will be removed in TF 2.0.
+HashTable = StaticHashTable
 
 
 class TableInitializerBase(trackable_base.Trackable):
@@ -442,7 +446,7 @@ class TextFileInitializer(TableInitializerBase):
   * `palmer -> 30`
 
   ```python
-  table = tf.lookup.HashTable(tf.lookup.TextFileInitializer(
+  table = tf.lookup.StaticHashTable(tf.lookup.TextFileInitializer(
       "test.txt", tf.string, 0, tf.int64, 1, delimiter=" "), -1)
   ...
   table.init.run()
@@ -455,7 +459,7 @@ class TextFileInitializer(TableInitializerBase):
   * `palmer 30 -> 2`
 
   ```python
-  table = tf.lookup.HashTable(tf.lookup.TextFileInitializer(
+  table = tf.lookup.StaticHashTable(tf.lookup.TextFileInitializer(
       "test.txt", tf.string, tf.lookup.TextFileIndex.WHOLE_LINE,
       tf.int64, tf.lookup.TextFileIndex.LINE_NUMBER, delimiter=" "), -1)
   ...
@@ -770,7 +774,8 @@ class IdTableWithHashBuckets(LookupInterface):
   num_oov_buckets = 3
   input_tensor = tf.constant(["emerson", "lake", "palmer", "king", "crimnson"])
   table = tf.IdTableWithHashBuckets(
-      tf.HashTable(tf.TextFileIdTableInitializer(filename), default_value),
+      tf.StaticHashTable(tf.TextFileIdTableInitializer(filename),
+                         default_value),
       num_oov_buckets)
   out = table.lookup(input_tensor).
   table.init.run()
@@ -1239,7 +1244,7 @@ def index_table_from_file(vocabulary_file=None,
           value_column_index=value_column_index,
           delimiter=delimiter)
 
-      table = HashTable(init, default_value)
+      table = StaticHashTable(init, default_value)
     if num_oov_buckets:
       table = IdTableWithHashBuckets(
           table,
@@ -1336,7 +1341,7 @@ def index_table_from_tensor(vocabulary_list,
           table_keys.dtype.base_dtype,
           dtypes.int64,
           name="table_init")
-      table = HashTable(init, default_value)
+      table = StaticHashTable(init, default_value)
     if num_oov_buckets:
       table = IdTableWithHashBuckets(
           table,
@@ -1433,7 +1438,7 @@ def index_to_string_table_from_file(vocabulary_file,
         delimiter=delimiter)
 
     # TODO(yleon): Use a more effienct structure.
-    return HashTable(init, default_value)
+    return StaticHashTable(init, default_value)
 
 
 def index_to_string_table_from_tensor(vocabulary_list,
@@ -1494,7 +1499,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")
     # TODO(yleon): Use a more effienct structure.
-    return HashTable(init, default_value)
+    return StaticHashTable(init, default_value)
 
 
 class MutableHashTable(LookupInterface):
@@ -1728,7 +1733,7 @@ class MutableHashTable(LookupInterface):
               self.op.resource_handle, restored_tensors[0], restored_tensors[1])
 
 
-class MutableDenseHashTable(LookupInterface):
+class DenseHashTable(LookupInterface):
   """A generic mutable hash table implementation using tensors as backing store.
 
   Data can be inserted by calling the insert method and removed by calling the
@@ -1736,18 +1741,18 @@ class MutableDenseHashTable(LookupInterface):
 
   It uses "open addressing" with quadratic reprobing to resolve collisions.
   Compared to `MutableHashTable` the insert, remove and lookup operations in a
-  `MutableDenseHashTable` are typically faster, but memory usage can be higher.
-  However, `MutableDenseHashTable` does not require additional memory for
+  `DenseHashTable` are typically faster, but memory usage can be higher.
+  However, `DenseHashTable` does not require additional memory for
   temporary tensors created during checkpointing and restore operations.
 
   Example usage:
 
   ```python
-  table = tf.lookup.MutableDenseHashTable(key_dtype=tf.int64,
-                                          value_dtype=tf.int64,
-                                          default_value=-1,
-                                          empty_key=0,
-                                          deleted_key=-1)
+  table = tf.lookup.DenseHashTable(key_dtype=tf.int64,
+                                   value_dtype=tf.int64,
+                                   default_value=-1,
+                                   empty_key=0,
+                                   deleted_key=-1)
 
   sess.run(table.insert(keys, values))
   out = table.lookup(query_keys)
@@ -1766,7 +1771,7 @@ class MutableDenseHashTable(LookupInterface):
                initial_num_buckets=None,
                name="MutableDenseHashTable",
                checkpoint=True):
-    """Creates an empty `MutableDenseHashTable` object.
+    """Creates an empty `DenseHashTable` object.
 
     Creates a table, the type of its keys and values are specified by key_dtype
     and value_dtype, respectively.
@@ -1787,7 +1792,7 @@ class MutableDenseHashTable(LookupInterface):
         is shared using the table node name.
 
     Returns:
-      A `MutableDenseHashTable` object.
+      A `DenseHashTable` object.
 
     Raises:
       ValueError: If checkpoint is True and no name was specified.
@@ -1813,11 +1818,11 @@ class MutableDenseHashTable(LookupInterface):
       # tables in a loop is uncommon).
       # TODO(rohanj): Use context.shared_name() instead.
       self._shared_name = "table_%d" % (ops.uid(),)
-    super(MutableDenseHashTable, self).__init__(key_dtype, value_dtype)
+    super(DenseHashTable, self).__init__(key_dtype, value_dtype)
 
     self._resource_handle = self.create_resource()
     if checkpoint:
-      saveable = MutableDenseHashTable._Saveable(self, name)
+      saveable = DenseHashTable._Saveable(self, name)
       if not context.executing_eagerly():
         ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, saveable)
 
@@ -1884,7 +1889,7 @@ class MutableDenseHashTable(LookupInterface):
 
     return values
 
-  def insert(self, keys, values, name=None):
+  def insert_or_assign(self, keys, values, name=None):
     """Associates `keys` with `values`.
 
     Args:
@@ -1911,7 +1916,26 @@ class MutableDenseHashTable(LookupInterface):
                                                    values)
       return op
 
-  def remove(self, keys, name=None):
+  def insert(self, keys, values, name=None):
+    """Associates `keys` with `values`.
+
+    Args:
+      keys: Keys to insert. Can be a tensor of any shape. Must match the table's
+        key type.
+      values: Values to be associated with keys. Must be a tensor of the same
+        shape as `keys` and match the table's value type.
+      name: A name for the operation (optional).
+
+    Returns:
+      The created Operation.
+
+    Raises:
+      TypeError: when `keys` or `values` doesn't match the table data
+        types.
+    """
+    return self.insert_or_assign(keys, values, name)
+
+  def erase(self, keys, name=None):
     """Removes `keys` and its associated values from the table.
 
     If a key is not present in the table, it is silently ignored.
@@ -1938,6 +1962,24 @@ class MutableDenseHashTable(LookupInterface):
 
     return op
 
+  def remove(self, keys, name=None):
+    """Removes `keys` and its associated values from the table.
+
+    If a key is not present in the table, it is silently ignored.
+
+    Args:
+      keys: Keys to remove. Can be a tensor of any shape. Must match the table's
+        key type.
+      name: A name for the operation (optional).
+
+    Returns:
+      The created Operation.
+
+    Raises:
+      TypeError: when `keys` do not match the table data types.
+    """
+    return self.erase(keys, name)
+
   def export(self, name=None):
     """Returns tensors of all keys and values in the table.
 
@@ -1958,12 +2000,10 @@ class MutableDenseHashTable(LookupInterface):
 
   def _gather_saveables_for_checkpoint(self):
     """For object-based checkpointing."""
-    return {
-        "table": functools.partial(MutableDenseHashTable._Saveable, table=self)
-    }
+    return {"table": functools.partial(DenseHashTable._Saveable, table=self)}
 
   class _Saveable(BaseSaverBuilder.SaveableObject):
-    """SaveableObject implementation for MutableDenseHashTable."""
+    """SaveableObject implementation for DenseHashTable."""
 
     def __init__(self, table, name):
       tensors = table.export()
@@ -1972,7 +2012,7 @@ class MutableDenseHashTable(LookupInterface):
           BaseSaverBuilder.SaveSpec(tensors[1], "", name + "-values")
       ]
       # pylint: disable=protected-access
-      super(MutableDenseHashTable._Saveable, self).__init__(table, specs, name)
+      super(DenseHashTable._Saveable, self).__init__(table, specs, name)
 
     def restore(self, restored_tensors, restored_shapes, name=None):
       del restored_shapes  # unused
