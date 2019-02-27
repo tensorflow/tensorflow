@@ -1043,8 +1043,8 @@ _current_trace_context_lock = threading.Lock()
 _current_trace_context = None
 
 
-@tf_export("summary.enable_trace", v1=[])
-def enable_trace(graph=True, profiler=False):
+@tf_export("summary.trace_on", v1=[])
+def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-name
   """Enables execution trace.
 
   Args:
@@ -1073,8 +1073,8 @@ def enable_trace(graph=True, profiler=False):
     _current_trace_context = _TraceContext(graph=graph, profiler=profiler)
 
 
-@tf_export("summary.export_trace", v1=[])
-def export_trace(name, step=None, profiler_outdir=None):
+@tf_export("summary.trace_export", v1=[])
+def trace_export(name, step=None, profiler_outdir=None):
   """Exports trace as a Summary and/or profile file.
 
   Args:
@@ -1117,11 +1117,11 @@ def export_trace(name, step=None, profiler_outdir=None):
   if profiler:
     _profiler.save(profiler_outdir, _profiler.stop())
 
-  disable_trace()
+  trace_off()
 
 
-@tf_export("summary.disable_trace", v1=[])
-def disable_trace():
+@tf_export("summary.trace_off", v1=[])
+def trace_off():
   """Disables and resets the trace state."""
   global _current_trace_context
   with _current_trace_context_lock:
