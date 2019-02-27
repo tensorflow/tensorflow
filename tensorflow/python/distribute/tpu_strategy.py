@@ -258,67 +258,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_tpu_variable(colocate_with_variable, self)
 
-  def _get_enqueue_op_per_host(self, host_id, multi_worker_iterator,
-                               input_shapes, iterations):
-    """Create an enqueue op for a single host identified using host_id.
-
-    The while_loop op returned will run `iterations` times and in each run
-    enqueue batches for each shard.
-
-    Args:
-      host_id: integer, id of the host to run the enqueue ops on.
-      multi_worker_iterator: MultiWorkerDataIterator to read the input data.
-      input_shapes: shape of inputs to be enqueue on the queue. This is same as
-        the value of `nest.flatten(iterator.output_shapes)`.
-      iterations: integer, number of iterations to be run; determines the
-        number of batches to be enqueued.
-
-    Returns:
-      while_loop_op running `iterations` times; in each run we enqueue a batch
-      on the infeed queue from the host with id `host_id` for each device shard.
-    """
-    host = self.get_host_cpu_device(host_id)
-    # TODO(sourabhbajaj): Possibly make changes to MultiWorkerDataset
-    # to work with TPU Prefetch so clean up this code.
-    iterator = (
-        multi_worker_iterator.get_iterator(self.get_host(host_id))._iterator)  # pylint: disable=protected-access
-
-    def _infeed_enqueue_ops_fn():
-      """Enqueue ops for one iteration."""
-      control_deps = []
-      sharded_inputs = []
-      enqueue_ops = []
-
-      with ops.device(host):
-        for _ in range(self.num_replicas_per_host):
-          # Use control dependencies to ensure a deterministic ordering.
-          with ops.control_dependencies(control_deps):
-            inputs = nest.flatten(iterator.get_next())
-            control_deps.extend(inputs)
-            sharded_inputs.append(inputs)
-
-      for core_id, shard_input in enumerate(sharded_inputs):
-        enqueue_ops.append(
-            tpu_ops.infeed_enqueue_tuple(
-                inputs=shard_input,
-                shapes=input_shapes,
-                device_ordinal=core_id))
-      return enqueue_ops
-
-    def enqueue_ops_loop_body(i):
-      """Callable for the loop body of the while_loop instantiated below."""
-      with ops.control_dependencies(_infeed_enqueue_ops_fn()):
-        return i + 1
-
-    with ops.device(host):
-      enqueue_op_per_host = control_flow_ops.while_loop(
-          lambda i: i < iterations,
-          enqueue_ops_loop_body,
-          [constant_op.constant(0)],
-          parallel_iterations=1)
-
-    return enqueue_op_per_host
-
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
     return input_lib.DatasetIterator(dataset, self._input_workers,
