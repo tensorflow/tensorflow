@@ -81,6 +81,10 @@ tf_module {
     argspec: "args=[\'true_classes\', \'num_true\', \'num_sampled\', \'unique\', \'seed\', \'seed2\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "AllToAll"
+    argspec: "args=[\'input\', \'group_assignment\', \'concat_dimension\', \'split_dimension\', \'split_count\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "Angle"
     argspec: "args=[\'input\', \'Tout\'], varargs=None, keywords=None, defaults=None"
   }
@@ -577,6 +581,10 @@ tf_module {
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'shape\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "CollectivePermute"
+    argspec: "args=[\'input\', \'source_target_pairs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "CollectiveReduce"
     argspec: "args=[\'input\', \'group_size\', \'group_key\', \'instance_key\', \'merge_op\', \'final_op\', \'subdiv_offsets\', \'wait_for\'], varargs=None, keywords=None, defaults=None"
   }
@@ -619,6 +627,10 @@ tf_module {
   member_method {
     name: "ConditionalAccumulator"
     argspec: "args=[\'dtype\', \'shape\', \'container\', \'shared_name\', \'reduction_type\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ConfigureDistributedTPU"
+    argspec: "args=[\'embedding_config\', \'tpu_embedding_config\', \'is_global_init\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Conj"
@@ -707,6 +719,10 @@ tf_module {
   member_method {
     name: "Cross"
     argspec: "args=[\'a\', \'b\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "CrossReplicaSum"
+    argspec: "args=[\'input\', \'group_assignment\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "CudnnRNN"
@@ -959,6 +975,18 @@ tf_module {
   member_method {
     name: "EncodeWav"
     argspec: "args=[\'audio\', \'sample_rate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "EnqueueTPUEmbeddingIntegerBatch"
+    argspec: "args=[\'batch\', \'mode_override\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "EnqueueTPUEmbeddingSparseBatch"
+    argspec: "args=[\'sample_indices\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "EnqueueTPUEmbeddingSparseTensorBatch"
+    argspec: "args=[\'sample_indices\', \'embedding_indices\', \'aggregation_weights\', \'mode_override\', \'device_ordinal\', \'combiners\', \'table_ids\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "EnsureShape"
@@ -1477,6 +1505,22 @@ tf_module {
     argspec: "args=[\'predictions\', \'targets\', \'k\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "InfeedDequeue"
+    argspec: "args=[\'dtype\', \'shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "InfeedDequeueTuple"
+    argspec: "args=[\'dtypes\', \'shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "InfeedEnqueue"
+    argspec: "args=[\'input\', \'shape\', \'layout\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "InfeedEnqueueTuple"
+    argspec: "args=[\'inputs\', \'shapes\', \'layouts\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "InitializeTable"
     argspec: "args=[\'table_handle\', \'keys\', \'values\'], varargs=None, keywords=None, defaults=None"
   }
@@ -1635,6 +1679,74 @@ tf_module {
   member_method {
     name: "LoadAndRemapMatrix"
     argspec: "args=[\'ckpt_path\', \'old_tensor_name\', \'row_remapping\', \'col_remapping\', \'initializing_values\', \'num_rows\', \'num_cols\', \'max_rows_in_memory\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingADAMParameters"
+    argspec: "args=[\'parameters\', \'momenta\', \'velocities\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingADAMParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'momenta\', \'velocities\', \'gradient_accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingAdadeltaParameters"
+    argspec: "args=[\'parameters\', \'accumulators\', \'updates\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingAdadeltaParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'accumulators\', \'updates\', \'gradient_accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingAdagradParameters"
+    argspec: "args=[\'parameters\', \'accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingAdagradParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'accumulators\', \'gradient_accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingCenteredRMSPropParameters"
+    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'mg\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingFTRLParameters"
+    argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingFTRLParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'accumulators\', \'linears\', \'gradient_accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingMDLAdagradLightParameters"
+    argspec: "args=[\'parameters\', \'accumulators\', \'weights\', \'benefits\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingMomentumParameters"
+    argspec: "args=[\'parameters\', \'momenta\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingMomentumParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'momenta\', \'gradient_accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingProximalAdagradParameters"
+    argspec: "args=[\'parameters\', \'accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingProximalAdagradParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'accumulators\', \'gradient_accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingRMSPropParameters"
+    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingRMSPropParametersGradAccumDebug"
+    argspec: "args=[\'parameters\', \'ms\', \'mom\', \'gradient_accumulators\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "LoadTPUEmbeddingStochasticGradientDescentParameters"
+    argspec: "args=[\'parameters\', \'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Log"
@@ -2101,6 +2213,22 @@ tf_module {
     argspec: "args=[\'indices\', \'capacity\', \'memory_limit\', \'dtypes\', \'container\', \'shared_name\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "OutfeedDequeue"
+    argspec: "args=[\'dtype\', \'shape\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "OutfeedDequeueTuple"
+    argspec: "args=[\'dtypes\', \'shapes\', \'device_ordinal\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "OutfeedEnqueue"
+    argspec: "args=[\'input\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "OutfeedEnqueueTuple"
+    argspec: "args=[\'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "Pack"
     argspec: "args=[\'values\', \'axis\'], varargs=None, keywords=None, defaults=None"
   }
@@ -2354,7 +2482,7 @@ tf_module {
   }
   member_method {
     name: "QuantizedResizeBilinear"
-    argspec: "args=[\'images\', \'size\', \'min\', \'max\', \'align_corners\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'images\', \'size\', \'min\', \'max\', \'align_corners\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "QueueClose"
@@ -2589,6 +2717,10 @@ tf_module {
     argspec: "args=[\'file_pattern\', \'file_random_seed\', \'file_shuffle_shift_ratio\', \'file_buffer_size\', \'file_parallelism\', \'batch_size\', \'compression_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "RecvTPUEmbeddingActivations"
+    argspec: "args=[\'num_outputs\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ReduceDataset"
     argspec: "args=[\'input_dataset\', \'initial_state\', \'other_arguments\', \'f\', \'output_types\', \'output_shapes\', \'use_inter_op_parallelism\'], varargs=None, keywords=None, defaults=None"
   }
@@ -2682,27 +2814,27 @@ tf_module {
   }
   member_method {
     name: "ResizeBicubic"
-    argspec: "args=[\'images\', \'size\', \'align_corners\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'images\', \'size\', \'align_corners\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResizeBicubicGrad"
-    argspec: "args=[\'grads\', \'original_image\', \'align_corners\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'grads\', \'original_image\', \'align_corners\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResizeBilinear"
-    argspec: "args=[\'images\', \'size\', \'align_corners\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'images\', \'size\', \'align_corners\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResizeBilinearGrad"
-    argspec: "args=[\'grads\', \'original_image\', \'align_corners\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'grads\', \'original_image\', \'align_corners\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResizeNearestNeighbor"
-    argspec: "args=[\'images\', \'size\', \'align_corners\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'images\', \'size\', \'align_corners\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResizeNearestNeighborGrad"
-    argspec: "args=[\'grads\', \'size\', \'align_corners\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'grads\', \'size\', \'align_corners\', \'half_pixel_centers\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ResourceApplyAdaMax"
@@ -2881,6 +3013,74 @@ tf_module {
     argspec: "args=[\'prefix\', \'tensor_names\', \'shape_and_slices\', \'dtypes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "RetrieveTPUEmbeddingADAMParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingADAMParametersGradAccumDebug"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingAdadeltaParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingAdadeltaParametersGradAccumDebug"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingAdagradParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingAdagradParametersGradAccumDebug"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingCenteredRMSPropParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingFTRLParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingFTRLParametersGradAccumDebug"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingMDLAdagradLightParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingMomentumParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingMomentumParametersGradAccumDebug"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingProximalAdagradParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingProximalAdagradParametersGradAccumDebug"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingRMSPropParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingRMSPropParametersGradAccumDebug"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "RetrieveTPUEmbeddingStochasticGradientDescentParameters"
+    argspec: "args=[\'table_id\', \'table_name\', \'num_shards\', \'shard_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "Reverse"
     argspec: "args=[\'tensor\', \'dims\'], varargs=None, keywords=None, defaults=None"
   }
@@ -3053,6 +3253,10 @@ tf_module {
     argspec: "args=[\'gradients\', \'outputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "SendTPUEmbeddingGradients"
+    argspec: "args=[\'inputs\', \'learning_rates\', \'config\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "SerializeIterator"
     argspec: "args=[\'resource_handle\'], varargs=None, keywords=None, defaults=None"
   }
@@ -3099,6 +3303,10 @@ tf_module {
   member_method {
     name: "ShuffleDataset"
     argspec: "args=[\'input_dataset\', \'buffer_size\', \'seed\', \'seed2\', \'reshuffle_each_iteration\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "ShutdownDistributedTPU"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Sigmoid"
@@ -3581,6 +3789,38 @@ tf_module {
     argspec: "args=[\'container\', \'shared_name\', \'compression_type\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "TPUCompilationResult"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TPUEmbeddingActivations"
+    argspec: "args=[\'embedding_variable\', \'sliced_activations\', \'table_id\', \'lookup_id\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TPUOrdinalSelector"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TPUPartitionedCall"
+    argspec: "args=[\'args\', \'device_ordinal\', \'Tout\', \'f\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TPUReplicate"
+    argspec: "args=[\'inputs\', \'broadcast_inputs\', \'variables\', \'guaranteed_constants\', \'computation\', \'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'host_compute_core\', \'output_types\', \'padding_map\', \'step_marker_location\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TPUReplicateMetadata"
+    argspec: "args=[\'num_replicas\', \'num_cores_per_replica\', \'topology\', \'use_tpu\', \'device_assignment\', \'computation_shape\', \'host_compute_core\', \'padding_map\', \'step_marker_location\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TPUReplicatedInput"
+    argspec: "args=[\'inputs\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "TPUReplicatedOutput"
+    argspec: "args=[\'input\', \'num_replicas\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "TakeDataset"
     argspec: "args=[\'input_dataset\', \'count\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
@@ -4011,6 +4251,10 @@ tf_module {
   member_method {
     name: "WindowDataset"
     argspec: "args=[\'input_dataset\', \'size\', \'shift\', \'stride\', \'drop_remainder\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "WorkerHeartbeat"
+    argspec: "args=[\'request\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "WrapDatasetVariant"

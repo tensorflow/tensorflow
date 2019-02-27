@@ -34,6 +34,7 @@ from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -272,7 +273,7 @@ class ConvRNN2D(RNN):
     shape = list(self.cell.kernel_shape)
     shape[-1] = self.cell.filters
     initial_state = self.cell.input_conv(initial_state,
-                                         K.zeros(tuple(shape)),
+                                         array_ops.zeros(tuple(shape)),
                                          padding=self.cell.padding)
 
     if hasattr(self.cell.state_size, '__len__'):
@@ -625,31 +626,8 @@ class ConvLSTM2DCell(Layer):
           initializer=bias_initializer,
           regularizer=self.bias_regularizer,
           constraint=self.bias_constraint)
-
     else:
       self.bias = None
-
-    self.kernel_i = self.kernel[:, :, :, :self.filters]
-    self.recurrent_kernel_i = self.recurrent_kernel[:, :, :, :self.filters]
-    self.kernel_f = self.kernel[:, :, :, self.filters: self.filters * 2]
-    self.recurrent_kernel_f = self.recurrent_kernel[:, :, :, self.filters:
-                                                    self.filters * 2]
-    self.kernel_c = self.kernel[:, :, :, self.filters * 2: self.filters * 3]
-    self.recurrent_kernel_c = self.recurrent_kernel[:, :, :, self.filters * 2:
-                                                    self.filters * 3]
-    self.kernel_o = self.kernel[:, :, :, self.filters * 3:]
-    self.recurrent_kernel_o = self.recurrent_kernel[:, :, :, self.filters * 3:]
-
-    if self.use_bias:
-      self.bias_i = self.bias[:self.filters]
-      self.bias_f = self.bias[self.filters: self.filters * 2]
-      self.bias_c = self.bias[self.filters * 2: self.filters * 3]
-      self.bias_o = self.bias[self.filters * 3:]
-    else:
-      self.bias_i = None
-      self.bias_f = None
-      self.bias_c = None
-      self.bias_o = None
     self.built = True
 
   def call(self, inputs, states, training=None):
@@ -697,22 +675,26 @@ class ConvLSTM2DCell(Layer):
       h_tm1_c = h_tm1
       h_tm1_o = h_tm1
 
-    x_i = self.input_conv(inputs_i, self.kernel_i, self.bias_i,
-                          padding=self.padding)
-    x_f = self.input_conv(inputs_f, self.kernel_f, self.bias_f,
-                          padding=self.padding)
-    x_c = self.input_conv(inputs_c, self.kernel_c, self.bias_c,
-                          padding=self.padding)
-    x_o = self.input_conv(inputs_o, self.kernel_o, self.bias_o,
-                          padding=self.padding)
-    h_i = self.recurrent_conv(h_tm1_i,
-                              self.recurrent_kernel_i)
-    h_f = self.recurrent_conv(h_tm1_f,
-                              self.recurrent_kernel_f)
-    h_c = self.recurrent_conv(h_tm1_c,
-                              self.recurrent_kernel_c)
-    h_o = self.recurrent_conv(h_tm1_o,
-                              self.recurrent_kernel_o)
+    (kernel_i, kernel_f,
+     kernel_c, kernel_o) = array_ops.split(self.kernel, 4, axis=3)
+    (recurrent_kernel_i,
+     recurrent_kernel_f,
+     recurrent_kernel_c,
+     recurrent_kernel_o) = array_ops.split(self.recurrent_kernel, 4, axis=3)
+
+    if self.use_bias:
+      bias_i, bias_f, bias_c, bias_o = array_ops.split(self.bias, 4)
+    else:
+      bias_i, bias_f, bias_c, bias_o = None, None, None, None
+
+    x_i = self.input_conv(inputs_i, kernel_i, bias_i, padding=self.padding)
+    x_f = self.input_conv(inputs_f, kernel_f, bias_f, padding=self.padding)
+    x_c = self.input_conv(inputs_c, kernel_c, bias_c, padding=self.padding)
+    x_o = self.input_conv(inputs_o, kernel_o, bias_o, padding=self.padding)
+    h_i = self.recurrent_conv(h_tm1_i, recurrent_kernel_i)
+    h_f = self.recurrent_conv(h_tm1_f, recurrent_kernel_f)
+    h_c = self.recurrent_conv(h_tm1_c, recurrent_kernel_c)
+    h_o = self.recurrent_conv(h_tm1_o, recurrent_kernel_o)
 
     i = self.recurrent_activation(x_i + h_i)
     f = self.recurrent_activation(x_f + h_f)

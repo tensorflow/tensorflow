@@ -78,9 +78,10 @@ void TFE_ContextDisableGraphCollection(TFE_Context* ctx) {
   ctx->context.SetShouldStoreGraphs(false);
 }
 
-bool TFE_ProfilerClientStartTracing(char* service_addr, char* logdir,
-                                    char* worker_list, bool include_dataset_ops,
-                                    int duration_ms, int num_tracing_attempts) {
+bool TFE_ProfilerClientStartTracing(const char* service_addr,
+                                    const char* logdir, const char* worker_list,
+                                    bool include_dataset_ops, int duration_ms,
+                                    int num_tracing_attempts) {
   tensorflow::Status s =
       tensorflow::profiler::client::ValidateHostPortPair(service_addr);
   if (!s.ok()) {

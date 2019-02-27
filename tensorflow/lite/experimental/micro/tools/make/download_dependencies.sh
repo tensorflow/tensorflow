@@ -40,6 +40,7 @@ AP3_URL="https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276
 CUST_CMSIS_URL="https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
 GCC_EMBEDDED_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
 KISSFFT_URL="http://downloads.sourceforge.net/project/kissfft/kissfft/v1_3_0/kiss_fft130.zip"
+SPARKFUN_EDGE_BSP_URL="https://github.com/sparkfun/SparkFun_Edge_BSP/archive/620f5f7a69fc69e38cda8132b69302d9c28ba0dd.zip"
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
@@ -91,13 +92,16 @@ patch_am_sdk() {
   cp "${src_dir}/hello_world.ld" "${dest_dir}/apollo3evb.ld"
 
   sed -i -e '114s/1024/1024\*20/g' "${dest_dir}/startup_gcc.c"
-  sed -i -e 's/main/_main/g' "${dest_dir}/startup_gcc.c"
+  #sed -i -e 's/main/_main/g' "${dest_dir}/startup_gcc.c"
 
   sed -i -e '3s/hello_world.ld/apollo3evb.ld/g' "${dest_dir}/apollo3evb.ld"
   sed -i -e '3s/startup_gnu/startup_gcc/g' "${dest_dir}/apollo3evb.ld"
   sed -i -e '22s/\*(.text\*)/\*(.text\*)\n\n\t\/\* These are the C++ global constructors.  Stick them all here and\n\t \* then walk through the array in main() calling them all.\n\t \*\/\n\t_init_array_start = .;\n\tKEEP (\*(SORT(.init_array\*)))\n\t_init_array_end = .;\n\n\t\/\* XXX Currently not doing anything for global destructors. \*\/\n/g' "${dest_dir}/apollo3evb.ld"
   sed -i -e "70s/} > SRAM/} > SRAM\n    \/\* Add this to satisfy reference to symbol 'end' from libnosys.a(sbrk.o)\n     \* to denote the HEAP start.\n     \*\/\n   end = .;/g" "${dest_dir}/apollo3evb.ld"
 
+  # Workaround for bug in 2.0.0 SDK, remove once that's fixed.
+  sed -i -e 's/#ifndef AM_HAL_GPIO_H/#ifdef __cplusplus\nextern "C" {\n#endif\n#ifndef AM_HAL_GPIO_H/g' ${am_dir}/mcu/apollo3/hal/am_hal_gpio.h
+  
   echo "Finished preparing Apollo3 files"
 }
 
@@ -123,5 +127,6 @@ download_and_extract "${CUST_CMSIS_URL}" "${DOWNLOADS_DIR}/CMSIS_ext"
 download_and_extract "${GCC_EMBEDDED_URL}" "${DOWNLOADS_DIR}/gcc_embedded"
 download_and_extract "${KISSFFT_URL}" "${DOWNLOADS_DIR}/kissfft"
 patch_kissfft "${DOWNLOADS_DIR}/kissfft"
+download_and_extract "${SPARKFUN_EDGE_BSP_URL}" "${DOWNLOADS_DIR}/AmbiqSuite-Rel2.0.0/boards/SparkFun_TensorFlow_Apollo3_BSP"
 
 echo "download_dependencies.sh completed successfully." >&2

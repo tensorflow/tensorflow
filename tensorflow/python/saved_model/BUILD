@@ -393,6 +393,7 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking:tracking",
     ],
+    tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
 )
 
 tf_py_test(

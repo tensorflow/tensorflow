@@ -66,8 +66,8 @@ struct CheckNumericsLaunch {
         (d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor()) /
         block_size;
 
-    CudaLaunchKernel(CheckNumericsKernel<T>, num_blocks, block_size, 0,
-                     d.stream(), data, size, abnormal_detected);
+    TF_CHECK_OK(CudaLaunchKernel(CheckNumericsKernel<T>, num_blocks, block_size,
+                                 0, d.stream(), data, size, abnormal_detected));
   }
 };
 

@@ -93,7 +93,10 @@ tf_py_test(
         "//tensorflow/python/keras:engine",
         "//tensorflow/python/keras:layers",
     ],
-    tags = ["nomac"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
 )
 
 py_library(
@@ -252,5 +255,26 @@ tf_py_test(
     tags = [
         "no_windows",  # b/124401331
         "notsan",  # b/74395663
+    ],
+)
+
+py_library(
+    name = "python_state",
+    srcs = ["python_state.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":base",
+    ],
+)
+
+tf_py_test(
+    name = "python_state_test",
+    srcs = ["python_state_test.py"],
+    additional_deps = [
+        ":base",
+        ":util",
+        "//tensorflow/python/module",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
     ],
 )

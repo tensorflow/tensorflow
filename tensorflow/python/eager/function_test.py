@@ -114,6 +114,21 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     r = add(x, v2)
     self.assertEqual(3.0, self.evaluate(r))
 
+  def testExternalControlDependency(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.0)
+      v.initializer.run()
+
+      op = v.assign_add(1.0)
+
+      @function.defun
+      def f():
+        with ops.control_dependencies([op]):
+          return 1.0
+
+      self.evaluate(f())
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
   def testInputShapeFunctionRelaxation(self):
     unknown_dim = [False]
 
@@ -193,6 +208,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     with self.captureWritesToStream(sys.stderr) as printed:
       with self.assertRaisesRegexp(errors.InvalidArgumentError, r'MatMul'):
         fn(array_ops.ones((3, 4)))
+
+  def testNestedShapeFunctionRelaxation(self):
+
+    got_shape = [None]
+
+    # The inner function will go through shape relaxation because the shapes it
+    # receives will be [1], [2], [3], ...
+    @def_function.function
+    def bar(x_shape):
+      got_shape[0] = x_shape._shape_tuple()
+      return x_shape
+
+    # The outer function will not go through shape relaxation because the shapes
+    # it receives will be [1], [[1]], [[[1]]], ...
+    @def_function.function
+    def foo(ones):
+      return bar(array_ops.shape(ones))
+
+    for rank in range(1, 6):
+      x_shape = self.evaluate(foo(array_ops.ones([1] * rank)))
+      self.assertAllEqual(x_shape, [1] * rank)
+      if rank < 3:
+        self.assertEqual(got_shape[0], (rank,))
+      else:
+        self.assertEqual(got_shape[0], (None,))
 
   def testWastedAdd(self):
 
@@ -1830,6 +1870,25 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
     # Whereas calling the python function directly should create a side-effect.
     side_effecting_function.python_function()
     self.assertAllEqual(state, [0, 0])
+
+  def testFunctionWithNestedFunctionCallAndSideEffects(self):
+    v1 = variables.Variable(1.0)
+    v2 = variables.Variable(1.0)
+
+    @def_function.function
+    def add_one(a):
+      a.assign_add(1.0)
+
+    # Grappler will inline calls to `add_one` into the function body, we check
+    # that all side-effects were executed.
+    @def_function.function
+    def side_effecting_function(a, b):
+      add_one(a)
+      add_one(b)
+      return a + b
+
+    result = side_effecting_function(v1, v2)
+    self.assertEqual(result.numpy(), 4.0)
 
   def testFunctionWithExtraAttributes(self):
     @function.defun_with_attributes(attributes={'experimental_1': 'value1',

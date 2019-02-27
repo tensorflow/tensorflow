@@ -518,11 +518,8 @@ class Network(base_layer.Layer):
   def _unfiltered_updates(self):
     updates = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        updates += layer._unfiltered_updates
-      else:
-        updates += layer.updates
-    updates += self._updates
+      updates += layer._unfiltered_updates
+    updates += list(self._updates)
     return updates
 
   @property
@@ -1834,4 +1831,3 @@ def _map_graph_network(inputs, outputs):
                        str(all_names.count(name)) + ' times in the model. '
                        'All layer names should be unique.')
   return network_nodes, nodes_by_depth, layers, layers_by_depth
-

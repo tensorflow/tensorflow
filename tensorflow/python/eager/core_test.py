@@ -65,15 +65,11 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.scope_name = 'foo'
     self.assertEqual('foo', ctx.scope_name)
 
-    self.assertEqual(context.SYNC, ctx.get_execution_mode())
-    ctx.set_execution_mode(context.ASYNC)
-    self.assertEqual(context.ASYNC, ctx.get_execution_mode())
-    ctx.set_execution_mode(context.SYNC)
-    self.assertEqual(context.SYNC, ctx.get_execution_mode())
-    with ctx.execution_mode(context.ASYNC):
-      self.assertEqual(context.ASYNC, ctx.get_execution_mode())
-    ctx.set_execution_mode(context.SYNC)
-    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+    self.assertEqual(context.SYNC, ctx.execution_mode)
+    ctx.execution_mode = context.ASYNC
+    self.assertEqual(context.ASYNC, ctx.execution_mode)
+    ctx.execution_mode = context.SYNC
+    self.assertEqual(context.SYNC, ctx.execution_mode)
 
     self.assertIsNone(ctx.summary_writer_resource)
     ctx.summary_writer_resource = 'mock'
@@ -259,7 +255,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self.skipTest('No GPUs found')
     constant = constant_op.constant(1.0)
     with ops.device('gpu:0'):
-      with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+      with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
         c = constant + 1.0
     self.assertAllEqual(c, 2.0)
 
@@ -315,7 +311,7 @@ class TFETest(test_util.TensorFlowTestCase):
                  three.dtype.as_datatype_enum))
       context.async_wait()
     context.async_clear_error()
-    context.set_execution_mode(context.SYNC)
+    context.context().execution_mode = context.SYNC
 
   def testExecuteTooManyNumOutputs(self):
     # num_outputs provided is 50, but only one output is produced.

@@ -328,9 +328,9 @@ constexpr bool NoneIsReference() {
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
 template <typename... Ts, typename... Args>
-void CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
-                      size_t shared_memory_size_bytes, cudaStream_t stream,
-                      Args... arguments) {
+Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
+                        size_t shared_memory_size_bytes, cudaStream_t stream,
+                        Args... arguments) {
   static_assert(detail::NoneIsReference<Ts...>(),
                 "Kernels with reference arguments have undefined behaviour.");
   // Cast arguments and forward them as an array of pointers.
@@ -339,7 +339,10 @@ void CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   auto func_ptr = absl::bit_cast<const void*>(function);
   auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
                                  shared_memory_size_bytes, stream);
-  DCHECK_EQ(result, cudaSuccess) << cudaGetErrorString(result);
+  if (result != cudaSuccess) {
+    return errors::Internal(cudaGetErrorString(result));
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow

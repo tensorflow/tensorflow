@@ -221,6 +221,7 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
+        "//tensorflow/python/eager:profiler",
     ],
 )
 
@@ -233,6 +234,7 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        "//tensorflow/python/eager:profiler",
     ],
 )
 
@@ -561,7 +563,7 @@ tf_py_test(
 
 tf_py_test(
     name = "convolutional_recurrent_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/convolutional_recurrent_test.py"],
     additional_deps = [
         ":keras",
@@ -569,7 +571,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -583,10 +585,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = [
-        "manual",  # b/124471597
-        "notap",  # b/124471597
-    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -1219,7 +1217,7 @@ tf_py_test(
 
 tf_py_test(
     name = "base_layer_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/base_layer_test.py"],
     additional_deps = [
         ":keras",
@@ -1227,6 +1225,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 8,
     tags = ["no_rocm"],
 )
 
