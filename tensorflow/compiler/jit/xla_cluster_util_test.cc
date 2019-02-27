@@ -15,6 +15,8 @@ limitations under the License.
 
 #include "tensorflow/compiler/jit/xla_cluster_util.h"
 
+#include "absl/algorithm/container.h"
+#include "absl/strings/str_join.h"
 #include "tensorflow/cc/framework/ops.h"
 #include "tensorflow/cc/ops/control_flow_ops_internal.h"
 #include "tensorflow/cc/ops/standard_ops.h"
@@ -63,6 +65,68 @@ TEST(CreateCycleDetectionGraph, ConnectivityThroughMultipleEnterExitRegions) {
   GraphCycles cycles;
   TF_ASSERT_OK(CreateCycleDetectionGraph(root.graph(), &cycles));
   EXPECT_FALSE(cycles.ContractEdge(a.node()->id(), b.node()->id()));
+}
+
+void CheckPickDeviceResult(absl::string_view expected_result,
+                           bool allow_mixing_unknown_and_cpu,
+                           absl::Span<const absl::string_view> inputs) {
+  std::vector<string> inputs_string;
+  absl::c_transform(inputs, std::back_inserter(inputs_string),
+                    [](absl::string_view sv) { return string(sv); });
+  string result;
+  TF_ASSERT_OK(
+      PickDeviceForXla(inputs_string, allow_mixing_unknown_and_cpu, &result))
+      << "inputs = [" << absl::StrJoin(inputs, ", ")
+      << "], allow_mixing_unknown_and_cpu=" << allow_mixing_unknown_and_cpu
+      << ", expected_result=" << expected_result;
+  EXPECT_EQ(result, expected_result);
+}
+
+void CheckPickDeviceHasError(bool allow_mixing_unknown_and_cpu,
+                             absl::Span<const absl::string_view> inputs) {
+  std::vector<string> inputs_string;
+  absl::c_transform(inputs, std::back_inserter(inputs_string),
+                    [](absl::string_view sv) { return string(sv); });
+  string result;
+  EXPECT_FALSE(
+      PickDeviceForXla(inputs_string, allow_mixing_unknown_and_cpu, &result)
+          .ok());
+}
+
+const char* kCPU0 = "/job:localhost/replica:0/task:0/device:CPU:0";
+const char* kGPU0 = "/job:localhost/replica:0/task:0/device:GPU:0";
+const char* kXPU0 = "/job:localhost/replica:0/task:0/device:XPU:0";
+
+const char* kCPU1 = "/job:localhost/replica:0/task:0/device:CPU:1";
+const char* kGPU1 = "/job:localhost/replica:0/task:0/device:GPU:1";
+const char* kXPU1 = "/job:localhost/replica:0/task:0/device:XPU:1";
+
+TEST(PickDeviceForXla, UniqueDevice) {
+  CheckPickDeviceResult(kGPU0, false, {kGPU0, kGPU0});
+}
+
+TEST(PickDeviceForXla, DeviceOrder) {
+  CheckPickDeviceResult(kGPU0, false, {kGPU0, kCPU0});
+  CheckPickDeviceResult(kXPU0, true, {kXPU0, kCPU0});
+}
+
+TEST(PickDeviceForXla, MultipleUnknownDevices) {
+  CheckPickDeviceHasError(false, {kXPU0, kXPU1});
+}
+
+TEST(PickDeviceForXla, GpuAndUnknown) {
+  CheckPickDeviceHasError(false, {kGPU0, kXPU1});
+}
+
+TEST(PickDeviceForXla, UnknownAndCpu) {
+  CheckPickDeviceHasError(false, {kXPU0, kCPU1});
+}
+
+TEST(PickDeviceForXla, MultipleDevicesOfSameType) {
+  CheckPickDeviceHasError(false, {kCPU0, kCPU1});
+  CheckPickDeviceHasError(false, {kGPU0, kGPU1});
+  CheckPickDeviceHasError(false, {kXPU0, kXPU1});
+  CheckPickDeviceHasError(false, {kCPU0, kCPU1, kGPU0});
 }
 }  // namespace
 }  // namespace tensorflow
