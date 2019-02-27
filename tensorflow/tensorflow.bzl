@@ -482,14 +482,10 @@ def tf_cc_binary(
         per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
         visibility = None,
         **kwargs):
-<<<<<<< HEAD
-=======
     if kernels:
         added_data_deps = tf_binary_dynamic_kernel_dsos()
     else:
         added_data_deps = []
-
->>>>>>> 302f7f93882bb7110ab9b7f6dee39d4b38897c6a
     if per_os_targets:
         names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
     else:
@@ -504,11 +500,7 @@ def tf_cc_binary(
                     clean_dep("//third_party/mkl:intel_binary_blob"),
                 ],
             ),
-<<<<<<< HEAD
-            data = data + tf_binary_dynamic_kernel_dsos(kernels),
-=======
             data = depset(data + added_data_deps),
->>>>>>> 302f7f93882bb7110ab9b7f6dee39d4b38897c6a
             linkopts = linkopts + _rpath_linkopts(name_os),
             visibility = visibility,
             **kwargs
