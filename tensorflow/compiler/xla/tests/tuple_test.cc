@@ -515,9 +515,7 @@ class TupleHloTest : public HloTestBase {};
 
 XLA_TEST_F(TupleHloTest, BitcastAfterGTE) {
   const char* testcase = R"(
-    // FIXME understand why is_scheduled=true breaks the test
-    //HloModule m, is_scheduled=true
-    HloModule m
+    HloModule m, is_scheduled=true
 
     ENTRY test {
       name.1 = (f32[3]{0}) parameter(0)
