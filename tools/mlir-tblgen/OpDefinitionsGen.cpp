@@ -246,11 +246,21 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   auto numResults = op.getNumResults();
   auto numOperands = op.getNumOperands();
 
+  llvm::SmallVector<std::string, 4> resultNames;
+  resultNames.reserve(numResults);
+
   // Emit parameters for all return types
   if (!isAllSameType) {
-    for (unsigned i = 0; i != numResults; ++i)
+    for (unsigned i = 0; i != numResults; ++i) {
+      std::string resultName = op.getResultName(i);
+      if (resultName.empty())
+        resultName = formatv("resultType{0}", i);
+
       os << (op.getResultType(i).isVariadic() ? ", ArrayRef<Type> " : ", Type ")
-         << "returnType" << i;
+         << resultName;
+
+      resultNames.emplace_back(std::move(resultName));
+    }
   }
 
   // Emit parameters for all operands
@@ -280,15 +290,15 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
           numResults - static_cast<int>(hasVariadicResult);
 
       if (numNonVariadicResults > 0) {
-        OUT(4) << "result->addTypes({returnType0";
+        OUT(4) << "result->addTypes({" << resultNames.front();
         for (int i = 1; i < numNonVariadicResults; ++i) {
-          os << ", resultType" << i;
+          os << ", " << resultNames[i];
         }
         os << "});\n";
       }
 
       if (hasVariadicResult) {
-        OUT(4) << formatv("result->addTypes(returnType{0});\n", numResults - 1);
+        OUT(4) << "result->addTypes(" << resultNames.back() << ");\n";
       }
     } else {
       OUT(4) << "result->addTypes({";
