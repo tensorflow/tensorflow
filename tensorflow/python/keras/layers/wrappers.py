@@ -44,7 +44,7 @@ class Wrapper(Layer):
   Two usable wrappers are the `TimeDistributed` and `Bidirectional` wrappers.
 
   Arguments:
-      layer: The layer to be wrapped.
+    layer: The layer to be wrapped.
   """
 
   @trackable.no_automatic_dependency_tracking
@@ -131,10 +131,10 @@ class TimeDistributed(Wrapper):
   to each of the 10 timesteps, independently:
 
   ```python
-      # as the first layer in a model
-      model = Sequential()
-      model.add(TimeDistributed(Dense(8), input_shape=(10, 16)))
-      # now model.output_shape == (None, 10, 8)
+  # as the first layer in a model
+  model = Sequential()
+  model.add(TimeDistributed(Dense(8), input_shape=(10, 16)))
+  # now model.output_shape == (None, 10, 8)
   ```
 
   The output will then have shape `(32, 10, 8)`.
@@ -142,8 +142,8 @@ class TimeDistributed(Wrapper):
   In subsequent layers, there is no need for the `input_shape`:
 
   ```python
-      model.add(TimeDistributed(Dense(32)))
-      # now model.output_shape == (None, 10, 32)
+  model.add(TimeDistributed(Dense(32)))
+  # now model.output_shape == (None, 10, 32)
   ```
 
   The output will then have shape `(32, 10, 32)`.
@@ -152,16 +152,25 @@ class TimeDistributed(Wrapper):
   for instance with a `Conv2D` layer:
 
   ```python
-      model = Sequential()
-      model.add(TimeDistributed(Conv2D(64, (3, 3)),
-                                input_shape=(10, 299, 299, 3)))
+  model = Sequential()
+  model.add(TimeDistributed(Conv2D(64, (3, 3)),
+                            input_shape=(10, 299, 299, 3)))
   ```
 
   Arguments:
-      layer: a layer instance.
+    layer: a layer instance.
+
+  Call arguments:
+    inputs: Input tensor.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the
+      wrapped layer (only if the layer supports this argument).
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked. This argument is passed to the
+      wrapped layer (only if the layer supports this argument).
 
   Raises:
-      ValueError: If not initialized with a `Layer` instance.
+    ValueError: If not initialized with a `Layer` instance.
   """
 
   def __init__(self, layer, **kwargs):
@@ -186,18 +195,19 @@ class TimeDistributed(Wrapper):
     tensor.
 
     Arguments:
-        init_tuple: a tuple, the first part of the output shape
-        tensor: the tensor from which to get the (static and dynamic) shapes
-            as the last part of the output shape
-        start_idx: int, which indicate the first dimension to take from
-            the static shape of the tensor
-        int_shape: an alternative static shape to take as the last part
-            of the output shape
+      init_tuple: a tuple, the first part of the output shape
+      tensor: the tensor from which to get the (static and dynamic) shapes
+        as the last part of the output shape
+      start_idx: int, which indicate the first dimension to take from
+        the static shape of the tensor
+      int_shape: an alternative static shape to take as the last part
+        of the output shape
+
     Returns:
-        The new int_shape with the first part from init_tuple
-        and the last part from either `int_shape` (if provided)
-        or `tensor.shape`, where every `None` is replaced by
-        the corresponding dimension from `tf.shape(tensor)`.
+      The new int_shape with the first part from init_tuple
+      and the last part from either `int_shape` (if provided)
+      or `tensor.shape`, where every `None` is replaced by
+      the corresponding dimension from `tf.shape(tensor)`.
     """
     # replace all None in int_shape by K.shape
     if int_shape is None:
@@ -309,10 +319,10 @@ class TimeDistributed(Wrapper):
 
     Arguments:
       inputs: Tensor with shape [batch size, timesteps, ...] indicating the
-          input to TimeDistributed. If static shape information is available for
-          "batch size", `mask` is returned unmodified.
+        input to TimeDistributed. If static shape information is available for
+        "batch size", `mask` is returned unmodified.
       mask: Either None (indicating no masking) or a Tensor indicating the
-          input mask for TimeDistributed. The shape can be static or dynamic.
+        input mask for TimeDistributed. The shape can be static or dynamic.
 
     Returns:
       Either None (no masking), or a [batch size, timesteps, ...] Tensor with
@@ -369,27 +379,31 @@ class Bidirectional(Wrapper):
   """Bidirectional wrapper for RNNs.
 
   Arguments:
-      layer: `Recurrent` instance.
-      merge_mode: Mode by which outputs of the
-          forward and backward RNNs will be combined.
-          One of {'sum', 'mul', 'concat', 'ave', None}.
-          If None, the outputs will not be combined,
-          they will be returned as a list.
+    layer: `Recurrent` instance.
+    merge_mode: Mode by which outputs of the
+      forward and backward RNNs will be combined.
+      One of {'sum', 'mul', 'concat', 'ave', None}.
+      If None, the outputs will not be combined,
+      they will be returned as a list.
+
+  Call arguments:
+    The call arguments for this layer are the same as those of the wrapped RNN
+      layer.
 
   Raises:
-      ValueError: If not initialized with a `Layer` instance or
-          In case of invalid `merge_mode` argument.
+    ValueError: If not initialized with a `Layer` instance or
+      In case of invalid `merge_mode` argument.
 
   Examples:
 
   ```python
-      model = Sequential()
-      model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5,
-      10)))
-      model.add(Bidirectional(LSTM(10)))
-      model.add(Dense(5))
-      model.add(Activation('softmax'))
-      model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
+  model = Sequential()
+  model.add(Bidirectional(LSTM(10, return_sequences=True), input_shape=(5,
+  10)))
+  model.add(Bidirectional(LSTM(10)))
+  model.add(Dense(5))
+  model.add(Activation('softmax'))
+  model.compile(loss='categorical_crossentropy', optimizer='rmsprop')
   ```
   """
 
