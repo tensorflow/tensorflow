@@ -30,6 +30,8 @@ TENSORFLOW_API_INIT_FILES = [
     "lite/constants/__init__.py",
     "lite/experimental/__init__.py",
     "lite/experimental/nn/__init__.py",
+    "lookup/__init__.py",
+    "lookup/experimental/__init__.py",
     "math/__init__.py",
     "nest/__init__.py",
     "nn/__init__.py",
