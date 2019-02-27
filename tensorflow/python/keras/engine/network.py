@@ -36,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -208,6 +209,12 @@ class Network(base_layer.Layer):
 
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))
+
+    # Networks do not need to do any casting of inputs or variables, because
+    # each of its layers will handle casting through the layer's own
+    # implementation. Therefore networks use the 'infer' policy, which does no
+    # casting.
+    self._mixed_precision_policy = policy.Policy('infer')
 
   @trackable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):

@@ -307,7 +307,8 @@ class Layer(base_layer.Layer):
                  use_resource=None,
                  synchronization=vs.VariableSynchronization.AUTO,
                  aggregation=vs.VariableAggregation.NONE,
-                 partitioner=None):
+                 partitioner=None,
+                 **kwargs):
     """Adds a new variable to the layer, or gets an existing one; returns it.
 
     Arguments:
@@ -342,6 +343,7 @@ class Layer(base_layer.Layer):
         `tf.variable_axis_size_partitioner`.  For more details, see the
         documentation of `tf.get_variable` and the  "Variable Partitioners
         and Sharding" section of the API guide.
+      **kwargs: Additional keyword arguments.
 
     Returns:
       The created variable.  Usually either a `Variable` or `ResourceVariable`
@@ -354,6 +356,9 @@ class Layer(base_layer.Layer):
       ValueError: When trainable has been set to True with synchronization
         set as `ON_READ`.
     """
+    for kwarg in kwargs:
+      if kwarg != 'experimental_autocast':
+        raise TypeError('Unknown keyword argument:', kwarg)
     if self._keras_style:
       return super(Layer, self).add_weight(
           name=name,
@@ -366,7 +371,8 @@ class Layer(base_layer.Layer):
           use_resource=use_resource,
           synchronization=vs.VariableSynchronization.AUTO,
           aggregation=vs.VariableAggregation.NONE,
-          partitioner=partitioner)
+          partitioner=partitioner,
+          **kwargs)
 
     if synchronization == vs.VariableSynchronization.ON_READ:
       if trainable:
@@ -433,7 +439,8 @@ class Layer(base_layer.Layer):
             use_resource=use_resource,
             synchronization=synchronization,
             aggregation=aggregation,
-            getter=vs.get_variable)
+            getter=vs.get_variable,
+            **kwargs)
 
         if regularizer:
           if (ops.executing_eagerly_outside_functions()

@@ -334,7 +334,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
           constraint=self.gamma_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.gamma = None
       if self.fused:
@@ -349,7 +350,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
           constraint=self.beta_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.beta = None
       if self.fused:
@@ -370,7 +372,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.moving_mean_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=tf_variables.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN,
+          experimental_autocast=False)
 
       self.moving_variance = self.add_weight(
           name='moving_variance',
@@ -379,7 +382,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.moving_variance_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=tf_variables.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN,
+          experimental_autocast=False)
 
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -390,6 +394,7 @@ class BatchNormalizationV2(Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
+          """Create a renorm variable."""
           var = self.add_weight(
               name=name,
               shape=shape,
@@ -397,7 +402,8 @@ class BatchNormalizationV2(Layer):
               initializer=init_ops.zeros_initializer(),
               synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
-              aggregation=tf_variables.VariableAggregation.MEAN)
+              aggregation=tf_variables.VariableAggregation.MEAN,
+              experimental_autocast=False)
           return var
 
         with distribution_strategy_context.get_strategy(
@@ -958,7 +964,8 @@ class LayerNormalization(Layer):
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
           constraint=self.gamma_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.gamma = None
 
@@ -969,7 +976,8 @@ class LayerNormalization(Layer):
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
           constraint=self.beta_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.beta = None
 
