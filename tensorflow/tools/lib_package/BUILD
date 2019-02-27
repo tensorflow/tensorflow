@@ -50,6 +50,7 @@ pkg_tar(
         ":coreheaders",
         ":clib",
         ":cclib",
+        ":clicenses",
         ":cclicenses",
     ],
 )
