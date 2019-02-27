@@ -23,6 +23,7 @@ from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
+from tensorflow.python.framework import device as tf_device
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.platform import tf_logging as logging
@@ -31,6 +32,25 @@ from tensorflow.python.tpu import topology
 from tensorflow.python.tpu import tpu
 from tensorflow.python.util import compat
 from tensorflow.python.util.tf_export import tf_export
+
+
+def get_first_tpu_host_device(cluster_resolver):
+  """Get the device spec for the first TPU host."""
+  if context.executing_eagerly():
+    tpu_devices = sorted(
+        [x for x in context.list_devices() if "device:TPU:" in x])
+    if not tpu_devices:
+      raise RuntimeError("Could not find any TPU devices")
+    spec = tf_device.DeviceSpec.from_string(tpu_devices[0])
+    task_id = spec.task
+  else:
+    # Session master needs to be configured and the coordinator is not part
+    # of the cluster.
+    task_id = 0
+  if cluster_resolver.get_master() in ("", "local"):
+    return "/replica:0/task:0/device:CPU:0"
+  job_name = cluster_resolver.get_job_name() or "tpu_worker"
+  return "/job:%s/task:%d/device:CPU:0" % (job_name, task_id)
 
 
 @tf_export("tpu.experimental.initialize_tpu_system")
@@ -45,7 +65,6 @@ def initialize_tpu_system(cluster_resolver=None):
   """
   if cluster_resolver is None:
     cluster_resolver = TPUClusterResolver("")
-  master = cluster_resolver.master()
 
   logging.info("Initializing the TPU system.")
 
@@ -69,10 +88,12 @@ def initialize_tpu_system(cluster_resolver=None):
     func_name = compat.as_str(graph_func._inference_function.name)
     # pylint: enable=protected-access
 
-    output = tpu_functional_ops.TPUPartitionedCall(
-        args=[], device_ordinal=0, Tout=[dtypes.string], f=func_name)
+    with ops.device(get_first_tpu_host_device(cluster_resolver)):
+      output = tpu_functional_ops.TPUPartitionedCall(
+          args=[], device_ordinal=0, Tout=[dtypes.string], f=func_name)
     serialized_topology = output[0].numpy()
   else:
+    master = cluster_resolver.master()
     session_config = config_pb2.ConfigProto(allow_soft_placement=True)
     with ops.Graph().as_default():
       with session_lib.Session(config=session_config, target=master) as sess:
