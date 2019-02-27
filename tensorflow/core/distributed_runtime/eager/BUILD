@@ -93,3 +93,14 @@ tf_cc_test(
         "//tensorflow/core/distributed_runtime/rpc:rpc_rendezvous_mgr",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "eager_client.h",
+        "eager_service_impl.h",
+        "remote_execute_node.h",
+        "remote_tensor_handle.h",
+    ],
+    visibility = ["//visibility:public"],
+)

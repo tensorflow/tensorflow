@@ -51,3 +51,13 @@ cc_library(
         "//tensorflow/core/distributed_runtime/rpc:grpc_worker_service",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "grpc_eager_client.h",
+        "grpc_eager_service.h",
+        "grpc_eager_service_impl.h",
+    ],
+    visibility = ["//visibility:public"],
+)

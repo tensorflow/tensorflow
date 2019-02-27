@@ -538,3 +538,30 @@ cc_library(
     ],
     alwayslink = 1,
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "async_service_interface.h",
+        "grpc_call.h",
+        "grpc_channel.h",
+        "grpc_client_cq_tag.h",
+        "grpc_master_service.h",
+        "grpc_master_service_impl.h",
+        "grpc_remote_master.h",
+        "grpc_remote_worker.h",
+        "grpc_response_cache.h",
+        "grpc_rpc_factory.h",
+        "grpc_server_lib.h",
+        "grpc_session.h",
+        "grpc_state.h",
+        "grpc_tensor_coding.h",
+        "grpc_testlib.h",
+        "grpc_util.h",
+        "grpc_worker_cache.h",
+        "grpc_worker_service.h",
+        "grpc_worker_service_impl.h",
+        "rpc_rendezvous_mgr.h",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -289,3 +289,16 @@ cc_library(
 #     ],
 #     visibility = ["//visibility:public"],
 # )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "debugger_state_impl.h",
+        "debug_callback_registry.h",
+        "debug_graph_utils.h",
+        "debug_grpc_testlib.h",
+        "debug_io_utils.h",
+        "debug_node_key.h",
+    ],
+    visibility = ["//visibility:public"],
+)

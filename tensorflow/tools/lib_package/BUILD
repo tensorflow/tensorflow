@@ -212,8 +212,8 @@ pkg_tar(
     tags = ["manual"],
     deps = [
         ":common_runtime_coreheaders",
-        # ":debug_coreheaders",
-        # ":distributed_runtime_coreheaders",
+        ":debug_coreheaders",
+        ":distributed_runtime_coreheaders",
         ":framework_coreheaders",
         # ":graph_coreheaders",
         # ":grappler_coreheaders",
@@ -233,7 +233,6 @@ pkg_tar(
         # ":lib_strings_coreheaders",
     ],
 )
-
 
 pkg_tar(
     name = "common_runtime_coreheaders",
@@ -283,6 +282,56 @@ pkg_tar(
         "//tensorflow/core:common_runtime_sycl_headers",
     ],
     package_dir = "sycl",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "debug_coreheaders",
+    srcs = [
+        "//tensorflow/core/debug:headers",
+    ],
+    package_dir = "common_runtime",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "distributed_runtime_coreheaders",
+    srcs = [
+        "//tensorflow/core/distributed_runtime:headers",
+    ],
+    package_dir = "distributed_runtime",
+    tags = ["manual"],
+    deps = [
+        "distributed_runtime_eager_headers",
+        "distributed_runtime_rpc_headers",
+        "distributed_runtime_rpc_eager_headers",
+    ],
+)
+
+pkg_tar(
+    name = "distributed_runtime_eager_headers",
+    srcs = [
+        "//tensorflow/core/distributed_runtime/eager:headers",
+    ],
+    package_dir = "eager",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "distributed_runtime_rpc_headers",
+    srcs = [
+        "//tensorflow/core/distributed_runtime/rpc:headers",
+    ],
+    package_dir = "rpc",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "distributed_runtime_rpc_eager_headers",
+    srcs = [
+        "//tensorflow/core/distributed_runtime/rpc/eager:headers",
+    ],
+    package_dir = "rpc/eager",
     tags = ["manual"],
 )
 
