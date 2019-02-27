@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine.sequential import Sequential
+from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.layers.core import Activation
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.lib.io import tf_record
@@ -976,6 +977,40 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
+
+  @test_util.run_v2_only
+  def testKerasModel_subclass(self):
+
+    class SimpleSubclass(Model):
+
+      def __init__(self):
+        super(SimpleSubclass, self).__init__(name='subclass')
+        self.dense = Dense(10, input_shape=(100,))
+        self.activation = Activation('relu', name='my_relu')
+
+      def call(self, inputs):
+        x = self.dense(inputs)
+        return self.activation(x)
+
+    model = SimpleSubclass()
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      self.assertFalse(
+          summary_ops.keras_model(name='my_name', data=model, step=1))
+      self.assertRegexpMatches(
+          str(mock_log.call_args), 'Model failed to serialize as JSON.')
+
+  @test_util.run_v2_only
+  def testKerasModel_otherExceptions(self):
+    model = Sequential()
+
+    with test.mock.patch.object(model, 'to_json') as mock_to_json:
+      with test.mock.patch.object(logging, 'warn') as mock_log:
+        mock_to_json.side_effect = Exception('oops')
+        self.assertFalse(
+            summary_ops.keras_model(name='my_name', data=model, step=1))
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'Model failed to serialize as JSON. Ignoring... oops')
 
   @test_util.run_v2_only
   def testTrace(self):
