@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.client import session
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -32,6 +33,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops.ragged import ragged_tensor_value
 from tensorflow.python.ops.ragged import ragged_util
 from tensorflow.python.ops.ragged import segment_id_ops
+from tensorflow.python.util.tf_export import tf_export
 
 # pylint: disable=protected-access
 _eval_using_default_session = ops._eval_using_default_session
@@ -43,8 +45,9 @@ _eval_using_default_session = ops._eval_using_default_session
 #===============================================================================
 
 
-class RaggedTensor(object):
-  """Represents a ragged tensor (go/ragged).
+@tf_export("RaggedTensor")
+class RaggedTensor(composite_tensor.CompositeTensor):
+  """Represents a ragged tensor.
 
   A `RaggedTensor` is a tensor with one or more *ragged dimensions*, which are
   dimensions whose slices may have different lengths.  For example, the inner
@@ -1050,11 +1053,12 @@ class RaggedTensor(object):
 
     The set of absent/default values may be specified using a vector of lengths
     or a padding value (but not both).  If `lengths` is specified, then the
-    output tensor will satisfy `output[row] = tensor[row][:lengths[row]]`.
-    If `padding` is specified, then any row *suffix* consisting entirely of
-    `padding` will be excluded from the returned `RaggedTensor`.  If neither
-    `lengths` nor `padding` is specified, then the returned `RaggedTensor` will
-    have no absent/default values.
+    output tensor will satisfy `output[row] = tensor[row][:lengths[row]]`. If
+    'lengths' is a list of lists or tuple of lists, those lists will be used
+    as nested row lengths. If `padding` is specified, then any row *suffix*
+    consisting entirely of `padding` will be excluded from the returned
+    `RaggedTensor`.  If neither `lengths` nor `padding` is specified, then the
+    returned `RaggedTensor` will have no absent/default values.
 
     Examples:
 
@@ -1062,10 +1066,17 @@ class RaggedTensor(object):
     >>> dt = tf.constant([[5, 7, 0], [0, 3, 0], [6, 0, 0]])
     >>> tf.RaggedTensor.from_tensor(dt)
     <tf.RaggedTensor [[5, 7, 0], [0, 3, 0], [6, 0, 0]]>
-    >>> tf.RaggedTensor.from_tensor(dt, lengths=[2, 0, 3])
-    <tf.RaggedTensor [[5, 7], [], [6, 0, 0]]>
+    >>> tf.RaggedTensor.from_tensor(dt, lengths=[1, 0, 3])
+    <tf.RaggedTensor [[5], [], [6, 0, 0]]>
+
     >>> tf.RaggedTensor.from_tensor(dt, padding=0)
     <tf.RaggedTensor [[5, 7], [0, 3], [6]]>
+
+    >>> dt = tf.constant([[[5, 0], [7, 0], [0, 0]],
+                          [[0, 0], [3, 0], [0, 0]],
+                          [[6, 0], [0, 0], [0, 0]]])
+    >>> tf.RaggedTensor.from_tensor(dt, lengths=([2, 0, 3], [1, 1, 2, 0, 1]))
+    <tf.RaggedTensor [[[5], [7]], [], [[6, 0], [], [0]]]>
     ```
 
     Args:
@@ -1074,7 +1085,10 @@ class RaggedTensor(object):
       lengths: An optional set of row lengths, specified using a 1-D integer
         `Tensor` whose length is equal to `tensor.shape[0]` (the number of rows
         in `tensor`).  If specified, then `output[row]` will contain
-        `tensor[row][:lengths[row]]`.  Negative lengths are treated as zero.
+        `tensor[row][:lengths[row]]`.  Negative lengths are treated as zero. You
+        may optionally pass a list or tuple of lengths to this argument, which
+        will be used as nested row lengths to construct a ragged tensor with
+        multiple ragged dimensions.
       padding: An optional padding value.  If specified, then any row suffix
         consisting entirely of `padding` will be excluded from the returned
         RaggedTensor.  `padding` is a `Tensor` with the same dtype as `tensor`
@@ -1164,21 +1178,36 @@ class RaggedTensor(object):
                 math_ops.range(1, ncols + 1), 0))
         lengths = math_ops.reduce_max(length_for_nondefault_value, axis=1)
 
-      # If we have lengths (either directly supplied, or computed from
-      # paddings), then use those to construct splits; and then use masking
-      # to get the corresponding values.
       if lengths is not None:
-        lengths = ragged_util.convert_to_int_tensor(lengths, "lengths",
-                                                    dtypes.int64)
-        lengths.shape.assert_has_rank(1)
-        lengths = math_ops.minimum(lengths, ncols)
-        lengths = math_ops.maximum(lengths, 0)
-        limits = math_ops.cumsum(lengths)
-        splits = array_ops.concat([array_ops.zeros([1], dtypes.int64), limits],
-                                  axis=0)
-        mask = array_ops.sequence_mask(lengths, maxlen=ncols)
-        values = array_ops.boolean_mask(tensor, mask)
-        return cls.from_row_splits(values, splits)
+        if isinstance(lengths,
+                      (list, tuple)) and len(lengths) and not isinstance(
+                          lengths[0], (int, float)):
+          # In this case, we've been given nested row lengths. Rather than
+          # reconstructing the tensor mask directly, we can recreate it as
+          # a boolean RaggedTensor, then densify that and use that as the
+          # mask to clear out the unused data in the passed tensor.
+          tensor.shape.with_rank_at_least(len(lengths) + 1)
+          num_tokens = math_ops.reduce_sum(lengths[-1])
+          ones_mask = array_ops.ones([num_tokens], dtype=dtypes.bool)
+          ragged_mask = cls.from_nested_row_lengths(ones_mask, lengths)
+          dense_ragged_mask = ragged_mask.to_tensor(default_value=False)
+          masked_data = array_ops.boolean_mask(tensor, dense_ragged_mask)
+          return cls.from_nested_row_lengths(masked_data, lengths)
+        else:
+          # If we have lengths (either directly supplied, or computed from
+          # paddings), then use those to construct splits; and then use masking
+          # to get the corresponding values.
+          lengths = ragged_util.convert_to_int_tensor(lengths, "lengths",
+                                                      dtypes.int64)
+          lengths.shape.assert_has_rank(1)
+          lengths = math_ops.minimum(lengths, ncols)
+          lengths = math_ops.maximum(lengths, 0)
+          limits = math_ops.cumsum(lengths)
+          splits = array_ops.concat(
+              [array_ops.zeros([1], dtypes.int64), limits], axis=0)
+          mask = array_ops.sequence_mask(lengths, maxlen=ncols)
+          values = array_ops.boolean_mask(tensor, mask)
+          return cls.from_row_splits(values, splits)
 
       # If neither padding nor lengths were specified, then create a splits
       # vector that contains no default values, and reshape the input tensor
@@ -1434,6 +1463,53 @@ class RaggedTensor(object):
     while isinstance(values, RaggedTensor):
       values = values.values
     return values
+
+  #=============================================================================
+  # Composite Tensor
+  #=============================================================================
+
+  def _to_components(self):
+    return (self.flat_values,) + self.nested_row_splits
+
+  @classmethod
+  def _from_components(cls, components):
+    return cls.from_nested_row_splits(components[0], components[1:])
+
+  def _shape_invariant_to_components(self, shape=None):
+    ragged_rank = self.ragged_rank
+    flat_values = self.flat_values
+
+    if shape is None:
+      # Default shape invariant
+      value_shape = flat_values.shape[1:]
+      values_shape = tensor_shape.TensorShape([None]).concatenate(value_shape)
+      return ((values_shape, self._row_splits.shape) +
+              tuple(tensor_shape.TensorShape([None])
+                    for i in range(1, ragged_rank)))
+    else:
+      # Explicitly specified shape invariant
+      if shape.ndims is not None and shape.ndims <= ragged_rank:
+        raise ValueError("Shape invariant %s does not have sufficient rank "
+                         "for a RaggedTensor with %d ragged dimensions." %
+                         (shape, self.ragged_rank))
+      if any(tensor_shape.dimension_value(shape[dim]) is not None
+             for dim in range(1, self.ragged_rank + 1)):
+        raise ValueError("Shape invariant dimension size must be None for "
+                         "ragged dimenions.")
+      nrows = tensor_shape.dimension_value(shape[0])
+      value_shape = shape[self.ragged_rank + 1:]
+      values_shape = tensor_shape.TensorShape([None]).concatenate(value_shape)
+      if nrows is None:
+        outer_splits_shape = tensor_shape.TensorShape([None])
+      else:
+        outer_splits_shape = tensor_shape.TensorShape([nrows + 1])
+      return ((values_shape, outer_splits_shape) +
+              tuple(tensor_shape.TensorShape([None])
+                    for i in range(1, ragged_rank)))
+
+  @property
+  def _is_graph_tensor(self):
+    return hasattr(self._values, 'graph')
 
 
 def is_ragged(value):

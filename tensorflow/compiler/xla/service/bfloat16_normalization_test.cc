@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/bfloat16_normalization.h"
 #include "tensorflow/compiler/xla/service/bfloat16_support.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_creation_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -232,7 +233,7 @@ TEST_F(BFloat16NormalizationTest, ResolveUnsupportedMixedPrecisionReduce) {
   EXPECT_EQ(reduce->operand(1)->shape().element_type(), F32);
 }
 
-TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
+TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleAllReduce) {
   auto module = CreateNewVerifiedModule();
   HloComputation::Builder sum_builder("sum");
   auto x = sum_builder.AddInstruction(HloInstruction::CreateParameter(
@@ -253,11 +254,10 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleCrossReplicaSum) {
   HloInstruction* b = builder.AddInstruction(
       HloInstruction::CreateParameter(1, bf16_shape, "b"));
 
-  HloInstruction* crs =
-      builder.AddInstruction(HloInstruction::CreateCrossReplicaSum(
-          ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
-          /*replica_groups=*/{}, /*barrier=*/"",
-          /*all_reduce_id=*/absl::nullopt));
+  HloInstruction* crs = builder.AddInstruction(HloInstruction::CreateAllReduce(
+      ShapeUtil::MakeTupleShape({f32_shape, bf16_shape}), {a, b}, reduction,
+      /*replica_groups=*/{}, /*barrier=*/"",
+      /*all_reduce_id=*/absl::nullopt));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, crs, 1));
 
@@ -283,8 +283,11 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSort) {
   HloInstruction* value = builder.AddInstruction(
       HloInstruction::CreateParameter(1, s32_shape, "value"));
 
-  HloInstruction* sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}), 0, key, {value}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort,
+      MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, s32_shape}),
+                  {key, value}, 0, /*is_stable=*/false, &builder,
+                  module.get()));
   HloInstruction* gte = builder.AddInstruction(
       HloInstruction::CreateGetTupleElement(bf16_shape, sort, 0));
 
@@ -309,8 +312,11 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   HloInstruction* value = builder.AddInstruction(
       HloInstruction::CreateParameter(1, bf16_shape, "value"));
 
-  HloInstruction* sort = builder.AddInstruction(HloInstruction::CreateSort(
-      ShapeUtil::MakeTupleShape({bf16_shape, bf16_shape}), 0, key, {value}));
+  TF_ASSERT_OK_AND_ASSIGN(
+      auto* sort,
+      MakeSortHlo(ShapeUtil::MakeTupleShape({bf16_shape, f32_shape}),
+                  {key, value}, 0, /*is_stable=*/false, &builder,
+                  module.get()));
 
   auto computation = module->AddEntryComputation(builder.Build());
 
@@ -320,6 +326,14 @@ TEST_F(BFloat16NormalizationTest, ResolveMixedPrecisionTupleSortRoot) {
   EXPECT_EQ(ShapeUtil::GetSubshape(sort->shape(), {0}).element_type(), F32);
   EXPECT_NE(computation->root_instruction(), sort);
   EXPECT_EQ(computation->root_instruction()->opcode(), HloOpcode::kTuple);
+  EXPECT_EQ(sort->to_apply()->parameter_instruction(1)->shape().element_type(),
+            F32);
+  // Make sure that no convert to BF16 was added to the 'to_apply' comparison
+  // computation.
+  auto users = sort->to_apply()->parameter_instruction(1)->users();
+  for (auto user : users) {
+    EXPECT_NE(user->opcode(), HloOpcode::kConvert);
+  }
 }
 
 // Tests that the normalization should not cause unsupported mixed precision due

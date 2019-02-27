@@ -194,9 +194,11 @@ def normalize_data_format(value):
 
 
 def normalize_padding(value):
+  if isinstance(value, (list, tuple)):
+    return value
   padding = value.lower()
   if padding not in {'valid', 'same', 'causal'}:
-    raise ValueError('The `padding` argument must be one of '
+    raise ValueError('The `padding` argument must be a list/tuple or one of '
                      '"valid", "same" (or "causal", only for `Conv1D). '
                      'Received: ' + str(padding))
   return padding

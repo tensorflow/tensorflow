@@ -108,6 +108,14 @@ class TestGraph {
     variables_ = variables;
   }
 
+  void Swap(TestGraph* other) {
+    std::swap(nodes_, other->nodes_);
+    std::swap(tensors_, other->tensors_);
+    std::swap(inputs_, other->inputs_);
+    std::swap(outputs_, other->outputs_);
+    std::swap(variables_, other->variables_);
+  }
+
  private:
   std::vector<TfLiteNode> nodes_;
   std::vector<TfLiteTensor> tensors_;
@@ -160,6 +168,11 @@ class ArenaPlannerTest : public ::testing::Test {
         &context_, std::unique_ptr<GraphInfo>(new TestGraphInfo(graph)),
         preserve_inputs, /*preserve intermediates*/ false, kTensorAlignment));
     CHECK(planner_->ResetAllocations() == kTfLiteOk);
+    CHECK(planner_->PlanAllocations() == kTfLiteOk);
+  }
+
+  void SwapGraph(TestGraph* graph) {
+    graph_->Swap(graph);
     CHECK(planner_->PlanAllocations() == kTfLiteOk);
   }
 
@@ -491,6 +504,34 @@ TEST_F(ArenaPlannerTest, LargerGraphAndStepwiseAllocation) {
   // deallocation of #0, #1, #2 and #3 (total 36 bytes, #10 needs
   // only 33.)
   EXPECT_EQ(GetOffset(10), 0);
+}
+
+TEST_F(ArenaPlannerTest, ModifiedGraph) {
+  TestGraph graph({0, 1},
+                  {
+                      /* in, out, tmp */
+                      {{0, 1}, {2}, {}},     // First op
+                      {{2, 0}, {4, 5}, {}},  // Second op
+                      {{4, 5}, {3}, {}}      // Third op
+                  },
+                  {3});
+  SetGraph(&graph, /*preserve_inputs=*/true);
+  Execute(0, 10);
+
+  // Now update the graph data used by the existing allocator. It should behave
+  // as if it had been recreated with the new graph.
+  TestGraph pruned_graph({0, 1},
+                         {
+                             /* in, out, tmp */
+                             {{0, 1}, {3}, {}},  // First op
+                         },
+                         {3});
+  SwapGraph(&pruned_graph);
+  Execute(0, 10);
+
+  EXPECT_EQ(GetOffset(0), 0);
+  EXPECT_EQ(GetOffset(1), GetOffsetAfter(0));
+  EXPECT_EQ(GetOffset(3), GetOffsetAfter(1));
 }
 
 }  // namespace

@@ -22,23 +22,23 @@ from __future__ import print_function
 from keras_applications import mobilenet
 
 from tensorflow.python.keras.applications import keras_modules_injection
-from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.util.tf_export import keras_export
 
 
-@tf_export('keras.applications.mobilenet.MobileNet',
-           'keras.applications.MobileNet')
+@keras_export('keras.applications.mobilenet.MobileNet',
+              'keras.applications.MobileNet')
 @keras_modules_injection
 def MobileNet(*args, **kwargs):
   return mobilenet.MobileNet(*args, **kwargs)
 
 
-@tf_export('keras.applications.mobilenet.decode_predictions')
+@keras_export('keras.applications.mobilenet.decode_predictions')
 @keras_modules_injection
 def decode_predictions(*args, **kwargs):
   return mobilenet.decode_predictions(*args, **kwargs)
 
 
-@tf_export('keras.applications.mobilenet.preprocess_input')
+@keras_export('keras.applications.mobilenet.preprocess_input')
 @keras_modules_injection
 def preprocess_input(*args, **kwargs):
   return mobilenet.preprocess_input(*args, **kwargs)

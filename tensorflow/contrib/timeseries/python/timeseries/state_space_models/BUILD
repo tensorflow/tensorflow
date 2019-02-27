@@ -78,7 +78,6 @@ py_library(
     srcs = ["kalman_filter.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:control_flow_ops",
@@ -235,7 +234,6 @@ py_library(
     srcs = ["filtering_postprocessor.py"],
     srcs_version = "PY2AND3",
     deps = [
-        "//tensorflow/contrib/distributions:distributions_py",
         "//tensorflow/contrib/timeseries/python/timeseries:math_utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",

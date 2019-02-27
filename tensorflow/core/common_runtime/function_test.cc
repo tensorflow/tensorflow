@@ -246,9 +246,10 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        str_util::StrContains(status2.error_message(), "remote execution."));
+    EXPECT_TRUE(errors::IsNotFound(status2))
+        << "Actual status: " << status2.ToString();
+    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "Handle"));
+    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "not found"));
 
     return status;
   }
@@ -316,9 +317,9 @@ class FunctionLibraryRuntimeTest : public ::testing::Test {
     if (!status.ok()) return status;
 
     Status status2 = Run(flr, handle, opts, args, std::move(rets));
-    EXPECT_TRUE(errors::IsInvalidArgument(status2));
-    EXPECT_TRUE(
-        str_util::StrContains(status2.error_message(), "remote execution."));
+    EXPECT_TRUE(errors::IsNotFound(status2));
+    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "Handle"));
+    EXPECT_TRUE(str_util::StrContains(status2.error_message(), "not found"));
 
     return status;
   }
@@ -937,6 +938,48 @@ TEST_F(FunctionLibraryRuntimeTest, PruneBody) {
   // execute.
   std::set<string> expected_node_names(
       {"_SOURCE", "shape", "x", "o", "a", "keep_me", "z", "z_RetVal"});
+  std::set<string> executed_node_names;
+  for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
+    executed_node_names.insert(node_stats.node_name());
+  }
+  EXPECT_EQ(expected_node_names, executed_node_names);
+}
+
+TEST_F(FunctionLibraryRuntimeTest, DoNotPruneControlOutputsFromBody) {
+  // `add` node is not required to compute regular output `o`, but it must
+  // execute because it is in `control_ret`.
+  const FunctionDef func =
+      FDH::Create("FunctionWithControlOutputs", {"i: float"}, {"o: float"}, {},
+                  {
+                      {{"add"}, "Add", {"i", "i"}, {{"T", DT_FLOAT}}},
+                      {{"ret"}, "Mul", {"i", "i"}, {{"T", DT_FLOAT}}},
+                  },
+                  /*ret_def=*/{{"o", "ret:z:0"}},
+                  /*control_ret_def=*/{{"must_execute", "add"}});
+
+  Init({func});
+
+  auto x = test::AsTensor<float>({1.25});
+  Tensor z;
+
+  FunctionLibraryRuntime::Handle handle;
+  TF_CHECK_OK(Instantiate(flr1_, "FunctionWithControlOutputs", {}, &handle));
+
+  StepStats stats;
+  StepStatsCollector stats_collector(&stats);
+  FunctionLibraryRuntime::Options opts;
+  opts.stats_collector = &stats_collector;
+  TF_CHECK_OK(Run(flr1_, handle, opts, {x}, {&z}));
+  TF_CHECK_OK(flr1_->ReleaseHandle(handle));
+
+  TF_CHECK_OK(
+      InstantiateAndRun(flr1_, "FunctionWithControlOutputs", {}, {x}, {&z}));
+  test::ExpectTensorEqual<float>(z, test::AsTensor<float>({1.25 * 1.25}));
+
+  stats_collector.FinalizeAndSwap(&stats);
+
+  std::set<string> expected_node_names(
+      {"_SOURCE", "i", "add", "ret", "o_RetVal"});
   std::set<string> executed_node_names;
   for (const auto& node_stats : stats.dev_stats()[0].node_stats()) {
     executed_node_names.insert(node_stats.node_name());

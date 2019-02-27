@@ -271,6 +271,15 @@ class Env {
                               const string& name,
                               std::function<void()> fn) TF_MUST_USE_RESULT = 0;
 
+  // Returns the thread id of calling thread.
+  // Posix: Returns pthread id which is only guaranteed to be unique within a
+  //        process.
+  // Windows: Returns thread id which is unique.
+  virtual int32 GetCurrentThreadId() = 0;
+
+  // Copies current thread name to "name". Returns true if success.
+  virtual bool GetCurrentThreadName(string* name) = 0;
+
   // \brief Schedules the given closure on a thread-pool.
   //
   // NOTE(mrry): This closure may block.
@@ -359,6 +368,10 @@ class EnvWrapper : public Env {
   Thread* StartThread(const ThreadOptions& thread_options, const string& name,
                       std::function<void()> fn) override {
     return target_->StartThread(thread_options, name, fn);
+  }
+  int32 GetCurrentThreadId() override { return target_->GetCurrentThreadId(); }
+  bool GetCurrentThreadName(string* name) override {
+    return target_->GetCurrentThreadName(name);
   }
   void SchedClosure(std::function<void()> closure) override {
     target_->SchedClosure(closure);

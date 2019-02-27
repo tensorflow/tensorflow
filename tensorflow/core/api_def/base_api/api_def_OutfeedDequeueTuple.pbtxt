@@ -1,0 +1,35 @@
+op {
+  graph_op_name: "OutfeedDequeueTuple"
+  visibility: HIDDEN
+  out_arg {
+    name: "outputs"
+    description: <<END
+A list of tensors that will be read from the outfeed.
+END
+  }
+  attr {
+    name: "dtypes"
+    description: <<END
+The element types of each element in `outputs`.
+END
+  }
+  attr {
+    name: "shapes"
+    description: <<END
+The shapes of each tensor in `outputs`.
+END
+  }
+  attr {
+    name: "device_ordinal"
+    description: <<END
+The TPU device to use. This should be -1 when the Op
+is running on a TPU device, and >= 0 when the Op is running on the CPU
+device.
+END
+  }
+  summary: "Retrieve multiple values from the computation outfeed."
+  description: <<END
+This operation will block indefinitely until data is available. Output `i`
+corresponds to XLA tuple element `i`.
+END
+}

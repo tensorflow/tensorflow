@@ -36,73 +36,90 @@ namespace tensorflow {
 
 typedef Eigen::GpuDevice GPUDevice;
 
-#define REGISTER_TENSOR_LIST_STACK_GPU(T)                         \
-  REGISTER_KERNEL_BUILDER(Name("TensorListStack")                 \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU),                \
-                          TensorListStack<GPUDevice, T>)          \
-  REGISTER_KERNEL_BUILDER(Name("TensorListGather")                \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU)                 \
-                              .HostMemory("indices"),             \
-                          TensorListGather<GPUDevice, T>)         \
-  REGISTER_KERNEL_BUILDER(Name("TensorListConcat")                \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU)                 \
-                              .HostMemory("lengths"),             \
-                          TensorListConcat<GPUDevice, T>)
-
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_STACK_GPU);
-REGISTER_TENSOR_LIST_STACK_GPU(bfloat16);
-TF_CALL_complex64(REGISTER_TENSOR_LIST_STACK_GPU);
-TF_CALL_complex128(REGISTER_TENSOR_LIST_STACK_GPU);
-TF_CALL_int64(REGISTER_TENSOR_LIST_STACK_GPU);
-REGISTER_TENSOR_LIST_STACK_GPU(bool);
-
-#undef REGISTER_TENSOR_LIST_STACK_GPU
-
-#define REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU(T)               \
-  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")         \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU),                \
-                          TensorListPushBackBatch<GPUDevice, T>)
-
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU(bfloat16);
-TF_CALL_complex64(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
-TF_CALL_complex128(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
-TF_CALL_int64(REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU);
-REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU(bool);
-
-#undef REGISTER_TENSOR_LIST_PUSH_BACK_BATCH_GPU
-
-#define REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(T)                   \
-  REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")            \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU)                 \
-                              .HostMemory("element_shape"),       \
-                          TensorListFromTensor<GPUDevice, T>)     \
-  REGISTER_KERNEL_BUILDER(Name("TensorListScatter")               \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU)                 \
-                              .HostMemory("element_shape")        \
-                              .HostMemory("indices"),             \
-                          TensorListScatter<GPUDevice, T>)        \
-  REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                 \
-                              .TypeConstraint<T>("element_dtype") \
-                              .Device(DEVICE_GPU)                 \
-                              .HostMemory("element_shape")        \
-                              .HostMemory("lengths"),             \
+#define REGISTER_TENSOR_LIST_OPS_GPU(T)                                    \
+  REGISTER_KERNEL_BUILDER(Name("TensorListStack")                          \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("element_shape"),                \
+                          TensorListStack<GPUDevice, T>)                   \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGather")                         \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("indices")                       \
+                              .HostMemory("element_shape"),                \
+                          TensorListGather<GPUDevice, T>)                  \
+  REGISTER_KERNEL_BUILDER(Name("TensorListGetItem")                        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("index")                         \
+                              .HostMemory("element_shape"),                \
+                          TensorListGetItem<GPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPopBack")                        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("element_shape"),                \
+                          TensorListPopBack<GPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcat")                         \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("lengths"),                      \
+                          TensorListConcat<GPUDevice, T>)                  \
+  REGISTER_KERNEL_BUILDER(Name("TensorListConcatV2")                       \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("leading_dims")                  \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("lengths"),                      \
+                          TensorListConcat<GPUDevice, T>)                  \
+  REGISTER_KERNEL_BUILDER(Name("TensorListPushBackBatch")                  \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU),                         \
+                          TensorListPushBackBatch<GPUDevice, T>)           \
+  REGISTER_KERNEL_BUILDER(Name("TensorListFromTensor")                     \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("element_shape"),                \
+                          TensorListFromTensor<GPUDevice, T>)              \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatter")                        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("indices"),                      \
+                          TensorListScatter<GPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterV2")                      \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("num_elements")                  \
+                              .HostMemory("indices"),                      \
+                          TensorListScatter<GPUDevice, T>)                 \
+  REGISTER_KERNEL_BUILDER(Name("TensorListScatterIntoExistingList")        \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("indices"),                      \
+                          TensorListScatterIntoExistingList<GPUDevice, T>) \
+  REGISTER_KERNEL_BUILDER(Name("TensorListSplit")                          \
+                              .TypeConstraint<T>("element_dtype")          \
+                              .Device(DEVICE_GPU)                          \
+                              .HostMemory("element_shape")                 \
+                              .HostMemory("lengths"),                      \
                           TensorListSplit<GPUDevice, T>)
 
-TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_FROM_TENSOR_GPU);
-REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(bfloat16);
-TF_CALL_complex64(REGISTER_TENSOR_LIST_FROM_TENSOR_GPU);
-TF_CALL_complex128(REGISTER_TENSOR_LIST_FROM_TENSOR_GPU);
-TF_CALL_int64(REGISTER_TENSOR_LIST_FROM_TENSOR_GPU);
-REGISTER_TENSOR_LIST_FROM_TENSOR_GPU(bool);
+TF_CALL_GPU_NUMBER_TYPES(REGISTER_TENSOR_LIST_OPS_GPU);
+REGISTER_TENSOR_LIST_OPS_GPU(bfloat16);
+TF_CALL_complex64(REGISTER_TENSOR_LIST_OPS_GPU);
+TF_CALL_complex128(REGISTER_TENSOR_LIST_OPS_GPU);
+TF_CALL_int32(REGISTER_TENSOR_LIST_OPS_GPU);
+TF_CALL_int64(REGISTER_TENSOR_LIST_OPS_GPU);
+REGISTER_TENSOR_LIST_OPS_GPU(bool);
 
-#undef REGISTER_TENSOR_LIST_FROM_TENSOR_GPU
+#undef REGISTER_TENSOR_LIST_OPS_GPU
+
+REGISTER_KERNEL_BUILDER(Name("TensorListPopBack")
+                            .TypeConstraint<Variant>("element_dtype")
+                            .Device(DEVICE_GPU)
+                            .HostMemory("element_shape"),
+                        TensorListPopBack<GPUDevice, Variant>)
 
 REGISTER_UNARY_VARIANT_BINARY_OP_FUNCTION(ADD_VARIANT_BINARY_OP, DEVICE_GPU,
                                           TensorList,

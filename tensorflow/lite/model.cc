@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/lite/allocation.h"
 #include "tensorflow/lite/c/builtin_op_data.h"
+#include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/core/api/flatbuffer_conversions.h"
 #include "tensorflow/lite/model.h"
@@ -85,48 +86,79 @@ std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromFile(
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
-  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
+  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromFile(
-    const char* filename, TfLiteVerifier* verifier,
+    const char* filename, TfLiteVerifier* extra_verifier,
     ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
   std::unique_ptr<FlatBufferModel> model;
   auto allocation = GetAllocationFromFile(filename, /*mmap_file=*/true,
                                           error_reporter, /*use_nnapi=*/true);
-  if (verifier &&
-      !verifier->Verify(static_cast<const char*>(allocation->base()),
-                        allocation->bytes(), error_reporter)) {
+
+  flatbuffers::Verifier base_verifier(
+      reinterpret_cast<const uint8_t*>(allocation->base()),
+      allocation->bytes());
+  if (!VerifyModelBuffer(base_verifier)) {
+    error_reporter->Report("The model is not a valid Flatbuffer file");
+    return nullptr;
+  }
+
+  if (extra_verifier &&
+      !extra_verifier->Verify(static_cast<const char*>(allocation->base()),
+                              allocation->bytes(), error_reporter)) {
     return model;
   }
-  model.reset(new FlatBufferModel(allocation.release(), error_reporter));
+  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
 #endif
 
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromBuffer(
-    const char* buffer, size_t buffer_size, ErrorReporter* error_reporter) {
+    const char* caller_owned_buffer, size_t buffer_size,
+    ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
   std::unique_ptr<FlatBufferModel> model;
-  Allocation* allocation =
-      new MemoryAllocation(buffer, buffer_size, error_reporter);
-  model.reset(new FlatBufferModel(allocation, error_reporter));
+  std::unique_ptr<Allocation> allocation(
+      new MemoryAllocation(caller_owned_buffer, buffer_size, error_reporter));
+  model.reset(new FlatBufferModel(std::move(allocation), error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
 
+std::unique_ptr<FlatBufferModel> FlatBufferModel::VerifyAndBuildFromBuffer(
+    const char* buffer, size_t buffer_size, TfLiteVerifier* extra_verifier,
+    ErrorReporter* error_reporter) {
+  error_reporter = ValidateErrorReporter(error_reporter);
+
+  flatbuffers::Verifier base_verifier(reinterpret_cast<const uint8_t*>(buffer),
+                                      buffer_size);
+  if (!VerifyModelBuffer(base_verifier)) {
+    error_reporter->Report("The model is not a valid Flatbuffer buffer");
+    return nullptr;
+  }
+
+  if (extra_verifier &&
+      !extra_verifier->Verify(buffer, buffer_size, error_reporter)) {
+    return nullptr;
+  }
+
+  return BuildFromBuffer(buffer, buffer_size, error_reporter);
+}
+
 std::unique_ptr<FlatBufferModel> FlatBufferModel::BuildFromModel(
-    const tflite::Model* model_spec, ErrorReporter* error_reporter) {
+    const tflite::Model* caller_owned_model_spec,
+    ErrorReporter* error_reporter) {
   error_reporter = ValidateErrorReporter(error_reporter);
 
   std::unique_ptr<FlatBufferModel> model;
-  model.reset(new FlatBufferModel(model_spec, error_reporter));
+  model.reset(new FlatBufferModel(caller_owned_model_spec, error_reporter));
   if (!model->initialized()) model.reset();
   return model;
 }
@@ -144,20 +176,18 @@ bool FlatBufferModel::CheckModelIdentifier() const {
 
 FlatBufferModel::FlatBufferModel(const Model* model,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(ValidateErrorReporter(error_reporter)) {
-  model_ = model;
-}
+    : model_(model), error_reporter_(ValidateErrorReporter(error_reporter)) {}
 
-FlatBufferModel::FlatBufferModel(Allocation* allocation,
+FlatBufferModel::FlatBufferModel(std::unique_ptr<Allocation> allocation,
                                  ErrorReporter* error_reporter)
-    : error_reporter_(ValidateErrorReporter(error_reporter)) {
-  allocation_ = allocation;
+    : error_reporter_(ValidateErrorReporter(error_reporter)),
+      allocation_(std::move(allocation)) {
   if (!allocation_->valid() || !CheckModelIdentifier()) return;
 
   model_ = ::tflite::GetModel(allocation_->base());
 }
 
-FlatBufferModel::~FlatBufferModel() { delete allocation_; }
+FlatBufferModel::~FlatBufferModel() {}
 
 InterpreterBuilder::InterpreterBuilder(const FlatBufferModel& model,
                                        const OpResolver& op_resolver)
@@ -216,11 +246,11 @@ class MallocDataAllocator : public BuiltinDataAllocator {
 
 TfLiteStatus InterpreterBuilder::ParseNodes(
     const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-    Interpreter* interpreter) {
+    Subgraph* subgraph) {
   TfLiteStatus status = kTfLiteOk;
 
   // Reduce the number of redundant allocations
-  interpreter->ReserveNodes(operators->Length());
+  subgraph->ReserveNodes(operators->Length());
 
   for (int i = 0; i < operators->Length(); ++i) {
     const auto* op = operators->Get(i);
@@ -250,7 +280,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     }
 
     if (op->custom_options()) {
-      interpreter->AddNodeWithParameters(
+      subgraph->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()),
           reinterpret_cast<const char*>(op->custom_options()->data()),
@@ -260,24 +290,73 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       MallocDataAllocator malloc_allocator;
       TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
                                         &malloc_allocator, &builtin_data));
-      interpreter->AddNodeWithParameters(
-          FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
-          registration);
+      subgraph->AddNodeWithParameters(FlatBufferIntArrayToVector(op->inputs()),
+                                      FlatBufferIntArrayToVector(op->outputs()),
+                                      nullptr, 0, builtin_data, registration);
     }
   }
 
   return status;
 }
 
+TfLiteStatus InterpreterBuilder::ParseQuantization(
+    const QuantizationParameters* src_quantization,
+    TfLiteQuantization* quantization) {
+  quantization->type = kTfLiteNoQuantization;
+  if (!src_quantization || !src_quantization->scale() ||
+      src_quantization->scale()->size() == 0) {
+    return kTfLiteOk;
+  }
+  if (!src_quantization->zero_point()) {
+    error_reporter_->Report(
+        "Quantization parameters has non-null scale but null zero_point.");
+    return kTfLiteError;
+  }
+
+  // Ensure that the number of scales matches the number of zero_points.
+  if (src_quantization->scale()->size() !=
+      src_quantization->zero_point()->size()) {
+    error_reporter_->Report(
+        "QuantizationParam has %d zero_point values and %d scale values. Must "
+        "have same number.",
+        src_quantization->zero_point()->size(),
+        src_quantization->scale()->size());
+    return kTfLiteError;
+  }
+
+  // Affine-quantization.
+  quantization->type = kTfLiteAffineQuantization;
+  auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+      malloc(sizeof(TfLiteAffineQuantization)));
+  const size_t num_scales = src_quantization->scale()->size();
+  affine_quantization->scale = TfLiteFloatArrayCreate(num_scales);
+  affine_quantization->zero_point = TfLiteIntArrayCreate(num_scales);
+  for (size_t i = 0; i < num_scales; ++i) {
+    affine_quantization->scale->data[i] = src_quantization->scale()->Get(i);
+    affine_quantization->zero_point->data[i] =
+        src_quantization->zero_point()->Get(i);
+  }
+  if (src_quantization->quantized_dimension() < 0 ||
+      src_quantization->quantized_dimension() >= num_scales) {
+    error_reporter_->Report(
+        "quantized_dimension must be in range [0, %d). Was %d.", num_scales,
+        src_quantization->quantized_dimension());
+    return kTfLiteError;
+  }
+  affine_quantization->quantized_dimension =
+      src_quantization->quantized_dimension();
+  quantization->params = reinterpret_cast<void*>(affine_quantization);
+  return kTfLiteOk;
+}
+
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-    Interpreter* interpreter) {
+    Subgraph* subgraph) {
   TfLiteStatus status = kTfLiteOk;
 
   // A little helper to get the names of inputs and outputs. Note that they
-  // must outlive the interpreter.
+  // must outlive the subgraph.
   auto get_name = [](const tflite::Tensor* t) -> const char* {
     auto name = t->name();
     if (name) return name->c_str();
@@ -288,36 +367,11 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
     const auto* tensor = tensors->Get(i);
     std::vector<int> dims = FlatBufferIntArrayToVector(tensor->shape());
 
-    TfLiteQuantizationParams quantization;
-    quantization.scale = 0;
-    quantization.zero_point = 0;
-    auto* q_params = tensor->quantization();
-    if (q_params) {
-      // Note that the schema could hold per-channel quantization parameters
-      // but we really only support one value for the whole tensor.
-      // TODO(aselle): This breaks as well if these are nullptr's.
-      // TODO(aselle): This assumes non per-channel quantization.
-
-      if (q_params->scale()) {
-        if (q_params->scale()->size() != 1) {
-          error_reporter_->Report(
-              "QuantizationParam has %d scale values (only 1 is supported).",
-              q_params->scale()->size());
-          return kTfLiteError;
-        }
-        quantization.scale = q_params->scale()->Get(0);
-      }
-
-      if (q_params->zero_point()) {
-        if (q_params->zero_point()->size() != 1) {
-          error_reporter_->Report(
-              "QuantizationParam has %d zero_point values"
-              " (only 1 is supported).",
-              q_params->zero_point()->size());
-          return kTfLiteError;
-        }
-        quantization.zero_point = q_params->zero_point()->Get(0);
-      }
+    const auto* src_quantization = tensor->quantization();
+    TfLiteQuantization quantization;
+    if (ParseQuantization(src_quantization, &quantization) != kTfLiteOk) {
+      status = kTfLiteError;
+      continue;
     }
 
     TfLiteType type;
@@ -363,7 +417,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
 
-      if (interpreter->SetTensorParametersReadOnly(
+      if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
@@ -371,9 +425,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (interpreter->SetTensorParametersReadWrite(i, type, get_name(tensor),
-                                                    dims, quantization,
-                                                    is_variable) != kTfLiteOk) {
+      if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
+                                                 dims, quantization,
+                                                 is_variable) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -455,42 +509,56 @@ TfLiteStatus InterpreterBuilder::operator()(
   // Construct interpreter with correct number of tensors and operators.
   auto* subgraphs = model_->subgraphs();
   auto* buffers = model_->buffers();
-  if (subgraphs->size() != 1) {
-    error_reporter_->Report("Only 1 subgraph is currently supported.\n");
+
+  if (subgraphs->size() == 0) {
+    error_reporter_->Report("No subgraph in the model.\n");
     return cleanup_and_error();
   }
-  const tflite::SubGraph* subgraph = (*subgraphs)[0];
-  auto operators = subgraph->operators();
-  auto tensors = subgraph->tensors();
-  if (!operators || !tensors || !buffers) {
-    error_reporter_->Report(
-        "Did not get operators, tensors, or buffers in input flat buffer.\n");
-    return cleanup_and_error();
-  }
+
   interpreter->reset(new Interpreter(error_reporter_));
-  if ((**interpreter).AddTensors(tensors->Length()) != kTfLiteOk) {
-    return cleanup_and_error();
+  (*interpreter)->SetNumThreads(num_threads);
+  if (subgraphs->Length() > 1) {
+    (*interpreter)->AddSubgraphs(subgraphs->Length() - 1);
   }
-  // Set num threads
-  (**interpreter).SetNumThreads(num_threads);
-  // Parse inputs/outputs
-  (**interpreter).SetInputs(FlatBufferIntArrayToVector(subgraph->inputs()));
-  (**interpreter).SetOutputs(FlatBufferIntArrayToVector(subgraph->outputs()));
 
-  // Finally setup nodes and tensors
-  if (ParseNodes(operators, interpreter->get()) != kTfLiteOk)
-    return cleanup_and_error();
-  if (ParseTensors(buffers, tensors, interpreter->get()) != kTfLiteOk)
-    return cleanup_and_error();
-
-  std::vector<int> variables;
-  for (int i = 0; i < (*interpreter)->tensors_size(); ++i) {
-    auto* tensor = (*interpreter)->tensor(i);
-    if (tensor->is_variable) {
-      variables.push_back(i);
+  for (int subgraph_index = 0; subgraph_index < subgraphs->Length();
+       ++subgraph_index) {
+    const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
+    tflite::Subgraph* modified_subgraph =
+        (*interpreter)->subgraph(subgraph_index);
+    auto operators = subgraph->operators();
+    auto tensors = subgraph->tensors();
+    if (!operators || !tensors || !buffers) {
+      error_reporter_->Report(
+          "Did not get operators, tensors, or buffers in subgraph %d.\n",
+          subgraph_index);
+      return cleanup_and_error();
     }
+    if (modified_subgraph->AddTensors(tensors->Length()) != kTfLiteOk) {
+      return cleanup_and_error();
+    }
+    // Set num threads
+    // Parse inputs/outputs
+    modified_subgraph->SetInputs(
+        FlatBufferIntArrayToVector(subgraph->inputs()));
+    modified_subgraph->SetOutputs(
+        FlatBufferIntArrayToVector(subgraph->outputs()));
+
+    // Finally setup nodes and tensors
+    if (ParseNodes(operators, modified_subgraph) != kTfLiteOk)
+      return cleanup_and_error();
+    if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
+      return cleanup_and_error();
+
+    std::vector<int> variables;
+    for (int i = 0; i < modified_subgraph->tensors_size(); ++i) {
+      auto* tensor = modified_subgraph->tensor(i);
+      if (tensor->is_variable) {
+        variables.push_back(i);
+      }
+    }
+    modified_subgraph->SetVariables(std::move(variables));
   }
-  (**interpreter).SetVariables(std::move(variables));
 
   if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
     return cleanup_and_error();

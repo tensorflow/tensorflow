@@ -94,7 +94,7 @@ import collections
 from tensorflow.python.util.tf_export import tf_export
 
 
-@tf_export("train.SessionRunHook")
+@tf_export(v1=["train.SessionRunHook"])
 class SessionRunHook(object):
   """Hook to extend calls to MonitoredSession.run()."""
 

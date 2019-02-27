@@ -296,6 +296,19 @@ tf_java_test(
 )
 
 tf_java_test(
+    name = "GeneratedOperationsTest",
+    size = "small",
+    srcs = ["src/test/java/org/tensorflow/op/core/GeneratedOperationsTest.java"],
+    javacopts = JAVACOPTS,
+    test_class = "org.tensorflow.op.core.GeneratedOperationsTest",
+    deps = [
+        ":tensorflow",
+        ":testutil",
+        "@junit",
+    ],
+)
+
+tf_java_test(
     name = "GradientsTest",
     size = "small",
     srcs = ["src/test/java/org/tensorflow/op/core/GradientsTest.java"],
@@ -367,15 +380,13 @@ tf_cc_binary(
     linkopts = select({
         "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
         "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by LINKER_EXPORTED_SYMBOLS
-            "$(location {})".format(LINKER_EXPORTED_SYMBOLS),
+            "-Wl,-exported_symbols_list,$(location {})".format(LINKER_EXPORTED_SYMBOLS),
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
             "-s",
-            "-Wl,--version-script",  #  This line must be directly followed by LINKER_VERSION_SCRIPT
-            "$(location {})".format(LINKER_VERSION_SCRIPT),
+            "-Wl,--version-script,$(location {})".format(LINKER_VERSION_SCRIPT),
         ],
     }),
     linkshared = 1,

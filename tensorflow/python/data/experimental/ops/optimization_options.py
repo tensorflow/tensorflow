@@ -26,12 +26,14 @@ from tensorflow.python.util.tf_export import tf_export
 class OptimizationOptions(options.OptionsBase):
   """Represents options for dataset optimizations.
 
-  You can apply `OptimizationOptions` to a `dataset` object, as follows:
+  You can set the optimization options of a dataset through the
+  `experimental_optimization` property of `tf.data.Options`; the property is
+  an instance of `tf.data.experimental.OptimizationOptions`.
 
   ```python
   options = tf.data.Options()
-  options.optimization = tf.data.experimental.OptimizationOptions()
-  options.optimization.map_and_batch_fusion = True
+  options.experimental_optimization.map_vectorization = True
+  options.experimental_optimization.apply_default_optimizations = False
   dataset = dataset.with_options(options)
   ```
   """
@@ -45,43 +47,54 @@ class OptimizationOptions(options.OptionsBase):
   filter_fusion = options.create_option(
       name="filter_fusion",
       ty=bool,
-      docstring="Whether to fuse filter transformations.")
+      docstring=
+      "Whether to fuse filter transformations. If None, defaults to False.")
 
   hoist_random_uniform = options.create_option(
       name="hoist_random_uniform",
       ty=bool,
       docstring=
-      "Whether to hoist `tf.random_uniform()` ops out of map transformations.")
+      "Whether to hoist `tf.random_uniform()` ops out of map transformations. "
+      "If None, defaults to False.")
 
   map_and_batch_fusion = options.create_option(
       name="map_and_batch_fusion",
       ty=bool,
-      docstring="Whether to fuse map and batch transformations.")
+      docstring=
+      "Whether to fuse map and batch transformations. If None, defaults to "
+      "True.")
 
   map_and_filter_fusion = options.create_option(
       name="map_and_filter_fusion",
       ty=bool,
-      docstring="Whether to fuse map and filter transformations.")
+      docstring=
+      "Whether to fuse map and filter transformations. If None, defaults to "
+      "False.")
 
   map_fusion = options.create_option(
-      name="map_and_filter_fusion",
+      name="map_fusion",
       ty=bool,
-      docstring="Whether to fuse map transformations.")
+      docstring="Whether to fuse map transformations. If None, defaults to "
+      "False.")
 
   map_parallelization = options.create_option(
       name="map_parallelization",
       ty=bool,
-      docstring="Whether to parallelize stateless map transformations.")
+      docstring=
+      "Whether to parallelize stateless map transformations. If None, defaults "
+      "to False.")
 
   map_vectorization = options.create_option(
       name="map_vectorization",
       ty=bool,
-      docstring="Whether to vectorize map transformations.")
+      docstring=
+      "Whether to vectorize map transformations. If None, defaults to False.")
 
   noop_elimination = options.create_option(
       name="noop_elimination",
       ty=bool,
-      docstring="Whether to eliminate no-op transformations.")
+      docstring=
+      "Whether to eliminate no-op transformations. If None, defaults to True.")
 
   shuffle_and_repeat_fusion = options.create_option(
       name="shuffle_and_repeat_fusion",
@@ -91,18 +104,21 @@ class OptimizationOptions(options.OptionsBase):
 
   def _static_optimizations(self):
     """Produces the list of enabled static optimizations."""
-    result = []
-    optimizations_to_enable = [
+    result = set()
+    all_optimizations = [
         "filter_fusion",
         "hoist_random_uniform",
+        "map_and_batch_fusion",
         "map_and_filter_fusion",
-        "map_fusion",
         "map_parallelization",
+        "map_fusion",
         "map_vectorization",
+        "noop_elimination",
+        "shuffle_and_repeat_fusion",
     ]
-    for optimization in optimizations_to_enable:
+    for optimization in all_optimizations:
       if getattr(self, optimization):
-        result.append(optimization)
+        result.add(optimization)
 
     if self.apply_default_optimizations is not False:
       # The following optimizations are turned on by default, unless the
@@ -114,5 +130,5 @@ class OptimizationOptions(options.OptionsBase):
       ]
       for optimization in optimizations_to_disable:
         if getattr(self, optimization) is not False:
-          result.append(optimization)
-    return result
+          result.add(optimization)
+    return sorted(list(result))

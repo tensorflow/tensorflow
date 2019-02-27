@@ -269,10 +269,11 @@ REGISTER_OP("Conv2D")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
-    .SetShapeFn(shape_inference::Conv2DShape);
+    .SetShapeFn(shape_inference::Conv2DShapeWithExplicitPadding);
 
 REGISTER_OP("Conv2DBackpropInput")
     .Input("input_sizes: int32")
@@ -282,7 +283,8 @@ REGISTER_OP("Conv2DBackpropInput")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -304,7 +306,8 @@ REGISTER_OP("Conv2DBackpropFilter")
     .Attr("T: {half, bfloat16, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
-    .Attr(GetPaddingAttrString())
+    .Attr(GetPaddingAttrStringWithExplicit())
+    .Attr(GetExplicitPaddingsAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .SetShapeFn([](InferenceContext* c) {
@@ -326,6 +329,7 @@ REGISTER_OP("_FusedConv2D")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("use_cudnn_on_gpu: bool = true")
     .Attr("fused_ops: list(string) = []")
     // Attributes for the FusedBatchNorm ------------------------------------ //
     .Attr("epsilon: float = 0.0001")
@@ -1539,6 +1543,23 @@ REGISTER_OP("QuantizedBatchNormWithGlobalNormalization")
     });
 
 #ifdef INTEL_MKL
+REGISTER_OP("_MklDepthwiseConv2dNative")
+    .Input("input: T")
+    .Input("filter: T")
+    .Input("mkl_input: uint8")
+    .Input("mkl_filter: uint8")
+    .Output("output: T")
+    .Output("filter_output: T")
+    .Output("mkl_output: uint8")
+    .Output("mkl_filter_output: uint8")
+    .Attr("T: {half, bfloat16, float, double}")
+    .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = false")
+    .Attr(GetPaddingAttrString())
+    .Attr(GetConvnetDataFormatAttrString())
+    .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .SetShapeFn(shape_inference::DepthwiseConv2DNativeShape);
+
 REGISTER_OP("_MklConv2D")
     .Input("input: T")
     .Input("filter: T")
@@ -1551,6 +1572,7 @@ REGISTER_OP("_MklConv2D")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
@@ -1570,6 +1592,7 @@ REGISTER_OP("__MklDummyConv2DWithBias")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
@@ -1597,6 +1620,7 @@ REGISTER_OP("_MklConv2DWithBias")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
@@ -1617,6 +1641,7 @@ REGISTER_OP("__MklDummyPadWithConv2D")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int)")
     .Attr("use_cudnn_on_gpu: bool = true")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
@@ -1647,6 +1672,7 @@ REGISTER_OP("_MklPadWithConv2D")
     .Attr("use_cudnn_on_gpu: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
+    .Attr("is_filter_const: bool = false")
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
     .Attr("Tpaddings: {int32, int64} = DT_INT32")
     .SetShapeFn(shape_inference::Conv2DShape)
@@ -1832,6 +1858,7 @@ REGISTER_OP("_MklConv3D")
     .Output("mkl_filter_output: uint8")
     .Attr("T: {half, float, double}")
     .Attr("strides: list(int) >= 5")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnet3dDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1, 1]")
@@ -1959,6 +1986,40 @@ REGISTER_OP("_MklRelu6Grad")
     .Doc(R"doc(
 MKL version of Relu6Grad operator. Uses MKL DNN APIs to compute rectified
 linear gradients for Relu6 operation.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklLeakyRelu")
+    .Input("features: T")
+    .Input("mkl_features: uint8")
+    .Output("activations: T")
+    .Output("mkl_activations: uint8")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("alpha: float = 0.2")
+    .SetShapeFn(shape_inference::UnchangedShape)
+    .Doc(R"doc(
+MKL version of LeakyRelu operator. Uses MKL DNN APIs to implement
+LeakyRelu operator.
+
+NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
+expected to invoke these operators.
+)doc");
+
+REGISTER_OP("_MklLeakyReluGrad")
+    .Input("gradients: T")
+    .Input("features: T")
+    .Input("mkl_gradients: uint8")
+    .Input("mkl_features: uint8")
+    .Output("backprops: T")
+    .Output("mkl_backprops: uint8")
+    .Attr("T: {half, float, double} = DT_FLOAT")
+    .Attr("alpha: float = 0.2")
+    .SetShapeFn(shape_inference::MergeBothInputsShapeFn)
+    .Doc(R"doc(
+MKL version of LeakyReluGrad operator. Uses MKL DNN APIs to compute rectified
+linear gradients for LeakyReluGrad operation.
 
 NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
@@ -2480,6 +2541,7 @@ NOTE Do not invoke this operator directly in Python. Graph rewrite pass is
 expected to invoke these operators.
 )doc");
 
+#endif  // INTEL_MKL
 REGISTER_OP("QuantizedConv2DAndRequantize")
     .Input("input: Tinput")
     .Input("filter: Tfilter")
@@ -2816,6 +2878,5 @@ REGISTER_OP("QuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
       return Status::OK();
     });
 
-#endif  // INTEL_MKL
 
 }  // namespace tensorflow

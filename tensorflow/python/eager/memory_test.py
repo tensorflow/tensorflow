@@ -24,6 +24,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import time
 import six
 
 from tensorflow.python import keras
@@ -32,6 +33,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.eager import test
 from tensorflow.python.framework import dtypes
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops.variables import Variable
 
 # memory_profiler might not be available in the OSS version of TensorFlow.
 try:
@@ -63,6 +65,11 @@ class MemoryTest(test.TestCase):
       # Warm up.
       f()
 
+      # Wait for background threads to start up and take over memory.
+      # FIXME: The nature of this test leaves few other options. Maybe there
+      # is a better way to do this.
+      time.sleep(4)
+
       initial = memory_profiler.memory_usage(-1)[0]
 
       for _ in six.moves.range(num_iters):
@@ -74,6 +81,16 @@ class MemoryTest(test.TestCase):
           "Increase is too high. Initial memory usage: %f MB. Increase: %f MB. "
           "Maximum allowed increase: %f") % (initial, increase,
                                              increase_threshold_absolute_mb)
+
+  def testMemoryLeakAnonymousVariable(self):
+    if memory_profiler is None:
+      self.skipTest("memory_profiler required to run this test")
+
+    def f():
+      inputs = Variable(array_ops.zeros([32, 100], dtypes.float32))
+      del inputs
+
+    self.assertNotIncreasingMemory(f, num_iters=10000)
 
   def testMemoryLeakInSimpleModelForwardOnly(self):
     if memory_profiler is None:

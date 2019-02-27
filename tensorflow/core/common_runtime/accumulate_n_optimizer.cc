@@ -75,7 +75,8 @@ class AccumulateNV2RemovePass : public GraphOptimizationPass {
   Status rewriteNode(Node* n, Graph* g) {
     AttrSlice n_attrs = n->attrs();
     auto base_make_node = [n, &n_attrs](const string& op, const string& name) {
-      NodeBuilder node_builder(name, op);
+      NodeDebugInfo debug_info(*n);
+      NodeBuilder node_builder(name, op, OpRegistry::Global(), &debug_info);
 
       // The pieces of AccumulateNV2 should all be on the same node.
       node_builder.Device(n->requested_device());

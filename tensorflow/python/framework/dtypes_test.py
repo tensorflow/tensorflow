@@ -295,6 +295,9 @@ class TypesTest(test_util.TensorFlowTestCase):
     self.assertNotEqual(dtypes.int32, int)
     self.assertNotEqual(dtypes.float64, 2.1)
 
+  def testPythonLongConversion(self):
+    self.assertIs(dtypes.int64, dtypes.as_dtype(np.array(2**32).dtype))
+
   def testPythonTypesConversion(self):
     self.assertIs(dtypes.float32, dtypes.as_dtype(float))
     self.assertIs(dtypes.bool, dtypes.as_dtype(bool))
@@ -307,6 +310,10 @@ class TypesTest(test_util.TensorFlowTestCase):
       self.assertEquals(args, (dtype.name,))
       reconstructed = ctor(*args)
       self.assertEquals(reconstructed, dtype)
+
+  def testAsDtypeInvalidArgument(self):
+    with self.assertRaises(TypeError):
+      dtypes.as_dtype((dtypes.int32, dtypes.float32))
 
 
 if __name__ == "__main__":

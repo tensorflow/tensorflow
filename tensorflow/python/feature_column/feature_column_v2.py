@@ -141,11 +141,11 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor as sparse_tensor_lib
 from tensorflow.python.framework import tensor_shape
-from tensorflow.python.keras.engine import training
-from tensorflow.python.keras.engine.base_layer import Layer
 # TODO(b/118385027): Dependency on keras can be problematic if Keras moves out
 # of the main repo.
 from tensorflow.python.keras import utils
+from tensorflow.python.keras.engine import training
+from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -162,13 +162,14 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_utils
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
+from tensorflow.python.util.tf_export import keras_export
 from tensorflow.python.util.tf_export import tf_export
 
 
-_FEATURE_COLUMN_DEPRECATION_DATE = '2018-11-30'
+_FEATURE_COLUMN_DEPRECATION_DATE = None
 _FEATURE_COLUMN_DEPRECATION = ('The old _FeatureColumn APIs are being '
                                'deprecated. Please use the new FeatureColumn '
                                'APIs instead.')
@@ -303,8 +304,84 @@ class _StateManagerImpl(StateManager):
     raise ValueError('Variable does not exist.')
 
 
-@tf_export('keras.layers.DenseFeatures', v1=[])
-class DenseFeatures(Layer):
+class _BaseFeaturesLayer(Layer):
+  """Base class for DenseFeatures and SequenceFeatures.
+
+  Defines common methods and helpers.
+
+  Args:
+    feature_columns: An iterable containing the FeatureColumns to use as
+      inputs to your model.
+    expected_column_type: Expected class for provided feature columns.
+    trainable:  Boolean, whether the layer's variables will be updated via
+      gradient descent during training.
+    name: Name to give to the DenseFeatures.
+    **kwargs: Keyword arguments to construct a layer.
+
+  Raises:
+    ValueError: if an item in `feature_columns` doesn't match
+      `expected_column_type`.
+  """
+  def __init__(self, feature_columns, expected_column_type, trainable, name,
+               **kwargs):
+    super(_BaseFeaturesLayer, self).__init__(
+        name=name, trainable=trainable, **kwargs)
+    self._feature_columns = _normalize_feature_columns(feature_columns)
+    self._state_manager = _StateManagerImpl(self, self.trainable)
+    for column in self._feature_columns:
+      if not isinstance(column, expected_column_type):
+        raise ValueError(
+            'Items of feature_columns must be a {}. '
+            'You can wrap a categorical column with an '
+            'embedding_column or indicator_column. Given: {}'.format(
+                expected_column_type, column))
+
+  def build(self, _):
+    for column in self._feature_columns:
+      with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
+        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
+          column.create_state(self._state_manager)
+    super(_BaseFeaturesLayer, self).build(None)
+
+  def _output_shape(self, input_shape, num_elements):
+    """Computes expected output shape of the layer or a column's dense tensor.
+
+    Args:
+      input_shape: Tensor or array with batch shape.
+      num_elements: Size of the last dimension of the output.
+
+    Returns:
+      Tuple with output shape.
+    """
+    raise NotImplementedError('Calling an abstract method.')
+
+  def compute_output_shape(self, input_shape):
+    total_elements = 0
+    for column in self._feature_columns:
+      total_elements += column.variable_shape.num_elements()
+    return self._target_shape(input_shape, total_elements)
+
+  def _process_dense_tensor(self, column, tensor):
+    """Reshapes the dense tensor output of a column based on expected shape.
+
+    Args:
+      column: A DenseColumn or SequenceDenseColumn object.
+      tensor: A dense tensor obtained from the same column.
+
+    Returns:
+      Reshaped dense tensor."""
+    num_elements = column.variable_shape.num_elements()
+    target_shape = self._target_shape(array_ops.shape(tensor), num_elements)
+    return array_ops.reshape(tensor, shape=target_shape)
+
+  def _verify_and_concat_tensors(self, output_tensors):
+    """Verifies and concatenates the dense output of several columns."""
+    _verify_static_batch_size_equality(output_tensors, self._feature_columns)
+    return array_ops.concat(output_tensors, -1)
+
+
+@keras_export('keras.layers.DenseFeatures')
+class DenseFeatures(_BaseFeaturesLayer):
   """A layer that produces a dense `Tensor` based on given `feature_columns`.
 
   Generally a single example in training data is described with FeatureColumns.
@@ -344,8 +421,8 @@ class DenseFeatures(Layer):
         `bucketized_column`, `indicator_column`. If you have categorical
         features, you can wrap them with an `embedding_column` or
         `indicator_column`.
-      trainable: If `True` also add the variable to the graph collection
-        `GraphKeys.TRAINABLE_VARIABLES` (see `tf.Variable`).
+      trainable:  Boolean, whether the layer's variables will be updated via
+        gradient descent during training.
       name: Name to give to the DenseFeatures.
       **kwargs: Keyword arguments to construct a layer.
 
@@ -353,28 +430,18 @@ class DenseFeatures(Layer):
       ValueError: if an item in `feature_columns` is not a `DenseColumn`.
     """
     super(DenseFeatures, self).__init__(
-        name=name, trainable=trainable, **kwargs)
-
-    self._feature_columns = _normalize_feature_columns(feature_columns)
-    self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
-    self._state_manager = _StateManagerImpl(self, self.trainable)
-    for column in self._feature_columns:
-      if not isinstance(column, DenseColumn):
-        raise ValueError(
-            'Items of feature_columns must be a DenseColumn. '
-            'You can wrap a categorical column with an '
-            'embedding_column or indicator_column. Given: {}'.format(column))
+        feature_columns=feature_columns,
+        trainable=trainable,
+        name=name,
+        expected_column_type=DenseColumn,
+        **kwargs)
 
   @property
   def _is_feature_layer(self):
     return True
 
-  def build(self, _):
-    for column in self._feature_columns:
-      with variable_scope._pure_variable_scope(self.name):  # pylint: disable=protected-access
-        with variable_scope._pure_variable_scope(column.name):  # pylint: disable=protected-access
-          column.create_state(self._state_manager)
-      super(DenseFeatures, self).build(None)
+  def _target_shape(self, input_shape, total_elements):
+    return (input_shape[0], total_elements)
 
   def call(self, features, cols_to_output_tensors=None):
     """Returns a dense tensor corresponding to the `feature_columns`.
@@ -400,27 +467,15 @@ class DenseFeatures(Layer):
                        features)
     transformation_cache = FeatureTransformationCache(features)
     output_tensors = []
-    ordered_columns = []
     for column in self._feature_columns:
       with ops.name_scope(column.name):
-        ordered_columns.append(column)
         tensor = column.get_dense_tensor(transformation_cache,
                                          self._state_manager)
-        num_elements = column.variable_shape.num_elements()
-        batch_size = array_ops.shape(tensor)[0]
-        tensor = array_ops.reshape(tensor, shape=(batch_size, num_elements))
-        output_tensors.append(tensor)
+        processed_tensors = self._process_dense_tensor(column, tensor)
         if cols_to_output_tensors is not None:
-          cols_to_output_tensors[column] = tensor
-
-    _verify_static_batch_size_equality(output_tensors, ordered_columns)
-    return array_ops.concat(output_tensors, 1)
-
-  def compute_output_shape(self, input_shape):
-    total_elements = 0
-    for column in self._feature_columns:
-      total_elements += column.variable_shape.num_elements()
-    return (input_shape[0], total_elements)
+          cols_to_output_tensors[column] = processed_tensors
+        output_tensors.append(processed_tensors)
+    return self._verify_and_concat_tensors(output_tensors)
 
 
 class _LinearModelLayer(Layer):
@@ -437,7 +492,6 @@ class _LinearModelLayer(Layer):
         name=name, trainable=trainable, **kwargs)
 
     self._feature_columns = _normalize_feature_columns(feature_columns)
-    self._feature_columns = sorted(self._feature_columns, key=lambda x: x.name)
     for column in self._feature_columns:
       if not isinstance(column, (DenseColumn, CategoricalColumn)):
         raise ValueError(
@@ -518,7 +572,7 @@ class _LinearModelLayer(Layer):
       return predictions
 
 
-@tf_export('keras.layers.LinearModel', v1=[])
+@keras_export('keras.layers.LinearModel', v1=[])
 class LinearModel(training.Model):
   """Produces a linear prediction `Tensor` based on given `feature_columns`.
 
@@ -693,7 +747,7 @@ def _transform_features_v2(features, feature_columns, state_manager):
   with ops.name_scope(
       None, default_name='transform_features', values=features.values()):
     transformation_cache = FeatureTransformationCache(features)
-    for column in sorted(feature_columns, key=lambda x: x.name):
+    for column in feature_columns:
       with ops.name_scope(None, default_name=column.name):
         outputs[column] = transformation_cache.get(column, state_manager)
   return outputs
@@ -1037,7 +1091,7 @@ def shared_embedding_columns(categorical_columns,
   return result
 
 
-@tf_export('feature_column.shared_embedding_columns', v1=[])
+@tf_export('feature_column.shared_embeddings', v1=[])
 def shared_embedding_columns_v2(categorical_columns,
                                 dimension,
                                 combiner='mean',
@@ -1354,8 +1408,9 @@ def bucketized_column(source_column, boundaries):
     raise ValueError(
         'source_column must be one-dimensional column. '
         'Given: {}'.format(source_column))
-  if (not boundaries or
-      not (isinstance(boundaries, list) or isinstance(boundaries, tuple))):
+  if not boundaries:
+    raise ValueError('boundaries must not be empty.')
+  if not (isinstance(boundaries, list) or isinstance(boundaries, tuple)):
     raise ValueError('boundaries must be a sorted list.')
   for i in range(len(boundaries) - 1):
     if boundaries[i] >= boundaries[i + 1]:
@@ -2658,7 +2713,7 @@ def _normalize_feature_columns(feature_columns):
                                                name_to_column[column.name]))
     name_to_column[column.name] = column
 
-  return feature_columns
+  return sorted(feature_columns, key=lambda x: x.name)
 
 
 class NumericColumn(
@@ -2778,12 +2833,8 @@ class NumericColumn(
     """See 'FeatureColumn` base class."""
     _check_config_keys(config, cls._fields)
     kwargs = config.copy()
-    # TODO(b/118820158): Simplify if deserialize_keras_object supports None.
-    if config['normalizer_fn']:
-      kwargs['normalizer_fn'] = utils.deserialize_keras_object(
-          config['normalizer_fn'], custom_objects=custom_objects)
-    else:
-      kwargs['normalizer_fn'] = None
+    kwargs['normalizer_fn'] = utils.deserialize_keras_object(
+        config['normalizer_fn'], custom_objects=custom_objects)
     kwargs['dtype'] = dtypes.as_dtype(config['dtype'])
     return cls(**kwargs)
 
@@ -3070,10 +3121,10 @@ class EmbeddingColumn(
       raise ValueError(
           'In embedding_column: {}. '
           'categorical_column must not be of type SequenceCategoricalColumn. '
-          'Suggested fix A: If you wish to use input_layer, use a '
+          'Suggested fix A: If you wish to use DenseFeatures, use a '
           'non-sequence categorical_column_with_*. '
           'Suggested fix B: If you wish to create sequence input, use '
-          'sequence_input_layer instead of input_layer. '
+          'SequenceFeatures instead of DenseFeatures. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
     # Get sparse IDs and weights.
@@ -3090,10 +3141,10 @@ class EmbeddingColumn(
       raise ValueError(
           'In embedding_column: {}. '
           'categorical_column must not be of type _SequenceCategoricalColumn. '
-          'Suggested fix A: If you wish to use input_layer, use a '
+          'Suggested fix A: If you wish to use DenseFeatures, use a '
           'non-sequence categorical_column_with_*. '
           'Suggested fix B: If you wish to create sequence input, use '
-          'sequence_input_layer instead of input_layer. '
+          'SequenceFeatures instead of DenseFeatures. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
     sparse_tensors = self.categorical_column._get_sparse_tensors(  # pylint: disable=protected-access
@@ -3107,11 +3158,11 @@ class EmbeddingColumn(
       raise ValueError(
           'In embedding_column: {}. '
           'categorical_column must be of type SequenceCategoricalColumn '
-          'to use sequence_input_layer. '
+          'to use SequenceFeatures. '
           'Suggested fix: Use one of sequence_categorical_column_with_*. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
-    sparse_tensors = self.categorical_column.get_sequence_sparse_tensors(
+    sparse_tensors = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
     dense_tensor = self._get_dense_tensor_internal(sparse_tensors,
                                                    state_manager)
@@ -3131,8 +3182,8 @@ class EmbeddingColumn(
         (SequenceCategoricalColumn, fc_old._SequenceCategoricalColumn)):  # pylint: disable=protected-access
       raise ValueError(
           'In embedding_column: {}. '
-          'categorical_column must be of type _SequenceCategoricalColumn '
-          'to use sequence_input_layer. '
+          'categorical_column must be of type SequenceCategoricalColumn '
+          'to use SequenceFeatures. '
           'Suggested fix: Use one of sequence_categorical_column_with_*. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
@@ -3141,7 +3192,7 @@ class EmbeddingColumn(
         sparse_tensors,
         weight_collections=weight_collections,
         trainable=trainable)
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -3166,12 +3217,8 @@ class EmbeddingColumn(
     kwargs = config.copy()
     kwargs['categorical_column'] = deserialize_feature_column(
         config['categorical_column'], custom_objects, columns_by_name)
-    # TODO(b/118820158): Simplify if deserialize_keras_object supports None.
-    if config['initializer']:
-      kwargs['initializer'] = utils.deserialize_keras_object(
-          config['initializer'], custom_objects=custom_objects)
-    else:
-      kwargs['initializer'] = None
+    kwargs['initializer'] = utils.deserialize_keras_object(
+        config['initializer'], custom_objects=custom_objects)
     return cls(**kwargs)
 
 
@@ -3181,7 +3228,7 @@ def _raise_shared_embedding_column_error():
                    '`DenseFeatures` or `LinearModel` instead.')
 
 
-class SharedEmbeddingColumnCreator(tracking.Checkpointable):
+class SharedEmbeddingColumnCreator(tracking.AutoTrackable):
 
   def __init__(self,
                dimension,
@@ -3304,10 +3351,10 @@ class SharedEmbeddingColumn(
       raise ValueError(
           'In embedding_column: {}. '
           'categorical_column must not be of type SequenceCategoricalColumn. '
-          'Suggested fix A: If you wish to use input_layer, use a '
+          'Suggested fix A: If you wish to use DenseFeatures, use a '
           'non-sequence categorical_column_with_*. '
           'Suggested fix B: If you wish to create sequence input, use '
-          'sequence_input_layer instead of input_layer. '
+          'SequenceFeatures instead of DenseFeatures. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
     return self._get_dense_tensor_internal(transformation_cache, state_manager)
@@ -3321,15 +3368,15 @@ class SharedEmbeddingColumn(
       raise ValueError(
           'In embedding_column: {}. '
           'categorical_column must be of type SequenceCategoricalColumn '
-          'to use sequence_input_layer. '
+          'to use SequenceFeatures. '
           'Suggested fix: Use one of sequence_categorical_column_with_*. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
-    dense_tensor = self.get_dense_tensor_internal(transformation_cache,
-                                                  state_manager)
+    dense_tensor = self._get_dense_tensor_internal(transformation_cache,
+                                                   state_manager)
     sparse_tensors = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -3975,13 +4022,9 @@ class WeightedCategoricalColumn(
 
   def transform_feature(self, transformation_cache, state_manager):
     """Applies weights to tensor generated from `categorical_column`'."""
-    print('WeightedCategoricalColumn.transform_feature: ', self.name)
-    print('Weight feature key: ', self.weight_feature_key)
     weight_tensor = transformation_cache.get(self.weight_feature_key,
                                              state_manager)
-    print('Weight tensor before: ', weight_tensor)
     weight_tensor = self._transform_weight_tensor(weight_tensor)
-    print('Weight tensor after: ', weight_tensor)
     return (transformation_cache.get(self.categorical_column, state_manager),
             weight_tensor)
 
@@ -3995,9 +4038,7 @@ class WeightedCategoricalColumn(
 
   def get_sparse_tensors(self, transformation_cache, state_manager):
     """See `CategoricalColumn` base class."""
-    print('WeightedCategoricalColumn.get_sparse_tensors: ', self.name)
     tensors = transformation_cache.get(self, state_manager)
-    print('tensors[1]: ', tensors[1])
     return CategoricalColumn.IdWeightPair(tensors[0], tensors[1])
 
   @deprecation.deprecated(_FEATURE_COLUMN_DEPRECATION_DATE,
@@ -4339,10 +4380,10 @@ class IndicatorColumn(
       raise ValueError(
           'In indicator_column: {}. '
           'categorical_column must not be of type SequenceCategoricalColumn. '
-          'Suggested fix A: If you wish to use input_layer, use a '
+          'Suggested fix A: If you wish to use DenseFeatures, use a '
           'non-sequence categorical_column_with_*. '
           'Suggested fix B: If you wish to create sequence input, use '
-          'sequence_input_layer instead of input_layer. '
+          'SequenceFeatures instead of DenseFeatures. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
     # Feature has been already transformed. Return the intermediate
@@ -4360,10 +4401,10 @@ class IndicatorColumn(
       raise ValueError(
           'In indicator_column: {}. '
           'categorical_column must not be of type _SequenceCategoricalColumn. '
-          'Suggested fix A: If you wish to use input_layer, use a '
+          'Suggested fix A: If you wish to use DenseFeatures, use a '
           'non-sequence categorical_column_with_*. '
           'Suggested fix B: If you wish to create sequence input, use '
-          'sequence_input_layer instead of input_layer. '
+          'SequenceFeatures instead of DenseFeatures. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
     # Feature has been already transformed. Return the intermediate
@@ -4376,7 +4417,7 @@ class IndicatorColumn(
       raise ValueError(
           'In indicator_column: {}. '
           'categorical_column must be of type SequenceCategoricalColumn '
-          'to use sequence_input_layer. '
+          'to use SequenceFeatures. '
           'Suggested fix: Use one of sequence_categorical_column_with_*. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
@@ -4385,7 +4426,7 @@ class IndicatorColumn(
     dense_tensor = transformation_cache.get(self, state_manager)
     sparse_tensors = self.categorical_column.get_sparse_tensors(
         transformation_cache, state_manager)
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -4406,7 +4447,7 @@ class IndicatorColumn(
       raise ValueError(
           'In indicator_column: {}. '
           'categorical_column must be of type _SequenceCategoricalColumn '
-          'to use sequence_input_layer. '
+          'to use SequenceFeatures. '
           'Suggested fix: Use one of sequence_categorical_column_with_*. '
           'Given (type {}): {}'.format(self.name, type(self.categorical_column),
                                        self.categorical_column))
@@ -4414,7 +4455,7 @@ class IndicatorColumn(
     # representation created by _transform_feature.
     dense_tensor = inputs.get(self)
     sparse_tensors = self.categorical_column._get_sparse_tensors(inputs)  # pylint: disable=protected-access
-    sequence_length = fc_old._sequence_length_from_sparse_tensor(  # pylint: disable=protected-access
+    sequence_length = _sequence_length_from_sparse_tensor(
         sparse_tensors.id_tensor)
     return SequenceDenseColumn.TensorSequenceLengthPair(
         dense_tensor=dense_tensor, sequence_length=sequence_length)
@@ -4468,9 +4509,34 @@ def _verify_static_batch_size_equality(tensors, columns):
                 expected_batch_size, batch_size))
 
 
+def _sequence_length_from_sparse_tensor(sp_tensor, num_elements=1):
+  """Returns a [batch_size] Tensor with per-example sequence length."""
+  with ops.name_scope(None, 'sequence_length') as name_scope:
+    row_ids = sp_tensor.indices[:, 0]
+    column_ids = sp_tensor.indices[:, 1]
+    # Add one to convert column indices to element length
+    column_ids += array_ops.ones_like(column_ids)
+    # Get the number of elements we will have per example/row
+    seq_length = math_ops.segment_max(column_ids, segment_ids=row_ids)
+
+    # The raw values are grouped according to num_elements;
+    # how many entities will we have after grouping?
+    # Example: orig tensor [[1, 2], [3]], col_ids = (0, 1, 1),
+    # row_ids = (0, 0, 1), seq_length = [2, 1]. If num_elements = 2,
+    # these will get grouped, and the final seq_length is [1, 1]
+    seq_length = math_ops.cast(
+        math_ops.ceil(seq_length / num_elements), dtypes.int64)
+
+    # If the last n rows do not have ids, seq_length will have shape
+    # [batch_size - n]. Pad the remaining values with zeros.
+    n_pad = array_ops.shape(sp_tensor)[:1] - array_ops.shape(seq_length)[:1]
+    padding = array_ops.zeros(n_pad, dtype=seq_length.dtype)
+    return array_ops.concat([seq_length, padding], axis=0, name=name_scope)
+
+
 class SequenceCategoricalColumn(
-    FeatureColumn,
-    fc_old._CategoricalColumn,  # pylint: disable=protected-access
+    CategoricalColumn,
+    fc_old._SequenceCategoricalColumn,  # pylint: disable=protected-access
     collections.namedtuple('SequenceCategoricalColumn',
                            ('categorical_column'))):
   """Represents sequences of categorical data."""
@@ -4533,7 +4599,7 @@ class SequenceCategoricalColumn(
       weight_tensor = sparse_ops.sparse_reshape(weight_tensor, target_shape)
     return CategoricalColumn.IdWeightPair(id_tensor, weight_tensor)
 
-  def get_sequence_sparse_tensors(self, transformation_cache, state_manager):
+  def get_sparse_tensors(self, transformation_cache, state_manager):
     """Returns an IdWeightPair.
 
     `IdWeightPair` is a pair of `SparseTensor`s which represents ids and
@@ -4679,7 +4745,7 @@ def deserialize_feature_column(config,
           IdentityCategoricalColumn, IndicatorColumn, NumericColumn,
           SequenceCategoricalColumn, SequenceDenseColumn, SharedEmbeddingColumn,
           VocabularyFileCategoricalColumn, VocabularyListCategoricalColumn,
-          WeightedCategoricalColumn
+          WeightedCategoricalColumn, init_ops.TruncatedNormal
       ]
   }
   if columns_by_name is None:

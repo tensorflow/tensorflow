@@ -23,7 +23,7 @@ from tensorflow.python.keras.metrics import binary_accuracy
 from tensorflow.python.keras.metrics import binary_crossentropy
 from tensorflow.python.keras.metrics import categorical_accuracy
 from tensorflow.python.keras.metrics import categorical_crossentropy
-from tensorflow.python.keras.metrics import cosine_proximity
+from tensorflow.python.keras.metrics import cosine_similarity
 from tensorflow.python.keras.metrics import hinge
 from tensorflow.python.keras.metrics import kullback_leibler_divergence
 from tensorflow.python.keras.metrics import mean_absolute_error

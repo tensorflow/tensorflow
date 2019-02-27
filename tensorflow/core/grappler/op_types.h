@@ -28,7 +28,12 @@ bool IsAll(const NodeDef& node);
 bool IsAngle(const NodeDef& node);
 bool IsAny(const NodeDef& node);
 bool IsAnyDiv(const NodeDef& node);
+bool IsAnyMax(const NodeDef& node);
+bool IsAnyMaxPool(const NodeDef& node);
+bool IsAnyMin(const NodeDef& node);
 bool IsApproximateEqual(const NodeDef& node);
+bool IsArgMax(const NodeDef& node);
+bool IsArgMin(const NodeDef& node);
 bool IsAvgPoolGrad(const NodeDef& node);
 bool IsAssert(const NodeDef& node);
 bool IsAssign(const NodeDef& node);
@@ -72,9 +77,11 @@ bool IsFusedBatchNormGrad(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
 bool IsHistogramSummary(const NodeDef& node);
+bool IsHostConstant(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
 bool IsIdentityNSingleInput(const NodeDef& node);
+bool IsIf(const NodeDef& node);
 bool IsIgamma(const NodeDef& node);
 bool IsIgammac(const NodeDef& node);
 bool IsImag(const NodeDef& node);
@@ -99,10 +106,12 @@ bool IsMod(const NodeDef& node);
 bool IsMul(const NodeDef& node);
 bool IsMatMul(const NodeDef& node);
 bool IsNextIteration(const NodeDef& node);
+bool IsOnesLike(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPad(const NodeDef& node);
 bool IsPack(const NodeDef& node);
 bool IsPartitionedCall(const NodeDef& node);
+bool IsQuantizedMatMul(const NodeDef& node);
 bool IsNeg(const NodeDef& node);
 bool IsNoOp(const NodeDef& node);
 bool IsNotEqual(const NodeDef& node);
@@ -114,6 +123,7 @@ bool IsPow(const NodeDef& node);
 bool IsQueue(const NodeDef& node);
 bool IsRandomShuffle(const NodeDef& node);
 bool IsRank(const NodeDef& node);
+bool IsReadVariableOp(const NodeDef& node);
 bool IsReal(const NodeDef& node);
 bool IsRealDiv(const NodeDef& node);
 bool IsRelu(const NodeDef& node);
@@ -167,6 +177,8 @@ bool IsTruncateDiv(const NodeDef& node);
 bool IsTruncateMod(const NodeDef& node);
 bool IsUnpack(const NodeDef& node);
 bool IsVariable(const NodeDef& node);
+bool IsWhile(const NodeDef& node);
+bool IsZerosLike(const NodeDef& node);
 bool IsZeta(const NodeDef& node);
 
 // Return true if the op is an aggregation (e.g. Add, AddN).
@@ -180,6 +192,14 @@ bool IsCommutative(const NodeDef& node);
 // Returns true if the node is known to use persistent memory to store its
 // value.
 bool IsPersistent(const NodeDef& node);
+
+// Returns true if the node belongs to the NC_DATASET class (see graph/graph.h).
+bool IsDataset(const NodeDef& node);
+
+// Returns true if the node op is marked as stateful, or if it was not found in
+// op_registry.
+bool IsStateful(const NodeDef node, const OpRegistryInterface* op_registry);
+bool IsStateful(const NodeDef node);  // use OpRegistry::Global()
 
 bool IsFreeOfSideEffect(const NodeDef& node,
                         const OpRegistryInterface* op_registry);

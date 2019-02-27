@@ -242,8 +242,8 @@ TEST(PatternMatcherTest, ConstantScalar) {
     HloModule test_module
     ENTRY test {
       a = s32[] constant(1)
-      b = s32[1,1] constant(s32[1,1]{{2}})
-      c = s32[1,2] constant(s32[1,2]{{2,2}})
+      b = s32[1,1] constant({{2}})
+      c = s32[1,2] constant({{2,2}})
       d = f32[] constant(1)
       e = f32[] constant(1.25)
       ROOT tuple = (s32[], s32[1,1], s32[1,2], f32[], f32[]) tuple(a,b,c,d,e)

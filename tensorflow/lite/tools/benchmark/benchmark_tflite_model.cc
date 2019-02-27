@@ -200,6 +200,7 @@ BenchmarkParams BenchmarkTfLiteModel::DefaultParams() {
   default_params.AddParam("input_layer_shape",
                           BenchmarkParam::Create<std::string>(""));
   default_params.AddParam("use_nnapi", BenchmarkParam::Create<bool>(false));
+  default_params.AddParam("allow_fp16", BenchmarkParam::Create<bool>(false));
   return default_params;
 }
 
@@ -219,7 +220,8 @@ std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
       CreateFlag<std::string>("input_layer", &params_, "input layer names"),
       CreateFlag<std::string>("input_layer_shape", &params_,
                               "input layer shape"),
-      CreateFlag<bool>("use_nnapi", &params_, "use nnapi api")};
+      CreateFlag<bool>("use_nnapi", &params_, "use nnapi api"),
+      CreateFlag<bool>("allow_fp16", &params_, "allow fp16")};
 
   flags.insert(flags.end(), specific_flags.begin(), specific_flags.end());
   return flags;
@@ -233,6 +235,8 @@ void BenchmarkTfLiteModel::LogParams() {
   TFLITE_LOG(INFO) << "Input shapes: ["
                    << params_.Get<std::string>("input_layer_shape") << "]";
   TFLITE_LOG(INFO) << "Use nnapi : [" << params_.Get<bool>("use_nnapi") << "]";
+  TFLITE_LOG(INFO) << "Allow fp16 : [" << params_.Get<bool>("allow_fp16")
+                   << "]";
 }
 
 bool BenchmarkTfLiteModel::ValidateParams() {
@@ -316,22 +320,21 @@ void BenchmarkTfLiteModel::Init() {
   tflite::ops::builtin::BuiltinOpResolver resolver;
 #endif
 
-  tflite::InterpreterBuilder(*model, resolver)(&interpreter);
+  const int32_t num_threads = params_.Get<int32_t>("num_threads");
+  tflite::InterpreterBuilder(*model, resolver)(&interpreter, num_threads);
   if (!interpreter) {
     TFLITE_LOG(FATAL) << "Failed to construct interpreter";
   }
   profiling_listener_.SetInterpreter(interpreter.get());
 
-  const int32_t num_threads = params_.Get<int32_t>("num_threads");
-
-  if (num_threads != -1) {
-    interpreter->SetNumThreads(num_threads);
-  }
-
   bool use_nnapi = params_.Get<bool>("use_nnapi");
 
   interpreter->UseNNAPI(use_nnapi);
   ApplyDelegates();
+
+  bool allow_fp16 = params_.Get<bool>("allow_fp16");
+
+  interpreter->SetAllowFp16PrecisionForFp32(allow_fp16);
 
   auto interpreter_inputs = interpreter->inputs();
 
@@ -361,8 +364,20 @@ void BenchmarkTfLiteModel::Init() {
     }
   }
 
-  if (interpreter->AllocateTensors() != kTfLiteOk) {
+  // Don't allocate tensors if we have delegates.
+  if (delegates_.empty() && interpreter->AllocateTensors() != kTfLiteOk) {
     TFLITE_LOG(FATAL) << "Failed to allocate tensors!";
+  }
+}
+
+void BenchmarkTfLiteModel::ApplyDelegates() {
+  for (int i = 0; i < delegates_.size(); ++i) {
+    if (interpreter->ModifyGraphWithDelegate(delegates_[i].get()) !=
+        kTfLiteOk) {
+      TFLITE_LOG(FATAL) << "Failed to apply delegate # " << i;
+    } else {
+      TFLITE_LOG(INFO) << "Applied Delegate # " << i;
+    }
   }
 }
 

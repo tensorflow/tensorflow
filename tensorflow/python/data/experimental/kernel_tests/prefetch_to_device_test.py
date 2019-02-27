@@ -29,6 +29,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 
 
+# TODO(b/117581999): add eager coverage when supported.
 class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
   @test_util.run_deprecated_v1
@@ -41,12 +42,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
-    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
-    self.assertEqual(host_dataset.output_types, iterator.output_types)
-    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
-    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
-    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
-    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(device_dataset)))
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(iterator)))
 
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)
@@ -69,12 +68,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
-    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
-    self.assertEqual(host_dataset.output_types, iterator.output_types)
-    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
-    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
-    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
-    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(device_dataset)))
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(iterator)))
 
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)
@@ -95,12 +92,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
-    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
-    self.assertEqual(host_dataset.output_types, iterator.output_types)
-    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
-    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
-    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
-    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(device_dataset)))
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(iterator)))
 
     self.assertEqual(dtypes.int64, next_element["a"].dtype)
     self.assertEqual([], next_element["a"].shape)
@@ -126,12 +121,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       iterator = dataset_ops.make_one_shot_iterator(device_dataset)
       next_element = iterator.get_next()
 
-    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
-    self.assertEqual(host_dataset.output_types, iterator.output_types)
-    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
-    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
-    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
-    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(device_dataset)))
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(iterator)))
 
     self.assertEqual(dtypes.int64, next_element.dtype)
 
@@ -174,12 +167,10 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       iterator = dataset_ops.make_initializable_iterator(device_dataset)
       next_element = iterator.get_next()
 
-    self.assertEqual(host_dataset.output_types, device_dataset.output_types)
-    self.assertEqual(host_dataset.output_types, iterator.output_types)
-    self.assertEqual(host_dataset.output_shapes, device_dataset.output_shapes)
-    self.assertEqual(host_dataset.output_shapes, iterator.output_shapes)
-    self.assertEqual(host_dataset.output_classes, device_dataset.output_classes)
-    self.assertEqual(host_dataset.output_classes, iterator.output_classes)
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(device_dataset)))
+    self.assertTrue(dataset_ops.get_structure(host_dataset).is_compatible_with(
+        dataset_ops.get_structure(iterator)))
 
     self.assertEqual(dtypes.int64, next_element.dtype)
     self.assertEqual([], next_element.shape)

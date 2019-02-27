@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "ResourceSparseApplyMomentum"
+  endpoint {
+    name: "train.ResourceSparseApplyMomentum"
+  }
+}

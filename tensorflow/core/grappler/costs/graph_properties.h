@@ -46,7 +46,16 @@ class GraphProperties {
   // However, it can help infer shapes in the fanout of fed nodes (even though
   // the correctness of these shapes can't be guaranteed), so in some cases
   // (such as simulation or scheduling) it makes sense of keep these shapes.
-  Status InferStatically(bool assume_valid_feeds);
+  // aggressive_shape_inference option executes nodes on the host to identify
+  // output values when possible and does other aggressive strategies.
+  // Similar to assuming_valid_feeds, this may cause incorrectness in graph
+  // analyses, but is useful for simulation or scheduling.
+  Status InferStatically(bool assume_valid_feeds,
+                         bool aggressive_shape_inference);
+  Status InferStatically(bool assume_valid_feeds) {
+    return InferStatically(assume_valid_feeds,
+                           /*aggressive_shape_inference=*/false);
+  }
   // Infer the shape by running the graph on the specified cluster and recording
   // the shapes of the processed tensors.
   Status InferDynamically(Cluster* cluster);
@@ -102,8 +111,8 @@ class GraphProperties {
 
   // Update the output shapes of a Merge node, and enqueue its fanout in
   // new_shapes if needed.
-  Status UpdateMergeNode(SymbolicShapeRefiner* shape_refiner,
-                         const NodeDef* node, bool* new_shapes) const;
+  Status UpdateMerge(SymbolicShapeRefiner* shape_refiner, const NodeDef* node,
+                     bool* new_shapes) const;
   // Process the Enter node, and enqueue its fanout in new_shapes if needed.
   static Status UpdateEnter(SymbolicShapeRefiner* shape_refiner,
                             const NodeDef* node, bool* new_shapes);
