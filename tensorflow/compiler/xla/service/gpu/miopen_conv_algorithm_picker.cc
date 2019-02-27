@@ -222,6 +222,7 @@ MiopenConvAlgorithmPicker::PickBestAlgorithm(
   VLOG(3) << "Auto-tuning for " << instr->ToString();
   RunConvOptions options;
   options.profile_result = &profile_result;
+  options.first_call_from_algorithm_picker = true;
   bool launch_ok =
         RunCudnnConv(instr, absl::MakeSpan(operand_buffers), result_buffer,
                      &scratch_allocator, &stream, options)

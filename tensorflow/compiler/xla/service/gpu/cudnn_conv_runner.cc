@@ -413,7 +413,15 @@ Status RunCudnnConv(const HloCustomCallInstruction* conv,
   TF_ASSIGN_OR_RETURN(CudnnConvParams params,
                       GetCudnnConvParams(conv, operand_buffers, result_buffer));
 
-  if (options.algo_override) {
+  if (options.first_call_from_algorithm_picker) {
+    // in ROCm mode, the first call to run the convolution needs to trigger the
+    // code that calls miopenFind* API. That triggger is implicit, it is based
+    // on whether or not the AlgorithmConfig::algorithm is empty! So for the
+    // first call we need to ensure that the AlgorithmConfig::algorithm is
+    // empty. For all subsequent calls, we should use the value retrieved from
+    // the backend_config
+    params.algorithm = AlgorithmConfig();
+  } else if (options.algo_override) {
     params.algorithm = AlgorithmConfig(*options.algo_override);
   }
 
