@@ -308,7 +308,7 @@ test_pip_virtualenv_clean() {
   pushd "${TMP_DIR}"
 
   # Run a quick check on tensorflow installation.
-  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2))")
+  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
 
   # Deactivate virtualenv.
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
@@ -318,7 +318,7 @@ test_pip_virtualenv_clean() {
   sudo rm -rf "${TMP_DIR}" "${CLEAN_VENV_DIR}"
 
   # Check result to see if tensorflow is properly installed.
-  if [[ ${RET_VAL} == *'Tensor("Add:0", shape=(4,), dtype=int32)'* ]]; then
+  if [[ ${RET_VAL} == *'(4,)'* ]]; then
     echo "PIP test on clean virtualenv PASSED."
     return 0
   else
@@ -342,14 +342,14 @@ test_pip_virtualenv_non_clean() {
   pushd "${TMP_DIR}"
 
   # Run a quick check on tensorflow installation.
-  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2))")
+  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
 
   # Return to original directory. Remove temp dirs.
   popd
   sudo rm -rf "${TMP_DIR}"
 
   # Check result to see if tensorflow is properly installed.
-  if ! [[ ${RET_VAL} == *'Tensor("Add:0", shape=(4,), dtype=int32)'* ]]; then
+  if ! [[ ${RET_VAL} == *'(4,)'* ]]; then
     echo "PIP test on virtualenv (non-clean) FAILED"
     return 1
   fi

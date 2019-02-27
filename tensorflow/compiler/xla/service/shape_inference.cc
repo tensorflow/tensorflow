@@ -1911,6 +1911,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
 /* static */ StatusOr<Shape> ShapeInference::InferTriangularSolveShape(
     const Shape& a, const Shape& b, const TriangularSolveOptions& options) {
+  if ((!ShapeUtil::ElementIsFloating(a) && !ShapeUtil::ElementIsComplex(a)) ||
+      a.element_type() != b.element_type()) {
+    return InvalidArgument(
+        "Expected element types in shape to be floating or complex and "
+        "identical for TriangularSolve; got %s and %s.",
+        PrimitiveType_Name(a.element_type()),
+        PrimitiveType_Name(b.element_type()));
+  }
   if (a.rank() < 2) {
     return InvalidArgument(
         "The 'a' argument to TriangularSolve must have rank >= 2, got shape %s",
@@ -1950,6 +1958,27 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         options.transpose_a());
   }
   return b;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferCholeskyShape(
+    const Shape& a) {
+  if (!ShapeUtil::ElementIsFloating(a) && !ShapeUtil::ElementIsComplex(a)) {
+    return InvalidArgument(
+        "Expected element type in shape to be floating or complex for "
+        "Cholesky; got %s.",
+        PrimitiveType_Name(a.element_type()));
+  }
+  if (a.rank() < 2) {
+    return InvalidArgument(
+        "The 'a' argument to Cholesky must have rank >= 2, got shape %s",
+        a.ToString());
+  }
+  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+    return InvalidArgument(
+        "The two minor dimensions of 'a' must have equal size, got %s.",
+        a.ToString());
+  }
+  return a;
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(

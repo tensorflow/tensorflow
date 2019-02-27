@@ -448,6 +448,9 @@ class HloInstruction {
       const Shape& shape, HloInstruction* a, HloInstruction* b,
       const TriangularSolveOptions& options);
 
+  static std::unique_ptr<HloInstruction> CreateCholesky(
+      const Shape& shape, HloInstruction* a, const CholeskyOptions& options);
+
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateDot(
@@ -1593,6 +1596,9 @@ class HloInstruction {
 
   // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
   const TriangularSolveOptions& triangular_solve_options() const;
+
+  // Delegates to HloCholeskyInstruction::cholesky_options().
+  const CholeskyOptions& cholesky_options() const;
 
   // Old methods kept for smooth subclassing transition END.
 

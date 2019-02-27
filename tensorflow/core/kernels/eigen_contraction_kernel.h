@@ -107,6 +107,9 @@ template <typename IndexType, typename OutputMapper, bool ConjugateLhs,
           bool ConjugateRhs>
 struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
                           ConjugateLhs, ConjugateRhs> {
+  static_assert(!ConjugateLhs, "MKL-DNN kernel doesn't support ConjugateLhs");
+  static_assert(!ConjugateRhs, "MKL-DNN kernel doesn't support ConjugateRhs");
+
   EIGEN_DONT_INLINE
   void operator()(const OutputMapper& output, const float* blockA,
                   const float* blockB, const IndexType rows,
@@ -122,11 +125,11 @@ struct mkldnn_gemm_kernel</*Scalar*/ float, IndexType, OutputMapper,
     const int n = static_cast<int>(cols);
     const int k = static_cast<int>(depth);
 
-    const char transposeA = ConjugateLhs ? 'Y' : 'N';
-    const char transposeB = ConjugateRhs ? 'Y' : 'N';
+    const char transposeA = 'N';
+    const char transposeB = 'N';
 
-    const int ldA = ConjugateLhs ? k : m;
-    const int ldB = ConjugateRhs ? n : k;
+    const int ldA = m;
+    const int ldB = k;
     const int ldC = static_cast<int>(output.stride());
 
     const float beta = 1.0;

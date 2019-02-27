@@ -6,7 +6,7 @@ package(
 
 licenses(["notice"])
 
-exports_files(["LICENSE"])
+exports_files(["COPYING"])
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
 load("@org_tensorflow//third_party:common.bzl", "template_rule")

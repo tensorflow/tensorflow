@@ -209,6 +209,31 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       with self.assertRaisesRegexp(errors.InvalidArgumentError, r'MatMul'):
         fn(array_ops.ones((3, 4)))
 
+  def testNestedShapeFunctionRelaxation(self):
+
+    got_shape = [None]
+
+    # The inner function will go through shape relaxation because the shapes it
+    # receives will be [1], [2], [3], ...
+    @def_function.function
+    def bar(x_shape):
+      got_shape[0] = x_shape._shape_tuple()
+      return x_shape
+
+    # The outer function will not go through shape relaxation because the shapes
+    # it receives will be [1], [[1]], [[[1]]], ...
+    @def_function.function
+    def foo(ones):
+      return bar(array_ops.shape(ones))
+
+    for rank in range(1, 6):
+      x_shape = self.evaluate(foo(array_ops.ones([1] * rank)))
+      self.assertAllEqual(x_shape, [1] * rank)
+      if rank < 3:
+        self.assertEqual(got_shape[0], (rank,))
+      else:
+        self.assertEqual(got_shape[0], (None,))
+
   def testWastedAdd(self):
 
     @def_function.function()

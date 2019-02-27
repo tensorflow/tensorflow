@@ -162,7 +162,7 @@ class TrackableResource(base.Trackable):
 
   def _create_resource(self):
     """A function that creates a resource handle."""
-    raise NotImplementedError("TrackableResource.create_resource not "
+    raise NotImplementedError("TrackableResource._create_resource not "
                               "implemented.")
 
   def _initialize(self):

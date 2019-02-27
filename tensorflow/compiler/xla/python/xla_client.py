@@ -1735,9 +1735,9 @@ class ComputationBuilder(object):
     """Enqueues a key-value sort operation onto the computation."""
     return self._client.SortKeyVal(keys, values, dimension)
 
-  def Cholesky(self, a):
+  def Cholesky(self, a, lower=True):
     """Enqueues a Cholesky decomposition onto the computation."""
-    return self._client.Cholesky(a)
+    return self._client.Cholesky(a, lower)
 
   def QR(self, a, full_matrices=True):
     """Enqueues a QR decomposition onto the computation."""

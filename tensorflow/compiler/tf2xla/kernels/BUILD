@@ -136,7 +136,6 @@ tf_kernel_library(
         "//tensorflow/compiler/xla/client:xla_builder",
         "//tensorflow/compiler/xla/client:xla_computation",
         "//tensorflow/compiler/xla/client/lib:arithmetic",
-        "//tensorflow/compiler/xla/client/lib:cholesky",
         "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:loops",
         "//tensorflow/compiler/xla/client/lib:math",
@@ -169,7 +168,6 @@ tf_kernel_library(
         "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:stateless_random_ops_op_lib",
         "//tensorflow/core:training_ops_op_lib",
-        "//tensorflow/core/kernels:concat_lib",
         "//tensorflow/core/kernels:constant_op",
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:conv_ops",
@@ -306,7 +304,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core:lib",
-        "//tensorflow/core/kernels:argmax_op",
     ],
 )
 

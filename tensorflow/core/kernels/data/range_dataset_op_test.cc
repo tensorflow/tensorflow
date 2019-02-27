@@ -136,7 +136,7 @@ TEST_F(RangeDatasetOpTest, DatasetName) {
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
   core::ScopedUnref scored_unref(range_dataset);
 
-  EXPECT_EQ(range_dataset->name(), kOpName);
+  EXPECT_EQ(range_dataset->type_string(), kOpName);
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {

@@ -4,4 +4,8 @@ tf_module {
     name: "nn"
     mtype: "<type \'module\'>"
   }
+  member_method {
+    name: "convert_op_hints_to_stubs"
+    argspec: "args=[\'session\', \'graph_def\', \'write_callback\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'<function <lambda> instance>\'], "
+  }
 }

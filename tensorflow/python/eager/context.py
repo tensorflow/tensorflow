@@ -143,7 +143,8 @@ class _EagerContext(threading.local):
     self.is_eager = default_execution_mode == EAGER_MODE
     self.scope_name = ""
     self.summary_writer_resource = None
-    self.recording_summaries = None
+    self.summary_recording = None
+    self.summary_step = None
     self.scalar_cache = {}
     self._ones_rank_cache = None
     self._zeros_cache = None
@@ -526,14 +527,24 @@ class Context(object):
     self._eager_context.summary_writer_resource = resource
 
   @property
-  def recording_summaries(self):
+  def summary_recording(self):
     """Returns summary recording condition."""
-    return self._eager_context.recording_summaries
+    return self._eager_context.summary_recording
 
-  @recording_summaries.setter
-  def recording_summaries(self, condition):
+  @summary_recording.setter
+  def summary_recording(self, condition):
     """Sets summary recording condition."""
-    self._eager_context.recording_summaries = condition
+    self._eager_context.summary_recording = condition
+
+  @property
+  def summary_step(self):
+    """Returns summary step variable."""
+    return self._eager_context.summary_step
+
+  @summary_step.setter
+  def summary_step(self, step):
+    """Sets summary step variable."""
+    self._eager_context.summary_step = step
 
   @property
   def device_name(self):

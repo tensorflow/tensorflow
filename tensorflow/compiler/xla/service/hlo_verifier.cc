@@ -177,6 +177,13 @@ Status ShapeVerifier::HandleTriangularSolve(HloInstruction* hlo) {
   return CheckShape(hlo, expected);
 }
 
+Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(hlo, 1));
+  TF_ASSIGN_OR_RETURN(const Shape expected, ShapeInference::InferCholeskyShape(
+                                                hlo->operand(0)->shape()));
+  return CheckShape(hlo, expected);
+}
+
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {

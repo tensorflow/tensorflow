@@ -8,4 +8,8 @@ tf_module {
     name: "ParameterServerStrategy"
     mtype: "<type \'type\'>"
   }
+  member {
+    name: "TPUStrategy"
+    mtype: "<type \'type\'>"
+  }
 }

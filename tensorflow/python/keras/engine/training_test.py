@@ -44,6 +44,7 @@ from tensorflow.python.keras.engine.training_utils import weighted_masked_object
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import sparse_ops
+from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
@@ -2864,6 +2865,105 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
             'id': [[3], [1]]
         }, [[0.5], [0.2]])))
     self.assertTrue(test_model.run_eagerly)
+
+
+class BareUpdateLayer(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.counter = self.add_weight(
+        'counter',
+        dtype='int32',
+        shape=(),
+        initializer='zeros',
+        trainable=False)
+
+  def call(self, inputs):
+    state_ops.assign_add(self.counter, 1)
+    return math_ops.cast(self.counter, inputs.dtype) * inputs
+
+
+class AddUpdateLayer(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.counter = self.add_weight(
+        'counter',
+        dtype='int32',
+        shape=(),
+        initializer='zeros',
+        trainable=False)
+
+  def call(self, inputs):
+    # Make sure update isn't run twice.
+    self.add_update(state_ops.assign_add(self.counter, 1))
+    return math_ops.cast(self.counter, inputs.dtype) * inputs
+
+
+class NestedUpdateLayer(keras.layers.Layer):
+
+  def build(self, input_shape):
+    self.layer = BareUpdateLayer()
+    self.layer.build(input_shape)
+
+  @property
+  def counter(self):
+    return self.layer.counter
+
+  def call(self, inputs):
+    return self.layer(inputs)
+
+
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class TestAutoUpdates(keras_parameterized.TestCase):
+
+  @keras_parameterized.run_with_all_model_types
+  @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
+                                  ('add_update', AddUpdateLayer()),
+                                  ('nested_update', NestedUpdateLayer()))
+  def test_updates_in_model(self, layer):
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model = testing_utils.get_model_from_layers(
+        [layer, keras.layers.Dense(1)], input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, batch_size=2, epochs=1)
+    if not testing_utils.should_run_eagerly():
+      # Check that `trainable=False` disables updates.
+      layer.trainable = False
+      model.compile(
+          'sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+      model.fit(x, y, batch_size=2, epochs=1)
+    self.assertEqual(self.evaluate(layer.counter), 5)
+
+  @parameterized.named_parameters(('bare_update', BareUpdateLayer()),
+                                  ('add_update', AddUpdateLayer()),
+                                  ('nested_update', NestedUpdateLayer()))
+  def test_updates_standalone_layer(self, layer):
+    y = layer(np.ones((10, 10)))
+    self.evaluate(layer.counter.initializer)
+    self.evaluate(y)
+    self.assertEqual(self.evaluate(layer.counter), 1)
+
+  def test_trainable_false(self):
+    x = keras.backend.placeholder(shape=(10, 10), dtype='float32')
+    layer = NestedUpdateLayer()
+    layer.trainable = False
+    y = layer(x)
+    func = keras.backend.function([x], [y])
+    x_val = np.ones((10, 10))
+    func(x_val)
+    counter = keras.backend.get_value(layer.counter)
+    self.assertEqual(counter, 0)
+
+  @keras_parameterized.run_with_all_model_types
+  def test_batchnorm_trainable_false(self):
+    bn = keras.layers.BatchNormalization()
+    bn.trainable = False
+    model = testing_utils.get_model_from_layers([bn, keras.layers.Dense(1)],
+                                                input_shape=(10,))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    x, y = np.ones((10, 10)), np.ones((10, 1))
+    model.fit(x, y, batch_size=2, epochs=1)
+    self.assertAllEqual(self.evaluate(bn.moving_mean), np.zeros((10,)))
+    self.assertAllEqual(self.evaluate(bn.moving_variance), np.ones((10,)))
 
 
 if __name__ == '__main__':

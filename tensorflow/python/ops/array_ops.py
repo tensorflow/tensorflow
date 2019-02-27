@@ -3091,6 +3091,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
 
     if maxlen is None:
       maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
+      maxlen = gen_math_ops.maximum(constant(0, maxlen.dtype), maxlen)
     else:
       maxlen = ops.convert_to_tensor(maxlen)
     if maxlen.get_shape().ndims is not None and maxlen.get_shape().ndims != 0:

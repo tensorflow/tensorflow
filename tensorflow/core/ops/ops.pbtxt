@@ -25640,6 +25640,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "QueueClose"
@@ -28081,6 +28088,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ResizeBicubicGrad"
@@ -28108,6 +28122,13 @@ op {
   }
   attr {
     name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
     type: "bool"
     default_value {
       b: false
@@ -28153,6 +28174,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ResizeBilinearGrad"
@@ -28182,6 +28210,13 @@ op {
   }
   attr {
     name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
     type: "bool"
     default_value {
       b: false
@@ -28226,6 +28261,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ResizeNearestNeighborGrad"
@@ -28257,6 +28299,13 @@ op {
   }
   attr {
     name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
     type: "bool"
     default_value {
       b: false

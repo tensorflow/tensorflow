@@ -51,7 +51,7 @@ LIBS := \
 # There are no rules for compiling objects for the host system (since we don't
 # generate things like the protobuf compiler that require that), so all of
 # these settings are for the target compiler.
-CXXFLAGS := -O3 -DNDEBUG
+CXXFLAGS := -O3 -DNDEBUG -fPIC
 CXXFLAGS += $(EXTRA_CXXFLAGS)
 CCFLAGS := ${CXXFLAGS}
 CXXFLAGS += --std=c++11
@@ -86,6 +86,8 @@ CORE_CC_ALL_SRCS := \
 $(wildcard tensorflow/lite/*.cc) \
 $(wildcard tensorflow/lite/*.c) \
 $(wildcard tensorflow/lite/c/*.c) \
+$(wildcard tensorflow/lite/experimental/c/*.c) \
+$(wildcard tensorflow/lite/experimental/c/*.cc) \
 $(wildcard tensorflow/lite/core/*.cc) \
 $(wildcard tensorflow/lite/core/api/*.cc)
 ifneq ($(BUILD_TYPE),micro)

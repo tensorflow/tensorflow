@@ -49,6 +49,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -587,7 +588,11 @@ class Layer(trackable.Trackable):
             kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
-              outputs = self.call(inputs, *args, **kwargs)
+              with base_layer_utils.AutoAddUpdates(self,
+                                                   inputs) as auto_updater:
+                outputs = self.call(inputs, *args, **kwargs)
+                auto_updater.set_outputs(outputs)
+
             except TypeError as e:
               messages = ('`tf.Tensor` as a Python `bool` is not allowed',
                           'Tensor objects are only iterable when eager')
@@ -1685,6 +1690,52 @@ class Layer(trackable.Trackable):
 
     return nest.map_structure(_make_placeholder_like, output_shapes)
 
+  @property
+  def _obj_reference_counts(self):
+    """A dictionary counting the number of attributes referencing an object."""
+    if not hasattr(self, '_obj_reference_counts_dict'):
+      super(Layer, self).__setattr__(
+          '_obj_reference_counts_dict',
+          object_identity.ObjectIdentityDictionary())
+    return self._obj_reference_counts_dict
+
+  def __delattr__(self, name):
+    existing_value = getattr(self, name, None)
+
+    # If this value is replacing an existing object assigned to an attribute, we
+    # should clean it out to avoid leaking memory. First we check if there are
+    # other attributes referencing it.
+    reference_counts = self._obj_reference_counts
+    if existing_value not in reference_counts:
+      super(Layer, self).__delattr__(name)
+      return
+
+    reference_count = reference_counts[existing_value]
+    if reference_count > 1:
+      # There are other remaining references. We can't remove this object from
+      # _layers etc.
+      reference_counts[existing_value] = reference_count - 1
+      super(Layer, self).__delattr__(name)
+      return
+    else:
+      # This is the last remaining reference.
+      del reference_counts[existing_value]
+
+    super(Layer, self).__delattr__(name)
+
+    if (isinstance(existing_value, Layer)
+        or trackable_layer_utils.has_weights(existing_value)):
+      super(Layer, self).__setattr__(
+          '_layers',
+          [l for l in self._layers if l is not existing_value])
+    if isinstance(existing_value, tf_variables.Variable):
+      super(Layer, self).__setattr__(
+          '_trainable_weights',
+          [w for w in self._trainable_weights if w is not existing_value])
+      super(Layer, self).__setattr__(
+          '_non_trainable_weights',
+          [w for w in self._non_trainable_weights if w is not existing_value])
+
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
         getattr(self, '_is_graph_network', False)):
@@ -1694,6 +1745,16 @@ class Layer(trackable.Trackable):
     # Keep track of trackable objects, for the needs of `Network.save_weights`.
     value = data_structures.sticky_attribute_assignment(
         trackable=self, value=value, name=name)
+
+    reference_counts = self._obj_reference_counts
+    reference_counts[value] = reference_counts.get(value, 0) + 1
+
+    # Clean out the old attribute, which clears _layers and _trainable_weights
+    # if necessary.
+    try:
+      self.__delattr__(name)
+    except AttributeError:
+      pass
 
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
@@ -1748,6 +1809,11 @@ class Layer(trackable.Trackable):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
+
+  @property
+  def _unfiltered_updates(self):
+    # Overridden in `Network`.
+    return self.updates
 
 
 class Node(object):

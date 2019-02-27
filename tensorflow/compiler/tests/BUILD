@@ -1209,10 +1209,6 @@ tf_xla_py_test(
     name = "quantized_ops_test",
     size = "medium",
     srcs = ["quantized_ops_test.py"],
-    disabled_backends = [
-        "cpu",
-        "cpu_ondemand",
-    ],
     deps = [
         ":xla_test",
         "//tensorflow/compiler/tf2xla/python:xla",

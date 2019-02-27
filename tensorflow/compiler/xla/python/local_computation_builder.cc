@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/lib/cholesky.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -714,8 +713,8 @@ LocalOp ComputationBuilder::SortKeyVal(const LocalOp& keys,
   return xla::Sort(keys.op(), {values.op()}, dimension);
 }
 
-LocalOp ComputationBuilder::Cholesky(const LocalOp& a) {
-  return xla::Cholesky(a.op());
+LocalOp ComputationBuilder::Cholesky(const LocalOp& a, bool lower) {
+  return xla::Cholesky(a.op(), lower);
 }
 
 LocalOp ComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
