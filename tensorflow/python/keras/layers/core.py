@@ -1001,7 +1001,11 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      inputs = math_ops.cast(inputs, self.dtype)
+      # Cast the inputs to self.dtype, which is the variable dtype. We do not
+      # cast if `should_cast_variables` is True, as in that case the variable
+      # will be automatically casted to inputs.dtype.
+      if not self._mixed_precision_policy.should_cast_variables:
+        inputs = math_ops.cast(inputs, self.dtype)
       outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)

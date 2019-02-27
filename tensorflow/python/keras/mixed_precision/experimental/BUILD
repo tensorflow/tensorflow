@@ -25,6 +25,31 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "py_test")
 
 py_library(
+    name = "policy",
+    srcs = [
+        "policy.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:framework",
+    ],
+)
+
+py_test(
+    name = "policy_test",
+    size = "medium",
+    srcs = [
+        "policy_test.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":policy",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+py_library(
     name = "autocast_variable",
     srcs = [
         "autocast_variable.py",
@@ -49,6 +74,19 @@ py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python/distribute:mirrored_strategy",
         "//tensorflow/python/eager:context",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "keras_test",
+    size = "medium",
+    srcs = ["keras_test.py"],
+    deps = [
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/distribute:mirrored_strategy",
+        "//tensorflow/python/distribute:one_device_strategy",
+        "//tensorflow/python/keras",
         "@absl_py//absl/testing:parameterized",
     ],
 )

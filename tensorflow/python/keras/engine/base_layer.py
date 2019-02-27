@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -38,6 +39,8 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
@@ -172,7 +175,9 @@ class Layer(trackable.Trackable):
     # A dictionary that maps metric names to metric result tensors. The results
     # are the running averages of metric values over an epoch.
     self._metrics_tensors = {}
-    self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
+
+    self._set_dtype_and_policy(dtype)
+
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
                                    hasattr(self, 'compute_mask'))
@@ -308,10 +313,13 @@ class Layer(trackable.Trackable):
     shape = shape or ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
-      if kwarg not in ['getter', 'collections']:
+      if kwarg not in ['getter', 'collections', 'experimental_autocast']:
         raise TypeError('Unknown keyword argument:', kwarg)
     getter = kwargs.pop('getter', None)
     collections = kwargs.pop('collections', None)
+    # 'experimental_autocast' can be set to False by the caller to indicate an
+    # AutoCastVariable should never be created.
+    autocast = kwargs.pop('experimental_autocast', True)
 
     if dtype is None:
       dtype = self.dtype or backend.floatx()
@@ -368,6 +376,12 @@ class Layer(trackable.Trackable):
         aggregation=aggregation)
     backend.track_variable(variable)
 
+    if autocast and self._mixed_precision_policy.should_cast_variables:
+      if isinstance(variable, distribute_values.DistributedVariable):
+        variable = autocast_variable.AutoCastDistributedVariable(variable)
+      else:
+        variable = autocast_variable.AutoCastVariable(variable)
+
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
@@ -402,6 +416,7 @@ class Layer(trackable.Trackable):
       config['batch_input_shape'] = self._batch_input_shape
     if hasattr(self, 'dtype'):
       config['dtype'] = self.dtype
+    # TODO(reedwm): Handle serializing self._mixed_precision_policy.
     return config
 
   @classmethod
@@ -588,8 +603,11 @@ class Layer(trackable.Trackable):
             kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
-              with base_layer_utils.AutoAddUpdates(self,
-                                                   inputs) as auto_updater:
+              with base_layer_utils.autocast_context_manager(
+                  input_list,
+                  self._mixed_precision_policy.should_cast_variables), (
+                      base_layer_utils.AutoAddUpdates(self,
+                                                      inputs)) as auto_updater:
                 outputs = self.call(inputs, *args, **kwargs)
                 auto_updater.set_outputs(outputs)
 
@@ -636,7 +654,9 @@ class Layer(trackable.Trackable):
         # Eager execution on data tensors.
         with ops.name_scope(self._name_scope()):
           self._maybe_build(inputs)
-          outputs = self.call(inputs, *args, **kwargs)
+          with base_layer_utils.autocast_context_manager(
+              input_list, self._mixed_precision_policy.should_cast_variables):
+            outputs = self.call(inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, previous_mask)
 
@@ -1327,6 +1347,24 @@ class Layer(trackable.Trackable):
   ##############################################################################
   # Methods & attributes below are all private and only used by the framework. #
   ##############################################################################
+
+  def _set_dtype_and_policy(self, dtype):
+    """Sets self._dtype and self._mixed_precision_policy."""
+    if dtype:
+      if isinstance(dtype, policy.Policy):
+        self._mixed_precision_policy = dtype
+        self._dtype = self._mixed_precision_policy.default_variable_dtype
+      else:
+        # If a non-policy dtype is passed, no casting should be done. So we use
+        # the "infer" policy, which does no casting.
+        self._mixed_precision_policy = policy.Policy('infer')
+        self._dtype = dtypes.as_dtype(dtype).name
+    else:
+      self._mixed_precision_policy = policy.global_policy()
+      # If the global policy has not been set, it will be an "infer" policy
+      # without a default variable dtype, and so self._dtype will be None. In
+      # that case, self._dtype will be set when the layer is built or called.
+      self._dtype = self._mixed_precision_policy.default_variable_dtype
 
   def _name_scope(self):
     return self.name
