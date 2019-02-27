@@ -197,6 +197,47 @@ class GANLoss(
   """
 
 
+  class GANAuxiliaryLoss(
+    collections.namedtuple('GANAuxiliaryLoss', (
+        'gradient_penalty_weight',
+        'gradient_penalty_epsilon',
+        'gradient_penalty_target',
+        'gradient_penalty_one_sided',
+        'mutual_information_penalty_weight',
+        'aux_cond_generator_weight',
+        'aux_cond_discriminator_weight',
+        'tensor_pool_fn'
+    ))):
+  """GANAuxiliaryLoss contains the settings for the auxiliary losses.
+
+  Args:
+    gradient_penalty_weight: If not `None`, must be a non-negative Python number
+      or Tensor indicating how much to weight the gradient penalty. See
+      https://arxiv.org/pdf/1704.00028.pdf for more details.
+    gradient_penalty_epsilon: If `gradient_penalty_weight` is not None, the
+      small positive value used by the gradient penalty function for numerical
+      stability. Note some applications will need to increase this value to
+      avoid NaNs.
+    gradient_penalty_target: If `gradient_penalty_weight` is not None, a Python
+      number or `Tensor` indicating the target value of gradient norm. See the
+      CIFAR10 section of https://arxiv.org/abs/1710.10196. Defaults to 1.0.
+    gradient_penalty_one_sided: If `True`, penalty proposed in
+      https://arxiv.org/abs/1709.08894 is used. Defaults to `False`.
+    mutual_information_penalty_weight: If not `None`, must be a non-negative
+      Python number or Tensor indicating how much to weight the mutual
+      information penalty. See https://arxiv.org/abs/1606.03657 for more
+      details.
+    aux_cond_generator_weight: If not None: add a classification loss as in
+      https://arxiv.org/abs/1610.09585
+    aux_cond_discriminator_weight: If not None: add a classification loss as in
+      https://arxiv.org/abs/1610.09585
+    tensor_pool_fn: A function that takes (generated_data, generator_inputs),
+      stores them in an internal pool and returns previous stored
+      (generated_data, generator_inputs). For example
+      `tf.gan.features.tensor_pool`. Defaults to None (not using tensor pool).
+  """
+
+
 class CycleGANLoss(
     collections.namedtuple('CycleGANLoss', ('loss_x2y', 'loss_y2x'))):
   """CycleGANLoss contains the losses for `CycleGANModel`.

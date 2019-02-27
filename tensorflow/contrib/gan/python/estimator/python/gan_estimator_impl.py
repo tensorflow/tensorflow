@@ -114,7 +114,8 @@ class GANEstimator(estimator.Estimator):
                use_loss_summaries=True,
                config=None,
                warm_start_from=None,
-               is_chief=True):
+               is_chief=True,
+               auxiliary_loss_settings=None):
     """Initializes a GANEstimator instance.
 
     Args:
@@ -157,6 +158,8 @@ class GANEstimator(estimator.Estimator):
         WarmStartSettings object to configure initialization.
       is_chief: Whether or not this Estimator is running on a chief or worker.
         Needs to be set appropriately if using SyncReplicasOptimizers.
+      gan_auxiliary_loss: `None`, or `GANAuxiliaryLoss` object that
+        specifies the auxiliary losses.
 
     Raises:
       ValueError: If loss functions aren't callable.
@@ -190,7 +193,7 @@ class GANEstimator(estimator.Estimator):
       return _get_estimator_spec(
           mode, gan_model, generator_loss_fn, discriminator_loss_fn,
           get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
-          get_hooks_fn, use_loss_summaries, is_chief)
+          get_hooks_fn, use_loss_summaries, is_chief, gan_auxiliary_loss)
 
     super(GANEstimator, self).__init__(
         model_fn=_model_fn, model_dir=model_dir, config=config,
@@ -218,17 +221,36 @@ def _get_gan_model(
 def _get_estimator_spec(
     mode, gan_model, generator_loss_fn, discriminator_loss_fn,
     get_eval_metric_ops_fn, generator_optimizer, discriminator_optimizer,
-    get_hooks_fn=None, use_loss_summaries=True, is_chief=True):
+    get_hooks_fn=None, use_loss_summaries=True, is_chief=True,
+    gan_auxiliary_loss=None):
   """Get the EstimatorSpec for the current mode."""
   if mode == model_fn_lib.ModeKeys.PREDICT:
     estimator_spec = model_fn_lib.EstimatorSpec(
         mode=mode, predictions=gan_model.generated_data)
   else:
-    gan_loss = tfgan_tuples.GANLoss(
-        generator_loss=generator_loss_fn(
-            gan_model, add_summaries=use_loss_summaries),
-        discriminator_loss=discriminator_loss_fn(
-            gan_model, add_summaries=use_loss_summaries))
+    if gan_auxiliary_loss is None:
+      gan_loss = tfgan_tuples.GANLoss(
+          generator_loss=generator_loss_fn(
+              gan_model, add_summaries=use_loss_summaries),
+          discriminator_loss=discriminator_loss_fn(
+              gan_model, add_summaries=use_loss_summaries))
+    else:
+      gan_loss = tfgan_train.gan_loss(
+          gan_model,
+          generator_loss_fn=generator_loss_fn,
+          discriminator_loss_fn=discriminator_loss_fn,
+          gradient_penalty_weight=gan_auxiliary_loss.gradient_penalty_weight,
+          gradient_penalty_epsilon=gan_auxiliary_loss.gradient_penalty_epsilon,
+          gradient_penalty_target=gan_auxiliary_loss.gradient_penalty_target,
+          gradient_penalty_one_sided=
+              gan_auxiliary_loss.gradient_penalty_one_sided,
+          mutual_information_penalty_weight=
+              gan_auxiliary_loss.mutual_information_penalty_weight,
+          aux_cond_generator_weight=gan_auxiliary_loss.aux_cond_generator_weight,
+          aux_cond_discriminator_weight=
+              gan_auxiliary_loss.aux_cond_discriminator_weight,
+          tensor_pool_fn=gan_auxiliary_loss.tensor_pool_fn,
+          add_summaries=use_loss_summaries)
     if mode == model_fn_lib.ModeKeys.EVAL:
       estimator_spec = _get_eval_estimator_spec(
           gan_model, gan_loss, get_eval_metric_ops_fn)
