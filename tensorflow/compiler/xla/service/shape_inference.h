@@ -120,6 +120,9 @@ class ShapeInference {
   static StatusOr<Shape> InferTriangularSolveShape(
       const Shape& a, const Shape& b, const TriangularSolveOptions& options);
 
+  // Infers the shape produced by the given triangular solve operation.
+  static StatusOr<Shape> InferCholeskyShape(const Shape& a);
+
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferAllReduceShape(

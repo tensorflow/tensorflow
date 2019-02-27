@@ -61,6 +61,7 @@ namespace xla {
   V(kBroadcast, "broadcast", 1)                                        \
   V(kCall, "call", kHloOpcodeIsVariadic)                               \
   V(kCeil, "ceil", 1)                                                  \
+  V(kCholesky, "cholesky", 1)                                          \
   V(kClamp, "clamp", 3)                                                \
   V(kCollectivePermute, "collective-permute", 1)                       \
   V(kClz, "count-leading-zeros", 1)                                    \

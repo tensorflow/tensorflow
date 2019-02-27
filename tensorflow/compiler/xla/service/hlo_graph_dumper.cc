@@ -1017,6 +1017,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kDot:
     case HloOpcode::kFft:
     case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
       return kDarkBlue;
     case HloOpcode::kReducePrecision:
       return kRed;

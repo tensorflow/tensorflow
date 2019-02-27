@@ -202,21 +202,6 @@ std::unique_ptr<HloInstruction> HloFftInstruction::CloneWithNewOperandsImpl(
                                               fft_length_);
 }
 
-HloTriangularSolveInstruction::HloTriangularSolveInstruction(
-    const Shape& shape, HloInstruction* a, HloInstruction* b,
-    const TriangularSolveOptions& options)
-    : HloInstruction(HloOpcode::kTriangularSolve, shape),
-      triangular_solve_options_(options) {
-  AppendOperand(a);
-  AppendOperand(b);
-}
-
-HloInstructionProto HloTriangularSolveInstruction::ToProto() const {
-  HloInstructionProto proto = HloInstruction::ToProto();
-  *proto.mutable_triangular_solve_options() = triangular_solve_options_;
-  return proto;
-}
-
 namespace {
 
 // Converts a protocol buffer message (e.g., TriangularSolveOptions) to a vector
@@ -257,6 +242,21 @@ std::vector<string> AttributeProtoToStringVector(
 
 }  // namespace
 
+HloTriangularSolveInstruction::HloTriangularSolveInstruction(
+    const Shape& shape, HloInstruction* a, HloInstruction* b,
+    const TriangularSolveOptions& options)
+    : HloInstruction(HloOpcode::kTriangularSolve, shape),
+      triangular_solve_options_(options) {
+  AppendOperand(a);
+  AppendOperand(b);
+}
+
+HloInstructionProto HloTriangularSolveInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_triangular_solve_options() = triangular_solve_options_;
+  return proto;
+}
+
 std::vector<string> HloTriangularSolveInstruction::ExtraAttributesToStringImpl(
     const HloPrintOptions& options) const {
   return AttributeProtoToStringVector(triangular_solve_options_);
@@ -284,6 +284,44 @@ HloTriangularSolveInstruction::CloneWithNewOperandsImpl(
   CHECK_EQ(new_operands.size(), 2);
   return absl::make_unique<HloTriangularSolveInstruction>(
       shape, new_operands[0], new_operands[1], triangular_solve_options());
+}
+
+HloCholeskyInstruction::HloCholeskyInstruction(const Shape& shape,
+                                               HloInstruction* a,
+                                               const CholeskyOptions& options)
+    : HloInstruction(HloOpcode::kCholesky, shape), cholesky_options_(options) {
+  AppendOperand(a);
+}
+
+HloInstructionProto HloCholeskyInstruction::ToProto() const {
+  HloInstructionProto proto = HloInstruction::ToProto();
+  *proto.mutable_cholesky_options() = cholesky_options_;
+  return proto;
+}
+
+std::vector<string> HloCholeskyInstruction::ExtraAttributesToStringImpl(
+    const HloPrintOptions& options) const {
+  return AttributeProtoToStringVector(cholesky_options_);
+}
+
+bool HloCholeskyInstruction::IdenticalSlowPath(
+    const HloInstruction& other,
+    const std::function<bool(const HloComputation*, const HloComputation*)>&
+        eq_computations) const {
+  const auto& casted_other = static_cast<const HloCholeskyInstruction&>(other);
+  const auto& options = cholesky_options();
+  const auto& other_options = casted_other.cholesky_options();
+
+  return options.lower() == other_options.lower();
+}
+
+std::unique_ptr<HloInstruction>
+HloCholeskyInstruction::CloneWithNewOperandsImpl(
+    const Shape& shape, absl::Span<HloInstruction* const> new_operands,
+    HloCloneContext* context) const {
+  CHECK_EQ(new_operands.size(), 1);
+  return absl::make_unique<HloCholeskyInstruction>(shape, new_operands[0],
+                                                   cholesky_options());
 }
 
 HloSendRecvInstruction::HloSendRecvInstruction(HloOpcode opcode,

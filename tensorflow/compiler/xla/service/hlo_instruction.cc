@@ -132,6 +132,11 @@ StatusOr<std::unique_ptr<HloInstruction>> HloInstruction::CreateFromProto(
                                           proto.triangular_solve_options());
       break;
     }
+    case HloOpcode::kCholesky: {
+      instruction =
+          CreateCholesky(shape, operands(0), proto.cholesky_options());
+      break;
+    }
     case HloOpcode::kSend:
       instruction = CreateSend(operands(0), operands(1), proto.channel_id(),
                                proto.is_host_transfer());
@@ -734,6 +739,11 @@ HloInstruction::CreateTriangularSolve(const Shape& shape, HloInstruction* a,
   return absl::make_unique<HloTriangularSolveInstruction>(shape, a, b, options);
 }
 
+/* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateCholesky(
+    const Shape& shape, HloInstruction* a, const CholeskyOptions& options) {
+  return absl::make_unique<HloCholeskyInstruction>(shape, a, options);
+}
+
 /* static */ std::unique_ptr<HloInstruction> HloInstruction::CreateDot(
     const Shape& shape, HloInstruction* lhs, HloInstruction* rhs,
     const DotDimensionNumbers& dimension_numbers,
@@ -1294,6 +1304,7 @@ std::unique_ptr<HloInstruction> HloInstruction::CloneWithNewOperands(
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
       clone = CloneWithNewOperandsImpl(shape, new_operands, context);
       break;
     // Unary ops.
@@ -1754,6 +1765,7 @@ bool HloInstruction::IdenticalSlowPath(
     case HloOpcode::kDomain:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
       LOG(FATAL) << "Base class impl called for opcode with subclass: "
                  << opcode();
   }
@@ -2553,6 +2565,8 @@ Status HloInstruction::Visit(DfsHloVisitorBase<HloInstructionPtr>* visitor) {
       return visitor->HandleGetDimensionSize(this);
     case HloOpcode::kTriangularSolve:
       return visitor->HandleTriangularSolve(this);
+    case HloOpcode::kCholesky:
+      return visitor->HandleCholesky(this);
 
     // These opcodes are not handled here.
     case HloOpcode::kTrace:
@@ -3437,4 +3451,9 @@ const DomainMetadata& HloInstruction::user_side_metadata() const {
 const TriangularSolveOptions& HloInstruction::triangular_solve_options() const {
   return Cast<HloTriangularSolveInstruction>(this)->triangular_solve_options();
 }
+
+const CholeskyOptions& HloInstruction::cholesky_options() const {
+  return Cast<HloCholeskyInstruction>(this)->cholesky_options();
+}
+
 }  // namespace xla

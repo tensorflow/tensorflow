@@ -557,8 +557,19 @@ Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
   // Estimate as batch * mn^2 / 2 flops.
   int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
   elems *= ShapeUtil::ElementsIn(b_shape);
-  // Each output elment requires reduction_widht FMA operations.
   current_properties_[kFlopsKey] = kFmaFlops * elems;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
+  float bytes_accessed = GetShapeSize(hlo->operand(0)->shape()) / 2.0f;
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  const Shape& a_shape = hlo->operand(0)->shape();
+  // Estimate as batch * n^3 / 3 flops.
+  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  elems *= ShapeUtil::ElementsIn(a_shape);
+  current_properties_[kFlopsKey] = elems / 3;
   return Status::OK();
 }
 

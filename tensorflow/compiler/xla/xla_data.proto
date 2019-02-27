@@ -566,6 +566,12 @@ message TriangularSolveOptions {
   Transpose transpose_a = 4;
 }
 
+message CholeskyOptions {
+  // If true, uses the lower triangle of `a`. If false, uses the upper triangle
+  // of `a`.
+  bool lower = 1;
+}
+
 message OpSharding {
   enum Type {
     // This sharding is replicated across all devices (implies maximal,
