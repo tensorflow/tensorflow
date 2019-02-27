@@ -32,7 +32,7 @@ from tensorflow.python.platform import test
 # TODO(b/117581999): add eager coverage when supported.
 class PrefetchToDeviceTest(test_base.DatasetTestBase):
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testPrefetchToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -57,7 +57,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testPrefetchToSameDevice(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -82,7 +82,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testPrefetchDictToDevice(self):
     host_dataset = dataset_ops.Dataset.range(10).map(lambda x: {"a": x})
     device_dataset = host_dataset.apply(
@@ -107,7 +107,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testPrefetchSparseTensorsToDevice(self):
     def make_tensor(i):
       return sparse_tensor.SparseTensorValue(
@@ -138,6 +138,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testPrefetchToDeviceGpu(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -157,7 +158,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testPrefetchToDeviceWithReInit(self):
     host_dataset = dataset_ops.Dataset.range(10)
     device_dataset = host_dataset.apply(
@@ -186,6 +187,7 @@ class PrefetchToDeviceTest(test_base.DatasetTestBase):
       with self.assertRaises(errors.OutOfRangeError):
         self.evaluate(next_element)
 
+  @test_util.deprecated_graph_mode_only
   def testPrefetchToDeviceGpuWithReInit(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")

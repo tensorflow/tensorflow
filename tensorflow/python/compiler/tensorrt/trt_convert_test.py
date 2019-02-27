@@ -244,6 +244,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                                    "output:0",
                                    feed_dict={"input:0": [[[test_data]]]}))
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_BasicConversion(self):
     """Test case for trt_convert.TrtGraphConverter()."""
     if not is_tensorrt_enabled():
@@ -276,6 +277,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual(execute_native_segment_test_value,
                      get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_MinimumSegmentSize(self):
     if not is_tensorrt_enabled():
       return
@@ -290,6 +292,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         "output": "Identity"
     }, node_name_to_op)
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_DynamicOp(self):
     if not is_tensorrt_enabled():
       return
@@ -329,6 +332,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         # the max, it should evict an old engine and create a new one.
         self._TestRun(sess, 3, True)
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_StaticOp(self):
     if not is_tensorrt_enabled():
       return
