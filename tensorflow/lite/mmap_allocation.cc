@@ -60,11 +60,11 @@ MMAPAllocation::MMAPAllocation(const char* filename,
 
 MMAPAllocation::~MMAPAllocation() {
   if (valid()) {
-     UnmapViewOfFile( mmapped_buffer_ );
+     UnmapViewOfFile(mmapped_buffer_);
   }
 
   if (file_mapping_ != nullptr) {
-    CloseHandle( file_mapping_ );
+    CloseHandle(file_mapping_);
   }
 
   if (file_handle_ != nullptr){
