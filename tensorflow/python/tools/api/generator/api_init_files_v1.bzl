@@ -69,6 +69,8 @@ TENSORFLOW_API_INIT_FILES_V1 = [
     "summary/__init__.py",
     "sysconfig/__init__.py",
     "test/__init__.py",
+    "tpu/experimental/__init__.py",
+    "tpu/__init__.py",
     "train/__init__.py",
     "train/experimental/__init__.py",
     "train/queue_runner/__init__.py",

@@ -1,4 +1,4 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +12,12 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""TPU Distribution Strategy.
-
-This is experimental.  It's not ready for general use.
-"""
+"""Experimental TPU library."""
 
 from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
 # pylint: disable=unused-import
-from tensorflow.python.distribute.tpu_strategy import TPUStrategy
-from tensorflow.python.tpu.tpu_strategy_util import initialize_tpu_system
+from tensorflow.python.tpu import tpu_strategy_util
+# pylint: enable=unused-import

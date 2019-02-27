@@ -21,8 +21,6 @@ from __future__ import print_function
 import collections
 import copy
 
-from tensorflow.core.protobuf import config_pb2
-from tensorflow.python.client import session as session_lib
 from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribute_lib
@@ -32,7 +30,6 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.eager import context
-from tensorflow.python.eager import function
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as tf_device
@@ -43,64 +40,14 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variable_scope as vs
-from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.tpu import device_assignment as device_assignment_lib
-from tensorflow.python.tpu import functional as tpu_functional_ops
-from tensorflow.python.tpu import topology
 from tensorflow.python.tpu import tpu
+from tensorflow.python.tpu import tpu_strategy_util
 from tensorflow.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu.ops import tpu_ops
-from tensorflow.python.util import compat
 from tensorflow.python.util import nest
-
-
-def initialize_tpu_system(cluster_resolver=None):
-  """Initialize the TPU devices in a separate session and graph.
-
-  Args:
-    cluster_resolver: A tf.distribute.cluster_resolver.TPUClusterResolver,
-        which provides information about the TPU cluster.
-  Returns:
-    The tf.tpu.Topology object for the topology of the TPU cluster.
-  """
-  if cluster_resolver is None:
-    cluster_resolver = TPUClusterResolver("")
-  master = cluster_resolver.master()
-
-  logging.info("Initializing the TPU system.")
-
-  if context.executing_eagerly():
-    # This function looks as it is for the following non-intuitive reasons.
-    # tpu.initialize_system creates a dummy op whose sole purpose is to trigger
-    # DistributedTPURewritePass. This pass actually adds real ops that
-    # initialize the TPU system. Thus, we can't simply run tpu.initialize_system
-    # eagerly. We need to wrap it in defun and trigger the rewrite passes on it.
-    # The easiest way to trigger a rewrite is to run the function with
-    # TPUPartitionedCallOp.
-    @function.defun
-    def _tpu_init_fn():
-      return tpu.initialize_system()
-
-    # We can't call _tpu_init_fn normally (because it contains just a dummy op,
-    # see above) but need to define it to get it added to eager context
-    # and get its assigned name.
-    # pylint: disable=protected-access
-    graph_func = _tpu_init_fn._get_concrete_function_internal()
-    func_name = compat.as_str(graph_func._inference_function.name)
-    # pylint: enable=protected-access
-
-    output = tpu_functional_ops.TPUPartitionedCall(
-        args=[], device_ordinal=0, Tout=[dtypes.string], f=func_name)
-    serialized_topology = output[0].numpy()
-  else:
-    session_config = config_pb2.ConfigProto(allow_soft_placement=True)
-    with ops.Graph().as_default():
-      with session_lib.Session(config=session_config, target=master) as sess:
-        serialized_topology = sess.run(tpu.initialize_system())
-
-  logging.info("Finished initializing TPU system.")
-  return topology.Topology(serialized=serialized_topology)
+from tensorflow.python.util.tf_export import tf_export
 
 
 def get_tpu_system_metadata(tpu_cluster_resolver):
@@ -174,6 +121,7 @@ def _create_tpu_mirrored_variable(  # pylint: disable=missing-docstring
   return result
 
 
+@tf_export("distribute.experimental.TPUStrategy")
 class TPUStrategy(distribute_lib.DistributionStrategy):
   """TPU distribution strategy implementation."""
 
@@ -506,7 +454,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     This is a private method only to be used by Estimator. Other frameworks
     should directly be calling `tf.contrib.distribute.initialize_tpu_system`
     """
-    initialize_tpu_system(self._tpu_cluster_resolver)
+    tpu_strategy_util.initialize_tpu_system(self._tpu_cluster_resolver)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a TPUMirroredVariable. See `DistributionStrategy.scope`."""
