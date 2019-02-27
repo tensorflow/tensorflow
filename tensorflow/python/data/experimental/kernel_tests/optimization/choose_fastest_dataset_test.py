@@ -38,7 +38,7 @@ class ChooseFastestDatasetTest(test_base.DatasetTestBase,
     self.assertDatasetProduces(
         merge,
         expected_output=[0, 1, 2, 3, 4],
-        expected_shapes=dataset.output_shapes)
+        expected_shapes=dataset_ops.get_legacy_output_shapes(dataset))
 
   def testChooseFastestManyInputs(self):
     dataset = dataset_ops.Dataset.from_tensor_slices([0, 1, 2, 3, 4])
@@ -46,7 +46,7 @@ class ChooseFastestDatasetTest(test_base.DatasetTestBase,
     self.assertDatasetProduces(
         merge,
         expected_output=[0, 1, 2, 3, 4],
-        expected_shapes=dataset.output_shapes)
+        expected_shapes=dataset_ops.get_legacy_output_shapes(dataset))
 
   def testChooseFastest(self):
     dataset = dataset_ops.Dataset.range(600)
@@ -59,7 +59,7 @@ class ChooseFastestDatasetTest(test_base.DatasetTestBase,
         expected_output=[
             [i * 2 for i in range(j * 50, (j + 1) * 50)] for j in range(12)
         ],
-        expected_shapes=dataset_a.output_shapes)
+        expected_shapes=dataset_ops.get_legacy_output_shapes(dataset_a))
 
   @parameterized.named_parameters(
       ("Shapes", [0], [[1, 2, 3]], "must have compatible output shapes."),

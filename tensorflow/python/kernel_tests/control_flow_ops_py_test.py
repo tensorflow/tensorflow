@@ -2595,6 +2595,22 @@ class ControlFlowTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(216.0, g[0])
 
+  def testWhileGrad_EagerResourceVariable(self):
+    with context.eager_mode():
+      a = resource_variable_ops.ResourceVariable(
+          np.ones([2, 2], dtype=np.float32))
+      v = constant_op.constant(1.0)
+
+      @eager_function.defun
+      def fn():
+        r = control_flow_ops.while_loop(
+            lambda i, _: i < 2,
+            lambda i, x: (i + 1, x * math_ops.reduce_sum(a) * v),
+            [0, 1.0])[1]
+        return gradients_impl.gradients(r, [v])[0]
+
+      self.assertEqual(self.evaluate(fn()), 32.)
+
   def testWhileGrad_ResourceVarInFunctionCall(self):
 
     @def_function.function

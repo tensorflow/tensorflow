@@ -121,6 +121,7 @@ py_library(
         ":clustering_ops",
         ":collective_ops",
         ":cond_v2",
+        ":config",
         ":confusion_matrix",
         ":control_flow_ops",
         ":cudnn_rnn_ops_gen",
@@ -271,7 +272,10 @@ tf_py_test(
         ":client_testlib",
         ":platform",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_windows",
+        "nomac",
+    ],
 )
 
 tf_py_test(
@@ -279,10 +283,7 @@ tf_py_test(
     size = "small",
     srcs = ["platform/app_test.py"],
     additional_deps = [":platform"],
-    tags = [
-        "nomac",
-        "notap",
-    ],
+    tags = ["notap"],
 )
 
 cc_library(
@@ -993,6 +994,30 @@ tf_py_test(
         ":auto_control_deps",
         ":client_testlib",
         "//tensorflow/python/keras",
+    ],
+)
+
+py_library(
+    name = "config",
+    srcs = ["framework/config.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":framework_ops",
+        ":util",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+tf_py_test(
+    name = "config_test",
+    size = "small",
+    srcs = ["framework/config_test.py"],
+    additional_deps = [
+        ":config",
+        ":constant_op",
+        ":client_testlib",
+        ":platform",
+        ":util",
     ],
 )
 
@@ -3303,10 +3328,12 @@ py_library(
         ":smart_cond",
         ":summary_op_util",
         ":summary_ops_gen",
+        ":tensor_util",
         ":training_util",
         ":util",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:profiler",
         "@six_archive//:six",
     ],
 )
@@ -3814,6 +3841,7 @@ py_library(
         "//tensorflow/python/keras/optimizer_v2:learning_rate_schedule",
         "//tensorflow/python/ops/losses",
         "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:python_state",
         "//tensorflow/python/training/tracking:util",
         "//third_party/py/numpy",
         "@six_archive//:six",

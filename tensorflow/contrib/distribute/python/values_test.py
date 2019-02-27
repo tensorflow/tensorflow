@@ -522,11 +522,11 @@ def _make_replica_local(method, strategy=None):
     with ops.device(d):
       v.append(variable_scope.get_variable(
           name=n, initializer=init, use_resource=True))
-  replica_local = values.ReplicaLocalVariable(strategy, device_map, v, method)
+  replica_local = values.SyncOnReadVariable(strategy, device_map, v, method)
   return v, replica_local
 
 
-class ReplicaLocalVariablePropertiesTest(test.TestCase):
+class SyncOnReadVariablePropertiesTest(test.TestCase):
 
   config = config_pb2.ConfigProto()
   config.allow_soft_placement = True
@@ -549,7 +549,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
     v = variable_scope.get_variable(
         name="v", initializer=[1.], use_resource=True)
     device_map = values.ReplicaDeviceMap(("/job:foo/device:CPU:0",))
-    replica_local = values.ReplicaLocalVariable(
+    replica_local = values.SyncOnReadVariable(
         None, device_map, (v,), variable_scope.VariableAggregation.MEAN)
 
     self.assertEqual(v.name, replica_local.name)
@@ -577,7 +577,7 @@ class ReplicaLocalVariablePropertiesTest(test.TestCase):
         combinations.mirrored_strategy_with_gpu_and_cpu,
         combinations.core_mirrored_strategy_with_gpu_and_cpu],
     mode=["graph", "eager"]))
-class ReplicaLocalVariableTest(test.TestCase, parameterized.TestCase):
+class SyncOnReadVariableTest(test.TestCase, parameterized.TestCase):
 
   def _assign_replica_local(self, devices, v, new):
     for d, var, n in zip(devices, v, new):

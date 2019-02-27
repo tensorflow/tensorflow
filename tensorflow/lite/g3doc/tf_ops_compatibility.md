@@ -803,7 +803,7 @@ Inputs {
   1: a 1D tensor with 2 elements
 }
 Outputs {
-  0: A tensor of type `tensor 0` resized according to `tensor 1` heigh/width values
+  0: A tensor of type `tensor 0` resized according to `tensor 1` height/width values
   using nearest neighbors interpolation.
 }
 Options {
@@ -819,6 +819,25 @@ Inputs {
 }
 Outputs {
   0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
+**REVERSE_SEQUENCE**
+
+```
+Inputs {
+  0: a tensor
+  1: a 1-D tensor which specifies the length of sequence to be reversed in each
+  dim
+}
+Outputs {
+  0: a tensor with the same shape as the input tensor
+}
+Options {
+  seq_dim: a 0-D int tensor (scalar). The dimension which is partially
+  reversed.
+  batch_dim: a 0-D int tensor (scalar). Defaults to 0. The dimension along
+  which reversal is performed.
 }
 ```
 

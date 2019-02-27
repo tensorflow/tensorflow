@@ -25,6 +25,7 @@ import numpy as np
 
 from tensorflow.python.data.experimental.ops import readers
 from tensorflow.python.data.kernel_tests import test_base
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -668,7 +669,7 @@ class MakeCsvDatasetTest(test_base.DatasetTestBase):
     ]]
     filenames = self._setup_files(inputs)
     dataset = self._make_csv_dataset(filenames, batch_size=32, num_epochs=None)
-    for shape in nest.flatten(dataset.output_shapes):
+    for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
       self.assertEqual(32, shape[0])
 
 

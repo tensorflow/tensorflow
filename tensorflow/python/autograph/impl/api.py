@@ -166,20 +166,20 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
   return decorator
 
 
-def _call_original_func(f, *args, **kwargs):
-  """Call the original function without converting with AutoGraph.
+def _call_unconverted(f, args, kwargs):
+  """Calls the original function without converting with AutoGraph.
 
   Args typically include `self`, as required by the conversion process.
   When conversion is skipped, `self` is not necessary, because the
   original bound method is being executed. This code removes it.
 
   Args:
-    f: original function or bound method
-    *args: args; may have self as first argument.
-    **kwargs: kwargs
+    f: the original function for which conversion was requested.
+    args: positional arguments for f May or may not include self.
+    kwargs: keyword arguments for f
 
   Returns:
-    result of executing original function.
+    The return value of f(*args, **kwargs).
   """
   # TODO(mdan): This may be inconsistent in certain situations.
   # If the function had already been annotated with @tf.function, it
@@ -227,14 +227,14 @@ def converted_call(f, owner, options, args, kwargs):
         ' by AutoGraph. The function will be called without transformation.'
         ' You may however apply AutoGraph before the decorator.'.format(f), 1)
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
-    return _call_original_func(f, *args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   # Constructors are permanently whitelisted.
   # TODO(mdan): Toggle as experimental feature instead.
   # TODO(b/124016764): Remove this limitation.
   if tf_inspect.isclass(f):
     logging.log(2, 'Permanently whitelisted: %s: constructor', f)
-    return _call_original_func(f, *args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
@@ -242,17 +242,17 @@ def converted_call(f, owner, options, args, kwargs):
   if any(f in m.__dict__.values()
          for m in (collections, pdb, copy, tf_inspect._inspect)):  # pylint:disable=protected-access
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
-    return _call_original_func(f, *args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
-    return _call_original_func(f, *args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
   # call conversion from generated code while in nonrecursive mode. In that
   # case we evidently don't want to recurse, but we still have to convert
   # things like builtins.
   if not options.internal_convert_user_code:
-    return _call_original_func(f, *args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   # TODO(mdan): Move this entire block inside to_graph.
   try:  # Begin of transformation error guards
@@ -368,7 +368,7 @@ def converted_call(f, owner, options, args, kwargs):
         ' variable AUTOGRAPH_VERBOSITY >= 1. Please report this to the'
         ' AutoGraph team. Cause: %s', target_entity, e)
 
-    return _call_original_func(f, *args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   result = converted_f(*effective_args, **kwargs)
 

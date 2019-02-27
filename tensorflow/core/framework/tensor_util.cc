@@ -263,14 +263,13 @@ bool CompressRepeatedField(float min_compression_ratio,
     // Already compressed or invalid.
     return false;
   }
-  T prev_value = TypeHelper::GetValue(num_proto_values - 1, *tensor);
+  const T last_value = TypeHelper::GetValue(num_proto_values - 1, *tensor);
   int64 last_index = 0;
   for (int64 i = num_proto_values - 2; i >= 0 && last_index == 0; --i) {
     const T cur_value = TypeHelper::GetValue(i, *tensor);
-    if (PackedValuesNotEqual(cur_value, prev_value)) {
+    if (PackedValuesNotEqual(cur_value, last_value)) {
       last_index = i + 1;
     }
-    prev_value = cur_value;
   }
   const int64 num_truncated_proto_values = last_index + 1;
   const int64 num_bytes_as_field =

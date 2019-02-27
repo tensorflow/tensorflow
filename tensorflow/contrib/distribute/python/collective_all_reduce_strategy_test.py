@@ -79,11 +79,11 @@ def create_test_objects(cluster_spec=None,
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators=num_gpus)
+          num_accelerators={'GPU': num_gpus})
       target = 'grpc://' + cluster_spec[task_type][task_id]
     else:
       cluster_resolver = SimpleClusterResolver(
-          ClusterSpec({}), num_accelerators=num_gpus)
+          ClusterSpec({}), num_accelerators={'GPU': num_gpus})
       target = ''
 
     strategy = MockCollectiveAllReduceStrategy(cluster_resolver)

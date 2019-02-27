@@ -674,8 +674,8 @@ xla_test(
 )
 
 xla_test(
-    name = "exhaustive_f32_elementwise_op_test",
-    srcs = ["exhaustive_f32_elementwise_op_test.cc"],
+    name = "exhaustive_op_test",
+    srcs = ["exhaustive_op_test.cc"],
     real_hardware_only = True,  # Very slow on the interpreter.
     shard_count = 48,
     tags = [
@@ -687,6 +687,7 @@ xla_test(
         ":client_library_test_base",
         ":literal_test_util",
         "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/compiler/xla/client/lib:constants",
         "//tensorflow/compiler/xla/client/lib:math",
         "//tensorflow/compiler/xla/tests:xla_internal_test_main",
         "//tensorflow/core:lib",

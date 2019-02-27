@@ -2791,6 +2791,7 @@ tf_cuda_library(
         ":stats_calculator_portable",
         ":version_lib",
         "@com_google_absl//absl/base",
+        "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "//tensorflow/core/platform/default/build_config:platformlib",

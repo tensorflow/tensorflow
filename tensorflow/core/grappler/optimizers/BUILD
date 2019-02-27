@@ -154,6 +154,7 @@ cc_library(
         "//tensorflow/core/grappler:op_types",
         "//tensorflow/core/grappler:utils",
         "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core/grappler/utils:topological_sort",
         "//tensorflow/core/grappler/utils:traversal",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",

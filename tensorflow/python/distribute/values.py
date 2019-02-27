@@ -1173,28 +1173,28 @@ ops.register_tensor_conversion_function(TPUMirroredVariable,
 ops.register_dense_tensor_like_type(TPUMirroredVariable)
 
 
-class _ReplicaLocalSaveable(saver.BaseSaverBuilder.SaveableObject):
-  """Class for defining how to restore a ReplicaLocalVariable."""
+class _SyncOnReadSaveable(saver.BaseSaverBuilder.SaveableObject):
+  """Class for defining how to restore a SyncOnReadVariable."""
 
-  def __init__(self, replica_local_variable, name):
-    self._replica_local_variable = replica_local_variable
+  def __init__(self, sync_on_read_variable, name):
+    self._sync_on_read_variable = sync_on_read_variable
     # We use a callable so that we don't have to evaluate this expression
     # in the case where we are trying to restore instead of save.
     def tensor():
-      strategy = replica_local_variable._distribute_strategy  # pylint: disable=protected-access
-      return strategy.extended.read_var(replica_local_variable)
+      strategy = sync_on_read_variable._distribute_strategy  # pylint: disable=protected-access
+      return strategy.extended.read_var(sync_on_read_variable)
 
     spec = saver.BaseSaverBuilder.SaveSpec(
         tensor=tensor,
         slice_spec="",
         name=name,
-        dtype=replica_local_variable.dtype)
-    super(_ReplicaLocalSaveable, self).__init__(tensor, [spec], name)
+        dtype=sync_on_read_variable.dtype)
+    super(_SyncOnReadSaveable, self).__init__(tensor, [spec], name)
 
   def restore(self, restored_tensors, restored_shapes):
     """Restore the same value into all variables."""
     tensor, = restored_tensors
-    return self._replica_local_variable.assign(tensor)
+    return self._sync_on_read_variable.assign(tensor)
 
 
 def _assert_replica_context(strategy):
@@ -1207,15 +1207,13 @@ def _assert_replica_context(strategy):
         "Replica-local variables may only be assigned in a replica context.")
 
 
-# TODO(josh11b): Rename this to SyncOnReadVariable.
-class ReplicaLocalVariable(DistributedVariable, PerReplica,
-                           trackable.Trackable):
+class SyncOnReadVariable(DistributedVariable, PerReplica, trackable.Trackable):
   """Holds a map from device to variables whose values are reduced on save."""
 
   def __init__(
       self, strategy, device_map, values, aggregation, logical_device=None):
     self._aggregation = aggregation
-    super(ReplicaLocalVariable, self).__init__(
+    super(SyncOnReadVariable, self).__init__(
         strategy, device_map, values, logical_device=logical_device)
 
   def assign_sub(self, *args, **kwargs):
@@ -1260,25 +1258,25 @@ class ReplicaLocalVariable(DistributedVariable, PerReplica,
     """Overrides Trackable method.
 
     This allows both name-based and object-based save and restore of
-    ReplicaLocalVariables.
+    `SyncOnReadVariable`s.
 
     Returns:
       A dictionary mapping attribute names to `SaveableObject` factories.
     """
     def _saveable_factory(name=self._common_name):
-      return _ReplicaLocalSaveable(self, name)
+      return _SyncOnReadSaveable(self, name)
     return {trackable.VARIABLE_VALUE_KEY: _saveable_factory}
 
 
-# Register a conversion function for ReplicaLocalVariable which allows as_ref to
+# Register a conversion function for SyncOnReadVariable which allows as_ref to
 # be true.
-def _tensor_conversion_replica_local(var, dtype=None, name=None, as_ref=False):
+def _tensor_conversion_sync_on_read(var, dtype=None, name=None, as_ref=False):
   return ops.internal_convert_to_tensor(
       var.get(), dtype=dtype, name=name, as_ref=as_ref)
 
 
-ops.register_tensor_conversion_function(ReplicaLocalVariable,
-                                        _tensor_conversion_replica_local)
+ops.register_tensor_conversion_function(SyncOnReadVariable,
+                                        _tensor_conversion_sync_on_read)
 
 
 def regroup(device_map, values, wrap_class=PerReplica):
@@ -1327,7 +1325,7 @@ def regroup(device_map, values, wrap_class=PerReplica):
       break
   # Consider three cases where same_id is true:
   # * If v0 is a DistributedVariable (a MirroredVariable or
-  #   ReplicaLocalVariable, and same_id means it is the same across all
+  #   SyncOnReadVariable, and same_id means it is the same across all
   #   devices), we want to return it. We check DistributedVariable
   #   specifically since it can look like it has a
   #   _distributed_container member since its members do.
@@ -1342,7 +1340,7 @@ def regroup(device_map, values, wrap_class=PerReplica):
     return v0
 
   # Detect the case where each device has a parallel component of the
-  # same MirroredVariable (or ReplicaLocalVariable). In this case we
+  # same MirroredVariable (or SyncOnReadVariable). In this case we
   # want to return the containing MirroredVariable, after a bunch of
   # sanity checking. In particular, each component should have the
   # same container, and the devices of the variables should match the

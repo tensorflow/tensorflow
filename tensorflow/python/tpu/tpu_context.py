@@ -313,7 +313,7 @@ class _InternalTPUContext(object):
       if self._use_tpu and self._embedding_config_spec:
         embedding_config = _tpu_estimator_embedding.EmbeddingConfig(
             self._embedding_config_spec, self._train_batch_size,
-            self._eval_batch_size, self.num_hosts, self.num_cores, master)
+            self._eval_batch_size, self.num_hosts, self.num_cores, self.config)
         if not embedding_config.has_embedding_tables():
           embedding_config = None
       self._lazy_embedding_config_dict[master] = embedding_config
@@ -510,27 +510,10 @@ class _InternalTPUContext(object):
     master = (
         run_config.evaluation_master
         if mode == model_fn_lib.ModeKeys.EVAL else run_config.master)
-    if master in _LOCAL_MASTERS:
-      return None
+    cluster_def = (run_config.session_config.cluster_def
+                   if run_config.session_config else None)
 
-    if (not run_config.session_config or
-        not run_config.session_config.cluster_def.job):
-      return _DEFAULT_JOB_NAME
-    cluster_def = run_config.session_config.cluster_def
-    job_names = set([job.name for job in cluster_def.job])
-    if _DEFAULT_JOB_NAME in job_names:
-      # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
-      raise ValueError('Currently, tpu_worker is not an allowed job name.')
-    if len(job_names) == 1:
-      return cluster_def.job[0].name
-    if len(job_names) == 2:
-      if _DEFAULT_COORDINATOR_JOB_NAME in job_names:
-        job_names.remove(_DEFAULT_COORDINATOR_JOB_NAME)
-        return job_names.pop()
-      # TODO(b/67716447): Include more sophisticated heuristics.
-    raise ValueError(
-        'Could not infer TPU job name. Please specify a tpu_job_name as part '
-        'of your TPUConfig.')
+    return tpu_system_metadata_lib.master_job(master, cluster_def)
 
   @property
   def tpu_host_placement_function(self):

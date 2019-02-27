@@ -732,6 +732,17 @@ TEST_F(OperatorTest, BuiltinUnique) {
   EXPECT_EQ(output_toco_op->idx_out_type, op.idx_out_type);
 }
 
+TEST_F(OperatorTest, BuiltinReverseSequence) {
+  ReverseSequenceOperator op;
+  op.seq_dim = 3;
+  op.batch_dim = 1;
+  std::unique_ptr<toco::ReverseSequenceOperator> output_toco_op =
+      SerializeAndDeserialize(
+          GetOperator("REVERSE_SEQUENCE", OperatorType::kReverseSequence), op);
+  EXPECT_EQ(op.seq_dim, output_toco_op->seq_dim);
+  EXPECT_EQ(op.batch_dim, output_toco_op->batch_dim);
+}
+
 // Test version for a simple Op with 2 versions and the input type controls the
 // version.
 template <typename Op>
