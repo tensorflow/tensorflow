@@ -273,6 +273,7 @@ tf_py_test(
     additional_deps = [
         ":base",
         ":util",
+        "//tensorflow/python/module",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
