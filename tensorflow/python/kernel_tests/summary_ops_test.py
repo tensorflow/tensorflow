@@ -765,7 +765,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
 class SummaryOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
-    summary_ops.disable_trace()
+    summary_ops.trace_off()
 
   def run_metadata(self, *args, **kwargs):
     assert context.executing_eagerly()
@@ -816,10 +816,10 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
     writer = summary_ops.create_file_writer(logdir)
-    summary_ops.enable_trace(graph=True, profiler=False)
+    summary_ops.trace_on(graph=True, profiler=False)
     with writer.as_default():
       f()
-      summary_ops.export_trace(name='foo', step=step)
+      summary_ops.trace_export(name='foo', step=step)
     writer.close()
     events = events_from_logdir(logdir)
     return events[1]
@@ -984,7 +984,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def f():
-      summary_ops.enable_trace(graph=True, profiler=False)
+      summary_ops.trace_on(graph=True, profiler=False)
       x = constant_op.constant(2)
       y = constant_op.constant(3)
       return x**y
@@ -998,17 +998,17 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def testTrace_cannotExportTraceWithoutTrace(self):
     with six.assertRaisesRegex(self, ValueError,
                                'Must enable trace before export.'):
-      summary_ops.export_trace(name='foo', step=1)
+      summary_ops.trace_export(name='foo', step=1)
 
   @test_util.run_v2_only
   def testTrace_cannotExportTraceInFunction(self):
-    summary_ops.enable_trace(graph=True, profiler=False)
+    summary_ops.trace_on(graph=True, profiler=False)
 
     @def_function.function
     def f():
       x = constant_op.constant(2)
       y = constant_op.constant(3)
-      summary_ops.export_trace(name='foo', step=1)
+      summary_ops.trace_export(name='foo', step=1)
       return x**y
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
