@@ -1,5 +1,4 @@
-//===- Instruction.h - MLIR ML Instruction Class --------------------*- C++
-//-*-===//
+//===- Instruction.h - MLIR Instruction Class -------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
