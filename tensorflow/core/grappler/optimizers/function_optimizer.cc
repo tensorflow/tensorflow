@@ -1160,7 +1160,9 @@ Status InlineSymbolicGradient(const NodeDef& node,
 
   // 1. Inline symbolic gradient node.
   const bool expanded = ExpandInlineFunctions(flr, &graph);
-  DCHECK(expanded) << "Didn't expand SymbolicGradient op";
+  if (!expanded) {
+    return errors::Internal("Failed to expand SymbolicGradient op");
+  }
 
   // TODO(ezhulenev): InlineFunctionBody in common_runtime/function silently
   // fails to inline function into the graph, and leaves the graph unmodified.
