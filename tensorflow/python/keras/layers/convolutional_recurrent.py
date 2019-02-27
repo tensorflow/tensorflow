@@ -28,8 +28,8 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers.recurrent import _generate_dropout_mask
 from tensorflow.python.keras.layers.recurrent import _standardize_args
+from tensorflow.python.keras.layers.recurrent import DropoutRNNCellMixin
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
@@ -482,7 +482,7 @@ class ConvRNN2D(RNN):
         K.set_value(state, value)
 
 
-class ConvLSTM2DCell(Layer):
+class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
   """Cell class for the ConvLSTM2D layer.
 
   Arguments:
@@ -597,8 +597,6 @@ class ConvLSTM2DCell(Layer):
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.state_size = (self.filters, self.filters)
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   def build(self, input_shape):
 
@@ -648,27 +646,14 @@ class ConvLSTM2DCell(Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          K.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=4)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          K.ones_like(states[1]),
-          self.recurrent_dropout,
-          training=training,
-          count=4)
-
-    # dropout matrices for input units
-    dp_mask = self._dropout_mask
-    # dropout matrices for recurrent units
-    rec_dp_mask = self._recurrent_dropout_mask
-
     h_tm1 = states[0]  # previous memory state
     c_tm1 = states[1]  # previous carry state
+
+    # dropout matrices for input units
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
+    # dropout matrices for recurrent units
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        h_tm1, training, count=4)
 
     if 0 < self.dropout < 1.:
       inputs_i = inputs * dp_mask[0]
@@ -945,6 +930,8 @@ class ConvLSTM2D(ConvRNN2D):
     self.activity_regularizer = regularizers.get(activity_regularizer)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(ConvLSTM2D, self).call(inputs,
                                         mask=mask,
                                         training=training,
