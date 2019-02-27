@@ -303,14 +303,17 @@ class XlaBuilder {
     input_output_aliases_.push_back({output_index, param_number, param_index});
   }
 
- private:
   // Describes an input/output alias as inserted by the SetUpAlias() API.
   struct InputOutputAlias {
+    // Specifies the index of the aliased buffer in the result tuple.
     ShapeIndex output_index;
+    // Specifies the parameter containing the buffer to be aliased.
     int64 param_number;
+    // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
   };
 
+ private:
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 
