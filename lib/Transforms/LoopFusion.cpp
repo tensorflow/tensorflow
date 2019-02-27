@@ -704,13 +704,12 @@ static int64_t getComputeCost(
 
 } // end anonymous namespace
 
+// TODO(andydavis,b/126426796): extend this to handle multiple result maps.
 static Optional<uint64_t> getConstDifference(AffineMap lbMap, AffineMap ubMap) {
   assert(lbMap.getNumResults() == 1 && "expected single result bound map");
   assert(ubMap.getNumResults() == 1 && "expected single result bound map");
   assert(lbMap.getNumDims() == ubMap.getNumDims());
   assert(lbMap.getNumSymbols() == ubMap.getNumSymbols());
-  // TODO(andydavis) Merge this code with 'mlir::getTripCountExpr'.
-  // ub_expr - lb_expr
   AffineExpr lbExpr(lbMap.getResult(0));
   AffineExpr ubExpr(ubMap.getResult(0));
   auto loopSpanExpr = simplifyAffineExpr(ubExpr - lbExpr, lbMap.getNumDims(),

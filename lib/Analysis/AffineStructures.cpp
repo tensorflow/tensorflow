@@ -1433,9 +1433,12 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
     if (expr)
       expr = simplifyAffineExpr(expr, numMapDims, numMapSymbols);
 
+    AffineMap &lbMap = (*lbMaps)[pos];
+    AffineMap &ubMap = (*ubMaps)[pos];
+
     if (expr) {
-      (*lbMaps)[pos] = AffineMap::get(numMapDims, numMapSymbols, expr, {});
-      (*ubMaps)[pos] = AffineMap::get(numMapDims, numMapSymbols, expr + 1, {});
+      lbMap = AffineMap::get(numMapDims, numMapSymbols, expr, {});
+      ubMap = AffineMap::get(numMapDims, numMapSymbols, expr + 1, {});
     } else {
       // TODO(bondhugula): Whenever there have local identifiers in the
       // dependence constraints, we'll conservatively over-approximate, since we
@@ -1448,38 +1451,40 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
           // redundant loop bounds.
           tmpClone->removeRedundantInequalities();
         }
-        std::tie((*lbMaps)[pos], (*ubMaps)[pos]) =
-            tmpClone->getLowerAndUpperBound(pos, num, getNumDimIds(), {},
-                                            context);
+        std::tie(lbMap, ubMap) = tmpClone->getLowerAndUpperBound(
+            pos, num, getNumDimIds(), {}, context);
       }
 
       // If the above fails, we'll just use the constant lower bound and the
       // constant upper bound (if they exist) as the slice bounds.
-      if (!(*lbMaps)[pos]) {
+      // TODO(b/126426796): being conservative for the moment in cases that
+      // lead to multiple bounds - until getConstDifference in LoopFusion.cpp is
+      // fixed (b/126426796).
+      if (!lbMap || lbMap.getNumResults() > 1) {
         LLVM_DEBUG(llvm::dbgs()
                    << "WARNING: Potentially over-approximating slice lb\n");
         auto lbConst = getConstantLowerBound(pos);
         if (lbConst.hasValue()) {
-          (*lbMaps)[pos] = AffineMap::get(
+          lbMap = AffineMap::get(
               numMapDims, numMapSymbols,
               getAffineConstantExpr(lbConst.getValue(), context), {});
         }
       }
-      if (!(*ubMaps)[pos]) {
+      if (!ubMap || ubMap.getNumResults() > 1) {
         LLVM_DEBUG(llvm::dbgs()
                    << "WARNING: Potentially over-approximating slice ub\n");
         auto ubConst = getConstantUpperBound(pos);
         if (ubConst.hasValue()) {
-          (*ubMaps)[pos] = AffineMap::get(
+          (ubMap) = AffineMap::get(
               numMapDims, numMapSymbols,
               getAffineConstantExpr(ubConst.getValue() + 1, context), {});
         }
       }
     }
     LLVM_DEBUG(llvm::dbgs() << "lb map for pos = " << Twine(pos) << ", expr: ");
-    LLVM_DEBUG((*lbMaps)[pos].dump(););
+    LLVM_DEBUG(lbMap.dump(););
     LLVM_DEBUG(llvm::dbgs() << "ub map for pos = " << Twine(pos) << ", expr: ");
-    LLVM_DEBUG((*ubMaps)[pos].dump(););
+    LLVM_DEBUG(ubMap.dump(););
   }
 }
 
