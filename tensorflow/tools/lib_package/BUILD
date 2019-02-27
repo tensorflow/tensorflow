@@ -214,6 +214,7 @@ pkg_tar(
         ":graph_coreheaders",
         ":lib_core_coreheaders",
         ":lib_strings_coreheaders",
+        ":kernel_coreheaders",
         ":platform_coreheaders",
         ":public_coreheaders",
     ],
@@ -256,11 +257,42 @@ pkg_tar(
 )
 
 pkg_tar(
+    name = "kernel_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels:headers",
+    ],
+    package_dir = "kernels",
+    tags = ["manual"],
+)
+
+pkg_tar(
     name = "platform_coreheaders",
     srcs = [
         "//tensorflow/core:platform_headers",
     ],
     package_dir = "platform",
+    tags = ["manual"],
+    deps = [
+        ":platform_default_coreheaders",
+        ":platform_windows_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "platform_default_coreheaders",
+    srcs = [
+        "//tensorflow/core:platform_default_headers",
+    ],
+    package_dir = "platform/default",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "platform_windows_coreheaders",
+    srcs = [
+        "//tensorflow/core:platform_windows_headers",
+    ],
+    package_dir = "platform/windows",
     tags = ["manual"],
 )
 

@@ -5343,6 +5343,22 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
+# filegroup(
+#     name = "lib_int32_headers",
+#     srcs = [
+#         "lib/strings/base64.h",
+#         "lib/strings/numbers.h",
+#         "lib/strings/ordered_code.h",
+#         "lib/strings/proto_serialization.h",
+#         "lib/strings/proto_text_util.h",
+#         "lib/strings/scanner.h",
+#         "lib/strings/str_util.h",
+#         "lib/strings/strcat.h",
+#         "lib/strings/stringprintf.h",
+#     ],
+#     visibility = ["//visibility:public"],
+# )
+
 filegroup(
     name = "platform_headers",
     srcs = [
@@ -5404,6 +5420,39 @@ filegroup(
         "platform/thread_annotations.h",
         "platform/tracing.h",
         "platform/types.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "platform_default_headers",
+    srcs = [
+        "platform/default/context.h",
+        "platform/default/cord.h",
+        "platform/default/dynamic_annotations.h",
+        "platform/default/fingerprint.h",
+        "platform/default/integral_types.h",
+        "platform/default/logging.h",
+        "platform/default/mutex.h",
+        "platform/default/notification.h",
+        "platform/default/stacktrace.h",
+        "platform/default/strong_hash.h",
+        "platform/default/thread_annotations.h",
+        "platform/default/tracing_impl.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "platform_windows_headers",
+    srcs = [
+        "platform/windows/cpu_info.h",
+        "platform/windows/error.h",
+        "platform/windows/integral_types.h",
+        "platform/windows/intrinsics_port.h",
+        "platform/windows/subprocess.h",
+        "platform/windows/wide_char.h",
+        "platform/windows/windows_file_system.h",
     ],
     visibility = ["//visibility:public"],
 )
