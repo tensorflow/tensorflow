@@ -21,6 +21,9 @@ static const struct hwloc_component* hwloc_static_components[] = {
     &hwloc_noos_component,      &hwloc_xml_component,
     &hwloc_synthetic_component, &hwloc_xml_nolibxml_component,
     &hwloc_linux_component,     &hwloc_linuxio_component,
-    &hwloc_x86_component,       NULL};
+#ifdef PLATFORM_IS_X86
+    &hwloc_x86_component,
+#endif
+    NULL};
 
 #endif  // THIRD_PARTY_HWLOC_STATIC_COMPONENTS_H_
