@@ -1129,6 +1129,17 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
               shape, operands[0], operands[1], options));
       break;
     }
+    case HloOpcode::kCholesky: {
+      CholeskyOptions options;
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributesAsProtoMessage(
+              /*required_attrs=*/std::unordered_set<string>(), &options)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCholesky(shape, operands[0], options));
+      break;
+    }
     case HloOpcode::kBroadcast: {
       optional<std::vector<int64>> broadcast_dimensions;
       attrs["dimensions"] = {/*required=*/true, AttrTy::kBracedInt64List,

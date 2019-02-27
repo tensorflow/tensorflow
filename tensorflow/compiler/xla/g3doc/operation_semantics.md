@@ -322,6 +322,37 @@ Invokes a computation with the given arguments.
 The arity and types of the `args` must match the parameters of the
 `computation`. It is allowed to have no `args`.
 
+## Cholesky
+
+See also
+[`XlaBuilder::Cholesky`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Computes the
+[Cholesky decomposition](https://en.wikipedia.org/wiki/Cholesky_decomposition)
+of a batch of symmetric (Hermitian) positive definite matrices.
+
+<b> `Cholesky(a, lower)` </b>
+
+Arguments | Type    | Semantics
+--------- | ------- | -----------------------------------------------------
+`a`       | `XlaOp` | a rank > 2 array of a complex or floating-point type.
+`lower`   | `bool`  | whether to use the upper or lower triangle of `a`.
+
+If `lower` is `true`, computes lower-triangular matrices `l` such that $$ a = l
+. l^T $$. If `lower` is `false`, computes upper-triangular matrices `u` such
+that $$ a = u^T . u $$.
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` is greater than 2, `a` is treated as a batch of matrices,
+where all except the minor 2 dimensions are batch dimensions.
+
+If `a` is not symmetric (Hermitian) positive definite, the result is
+implementation-defined.
+
 ## Clamp
 
 See also
@@ -2438,6 +2469,46 @@ Permutes the operand dimensions with the given permutation, so
 
 This is the same as Reshape(operand, permutation,
                             Permute(permutation, operand.shape.dimensions)).
+
+## TriangularSolve
+
+See also
+[`XlaBuilder::TriangularSolve`](https://www.tensorflow.org/code/tensorflow/compiler/xla/client/xla_builder.h).
+
+Solves systems of linear equations with lower or upper triangular coefficient
+matrices by forward- or back-substitution. Broadcasting along leading
+dimensions, this routine solves one of the matrix systems `op(a) * x =
+b`, or `x * op(a) = b`, for the variable `x`, given `a` and `b`, where `op(a)` is
+either `op(a) = a`, or `op(a) = Transpose(a)`, or `op(a) = Conj(Transpose(a))`.
+
+<b> `TriangularSolve(a, b, left_side, lower, unit_diagonal, transpose_a)` </b>
+
+| Arguments       | Type        | Semantics                                    |
+| --------------- | ----------- | -------------------------------------------- |
+| `a`             | `XlaOp`     | a rank > 2 array of a complex or             |
+:                 :             : floating-point type with shape `[..., M,     :
+:                 :             : M]`.                                         :
+| `b`             | `XlaOp`     | a rank > 2 array of the same type with shape |
+:                 :             : `[..., M, K]` if `left_side` is true, `[..., :
+:                 :             : K, M]` otherwise.                            :
+| `left_side`     | `bool`      | indicates whether to solve a system of the   |
+:                 :             : form `op(a) * x = b` (`true`) or `x *        :
+:                 :             : op(a) = b` (`false`).                        :
+| `lower`         | `bool`      | whether to use the upper or lower triangle   |
+:                 :             : of `a`.                                      :
+| `unit_diagonal` | `bool`      | if `true`, the diagonal elements of `a` are  |
+:                 :             : assumed to be `1` and not accessed.          :
+| `transpose_a`   | `Transpose` | whether to use `a` as is, transpose it or    |
+:                 :             : take its conjugate transpose.                :
+
+Input data is read only from the lower/upper triangle of `a`, depending on the
+value of `lower`. Values from the other triangle are ignored. Output data is
+returned in the same triangle; the values in the other triangle are
+implementation-defined and may be anything.
+
+If the rank of `a` and `b` are greater than 2, they are treated as batches of
+matrices, where all except the minor 2 dimensions are batch dimensions. `a` and
+`b` must have equal batch dimensions.
 
 ## Tuple
 

@@ -801,6 +801,7 @@ class XlaBuilder {
   friend XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                                bool unit_diagonal,
                                TriangularSolveOptions::Transpose transpose_a);
+  friend XlaOp Cholesky(XlaOp a, bool lower);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const string& config);
   friend void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
@@ -1342,8 +1343,7 @@ XlaOp Fft(const XlaOp& operand, FftType fft_type,
 // * `left_side` is a boolean, indicating whether to solve a system of the form
 //   op(a) * x = b (true) or x * op(a) = b (false).
 // * `lower` is a boolean, indicating whether the argument `a` is
-// lower-triangular
-//   (true) or upper-triangular (false).
+//   lower-triangular (true) or upper-triangular (false).
 // * If `unit_diagonal` is true, the diagonal elements of `a` are assumed to be
 //   1 and not accessed.
 // * `transpose_a` indicates which function `op` we use to transform the tensor
@@ -1351,6 +1351,20 @@ XlaOp Fft(const XlaOp& operand, FftType fft_type,
 XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                       bool unit_diagonal,
                       TriangularSolveOptions::Transpose transpose_a);
+
+// Computes the Cholesky decompositions of a batch of symmetric (Hermitian)
+// positive definite matrices.
+// `a` must be a (batched) square matrix; i.e., it must have rank >= 2 with the
+// two minor dimensions equal.
+// If `lower` is true, the data from the lower triangle is used; if false, the
+// upper triangle is used. The input data in the other triangle of the input
+// does not affect the output. Returns the output in the same lower/uppper
+// triangle. The data returned in the other output triangle is arbitrary and
+// implementation-defined.
+//
+// The value returned if `a` is not Hermitian positive definite is
+// implementation-defined.
+XlaOp Cholesky(XlaOp a, bool lower);
 
 // Enqueues an infeed instruction onto the computation, which writes data of
 // the given shape to the infeed buffer of the device.

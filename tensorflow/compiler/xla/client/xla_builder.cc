@@ -3022,6 +3022,21 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
   });
 }
 
+XlaOp Cholesky(XlaOp a, bool lower) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& a_shape, builder->GetShape(a));
+    xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
+    options.set_lower(lower);
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferCholeskyShape(a_shape));
+    *instr.mutable_shape() = shape.ToProto();
+
+    return builder->AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
+  });
+}
+
 XlaOp Infeed(XlaBuilder* builder, const Shape& shape, const string& config) {
   return builder->Infeed(shape, config);
 }
