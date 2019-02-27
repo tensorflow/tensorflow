@@ -23,195 +23,80 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/fill_functor.h"
+#include "tensorflow/core/util/bcast.h"
 
 namespace tensorflow {
 
 namespace functor {
 
-#define BROADCAST_SHAPE(NDIMS, input_shape, output_shape)                 \
-  auto reshape = AsEigenDSizesWithPrefix<NDIMS>(input_shape);             \
-  auto broadcast = output_shape.AsEigenDSizes<NDIMS>();                   \
-  auto reshape_32bit = AsEigenDSizesWithPrefix<NDIMS, int>(input_shape);  \
-  auto broadcast_32bit = output_shape.AsEigenDSizes<NDIMS, int>();        \
-  if (input_shape.dims() > 0) {                                           \
-    for (int i = 0; i < NDIMS; i++) {                                     \
-      if (reshape[i] != broadcast[i]) {                                   \
-        OP_REQUIRES(                                                      \
-            ctx, ((reshape[i] != 0) && (broadcast[i] % reshape[i] == 0)), \
-            errors::InvalidArgument("invalid shape to broadcast from ",   \
-                                    input_shape.DebugString(), " to ",    \
-                                    output_shape.DebugString()));         \
-        broadcast[i] = broadcast[i] / reshape[i];                         \
-      } else {                                                            \
-        broadcast[i] = 1;                                                 \
-      }                                                                   \
-      if (can_use_32bit) {                                                \
-        broadcast_32bit[i] = static_cast<int>(broadcast[i]);              \
-      }                                                                   \
-    }                                                                     \
-  }
-
-#define HANDLE_BROADCAST_FROM_SCALAR()                              \
-  if (std::is_same<Eigen::GpuDevice, Device>::value) {              \
-    FillFunctor<Device, T>()(d, output_tensor.flat<T>(),            \
-                             input_tensor.scalar<T>());             \
-  } else {                                                          \
-    output.device(d) = output.constant(input_tensor.scalar<T>()()); \
-  }
-
-#define HANDLE_BROADCAST_CASE(dim_i)                                        \
-  case dim_i: {                                                             \
-    if (can_use_32bit) {                                                    \
-      auto input = input_tensor.tensor<T, dim_i>();                         \
-      To32Bit(output).device(d) =                                           \
-          To32Bit(input).reshape(reshape_32bit).broadcast(broadcast_32bit); \
-    } else {                                                                \
-      auto input = input_tensor.tensor<T, dim_i>();                         \
-      output.device(d) = input.reshape(reshape).broadcast(broadcast);       \
-    }                                                                       \
-  } break
-
 template <typename Device, typename T>
 struct BroadcastTo {
-  void operator()(const Device &d, OpKernelContext *ctx, Tensor &output_tensor,
-                  const TensorShape &output_shape, const Tensor &input_tensor,
-                  const TensorShape &input_shape) {
-    if (output_shape.num_elements() == 0) {
-      return;
-    }
-    if (output_shape == input_shape) {
-      output_tensor.flat<T>().device(d) = input_tensor.flat<T>();
-      return;
-    }
+  template <int NDIMS>
+  void DoBCast32Bit(const Device &device, typename TTypes<T, NDIMS>::Tensor out,
+                    typename TTypes<T, NDIMS>::ConstTensor in,
+                    const typename Eigen::array<int, NDIMS> &bcast) const {
+    To32Bit(out).device(device) = To32Bit(in).broadcast(bcast);
+  }
 
+  template <int NDIMS>
+  void DoBCast(
+      const Device &device, typename TTypes<T, NDIMS>::Tensor out,
+      typename TTypes<T, NDIMS>::ConstTensor in,
+      const typename Eigen::array<Eigen::DenseIndex, NDIMS> &bcast) const {
+    out.device(device) = in.broadcast(bcast);
+  }
+
+  template <int NDIMS>
+  void ReshapeAndBCast(const Device &device, Tensor &output_tensor,
+                       const Tensor &input_tensor, const BCast &bcast) const {
     const bool can_use_32bit = std::is_same<Eigen::GpuDevice, Device>::value &&
                                output_tensor.NumElements() < kint32max &&
                                input_tensor.NumElements() < kint32max;
-
-    switch (output_shape.dims()) {
-      case 0: {
-        if (input_shape.dims() > 0) {
-          ctx->CtxFailure(errors::InvalidArgument(
-              "invalid shape to broadcast from ", input_shape.DebugString(),
-              " to ", output_shape.DebugString()));
-          break;
-        }
-        output_tensor.scalar<T>().device(d) = input_tensor.scalar<T>();
-        break;
-      }
-      case 1: {
-        BROADCAST_SHAPE(1, input_shape, output_shape);
-
-        auto output = output_tensor.tensor<T, 1>();
-        switch (input_shape.dims()) {
-          case 0: {
-            HANDLE_BROADCAST_FROM_SCALAR();
-          } break;
-            HANDLE_BROADCAST_CASE(1);
-          default:
-            ctx->CtxFailure(errors::InvalidArgument(
-                "invalid shape to broadcast from ", input_shape.DebugString(),
-                " to ", output_shape.DebugString()));
-            break;
-        }
-      } break;
-      case 2: {
-        BROADCAST_SHAPE(2, input_shape, output_shape);
-        auto output = output_tensor.tensor<T, 2>();
-        switch (input_shape.dims()) {
-          case 0: {
-            HANDLE_BROADCAST_FROM_SCALAR();
-          } break;
-            HANDLE_BROADCAST_CASE(1);
-            HANDLE_BROADCAST_CASE(2);
-          default:
-            ctx->CtxFailure(errors::InvalidArgument(
-                "invalid shape to broadcast from ", input_shape.DebugString(),
-                " to ", output_shape.DebugString()));
-            break;
-        }
-      } break;
-      case 3: {
-        BROADCAST_SHAPE(3, input_shape, output_shape);
-        auto output = output_tensor.tensor<T, 3>();
-        switch (input_shape.dims()) {
-          case 0: {
-            HANDLE_BROADCAST_FROM_SCALAR();
-          } break;
-            HANDLE_BROADCAST_CASE(1);
-            HANDLE_BROADCAST_CASE(2);
-            HANDLE_BROADCAST_CASE(3);
-          default:
-            ctx->CtxFailure(errors::InvalidArgument(
-                "invalid shape to broadcast from ", input_shape.DebugString(),
-                " to ", output_shape.DebugString()));
-            break;
-        }
-      } break;
-      case 4: {
-        BROADCAST_SHAPE(4, input_shape, output_shape);
-        auto output = output_tensor.tensor<T, 4>();
-        switch (input_shape.dims()) {
-          case 0: {
-            HANDLE_BROADCAST_FROM_SCALAR();
-          } break;
-            HANDLE_BROADCAST_CASE(1);
-            HANDLE_BROADCAST_CASE(2);
-            HANDLE_BROADCAST_CASE(3);
-            HANDLE_BROADCAST_CASE(4);
-          default:
-            ctx->CtxFailure(errors::InvalidArgument(
-                "invalid shape to broadcast from ", input_shape.DebugString(),
-                " to ", output_shape.DebugString()));
-            break;
-        }
-      } break;
-      case 5: {
-        BROADCAST_SHAPE(5, input_shape, output_shape);
-        auto output = output_tensor.tensor<T, 5>();
-        switch (input_shape.dims()) {
-          case 0: {
-            HANDLE_BROADCAST_FROM_SCALAR();
-          } break;
-            HANDLE_BROADCAST_CASE(1);
-            HANDLE_BROADCAST_CASE(2);
-            HANDLE_BROADCAST_CASE(3);
-            HANDLE_BROADCAST_CASE(4);
-            HANDLE_BROADCAST_CASE(5);
-          default:
-            ctx->CtxFailure(errors::InvalidArgument(
-                "invalid shape to broadcast from ", input_shape.DebugString(),
-                " to ", output_shape.DebugString()));
-            break;
-        }
-      } break;
-      default:
-        ctx->CtxFailure(errors::InvalidArgument(
-            "invalid shape to broadcast from ", input_shape.DebugString(),
-            " to ", output_shape.DebugString()));
-        break;
+    if (can_use_32bit) {
+      DoBCast32Bit<NDIMS>(
+          device, output_tensor.template shaped<T, NDIMS>(bcast.result_shape()),
+          input_tensor.template shaped<T, NDIMS>(bcast.x_reshape()),
+          BCast::ToIndexArrayType<int, NDIMS>(bcast.x_bcast()));
+    } else {
+      DoBCast<NDIMS>(
+          device, output_tensor.template shaped<T, NDIMS>(bcast.result_shape()),
+          input_tensor.template shaped<T, NDIMS>(bcast.x_reshape()),
+          BCast::ToIndexArrayType<Eigen::DenseIndex, NDIMS>(bcast.x_bcast()));
     }
   }
 
- private:
-  template <int NDIMS, typename DimType = Eigen::DenseIndex>
-  Eigen::DSizes<DimType, NDIMS> AsEigenDSizesWithPrefix(
-      const TensorShape &shape) const {
-    Eigen::DSizes<DimType, NDIMS> dsizes;
-    for (int d = 0; d < NDIMS - shape.dims(); d++) {
-      dsizes[d] = 1;
+  // PRECONDITION: rank(input_shape) > 0 &&
+  //               rank(input_shape) <= rank(output_shape)  &&
+  //               output_shape.num_elements() > 0.
+  void operator()(const Device &device, OpKernelContext *ctx,
+                  Tensor &output_tensor, const TensorShape &output_shape,
+                  const Tensor &input_tensor, const TensorShape &input_shape,
+                  const BCast &bcast) const {
+    const int ndims = bcast.y_reshape().size();
+    switch (ndims) {
+      case 1:
+        ReshapeAndBCast<1>(device, output_tensor, input_tensor, bcast);
+        break;
+      case 2:
+        ReshapeAndBCast<2>(device, output_tensor, input_tensor, bcast);
+        break;
+      case 3:
+        ReshapeAndBCast<3>(device, output_tensor, input_tensor, bcast);
+        break;
+      case 4:
+        ReshapeAndBCast<4>(device, output_tensor, input_tensor, bcast);
+        break;
+      case 5:
+        ReshapeAndBCast<5>(device, output_tensor, input_tensor, bcast);
+        break;
+      default:
+        ctx->SetStatus(errors::Unimplemented(
+            "Broadcast between ", input_shape.DebugString(), " and ",
+            output_shape.DebugString(), " is not supported yet."));
+        break;
     }
-    for (int d = NDIMS - shape.dims(); d < NDIMS; d++) {
-      dsizes[d] =
-          static_cast<DimType>(shape.dim_size(d - (NDIMS - shape.dims())));
-    }
-    return dsizes;
   }
 };
-
-#undef BROADCAST_SHAPE
-#undef HANDLE_BROADCAST_FROM_SCALAR
-#undef HANDLE_BROADCAST_CASE
 
 }  // namespace functor
 }  // namespace tensorflow

@@ -120,6 +120,7 @@ Status PartiallyDeclusterNode(Graph* graph, Node* n) {
 
   NodeDef ndef = n->def();
   ndef.set_name(absl::StrCat(n->name(), "/declustered"));
+  MergeDebugInfo(NodeDebugInfo(n->def()), &ndef);
   RemoveFromXlaCluster(&ndef);
   Status s;
   Node* cloned_node = graph->AddNode(ndef, &s);
@@ -271,7 +272,7 @@ Status MustCompileNode(const Node* n, bool* must_compile) {
 // We assume here that the extra repeated (repeated compared to a clustered f
 // where it will always be constant folded) host-side computation of f does not
 // regress performance in any significant manner.  We will have to revisit this
-// algorith with a more complex cost model if this assumption turns out to be
+// algorithm with a more complex cost model if this assumption turns out to be
 // incorrect.
 Status PartiallyDeclusterGraph(Graph* graph) {
   std::vector<bool> compile_time_const_nodes(graph->num_node_ids());

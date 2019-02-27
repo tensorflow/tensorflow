@@ -832,7 +832,7 @@ struct gemm_pack_rhs<
   typedef SubMapper DataMapper;
   typedef typename packet_traits<Scalar>::type Packet;
 
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -871,11 +871,9 @@ struct gemm_pack_rhs<
             const bool pad_col2 = dm2.padCol(c);
             const bool pad_col3 = dm3.padCol(c);
 
-            // We can squeeze reads along the `row` and `depth` dimensions if
-            // the row stride is `1`, which means that `row` and `depth`
-            // dimensions are contiguous (two innermost dimensions).
-            if (rhs.rowStride() == 1 &&                                //
-                !pad_col0 && !pad_col1 && !pad_col2 && !pad_col3 &&    //
+            // Check if we can squeeze reads along the `row` and `depth`
+            // dimensions (two innermost dimensions).
+            if (!pad_col0 && !pad_col1 && !pad_col2 && !pad_col3 &&    //
                 !dm0.padRow(start_row) && !dm0.padRow(max_row - 1) &&  //
                 !dm1.padRow(start_row) && !dm1.padRow(max_row - 1) &&  //
                 !dm2.padRow(start_row) && !dm2.padRow(max_row - 1) &&  //
@@ -1041,7 +1039,7 @@ struct gemm_pack_rhs<
   typedef SubMapper DataMapper;
   typedef typename packet_traits<Scalar>::type Packet;
 
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -1256,7 +1254,7 @@ struct gemm_pack_rhs<
       SubMapper;
   typedef SubMapper DataMapper;
 
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -1585,7 +1583,7 @@ EIGEN_DEVICE_FUNC
 
   EIGEN_STATIC_ASSERT(
       internal::traits<Input>::Layout == internal::traits<Kernel>::Layout,
-      YOU_MADE_A_PROGRAMMING_MISTAKE);
+      YOU_MADE_A_PROGRAMMING_MISTAKE)
   const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
 
   const int NumDims = internal::traits<Input>::NumDimensions;
@@ -1685,8 +1683,6 @@ EIGEN_DEVICE_FUNC
     kernel_dims[0] = kernelChannels * kernelRows * kernelCols;
     kernel_dims[1] = kernelFilters;
   }
-  // TODO(yangke): choose() is defined in TensorContraction.h -- consider
-  // moving it to somewhere more "common".
   return choose(
       Cond<internal::traits<Input>::Layout == ColMajor>(),
       kernel.reshape(kernel_dims)

@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/gemm_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -132,13 +133,14 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   // If we have to perform on-the-fly quantization (with quantized weights and
   // float inputs) first we need to quantize the inputs. Allocate a temporary
   // buffer to store the intermediate quantized values.
-  if (input->type == kTfLiteFloat32 && filter->type == kTfLiteUInt8) {
+  if (input->type == kTfLiteFloat32 &&
+      (filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8)) {
     TfLiteIntArrayFree(node->temporaries);
     node->temporaries = TfLiteIntArrayCreate(2);
     node->temporaries->data[0] = data->scratch_tensor_index;
 
     TfLiteTensor* input_quantized = GetTemporary(context, node, /*index=*/0);
-    input_quantized->type = kTfLiteUInt8;
+    input_quantized->type = filter->type;
     input_quantized->allocation_type = kTfLiteArenaRw;
 
     // TODO(raziel): add this logic to ResizeTensor.
@@ -209,8 +211,11 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
                         TfLiteTensor* scaling_factors, TfLiteTensor* output) {
   // Check the types for this hybrid Op.
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
-  TF_LITE_ENSURE_EQ(context, filter->type, kTfLiteUInt8);
-  TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  TF_LITE_ENSURE(context,
+                 filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8);
+  if (bias) {
+    TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  }
   TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
 
   int total_input_size = 1;
@@ -241,7 +246,15 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   // Quantize input from float to uint8 + quantization params (scaling factor).
   float unused_min, unused_max;
   float* scaling_factors_ptr = scaling_factors->data.f;
-  int8_t* quant_data = reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+  int8_t* quant_data;
+  int8_t* filter_data;
+  if (filter->type == kTfLiteUInt8) {
+    quant_data = reinterpret_cast<int8_t*>(input_quantized->data.uint8);
+    filter_data = reinterpret_cast<int8_t*>(filter->data.uint8);
+  } else {
+    quant_data = input_quantized->data.int8;
+    filter_data = filter->data.int8;
+  }
 
   // Quantize each batch independently.
   for (int b = 0; b < batch_size; ++b) {
@@ -255,8 +268,8 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
 
   // Compute output += weight * quantized_input
   tensor_utils::MatrixBatchVectorMultiplyAccumulate(
-      reinterpret_cast<int8_t*>(filter->data.uint8), num_units, input_size,
-      quant_data, scaling_factors_ptr, batch_size, output->data.f,
+      filter_data, num_units, input_size, quant_data, scaling_factors_ptr,
+      batch_size, output->data.f,
       /*result_stride=*/1);
 
   // Apply activation function to floats.
@@ -275,6 +288,27 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   if (params->activation == kTfLiteActRelu6) {                       \
     macro_name(target_namespace, kRelu6);                            \
   }
+
+namespace {
+void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
+                        const TfLiteTensor* filter, const TfLiteTensor* bias,
+                        TfLiteTensor* output,
+                        gemmlowp::GemmContext* gemm_context) {
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = -data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+  reference_integer_ops::FullyConnected(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(filter), GetTensorData<int8_t>(filter),
+      GetTensorShape(bias), GetTensorData<int32_t>(bias),
+      GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+}
+}  // namespace
 
 template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
@@ -309,6 +343,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       case kTfLiteUInt8:
         TF_LITE_FULLY_CONNECTED(reference_ops, uint8_t);
         break;
+      case kTfLiteInt8:
+        FullyConnectedInt8(data, input, filter, bias, output, gemm_context);
+        break;
       case kTfLiteInt16:
         TF_LITE_FULLY_CONNECTED(reference_ops, int16_t);
         break;
@@ -328,6 +365,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     switch (output->type) {
       case kTfLiteUInt8:
         TF_LITE_FULLY_CONNECTED(optimized_ops, uint8_t);
+        break;
+      case kTfLiteInt8:
+        FullyConnectedInt8(data, input, filter, bias, output, gemm_context);
         break;
       case kTfLiteInt16:
         TF_LITE_FULLY_CONNECTED(optimized_ops, int16_t);
@@ -445,6 +485,15 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
                                                   shuffled_input_workspace);
       } else if (params->weights_format ==
                  kTfLiteFullyConnectedWeightsFormatDefault) {
+        return EvalQuantized<kernel_type>(context, node, params, data, input,
+                                          filter, bias, output);
+      } else {
+        context->ReportError(context,
+                             "Unhandled fully-connected weights format");
+        return kTfLiteError;
+      }
+    case kTfLiteInt8:
+      if (params->weights_format == kTfLiteFullyConnectedWeightsFormatDefault) {
         return EvalQuantized<kernel_type>(context, node, params, data, input,
                                           filter, bias, output);
       } else {

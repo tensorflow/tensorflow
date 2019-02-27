@@ -104,7 +104,7 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for unidirectional RNN on, e.g., CPU or mobile.
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
 
     # NOTE: Even if there's only one layer, the cell needs to be wrapped in
     # MultiRNNCell.
@@ -124,7 +124,7 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for bidirectional RNN
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
     cells_fw = [single_cell() for _ in range(num_layers)]
     cells_bw = [single_cell() for _ in range(num_layers)]
 
@@ -374,7 +374,11 @@ class _CudnnRNN(base_layer.Layer):
         "This cell does not yet support object-based saving. File a feature "
         "request if this limitation bothers you.")
 
-  def call(self, inputs, initial_state=None, training=True):
+  def call(self,
+           inputs,
+           initial_state=None,
+           sequence_lengths=None,
+           training=True):
     """Runs the forward step for the RNN model.
 
     Args:
@@ -382,6 +386,9 @@ class _CudnnRNN(base_layer.Layer):
       initial_state: a tuple of tensor(s) of shape
         `[num_layers * num_dirs, batch_size, num_units]`. If not provided, use
         zero initial states. The tuple size is 2 for LSTM and 1 for other RNNs.
+      sequence_lengths: an int32 array representing the variable sequence
+        lengths in a batch. The size of the array has to equal the
+        batch_size. If not provided, the same sequence length will be assumed.
       training: whether this operation will be used in training or inference.
     Returns:
       output: a tensor of shape `[time_len, batch_size, num_dirs * num_units]`.
@@ -411,7 +418,7 @@ class _CudnnRNN(base_layer.Layer):
       # For model that doesn't take input_c, replace with a dummy tensor.
       c = array_ops.constant([], dtype=dtype)
     outputs, (output_h, output_c) = self._forward(inputs, h, c, self.kernel,
-                                                  training)
+                                                  sequence_lengths, training)
     if self._rnn_mode == CUDNN_LSTM:
       return outputs, (output_h, output_c)
     else:
@@ -475,7 +482,7 @@ class _CudnnRNN(base_layer.Layer):
           dropout=self._dropout,
           direction=self._direction)
 
-  def _forward(self, inputs, h, c, opaque_params, training):
+  def _forward(self, inputs, h, c, opaque_params, sequence_lengths, training):
     output, output_h, output_c = cudnn_rnn_ops._cudnn_rnn(  # pylint:disable=protected-access
         inputs,
         h,
@@ -483,6 +490,7 @@ class _CudnnRNN(base_layer.Layer):
         opaque_params,
         training,
         self._rnn_mode,
+        sequence_lengths=sequence_lengths,
         input_mode=self._input_mode,
         direction=self._direction,
         dropout=self._dropout,
@@ -510,8 +518,8 @@ class _CudnnRNN(base_layer.Layer):
         direction=self.direction,
         scope=vs.get_variable_scope(),
         name="%s_saveable" % self.trainable_variables[0].name.split(":")[0])
-    self._saveable._add_checkpointable_dependencies(  # pylint: disable=protected-access
-        checkpointable=self, dtype=self._plain_dtype)
+    self._saveable._add_trackable_dependencies(  # pylint: disable=protected-access
+        trackable=self, dtype=self._plain_dtype)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
 

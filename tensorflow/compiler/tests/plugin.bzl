@@ -18,13 +18,12 @@
 #   git update-index --assume-unchanged tensorflow/compiler/tests/plugin.bzl
 
 plugins = {
-  #"example": {
-  #  "device":"XLA_MY_DEVICE",
-  #  "types":"DT_FLOAT,DT_HALF,DT_INT32",
-  #   "tags":[],
-  #   "args":["--disabled_manifest=tensorflow/compiler/plugin/example/disabled_manifest.txt"],
-  #   "data":["//tensorflow/compiler/plugin/example:disabled_manifest.txt"],
-  #   "deps":[],
-  #},
+    #"example": {
+    #  "device":"XLA_MY_DEVICE",
+    #  "types":"DT_FLOAT,DT_HALF,DT_INT32",
+    #   "tags":[],
+    #   "args":["--disabled_manifest=tensorflow/compiler/plugin/example/disabled_manifest.txt"],
+    #   "data":["//tensorflow/compiler/plugin/example:disabled_manifest.txt"],
+    #   "deps":[],
+    #},
 }
-

@@ -240,8 +240,7 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
     if (TF_PREDICT_FALSE(v2 < 0)) {                                       \
       return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
     }                                                                     \
-    const size_t uval = (size_t)((unsigned)v1);                           \
-    return name##Impl<size_t, size_t>(uval, v2, exprtext);                \
+    return name##Impl<size_t, size_t>(v1, v2, exprtext);                  \
   }                                                                       \
   inline string* name##Impl(const int v1, const size_t v2,                \
                             const char* exprtext) {                       \

@@ -375,11 +375,13 @@ class DistributeCoordinatorIntegrationTest(
     threads = self.run_multiple_tasks_in_threads(self._independent_worker_fn,
                                                  cluster_spec, train_distribute,
                                                  eval_distribute)
+    threads_to_join = []
     for task_type, ts in threads.items():
       if task_type == PS:
         continue
       for t in ts:
-        t.join()
+        threads_to_join.append(t)
+    self.join_independent_workers(threads_to_join)
 
     estimator = self._get_estimator(train_distribute, eval_distribute)
     self._inspect_train_and_eval_events(estimator)
@@ -413,8 +415,7 @@ class DistributeCoordinatorIntegrationTest(
     threads = self.run_multiple_tasks_in_threads(self._independent_worker_fn,
                                                  cluster_spec, train_distribute,
                                                  eval_distribute)
-    threads[WORKER][0].join()
-    threads[EVALUATOR][0].join()
+    self.join_independent_workers([threads[WORKER][0], threads[EVALUATOR][0]])
 
     estimator = self._get_estimator(train_distribute, eval_distribute)
     self._inspect_train_and_eval_events(estimator)

@@ -18,10 +18,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.python.client import device_lib
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import format_master_url
 from tensorflow.python.training import server_lib
+from tensorflow.python.util.tf_export import tf_export
 
 _KUBERNETES_API_CLIENT_INSTALLED = True
 try:
@@ -31,6 +31,7 @@ except ImportError:
   _KUBERNETES_API_CLIENT_INSTALLED = False
 
 
+@tf_export('distribute.cluster_resolver.KubernetesClusterResolver')
 class KubernetesClusterResolver(ClusterResolver):
   """Cluster Resolver for Kubernetes.
 
@@ -89,33 +90,31 @@ class KubernetesClusterResolver(ClusterResolver):
     self._override_client = override_client
 
     self.task_type = None
-    self.task_index = None
+    self.task_id = None
     self.rpc_layer = rpc_layer
 
-  def master(self, task_type=None, task_index=None, rpc_layer=None):
+  def master(self, task_type=None, task_id=None, rpc_layer=None):
     """Returns the master address to use when creating a session.
 
-    You must have set the task_type and task_index object properties before
-    calling this function, or pass in the `task_type` and `task_index`
+    You must have set the task_type and task_id object properties before
+    calling this function, or pass in the `task_type` and `task_id`
     parameters when using this function. If you do both, the function parameters
     will override the object properties.
 
     Args:
       task_type: (Optional) The type of the TensorFlow task of the master.
-      task_index: (Optional) The index of the TensorFlow task of the master.
+      task_id: (Optional) The index of the TensorFlow task of the master.
       rpc_layer: (Optional) The RPC protocol for the given cluster.
 
     Returns:
       The name or URL of the session master.
     """
-    if task_type is not None and task_index is not None:
-      return format_master_url(
-          self.cluster_spec().task_address(task_type, task_index),
-          rpc_layer or self.rpc_layer)
+    task_type = task_type if task_type is not None else self.task_type
+    task_id = task_id if task_id is not None else self.task_id
 
-    if self.task_type is not None and self.task_index is not None:
+    if task_type is not None and task_id is not None:
       return format_master_url(
-          self.cluster_spec().task_address(self.task_type, self.task_index),
+          self.cluster_spec().task_address(task_type, task_id),
           rpc_layer or self.rpc_layer)
 
     return ''
@@ -157,26 +156,3 @@ class KubernetesClusterResolver(ClusterResolver):
       cluster_map[tf_job] = all_pods
 
     return server_lib.ClusterSpec(cluster_map)
-
-  @property
-  def environment(self):
-    """Returns the current environment which TensorFlow is running in.
-
-    For users in the Cloud environment, the environment property is always an
-    empty string, and Google users will not use this ClusterResolver for running
-    on internal systems.
-    """
-    return ''
-
-  def num_accelerators(self,
-                       task_type=None,
-                       task_index=None,
-                       accelerator_type='GPU',
-                       config_proto=None):
-    # TODO(frankchn): Make querying non-local accelerators work
-    if task_type is not None or task_index is not None:
-      raise NotImplementedError('Querying non-local accelerators is not yet'
-                                'implemented.')
-
-    local_devices = device_lib.list_local_devices(config_proto)
-    return sum(d.device_type == accelerator_type for d in local_devices)

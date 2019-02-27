@@ -69,6 +69,7 @@ genrule(
         "test_graph_tfmatmulandadd.pb",
         "test_graph_tfsplits.pb",
         "test_graph_tftop_k.pb",
+        "test_graph_tfvariable.pb",
     ],
     # Set CUDA_VISIBLE_DEVICES='' to prevent the code we launch from using any
     # GPUs which might be present.  This is important because builds may run
@@ -222,6 +223,17 @@ tf_library(
     ],
 )
 
+tf_library(
+    name = "test_graph_tfvariable",
+    testonly = 1,
+    config = "test_graph_tfvariable.config.pbtxt",
+    cpp_class = "VariableComp",
+    graph = "test_graph_tfvariable.pb",
+    tags = [
+        "manual",
+    ],
+)
+
 tf_cc_test(
     name = "tfcompile_test",
     srcs = ["tfcompile_test.cc"],
@@ -241,6 +253,7 @@ tf_cc_test(
         ":test_graph_tfmatmulandadd_with_profiling",
         ":test_graph_tfsplits",
         ":test_graph_tftop_k",
+        ":test_graph_tfvariable",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",

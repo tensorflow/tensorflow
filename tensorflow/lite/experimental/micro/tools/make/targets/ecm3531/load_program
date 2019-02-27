@@ -1,0 +1,55 @@
+#!/usr/bin/python3
+#Usage: cd to the directory  tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 and type ./load_prgram executable_name to load an executable from the directory tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin/
+#
+#
+# Copyright 2015 The TensorFlow Authors. All Rights Reserved.
+#
+#Licensed under the Apache License, Version 2.0 (the "License");
+#you may not use this file except in compliance with the License.
+#You may obtain a copy of the License at
+#
+#    http://www.apache.org/licenses/LICENSE-2.0
+#
+#Unless required by applicable law or agreed to in writing, software
+#distributed under the License is distributed on an "AS IS" BASIS,
+#WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+#See the License for the specific language governing permissions and
+#limitations under the License.
+#==============================================================================
+
+
+import sys, getopt
+import os
+import telnetlib
+
+def send_ocd_cmd(line):
+    ocd_sock.write(bytes(line,encoding = 'utf-8'))
+    print(ocd_sock.read_until(b'> ').decode('utf-8'), end='')
+
+def get_ocd_response():
+    print(ocd_sock.read_until(b'> ').decode('utf-8'), end='')
+
+#get hooked up to openocd daemon
+ocd_sock = telnetlib.Telnet(host='localhost', port=4444)
+get_ocd_response() # clean it out
+
+# git path to project elf file
+cur_dir = os.getcwd()
+#elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + 'preprocessor_test'
+elf_file = cur_dir + '/../../gen/ecm3531_cortex-m3/bin/' + sys.argv[1]
+print("elf_file = ",elf_file)
+
+
+# use these to download and run the elf fle
+ocd_commands = ["halt\n",
+                "load_image {}\n".format(elf_file),
+                "mww 0x1001FFF8 0xDEADBEEF\n",
+                "mww 0x1001FFFC 0xC369A517\n",
+                "reset\n"]
+
+# OK now do what we came here for!!!
+for x in ocd_commands: 
+    print(x)
+    send_ocd_cmd(x)
+
+

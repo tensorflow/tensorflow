@@ -46,7 +46,7 @@ namespace {
 // Describes a tensor with its operation Node and output position
 typedef std::pair<Node*, int> TensorDesc;
 
-const char* const kRetValOp = "_Retval";
+constexpr char kRetValOp[] = "_Retval";
 
 void ReplaceEdgeSources(const TensorDesc& old_src, const TensorDesc& new_src,
                         Graph* graph) {
@@ -415,6 +415,10 @@ Status Vectorization::Initialize(const FunctionDef& outer_scope,
 // NodeBuilder
 Status Vectorization::StackTensor(WrappedTensor* unstacked,
                                   TensorDesc* result) {
+  if (unstacked->node->output_type(unstacked->output_index) == DT_VARIANT) {
+    // TODO(b/124069171): "ExpandDims" doesn't work with Variant tensors.
+    return errors::Unimplemented("Cannot stack tensor with Variant type.");
+  }
   // Note that all these nodes are necessary as the size of the batch may not be
   // constant.
   if (unstacked->stacked) {
@@ -643,6 +647,6 @@ Status VectorizeMapDefun(const FunctionDef& outer_scope,
   return Vectorization(lib).Vectorize(outer_scope, map_defun_node, result);
 }
 
-}  // end namespace vectorization_utils
-}  // end namespace grappler
-}  // end namespace tensorflow
+}  // namespace vectorization_utils
+}  // namespace grappler
+}  // namespace tensorflow

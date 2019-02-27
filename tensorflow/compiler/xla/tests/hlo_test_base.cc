@@ -139,7 +139,8 @@ std::unique_ptr<VerifiedHloModule> HloTestBase::CreateNewVerifiedModule(
     const string& name) {
   return absl::make_unique<VerifiedHloModule>(
       name, GetModuleConfigForTest(), verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_);
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
 }
 
 StatusOr<std::unique_ptr<VerifiedHloModule>>
@@ -147,7 +148,8 @@ HloTestBase::ParseAndReturnVerifiedModule(absl::string_view hlo_text,
                                           const HloModuleConfig& config) {
   auto module = absl::make_unique<VerifiedHloModule>(
       TestName(), config, verifier_layout_sensitive_,
-      allow_mixed_precision_in_hlo_verifier_);
+      allow_mixed_precision_in_hlo_verifier_,
+      backend().compiler()->ShapeSizeBytesFunction());
   TF_RETURN_IF_ERROR(ParseHloString(hlo_text, module.get()));
   TF_RETURN_IF_ERROR(module->Verify());
   return std::move(module);
@@ -181,6 +183,7 @@ DebugOptions HloTestBase::GetDebugOptionsForTest() {
   // TODO(b/38354253): Change tests to use Parameters instead of Constants.
   debug_options.add_xla_disable_hlo_passes("constant_folding");
   debug_options.set_xla_gpu_max_kernel_unroll_factor(1);
+  debug_options.set_xla_hlo_evaluator_use_fast_path(true);
   return debug_options;
 }
 
@@ -200,6 +203,18 @@ Literal HloTestBase::ExecuteNoHloPasses(std::unique_ptr<HloModule> module,
 Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
                                         absl::Span<Literal* const> arguments) {
   return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
+}
+
+StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    int64 num_replicas, bool use_threads) {
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  for (auto argument : arguments) {
+    options.arguments.push_back(argument);
+  }
+  return test_runner_.ExecuteReplicated(std::move(module), options,
+                                        use_threads);
 }
 
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
@@ -310,7 +325,10 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
                        reference_preprocessor);
 }
 
-::testing::AssertionResult HloTestBase::Run(string_view hlo_string) {
+::testing::AssertionResult HloTestBase::Run(string_view hlo_string,
+                                            bool run_hlo_passes,
+                                            ExecutionProfile* profile,
+                                            string backend_config) {
   auto module_or_status =
       HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
   if (!module_or_status.ok()) {
@@ -318,19 +336,108 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
            << "Error while parsing HLO text format: "
            << module_or_status.status().ToString();
   }
+
+  std::unique_ptr<HloModule> module = std::move(module_or_status.ValueOrDie());
   const auto& fake_arguments =
-      MakeFakeArguments(module_or_status.ValueOrDie().get())
-          .ConsumeValueOrDie();
+      MakeFakeArguments(module.get()).ConsumeValueOrDie();
   std::vector<Literal*> fake_argument_ptrs;
   absl::c_transform(
       fake_arguments, std::back_inserter(fake_argument_ptrs),
       [](const Literal& literal) { return const_cast<Literal*>(&literal); });
-  return test_runner_
-                 .Execute(std::move(module_or_status.ValueOrDie()),
-                          fake_argument_ptrs, /*run_hlo_passes=*/true)
-                 .ok()
+
+  if (profile != nullptr) {
+    // We have to enable HLO profiling since otherwise currently the
+    // ExecutionProfile is not correct.
+    //
+    // TODO(b/119432044): Fix collection of the ExecutionProfile
+    // so that this is not necessary.
+    HloModuleConfig config = module->config();
+    DebugOptions debug_options = config.debug_options();
+    debug_options.set_xla_hlo_profile(true);
+    config.set_debug_options(debug_options);
+    module->set_config(config);
+  }
+
+  if (!backend_config.empty()) {
+    // Set backend configuration if it is given.
+    HloInstruction* instruction =
+        module->entry_computation()->root_instruction();
+    instruction->set_raw_backend_config_string(backend_config);
+  }
+
+  // return ::testing::AssertionSuccess();
+  auto output = test_runner_.Execute(std::move(module), fake_argument_ptrs,
+                                     /*run_hlo_passes=*/run_hlo_passes,
+                                     /*profile=*/profile);
+
+  return output.ok()
              ? ::testing::AssertionSuccess()
-             : ::testing::AssertionFailure();
+             : ::testing::AssertionFailure() << output.status().error_message();
+}
+
+::testing::AssertionResult HloTestBase::RunMultipleTimes(
+    string_view hlo_string, bool run_hlo_passes,
+    std::vector<ExecutionProfile>* profiles, string backend_config) {
+  int n = profiles->size();
+  std::vector<std::vector<Literal*>> fake_argument_ptrs(n);
+  std::vector<std::vector<Literal>> fake_arguments(n);
+  std::vector<std::unique_ptr<Executable>> executables(n);
+
+  for (int i = 0; i < n; ++i) {
+    auto module_or_status =
+        HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+    if (!module_or_status.ok()) {
+      return ::testing::AssertionFailure()
+             << "Error while parsing HLO text format: "
+             << module_or_status.status().ToString();
+    }
+    std::unique_ptr<HloModule> module =
+        std::move(module_or_status.ValueOrDie());
+
+    fake_arguments[i] = MakeFakeArguments(module.get()).ConsumeValueOrDie();
+    absl::c_transform(
+        fake_arguments[i], std::back_inserter(fake_argument_ptrs[i]),
+        [](const Literal& literal) { return const_cast<Literal*>(&literal); });
+
+    if (profiles != nullptr) {
+      // We have to enable HLO profiling since otherwise currently the
+      // ExecutionProfile is not correct.
+      //
+      // TODO(b/119432044): Fix collection of the ExecutionProfile
+      // so that this is not necessary.
+      HloModuleConfig config = module->config();
+      DebugOptions debug_options = config.debug_options();
+      debug_options.set_xla_hlo_profile(true);
+      config.set_debug_options(debug_options);
+      module->set_config(config);
+    }
+
+    if (!backend_config.empty()) {
+      // Set backend configuration if it is given.
+      HloInstruction* instruction =
+          module->entry_computation()->root_instruction();
+      instruction->set_raw_backend_config_string(backend_config);
+    }
+
+    auto executable =
+        test_runner_.CreateExecutable(std::move(module), run_hlo_passes);
+    if (!executable.ok()) {
+      return ::testing::AssertionFailure()
+             << executable.status().error_message();
+    }
+    executables[i] = std::move(executable.ValueOrDie());
+  }
+
+  for (int i = 0; i < n; ++i) {
+    auto output =
+        test_runner_.Execute(std::move(executables[i]), fake_argument_ptrs[i],
+                             /*profile=*/&((*profiles)[i]));
+    if (!output.ok()) {
+      return ::testing::AssertionFailure() << output.status().error_message();
+    }
+  }
+
+  return ::testing::AssertionSuccess();
 }
 
 ::testing::AssertionResult HloTestBase::RunAndCompareFromFile(

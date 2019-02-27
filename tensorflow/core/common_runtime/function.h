@@ -21,6 +21,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/device.h"
 #include "tensorflow/core/common_runtime/device_mgr.h"
+#include "tensorflow/core/common_runtime/graph_optimizer.h"
 #include "tensorflow/core/common_runtime/process_function_library_runtime.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/graph/graph.h"
@@ -78,6 +79,7 @@ struct FunctionBody {
   DataTypeVector ret_types;
   gtl::InlinedVector<Node*, 4> arg_nodes;
   gtl::InlinedVector<Node*, 4> ret_nodes;
+  gtl::InlinedVector<Node*, 4> control_ret_nodes;
 
   FunctionBody() {}
   FunctionBody(const FunctionDef& f, DataTypeSlice arg_types,
@@ -114,12 +116,15 @@ bool RemoveIdentityNodes(Graph* g);
 bool RemoveListArrayConverter(Graph* g);
 
 // For each node in "graph", if "lib" indicates that the node is a
-// function call, inline the function body.  Returns true if at least
+// function call, inline the function body. Returns true if at least
 // one node is inlined.
 //
 // This routine goes through "graph" nodes once and applies the
-// inlining.  The caller may decide to apply the inlining on "graph"
+// inlining. The caller may decide to apply the inlining on "graph"
 // multiple times by calling ExpandInlineFunctions a few times.
+//
+// Function calls that can't be safely inlined into the graph (ValidateInlining
+// returns error), are ignored.
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
 
 // Dump the contents of the "graph" to log files if the logging level is
@@ -133,6 +138,8 @@ void DumpGraph(StringPiece label, const Graph* g);
 // OptimizeGraph mutates **g extensively and replaces '*g' with a
 // complete copy. Therefore, the caller should not keep any references
 // to nodes *g.
+void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g,
+                   const GraphOptimizer::Options& graph_optimizer_options);
 void OptimizeGraph(FunctionLibraryRuntime* lib, std::unique_ptr<Graph>* g);
 
 // Convert the Graph of a function to a GraphDef.
@@ -153,13 +160,24 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // TODO(zhifengc): Asks math expert to say the comment again.
 FunctionBody* SymbolicGradient(const FunctionBody& f);
 
+// Returns 'Status::OK()' iff the function '*fbody' can be inlined at 'node'
+// based on the type signature of 'node' and 'fbody'.
+//
+// If function can't be safely inlined, returns error message with details why
+// inlining is not possible or safe.
+Status ValidateInlining(const Node* node, const FunctionBody* fbody);
+
 // Given a "caller" in graph "g", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
 // edges properly. "override_device" specifies whether inlining should replace
 // explicitly specified devices inside fbody with the callee's device.
-void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                        Node* caller, const FunctionBody* fbody,
-                        bool override_device = true);
+//
+// Returns 'Status::OK()' if function was successfully inlined into the graph.
+// If function inlining is not possible returns a error with a reason, and
+// leaves the graph in unmodified state.
+Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
+                          Node* caller, const FunctionBody* fbody,
+                          bool override_device = true);
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.

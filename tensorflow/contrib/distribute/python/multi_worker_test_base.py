@@ -37,10 +37,15 @@ except ImportError as _error:  # pylint: disable=invalid-name
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.estimator import run_config
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.training import coordinator
 from tensorflow.python.training import server_lib
+
+
+original_run_std_server = dc._run_std_server  # pylint: disable=protected-access
 
 ASSIGNED_PORTS = set()
 lock = threading.Lock()
@@ -356,10 +361,27 @@ class MockOsEnv(collections.Mapping):
 class IndependentWorkerTestBase(test.TestCase):
   """Testing infra for independent workers."""
 
+  def _make_mock_run_std_server(self):
+    thread_local = threading.local()
+
+    def _mock_run_std_server(*args, **kwargs):
+      ret = original_run_std_server(*args, **kwargs)
+      # Wait for all std servers to be brought up in order to reduce the chance
+      # of remote sessions taking local ports that have been assigned to std
+      # servers. Only call this barrier the first time this function is run for
+      # each thread.
+      if not getattr(thread_local, 'server_started', False):
+        self._barrier.wait()
+      thread_local.server_started = True
+      return ret
+
+    return _mock_run_std_server
+
   def setUp(self):
     self._mock_os_env = MockOsEnv()
     self._mock_context = test.mock.patch.object(os, 'environ',
                                                 self._mock_os_env)
+    self._coord = coordinator.Coordinator()
     super(IndependentWorkerTestBase, self).setUp()
     self._mock_context.__enter__()
 
@@ -368,8 +390,9 @@ class IndependentWorkerTestBase(test.TestCase):
     super(IndependentWorkerTestBase, self).tearDown()
 
   def _task_thread(self, task_fn, tf_config, *args, **kwargs):
-    os.environ['TF_CONFIG'] = json.dumps(tf_config)
-    task_fn(*args, **kwargs)
+    with self._coord.stop_on_exception():
+      os.environ['TF_CONFIG'] = json.dumps(tf_config)
+      task_fn(*args, **kwargs)
 
   def _run_task_in_thread(self, task_fn, cluster_spec, task_type, task_id,
                           *args, **kwargs):
@@ -403,3 +426,28 @@ class IndependentWorkerTestBase(test.TestCase):
                                      *args, **kwargs)
         threads[task_type].append(t)
     return threads
+
+  def join_independent_workers(self, worker_threads):
+    self._coord.join(worker_threads)
+
+
+def get_tf_config_task():
+  return json.loads(os.environ['TF_CONFIG'])['task']
+
+
+def get_tf_config_cluster_spec():
+  return json.loads(os.environ['TF_CONFIG'])['cluster']
+
+
+def get_task_type():
+  return get_tf_config_task()['type']
+
+
+def get_task_index():
+  return get_tf_config_task()['index']
+
+
+def is_chief():
+  return ('chief' not in get_tf_config_cluster_spec()
+          and get_task_type() == 'worker'
+          and get_task_index() == 0)

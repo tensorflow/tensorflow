@@ -176,7 +176,9 @@ class RpcOpTestBase(object):
       expected_message_values = np.where(
           status_code_values == errors.INVALID_ARGUMENT,
           I_WARNED_YOU.encode('ascii'), b'')
-      self.assertAllEqual(expected_message_values, status_message_values)
+      for msg, expected in zip(status_message_values, expected_message_values):
+        self.assertTrue(expected in msg,
+                        '"%s" did not contain "%s"' % (msg, expected))
 
   def testVecHostPortRpc(self):
     with self.cached_session() as sess:

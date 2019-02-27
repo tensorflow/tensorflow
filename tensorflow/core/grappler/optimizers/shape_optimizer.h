@@ -30,9 +30,8 @@ namespace grappler {
 // information.
 class ShapeOptimizer : public GraphOptimizer {
  public:
-  ShapeOptimizer() : opt_level_(RewriterConfig::ON) {}
-  explicit ShapeOptimizer(RewriterConfig::Toggle opt_level)
-      : opt_level_(opt_level) {}
+  ShapeOptimizer() {}
+  explicit ShapeOptimizer(RewriterConfig::Toggle opt_level) {}
 
   ~ShapeOptimizer() override {}
 
@@ -43,9 +42,6 @@ class ShapeOptimizer : public GraphOptimizer {
 
   void Feedback(Cluster* cluster, const GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
-
- private:
-  RewriterConfig::Toggle opt_level_;
 };
 
 }  // end namespace grappler

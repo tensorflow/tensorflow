@@ -40,12 +40,16 @@ load(
 
 # @unused
 TENSORFLOW_API_INIT_FILES_V2 = (
-    TENSORFLOW_API_INIT_FILES + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+    TENSORFLOW_API_INIT_FILES +
+    get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
 # @unused
-TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT = (
-    TENSORFLOW_API_INIT_FILES_V1 + get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+TENSORFLOW_API_INIT_FILES_V1 = (
+    TENSORFLOW_API_INIT_FILES_V1 +
+    get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
 # Config setting used when building for products
@@ -87,6 +91,12 @@ config_setting(
         "crosstool_top": "//external:android/crosstool",
         "cpu": "armeabi",
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "emscripten",
+    values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],
 )
 
@@ -203,6 +213,12 @@ config_setting(
 )
 
 config_setting(
+    name = "arm",
+    values = {"cpu": "arm"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
     visibility = ["//visibility:public"],
@@ -267,6 +283,15 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# By default, XLA GPU is compiled into tensorflow when building with
+# --config=cuda even when `with_xla_support` is false. The config setting
+# here allows us to override the behavior if needed.
+config_setting(
+    name = "no_xla_deps_in_cuda",
+    define_values = {"no_xla_deps_in_cuda": "true"},
+    visibility = ["//visibility:public"],
+)
+
 config_setting(
     name = "with_gdr_support",
     define_values = {"with_gdr_support": "true"},
@@ -276,6 +301,12 @@ config_setting(
 config_setting(
     name = "with_verbs_support",
     define_values = {"with_verbs_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "with_numa_support",
+    define_values = {"with_numa_support": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -329,6 +360,13 @@ config_setting(
 )
 
 config_setting(
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
+)
+
+config_setting(
     name = "with_mpi_support",
     values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],
@@ -355,17 +393,18 @@ config_setting(
     define_values = {"tf_api_version": "2"},
 )
 
+# This flag is defined for select statements that match both
+# on 'windows' and 'api_version_2'. In this case, bazel requires
+# having a flag which is a superset of these two.
+config_setting(
+    name = "windows_and_api_version_2",
+    define_values = {"tf_api_version": "2"},
+    values = {"cpu": "x64_windows"},
+)
+
 package_group(
     name = "internal",
-    packages = [
-        "-//third_party/tensorflow/python/estimator",
-        "//learning/meta_rank/...",
-        "//tensorflow/...",
-        "//tensorflow_estimator/contrib/...",
-        "//tensorflow_fold/llgtm/...",
-        "//tensorflow_text/...",
-        "//third_party/py/tensor2tensor/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 load(
@@ -429,8 +468,7 @@ tf_cc_shared_object(
         "//tensorflow:darwin": [],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow:tf_framework_version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
         ],
     }),
     linkstatic = 1,
@@ -464,15 +502,13 @@ tf_cc_shared_object(
     name = "libtensorflow.so",
     linkopts = select({
         "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow/c:exported_symbols.lds)",
+            "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow/c:version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         ],
     }),
     visibility = ["//visibility:public"],
@@ -490,14 +526,12 @@ tf_cc_shared_object(
     name = "libtensorflow_cc.so",
     linkopts = select({
         "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow:tf_exported_symbols.lds)",
+            "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow:tf_version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
     }),
     visibility = ["//visibility:public"],
@@ -574,13 +608,20 @@ gen_api_init_files(
     name = "tf_python_api_gen_v1",
     srcs = [
         "api_template_v1.__init__.py",
+        "compat_template.__init__.py",
         "compat_template_v1.__init__.py",
     ],
     api_version = 1,
-    compat_api_versions = [1],
-    compat_init_templates = ["compat_template_v1.__init__.py"],
+    compat_api_versions = [
+        1,
+        2,
+    ],
+    compat_init_templates = [
+        "compat_template_v1.__init__.py",
+        "compat_template.__init__.py",
+    ],
     output_dir = "_api/v1/",
-    output_files = TENSORFLOW_API_INIT_FILES_V1_WITH_COMPAT,
+    output_files = TENSORFLOW_API_INIT_FILES_V1,
     output_package = "tensorflow._api.v1",
     root_file_name = "v1.py",
     root_init_template = "api_template_v1.__init__.py",
@@ -590,11 +631,18 @@ gen_api_init_files(
     name = "tf_python_api_gen_v2",
     srcs = [
         "api_template.__init__.py",
+        "compat_template.__init__.py",
         "compat_template_v1.__init__.py",
     ],
     api_version = 2,
-    compat_api_versions = [1],
-    compat_init_templates = ["compat_template_v1.__init__.py"],
+    compat_api_versions = [
+        1,
+        2,
+    ],
+    compat_init_templates = [
+        "compat_template_v1.__init__.py",
+        "compat_template.__init__.py",
+    ],
     output_dir = "_api/v2/",
     output_files = TENSORFLOW_API_INIT_FILES_V2,
     output_package = "tensorflow._api.v2",
@@ -606,9 +654,11 @@ py_library(
     name = "tensorflow_py",
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        "api_version_2": [],
+        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+    }) + [
         ":tensorflow_py_no_contrib",
-        "//tensorflow/contrib:contrib_py",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
@@ -618,7 +668,11 @@ py_library(
     srcs = select({
         "api_version_2": [":tf_python_api_gen_v2"],
         "//conditions:default": [":tf_python_api_gen_v1"],
-    }) + [":root_init_gen"],
+    }) + [":root_init_gen"] + [
+        "//tensorflow/python/keras/api:keras_python_api_gen",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],

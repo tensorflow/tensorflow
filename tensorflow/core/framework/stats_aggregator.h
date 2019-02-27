@@ -83,7 +83,7 @@ class StatsAggregatorResource : public ResourceBase {
     return stats_aggregator_;
   }
 
-  string DebugString() { return "StatsAggregatorResource"; }
+  string DebugString() const override { return "StatsAggregatorResource"; }
 
  private:
   const std::shared_ptr<StatsAggregator> stats_aggregator_;

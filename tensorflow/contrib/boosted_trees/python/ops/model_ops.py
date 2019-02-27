@@ -33,7 +33,7 @@ from tensorflow.contrib.boosted_trees.python.ops.gen_model_ops import tree_ensem
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 ops.NotDifferentiable("TreeEnsembleVariable")
 ops.NotDifferentiable("TreeEnsembleSerialize")
@@ -62,8 +62,8 @@ class TreeEnsembleVariableSavable(saver.BaseSaverBuilder.SaveableObject):
         saver.BaseSaverBuilder.SaveSpec(ensemble_config, slice_spec,
                                         name + "_config"),
     ]
-    super(TreeEnsembleVariableSavable,
-          self).__init__(tree_ensemble_handle, specs, name)
+    super(TreeEnsembleVariableSavable, self).__init__(tree_ensemble_handle,
+                                                      specs, name)
     self._tree_ensemble_handle = tree_ensemble_handle
     self._create_op = create_op
 
@@ -96,18 +96,18 @@ class TreeEnsembleVariable(tracking.TrackableResource):
     self._init_op = None
     super(TreeEnsembleVariable, self).__init__()
 
-  def create_resource(self):
+  def _create_resource(self):
     return gen_model_ops.decision_tree_ensemble_resource_handle_op(
         self._container, shared_name=self._name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return gen_model_ops.create_tree_ensemble_variable(
         self.resource_handle, self._stamp_token, self._tree_ensemble_config)
 
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):
@@ -115,7 +115,7 @@ class TreeEnsembleVariable(tracking.TrackableResource):
 
   def _gather_saveables_for_checkpoint(self):
     return {
-        "tree_ensemble_variable":
+        self.resource_handle.op.name + "/tree_ensemble_variable":
             functools.partial(
                 TreeEnsembleVariableSavable,
                 tree_ensemble_handle=self.resource_handle,
@@ -131,8 +131,8 @@ def tree_ensemble_variable(stamp_token,
 
   Args:
     stamp_token: The initial stamp token value for the ensemble resource.
-    tree_ensemble_config: A `Tensor` of type `string`.
-      Serialized proto of the tree ensemble.
+    tree_ensemble_config: A `Tensor` of type `string`. Serialized proto of the
+      tree ensemble.
     name: A name for the ensemble variable.
     container: An optional `string`. Defaults to `""`.
 

@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
+#include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/platform/fingerprint.h"
 #include "tensorflow/core/util/tensor_slice_reader_cache.h"
 
@@ -53,10 +54,6 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list);
 
-// Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
-                      TF_AttrType* out, unsigned char* is_list);
-
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
 // An AttrBuilder is a convenience class to help with that - providing a smaller
 // interface than NodeDefBuilder and avoiding expensive (unnecessary?) sanity
@@ -74,7 +71,7 @@ Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
 // AttrBuilder a;
 // a.NumInputs(2);
 // a.Set("T", TF_FLOAT);
-// uint64 cache_key = a.CacheKey("cpu:0");
+// tensorflow::Fprint128 cache_key = a.CacheKey("cpu:0");
 // const NodeDef& n = a.BuildNodeDef();
 //
 // Note that all calls to Set and NumInputs should happen before calling
@@ -100,10 +97,11 @@ class AttrBuilder {
   AttrBuilder& Set(StringPiece attr_name, T&& value) {
     MayBeInitializeNodeDef();
     SetInAttrValueMap(node_def_->mutable_attr(), string(attr_name), value);
+    cached_cache_key_ = absl::nullopt;
     return *this;
   }
 
-  tensorflow::Fprint128 CacheKey(const string& device) const;
+  tensorflow::Fprint128 CacheKey(const string& device);
 
   void FillAttrValueMap(AttrValueMap* m) const { FillAttrValueMap(m, true); }
   const NodeDef& BuildNodeDef();
@@ -111,6 +109,8 @@ class AttrBuilder {
  private:
   template <class T>
   using AttrVec = tensorflow::gtl::InlinedVector<std::pair<string, T>, 2>;
+
+  tensorflow::Fprint128 BuildCacheKeyForDevice(const string& device) const;
 
   void MayBeInitializeNodeDef();
   // Fill `m` with the attr-value pairs set via AttrBuilder::Set() so far, as
@@ -148,6 +148,9 @@ class AttrBuilder {
   int num_inputs_;
   std::unique_ptr<NodeDef> node_def_;
   bool node_def_finalized_;
+
+  absl::optional<tensorflow::Fprint128> cached_cache_key_;
+  string device_for_cached_cache_key_;
 };  // namespace tensorflow
 
 template <>

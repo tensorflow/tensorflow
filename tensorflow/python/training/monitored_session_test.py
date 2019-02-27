@@ -1364,11 +1364,13 @@ class RunOptionsMetadataHook(session_run_hook.SessionRunHook):
   """A hook that observes & optionally modifies RunOptions and RunMetadata."""
 
   def __init__(self, trace_level, timeout_in_ms, output_partition_graphs,
-               debug_tensor_watch):
+               debug_tensor_watch, report_tensor_allocations_upon_oom):
     self._trace_level = trace_level
     self._timeout_in_ms = timeout_in_ms
     self._output_partition_graphs = output_partition_graphs
     self._debug_tensor_watch = debug_tensor_watch
+    self._report_tensor_allocations_upon_oom = (
+        report_tensor_allocations_upon_oom)
 
     self.run_options_list = []
     self.run_metadata_list = []
@@ -1377,7 +1379,9 @@ class RunOptionsMetadataHook(session_run_hook.SessionRunHook):
     options = config_pb2.RunOptions(
         trace_level=self._trace_level,
         timeout_in_ms=self._timeout_in_ms,
-        output_partition_graphs=self._output_partition_graphs)
+        output_partition_graphs=self._output_partition_graphs,
+        report_tensor_allocations_upon_oom=self
+        ._report_tensor_allocations_upon_oom)
     options.debug_options.debug_tensor_watch_opts.extend(
         [self._debug_tensor_watch])
     return session_run_hook.SessionRunArgs(None, None, options=options)
@@ -1746,13 +1750,13 @@ class MonitoredSessionTest(test.TestCase):
           output_slot=0,
           debug_ops=['DebugIdentity'],
           debug_urls=[])
-      hook_a = RunOptionsMetadataHook(2, 30000, False, watch_a)
+      hook_a = RunOptionsMetadataHook(2, 30000, False, watch_a, False)
       watch_b = debug_pb2.DebugTensorWatch(
           node_name='my_const_2',
           output_slot=0,
           debug_ops=['DebugIdentity'],
           debug_urls=[])
-      hook_b = RunOptionsMetadataHook(3, 60000, True, watch_b)
+      hook_b = RunOptionsMetadataHook(3, 60000, True, watch_b, True)
       with monitored_session.MonitoredSession(
           hooks=[hook_a, hook_b]) as session:
         self.assertEqual(42, session.run(my_const))
@@ -1761,16 +1765,15 @@ class MonitoredSessionTest(test.TestCase):
         # timeout_in_ms=60000 should have overridden 30000;
         # output_partition_graphs=True should have overridden False.
         # The two debug tensor watches should have been merged.
-        self.assertEqual(
-            [
-                config_pb2.RunOptions(
-                    trace_level=3,
-                    timeout_in_ms=60000,
-                    output_partition_graphs=True,
-                    debug_options=debug_pb2.DebugOptions(
-                        debug_tensor_watch_opts=[watch_a, watch_b]))
-            ],
-            hook_b.run_options_list)
+        self.assertEqual([
+            config_pb2.RunOptions(
+                trace_level=3,
+                timeout_in_ms=60000,
+                output_partition_graphs=True,
+                debug_options=debug_pb2.DebugOptions(
+                    debug_tensor_watch_opts=[watch_a, watch_b]),
+                report_tensor_allocations_upon_oom=True),
+        ], hook_b.run_options_list)
         self.assertEqual(1, len(hook_b.run_metadata_list))
         self.assertTrue(
             isinstance(hook_b.run_metadata_list[0], config_pb2.RunMetadata))
@@ -1788,7 +1791,7 @@ class MonitoredSessionTest(test.TestCase):
           output_slot=0,
           debug_ops=['DebugIdentity'],
           debug_urls=[])
-      hook = RunOptionsMetadataHook(2, 60000, False, hook_watch)
+      hook = RunOptionsMetadataHook(2, 60000, False, hook_watch, False)
       with monitored_session.MonitoredSession(hooks=[hook]) as session:
         caller_watch = debug_pb2.DebugTensorWatch(
             node_name='my_const',
@@ -1796,7 +1799,10 @@ class MonitoredSessionTest(test.TestCase):
             debug_ops=['DebugIdentity'],
             debug_urls=[])
         caller_options = config_pb2.RunOptions(
-            trace_level=3, timeout_in_ms=30000, output_partition_graphs=True)
+            trace_level=3,
+            timeout_in_ms=30000,
+            output_partition_graphs=True,
+            report_tensor_allocations_upon_oom=True)
         caller_options.debug_options.debug_tensor_watch_opts.extend(
             [caller_watch])
         self.assertEqual(42, session.run(my_const, options=caller_options))
@@ -1807,16 +1813,15 @@ class MonitoredSessionTest(test.TestCase):
         # from the hook.
         # The two debug watches from the caller and the hook should be merged,
         # in that order.
-        self.assertEqual(
-            [
-                config_pb2.RunOptions(
-                    trace_level=3,
-                    timeout_in_ms=60000,
-                    output_partition_graphs=True,
-                    debug_options=debug_pb2.DebugOptions(
-                        debug_tensor_watch_opts=[caller_watch, hook_watch]))
-            ],
-            hook.run_options_list)
+        self.assertEqual([
+            config_pb2.RunOptions(
+                trace_level=3,
+                timeout_in_ms=60000,
+                output_partition_graphs=True,
+                debug_options=debug_pb2.DebugOptions(
+                    debug_tensor_watch_opts=[caller_watch, hook_watch]),
+                report_tensor_allocations_upon_oom=True),
+        ], hook.run_options_list)
         self.assertEqual(1, len(hook.run_metadata_list))
         self.assertTrue(
             isinstance(hook.run_metadata_list[0], config_pb2.RunMetadata))

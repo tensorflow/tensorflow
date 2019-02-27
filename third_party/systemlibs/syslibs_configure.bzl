@@ -28,6 +28,7 @@ VALID_LIBS = [
     "icu",
     "jpeg",
     "jsoncpp_git",
+    "keras_applications_archive",
     "lmdb",
     "nasm",
     "nsync",

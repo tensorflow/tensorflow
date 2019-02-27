@@ -91,9 +91,10 @@ Status HloCostAnalysis::HandleElementwiseOp(
   auto opcode = hlo_instruction->opcode();
   // We treat transcendental operations separately since one transcendental
   // operation can correspond to several floating point ops.
-  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kPower ||
-      opcode == HloOpcode::kTanh || opcode == HloOpcode::kSin ||
-      opcode == HloOpcode::kCos) {
+  if (opcode == HloOpcode::kExp || opcode == HloOpcode::kLog ||
+      opcode == HloOpcode::kPower || opcode == HloOpcode::kSqrt ||
+      opcode == HloOpcode::kRsqrt || opcode == HloOpcode::kTanh ||
+      opcode == HloOpcode::kSin || opcode == HloOpcode::kCos) {
     current_properties_[kTranscendentalsKey] = computation_count;
   } else {
     // Note: transcendental operations are considered a separate category from
@@ -237,24 +238,17 @@ Status HloCostAnalysis::HandleDomain(const HloInstruction* domain) {
 
 Status HloCostAnalysis::HandleDot(const HloInstruction* dot) {
   const Shape& lhs_shape = dot->operand(0)->shape();
-  const Shape& rhs_shape = dot->operand(1)->shape();
+  const Shape& dot_shape = dot->shape();
   const DotDimensionNumbers& dnums = dot->dot_dimension_numbers();
   // Count of elements along the reduction dimension (last dimension for the
   // rhs).
-  int64 reduction_width =
-      lhs_shape.dimensions(dnums.lhs_contracting_dimensions(0));
-  // First divide by reduction width before multiplying by rhs elements to avoid
-  // overflow.
-  int64 fma_count;
-  if (reduction_width == 0) {
-    fma_count = 0;
-  } else {
-    fma_count = (ShapeUtil::ElementsIn(lhs_shape) / reduction_width) *
-                ShapeUtil::ElementsIn(rhs_shape);
+  int64 reduction_width = 1;
+  for (auto dim : dnums.lhs_contracting_dimensions()) {
+    reduction_width *= lhs_shape.dimensions(dim);
   }
-
-  // We count an FMA operation as 2 floating point operations.
-  current_properties_[kFlopsKey] = kFmaFlops * fma_count;
+  // Each output elment requires reduction_width FMA operations.
+  current_properties_[kFlopsKey] =
+      kFmaFlops * ShapeUtil::ElementsIn(dot_shape) * reduction_width;
   return Status::OK();
 }
 
@@ -292,7 +286,7 @@ Status HloCostAnalysis::HandleReduce(const HloInstruction* reduce) {
   // does not need to be multiplied by the number of input tensors - that's
   // already "priced in" by the sub-computation doing more work.
   auto arg = reduce->operand(0);
-  auto output_shape = ShapeUtil::IsArray(reduce->shape())
+  auto output_shape = reduce->shape().IsArray()
                           ? reduce->shape()
                           : reduce->shape().tuple_shapes(0);
   int64 reduction_count =
@@ -531,7 +525,8 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
   }
 
   const int64 fma_count = (input_feature / convolution->feature_group_count()) *
-                          output_feature * batch *
+                          output_feature *
+                          (batch / convolution->batch_group_count()) *
                           Product(valid_position_counts);
   current_properties_[kFlopsKey] = fma_count * kFmaFlops;
   return Status::OK();
@@ -539,7 +534,7 @@ Status HloCostAnalysis::HandleConvolution(const HloInstruction* convolution) {
 
 Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   auto real_shape =
-      ShapeUtil::IsTuple(fft->operand(0)->shape())
+      fft->operand(0)->shape().IsTuple()
           ? ShapeUtil::GetTupleElementShape(fft->operand(0)->shape(), 0)
           : fft->operand(0)->shape();
   constexpr int kFmaPerComplexMul = 4;
@@ -552,7 +547,33 @@ Status HloCostAnalysis::HandleFft(const HloInstruction* fft) {
   return Status::OK();
 }
 
-Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
+Status HloCostAnalysis::HandleTriangularSolve(const HloInstruction* hlo) {
+  float bytes_accessed = GetShapeSize(hlo->operand(0)->shape()) / 2.0f;
+  bytes_accessed += GetShapeSize(hlo->operand(1)->shape());
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  const Shape& a_shape = hlo->operand(0)->shape();
+  const Shape& b_shape = hlo->operand(1)->shape();
+  // Estimate as batch * mn^2 / 2 flops.
+  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  elems *= ShapeUtil::ElementsIn(b_shape);
+  current_properties_[kFlopsKey] = kFmaFlops * elems;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleCholesky(const HloInstruction* hlo) {
+  float bytes_accessed = GetShapeSize(hlo->operand(0)->shape()) / 2.0f;
+  current_properties_[kBytesAccessedKey] = bytes_accessed;
+
+  const Shape& a_shape = hlo->operand(0)->shape();
+  // Estimate as batch * n^3 / 3 flops.
+  int64 elems = a_shape.dimensions(a_shape.dimensions_size() - 1);
+  elems *= ShapeUtil::ElementsIn(a_shape);
+  current_properties_[kFlopsKey] = elems / 3;
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleAllReduce(const HloInstruction* crs) {
   // We assume 2 replicas, so that each output element is the sum of two input
   // elements.
   //
@@ -561,7 +582,7 @@ Status HloCostAnalysis::HandleCrossReplicaSum(const HloInstruction* crs) {
   double flops = 0.0;
   ShapeUtil::ForEachSubshape(crs->shape(),
                              [&](const Shape& subshape, const ShapeIndex&) {
-                               if (ShapeUtil::IsArray(subshape)) {
+                               if (subshape.IsArray()) {
                                  flops += ShapeUtil::ElementsIn(subshape);
                                }
                              });
@@ -574,6 +595,10 @@ Status HloCostAnalysis::HandleAllToAll(const HloInstruction* hlo) {
 }
 
 Status HloCostAnalysis::HandleCollectivePermute(const HloInstruction* /*hlo*/) {
+  return Status::OK();
+}
+
+Status HloCostAnalysis::HandleReplicaId(const HloInstruction* /*hlo*/) {
   return Status::OK();
 }
 
@@ -659,19 +684,22 @@ Status HloCostAnalysis::HandleWhile(const HloInstruction* xla_while) {
 }
 
 Status HloCostAnalysis::HandleConditional(const HloInstruction* conditional) {
-  // Compute the cost of the true and false computations and take the maximum
-  // from those for each property.
+  // Compute the cost of the branch computations and take the maximum from those
+  // for each property.
   TF_ASSIGN_OR_RETURN(
-      const Properties true_computation_properties,
-      ProcessUnnestedSubcomputation(conditional->true_computation()));
-  TF_ASSIGN_OR_RETURN(
-      const Properties false_computation_properties,
-      ProcessUnnestedSubcomputation(conditional->false_computation()));
-  current_properties_ = true_computation_properties;
-  for (const auto& property : false_computation_properties) {
-    if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_, property)) {
-      current_properties_[property.first] =
-          std::max(current_properties_[property.first], property.second);
+      const Properties branch0_computation_properties,
+      ProcessUnnestedSubcomputation(conditional->branch_computation(0)));
+  current_properties_ = branch0_computation_properties;
+  for (int j = 1; j < conditional->branch_count(); ++j) {
+    TF_ASSIGN_OR_RETURN(
+        const Properties branch_computation_properties,
+        ProcessUnnestedSubcomputation(conditional->branch_computation(j)));
+    for (const auto& property : branch_computation_properties) {
+      if (!tensorflow::gtl::InsertIfNotPresent(&current_properties_,
+                                               property)) {
+        auto& current_property = current_properties_[property.first];
+        current_property = std::max(current_property, property.second);
+      }
     }
   }
   current_should_compute_bottleneck_time_ = false;

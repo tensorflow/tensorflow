@@ -321,7 +321,10 @@ def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
                 separator="",
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keepdims=None):
+  keep_dims = deprecation.deprecated_argument_lookup(
+      "keepdims", keepdims, "keep_dims", keep_dims)
   inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
       inputs_t, axis, reduction_indices)
@@ -367,7 +370,7 @@ def string_length_v2(input, unit="BYTE", name=None):
 string_length.__doc__ = gen_string_ops.string_length.__doc__
 
 
-@tf_export("substr")
+@tf_export(v1=["substr"])
 @deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
 def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
   return substr(input, pos, len, name=name, unit=unit)
@@ -380,14 +383,15 @@ substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
 def substr(input, pos, len, name=None, unit="BYTE"):
   return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
 
+substr.__doc__ = gen_string_ops.substr.__doc__
+
 
 @tf_export("strings.substr", v1=[])
 @dispatch.add_dispatch_support
 def substr_v2(input, pos, len, unit="BYTE", name=None):
-  return substr(input, pos, len, name=name, unit=unit)
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
 
-
-substr.__doc__ = gen_string_ops.substr.__doc__
+substr_v2.__doc__ = gen_string_ops.substr.__doc__
 
 
 ops.NotDifferentiable("RegexReplace")
@@ -421,9 +425,19 @@ def string_to_number(input, out_type=dtypes.float32, name=None):
     A `Tensor` of type `out_type`.
   """
   return gen_parsing_ops.string_to_number(input, out_type, name)
-tf_export(v1=["strings.to_number", "string_to_number"])(
-    gen_parsing_ops.string_to_number
-    )
+
+
+@tf_export(v1=["strings.to_number", "string_to_number"])
+def string_to_number_v1(
+    string_tensor=None,
+    out_type=dtypes.float32,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_parsing_ops.string_to_number(string_tensor, out_type, name)
+
+string_to_number_v1.__doc__ = gen_parsing_ops.string_to_number.__doc__
 
 
 @tf_export("strings.to_hash_bucket", v1=[])
@@ -449,6 +463,16 @@ def string_to_hash_bucket(input, num_buckets, name=None):
   """
   # pylint: enable=line-too-long
   return gen_string_ops.string_to_hash_bucket(input, num_buckets, name)
-tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])(
-    gen_string_ops.string_to_hash_bucket
-    )
+
+
+@tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])
+def string_to_hash_bucket_v1(
+    string_tensor=None,
+    num_buckets=None,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_string_ops.string_to_hash_bucket(string_tensor, num_buckets, name)
+
+string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__

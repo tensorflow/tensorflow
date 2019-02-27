@@ -26,7 +26,10 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
-    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
+    .Attr(
+        "out_type: "
+        "{half,float,double,int32,uint16,uint8,int16,int8,int64,complex64,"
+        "complex128}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.

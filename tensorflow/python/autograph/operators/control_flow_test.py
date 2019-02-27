@@ -23,7 +23,7 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -36,7 +36,7 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    with self.cached_session() as sess:
+    with self.cached_session():
       self.assertEqual((10,), self.evaluate(s))
 
   def test_python(self):
@@ -45,18 +45,28 @@ class ForLoopTest(test.TestCase):
         extra_test=lambda s: True,
         body=lambda i, s: (s + i,),
         init_state=(0,))
-    self.assertEqual(10, s)
+    self.assertEqual((10,), s)
 
-  @test_util.run_deprecated_v1
   def test_dataset(self):
-    to_int32 = lambda i: math_ops.cast(i, dtypes.int32)
     s = control_flow.for_stmt(
-        dataset_ops.Dataset.range(5).map(to_int32),
-        extra_test=lambda s: True,
+        dataset_ops.Dataset.range(5),
+        extra_test=None,
         body=lambda i, s: (s + i,),
-        init_state=(0,))
-    with self.cached_session() as sess:
-      self.assertEqual((10,), self.evaluate(s))
+        init_state=(constant_op.constant(0, dtype=dtypes.int64),))
+    self.assertEqual(self.evaluate(s), (10,))
+
+  @test_util.run_v2_only
+  def test_dataset_no_state(self):
+    v = variables.Variable(0, dtype=dtypes.int64)
+    def stateless_with_side_effects(i):
+      v.assign(v.read_value() + i)
+    s = control_flow.for_stmt(
+        dataset_ops.Dataset.range(5),
+        extra_test=None,
+        body=stateless_with_side_effects,
+        init_state=())
+    self.evaluate(s)
+    self.assertEqual(self.evaluate(v.read_value()), 10)
 
 
 class WhileLoopTest(test.TestCase):
@@ -69,8 +79,31 @@ class WhileLoopTest(test.TestCase):
         body=lambda i, s: (i + 1, s + i,),
         init_state=(0, 0),
         extra_deps=(n,))
-    with self.cached_session() as sess:
-      self.assertEqual((5, 10), self.evaluate(results))
+    self.assertEqual((5, 10), self.evaluate(results))
+
+  @test_util.run_deprecated_v1
+  def test_python_with_tensor_state(self):
+    n = 5
+    results = control_flow.while_stmt(
+        test=lambda i, s: i < n,
+        body=lambda i, s: (i + 1, s + i),
+        init_state=(0, constant_op.constant(0)),
+        extra_deps=())
+    result_i, result_s = results
+    self.assertEqual(5, result_i)
+    self.assertEqual(10, self.evaluate(result_s))
+
+  @test_util.run_deprecated_v1
+  def test_python_due_to_hidden_cond_type(self):
+    n = 5
+
+    # TODO(b/124002646): Improve the error message.
+    with self.assertRaises(Exception):
+      control_flow.while_stmt(
+          test=lambda i, s: i < n,
+          body=lambda i, s: (i + 1, s + i),
+          init_state=(constant_op.constant(0), constant_op.constant(0)),
+          extra_deps=())
 
   def test_python(self):
     n = 5
@@ -93,7 +126,7 @@ class IfStmtTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_tensor(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       t = self.single_return_if_stmt(constant_op.constant(True))
       self.assertEqual(1, self.evaluate(t))
       t = self.single_return_if_stmt(constant_op.constant(False))
@@ -105,7 +138,7 @@ class IfStmtTest(test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_tensor_multiple_returns(self):
-    with self.cached_session() as sess:
+    with self.cached_session():
       t = self.multi_return_if_stmt(constant_op.constant(True))
       self.assertAllEqual([1, 2], self.evaluate(t))
       t = self.multi_return_if_stmt(constant_op.constant(False))

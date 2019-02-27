@@ -36,7 +36,7 @@ GCC_HOST_COMPILER_PATH = ('/usr/bin/gcc')
 NVCC_PATH = '/usr/local/cuda-10.0/bin/nvcc'
 NVCC_VERSION = '10.0'
 NVCC_TEMP_DIR = "C:\\Windows\\Temp\\nvcc_inter_files_tmp_dir"
-supported_cuda_compute_capabilities = [ "3.0" ]
+supported_cuda_compute_capabilities = [ "3.0", "6.0" ]
 
 def Log(s):
   print('gpus/crosstool: {0}'.format(s))

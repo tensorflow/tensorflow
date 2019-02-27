@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""A TFGAN-backed GAN Estimator."""
+"""A TF-GAN-backed GAN Estimator."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -56,10 +56,10 @@ _summary_type_map = {
 class GANEstimator(estimator.Estimator):
   """An estimator for Generative Adversarial Networks (GANs).
 
-  This Estimator is backed by TFGAN. The network functions follow the TFGAN API
-  except for one exception: if either `generator_fn` or `discriminator_fn` have
-  an argument called `mode`, then the tf.Estimator mode is passed in for that
-  argument. This helps with operations like batch normalization, which have
+  This Estimator is backed by TF-GAN. The network functions follow the TF-GAN
+  API except for one exception: if either `generator_fn` or `discriminator_fn`
+  have an argument called `mode`, then the tf.Estimator mode is passed in for
+  that argument. This helps with operations like batch normalization, which have
   different train and evaluation behavior.
 
   Example:
@@ -68,7 +68,7 @@ class GANEstimator(estimator.Estimator):
       import tensorflow as tf
       tfgan = tf.contrib.gan
 
-      # See TFGAN's `train.py` for a description of the generator and
+      # See TF-GAN's `train.py` for a description of the generator and
       # discriminator API.
       def generator_fn(generator_inputs):
         ...
@@ -123,13 +123,13 @@ class GANEstimator(estimator.Estimator):
         to continue training a previously saved model.
       generator_fn: A python function that takes a Tensor, Tensor list, or
         Tensor dictionary as inputs and returns the outputs of the GAN
-        generator. See `TFGAN` for more details and examples. Additionally, if
+        generator. See `TF-GAN` for more details and examples. Additionally, if
         it has an argument called `mode`, the Estimator's `mode` will be passed
         in (ex TRAIN, EVAL, PREDICT). This is useful for things like batch
         normalization.
       discriminator_fn: A python function that takes the output of
         `generator_fn` or real data in the GAN setup, and `generator_inputs`.
-        Outputs a Tensor in the range [-inf, inf]. See `TFGAN` for more details
+        Outputs a Tensor in the range [-inf, inf]. See `TF-GAN` for more details
         and examples.
       generator_loss_fn: The loss function on the generator. Takes a `GANModel`
         tuple.
@@ -233,13 +233,14 @@ def _get_estimator_spec(
       estimator_spec = _get_eval_estimator_spec(
           gan_model, gan_loss, get_eval_metric_ops_fn)
     else:  # model_fn_lib.ModeKeys.TRAIN:
-      gopt = (generator_optimizer() if callable(generator_optimizer) else
-              generator_optimizer)
-      dopt = (discriminator_optimizer() if callable(discriminator_optimizer)
-              else discriminator_optimizer)
+      if callable(generator_optimizer):
+        generator_optimizer = generator_optimizer()
+      if callable(discriminator_optimizer):
+        discriminator_optimizer = discriminator_optimizer()
       get_hooks_fn = get_hooks_fn or tfgan_train.get_sequential_train_hooks()
       estimator_spec = _get_train_estimator_spec(
-          gan_model, gan_loss, gopt, dopt, get_hooks_fn, is_chief=is_chief)
+          gan_model, gan_loss, generator_optimizer, discriminator_optimizer,
+          get_hooks_fn, is_chief=is_chief)
 
   return estimator_spec
 

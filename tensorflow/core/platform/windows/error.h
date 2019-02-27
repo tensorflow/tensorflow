@@ -19,6 +19,9 @@ limitations under the License.
 #include <string>
 
 #include <Windows.h>
+// Windows.h #defines ERROR, but it is also used in
+// tensorflow/core/util/event.proto
+#undef ERROR
 
 namespace tensorflow {
 namespace internal {

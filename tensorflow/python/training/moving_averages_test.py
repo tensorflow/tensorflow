@@ -43,7 +43,7 @@ class MovingAveragesTest(test.TestCase):
       decay = 0.25
       assign = moving_averages.assign_moving_average(
           var, val, decay, zero_debias=False)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose([10.0, 11.0], self.evaluate(var))
       assign.op.run()
       self.assertAllClose(
@@ -57,7 +57,7 @@ class MovingAveragesTest(test.TestCase):
       val = constant_op.constant([1.0, 2.0], dtypes.float32)
       decay = 0.25
       assign = moving_averages.assign_moving_average(var, val, decay)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       self.assertAllClose([0.0, 0.0], self.evaluate(var))
       assign.op.run()
       self.assertAllClose(
@@ -98,7 +98,7 @@ class MovingAveragesTest(test.TestCase):
       val = array_ops.placeholder(dtypes.float32, [])
 
       wma = moving_averages.weighted_moving_average(val, decay, weight)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Get the first weighted moving average.
       val_1 = 3.0
@@ -125,7 +125,7 @@ class MovingAveragesTest(test.TestCase):
       val = array_ops.placeholder(dtypes.bfloat16, [])
 
       wma = moving_averages.weighted_moving_average(val, decay, weight)
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
 
       # Get the first weighted moving average.
       val_1 = 3.0
@@ -164,7 +164,7 @@ class ExponentialMovingAverageTest(test.TestCase):
     thirties = _Repeat(30.0, dim)
     var0 = variables.Variable(tens, name="v0")
     var1 = variables.Variable(thirties, name="v1")
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
     # Note that tensor2 is not a Variable but just a plain Tensor resulting
     # from the sum operation.
     tensor2 = var0 + var1
@@ -178,7 +178,7 @@ class ExponentialMovingAverageTest(test.TestCase):
     self.assertFalse(avg0 in variables.trainable_variables())
     self.assertFalse(avg1 in variables.trainable_variables())
     self.assertFalse(avg2 in variables.trainable_variables())
-    variables.global_variables_initializer().run()
+    self.evaluate(variables.global_variables_initializer())
 
     self.assertEqual("v0/ExponentialMovingAverage:0", avg0.name)
     self.assertEqual("v1/ExponentialMovingAverage:0", avg1.name)

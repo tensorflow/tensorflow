@@ -19,10 +19,10 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/str_util.h"
-#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace data {
@@ -109,7 +109,7 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return MakeUnique<Iterator>(
+      return absl::make_unique<Iterator>(
           Iterator::Params{this, strings::StrCat(prefix, "::Filter")},
           filter_pred_);
     }
@@ -137,7 +137,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       other_arguments.reserve(captured_func_->captured_inputs().size());
       for (const Tensor& t : captured_func_->captured_inputs()) {
         Node* node;
-        TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        DatasetBase* input;
+        Status s = GetDatasetFromVariantTensor(t, &input);
+        if (s.ok()) {
+          TF_RETURN_IF_ERROR(b->AddInputDataset(ctx, input, &node));
+        } else {
+          TF_RETURN_IF_ERROR(b->AddTensor(t, &node));
+        }
         other_arguments.emplace_back(node);
         other_arguments_types.emplace_back(t.dtype());
       }
@@ -162,9 +168,6 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
             filtered_elements_(0),
             dropped_elements_(0),
             filter_pred_(std::move(filter_pred)) {
-        std::vector<string> components =
-            str_util::Split(params.prefix, "::", str_util::SkipEmpty());
-        prefix_end_ = components.back();
       }
 
       Status Initialize(IteratorContext* ctx) override {
@@ -208,13 +211,15 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
               mutex_lock l(mu_);
               dropped_elements_++;
               stats_aggregator->AddScalar(
-                  strings::StrCat(prefix_end_, "::dropped_elements"),
+                  stats_utils::DroppedElementsScalarName(
+                      dataset()->node_name()),
                   static_cast<float>((dropped_elements_)));
               // TODO(shivaniagrawal): multiple pipelines would collect
               // aggregated number of dropped elements for all the pipelines,
               // exploit tagged_context here.
-              stats_aggregator->IncrementCounter(
-                  prefix_end_, "dropped_elements", static_cast<float>(1));
+              stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                                 stats_utils::kDroppedElements,
+                                                 static_cast<float>(1));
             }
           }
         } while (!matched);
@@ -224,12 +229,13 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
           mutex_lock l(mu_);
           filtered_elements_++;
           stats_aggregator->AddScalar(
-              strings::StrCat(prefix_end_, "::filtered_elements"),
+              stats_utils::FilterdElementsScalarName(dataset()->node_name()),
               static_cast<float>((filtered_elements_)));
           // TODO(shivaniagrawal): multiple pipelines would collect aggregated
           // number of filtered elements for all the pipelines, exploit
           // tagged_context here.
-          stats_aggregator->IncrementCounter(prefix_end_, "filtered_elements",
+          stats_aggregator->IncrementCounter(dataset()->node_name(),
+                                             stats_utils::kFilteredElements,
                                              static_cast<float>(1));
         }
         *end_of_sequence = false;
@@ -276,7 +282,6 @@ class FilterDatasetOp : public UnaryDatasetOpKernel {
       int64 filtered_elements_ GUARDED_BY(mu_);
       int64 dropped_elements_ GUARDED_BY(mu_);
       const FilterIteratorPredicate filter_pred_;
-      string prefix_end_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 

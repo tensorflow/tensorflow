@@ -48,8 +48,7 @@ def set_stats_aggregator(stats_aggregator, prefix="", counter_prefix=""):
   return _apply_fn
 
 
-# TODO(b/38416882): Properly export in the `tf.data.experimental` API when
-# stable or make private / remove.
+@tf_export("data.experimental.bytes_produced_stats")
 def bytes_produced_stats(tag):
   """Records the number of bytes produced by each element of the input dataset.
 
@@ -102,13 +101,11 @@ class _StatsDataset(dataset_ops.UnaryUnchangedStructureDataset):
   """A `Dataset` that acts as an identity, and also records statistics."""
 
   def __init__(self, input_dataset, op_function, tag):
-    super(_StatsDataset, self).__init__(input_dataset)
     self._input_dataset = input_dataset
     self._op_function = op_function
     self._tag = ops.convert_to_tensor(tag, dtype=dtypes.string)
-
-  def _as_variant_tensor(self):
-    return self._op_function(
-        self._input_dataset._as_variant_tensor(),  # pylint: disable=protected-access
+    variant_tensor = self._op_function(
+        self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         self._tag,
         **dataset_ops.flat_structure(self))
+    super(_StatsDataset, self).__init__(input_dataset, variant_tensor)

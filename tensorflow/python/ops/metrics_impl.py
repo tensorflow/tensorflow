@@ -43,7 +43,7 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
   """Create variable in `GraphKeys.(LOCAL|METRIC_VARIABLES)` collections.
 
   If running in a `DistributionStrategy` context, the variable will be
-  "replica local". This means:
+  "sync on read". This means:
 
   *   The returned object will be a container with separate variables
       per replica of the model.
@@ -59,7 +59,7 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
       of the final result value inside
       `distribution_strategy_context.get_replica_context().merge_call(fn)`.
       Inside the `merge_call()`, ops are only added to the graph once
-      and access to a replica-local variable in a computation returns
+      and access to a sync on read variable in a computation returns
       the sum across all replicas.
 
   Args:
@@ -71,7 +71,7 @@ def metric_variable(shape, dtype, validate_shape=True, name=None):
 
   Returns:
     A (non-trainable) variable initialized to zero, or if inside a
-    `DistributionStrategy` scope a replica-local variable container.
+    `DistributionStrategy` scope a sync on read variable container.
   """
   # Note that synchronization "ON_READ" implies trainable=False.
   return variable_scope.variable(
@@ -621,7 +621,7 @@ def _confusion_matrix_at_thresholds(labels,
 
 
 def _aggregate_variable(v, collections):
-  f = lambda distribution, value: distribution.read_var(value)
+  f = lambda distribution, value: distribution.extended.read_var(value)
   return _aggregate_across_replicas(collections, f, v)
 
 
@@ -1295,7 +1295,7 @@ def mean_squared_error(labels,
 
   predictions, labels, weights = _remove_squeezable_dimensions(
       predictions=predictions, labels=labels, weights=weights)
-  squared_error = math_ops.square(labels - predictions)
+  squared_error = math_ops.squared_difference(labels, predictions)
   return mean(squared_error, weights, metrics_collections, updates_collections,
               name or 'mean_squared_error')
 

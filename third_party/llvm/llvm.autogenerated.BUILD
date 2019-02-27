@@ -646,6 +646,7 @@ cc_library(
         ":amdgpu_asm_printer",
         ":amdgpu_info",
         ":amdgpu_utils",
+        ":binary_format",
         ":config",
         ":core",
         ":mc",
@@ -793,6 +794,7 @@ cc_library(
         ":amdgpu_utils",
         ":analysis",
         ":asm_printer",
+        ":binary_format",
         ":code_gen",
         ":config",
         ":core",
@@ -2241,7 +2243,6 @@ cc_library(
     deps = [
         ":code_gen",
         ":config",
-        ":core",
         ":support",
     ],
 )

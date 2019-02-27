@@ -13,6 +13,8 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include <atomic>
+
 #include "tensorflow/core/framework/resource_mgr.h"
 
 #include "tensorflow/core/framework/device_attributes.pb.h"
@@ -26,6 +28,10 @@ limitations under the License.
 #include "tensorflow/core/platform/demangle.h"
 
 namespace tensorflow {
+
+// Used to generate unique names for anonymous variables
+static std::atomic<int64> current_id_;
+
 ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
                                   const string& name,
                                   const TypeIndex& type_index) {
@@ -38,7 +44,11 @@ ResourceHandle MakeResourceHandle(OpKernelContext* ctx, const string& container,
     actual_container = ctx->resource_manager()->default_container();
   }
   result.set_container(actual_container);
-  result.set_name(name);
+  if (name == ResourceHandle::ANONYMOUS_NAME) {
+    result.set_name(strings::StrCat("_AnonymousVar", current_id_.fetch_add(1)));
+  } else {
+    result.set_name(name);
+  }
   result.set_hash_code(type_index.hash_code());
   result.set_maybe_type_name(type_index.name());
   return result;
