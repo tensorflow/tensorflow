@@ -115,6 +115,7 @@ tf_kernel_library(
     ],
     tags = ["optonly"],
     deps = [
+        ":case_op",
         ":conv_op_helpers",
         ":if_op",
         ":while_op",
@@ -256,6 +257,23 @@ tf_kernel_library(
     name = "if_op",
     srcs = ["if_op.cc"],
     hdrs = ["if_op.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:side_effect_util",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/tf2xla/ops:xla_ops",
+        "//tensorflow/compiler/xla:literal",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+    ],
+)
+
+tf_kernel_library(
+    name = "case_op",
+    srcs = ["case_op.cc"],
+    hdrs = ["case_op.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:side_effect_util",

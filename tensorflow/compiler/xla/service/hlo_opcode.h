@@ -67,7 +67,7 @@ namespace xla {
   V(kClz, "count-leading-zeros", 1)                                    \
   V(kComplex, "complex", 2)                                            \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)                 \
-  V(kConditional, "conditional", 3)                                    \
+  V(kConditional, "conditional", kHloOpcodeIsVariadic)                 \
   V(kConstant, "constant", 0)                                          \
   V(kConvert, "convert", 1)                                            \
   V(kConvolution, "convolution", 2)                                    \

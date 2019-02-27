@@ -2515,53 +2515,109 @@ Status IrEmitter::HandleConcatenate(HloInstruction* concatenate) {
 }
 
 Status IrEmitter::HandleConditional(HloInstruction* conditional) {
-  auto pred = conditional->operand(0);
-  TF_RET_CHECK(ShapeUtil::IsScalar(pred->shape()) &&
-               pred->shape().element_type() == PRED)
-      << "Predicate on a Conditional must be bool; got: "
-      << ShapeUtil::HumanString(pred->shape());
+  auto branch_index = conditional->operand(0);
+  int num_branches = conditional->branch_count();
+  TF_RET_CHECK(ShapeUtil::IsScalar(branch_index->shape()) &&
+               (branch_index->shape().element_type() == PRED ||
+                branch_index->shape().element_type() == S32))
+      << "Branch index on a conditional must be scalar bool or int32; got: "
+      << ShapeUtil::HumanString(branch_index->shape());
 
-  HloComputation* true_computation = conditional->true_computation();
-  HloComputation* false_computation = conditional->false_computation();
-  TF_RET_CHECK(ShapeUtil::Equal(conditional->shape(),
-                                true_computation->root_instruction()->shape()))
-      << "Shape of conditional should be same as the shape of the true "
-      << "computation; got: " << ShapeUtil::HumanString(conditional->shape())
-      << " and "
-      << ShapeUtil::HumanString(true_computation->root_instruction()->shape());
-
-  TF_RET_CHECK(ShapeUtil::Equal(conditional->shape(),
-                                false_computation->root_instruction()->shape()))
-      << "Shape of conditional should be same as the shape of the false "
-      << "computation; got: " << ShapeUtil::HumanString(conditional->shape())
-      << " and "
-      << ShapeUtil::HumanString(false_computation->root_instruction()->shape());
+  for (int b = 0; b < num_branches; ++b) {
+    HloComputation* br_computation = conditional->branch_computation(b);
+    TF_RET_CHECK(ShapeUtil::Equal(conditional->shape(),
+                                  br_computation->root_instruction()->shape()))
+        << "Shape of conditional should be same as the shape of the " << b
+        << "th branch computation; got: "
+        << ShapeUtil::HumanString(conditional->shape()) << " and "
+        << ShapeUtil::HumanString(br_computation->root_instruction()->shape());
+  }
 
   TF_RETURN_IF_ERROR(EmitTargetAddressForOp(conditional));
 
-  // Generating:
-  //   if (pred)
-  //     cond_result = true_computation(true_operand)
-  //   else
-  //     cond_result = false_computation(false_operand)
-  llvm::LoadInst* pred_value =
-      Load(GetIrArrayFor(pred).GetBasePointer(), "load_predicate_value");
-  llvm::Value* pred_cond = ICmpNE(
-      pred_value,
-      llvm::ConstantInt::get(llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
-      "boolean_predicate");
-  llvm_ir::LlvmIfData if_data =
-      llvm_ir::EmitIfThenElse(pred_cond, "conditional", &b_);
+  if (branch_index->shape().element_type() == PRED) {
+    // Emit an if-else to LLVM:
+    //   if (pred)
+    //     cond_result = true_computation(true_operand)
+    //   else
+    //     cond_result = false_computation(false_operand)
+    llvm::LoadInst* pred_value = Load(
+        GetIrArrayFor(branch_index).GetBasePointer(), "load_predicate_value");
+    llvm::Value* pred_cond =
+        ICmpNE(pred_value,
+               llvm::ConstantInt::get(
+                   llvm_ir::PrimitiveTypeToIrType(PRED, module_), 0),
+               "boolean_predicate");
+    llvm_ir::LlvmIfData if_data =
+        llvm_ir::EmitIfThenElse(pred_cond, "conditional", &b_);
 
-  SetToFirstInsertPoint(if_data.true_block, &b_);
-  EmitGlobalCall(*conditional->true_computation(),
-                 IrName(conditional, "_true"));
+    SetToFirstInsertPoint(if_data.true_block, &b_);
+    EmitGlobalCall(*conditional->branch_computation(0),
+                   IrName(conditional, "_true"));
 
-  SetToFirstInsertPoint(if_data.false_block, &b_);
-  EmitGlobalCall(*conditional->false_computation(),
-                 IrName(conditional, "_false"));
+    SetToFirstInsertPoint(if_data.false_block, &b_);
+    EmitGlobalCall(*conditional->branch_computation(1),
+                   IrName(conditional, "_false"));
 
-  SetToFirstInsertPoint(if_data.after_block, &b_);
+    SetToFirstInsertPoint(if_data.after_block, &b_);
+    return Status::OK();
+  }
+  // We emit a switch statement to LLVM:
+  // switch (branch_index) {
+  //   default:
+  //     result = branch_computations[num_branches-1](operands[num_branches-1]);
+  //     break;
+  //   case 0:
+  //     result = branch_computations[0](operands[0]); break;
+  //   case 1:
+  //     result = branch_computations[1](operands[1]); break;
+  //   ...
+  //   case [[num_branches-2]]:
+  //     result = branch_computations[num_branches-2](operands[num_branches-2]);
+  //     break;
+  // }
+  llvm::LoadInst* branch_index_value = Load(
+      GetIrArrayFor(branch_index).GetBasePointer(), "load_branch_index_value");
+
+  auto case_block = b_.GetInsertBlock();
+  llvm::BasicBlock* after_block;
+  // Add a terminator to the case block, if necessary.
+  if (case_block->getTerminator() == nullptr) {
+    after_block = llvm_ir::CreateBasicBlock(nullptr, "case-after", &b_);
+    b_.SetInsertPoint(case_block);
+    b_.CreateBr(after_block);
+  } else {
+    after_block =
+        case_block->splitBasicBlock(b_.GetInsertPoint(), "case-after");
+  }
+  // Our basic block should now end with an unconditional branch.  Remove it;
+  // we're going to replace it with a switch based branch.
+  case_block->getTerminator()->eraseFromParent();
+
+  // Lower the default branch computation.
+  auto default_block = llvm_ir::CreateBasicBlock(nullptr, "case-default", &b_);
+  b_.SetInsertPoint(default_block);
+  EmitGlobalCall(*conditional->branch_computation(num_branches - 1),
+                 IrName(conditional, "_default"));
+  b_.CreateBr(after_block);
+
+  // Prepare the switch (branch_index) { ... } instruction.
+  b_.SetInsertPoint(case_block);
+  llvm::SwitchInst* case_inst =
+      b_.CreateSwitch(branch_index_value, default_block, num_branches - 1);
+  // Lower each branch's computation.
+  for (int b = 0; b < num_branches - 1; ++b) {  // last branch is default
+    // Lower the case b: { ... ; break; } computation.
+    auto branch_block =
+        llvm_ir::CreateBasicBlock(nullptr, absl::StrCat("case-branch", b), &b_);
+    b_.SetInsertPoint(branch_block);
+    EmitGlobalCall(*conditional->branch_computation(b),
+                   IrName(conditional, absl::StrCat("_branch", b)));
+    b_.CreateBr(after_block);
+    case_inst->addCase(b_.getInt32(b), branch_block);
+  }
+
+  SetToFirstInsertPoint(after_block, &b_);
   return Status::OK();
 }
 
