@@ -280,6 +280,27 @@ class TimeDistributedTest(test.TestCase):
         '`TimeDistributed` Layer should be passed an `input_shape `'):
       time_dist(ph)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_TimeDistributed_reshape(self):
+
+    class NoReshapeLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+    # Built-in layers that aren't stateful use the reshape implementation.
+    td1 = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    self.assertTrue(td1._always_use_reshape)
+
+    # Built-in layers that are stateful don't use the reshape implementation.
+    td2 = keras.layers.TimeDistributed(
+        keras.layers.RNN(keras.layers.SimpleRNNCell(10), stateful=True))
+    self.assertFalse(td2._always_use_reshape)
+
+    # Custom layers are not whitelisted for the fast reshape implementation.
+    td3 = keras.layers.TimeDistributed(NoReshapeLayer())
+    self.assertFalse(td3._always_use_reshape)
+
 
 class BidirectionalTest(test.TestCase):
 
@@ -705,4 +726,3 @@ def _to_list(ls):
 
 if __name__ == '__main__':
   test.main()
-

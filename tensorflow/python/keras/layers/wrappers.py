@@ -27,6 +27,7 @@ from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
 from tensorflow.python.keras.layers.recurrent import _standardize_args
 from tensorflow.python.keras.utils import generic_utils
+from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
 from tensorflow.python.training.tracking import base as trackable
@@ -172,6 +173,12 @@ class TimeDistributed(Wrapper):
     self.supports_masking = True
     self._track_trackable(layer, name='layer')
 
+    # It is safe to use the fast, reshape-based approach with all of our
+    # built-in Layers.
+    self._always_use_reshape = (
+        layer_utils.is_builtin_layer(layer) and
+        not getattr(layer, 'stateful', False))
+
   def _get_shape_tuple(self, init_tuple, tensor, start_idx, int_shape=None):
     """Finds non-specific dimensions in the static shapes.
 
@@ -238,7 +245,7 @@ class TimeDistributed(Wrapper):
       kwargs['training'] = training
 
     input_shape = K.int_shape(inputs)
-    if input_shape[0]:
+    if input_shape[0] and not self._always_use_reshape:
       # batch size matters, use rnn-based implementation
       def step(x, _):
         output = self.layer.call(x, **kwargs)
