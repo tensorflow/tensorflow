@@ -29,7 +29,7 @@ void FilterbankFillConfigWithDefaults(struct FilterbankConfig* config) {
 }
 
 static float FreqToMel(float freq) {
-  return 1127.0 * log(1.0 + (freq / 700.0));
+  return 1127.0 * log1p(freq / 700.0);
 }
 
 static void CalculateCenterFrequencies(const int num_channels,
