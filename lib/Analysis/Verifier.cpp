@@ -120,14 +120,14 @@ bool FuncVerifier::verify() {
   llvm::PrettyStackTraceFormat fmt("MLIR Verifier: func @%s",
                                    fn.getName().c_str());
 
+  // Check that the function name is valid.
+  llvm::Regex funcNameRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$");
+  if (!funcNameRegex.match(fn.getName().strref()))
+    return failure("invalid function name '" + fn.getName().strref() + "'", fn);
+
   // External functions have nothing more to check.
   if (fn.isExternal())
     return false;
-
-  // Check that the function name is valid.
-  llvm::Regex funcNameRegex("^[a-zA-Z][a-zA-Z_0-9\\.\\$]*$");
-  if (!funcNameRegex.match(fn.getName().strref()))
-    return failure("invalid function name '" + fn.getName().strref() + "'", fn);
 
   // Verify the first block has no predecessors.
   auto *firstBB = &fn.front();

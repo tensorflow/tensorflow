@@ -217,9 +217,11 @@ Token Lexer::lexBareIdentifierOrKeyword(const char *tokStart) {
 ///   function-id ::= `@` bare-id
 ///
 Token Lexer::lexAtIdentifier(const char *tokStart) {
-  // These always start with a letter.
-  if (!isalpha(*curPtr++))
-    return emitError(curPtr-1, "expected letter in @ identifier");
+  // These always start with a letter or underscore.
+  auto cur = *curPtr++;
+  if (!isalpha(cur) && cur != '_')
+    return emitError(curPtr - 1,
+                     "@ identifier expected to start with letter or '_'");
 
   while (isalpha(*curPtr) || isdigit(*curPtr) || *curPtr == '_' ||
          *curPtr == '$' || *curPtr == '.')

@@ -809,3 +809,6 @@ func @internal_attrs()
     attributes {:internal.attr: 10} {
   return
 }
+
+// CHECK-LABEL: func @_valid.function$name
+func @_valid.function$name()

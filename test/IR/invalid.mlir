@@ -913,3 +913,8 @@ func @invalid_nested_dominance() {
 
 // expected-error @+1 {{invalid dialect namespace 'invalid.dialect'}}
 func @invalid_unknown_type_dialect_name() -> !invalid.dialect<"">
+
+// -----
+
+// expected-error @+1 {{@ identifier expected to start with letter or '_'}}
+func @$invalid_function_name()
