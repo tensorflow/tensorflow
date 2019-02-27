@@ -761,6 +761,45 @@ class Conv2DTest(test.TestCase):
                                    data_format=data_format,
                                    dtype=dtypes.float32)
 
+  @test_util.run_cuda_only
+  def testInputGradientGroupConv(self):
+    for data_format in ["NCHW", "NHWC"]:
+      for test_input in [True, False]:
+        self.ConstructAndTestGradient(
+            batch=2,
+            input_rows=5,
+            input_cols=4,
+            filter_rows=3,
+            filter_cols=3,
+            num_groups=2,
+            padding="VALID",
+            in_depth=4,
+            out_depth=6,
+            stride_rows=1,
+            stride_cols=1,
+            test_input=True,
+            data_format=data_format,
+            use_gpu=True)
+
+  @test_util.run_cuda_only
+  def testFilterGradientGroupConv(self):
+    for data_format in ["NCHW", "NHWC"]:
+      for test_input in [True, False]:
+        self.ConstructAndTestGradient(
+            batch=2,
+            input_rows=5,
+            input_cols=4,
+            filter_rows=3,
+            filter_cols=3,
+            num_groups=2,
+            padding="VALID",
+            in_depth=4,
+            out_depth=6,
+            stride_rows=1,
+            stride_cols=1,
+            test_input=False,
+            data_format=data_format,
+            use_gpu=True)
   # TODO(yzhwang): this currently fails.
   # self._VerifyValues(tensor_in_sizes=[1, 8, 8, 1],
   #                   filter_in_sizes=[2, 2, 1, 1],
@@ -1706,9 +1745,10 @@ class Conv2DTest(test.TestCase):
   def ConstructAndTestGradient(self, batch, input_rows, input_cols, filter_rows,
                                filter_cols, in_depth, out_depth, stride_rows,
                                stride_cols, padding, test_input, data_format,
-                               use_gpu, max_err=0.002):
+                               use_gpu, num_groups=1, max_err=0.002):
+    assert in_depth % num_groups == 0 and out_depth % num_groups == 0
     input_shape = [batch, input_rows, input_cols, in_depth]
-    filter_shape = [filter_rows, filter_cols, in_depth, out_depth]
+    filter_shape = [filter_rows, filter_cols, in_depth // num_groups, out_depth]
     # TODO(yangke): re-factor the computation of output shape.
     if padding == "VALID":
       output_rows = (input_rows - filter_rows + stride_rows) // stride_rows
