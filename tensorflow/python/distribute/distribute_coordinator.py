@@ -367,6 +367,9 @@ def _split_cluster_for_evaluator(cluster_spec, task_type):
   # distribution strategies and as a result ops in the evalauator task may have
   # unspecified devices. Those ops may end up on other tasks if we don't split
   # the cluster.
+  # Note: if you bypass distribute coordinator and bring the cluster yourself,
+  # you can equivalently set device filters to split clusters. This is already
+  # done by distribution strategy's `update_config_proto` method.
   new_cluster_spec = multi_worker_util.normalize_cluster_spec(
       cluster_spec).as_dict()
   if task_type == _TaskType.EVALUATOR:
