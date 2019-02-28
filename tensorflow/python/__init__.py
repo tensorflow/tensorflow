@@ -62,6 +62,7 @@ from tensorflow.core.util.event_pb2 import *
 # Framework
 from tensorflow.python.framework.framework_lib import *  # pylint: disable=redefined-builtin
 from tensorflow.python.framework.versions import *
+from tensorflow.python.framework import config
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 
