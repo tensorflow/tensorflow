@@ -1507,6 +1507,7 @@ cc_library(
         "//tensorflow/core/kernels/neon:neon_depthwise_conv_op",
     ]) + if_mkl([
         "//tensorflow/core/kernels:mkl_concat_op",
+        "//tensorflow/core/kernels:mkl_dequantize_op",
         "//tensorflow/core/kernels:mkl_conv_op",
         "//tensorflow/core/kernels:mkl_cwise_ops_common",
         "//tensorflow/core/kernels:mkl_fused_batch_norm_op",
@@ -4169,6 +4170,7 @@ tf_cc_test_mkl(
         "//tensorflow/core/kernels:mkl_input_conversion_op",
         "//tensorflow/core/kernels:mkl_lrn_op",
         "//tensorflow/core/kernels:mkl_pooling_ops",
+        "//tensorflow/core/kernels:mkl_dequantize_op",
         "//tensorflow/core/kernels:mkl_relu_op",
         "//tensorflow/core/kernels:mkl_reshape_op",
         "//tensorflow/core/kernels:mkl_slice_op",
