@@ -72,7 +72,9 @@ from tensorflow.python.tpu import tpu_feed
 from tensorflow.python.tpu import tpu_function
 from tensorflow.python.tpu import training_loop
 from tensorflow.python.tpu import util as util_lib
+from tensorflow.python.tpu._tpu_estimator_embedding import AdagradParameters  # pylint: disable=unused-import
 from tensorflow.python.tpu._tpu_estimator_embedding import AdamParameters  # pylint: disable=unused-import
+from tensorflow.python.tpu._tpu_estimator_embedding import StochasticGradientDescentParameters  # pylint: disable=unused-import
 from tensorflow.python.tpu._tpu_estimator_embedding import EmbeddingConfigSpec  # pylint: disable=unused-import
 from tensorflow.python.tpu.ops import tpu_ops
 from tensorflow.python.training import basic_session_run_hooks
@@ -3132,6 +3134,7 @@ def _eval_on_tpu_system(ctx, model_fn_wrapper, dequeue_fn):
   (single_tpu_eval_step, host_calls, captured_scaffold_fn, captured_eval_hooks
   ) = model_fn_wrapper.convert_to_single_tpu_eval_step(dequeue_fn)
 
+  @tpu_function.on_device_training_loop
   def multi_tpu_eval_steps_on_single_shard():
     return training_loop.repeat(iterations_per_loop_var, single_tpu_eval_step,
                                 [_ZERO_LOSS])

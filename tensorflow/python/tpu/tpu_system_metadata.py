@@ -34,6 +34,10 @@ _INITIAL_TPU_SYSTEM_TIMEOUT_IN_MS = 300 * 1000  # 5 mins
 
 _TPU_DEVICE_REG = re.compile(r'.*task:(\d+)/.*device:TPU:(\d+)$')
 
+_DEFAULT_JOB_NAME = 'tpu_worker'
+_DEFAULT_COORDINATOR_JOB_NAME = 'coordinator'
+_LOCAL_MASTERS = ('', 'local')
+
 # _TPUSystemMetadata is used by TPUEstimator to hold TPU configuration,
 # including num_cores and num_hosts.
 _TPUSystemMetadata = collections.namedtuple('_TPUSystemMetadata', [
@@ -154,3 +158,42 @@ def get_session_config_with_timeout(timeout_in_secs, cluster_def):
   config = config_pb2.ConfigProto(
       operation_timeout_in_ms=timeout_in_secs, cluster_def=cluster_def)
   return config
+
+
+def master_job(master, cluster_def):
+  """Returns the canonnical job name to use to place TPU computations on.
+
+  Args:
+    master: A `string` representing the TensorFlow master to use.
+    cluster_def: A ClusterDef object describing the TPU cluster.
+
+
+  Returns:
+    A string containing the job name, or None if no job should be specified.
+
+  Raises:
+    ValueError: If the user needs to specify a tpu_job_name, because we are
+      unable to infer the job name automatically, or if the user-specified job
+      names are inappropriate.
+  """
+  # If the user specifies the tpu_job_name, use that.
+
+  if master in _LOCAL_MASTERS:
+    return None
+
+  if (not cluster_def or not cluster_def.job):
+    return _DEFAULT_JOB_NAME
+  job_names = set([job.name for job in cluster_def.job])
+  if _DEFAULT_JOB_NAME in job_names:
+    # b/37868888 tracks allowing ClusterSpec propagation to reuse job names.
+    raise ValueError('Currently, tpu_worker is not an allowed job name.')
+  if len(job_names) == 1:
+    return cluster_def.job[0].name
+  if len(job_names) == 2:
+    if _DEFAULT_COORDINATOR_JOB_NAME in job_names:
+      job_names.remove(_DEFAULT_COORDINATOR_JOB_NAME)
+      return job_names.pop()
+    # TODO(b/67716447): Include more sophisticated heuristics.
+  raise ValueError(
+      'Could not infer TPU job name. Please specify a tpu_job_name as part '
+      'of your TPUConfig.')

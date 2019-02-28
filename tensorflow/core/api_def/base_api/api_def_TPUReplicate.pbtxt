@@ -1,5 +1,6 @@
 op {
   graph_op_name: "TPUReplicate"
+  visibility: HIDDEN
   in_arg {
     name: "inputs"
     description: <<END

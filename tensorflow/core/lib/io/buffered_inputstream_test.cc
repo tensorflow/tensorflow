@@ -337,7 +337,6 @@ TEST(BufferedInputStream, ReadAll_Empty) {
 
   for (auto buf_size : BufferSizes()) {
     RandomAccessInputStream input_stream(file.get());
-    string read;
     BufferedInputStream in(&input_stream, buf_size);
     string contents;
     TF_ASSERT_OK(in.ReadAll(&contents));
@@ -355,7 +354,6 @@ TEST(BufferedInputStream, ReadAll_Text) {
 
   for (auto buf_size : BufferSizes()) {
     RandomAccessInputStream input_stream(file.get());
-    string read;
     BufferedInputStream in(&input_stream, buf_size);
     string contents;
     TF_ASSERT_OK(in.ReadAll(&contents));

@@ -3625,7 +3625,7 @@ def group(*inputs, **kwargs):
       """A sort key that allows None to be compared to strings."""
       return "" if dev is None else dev
 
-    for dev in sorted(six.iterkeys(ops_on_device), key=device_key):
+    for dev in sorted(ops_on_device, key=device_key):
       deps.append(_GroupControlDeps(dev, ops_on_device[dev]))
 
     with ops.control_dependencies(deps):

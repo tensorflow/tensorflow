@@ -23,7 +23,6 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
@@ -184,11 +183,11 @@ class TPUGANEstimatorIntegrationTest(test.TestCase, parameterized.TestCase):
     # Evaluate.
     num_steps_eval = 2
     scores = est.evaluate(eval_input_fn, steps=num_steps_eval)
-    self.assertIn(ops.GraphKeys.GLOBAL_STEP, six.iterkeys(scores))
-    self.assertIn('loss', six.iterkeys(scores))
+    self.assertIn(ops.GraphKeys.GLOBAL_STEP, scores)
+    self.assertIn('loss', scores)
     self.assertEqual(scores['discriminator_loss'] + scores['generator_loss'],
                      scores['loss'])
-    self.assertIn('mse_custom_metric', six.iterkeys(scores))
+    self.assertIn('mse_custom_metric', scores)
 
     # Predict.
     predictions = np.array([x['generated_data'] for x in

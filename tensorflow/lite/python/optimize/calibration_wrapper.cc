@@ -180,6 +180,7 @@ PyObject* CalibrationWrapper::QuantizeModel() {
   char* buf = nullptr;
   Py_ssize_t length;
   std::unique_ptr<PythonErrorReporter> error_reporter(new PythonErrorReporter);
+  ::tflite::python::ImportNumpy();
 
   if (python_utils::ConvertFromPyString(data, &buf, &length) == -1) {
     return nullptr;

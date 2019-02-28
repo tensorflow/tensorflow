@@ -493,11 +493,30 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     ]
     for c in classes:
       ns = "tf.estimator." + c
-      text = ns + "(a, b)"
+      text = ns + "()"
+      expected_text = ns + "(loss_reduction=tf.compat.v1.losses.Reduction.SUM)"
+      _, report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+
+      text = ns + "(loss_reduction=TEST)"
+      expected_text = ns + "(loss_reduction=TEST)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual(text, new_text)
-      self.assertIn("%s requires manual check" % ns, errors[0])
-      self.assertIn("loss_reduction has been changed", report)
+    text = "tf.estimator.BaselineClassifier(m, c, w, v, o, c, lr)"
+    expected_text = (
+        "tf.estimator.BaselineClassifier(" +
+        "model_dir=m, n_classes=c, weight_column=w, label_vocabulary=v, "
+        "optimizer=o, config=c, loss_reduction=lr)")
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.estimator.BaselineClassifier(model_dir=model_dir)"
+    expected_text = ("tf.estimator.BaselineClassifier(" +
+                     "model_dir=model_dir, "
+                     "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
 
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "
@@ -779,7 +798,7 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
         "tf.contrib.saved_model.save_keras_model(model, './saved_models')\n"
         "tf.contrib.saved_model.load_keras_model(saved_model_path)\n")
     expected_text = (
-        "tf.keras.experimental.export(model, './saved_models')\n"
+        "tf.keras.experimental.export_saved_model(model, './saved_models')\n"
         "tf.keras.experimental.load_from_saved_model(saved_model_path)\n")
     _, unused_report, unused_errors, new_text = self._upgrade(text)
     self.assertEqual(new_text, expected_text)
@@ -1217,6 +1236,13 @@ def _log_prob(self, x):
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
 
+  def test_contrib_rnn_cell(self):
+    text = "tf.contrib.rnn.RNNCell"
+    expected = "tf.compat.v1.nn.rnn_cell.RNNCell"
+    # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
   def test_flags_bare(self):
     _, _, errors, _ = self._upgrade("tf.flags")
     self.assertIn("tf.flags has been removed", errors[0])
@@ -1342,6 +1368,21 @@ def _log_prob(self, x):
     expected = "tf.compat.v2.saved_model.load('/tmp/blah')"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+
+  def test_uniform_unit_scaling_initializer(self):
+    text = "tf.uniform_unit_scaling_initializer(0.5)"
+    expected_text = (
+        "tf.keras.initializers.VarianceScaling(" +
+        "scale=0.5, distribution=\"uniform\")")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.initializers.uniform_unit_scaling(0.5)"
+    expected_text = (
+        "tf.keras.initializers.VarianceScaling(" +
+        "scale=0.5, distribution=\"uniform\")")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

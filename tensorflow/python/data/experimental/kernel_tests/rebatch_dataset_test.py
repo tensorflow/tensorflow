@@ -30,6 +30,10 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
+def _flat_shapes(dataset):
+  return nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
+
+
 @parameterized.named_parameters(("WithDropRemainder", True),
                                 ("WithoutDropRemainder", False))
 @test_util.run_all_in_graph_and_eager_modes
@@ -41,10 +45,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[32 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
 
     expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1024, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
@@ -89,10 +93,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[32 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
 
     expected_output = [[k for k in range(i, i + 8)] for i in range(0, 1032, 8)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(rebatched_dataset, expected_output)
@@ -103,10 +107,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[32 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
 
     expected_output = [[k for k in range(i, i + 8)] for i in range(0, 32, 8)]  # pylint: disable=g-complex-comprehension
     if not drop_remainder:
@@ -119,7 +123,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     dataset = dataset.batch(8, drop_remainder=drop_remainder)
     self.assertEqual(
         [[8, 4]] if drop_remainder else [[None, None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     # Each element is a list of 8 elements where each element is a list of 4.
     expected_output = [[[j, j + 1, j + 2, j + 3]  # pylint: disable=g-complex-comprehension
                         for j in range(i, i + 32, 4)]  # generates 8 elements
@@ -129,7 +133,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, 4)
     self.assertEqual(
         [[2, 4]] if drop_remainder else [[None, None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # Each element is a list of 2 elements where each element is a list of 4.
     expected_output = [[[j, j + 1, j + 2, j + 3]  # pylint: disable=g-complex-comprehension
                         for j in range(i, i + 8, 4)]  # generates 2 elements
@@ -143,10 +147,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[32 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = [[k**2 for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
                        for i in range(0, 1024, 8)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
@@ -157,7 +161,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[8, 5]] if drop_remainder else [[None, 5]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     # Each element is a list of 8 elements in which each element is a list of 5
     # elements, first four are numbers and the last one is a padded zero.
     expected_output = [[[j, j + 1, j + 2, j + 3, 0]  # pylint: disable=g-complex-comprehension
@@ -166,7 +170,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     self.assertDatasetProduces(dataset, expected_output)
     self.assertEqual(
         [[2, 5]] if drop_remainder else [[None, 5]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # Each element is a list of 2 elements in which each element is a list of 5
     # elements, first four are numbers and the last one is a padded zero.
     expected_output = [[[j, j + 1, j + 2, j + 3, 0]  # pylint: disable=g-complex-comprehension
@@ -183,10 +187,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[2 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = ([[i, i + 1] for i in range(0, 64, 2)] +
                        [[i, i + 1] for i in range(0, 32, 2)])
     self.assertDatasetProduces(rebatched_dataset, expected_output)
@@ -199,10 +203,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     dataset = dataset1.concatenate(dataset2)
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
-        [[None]], [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [[None]], [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = ([[i, i + 1, i + 2, i + 3] for i in range(0, 64, 4)] +
                        [[i, i + 1] for i in range(0, 32, 2)])
     self.assertDatasetProduces(rebatched_dataset, expected_output)
@@ -216,10 +220,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[8], [8]] if drop_remainder else [[None], [None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[2], [2]] if drop_remainder else [[None], [None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = [([i, i + 1], [i, i + 1]) for i in range(0, 32, 2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
 
@@ -232,10 +236,10 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[16], [8]] if drop_remainder else [[None], [None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     self.assertEqual(
         [[4], [2]] if drop_remainder else [[None], [None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     expected_output = [([2 * i, 2 * i + 1, 2 * i + 2, 2 * i + 3], [i, i + 1])
                        for i in range(0, 32, 2)]
     self.assertDatasetProduces(rebatched_dataset, expected_output)
@@ -255,7 +259,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
             32, drop_remainder=drop_remainder))
     self.assertEqual(
         [[32 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     # Two elements where each element is range(32)
     expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
@@ -263,7 +267,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # Two elements where each element is a list of 4 elements where each element
     # is a list of 8.
     expected_output = [[k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
@@ -277,7 +281,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
             32, drop_remainder=drop_remainder), cycle_length=2)
     self.assertEqual(
         [[32 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     # Two elements where each element is range(32)
     expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
@@ -285,7 +289,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # List of 4 elements where each element is a list of 8 numbering from 0 to
     # 31 repeated twice.
     expected_output = [[k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension
@@ -300,7 +304,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
                       num_parallel_calls=2)
     self.assertEqual(
         [[32 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(dataset)])
     # Two elements where each element is range(32)
     expected_output = [[k for k in range(32)] for _ in range(2)]  # pylint: disable=g-complex-comprehension
     self.assertDatasetProduces(dataset, expected_output)
@@ -308,7 +312,7 @@ class RebatchDatasetTest(test_base.DatasetTestBase):
     rebatched_dataset = batching._RebatchDataset(dataset, num_workers=4)
     self.assertEqual(
         [[8 if drop_remainder else None]],
-        [ts.as_list() for ts in nest.flatten(rebatched_dataset.output_shapes)])
+        [ts.as_list() for ts in _flat_shapes(rebatched_dataset)])
     # List of 4 elements where each element is a list of 8 numbering from 0 to
     # 31 repeated twice in collated fashion i.e [0...8], [0...8] etc.
     expected_output = [[k for k in range(i, i + 8)]  # pylint: disable=g-complex-comprehension

@@ -117,7 +117,10 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       with g.device("/GPU:0"):
         inp = array_ops.placeholder(
             dtype=dtypes.float32, shape=[None, 1, 1], name="input")
-        var = variables.VariableV1([[[1.0]]], dtype=dtypes.float32, name="v1")
+        var = variables.VariableV1([[[1.0]]],
+                                   dtype=dtypes.float32,
+                                   name="v1",
+                                   use_resource=False)
         add = inp + var.value()
         mul = inp * add
         add = mul + add
@@ -244,6 +247,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                                    "output:0",
                                    feed_dict={"input:0": [[[test_data]]]}))
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_BasicConversion(self):
     """Test case for trt_convert.TrtGraphConverter()."""
     if not is_tensorrt_enabled():
@@ -276,6 +280,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     self.assertEqual(execute_native_segment_test_value,
                      get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_MinimumSegmentSize(self):
     if not is_tensorrt_enabled():
       return
@@ -290,6 +295,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         "output": "Identity"
     }, node_name_to_op)
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_DynamicOp(self):
     if not is_tensorrt_enabled():
       return
@@ -329,6 +335,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         # the max, it should evict an old engine and create a new one.
         self._TestRun(sess, 3, True)
 
+  @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_StaticOp(self):
     if not is_tensorrt_enabled():
       return

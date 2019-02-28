@@ -312,6 +312,33 @@ tflite_micro_cc_test(
     ],
 )
 
+cc_library(
+    name = "command_responder",
+    srcs = [
+        "command_responder.cc",
+    ],
+    hdrs = [
+        "command_responder.h",
+    ],
+    deps = [
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+    ],
+)
+
+tflite_micro_cc_test(
+    name = "command_responder_test",
+    srcs = [
+        "command_responder_test.cc",
+    ],
+    deps = [
+        ":command_responder",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/experimental/micro:micro_framework",
+        "//tensorflow/lite/experimental/micro/testing:micro_test",
+    ],
+)
+
 cc_binary(
     name = "micro_speech",
     srcs = [
@@ -319,6 +346,7 @@ cc_binary(
     ],
     deps = [
         ":audio_provider",
+        ":command_responder",
         ":feature_provider",
         ":recognize_commands",
         "//tensorflow/lite:schema_fbs_version",
@@ -337,6 +365,7 @@ cc_binary(
     ],
     deps = [
         ":audio_provider_mock",
+        ":command_responder",
         ":feature_provider",
         ":recognize_commands",
         "//tensorflow/lite:schema_fbs_version",

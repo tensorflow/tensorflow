@@ -191,7 +191,6 @@ def _model_loss(model,
     if custom_losses:
       total_loss += losses_utils.scale_loss_for_distribution(
           math_ops.add_n(custom_losses))
-    model._clear_losses()
 
   return outs, total_loss, output_losses, aggregated_output_losses, masks
 

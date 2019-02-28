@@ -2,18 +2,6 @@ path: "tensorflow.data.Dataset"
 tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
   is_instance: "<type \'object\'>"
-  member {
-    name: "output_classes"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "output_shapes"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "output_types"
-    mtype: "<type \'property\'>"
-  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'variant_tensor\'], varargs=None, keywords=None, defaults=None"

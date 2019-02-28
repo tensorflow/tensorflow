@@ -45,11 +45,8 @@ string HloModuleGroupMetadata::TrackedInstruction::ToString() const {
     case ComputationKind::kWhileBody:
       repr += ":WHILE_BODY";
       break;
-    case ComputationKind::kConditionalTrue:
-      repr += ":CONDITIONAL_TRUE";
-      break;
-    case ComputationKind::kConditionalFalse:
-      repr += ":CONDITIONAL_FALSE";
+    case ComputationKind::kConditionalBranch:
+      repr += absl::StrCat(":CONDITIONAL_BRANCH_", index_);
       break;
     case ComputationKind::kCallFunction:
       repr += ":CALL";
@@ -307,10 +304,10 @@ Status HloModuleGroupMetadata::RecordInstructions() {
       tracked_instructions_[hlo->while_body()] =
           TrackedInstruction(hlo, ComputationKind::kWhileBody);
     } else if (hlo->opcode() == HloOpcode::kConditional) {
-      tracked_instructions_[hlo->true_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalTrue);
-      tracked_instructions_[hlo->false_computation()] =
-          TrackedInstruction(hlo, ComputationKind::kConditionalFalse);
+      for (int b = 0; b < hlo->branch_count(); ++b) {
+        tracked_instructions_[hlo->branch_computation(b)] =
+            TrackedInstruction(hlo, ComputationKind::kConditionalBranch, b);
+      }
     } else if (hlo->opcode() == HloOpcode::kCall) {
       tracked_instructions_[hlo->to_apply()] =
           TrackedInstruction(hlo, ComputationKind::kCallFunction);

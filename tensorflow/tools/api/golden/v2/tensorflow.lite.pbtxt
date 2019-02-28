@@ -25,7 +25,15 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TargetSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "constants"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "experimental"
     mtype: "<type \'module\'>"
   }
 }

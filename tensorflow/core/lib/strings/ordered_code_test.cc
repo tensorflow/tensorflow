@@ -396,7 +396,6 @@ void BM_WriteNum(int n, T multiplier) {
 
 template <typename T>
 void BM_ReadNum(int n, T multiplier) {
-  string x;
   random::PhiloxRandom philox(301, 17);
   random::SimplePhilox rnd(&philox);
   // Use enough distinct values to confuse the branch predictor

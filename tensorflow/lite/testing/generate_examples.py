@@ -678,6 +678,32 @@ def make_abs_tests(zip_path):
 
   make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
+def make_elu_tests(zip_path):
+  """Make a set of tests to do (float) tf.nn.elu."""
+
+  test_parameters = [
+      {
+          "input_shape": [[], [1], [2, 3], [1, 1, 1, 1], [1, 3, 4, 3],
+                          [3, 15, 14, 3], [3, 1, 2, 4, 6], [2, 2, 3, 4, 5, 6]],
+      },
+  ]
+
+  def build_graph(parameters):
+    """Build the graph for the test case."""
+
+    input_tensor = tf.placeholder(
+        dtype=tf.float32, name="input", shape=parameters["input_shape"])
+    out = tf.nn.elu(input_tensor)
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    """Build the inputs for the test case."""
+    input_values = create_tensor_data(
+        np.float32, parameters["input_shape"], min_value=-4, max_value=10)
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
 
 def make_relu_tests(zip_path):
   """Make a set of tests to do relu."""
@@ -847,6 +873,9 @@ def make_constant_tests(zip_path):
       "dtype": [tf.float32, tf.int32],
       "input_shape": [[], [1], [2], [1, 1, 1, 1], [2, 2, 2, 2]],
       "constant_is_also_output": [True, False],
+      # This is a regression test for a bug where Toco rejects models with
+      # unread inputs.
+      "has_unread_input": [True, False],
   }]
 
   def build_graph(parameters):
@@ -856,11 +885,18 @@ def make_constant_tests(zip_path):
         shape=parameters["input_shape"])
     constant = tf.constant(
         create_tensor_data(parameters["dtype"], parameters["input_shape"]))
-    out = [tf.maximum(dummy_input, constant)]
+    outputs = [tf.maximum(dummy_input, constant)]
     if parameters["constant_is_also_output"]:
-      out.append(constant)
+      outputs.append(constant)
+    inputs = [dummy_input]
+    if parameters["has_unread_input"]:
+      unread_input = tf.placeholder(
+          dtype=parameters["dtype"],
+          name="unread_input",
+          shape=parameters["input_shape"])
+      inputs.append(unread_input)
 
-    return [dummy_input], out
+    return inputs, outputs
 
   def build_inputs(parameters, sess, inputs, outputs):
     dummy_input = np.zeros(
@@ -2892,7 +2928,10 @@ def make_strided_slice_1d_exhaustive_tests(zip_path):
   _make_strided_slice_tests(zip_path, test_parameters)
 
 
-def make_strided_slice_buggy_tests(zip_path):
+# For verifying https://github.com/tensorflow/tensorflow/issues/23599
+# TODO(chaomei): refactor the test to cover more cases, like negative stride,
+# negative array index etc.
+def make_resolve_constant_strided_slice_tests(zip_path):
   """Make a set of tests to show strided_slice yields incorrect results."""
 
   test_parameters = [{
@@ -2947,7 +2986,7 @@ def make_lstm_tests(zip_path):
           shape=[num_batchs, input_vec_size])
       inputs_after_split.append(one_timestamp_input)
     # Currently lstm identifier has a few limitations: only supports
-    # forget_bias == 0, inner state activiation == tanh.
+    # forget_bias == 0, inner state activation == tanh.
     # TODO(zhixianyan): Add another test with forget_bias == 1.
     # TODO(zhixianyan): Add another test with relu as activation.
     lstm_cell = tf.contrib.rnn.BasicLSTMCell(
@@ -3319,7 +3358,7 @@ def make_floor_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
   }]
 
   def build_graph(parameters):
@@ -3344,7 +3383,7 @@ def make_ceil_tests(zip_path):
 
   test_parameters = [{
       "input_dtype": [tf.float32],
-      "input_shape": [[1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
+      "input_shape": [[], [1], [1, 2], [5, 6, 7, 8], [3, 4, 5, 6]],
   }]
 
   def build_graph(parameters):
@@ -4233,6 +4272,53 @@ def make_reverse_v2_tests(zip_path):
 
   def build_inputs(parameters, sess, inputs, outputs):
     input_value = create_tensor_data(np.float32, shape=parameters["base_shape"])
+    return [input_value], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_value])))
+
+  make_zip_of_tests(zip_path, test_parameters, build_graph, build_inputs)
+
+
+def make_reverse_sequence_tests(zip_path):
+  """Make a set of tests to do reverse_sequence."""
+
+  test_parameters = [
+      {
+          "input_dtype": [tf.float32, tf.int32, tf.int64],
+          "input_shape": [[8, 4, 5, 5, 6], [4, 4, 3, 5]],
+          "seq_lengths": [[2, 2, 2, 2], [2, 1, 1, 0]],
+          "seq_axis": [0, 3],
+          "batch_axis": [1]
+      },
+      {
+          "input_dtype": [tf.float32],
+          "input_shape": [[2, 4, 5, 5, 6]],
+          "seq_lengths": [[2, 1]],
+          "seq_axis": [2],
+          "batch_axis": [0]
+      },
+      {
+          "input_dtype": [tf.float32],
+          "input_shape": [[4, 2]],
+          "seq_lengths": [[3, 1]],
+          "seq_axis": [0],
+          "batch_axis": [1]
+      }]
+
+  def build_graph(parameters):
+    input_value = tf.placeholder(
+        dtype=parameters["input_dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    outs = tf.reverse_sequence(
+        input_value,
+        seq_lengths=parameters["seq_lengths"],
+        batch_axis=parameters["batch_axis"],
+        seq_axis=parameters["seq_axis"])
+    return [input_value], [outs]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_value = create_tensor_data(parameters["input_dtype"],
+                                     parameters["input_shape"])
     return [input_value], sess.run(
         outputs, feed_dict=dict(zip(inputs, [input_value])))
 

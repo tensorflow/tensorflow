@@ -85,7 +85,7 @@ TEST_P(DatasetGetNextTest, GetNext) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(range_context.get(), &iterator_context));
@@ -134,9 +134,9 @@ TEST_F(RangeDatasetOpTest, DatasetName) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
-  EXPECT_EQ(range_dataset->name(), kOpName);
+  EXPECT_EQ(range_dataset->type_string(), kOpName);
 }
 
 TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
@@ -154,7 +154,7 @@ TEST_F(RangeDatasetOpTest, DatasetOutputDtypes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   DataTypeVector expected_dtypes({DT_INT64});
   EXPECT_EQ(range_dataset->output_dtypes(), expected_dtypes);
@@ -175,7 +175,7 @@ TEST_F(RangeDatasetOpTest, DatasetOutputShapes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   std::vector<PartialTensorShape> expected_shapes({PartialTensorShape({})});
   EXPECT_EQ(range_dataset->output_shapes().size(), expected_shapes.size());
@@ -219,7 +219,7 @@ TEST_P(DatasetCardinalityTest, Cardinality) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   EXPECT_EQ(range_dataset->Cardinality(), params.expected_cardinality);
 }
@@ -244,7 +244,7 @@ TEST_F(RangeDatasetOpTest, DatasetSave) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   std::unique_ptr<SerializationContext> serialization_context;
   TF_ASSERT_OK(CreateSerializationContext(&serialization_context));
@@ -270,7 +270,7 @@ TEST_F(RangeDatasetOpTest, IteratorOutputDtypes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(range_context.get(), &iterator_context));
@@ -297,7 +297,7 @@ TEST_F(RangeDatasetOpTest, IteratorOutputShapes) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(range_context.get(), &iterator_context));
@@ -327,7 +327,7 @@ TEST_F(RangeDatasetOpTest, IteratorOutputPrefix) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(range_context.get(), &iterator_context));
@@ -371,7 +371,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   DatasetBase* range_dataset;
   TF_ASSERT_OK(
       CreateDataset(range_kernel.get(), range_context.get(), &range_dataset));
-  core::ScopedUnref scored_unref(range_dataset);
+  core::ScopedUnref scoped_unref(range_dataset);
 
   std::unique_ptr<IteratorContext> iterator_context;
   TF_ASSERT_OK(CreateIteratorContext(range_context.get(), &iterator_context));
