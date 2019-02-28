@@ -743,7 +743,7 @@ class PoolingTest(test.TestCase):
     if test.is_gpu_available():
       with self.session(use_gpu=True):
         t = variables.Variable(np.ones([1, 2, 2, 4]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         with self.assertRaisesOpError("for CPU devices"):
           nn_ops.max_pool(
               t, ksize=[1, 1, 1, 2], strides=[1, 1, 1, 2],
@@ -1219,7 +1219,7 @@ class PoolingTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       input_tensor = variables.Variable(
           np.array(input_data, dtype=np.float32).reshape(input_sizes))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       output_tensor = pool_func(input_tensor, [1, window_rows, window_cols, 1],
                                 [1, row_stride, col_stride, 1], padding)
       output_backprop_tensor = constant_op.constant(
