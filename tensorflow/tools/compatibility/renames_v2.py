@@ -24,7 +24,6 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-
 renames = {
     'tf.AUTO_REUSE': 'tf.compat.v1.AUTO_REUSE',
     'tf.AttrValue': 'tf.compat.v1.AttrValue',
@@ -447,8 +446,8 @@ renames = {
     'tf.nn.rnn_cell.LSTMCell': 'tf.compat.v1.nn.rnn_cell.LSTMCell',
     'tf.nn.rnn_cell.LSTMStateTuple': 'tf.compat.v1.nn.rnn_cell.LSTMStateTuple',
     'tf.nn.rnn_cell.MultiRNNCell': 'tf.compat.v1.nn.rnn_cell.MultiRNNCell',
-    'tf.nn.rnn_cell.ResidualWrapper': 'tf.compat.v1.nn.rnn_cell.ResidualWrapper',
     'tf.nn.rnn_cell.RNNCell': 'tf.compat.v1.nn.rnn_cell.RNNCell',
+    'tf.nn.rnn_cell.ResidualWrapper': 'tf.compat.v1.nn.rnn_cell.ResidualWrapper',
     'tf.nn.static_bidirectional_rnn': 'tf.compat.v1.nn.static_bidirectional_rnn',
     'tf.nn.static_rnn': 'tf.compat.v1.nn.static_rnn',
     'tf.nn.uniform_candidate_sampler': 'tf.random.uniform_candidate_sampler',
@@ -551,6 +550,10 @@ renames = {
     'tf.saved_model.utils.build_tensor_info': 'tf.compat.v1.saved_model.utils.build_tensor_info',
     'tf.saved_model.utils.get_tensor_from_tensor_info': 'tf.compat.v1.saved_model.utils.get_tensor_from_tensor_info',
     'tf.scatter_add': 'tf.compat.v1.scatter_add',
+    'tf.scatter_div': 'tf.compat.v1.scatter_div',
+    'tf.scatter_max': 'tf.compat.v1.scatter_max',
+    'tf.scatter_min': 'tf.compat.v1.scatter_min',
+    'tf.scatter_mul': 'tf.compat.v1.scatter_mul',
     'tf.scatter_nd_add': 'tf.compat.v1.scatter_nd_add',
     'tf.scatter_nd_sub': 'tf.compat.v1.scatter_nd_sub',
     'tf.scatter_nd_update': 'tf.compat.v1.scatter_nd_update',
