@@ -161,4 +161,24 @@ XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim) {
   });
 }
 
+XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim) {
+  XlaBuilder* builder = input.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    TF_ASSIGN_OR_RETURN(Shape input_shape, builder->GetShape(input));
+    TF_ASSIGN_OR_RETURN(Shape index_shape, builder->GetShape(index));
+    std::vector<int64> slice_sizes = input_shape.dimensions();
+    slice_sizes[dim] = 1;
+    GatherDimensionNumbers gather_dnums;
+    for (int64 i = 0; i < input_shape.rank(); ++i) {
+      if (i != dim) {
+        gather_dnums.add_offset_dims(i);
+      }
+    }
+    gather_dnums.set_index_vector_dim(index_shape.rank());
+    gather_dnums.add_collapsed_slice_dims(dim);
+    gather_dnums.add_start_index_map(dim);
+    return Gather(input, index, gather_dnums, slice_sizes);
+  });
+}
+
 }  // namespace xla
