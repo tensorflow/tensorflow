@@ -133,11 +133,6 @@ const string& OpKernel::requested_input(int i) const { return def_->input(i); }
   return device->attributes().locality().numa_node();
 }
 
-bool OpKernel::HasInput(StringPiece input_name) const {
-  const auto result = input_name_map_.find(input_name);
-  return result != input_name_map_.end();
-}
-
 Status OpKernel::InputRange(StringPiece input_name, int* start,
                             int* stop) const {
   const auto result = input_name_map_.find(input_name);
@@ -348,10 +343,6 @@ void OpKernelContext::really_record_tensor_reference(const Tensor& tensor) {
   mutex_lock l(mu_);
   // Keep a reference to the underlying memory around.
   referenced_tensors_->Add(tensor);
-}
-
-bool OpKernelContext::has_input(StringPiece name) const {
-  return params_->op_kernel->HasInput(name);
 }
 
 Status OpKernelContext::input(StringPiece name, const Tensor** tensor) {
