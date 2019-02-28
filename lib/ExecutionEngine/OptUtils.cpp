@@ -33,15 +33,37 @@
 #include "llvm/Support/StringSaver.h"
 #include "llvm/Transforms/IPO.h"
 #include "llvm/Transforms/IPO/PassManagerBuilder.h"
+#include <climits>
 #include <mutex>
+
+// A category for options that should be passed to -llvm-opts.
+static llvm::cl::OptionCategory
+    optFlags("opt-like flags (pass to -llvm-ops=\"\")");
+
+// LLVM pass configuration CLI flag.
+static llvm::cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser>
+    llvmPasses(llvm::cl::desc("LLVM optimizing passes to run"),
+               llvm::cl::cat(optFlags));
+
+// CLI variables for -On options.
+static llvm::cl::opt<bool> optO0("O0", llvm::cl::desc("Run opt O0 passes"),
+                                 llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool> optO1("O1", llvm::cl::desc("Run opt O1 passes"),
+                                 llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool> optO2("O2", llvm::cl::desc("Run opt O2 passes"),
+                                 llvm::cl::cat(optFlags));
+static llvm::cl::opt<bool> optO3("O3", llvm::cl::desc("Run opt O3 passes"),
+                                 llvm::cl::cat(optFlags));
 
 // Run the module and function passes managed by the module manager.
 static void runPasses(llvm::legacy::PassManager &modulePM,
                       llvm::legacy::FunctionPassManager &funcPM,
                       llvm::Module &m) {
+  funcPM.doInitialization();
   for (auto &func : m) {
     funcPM.run(func);
   }
+  funcPM.doFinalization();
   modulePM.run(m);
 }
 
@@ -61,25 +83,50 @@ void mlir::initializeLLVMPasses() {
   llvm::initializeVectorization(registry);
 }
 
+// Populate pass managers according to the optimization and size levels.
+// This behaves similarly to LLVM opt.
+static void populatePassManagers(llvm::legacy::PassManager &modulePM,
+                                 llvm::legacy::FunctionPassManager &funcPM,
+                                 unsigned optLevel, unsigned sizeLevel) {
+  llvm::PassManagerBuilder builder;
+  builder.OptLevel = optLevel;
+  builder.SizeLevel = sizeLevel;
+  builder.Inliner = llvm::createFunctionInliningPass(
+      optLevel, sizeLevel, /*DisableInlineHotCallSite=*/false);
+  builder.LoopVectorize = optLevel > 1 && sizeLevel < 2;
+  builder.SLPVectorize = optLevel > 1 && sizeLevel < 2;
+  builder.DisableUnrollLoops = (optLevel == 0);
+
+  builder.populateModulePassManager(modulePM);
+  builder.populateFunctionPassManager(funcPM);
+}
+
 // Create and return a lambda that uses LLVM pass manager builder to set up
 // optimizations based on the given level.
 std::function<llvm::Error(llvm::Module *)>
 mlir::makeOptimizingTransformer(unsigned optLevel, unsigned sizeLevel) {
   return [optLevel, sizeLevel](llvm::Module *m) -> llvm::Error {
-    llvm::PassManagerBuilder builder;
-    builder.OptLevel = optLevel;
-    builder.SizeLevel = sizeLevel;
-    builder.Inliner = llvm::createFunctionInliningPass(
-        optLevel, sizeLevel, /*DisableInlineHotCallSite=*/false);
 
     llvm::legacy::PassManager modulePM;
     llvm::legacy::FunctionPassManager funcPM(m);
-    builder.populateModulePassManager(modulePM);
-    builder.populateFunctionPassManager(funcPM);
+    populatePassManagers(modulePM, funcPM, optLevel, sizeLevel);
     runPasses(modulePM, funcPM, *m);
 
     return llvm::Error::success();
   };
+}
+
+// Check if the opt flag is set and if it was located before `pos`.  If so,
+// popuplate the module and the function pass managers with the passes
+// corresponding to the `level` of optimization and reset the flag.
+static void
+populatePassManagersOptLevel(llvm::cl::opt<bool> &opt, unsigned level,
+                             unsigned pos, llvm::legacy::PassManager &modulePM,
+                             llvm::legacy::FunctionPassManager &funcPM) {
+  if (opt && opt.getPosition() < pos) {
+    opt = false;
+    populatePassManagers(modulePM, funcPM, level, /*sizeLevel=*/0);
+  }
 }
 
 // Create and return a lambda that leverages LLVM PassInfo command line parser
@@ -88,8 +135,11 @@ mlir::makeOptimizingTransformer(unsigned optLevel, unsigned sizeLevel) {
 std::function<llvm::Error(llvm::Module *)>
 mlir::makeLLVMPassesTransformer(std::string config) {
   return [config](llvm::Module *m) -> llvm::Error {
-    static llvm::cl::list<const llvm::PassInfo *, bool, llvm::PassNameParser>
-        llvmPasses(llvm::cl::desc("LLVM optimizing passes to run"));
+    // Storage for -On flags, the index in this array corresponds to the
+    // optimization level.  Do not add anything else.
+    llvm::SmallVector<std::reference_wrapper<llvm::cl::opt<bool>>, 4> optFlags{
+        optO0, optO1, optO2, optO3};
+
     llvm::BumpPtrAllocator allocator;
     llvm::StringSaver saver(allocator);
     llvm::SmallVector<const char *, 16> args;
@@ -98,10 +148,18 @@ mlir::makeLLVMPassesTransformer(std::string config) {
     llvm::cl::ParseCommandLineOptions(args.size(), args.data());
 
     llvm::legacy::PassManager modulePM;
+    llvm::legacy::FunctionPassManager funcPM(m);
 
-    for (const auto *passInfo : llvmPasses) {
+    for (unsigned i = 0, e = llvmPasses.size(); i < e; ++i) {
+      const auto *passInfo = llvmPasses[i];
       if (!passInfo->getNormalCtor())
         continue;
+
+      // If there is any of -On flags textually before this pass flag, populate
+      // the pass managers with the corresponding passes and reset the flag.
+      for (unsigned j = 0; j < 4; ++j)
+        populatePassManagersOptLevel(
+            optFlags[j].get(), j, llvmPasses.getPosition(i), modulePM, funcPM);
 
       auto *pass = passInfo->createPass();
       if (!pass)
@@ -111,8 +169,20 @@ mlir::makeLLVMPassesTransformer(std::string config) {
 
       modulePM.add(pass);
     }
+    // Populate the pass managers with passes corresponding to the -On flags
+    // that have not been used yet.  Use UINT_MAX as the position index before
+    // which the -On flag should appear as an always-true marker.
+    for (unsigned j = 0; j < 4; ++j)
+      populatePassManagersOptLevel(optFlags[j].get(), j, /*pos=*/UINT_MAX,
+                                   modulePM, funcPM);
 
-    modulePM.run(*m);
+    // Run the -On function passes, then all the other passes.  Note that
+    // manually requested function passes were added to modulePM and will be
+    // executed in order with manual/-On module passes.  The function pass
+    // manager is only populated in reaction to -On flags with passes that are
+    // supposed to run "as soon as functions are created" according to the doc.
+    // This behavior is identical to that of LLVM's "opt" tool.
+    runPasses(modulePM, funcPM, *m);
     return llvm::Error::success();
   };
 }

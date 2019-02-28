@@ -58,19 +58,6 @@ static llvm::cl::opt<std::string> llvmPasses(
     "llvm-opts",
     llvm::cl::desc("LLVM passes to run, syntax same as the opt tool"));
 
-static llvm::cl::opt<bool>
-    llvmO0("O0",
-           llvm::cl::desc("Optimization level 0, similar to LLVM opt -O0"));
-static llvm::cl::opt<bool>
-    llvmO1("O1",
-           llvm::cl::desc("Optimization level 1, similar to LLVM opt -O1"));
-static llvm::cl::opt<bool>
-    llvmO2("O2",
-           llvm::cl::desc("Optimization level 2, similar to LLVM opt -O2"));
-static llvm::cl::opt<bool>
-    llvmO3("O3",
-           llvm::cl::desc("Optimization level 3, similar to LLVM opt -O3"));
-
 static std::unique_ptr<Module> parseMLIRInput(StringRef inputFilename,
                                               MLIRContext *context) {
   // Set up the input file.
@@ -170,12 +157,6 @@ int main(int argc, char **argv) {
 
   llvm::cl::ParseCommandLineOptions(argc, argv, "MLIR CPU execution driver\n");
 
-  if ((llvmO0 || llvmO1 || llvmO2 || llvmO3) &&
-      !llvmPasses.getValue().empty()) {
-    llvm::errs() << "cannot use -O? together with -llvm-passes\n";
-    return EXIT_FAILURE;
-  }
-
   initializeLLVM();
   mlir::initializeLLVMPasses();
 
@@ -186,20 +167,7 @@ int main(int argc, char **argv) {
     return 1;
   }
 
-  unsigned optLevel = 0;
-  if (llvmO1)
-    optLevel = 1;
-  if (llvmO2)
-    optLevel = 2;
-  if (llvmO3)
-    optLevel = 3;
-
-  std::function<llvm::Error(llvm::Module *)> transformer;
-  if (llvmPasses.getValue().empty())
-    transformer = mlir::makeOptimizingTransformer(optLevel, /*sizeLevel=*/0);
-  else
-    transformer = mlir::makeLLVMPassesTransformer(llvmPasses.getValue());
-
+  auto transformer = mlir::makeLLVMPassesTransformer(llvmPasses.getValue());
   auto error = compileAndExecute(m.get(), mainFuncName.getValue(), transformer);
   int exitCode = EXIT_SUCCESS;
   llvm::handleAllErrors(std::move(error),
