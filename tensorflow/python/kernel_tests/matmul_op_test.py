@@ -127,7 +127,7 @@ def _GetMatMulGradientTest(a_np_, b_np_, use_static_shape_, **kwargs_):
     epsilon = np.finfo(a_np_.dtype).eps
     delta = epsilon**(1.0 / 3.0)
     tol = 20 * delta
-    with self.session(), test_util.use_gpu():
+    with self.session():
       theoretical, numerical = gradient_checker_v2.compute_gradient(
           lambda x: math_ops.matmul(x, effective_b_np, **kwargs_),
           [effective_a_np],
