@@ -304,7 +304,7 @@ Follow these steps to get the pushbutton yes/no example working on Apollo 3:
         this one second
     5.  The debugger will print out four numbers. They are the probabilites for
         1.  no speech
-        2.  unkown speech
+        2.  unknown speech
         3.  yes
         4.  no
     6.  The EVB LEDs will indicate detection.

@@ -213,6 +213,7 @@ REGISTER_OP("ResizeBicubic")
     .Output("resized_images: float")
     .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
@@ -222,6 +223,7 @@ REGISTER_OP("ResizeBicubicGrad")
     .Output("output: T")
     .Attr("T: {float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();
@@ -236,6 +238,7 @@ REGISTER_OP("ResizeBilinear")
         "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
         "float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
@@ -262,6 +265,7 @@ REGISTER_OP("QuantizedResizeBilinear")
     .Output("out_max: float")
     .Attr("T: {quint8, qint32, float}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(ResizeShapeFn(c));
       ShapeHandle min_shape;
@@ -280,6 +284,7 @@ REGISTER_OP("ResizeBilinearGrad")
     .Output("output: T")
     .Attr("T: {float, bfloat16, half, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();
@@ -306,6 +311,7 @@ REGISTER_OP("ResizeNearestNeighbor")
     .Output("resized_images: T")
     .Attr("T: {int8, uint8, int16, uint16, int32, int64, half, float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
@@ -315,6 +321,7 @@ REGISTER_OP("ResizeNearestNeighborGrad")
     .Output("output: T")
     .Attr("T: {uint8, int8, int32, half, float, double}")
     .Attr("align_corners: bool = false")
+    .Attr("half_pixel_centers: bool = false")
     .SetShapeFn([](InferenceContext* c) {
       ShapeHandle input;
       TF_RETURN_IF_ERROR(c->WithRank(c->input(0), 4, &input));

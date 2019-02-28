@@ -128,6 +128,9 @@ load(
     "tf_additional_libdevice_srcs",
     "tf_additional_minimal_lib_srcs",
     "tf_additional_mpi_lib_defines",
+    "tf_additional_numa_deps",
+    "tf_additional_numa_lib_defines",
+    "tf_additional_numa_copts",
     "tf_additional_proto_hdrs",
     "tf_additional_proto_srcs",
     "tf_additional_test_deps",
@@ -388,15 +391,15 @@ cc_library(
         ":platform_port_hdrs",
         ":platform_port_internal_hdrs",
     ],
-    copts = tf_copts(),
+    copts = tf_copts() + tf_additional_numa_copts(),
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
         ":lib_platform",
         ":platform_base",
-        "//tensorflow/core/platform/default/build_config:port",
         "@com_google_absl//absl/base",
+        "//tensorflow/core/platform/default/build_config:port",
         "@snappy",
-    ],
+    ] + tf_additional_numa_deps(),
 )
 
 filegroup(
@@ -2278,11 +2281,14 @@ LIB_INTERNAL_PUBLIC_HEADERS = tf_additional_lib_hdrs() + [
 ]
 
 # Replicated for lib_internal and lib_internal_impl.
-LIB_INTERNAL_DEFINES = (tf_additional_lib_defines() + [
-                            "TF_USE_SNAPPY",
-                        ] + tf_additional_verbs_lib_defines() +
-                        tf_additional_mpi_lib_defines() +
-                        tf_additional_gdr_lib_defines())
+LIB_INTERNAL_DEFINES = (
+    tf_additional_lib_defines() + [
+        "TF_USE_SNAPPY",
+    ] + tf_additional_verbs_lib_defines() +
+    tf_additional_mpi_lib_defines() +
+    tf_additional_gdr_lib_defines() +
+    tf_additional_numa_lib_defines()
+)
 
 cc_library(
     name = "lib_internal",
@@ -2355,19 +2361,20 @@ cc_library(
     copts = tf_copts(),
     defines = LIB_INTERNAL_DEFINES,
     deps = tf_additional_lib_deps() + [
-        ":lib_hash_crc32c_accelerate_internal",
-        ":lib_proto_parsing",
-        ":abi",
-        ":core_stringpiece",
-        "@com_google_absl//absl/memory",
-        "@com_google_absl//absl/strings",
-        "//third_party/eigen3",
-        "//tensorflow/core/platform/default/build_config:platformlib",
-        "@snappy",
-        "@zlib_archive//:zlib",
-        "@double_conversion//:double-conversion",
-        "@protobuf_archive//:protobuf",
-    ] + tf_protos_all_impl() + tf_protos_grappler_impl(),
+               ":lib_hash_crc32c_accelerate_internal",
+               ":lib_proto_parsing",
+               ":abi",
+               ":core_stringpiece",
+               "@com_google_absl//absl/memory",
+               "@com_google_absl//absl/strings",
+               "//third_party/eigen3",
+               "//tensorflow/core/platform/default/build_config:platformlib",
+               "@snappy",
+               "@zlib_archive//:zlib",
+               "@double_conversion//:double-conversion",
+               "@protobuf_archive//:protobuf",
+           ] + tf_protos_all_impl() + tf_protos_grappler_impl() +
+           tf_additional_numa_deps(),
 )
 
 # File compiled with extra flags to get cpu-specific acceleration.

@@ -23,7 +23,6 @@ import copy
 import json
 import os
 
-import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import pywrap_tensorflow
@@ -37,6 +36,7 @@ from tensorflow.python.keras import backend
 from tensorflow.python.keras.engine import base_layer
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import training_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.saving import hdf5_format
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
@@ -49,6 +49,7 @@ from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
 from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import nest
+from tensorflow.python.util import serialization
 from tensorflow.python.util import tf_inspect
 
 
@@ -208,6 +209,12 @@ class Network(base_layer.Layer):
 
     self._trackable_saver = (
         trackable_utils.saver_with_op_caching(self))
+
+    # Networks do not need to do any casting of inputs or variables, because
+    # each of its layers will handle casting through the layer's own
+    # implementation. Therefore networks use the 'infer' policy, which does no
+    # casting.
+    self._mixed_precision_policy = policy.Policy('infer')
 
   @trackable.no_automatic_dependency_tracking
   def _init_graph_network(self, inputs, outputs, name=None):
@@ -518,11 +525,8 @@ class Network(base_layer.Layer):
   def _unfiltered_updates(self):
     updates = []
     for layer in self.layers:
-      if isinstance(layer, Network):
-        updates += layer._unfiltered_updates
-      else:
-        updates += layer.updates
-    updates += self._updates
+      updates += layer._unfiltered_updates
+    updates += list(self._updates)
     return updates
 
   @property
@@ -1522,22 +1526,9 @@ class Network(base_layer.Layer):
     Returns:
         A JSON string.
     """
-    def get_json_type(obj):
-      # If obj is any numpy type
-      if type(obj).__module__ == np.__name__:
-        if isinstance(obj, np.ndarray):
-          return obj.tolist()
-        else:
-          return obj.item()
-
-      # If obj is a python 'type'
-      if type(obj).__name__ == type.__name__:
-        return obj.__name__
-
-      raise TypeError('Not JSON Serializable:', obj)
-
     model_config = self._updated_config()
-    return json.dumps(model_config, default=get_json_type, **kwargs)
+    return json.dumps(
+        model_config, default=serialization.get_json_type, **kwargs)
 
   def to_yaml(self, **kwargs):
     """Returns a yaml string containing the network configuration.
@@ -1834,4 +1825,3 @@ def _map_graph_network(inputs, outputs):
                        str(all_names.count(name)) + ' times in the model. '
                        'All layer names should be unique.')
   return network_nodes, nodes_by_depth, layers, layers_by_depth
-

@@ -504,7 +504,7 @@ class HierarchicalTreeBroadcasterTest : public ::testing::Test {
     // instance may succeed while others fail, even if a transmission
     // failure occurs early in the operation chain.  So, when an abort
     // is specified we need to verify that at least one Op fails with
-    // the expected status and any Op that succeeds yeilds the correct
+    // the expected status and any Op that succeeds yields the correct
     // value.
     if (fail_after > 0) {
       mutex_lock l(mu_);

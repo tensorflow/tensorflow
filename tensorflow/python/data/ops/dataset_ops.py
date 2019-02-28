@@ -229,38 +229,6 @@ class DatasetV2(object):
     """
     raise NotImplementedError("Dataset._element_structure")
 
-  @property
-  def output_classes(self):
-    """Returns the class of each component of an element of this dataset.
-
-    The expected values are `tf.Tensor` and `tf.SparseTensor`.
-
-    Returns:
-      A nested structure of Python `type` objects corresponding to each
-      component of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
-
-  @property
-  def output_shapes(self):
-    """Returns the shape of each component of an element of this dataset.
-
-    Returns:
-      A nested structure of `tf.TensorShape` objects corresponding to each
-      component of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
-
-  @property
-  def output_types(self):
-    """Returns the type of each component of an element of this dataset.
-
-    Returns:
-      A nested structure of `tf.DType` objects corresponding to each component
-      of an element of this dataset.
-    """
-    return self._element_structure._to_legacy_output_types()  # pylint: disable=protected-access
-
   def __repr__(self):
     output_shapes = nest.map_structure(str, get_legacy_output_shapes(self))
     output_shapes = str(output_shapes).replace("'", "")
@@ -1548,6 +1516,38 @@ class DatasetV1(DatasetV2):
         get_legacy_output_shapes(dataset), get_legacy_output_classes(dataset))
 
   @property
+  def output_classes(self):
+    """Returns the class of each component of an element of this dataset.
+
+    The expected values are `tf.Tensor` and `tf.SparseTensor`.
+
+    Returns:
+      A nested structure of Python `type` objects corresponding to each
+      component of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_classes()  # pylint: disable=protected-access
+
+  @property
+  def output_shapes(self):
+    """Returns the shape of each component of an element of this dataset.
+
+    Returns:
+      A nested structure of `tf.TensorShape` objects corresponding to each
+      component of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_shapes()  # pylint: disable=protected-access
+
+  @property
+  def output_types(self):
+    """Returns the type of each component of an element of this dataset.
+
+    Returns:
+      A nested structure of `tf.DType` objects corresponding to each component
+      of an element of this dataset.
+    """
+    return self._element_structure._to_legacy_output_types()  # pylint: disable=protected-access
+
+  @property
   def _element_structure(self):
     # TODO(b/110122868): Remove this override once all `Dataset` instances
     # implement `element_structure`.
@@ -2366,6 +2366,8 @@ class StructuredFunctionWrapper(object):
     else:
       defun_kwargs.update({"func_name": func_name})
 
+      # TODO(b/124254153): Enable autograph once the overhead is low enough.
+      # TODO(mdan): Make sure autograph recurses into _wrapper_helper when on.
       @eager_function.defun_with_attributes(
           input_signature=[
               tensor_spec.TensorSpec(input_shape, input_type)  # pylint: disable=g-complex-comprehension
@@ -2373,6 +2375,7 @@ class StructuredFunctionWrapper(object):
                   self._input_structure._flat_shapes,
                   self._input_structure._flat_types)
           ],
+          autograph=False,
           attributes=defun_kwargs)
       def wrapper_fn(*args):  # pylint: disable=missing-docstring
         ret = _wrapper_helper(*args)

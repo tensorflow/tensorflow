@@ -5717,7 +5717,7 @@ def disable_eager_execution():
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
-    c._eager_context.is_eager = False  # pylint: disable=protected-access
+    c._thread_local_data.is_eager = False  # pylint: disable=protected-access
 
 
 def enable_eager_execution_internal(config=None,

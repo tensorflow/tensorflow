@@ -280,6 +280,27 @@ class TimeDistributedTest(test.TestCase):
         '`TimeDistributed` Layer should be passed an `input_shape `'):
       time_dist(ph)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_TimeDistributed_reshape(self):
+
+    class NoReshapeLayer(keras.layers.Layer):
+
+      def call(self, inputs):
+        return inputs
+
+    # Built-in layers that aren't stateful use the reshape implementation.
+    td1 = keras.layers.TimeDistributed(keras.layers.Dense(5))
+    self.assertTrue(td1._always_use_reshape)
+
+    # Built-in layers that are stateful don't use the reshape implementation.
+    td2 = keras.layers.TimeDistributed(
+        keras.layers.RNN(keras.layers.SimpleRNNCell(10), stateful=True))
+    self.assertFalse(td2._always_use_reshape)
+
+    # Custom layers are not whitelisted for the fast reshape implementation.
+    td3 = keras.layers.TimeDistributed(NoReshapeLayer())
+    self.assertFalse(td3._always_use_reshape)
+
 
 class BidirectionalTest(test.TestCase):
 
@@ -667,7 +688,33 @@ class BidirectionalTest(test.TestCase):
       y_np_3 = model.predict([x_np, s_fw_np, s_bk_np, c_np])
       self.assertAllClose(y_np, y_np_3, atol=1e-4)
 
-  def test_Bidirectional_with_masking(self):
+  def test_Bidirectional_last_output_with_masking(self):
+    rnn = keras.layers.LSTM
+    samples = 2
+    dim = 5
+    timesteps = 3
+    units = 3
+    merge_mode = 'concat'
+    x = np.random.rand(samples, timesteps, dim)
+    # clear the first record's timestep 2. Last output should be same as state,
+    # not zeroed.
+    x[0, 2] = 0
+
+    with self.cached_session():
+      inputs = keras.Input((timesteps, dim))
+      masked_inputs = keras.layers.Masking()(inputs)
+      wrapped = keras.layers.Bidirectional(
+          rnn(units, return_state=True), merge_mode=merge_mode)
+      outputs = _to_list(wrapped(masked_inputs, training=True))
+      self.assertEqual(len(outputs), 5)
+      self.assertEqual(outputs[0].get_shape().as_list(), [None, units * 2])
+
+      model = keras.Model(inputs, outputs)
+      y = _to_list(model.predict(x))
+      self.assertEqual(len(y), 5)
+      self.assertAllClose(y[0], np.concatenate([y[1], y[3]], axis=1))
+
+  def test_Bidirectional_sequence_output_with_masking(self):
     rnn = keras.layers.LSTM
     samples = 2
     dim = 5
@@ -705,4 +752,3 @@ def _to_list(ls):
 
 if __name__ == '__main__':
   test.main()
-

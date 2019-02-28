@@ -30,6 +30,7 @@ from tensorflow.python.ops.lookup_ops import IdTableWithHashBuckets
 from tensorflow.python.ops.lookup_ops import index_table_from_file
 from tensorflow.python.ops.lookup_ops import index_to_string_table_from_file
 from tensorflow.python.ops.lookup_ops import InitializableLookupTableBase
+from tensorflow.python.ops.lookup_ops import InitializableLookupTableBaseV1
 from tensorflow.python.ops.lookup_ops import KeyValueTensorInitializer
 from tensorflow.python.ops.lookup_ops import LookupInterface
 from tensorflow.python.ops.lookup_ops import StrongHashSpec
@@ -284,7 +285,7 @@ def index_to_string(tensor, mapping, default_value="UNK", name=None):
   return table.lookup(tensor)
 
 
-class HashTable(InitializableLookupTableBase):
+class HashTable(InitializableLookupTableBaseV1):
   """A generic hash table implementation.
 
   Example usage:
@@ -325,7 +326,7 @@ class HashTable(InitializableLookupTableBase):
     super(HashTable, self).__init__(default_value, initializer)
     self._value_shape = self._default_value.get_shape()
 
-  def create_resource(self):
+  def _create_resource(self):
     table_ref = gen_lookup_ops.hash_table_v2(
         shared_name=self._shared_name,
         key_dtype=self._initializer.key_dtype,
@@ -336,6 +337,10 @@ class HashTable(InitializableLookupTableBase):
     else:
       self._table_name = table_ref.op.name.split("/")[-1]
     return table_ref
+
+  @property
+  def init(self):
+    return self.initializer
 
   @property
   def name(self):

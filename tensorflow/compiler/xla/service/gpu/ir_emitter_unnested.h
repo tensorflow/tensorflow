@@ -356,9 +356,9 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<Thunk> BuildForThunk(const HloInstruction* hlo,
                                        const int64 loop_limit);
 
-  // Returns a ConditionalThunk that executes the thunk sequence for
-  // 'true_computation' or 'false_computation' depending on the value of the
-  // predicate in the given conditional instruction.
+  // Returns a ConditionalThunk which executes the thunk sequence for the
+  // 'branch_computation' corresponding to the predicate/branch_index of the
+  // given conditional instruction.
   std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
 
   Status Postprocess(HloInstruction* hlo) override;

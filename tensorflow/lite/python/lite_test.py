@@ -741,7 +741,7 @@ class FromFrozenGraphFile(test_util.TensorFlowTestCase):
   # TODO(nupurgarg): Test model loading in open source.
   def _initObjectDetectionArgs(self):
     # Initializes the arguments required for the object detection model.
-    # Looks for the model file which is saved in a different location interally
+    # Looks for the model file which is saved in a different location internally
     # and externally.
     filename = resource_loader.get_path_to_datafile('testdata/tflite_graph.pb')
     if not os.path.exists(filename):

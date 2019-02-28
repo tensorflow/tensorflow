@@ -227,12 +227,14 @@ bool CompressTensorContent(float min_compression_ratio,
                               new_num_values * sizeof(T),
                               reinterpret_cast<char*>(tmp.data()));
     tensor->clear_tensor_content();
-    TypeHelper::AddValues(tmp.data(), tmp.data() + tmp.size(), tensor);
+    const T* begin = tmp.begin();
+    const T* end = tmp.end();
+    TypeHelper::AddValues(begin, end, tensor);
   } else {
     // Copy and cast, one byte at a time.
     for (int64 i = 0; i < new_num_values; ++i) {
       char c = tensor->tensor_content()[i];
-      TypeHelper::AddValue(static_cast<FieldType>(c), tensor);
+      TypeHelper::AddValue(static_cast<T>(c), tensor);
     }
     tensor->clear_tensor_content();
   }
@@ -339,9 +341,8 @@ bool CompressTensorProtoInPlace(int64 min_num_elements,
     HANDLE_COMPRESS_CASE(DT_QUINT16);
     HANDLE_COMPRESS_CASE(DT_QINT16);
     HANDLE_COMPRESS_CASE(DT_QINT32);
-    // TODO(rmlarsen): Add support for complex and half float types.
-    //    HANDLE_COMPRESS_CASE(DT_HALF);
-    //    HANDLE_COMPRESS_CASE(DT_BFLOAT16);
+    HANDLE_COMPRESS_CASE(DT_HALF);
+    HANDLE_COMPRESS_CASE(DT_BFLOAT16);
     default:
       return false;
   }

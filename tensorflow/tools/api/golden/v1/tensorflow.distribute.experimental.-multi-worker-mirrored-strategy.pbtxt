@@ -13,7 +13,7 @@ tf_class {
   }
   member_method {
     name: "__init__"
-    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'self\', \'communication\'], varargs=None, keywords=None, defaults=[\'CollectiveCommunication.AUTO\'], "
   }
   member_method {
     name: "broadcast"

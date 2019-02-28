@@ -55,7 +55,7 @@ from tensorflow.python.util import compat
 
 class IteratorTest(test.TestCase, parameterized.TestCase):
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testNoGradients(self):
     component = constant_op.constant([1.])
     side = constant_op.constant(0.)
@@ -66,7 +66,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     self.assertIsNone(gradients_impl.gradients(value, side)[0])
     self.assertIsNone(gradients_impl.gradients(value, [component, side])[0])
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testCapturingStateInOneShotRaisesException(self):
     var = variables.Variable(37.0, name="myvar")
     dataset = (
@@ -77,7 +77,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         "datasets that capture stateful objects.+myvar"):
       dataset_ops.make_one_shot_iterator(dataset)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testOneShotIterator(self):
     components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
@@ -103,7 +103,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testOneShotIteratorCaptureByValue(self):
     components = (np.arange(7),
                   np.array([[1, 2, 3]]) * np.arange(7)[:, np.newaxis],
@@ -166,7 +166,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testOneShotIteratorNonBlocking(self):
     dataset = dataset_ops.Dataset.from_tensors([1, 2, 3]).map(lambda x: x * x)
     iterator = dataset_ops.make_one_shot_iterator(dataset)
@@ -205,7 +205,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
                        len([None for r in results if r is None]))
       self.assertAllEqual([[1, 4, 9]], [r for r in results if r is not None])
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testOneShotIteratorInitializerFails(self):
     # Define a dataset whose initialization will always fail.
     dataset = dataset_ops.Dataset.from_tensors(
@@ -286,7 +286,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         with self.assertRaises(errors.OutOfRangeError):
           sess.run(get_next)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testNotInitializedError(self):
     components = (np.array(1), np.array([1, 2, 3]), np.array(37.0))
     iterator = dataset_ops.make_initializable_iterator(
@@ -298,7 +298,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
                                    "iterator has not been initialized"):
         sess.run(get_next)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testReinitializableIterator(self):
     dataset_3 = dataset_ops.Dataset.from_tensors(
         constant_op.constant([1, 2, 3]))
@@ -339,7 +339,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testReinitializableIteratorWithFunctions(self):
 
     def g():
@@ -399,7 +399,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
               (constant_op.constant([1, 2, 3], dtype=dtypes.int64),
                constant_op.constant([4., 5., 6., 7.], dtype=dtypes.float64))))
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testIteratorStringHandle(self):
     dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     dataset_4 = dataset_ops.Dataset.from_tensor_slices([10, 20, 30, 40])
@@ -457,7 +457,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         sess.run(
             next_element, feed_dict={handle_placeholder: iterator_4_handle})
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testIteratorStringHandleFuture(self):
     with forward_compat.forward_compatibility_horizon(2018, 8, 4):
       dataset_3 = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
@@ -523,7 +523,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
           sess.run(
               next_element, feed_dict={handle_placeholder: iterator_4_handle})
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testIteratorStringHandleReuseTensorObject(self):
     dataset = dataset_ops.Dataset.from_tensor_slices([1, 2, 3])
     one_shot_iterator = dataset_ops.make_one_shot_iterator(dataset)
@@ -552,7 +552,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
     self.assertEqual("foo_1", handle_with_same_name.op.name)
     self.assertIsNot(handle_with_name, handle_with_same_name)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testIteratorStringHandleError(self):
     dataset_int_scalar = (
         dataset_ops.Dataset.from_tensor_slices([1, 2, 3]).repeat())
@@ -593,7 +593,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
             feedable_int_vector.get_next(),
             feed_dict={handle_placeholder: handle_float_vector}))
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testRemoteIteratorUsingRemoteCallOpDirectSession(self):
     worker_config = config_pb2.ConfigProto()
     worker_config.device_count["CPU"] = 3
@@ -651,7 +651,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
                 target_placeholder: "/job:localhost/replica:0/task:0/cpu:1"
             })
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testRemoteIteratorUsingRemoteCallOpMultiWorkers(self):
     s1 = server_lib.Server.create_local_server()
     s2 = server_lib.Server.create_local_server()
@@ -705,6 +705,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(n)
 
+  @test_util.deprecated_graph_mode_only
   def testRemoteIteratorUsingRemoteCallOpDirectSessionGPUCPU(self):
     if not test_util.is_gpu_available():
       self.skipTest("No GPU available")
@@ -761,7 +762,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
                 target_placeholder: "/job:localhost/replica:0/task:0/cpu:0"
             })
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testIncorrectIteratorRestore(self):
 
     def _path():
@@ -820,7 +821,7 @@ class IteratorTest(test.TestCase, parameterized.TestCase):
         with self.assertRaises(errors.InvalidArgumentError):
           sess.run(restore_op)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testRepeatedGetNextWarning(self):
     iterator = dataset_ops.make_one_shot_iterator(dataset_ops.Dataset.range(10))
     warnings.simplefilter("always")
