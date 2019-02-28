@@ -6327,6 +6327,29 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_quantized_conv_ops_test",
+    size = "small",
+    srcs = ["mkl_quantized_conv_ops_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
+    deps = [
+        ":mkl_conv_op",
+        ":mkl_input_conversion_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "quantize_op_test",
     size = "small",

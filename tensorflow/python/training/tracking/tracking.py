@@ -165,17 +165,9 @@ class TrackableResource(base.Trackable):
     raise NotImplementedError("TrackableResource._create_resource not "
                               "implemented.")
 
-  # This method will be removed soon.
-  def create_resource(self):
-    return self._create_resource()
-
   def _initialize(self):
     """A function that initializes the resource. Optional."""
     pass
-
-  # This method will be removed soon.
-  def initialize(self):
-    return self._initialize()
 
   @property
   def resource_handle(self):

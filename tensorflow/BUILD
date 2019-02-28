@@ -306,6 +306,12 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_numa_support",
+    define_values = {"with_numa_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Crosses between framework_shared_object and a bunch of other configurations
 # due to limitations in nested select() statements.
 config_setting(
@@ -510,9 +516,9 @@ tf_cc_shared_object(
     }),
     per_os_targets = True,
     visibility = ["//visibility:public"],
+    # add win_def_file for tensorflow
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
-        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        # We need this DEF file to properly export symbols on Windows        "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
     deps = [
@@ -539,9 +545,9 @@ tf_cc_shared_object(
     }),
     per_os_targets = True,
     visibility = ["//visibility:public"],
+    # add win_def_file for tensorflow_cc
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows
-        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        # We need this DEF file to properly export symbols on Windows        "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
     deps = [

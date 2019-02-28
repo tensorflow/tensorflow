@@ -52,19 +52,19 @@ class BatchNormalizationV2(Layer):
 
   Arguments:
     axis: Integer, the axis that should be normalized
-        (typically the features axis).
-        For instance, after a `Conv2D` layer with
-        `data_format="channels_first"`,
-        set `axis=1` in `BatchNormalization`.
+      (typically the features axis).
+      For instance, after a `Conv2D` layer with
+      `data_format="channels_first"`,
+      set `axis=1` in `BatchNormalization`.
     momentum: Momentum for the moving average.
     epsilon: Small float added to variance to avoid dividing by zero.
     center: If True, add offset of `beta` to normalized tensor.
-        If False, `beta` is ignored.
+      If False, `beta` is ignored.
     scale: If True, multiply by `gamma`.
-        If False, `gamma` is not used.
-        When the next layer is linear (also e.g. `nn.relu`),
-        this can be disabled since the scaling
-        will be done by the next layer.
+      If False, `gamma` is not used.
+      When the next layer is linear (also e.g. `nn.relu`),
+      this can be disabled since the scaling
+      will be done by the next layer.
     beta_initializer: Initializer for the beta weight.
     gamma_initializer: Initializer for the gamma weight.
     moving_mean_initializer: Initializer for the moving mean.
@@ -110,17 +110,26 @@ class BatchNormalizationV2(Layer):
       `None`, no adjustment is applied. Cannot be specified if
       virtual_batch_size is specified.
 
+  Call arguments:
+    inputs: Input tensor (of any rank).
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode.
+      - `training=True`: The layer will normalize its inputs using the
+        mean and variance of the current batch of inputs.
+      - `training=False`: The layer will normalize its inputs using the
+        mean and variance of its moving statistics, learned during training.
+
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as input.
+    Same shape as input.
 
   References:
-      - [Batch Normalization: Accelerating Deep Network Training by Reducing
-        Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
+    - [Batch Normalization: Accelerating Deep Network Training by Reducing
+      Internal Covariate Shift](https://arxiv.org/abs/1502.03167)
   """
 
   # The BatchNormalizationV1 subclass sets this to False to use the V1 behavior.
@@ -325,7 +334,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
           constraint=self.gamma_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.gamma = None
       if self.fused:
@@ -340,7 +350,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
           constraint=self.beta_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.beta = None
       if self.fused:
@@ -361,7 +372,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.moving_mean_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=tf_variables.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN,
+          experimental_autocast=False)
 
       self.moving_variance = self.add_weight(
           name='moving_variance',
@@ -370,7 +382,8 @@ class BatchNormalizationV2(Layer):
           initializer=self.moving_variance_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
-          aggregation=tf_variables.VariableAggregation.MEAN)
+          aggregation=tf_variables.VariableAggregation.MEAN,
+          experimental_autocast=False)
 
       if self.renorm:
         # Create variables to maintain the moving mean and standard deviation.
@@ -381,6 +394,7 @@ class BatchNormalizationV2(Layer):
         # stack to be cleared. The nested ones use a `lambda` to set the desired
         # device and ignore any devices that may be set by the custom getter.
         def _renorm_variable(name, shape):
+          """Create a renorm variable."""
           var = self.add_weight(
               name=name,
               shape=shape,
@@ -388,7 +402,8 @@ class BatchNormalizationV2(Layer):
               initializer=init_ops.zeros_initializer(),
               synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
-              aggregation=tf_variables.VariableAggregation.MEAN)
+              aggregation=tf_variables.VariableAggregation.MEAN,
+              experimental_autocast=False)
           return var
 
         with distribution_strategy_context.get_strategy(
@@ -834,10 +849,10 @@ class LayerNormalization(Layer):
     center: If True, add offset of `beta` to normalized tensor.
         If False, `beta` is ignored.
     scale: If True, multiply by `gamma`.
-        If False, `gamma` is not used.
-        When the next layer is linear (also e.g. `nn.relu`),
-        this can be disabled since the scaling
-        will be done by the next layer.
+      If False, `gamma` is not used.
+      When the next layer is linear (also e.g. `nn.relu`),
+      this can be disabled since the scaling
+      will be done by the next layer.
     beta_initializer: Initializer for the beta weight.
     gamma_initializer: Initializer for the gamma weight.
     beta_regularizer: Optional regularizer for the beta weight.
@@ -847,15 +862,15 @@ class LayerNormalization(Layer):
     trainable: Boolean, if `True` the variables will be marked as trainable.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as input.
+    Same shape as input.
 
   References:
-      - [Layer Normalization](https://arxiv.org/abs/1607.06450)
+    - [Layer Normalization](https://arxiv.org/abs/1607.06450)
   """
 
   def __init__(self,
@@ -949,7 +964,8 @@ class LayerNormalization(Layer):
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
           constraint=self.gamma_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.gamma = None
 
@@ -960,7 +976,8 @@ class LayerNormalization(Layer):
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
           constraint=self.beta_constraint,
-          trainable=True)
+          trainable=True,
+          experimental_autocast=False)
     else:
       self.beta = None
 

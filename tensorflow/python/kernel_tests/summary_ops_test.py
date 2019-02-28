@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine.sequential import Sequential
+from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.layers.core import Activation
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.lib.io import tf_record
@@ -574,6 +575,22 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     # Even though we didn't use it, an event file will have been created.
     self.assertEqual(1, len(gfile.Glob(os.path.join(logdir, '*'))))
 
+  def testCreate_immediateSetAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        summary_ops.create_file_writer_v2(logdir).set_as_default()
+        summary_ops.flush()
+    finally:
+      # Ensure we clean up no matter how the test executes.
+      context.context().summary_writer_resource = None
+
+  def testCreate_immediateAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        summary_ops.flush()
+
   def testNoSharing(self):
     # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
@@ -687,7 +704,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       writer = summary_ops.create_file_writer_v2(
           logdir, max_queue=999999, flush_millis=999999)
-      with writer.as_default(), summary_ops.always_record_summaries():
+      with writer.as_default():
         get_total = lambda: len(events_from_logdir(logdir))
         # Note: First tf.Event is always file_version.
         self.assertEqual(1, get_total())
@@ -765,7 +782,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
 class SummaryOpsTest(test_util.TensorFlowTestCase):
 
   def tearDown(self):
-    summary_ops.disable_trace()
+    summary_ops.trace_off()
 
   def run_metadata(self, *args, **kwargs):
     assert context.executing_eagerly()
@@ -816,10 +833,10 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     assert context.executing_eagerly()
     logdir = self.get_temp_dir()
     writer = summary_ops.create_file_writer(logdir)
-    summary_ops.enable_trace(graph=True, profiler=False)
+    summary_ops.trace_on(graph=True, profiler=False)
     with writer.as_default():
       f()
-      summary_ops.export_trace(name='foo', step=step)
+      summary_ops.trace_export(name='foo', step=step)
     writer.close()
     events = events_from_logdir(logdir)
     return events[1]
@@ -962,6 +979,40 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
       summary_ops.set_step(None)
 
   @test_util.run_v2_only
+  def testKerasModel_subclass(self):
+
+    class SimpleSubclass(Model):
+
+      def __init__(self):
+        super(SimpleSubclass, self).__init__(name='subclass')
+        self.dense = Dense(10, input_shape=(100,))
+        self.activation = Activation('relu', name='my_relu')
+
+      def call(self, inputs):
+        x = self.dense(inputs)
+        return self.activation(x)
+
+    model = SimpleSubclass()
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      self.assertFalse(
+          summary_ops.keras_model(name='my_name', data=model, step=1))
+      self.assertRegexpMatches(
+          str(mock_log.call_args), 'Model failed to serialize as JSON.')
+
+  @test_util.run_v2_only
+  def testKerasModel_otherExceptions(self):
+    model = Sequential()
+
+    with test.mock.patch.object(model, 'to_json') as mock_to_json:
+      with test.mock.patch.object(logging, 'warn') as mock_log:
+        mock_to_json.side_effect = Exception('oops')
+        self.assertFalse(
+            summary_ops.keras_model(name='my_name', data=model, step=1))
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'Model failed to serialize as JSON. Ignoring... oops')
+
+  @test_util.run_v2_only
   def testTrace(self):
 
     @def_function.function
@@ -984,7 +1035,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     @def_function.function
     def f():
-      summary_ops.enable_trace(graph=True, profiler=False)
+      summary_ops.trace_on(graph=True, profiler=False)
       x = constant_op.constant(2)
       y = constant_op.constant(3)
       return x**y
@@ -998,17 +1049,17 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
   def testTrace_cannotExportTraceWithoutTrace(self):
     with six.assertRaisesRegex(self, ValueError,
                                'Must enable trace before export.'):
-      summary_ops.export_trace(name='foo', step=1)
+      summary_ops.trace_export(name='foo', step=1)
 
   @test_util.run_v2_only
   def testTrace_cannotExportTraceInFunction(self):
-    summary_ops.enable_trace(graph=True, profiler=False)
+    summary_ops.trace_on(graph=True, profiler=False)
 
     @def_function.function
     def f():
       x = constant_op.constant(2)
       y = constant_op.constant(3)
-      summary_ops.export_trace(name='foo', step=1)
+      summary_ops.trace_export(name='foo', step=1)
       return x**y
 
     with test.mock.patch.object(logging, 'warn') as mock_log:

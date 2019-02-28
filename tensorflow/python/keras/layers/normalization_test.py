@@ -26,6 +26,7 @@ from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -142,6 +143,19 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
         normalization.BatchNormalization, dtype='float16', fused=True)
     _run_batchnorm_correctness_test(
         normalization.BatchNormalization, dtype='float16', fused=False)
+
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_batchnorm_policy(self):
+    norm = keras.layers.BatchNormalization(
+        axis=-1,
+        input_shape=(4, 4, 3),
+        momentum=0.8,
+        dtype=policy.Policy('infer_float32_vars'))
+    x = np.random.normal(size=(10, 4, 4, 3)).astype('float16')
+    y = norm(x)
+    self.assertEqual(y.dtype, 'float16')
+    self.assertEqual(norm.beta.dtype.base_dtype, 'float32')
+    self.assertEqual(norm.gamma.dtype.base_dtype, 'float32')
 
 
 class BatchNormalizationV1Test(test.TestCase):

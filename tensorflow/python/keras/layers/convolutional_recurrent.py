@@ -28,8 +28,8 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine.base_layer import Layer
 from tensorflow.python.keras.engine.input_spec import InputSpec
-from tensorflow.python.keras.layers.recurrent import _generate_dropout_mask
 from tensorflow.python.keras.layers.recurrent import _standardize_args
+from tensorflow.python.keras.layers.recurrent import DropoutRNNCellMixin
 from tensorflow.python.keras.layers.recurrent import RNN
 from tensorflow.python.keras.utils import conv_utils
 from tensorflow.python.keras.utils import generic_utils
@@ -43,30 +43,42 @@ class ConvRNN2D(RNN):
 
   Arguments:
     cell: A RNN cell instance. A RNN cell is a class that has:
-        - a `call(input_at_t, states_at_t)` method, returning
-            `(output_at_t, states_at_t_plus_1)`. The call method of the
-            cell can also take the optional argument `constants`, see
-            section "Note on passing external constants" below.
-        - a `state_size` attribute. This can be a single integer
-            (single state) in which case it is
-            the number of channels of the recurrent state
-            (which should be the same as the number of channels of the cell
-            output). This can also be a list/tuple of integers
-            (one size per state). In this case, the first entry
-            (`state_size[0]`) should be the same as
-            the size of the cell output.
+      - a `call(input_at_t, states_at_t)` method, returning
+        `(output_at_t, states_at_t_plus_1)`. The call method of the
+        cell can also take the optional argument `constants`, see
+        section "Note on passing external constants" below.
+      - a `state_size` attribute. This can be a single integer
+        (single state) in which case it is
+        the number of channels of the recurrent state
+        (which should be the same as the number of channels of the cell
+        output). This can also be a list/tuple of integers
+        (one size per state). In this case, the first entry
+        (`state_size[0]`) should be the same as
+        the size of the cell output.
     return_sequences: Boolean. Whether to return the last output.
-        in the output sequence, or the full sequence.
+      in the output sequence, or the full sequence.
     return_state: Boolean. Whether to return the last state
-        in addition to the output.
+      in addition to the output.
     go_backwards: Boolean (default False).
-        If True, process the input sequence backwards and return the
-        reversed sequence.
+      If True, process the input sequence backwards and return the
+      reversed sequence.
     stateful: Boolean (default False). If True, the last state
-        for each sample at index i in a batch will be used as initial
-        state for the sample of index i in the following batch.
+      for each sample at index i in a batch will be used as initial
+      state for the sample of index i in the following batch.
     input_shape: Use this argument to specify the shape of the
-        input when this layer is the first one in a model.
+      input when this layer is the first one in a model.
+
+  Call arguments:
+    inputs: A 5D tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is for use with cells that use dropout.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
+    constants: List of constant tensors to be passed to the cell at each
+      timestep.
 
   Input shape:
     5D tensor with shape:
@@ -76,33 +88,31 @@ class ConvRNN2D(RNN):
     if data_format='channels_last'.
 
   Output shape:
-    - if `return_state`: a list of tensors. The first tensor is
-        the output. The remaining tensors are the last states,
-        each 5D tensor with shape:
-        `(samples, timesteps, filters, new_rows, new_cols)`
-        if data_format='channels_first'
-        or 5D tensor with shape:
-        `(samples, timesteps, new_rows, new_cols, filters)`
-        if data_format='channels_last'.
-        `rows` and `cols` values might have changed due to padding.
-    - if `return_sequences`: 5D tensor with shape:
-        `(samples, timesteps, filters, new_rows, new_cols)`
-        if data_format='channels_first'
-        or 5D tensor with shape:
-        `(samples, timesteps, new_rows, new_cols, filters)`
-        if data_format='channels_last'.
-    - else, 4D tensor with shape:
-        `(samples, filters, new_rows, new_cols)`
-        if data_format='channels_first'
-        or 4D tensor with shape:
-        `(samples, new_rows, new_cols, filters)`
-        if data_format='channels_last'.
+    - If `return_state`: a list of tensors. The first tensor is
+      the output. The remaining tensors are the last states,
+      each 4D tensor with shape:
+      `(samples, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 4D tensor with shape:
+      `(samples, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
+      `rows` and `cols` values might have changed due to padding.
+    - If `return_sequences`: 5D tensor with shape:
+      `(samples, timesteps, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 5D tensor with shape:
+      `(samples, timesteps, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
+    - Else, 4D tensor with shape:
+      `(samples, filters, new_rows, new_cols)`
+      if data_format='channels_first'
+      or 4D tensor with shape:
+      `(samples, new_rows, new_cols, filters)`
+      if data_format='channels_last'.
 
   Masking:
     This layer supports masking for input data with a variable number
-    of timesteps. To introduce masks to your data,
-    use an Embedding layer with the `mask_zero` parameter
-    set to `True`.
+    of timesteps.
 
   Note on using statefulness in RNNs:
     You can set RNN layers to be 'stateful', which means that the states
@@ -110,19 +120,19 @@ class ConvRNN2D(RNN):
     for the samples in the next batch. This assumes a one-to-one mapping
     between samples in different successive batches.
     To enable statefulness:
-        - specify `stateful=True` in the layer constructor.
-        - specify a fixed batch size for your model, by passing
-             - if sequential model:
-                `batch_input_shape=(...)` to the first layer in your model.
-             - if functional model with 1 or more Input layers:
-                `batch_shape=(...)` to all the first layers in your model.
-                This is the expected shape of your inputs
-                *including the batch size*.
-                It should be a tuple of integers,
-                e.g. `(32, 10, 100, 100, 32)`.
-                Note that the number of rows and columns should be specified
-                too.
-        - specify `shuffle=False` when calling fit().
+      - Specify `stateful=True` in the layer constructor.
+      - Specify a fixed batch size for your model, by passing
+         - If sequential model:
+            `batch_input_shape=(...)` to the first layer in your model.
+         - If functional model with 1 or more Input layers:
+            `batch_shape=(...)` to all the first layers in your model.
+            This is the expected shape of your inputs
+            *including the batch size*.
+            It should be a tuple of integers,
+            e.g. `(32, 10, 100, 100, 32)`.
+            Note that the number of rows and columns should be specified
+            too.
+      - Specify `shuffle=False` when calling fit().
     To reset the states of your model, call `.reset_states()` on either
     a specific layer, or on your entire model.
 
@@ -472,61 +482,68 @@ class ConvRNN2D(RNN):
         K.set_value(state, value)
 
 
-class ConvLSTM2DCell(Layer):
+class ConvLSTM2DCell(DropoutRNNCellMixin, Layer):
   """Cell class for the ConvLSTM2D layer.
 
-  # Arguments
-      filters: Integer, the dimensionality of the output space
-          (i.e. the number of output filters in the convolution).
-      kernel_size: An integer or tuple/list of n integers, specifying the
-          dimensions of the convolution window.
-      strides: An integer or tuple/list of n integers,
-          specifying the strides of the convolution.
-          Specifying any stride value != 1 is incompatible with specifying
-          any `dilation_rate` value != 1.
-      padding: One of `"valid"` or `"same"` (case-insensitive).
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
-      dilation_rate: An integer or tuple/list of n integers, specifying
-          the dilation rate to use for dilated convolution.
-          Currently, specifying any `dilation_rate` value != 1 is
-          incompatible with specifying any `strides` value != 1.
-      activation: Activation function to use.
-          If you don't specify anything, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      recurrent_activation: Activation function to use
-          for the recurrent step.
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs.
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state.
-      bias_initializer: Initializer for the bias vector.
-      unit_forget_bias: Boolean.
-          If True, add 1 to the bias of the forget gate at initialization.
-          Use in combination with `bias_initializer="zeros"`.
-          This is recommended in [Jozefowicz et al.]
-          (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
+  Arguments:
+    filters: Integer, the dimensionality of the output space
+      (i.e. the number of output filters in the convolution).
+    kernel_size: An integer or tuple/list of n integers, specifying the
+      dimensions of the convolution window.
+    strides: An integer or tuple/list of n integers,
+      specifying the strides of the convolution.
+      Specifying any stride value != 1 is incompatible with specifying
+      any `dilation_rate` value != 1.
+    padding: One of `"valid"` or `"same"` (case-insensitive).
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
+    dilation_rate: An integer or tuple/list of n integers, specifying
+      the dilation rate to use for dilated convolution.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any `strides` value != 1.
+    activation: Activation function to use.
+      If you don't specify anything, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use
+      for the recurrent step.
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix,
+      used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    unit_forget_bias: Boolean.
+      If True, add 1 to the bias of the forget gate at initialization.
+      Use in combination with `bias_initializer="zeros"`.
+      This is recommended in [Jozefowicz et al.]
+      (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+
+  Call arguments:
+    inputs: A 4D tensor.
+    states:  List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
   """
 
   def __init__(self,
@@ -580,8 +597,6 @@ class ConvLSTM2DCell(Layer):
     self.dropout = min(1., max(0., dropout))
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.state_size = (self.filters, self.filters)
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   def build(self, input_shape):
 
@@ -631,27 +646,14 @@ class ConvLSTM2DCell(Layer):
     self.built = True
 
   def call(self, inputs, states, training=None):
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          K.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=4)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          K.ones_like(states[1]),
-          self.recurrent_dropout,
-          training=training,
-          count=4)
-
-    # dropout matrices for input units
-    dp_mask = self._dropout_mask
-    # dropout matrices for recurrent units
-    rec_dp_mask = self._recurrent_dropout_mask
-
     h_tm1 = states[0]  # previous memory state
     c_tm1 = states[1]  # previous carry state
+
+    # dropout matrices for input units
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
+    # dropout matrices for recurrent units
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        h_tm1, training, count=4)
 
     if 0 < self.dropout < 1.:
       inputs_i = inputs * dp_mask[0]
@@ -761,95 +763,106 @@ class ConvLSTM2D(ConvRNN2D):
 
   Arguments:
     filters: Integer, the dimensionality of the output space
-        (i.e. the number of output filters in the convolution).
+      (i.e. the number of output filters in the convolution).
     kernel_size: An integer or tuple/list of n integers, specifying the
-        dimensions of the convolution window.
+      dimensions of the convolution window.
     strides: An integer or tuple/list of n integers,
-        specifying the strides of the convolution.
-        Specifying any stride value != 1 is incompatible with specifying
-        any `dilation_rate` value != 1.
+      specifying the strides of the convolution.
+      Specifying any stride value != 1 is incompatible with specifying
+      any `dilation_rate` value != 1.
     padding: One of `"valid"` or `"same"` (case-insensitive).
     data_format: A string,
-        one of `channels_last` (default) or `channels_first`.
-        The ordering of the dimensions in the inputs.
-        `channels_last` corresponds to inputs with shape
-        `(batch, time, ..., channels)`
-        while `channels_first` corresponds to
-        inputs with shape `(batch, time, channels, ...)`.
-        It defaults to the `image_data_format` value found in your
-        Keras config file at `~/.keras/keras.json`.
-        If you never set it, then it will be "channels_last".
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, time, ..., channels)`
+      while `channels_first` corresponds to
+      inputs with shape `(batch, time, channels, ...)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
     dilation_rate: An integer or tuple/list of n integers, specifying
-        the dilation rate to use for dilated convolution.
-        Currently, specifying any `dilation_rate` value != 1 is
-        incompatible with specifying any `strides` value != 1.
+      the dilation rate to use for dilated convolution.
+      Currently, specifying any `dilation_rate` value != 1 is
+      incompatible with specifying any `strides` value != 1.
     activation: Activation function to use.
-        If you don't specify anything, no activation is applied
-        (ie. "linear" activation: `a(x) = x`).
+      If you don't specify anything, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
     recurrent_activation: Activation function to use
-        for the recurrent step.
+      for the recurrent step.
     use_bias: Boolean, whether the layer uses a bias vector.
     kernel_initializer: Initializer for the `kernel` weights matrix,
-        used for the linear transformation of the inputs.
+      used for the linear transformation of the inputs.
     recurrent_initializer: Initializer for the `recurrent_kernel`
-        weights matrix,
-        used for the linear transformation of the recurrent state.
+      weights matrix,
+      used for the linear transformation of the recurrent state.
     bias_initializer: Initializer for the bias vector.
     unit_forget_bias: Boolean.
-        If True, add 1 to the bias of the forget gate at initialization.
-        Use in combination with `bias_initializer="zeros"`.
-        This is recommended in [Jozefowicz et al.]
-        (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+      If True, add 1 to the bias of the forget gate at initialization.
+      Use in combination with `bias_initializer="zeros"`.
+      This is recommended in [Jozefowicz et al.]
+      (http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
     kernel_regularizer: Regularizer function applied to
-        the `kernel` weights matrix.
+      the `kernel` weights matrix.
     recurrent_regularizer: Regularizer function applied to
-        the `recurrent_kernel` weights matrix.
+      the `recurrent_kernel` weights matrix.
     bias_regularizer: Regularizer function applied to the bias vector.
     activity_regularizer: Regularizer function applied to.
     kernel_constraint: Constraint function applied to
-        the `kernel` weights matrix.
+      the `kernel` weights matrix.
     recurrent_constraint: Constraint function applied to
-        the `recurrent_kernel` weights matrix.
+      the `recurrent_kernel` weights matrix.
     bias_constraint: Constraint function applied to the bias vector.
     return_sequences: Boolean. Whether to return the last output
-        in the output sequence, or the full sequence.
+      in the output sequence, or the full sequence.
     go_backwards: Boolean (default False).
-        If True, process the input sequence backwards.
+      If True, process the input sequence backwards.
     stateful: Boolean (default False). If True, the last state
-        for each sample at index i in a batch will be used as initial
-        state for the sample of index i in the following batch.
+      for each sample at index i in a batch will be used as initial
+      state for the sample of index i in the following batch.
     dropout: Float between 0 and 1.
-        Fraction of the units to drop for
-        the linear transformation of the inputs.
+      Fraction of the units to drop for
+      the linear transformation of the inputs.
     recurrent_dropout: Float between 0 and 1.
-        Fraction of the units to drop for
-        the linear transformation of the recurrent state.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+
+  Call arguments:
+    inputs: A 5D tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is only relevant if `dropout` or `recurrent_dropout`
+      are set.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
 
   Input shape:
-    - if data_format='channels_first'
+    - If data_format='channels_first'
         5D tensor with shape:
         `(samples, time, channels, rows, cols)`
-    - if data_format='channels_last'
+    - If data_format='channels_last'
         5D tensor with shape:
         `(samples, time, rows, cols, channels)`
 
   Output shape:
-    - if `return_sequences`
-         - if data_format='channels_first'
-            5D tensor with shape:
-            `(samples, time, filters, output_row, output_col)`
-         - if data_format='channels_last'
-            5D tensor with shape:
-            `(samples, time, output_row, output_col, filters)`
-    - else
-        - if data_format ='channels_first'
-            4D tensor with shape:
-            `(samples, filters, output_row, output_col)`
-        - if data_format='channels_last'
-            4D tensor with shape:
-            `(samples, output_row, output_col, filters)`
-        where o_row and o_col depend on the shape of the filter and
-        the padding
+    - If `return_sequences`
+       - If data_format='channels_first'
+          5D tensor with shape:
+          `(samples, time, filters, output_row, output_col)`
+       - If data_format='channels_last'
+          5D tensor with shape:
+          `(samples, time, output_row, output_col, filters)`
+    - Else
+      - If data_format ='channels_first'
+          4D tensor with shape:
+          `(samples, filters, output_row, output_col)`
+      - If data_format='channels_last'
+          4D tensor with shape:
+          `(samples, output_row, output_col, filters)`
+      where `o_row` and `o_col` depend on the shape of the filter and
+      the padding
 
   Raises:
     ValueError: in case of invalid constructor arguments.
@@ -859,7 +872,6 @@ class ConvLSTM2D(ConvRNN2D):
     Precipitation Nowcasting](http://arxiv.org/abs/1506.04214v1)
     The current implementation does not include the feedback loop on the
     cells output.
-
   """
 
   def __init__(self,
@@ -918,6 +930,8 @@ class ConvLSTM2D(ConvRNN2D):
     self.activity_regularizer = regularizers.get(activity_regularizer)
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(ConvLSTM2D, self).call(inputs,
                                         mask=mask,
                                         training=training,

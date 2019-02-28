@@ -430,7 +430,7 @@ def tf_cc_shared_object(
         names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
     else:
         names = [name]
-    [
+    for name_os in names:
         native.cc_binary(
             name = name_os,
             srcs = srcs + framework_so,
@@ -449,8 +449,7 @@ def tf_cc_shared_object(
             visibility = visibility,
             **kwargs
         )
-        for name_os in names
-    ]
+
     if name not in names:
         native.filegroup(
             name = name,
@@ -486,11 +485,13 @@ def tf_cc_binary(
         added_data_deps = tf_binary_dynamic_kernel_dsos()
     else:
         added_data_deps = []
+
     if per_os_targets:
         names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
     else:
         names = [name]
-    [
+
+    for name_os in names:
         native.cc_binary(
             name = name_os,
             copts = copts,
@@ -505,8 +506,6 @@ def tf_cc_binary(
             visibility = visibility,
             **kwargs
         )
-        for name_os in names
-    ]
     if name not in names:
         native.filegroup(
             name = name,

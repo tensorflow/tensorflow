@@ -60,7 +60,7 @@ TEST_F(BatchNormExpanderTest, BatchNormTraining) {
 
   HloComputation::Builder builder(TestName());
   HloInstruction* param0 = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, input_shape, "activiation"));
+      HloInstruction::CreateParameter(0, input_shape, "activation"));
 
   HloInstruction* param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, scale_shape, "scale"));

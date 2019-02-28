@@ -177,6 +177,13 @@ Status ShapeVerifier::HandleTriangularSolve(HloInstruction* hlo) {
   return CheckShape(hlo, expected);
 }
 
+Status ShapeVerifier::HandleCholesky(HloInstruction* hlo) {
+  TF_RETURN_IF_ERROR(CheckOperandCount(hlo, 1));
+  TF_ASSIGN_OR_RETURN(const Shape expected, ShapeInference::InferCholeskyShape(
+                                                hlo->operand(0)->shape()));
+  return CheckShape(hlo, expected);
+}
+
 Status ShapeVerifier::HandleAllReduce(HloInstruction* crs) {
   std::vector<const Shape*> operand_shapes;
   for (const HloInstruction* operand : crs->operands()) {
@@ -660,20 +667,22 @@ Status ShapeVerifier::HandleWhile(HloInstruction* xla_while) {
 }
 
 Status ShapeVerifier::HandleConditional(HloInstruction* conditional) {
-  TF_RETURN_IF_ERROR(
-      CheckParameterCount(conditional, conditional->true_computation(), 1));
-  TF_RETURN_IF_ERROR(
-      CheckParameterCount(conditional, conditional->false_computation(), 1));
-  TF_RETURN_IF_ERROR(CheckOperandAndParameter(
-      conditional, 1, conditional->true_computation(), 0));
-  TF_RETURN_IF_ERROR(CheckOperandAndParameter(
-      conditional, 2, conditional->false_computation(), 0));
-  TF_RETURN_IF_ERROR(
-      CheckShape(conditional,
-                 conditional->true_computation()->root_instruction()->shape()));
-  TF_RETURN_IF_ERROR(CheckShape(
-      conditional,
-      conditional->false_computation()->root_instruction()->shape()));
+  const int num_branches = conditional->branch_count();
+  if (conditional->operand(0)->shape().element_type() == PRED) {
+    TF_RET_CHECK(num_branches == 2);
+  } else {
+    TF_RET_CHECK(num_branches >= 1);
+  }
+  TF_RETURN_IF_ERROR(CheckOperandCount(conditional, num_branches + 1));
+  for (int j = 0; j < num_branches; ++j) {
+    TF_RETURN_IF_ERROR(CheckParameterCount(
+        conditional, conditional->branch_computation(j), 1));
+    TF_RETURN_IF_ERROR(CheckOperandAndParameter(
+        conditional, j + 1, conditional->branch_computation(j), 0));
+    TF_RETURN_IF_ERROR(CheckShape(
+        conditional,
+        conditional->branch_computation(j)->root_instruction()->shape()));
+  }
   return Status::OK();
 }
 
@@ -1363,17 +1372,13 @@ class InstructionVerifier : public DfsHloVisitorWithDefault {
   }
 
   Status HandleConditional(HloInstruction* conditional) override {
-    if (conditional->true_computation()->num_parameters() != 1) {
-      return FailedPrecondition(
-          "True computation %s of %s must have 1 parameter insted of %d",
-          conditional->true_computation()->name(), conditional->ToString(),
-          conditional->true_computation()->num_parameters());
-    }
-    if (conditional->false_computation()->num_parameters() != 1) {
-      return FailedPrecondition(
-          "False computation %s of %s must have 1 parameter insted of %d",
-          conditional->false_computation()->name(), conditional->ToString(),
-          conditional->false_computation()->num_parameters());
+    for (int b = 0; b < conditional->branch_count(); ++b) {
+      if (conditional->branch_computation(b)->num_parameters() != 1) {
+        return FailedPrecondition(
+            "Branch computation %s of %s must have 1 parameter insted of %d",
+            conditional->branch_computation(b)->name(), conditional->ToString(),
+            conditional->branch_computation(b)->num_parameters());
+      }
     }
     return Status::OK();
   }

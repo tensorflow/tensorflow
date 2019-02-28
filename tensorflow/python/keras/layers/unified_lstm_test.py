@@ -654,6 +654,20 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
                   run_eagerly=testing_utils.should_run_eagerly())
     model.fit(x, y, epochs=1, shuffle=False)
 
+  def test_dropout_LSTM(self):
+    num_samples = 2
+    timesteps = 3
+    embedding_dim = 4
+    units = 2
+    testing_utils.layer_test(
+        keras.layers.UnifiedLSTM,
+        kwargs={
+            'units': units,
+            'dropout': 0.1,
+            'recurrent_dropout': 0.1
+        },
+        input_shape=(num_samples, timesteps, embedding_dim))
+
 
 class LSTMLayerGraphOnlyTest(test.TestCase):
 
@@ -761,24 +775,6 @@ class LSTMLayerGraphOnlyTest(test.TestCase):
         # (layer weights properly updated).
         self.assertNotEqual(existing_loss, loss_value)
         existing_loss = loss_value
-
-
-class LSTMLayerV1OnlyTest(test.TestCase, parameterized.TestCase):
-
-  @test_util.run_in_graph_and_eager_modes(config=_config)
-  def test_dropout_LSTM(self):
-    num_samples = 2
-    timesteps = 3
-    embedding_dim = 4
-    units = 2
-    testing_utils.layer_test(
-        keras.layers.UnifiedLSTM,
-        kwargs={
-            'units': units,
-            'dropout': 0.1,
-            'recurrent_dropout': 0.1
-        },
-        input_shape=(num_samples, timesteps, embedding_dim))
 
 
 class UnifiedLSTMPerformanceTest(test.Benchmark):

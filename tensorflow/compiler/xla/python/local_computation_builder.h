@@ -358,7 +358,7 @@ class ComputationBuilder {
 
   LocalOp QR(const LocalOp& a, bool full_matrices);
 
-  LocalOp Cholesky(const LocalOp& a);
+  LocalOp Cholesky(const LocalOp& a, bool lower);
 
   // `transpose_a` is the integer value of a TriangularSolveOptions::Transpose
   // enum. We use an integer here so we don't have to teach SWIG about the

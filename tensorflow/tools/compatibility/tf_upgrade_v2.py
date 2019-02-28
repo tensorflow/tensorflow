@@ -599,7 +599,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.saved_model.save_keras_model":
             "tf.keras.experimental.export_saved_model",
         "tf.contrib.rnn.RNNCell":
-            "tf.nn.rnn_cell.RNNCell",
+            "tf.compat.v1.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
             "tf.nn.rnn_cell.LSTMStateTuple",
         "tf.contrib.rnn.BasicLSTMCell":

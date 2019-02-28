@@ -137,6 +137,17 @@ Status TensorShapeArrayToTrtDims(const std::vector<int>& shape,
   return Status::OK();
 }
 
+// TODO(laigd): use this utility function in more places.
+Status RemoveBatchDimension(nvinfer1::Dims* dims) {
+  if (dims->nbDims < 2) {
+    return errors::InvalidArgument(
+        "Dropping batch dimension requires dims with rank>=2.");
+  }
+  std::copy(dims->d + 1, dims->d + dims->nbDims, dims->d);
+  dims->nbDims--;
+  return Status::OK();
+}
+
 void GetOutputProperties(const grappler::GraphProperties& graph_properties,
                          const Node* node, const int out_port,
                          PartialTensorShape* shape, DataType* dtype) {
@@ -1193,6 +1204,7 @@ Status Converter::GetWeightRange(const TRT_ShapedWeights& weights,
 
 Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                         const nvinfer1::Dims& dims,
+                                        const bool validation_only,
                                         const nvinfer1::ITensor** tensor) {
   // If -1 is not used for one of the dims, we can check if the shapes are
   // compatible.
@@ -1208,6 +1220,10 @@ Status Converter::PrepareTensorForShape(const TRT_TensorOrWeights& input,
     return errors::InvalidArgument("Reshape shapes are not compatible (",
                                    DebugString(input.GetTrtDims()), " vs ",
                                    DebugString(dims), ")");
+  }
+  if (validation_only) {
+    *tensor = nullptr;
+    return Status::OK();
   }
 
   if (input.is_tensor()) {
@@ -1908,10 +1924,10 @@ Status BinaryTensorOpTensor(OpConverterParams* params,
   const nvinfer1::ITensor* tensor_l = nullptr;
   const nvinfer1::ITensor* tensor_r = nullptr;
   status = params->converter->PrepareTensorForShape(
-      operand_l, broadcasted_dims_l, &tensor_l);
+      operand_l, broadcasted_dims_l, /*validation_only=*/false, &tensor_l);
   if (status.ok()) {
     status = params->converter->PrepareTensorForShape(
-        operand_r, broadcasted_dims_r, &tensor_r);
+        operand_r, broadcasted_dims_r, /*validation_only=*/false, &tensor_r);
   }
   if (!status.ok()) {
     return errors::Internal("Failed to convert binary op ", node_def.name(),
@@ -2100,7 +2116,7 @@ Status ConvertReshape(OpConverterParams* params) {
   // Start conversion.
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      input_tensor, reshape_dims, &output_tensor));
+      input_tensor, reshape_dims, /*validation_only=*/false, &output_tensor));
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return Status::OK();
@@ -2151,7 +2167,7 @@ Status ConvertExpandDims(OpConverterParams* params) {
                                                /*ignore_first_dim=*/true));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      input_tensor, new_dims, &output_tensor));
+      input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return Status::OK();
@@ -2210,7 +2226,7 @@ Status ConvertSqueeze(OpConverterParams* params) {
                                                /*ignore_first_dim=*/true));
   const nvinfer1::ITensor* output_tensor = nullptr;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      input_tensor, new_dims, &output_tensor));
+      input_tensor, new_dims, /*validation_only=*/false, &output_tensor));
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return Status::OK();
@@ -2362,7 +2378,7 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
   if (need_reshape) {
     const nvinfer1::ITensor* output_tensor = nullptr;
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        input, reshape_dims, &output_tensor));
+        input, reshape_dims, /*validation_only=*/false, &output_tensor));
     tensor = const_cast<nvinfer1::ITensor*>(output_tensor);
   }
   if (need_transpose) {
@@ -2407,7 +2423,8 @@ Status ConvertStridedSliceHelper(OpConverterParams* params,
                                                  /*ignore_first_dim=*/true));
     const nvinfer1::ITensor* output_tensor = nullptr;
     TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-        TRT_TensorOrWeights(tensor), new_dims, &output_tensor));
+        TRT_TensorOrWeights(tensor), new_dims, /*validation_only=*/false,
+        &output_tensor));
     tensor = const_cast<nvinfer1::ITensor*>(output_tensor);
   }
 
@@ -3672,7 +3689,7 @@ Status ConvertMatMulHelper(OpConverterParams* params,
     input_dim.d[input_dim.nbDims++] = 1;
   }
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      tensor_input, input_dim, &tensor));
+      tensor_input, input_dim, /*validation_only=*/false, &tensor));
 
   nvinfer1::IFullyConnectedLayer* layer =
       params->converter->network()->addFullyConnected(
@@ -3685,7 +3702,8 @@ Status ConvertMatMulHelper(OpConverterParams* params,
   auto output_dim = output_tensor->getDimensions();
   output_dim.nbDims = 1;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      TRT_TensorOrWeights(output_tensor), output_dim, &temp_tensor));
+      TRT_TensorOrWeights(output_tensor), output_dim, /*validation_only=*/false,
+      &temp_tensor));
   output_tensor = const_cast<nvinfer1::ITensor*>(temp_tensor);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
   return Status::OK();
@@ -3729,6 +3747,10 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
                                    " inputs but expected 2, at ",
                                    node_def.name());
   }
+  if (inputs[0].is_weights() && inputs[1].is_weights()) {
+    return errors::InvalidArgument(
+        "All inputs are weights, but Grappler is expected to fold them.");
+  }
   TFAttrs attrs(node_def);
 
   const DataType tf_dtype = attrs.get<DataType>("T");
@@ -3751,43 +3773,33 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
                                      node_def.name());
     }
   }
-  if (params->validation_only) return Status::OK();
 
-  // TODO(laigd): avoid duplicating code, and add tests.
-  // TODO(laigd): should we add the following chesks to validator as well?
-  auto dims_l = inputs.at(0).GetTrtDims();
-  auto dims_r = inputs.at(1).GetTrtDims();
-  if (inputs.at(0).is_weights()) {
-    if (inputs.at(0).GetTrtDims().d[0] != 1) {
-      return errors::InvalidArgument(
-          "Input 0 as weight assumes broadcast across batch for MatMul, at: " +
-          node_def.name());
-    } else {
-      for (int i = 0; i < dims_l.nbDims - 1; i++) {
-        dims_l.d[i] = dims_l.d[i + 1];
+  auto get_tensor_with_proper_dims = [params](
+                                         const TRT_TensorOrWeights& input,
+                                         const nvinfer1::ITensor** tensor) {
+    auto dims = input.GetTrtDims();
+    if (input.is_weights()) {
+      // The other operand must be a tensor, this is ensured by earlier checks.
+      // Checks that the batch dimension is not changed by broadcasting.
+      if (dims.d[0] != 1) {
+        return errors::InvalidArgument(
+            "Input weight attempts to broadcast across batch dimension for "
+            "BatchMatMul, at ",
+            params->node_def.name());
       }
-      dims_l.nbDims--;
+      // Remove the batch dimension from the weights.
+      TF_RETURN_IF_ERROR(RemoveBatchDimension(&dims));
     }
-  }
-  if (inputs.at(1).is_weights()) {
-    if (inputs.at(1).GetTrtDims().d[0] != 1) {
-      return errors::InvalidArgument(
-          "Input 1 as weight assumes broadcast across batch for MatMul, at: " +
-          node_def.name());
-    } else {
-      for (int i = 0; i < dims_r.nbDims - 1; i++) {
-        dims_r.d[i] = dims_r.d[i + 1];
-      }
-      dims_r.nbDims--;
-    }
-  }
-
+    // Create tensor and reshape if necessary.
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        input, dims, params->validation_only, tensor));
+    return Status::OK();
+  };
   const nvinfer1::ITensor* tensor_l;
   const nvinfer1::ITensor* tensor_r;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), dims_l, &tensor_l));
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(1), dims_r, &tensor_r));
+  TF_RETURN_IF_ERROR(get_tensor_with_proper_dims(inputs.at(0), &tensor_l));
+  TF_RETURN_IF_ERROR(get_tensor_with_proper_dims(inputs.at(1), &tensor_r));
+  if (params->validation_only) return Status::OK();
 
   nvinfer1::IMatrixMultiplyLayer* layer =
       params->converter->network()->addMatrixMultiply(

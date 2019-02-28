@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -35,6 +36,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/lib/gtl/map_util.h"
+#include "tensorflow/core/platform/protobuf.h"
 
 namespace xla {
 
@@ -179,8 +181,8 @@ class HloParser {
     kBracedInt64List,
     kBracedInt64ListList,
     kHloComputation,
+    kBracedHloComputationList,
     kFftType,
-    kTriangularSolveTranspose,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -237,6 +239,21 @@ class HloParser {
   bool ParseAttributeHelper(const std::unordered_map<string, AttrConfig>& attrs,
                             std::unordered_set<string>* seen_attrs);
 
+  // Parses an attribute string into a protocol buffer `message`.
+  // Since proto3 has no notion of mandatory fields, `required_attrs` gives the
+  // set of mandatory attributes.
+  bool ParseAttributesAsProtoMessage(
+      const std::unordered_set<string>& required_attrs,
+      tensorflow::protobuf::Message* message);
+
+  // Parses one attribute. If it has already been seen, return error. Returns
+  // true and adds to seen_attrs on success.
+  //
+  // Do not call this except in ParseAttributesAsProtoMessage.
+  bool ParseAttributeAsProtoMessageHelper(
+      tensorflow::protobuf::Message* message,
+      std::unordered_set<string>* seen_attrs);
+
   // Parses a name and finds the corresponding hlo computation.
   bool ParseComputationName(HloComputation** value);
   // Parses a list of names and finds the corresponding hlo instructions.
@@ -261,6 +278,8 @@ class HloParser {
 
   bool ParseSliceRanges(SliceRanges* result);
   bool ParsePrecisionList(std::vector<PrecisionConfig::Precision>* result);
+  bool ParseHloComputation(HloComputation** result);
+  bool ParseHloComputationList(std::vector<HloComputation*>* result);
   bool ParseShapeList(std::vector<Shape>* result);
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim, std::vector<int64>* result);
@@ -281,7 +300,6 @@ class HloParser {
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
-  bool ParseTriangularSolveTranspose(TriangularSolveOptions::Transpose* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
@@ -1104,35 +1122,26 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       break;
     }
     case HloOpcode::kTriangularSolve: {
-      optional<bool> left_side;
-      optional<bool> lower;
-      optional<bool> unit_diagonal;
-      optional<TriangularSolveOptions::Transpose> transpose_a;
-      attrs["left_side"] = {/*required=*/false, AttrTy::kBool, &left_side};
-      attrs["lower"] = {/*required=*/false, AttrTy::kBool, &lower};
-      attrs["unit_diagonal"] = {/*required=*/false, AttrTy::kBool,
-                                &unit_diagonal};
-      attrs["transpose_a"] = {/*required=*/false,
-                              AttrTy::kTriangularSolveTranspose, &transpose_a};
+      TriangularSolveOptions options;
       if (!ParseOperands(&operands, /*expected_size=*/2) ||
-          !ParseAttributes(attrs)) {
+          !ParseAttributesAsProtoMessage(
+              /*required_attrs=*/std::unordered_set<string>(), &options)) {
         return false;
       }
-      TriangularSolveOptions options;
-      if (left_side) {
-        options.set_left_side(*left_side);
-      }
-      if (lower) {
-        options.set_lower(*lower);
-      }
-      if (unit_diagonal) {
-        options.set_unit_diagonal(*unit_diagonal);
-      }
-      options.set_transpose_a(
-          transpose_a ? *transpose_a : TriangularSolveOptions::NO_TRANSPOSE);
       instruction =
           builder->AddInstruction(HloInstruction::CreateTriangularSolve(
               shape, operands[0], operands[1], options));
+      break;
+    }
+    case HloOpcode::kCholesky: {
+      CholeskyOptions options;
+      if (!ParseOperands(&operands, /*expected_size=*/1) ||
+          !ParseAttributesAsProtoMessage(
+              /*required_attrs=*/std::unordered_set<string>(), &options)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(
+          HloInstruction::CreateCholesky(shape, operands[0], options));
       break;
     }
     case HloOpcode::kBroadcast: {
@@ -1431,18 +1440,36 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kConditional: {
       optional<HloComputation*> true_computation;
       optional<HloComputation*> false_computation;
-      attrs["true_computation"] = {/*required=*/true, AttrTy::kHloComputation,
-                                   &true_computation};
-      attrs["false_computation"] = {/*required=*/true, AttrTy::kHloComputation,
-                                    &false_computation};
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      optional<std::vector<HloComputation*>> branch_computations;
+      if (!ParseOperands(&operands)) {
+        return false;
+      }
+      const bool branch_index_is_bool =
+          operands[0]->shape().element_type() == PRED;
+      if (branch_index_is_bool) {
+        attrs["true_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                     &true_computation};
+        attrs["false_computation"] = {
+            /*required=*/true, AttrTy::kHloComputation, &false_computation};
+      } else {
+        attrs["branch_computations"] = {/*required=*/true,
+                                        AttrTy::kBracedHloComputationList,
+                                        &branch_computations};
+      }
+      if (!ParseAttributes(attrs)) {
+        return false;
+      }
+      if (branch_index_is_bool) {
+        branch_computations.emplace({*true_computation, *false_computation});
+      }
+      if (branch_computations->empty() ||
+          operands.size() != branch_computations->size() + 1) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConditional(
-          shape, /*pred=*/operands[0],
-          /*true_computation_arg=*/operands[1], *true_computation,
-          /*false_computation_arg=*/operands[2], *false_computation));
+          shape, /*branch_index=*/operands[0],
+          absl::MakeSpan(*branch_computations),
+          absl::MakeSpan(operands).subspan(1)));
       break;
     }
     case HloOpcode::kCustomCall: {
@@ -2678,18 +2705,19 @@ bool HloParser::ParseAttributeHelper(
       }
       case AttrTy::kHloComputation: {
         HloComputation* result = nullptr;
-        if (lexer_.GetKind() == TokKind::kLbrace) {
-          // This means it is a nested computation.
-          if (!ParseInstructionList(&result, /*computation_name=*/"_")) {
-            return false;
-          }
-        } else {
-          // This means it is a computation name.
-          if (!ParseComputationName(&result)) {
-            return false;
-          }
+        if (!ParseHloComputation(&result)) {
+          return false;
         }
         static_cast<optional<HloComputation*>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kBracedHloComputationList: {
+        std::vector<HloComputation*> result;
+        if (!ParseHloComputationList(&result)) {
+          return false;
+        }
+        static_cast<optional<std::vector<HloComputation*>>*>(attr_out_ptr)
+            ->emplace(result);
         return true;
       }
       case AttrTy::kFftType: {
@@ -2698,15 +2726,6 @@ bool HloParser::ParseAttributeHelper(
           return false;
         }
         static_cast<optional<FftType>*>(attr_out_ptr)->emplace(result);
-        return true;
-      }
-      case AttrTy::kTriangularSolveTranspose: {
-        TriangularSolveOptions::Transpose result;
-        if (!ParseTriangularSolveTranspose(&result)) {
-          return false;
-        }
-        static_cast<optional<TriangularSolveOptions::Transpose>*>(attr_out_ptr)
-            ->emplace(result);
         return true;
       }
       case AttrTy::kWindow: {
@@ -2853,6 +2872,95 @@ bool HloParser::ParseAttributeHelper(
             ->emplace(result);
         return true;
       }
+    }
+  }();
+  if (!success) {
+    return Error(loc, StrFormat("error parsing attribute %s", name));
+  }
+  return true;
+}
+
+// attributes ::= (',' attribute)*
+bool HloParser::ParseAttributesAsProtoMessage(
+    const std::unordered_set<string>& required_attrs,
+    tensorflow::protobuf::Message* message) {
+  LocTy loc = lexer_.GetLoc();
+  std::unordered_set<string> seen_attrs;
+  while (EatIfPresent(TokKind::kComma)) {
+    if (!ParseAttributeAsProtoMessageHelper(message, &seen_attrs)) {
+      return false;
+    }
+  }
+  // Check that all required attrs were seen.
+  for (const string& attr : required_attrs) {
+    if (seen_attrs.find(attr) == seen_attrs.end()) {
+      return Error(loc,
+                   StrFormat("attribute %s is expected but not seen", attr));
+    }
+  }
+  return true;
+}
+
+bool HloParser::ParseAttributeAsProtoMessageHelper(
+    tensorflow::protobuf::Message* message,
+    std::unordered_set<string>* seen_attrs) {
+  LocTy loc = lexer_.GetLoc();
+  string name;
+  if (!ParseAttributeName(&name)) {
+    return Error(loc, "error parsing attributes");
+  }
+  VLOG(1) << "Parsing attribute " << name;
+  if (!seen_attrs->insert(name).second) {
+    return Error(loc, StrFormat("attribute %s already exists", name));
+  }
+  const tensorflow::protobuf::Descriptor* descriptor = message->GetDescriptor();
+  const tensorflow::protobuf::FieldDescriptor* fd =
+      descriptor->FindFieldByName(name);
+  if (!fd) {
+    string allowed_attrs = "Allowed attributes: ";
+
+    for (int i = 0; i < descriptor->field_count(); ++i) {
+      if (i == 0) {
+        absl::StrAppend(&allowed_attrs, descriptor->field(i)->name());
+      } else {
+        absl::StrAppend(&allowed_attrs, ", ", descriptor->field(i)->name());
+      }
+    }
+    return Error(loc, StrFormat("unexpected attribute \"%s\".  %s", name,
+                                allowed_attrs));
+  }
+  const tensorflow::protobuf::Reflection* reflection = message->GetReflection();
+  CHECK(!fd->is_repeated());  // Repeated fields not implemented.
+  bool success = [&] {
+    switch (fd->type()) {
+      case tensorflow::protobuf::FieldDescriptor::TYPE_BOOL: {
+        bool result;
+        if (!ParseBool(&result)) {
+          return false;
+        }
+        reflection->SetBool(message, fd, result);
+        return true;
+      }
+      case tensorflow::protobuf::FieldDescriptor::TYPE_ENUM: {
+        if (lexer_.GetKind() != TokKind::kIdent) {
+          return TokenError(
+              StrFormat("expects %s type", fd->enum_type()->name()));
+        }
+        string val = lexer_.GetStrVal();
+        const tensorflow::protobuf::EnumValueDescriptor* evd =
+            fd->enum_type()->FindValueByName(val);
+        if (evd == nullptr) {
+          return TokenError(StrFormat("expects %s type but sees: %s",
+                                      fd->enum_type()->name(), val));
+        }
+        reflection->SetEnum(message, fd, evd);
+        lexer_.Lex();
+        return true;
+      }
+      default:
+        LOG(ERROR) << "Unimplemented protocol buffer type "
+                   << fd->DebugString();
+        return false;
     }
   }();
   if (!success) {
@@ -3139,6 +3247,29 @@ bool HloParser::ParsePrecisionList(
       return false;
     }
     result->push_back(item);
+    return true;
+  };
+  return ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                   parse_and_add_item);
+}
+
+bool HloParser::ParseHloComputation(HloComputation** result) {
+  if (lexer_.GetKind() == TokKind::kLbrace) {
+    // This means it is a nested computation.
+    return ParseInstructionList(result, /*computation_name=*/"_");
+  }
+  // This means it is a computation name.
+  return ParseComputationName(result);
+}
+
+bool HloParser::ParseHloComputationList(std::vector<HloComputation*>* result) {
+  auto parse_and_add_item = [&]() {
+    HloComputation* computation;
+    if (!ParseHloComputation(&computation)) {
+      return false;
+    }
+    LOG(INFO) << "parsed computation " << computation->name();
+    result->push_back(computation);
     return true;
   };
   return ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
@@ -3620,22 +3751,6 @@ bool HloParser::ParseFftType(FftType* result) {
   string val = lexer_.GetStrVal();
   if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
     return TokenError(StrFormat("expects fft type but sees: %s", val));
-  }
-  lexer_.Lex();
-  return true;
-}
-
-bool HloParser::ParseTriangularSolveTranspose(
-    TriangularSolveOptions::Transpose* result) {
-  VLOG(1) << "ParseTriangularSolveTranspose";
-  if (lexer_.GetKind() != TokKind::kIdent) {
-    return TokenError("expects triangular solve transpose type");
-  }
-  string val = lexer_.GetStrVal();
-  if (!TriangularSolveOptions_Transpose_Parse(val, result) ||
-      !TriangularSolveOptions_Transpose_IsValid(*result)) {
-    return TokenError(
-        StrFormat("expects triangular solve transpose type but sees: %s", val));
   }
   lexer_.Lex();
   return true;

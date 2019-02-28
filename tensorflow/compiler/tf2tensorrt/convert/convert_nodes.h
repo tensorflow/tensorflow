@@ -486,8 +486,13 @@ class Converter {
                          const nvinfer1::ITensor** output_tensor);
 
   // Converts 'input' into 'tensor' with shape specified by 'dims'.
+  //
+  // If validation_only is true, it doesn't do the conversion but only do some
+  // minimum validation for the eligibility of the conversion, and *tensor will
+  // be set to nullptr.
   Status PrepareTensorForShape(const TRT_TensorOrWeights& input,
                                const nvinfer1::Dims& dims,
+                               const bool validation_only,
                                const nvinfer1::ITensor** tensor);
 
   // Return OK if the broadcast scheme is supported and compute the shapes after
