@@ -1721,7 +1721,7 @@ static void PackLhsHelper(int iters,
 //    H: height
 //    W: width
 //    C: input channels
-//   FC: filter channles
+//   FC: filter channels
 //   FH: filter height
 //   FW: filter width
 //   SH: stride in height dimensions
