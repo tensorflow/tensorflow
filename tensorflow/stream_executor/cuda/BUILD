@@ -77,7 +77,7 @@ cc_library(
 cc_library(
     name = "cuda_stub",
     srcs = if_cuda_is_configured(["cuda_stub.cc"]),
-    textual_hdrs = ["cuda_10_0.inc"],
+    textual_hdrs = glob(["cuda_*.inc"]),
     deps = if_cuda_is_configured([
         "@local_config_cuda//cuda:cuda_headers",
         "//tensorflow/stream_executor/lib",

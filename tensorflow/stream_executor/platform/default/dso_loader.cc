@@ -31,6 +31,7 @@ namespace internal {
 
 namespace {
 string GetCudaVersion() { return TF_CUDA_VERSION; }
+string GetCudaLibVersion() { return TF_CUDA_LIB_VERSION; }
 string GetCudnnVersion() { return TF_CUDNN_VERSION; }
 
 port::StatusOr<void*> GetDsoHandle(const string& name, const string& version) {
@@ -75,15 +76,15 @@ port::StatusOr<void*> GetCudaRuntimeDsoHandle() {
 }
 
 port::StatusOr<void*> GetCublasDsoHandle() {
-  return GetDsoHandle("cublas", GetCudaVersion());
+  return GetDsoHandle("cublas", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCufftDsoHandle() {
-  return GetDsoHandle("cufft", GetCudaVersion());
+  return GetDsoHandle("cufft", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCurandDsoHandle() {
-  return GetDsoHandle("curand", GetCudaVersion());
+  return GetDsoHandle("curand", GetCudaLibVersion());
 }
 
 port::StatusOr<void*> GetCuptiDsoHandle() {
