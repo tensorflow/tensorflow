@@ -1245,7 +1245,7 @@ class TensorBoard(Callback):
 
     def create_writer(subdir):
       path = os.path.join(self.log_dir, subdir)
-      return summary_ops_v2.create_file_writer(path)
+      return summary_ops_v2.create_file_writer_v2(path)
 
     self._train_writer = create_writer('train')
     self._writers.append(self._train_writer)
