@@ -417,7 +417,7 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     # this op. To avoid that, we add eye to the matrix before taking
     # the reciprocal.
     s_shape = array_ops.shape(s)
-    eye = _linalg.eye(s_shape[-1], batch_shape=s_shape[:-2], dtype=s.dtype)
+    eye = _linalg.eye(s_shape[-1], batch_shape=s_shape[:-1], dtype=s.dtype)
     f = array_ops.matrix_set_diag(
         math_ops.reciprocal(
             array_ops.expand_dims(s2, -2) - array_ops.expand_dims(s2, -1) +
