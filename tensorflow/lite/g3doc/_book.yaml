@@ -1,16 +1,21 @@
 upper_tabs:
-# Tabs left of dropdown menu
-- include: /_upper_tabs_left.yaml
-- include: /api_docs/_upper_tabs_api.yaml
-# Dropdown menu
-- name: Resources
-  path: /resources
+- name: "Install"
+  lower_tabs:
+    guides:
+    - include: /install/_toc.yaml
+
+- name: "Learn"
+  path: /learn/
   is_default: true
   menu:
-  - include: /resources/_menu_toc.yaml
+  - include: /learn/_menu_toc.yaml
   lower_tabs:
     # Subsite tabs
     other:
+    - name: "Tutorials"
+      contents:
+      - title: "Tutorials"
+        path: /lite/tutorials/
     - name: Guide
       contents:
       - title: Overview
@@ -116,4 +121,6 @@ upper_tabs:
       - title: API
         path: /api_docs/python/tf/lite
 
+- include: /api_docs/_upper_tabs_api.yaml
+- include: /resources/_upper_tabs_resources.yaml
 - include: /_upper_tabs_right.yaml
