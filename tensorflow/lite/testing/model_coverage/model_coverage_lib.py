@@ -243,7 +243,7 @@ def compare_models_v2(tflite_model, concrete_func, input_data=None,
 
   # Gets the TensorFlow results as a map from the output names to outputs.
   # Converts the map into a list that is equivalent to the TFLite list.
-  tf_results_map = concrete_func(input_1=input_data_func)
+  tf_results_map = concrete_func(input_data_func)
   tf_results = [tf_results_map[tf_results_map.keys()[0]]]
   tflite_results = _evaluate_tflite_model(tflite_model, input_data)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
