@@ -226,6 +226,16 @@ func @incomplete_for() {
 
 // -----
 
+#map0 = (d0) -> (d0 floordiv 4)
+
+func @reference_to_iv_in_bound() {
+  // expected-error@+1 {{operand use before it's defined}}
+  for %i0 = #map0(%i0) to 10 {
+  }
+}
+
+// -----
+
 func @nonconstant_step(%1 : i32) {
   for %2 = 1 to 5 step %1 { // expected-error {{expected non-function type}}
 

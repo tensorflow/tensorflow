@@ -2942,6 +2942,13 @@ public:
           nameLoc,
           "no block list was attached to parsed entry block arguments");
     }
+
+    // Check that none of the operands of the current operation reference an
+    // entry block argument for any of the block lists.
+    for (auto *entryArg : parsedBlockListEntryArgumentPlaceholders)
+      if (llvm::is_contained(opState->operands, entryArg))
+        return emitError(nameLoc, "operand use before it's defined");
+
     return false;
   }
 
@@ -3170,6 +3177,9 @@ public:
                                               operand.location};
     if (auto *value = parser.resolveSSAUse(operandInfo, argType)) {
       parsedBlockListEntryArguments.emplace_back(operandInfo, argType);
+      // Track each of the placeholders so that we can detect invalid references
+      // to block list arguments.
+      parsedBlockListEntryArgumentPlaceholders.emplace_back(value);
       return false;
     }
 
@@ -3218,6 +3228,7 @@ private:
   std::vector<SmallVector<Block *, 2>> parsedBlockLists;
   SmallVector<std::pair<FunctionParser::SSAUseInfo, Type>, 2>
       parsedBlockListEntryArguments;
+  SmallVector<Value *, 2> parsedBlockListEntryArgumentPlaceholders;
   SMLoc nameLoc;
   StringRef opName;
   FunctionParser &parser;
