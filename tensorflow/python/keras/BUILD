@@ -224,7 +224,6 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
-        "//tensorflow/python/eager:profiler",
     ],
 )
 
