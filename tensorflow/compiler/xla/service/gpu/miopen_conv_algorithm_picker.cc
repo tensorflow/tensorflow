@@ -129,8 +129,19 @@ MiopenConvAlgorithmPicker::PickBestAlgorithm(
     const HloCustomCallInstruction* instr) {
   // TODO(timshen): for now only check fp16. It can be expanded to other types,
   // with some work on the HLO routines.
-  const bool cross_check_enabled =
-      instr->shape().tuple_shapes(0).element_type() == xla::F16;
+
+  // FIXME(rocm): disable cross_check temporarily
+  // The cross_check functionality for the Eigen::half datatype, will call
+  // "ThenMemset32" with a value that > 255. This results in a failed check in
+  // the code rocm_driver.cpp, which then leads to test failure.
+  //
+  // This is an known bug which is being in the process of being fixed
+  // disabling this check until then
+
+  // const bool cross_check_enabled =
+  //     instr->shape().tuple_shapes(0).element_type() == xla::F16;
+
+  const bool cross_check_enabled = false;
 
   // Don't run this function concurrently on the same GPU.
   //
