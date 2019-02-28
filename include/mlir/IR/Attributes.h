@@ -414,8 +414,6 @@ public:
   /// Gets the integer value of each of the dense elements.
   void getValues(SmallVectorImpl<APInt> &values) const;
 
-  APInt getValue(ArrayRef<unsigned> indices) const;
-
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::DenseIntElements; }
 };
@@ -437,8 +435,6 @@ public:
 
   /// Gets the float value of each of the dense elements.
   void getValues(SmallVectorImpl<APFloat> &values) const;
-
-  APFloat getValue(ArrayRef<unsigned> indices) const;
 
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) { return kind == Kind::DenseFPElements; }
