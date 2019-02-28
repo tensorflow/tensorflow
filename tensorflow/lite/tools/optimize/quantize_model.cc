@@ -38,7 +38,7 @@ TfLiteStatus QuantizeModel(flatbuffers::FlatBufferBuilder* builder,
        subgraph_idx++) {
     SubGraphT* subgraph = model->subgraphs.at(subgraph_idx).get();
     internal::SubgraphQuantizer quantizer(model, subgraph, error_reporter);
-    for (int op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
+    for (size_t op_idx = 0; op_idx < subgraph->operators.size(); op_idx++) {
       auto status = quantizer.QuantizeOperator(op_idx);
       if (status != kTfLiteOk) {
         OperatorT* op = subgraph->operators[op_idx].get();
