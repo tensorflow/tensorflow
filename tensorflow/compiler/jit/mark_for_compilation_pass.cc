@@ -441,7 +441,7 @@ Status FindCompilationCandidates(
   std::vector<bool> compile_time_const_nodes(graph.num_node_ids(), false);
   TF_RETURN_IF_ERROR(
       BackwardsConstAnalysis(graph, /*compile_time_const_arg_indices=*/nullptr,
-                             &compile_time_const_nodes));
+                             &compile_time_const_nodes, lib_runtime));
 
   int64& fuel = GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
 
