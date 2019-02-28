@@ -330,3 +330,21 @@ tf_cc_test(
         "//tensorflow/core/grappler/clusters:virtual_cluster",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "analytical_cost_estimator.h",
+        "cost_estimator.h",
+        "graph_memory.h",
+        "graph_properties.h",
+        "measuring_cost_estimator.h",
+        "op_context.h",
+        "op_level_cost_estimator.h",
+        "robust_stats.h",
+        "utils.h",
+        "virtual_placer.h",
+        "virtual_scheduler.h",
+    ],
+    visibility = ["//visibility:public"],
+)

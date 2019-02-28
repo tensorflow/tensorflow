@@ -193,3 +193,18 @@ cc_library(
         "//tensorflow/core:tensorflow",
     ],
 )
+
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "adaptive_shared_batch_scheduler.h",
+        "basic_batch_scheduler.h",
+        "batch_scheduler.h",
+        "fake_clock_env.h",
+        "periodic_function.h",
+        "serial_device_batch_scheduler.h",
+        "shared_batch_scheduler.h",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -254,3 +254,18 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "colocation.h",
+        "frame.h",
+        "functions.h",
+        "grappler_test.h",
+        "scc.h",
+        "symbolic_shapes.h",
+        "topological_sort.h",
+        "traversal.h",
+    ],
+    visibility = ["//visibility:public"],
+)

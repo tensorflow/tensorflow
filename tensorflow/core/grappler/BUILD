@@ -238,3 +238,18 @@ tf_cc_test(
         "@com_google_absl//absl/types:span",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "devices.h",
+        "graph_topology_view.h",
+        "graph_view.h",
+        "grappler_item.h",
+        "grappler_item_builder.h",
+        "mutable_graph_view.h",
+        "op_types.h",
+        "utils.h",
+    ],
+    visibility = ["//visibility:public"],
+)

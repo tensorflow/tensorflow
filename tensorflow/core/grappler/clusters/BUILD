@@ -147,3 +147,14 @@ tf_cc_test(
         "//tensorflow/core/grappler/inputs:trivial_test_graph_input_yielder",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "cluster.h",
+        "single_machine.h",
+        "utils.h",
+        "virtual_cluster.h",
+    ],
+    visibility = ["//visibility:public"],
+)

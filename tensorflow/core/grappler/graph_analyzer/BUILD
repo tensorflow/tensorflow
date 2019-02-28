@@ -137,3 +137,18 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "gen_node.h",
+        "graph_analyzer.h",
+        "graph_analyzer_tool.h",
+        "hash_tools.h",
+        "map_tools.h",
+        "sig_node.h",
+        "subgraph.h",
+        "test_tools.h",
+    ],
+    visibility = ["//visibility:public"],
+)

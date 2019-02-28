@@ -63,3 +63,14 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "quantile_stream_resource.h",
+        "weighted_quantiles_buffer.h",
+        "weighted_quantiles_stream.h",
+        "weighted_quantiles_summary.h",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -24,3 +24,14 @@ cc_library(
         "//tensorflow/core/lib/db:sqlite",
     ],
 )
+
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "driver_manager.h",
+        "query_connection.h",
+        "sqlite_query_connection.h",
+    ],
+    visibility = ["//visibility:public"],
+)

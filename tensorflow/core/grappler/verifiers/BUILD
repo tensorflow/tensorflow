@@ -48,3 +48,12 @@ tf_cc_test(
         "@com_google_absl//absl/strings",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "graph_verifier.h",
+        "structure_verifier.h",
+    ],
+    visibility = ["//visibility:public"],
+)

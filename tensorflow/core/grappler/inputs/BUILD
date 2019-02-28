@@ -76,3 +76,14 @@ cc_library(
         "//tensorflow/core/grappler:utils",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "file_input_yielder.h",
+        "input_yielder.h",
+        "trivial_test_graph_input_yielder.h",
+        "utils.h",
+    ],
+    visibility = ["//visibility:public"],
+)

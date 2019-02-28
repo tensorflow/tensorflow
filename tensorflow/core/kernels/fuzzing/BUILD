@@ -73,3 +73,11 @@ tf_ops_fuzz_target_lib("one_hot")
 tf_ops_fuzz_target_lib("scatter_nd")
 
 tf_oss_fuzz_corpus("scatter_nd")
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "fuzz_session.h",
+    ],
+    visibility = ["//visibility:public"],
+)

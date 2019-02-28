@@ -707,3 +707,23 @@ tf_kernel_library(
         "//tensorflow/core:lib_internal",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "captured_function.h",
+        "dataset.h",
+        "dataset_test_base.h",
+        "dataset_utils.h",
+        "generator_dataset_op.h",
+        "graph_rewrite_dataset.h",
+        "iterator_ops.h",
+        "optional_ops.h",
+        "parallel_map_iterator.h",
+        "prefetch_autotuner.h",
+        "prefetch_dataset_op.h",
+        "single_threaded_executor.h",
+        "window_dataset.h",
+    ],
+    visibility = ["//visibility:public"],
+)

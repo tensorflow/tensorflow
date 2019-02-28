@@ -215,9 +215,9 @@ pkg_tar(
         ":debug_coreheaders",
         ":distributed_runtime_coreheaders",
         ":framework_coreheaders",
-        # ":graph_coreheaders",
-        # ":grappler_coreheaders",
-        ":kernel_coreheaders",
+        ":graph_coreheaders",
+        ":grappler_coreheaders",
+        ":kernels_coreheaders",
         # ":lib_coreheaders",
         # ":nccl_coreheaders",
         # ":ops_coreheaders",
@@ -354,6 +354,162 @@ pkg_tar(
 )
 
 pkg_tar(
+    name = "grappler_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler:headers",
+    ],
+    package_dir = "grappler",
+    tags = ["manual"],
+    deps = [
+        ":grappler_clusters_coreheaders",
+        ":grappler_costs_coreheaders",
+        ":grappler_graph_analyzer_coreheaders",
+        ":grappler_inputs_coreheaders",
+        ":grappler_optimizers_coreheaders",
+        ":grappler_utils_coreheaders",
+        ":grappler_verifiers_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "grappler_clusters_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler/clusters:headers",
+    ],
+    package_dir = "clusters",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "grappler_costs_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler/costs:headers",
+    ],
+    package_dir = "costs",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "grappler_graph_analyzer_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler/graph_analyzer:headers",
+    ],
+    package_dir = "graph_analyzer",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "grappler_inputs_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler/inputs:headers",
+    ],
+    package_dir = "graph_analyzer",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "grappler_utils_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler/utils:headers",
+    ],
+    package_dir = "utils",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "grappler_verifiers_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler/verifiers:headers",
+    ],
+    package_dir = "verifiers",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "grappler_optimizers_coreheaders",
+    srcs = [
+        "//tensorflow/core/grappler/optimizers:headers",
+    ],
+    package_dir = "optimizers",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels:headers",
+    ],
+    package_dir = "kernels",
+    tags = ["manual"],
+    deps = [
+        ":kernels_batching_util_coreheaders",
+        ":kernels_boosted_trees_coreheaders",
+        ":kernels_boosted_trees_quantiles_coreheaders",
+        ":kernels_data_coreheaders",
+        ":kernels_data_experimental_sql_coreheaders",
+        ":kernels_fuzzing_coreheaders",
+        # ":kernels_hexagon_coreheaders",
+        # ":kernels_lookup_tables_coreheaders",
+        # ":kernels_neon_coreheaders",
+        # ":kernels_tensor_forest_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "kernels_batching_util_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/batching_util:headers",
+    ],
+    package_dir = "batching_util",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_boosted_trees_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/boosted_trees:headers",
+    ],
+    package_dir = "boosted_trees",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_boosted_trees_quantiles_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/boosted_trees/quantiles:headers",
+    ],
+    package_dir = "boosted_trees/quantiles",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_data_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/data:headers",
+    ],
+    package_dir = "data",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_data_experimental_sql_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/data/experimental/sql:headers",
+    ],
+    package_dir = "data/experimental/sql",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_fuzzing_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/fuzzing:headers",
+    ],
+    package_dir = "fuzzing",
+    tags = ["manual"],
+)
+
+pkg_tar(
     name = "lib_core_coreheaders",
     srcs = [
         "//tensorflow/core:lib_core_headers",
@@ -368,15 +524,6 @@ pkg_tar(
         "//tensorflow/core:lib_strings_headers",
     ],
     package_dir = "lib/strings",
-    tags = ["manual"],
-)
-
-pkg_tar(
-    name = "kernel_coreheaders",
-    srcs = [
-        "//tensorflow/core/kernels:headers",
-    ],
-    package_dir = "kernels",
     tags = ["manual"],
 )
 

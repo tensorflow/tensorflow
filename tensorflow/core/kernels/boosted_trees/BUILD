@@ -107,3 +107,12 @@ tf_kernel_library(
         ":training_ops",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "resources.h",
+        "tree_helper.h",
+    ],
+    visibility = ["//visibility:public"],
+)
