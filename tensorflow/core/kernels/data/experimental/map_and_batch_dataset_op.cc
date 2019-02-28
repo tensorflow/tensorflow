@@ -353,7 +353,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      // BatchResult encapsulates the output batch, as well as anciliary
+      // BatchResult encapsulates the output batch, as well as ancillary
       // metadata required to execute the fused map-and-batch operation.
       struct BatchResult {
         explicit BatchResult(int64 batch_size) {
