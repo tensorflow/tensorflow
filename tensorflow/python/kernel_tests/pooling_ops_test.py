@@ -21,9 +21,11 @@ from __future__ import print_function
 import os
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -800,7 +802,12 @@ class PoolingTest(test.TestCase):
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
-      with self.cached_session(use_gpu=True):
+      def get_device_scope():
+        if context.executing_eagerly():
+          return ops.device("GPU:0")
+        else:
+          return self.cached_session(use_gpu=True)
+      with get_device_scope():
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
         argmax = self.evaluate(argmax_op)
@@ -1898,26 +1905,18 @@ if __name__ == "__main__":
     setattr(PoolingTest, "testMaxPoolFwd_" + name_,
             GetMaxPoolFwdTest(input_size_, filter_size_, stride_, padding_))
     if name_ == "maxpool5":
-      # TODO(b/126619220): maxpool5 does not work in eager on gpus.
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,
           test_util.disable_xla(
               "b/123926014: incorrect output with only constants")(
-                  test_util.deprecated_graph_mode_only(
-                      GetMaxPoolGradTest(input_size_, filter_size_,
-                                         output_size_, stride_, padding_))))
-      setattr(
-          PoolingTest, "testMaxPoolGradGrad_" + name_,
-          test_util.deprecated_graph_mode_only(
-              GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
+                  GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
                                      stride_, padding_)))
     else:
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,
           GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
                              padding_))
-      setattr(
-          PoolingTest, "testMaxPoolGradGrad_" + name_,
-          GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
-                                 stride_, padding_))
+    setattr(PoolingTest, "testMaxPoolGradGrad_" + name_,
+            GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
+                                   stride_, padding_))
   test.main()
