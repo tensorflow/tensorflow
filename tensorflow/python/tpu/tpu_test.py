@@ -23,6 +23,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -38,6 +39,7 @@ from tensorflow.python.tpu import training_loop
 
 class TPUContextTest(test.TestCase):
 
+  @test_util.deprecated_graph_mode_only
   def testIsInContext(self):
     """Test that control_flow_util can check that we're in a TPU context."""
     z1 = array_ops.identity(1)
@@ -52,6 +54,7 @@ class TPUContextTest(test.TestCase):
 
 class TPULayerRewriteTest(test.TestCase):
 
+  @test_util.deprecated_graph_mode_only
   def testUsingInfeedQueueWithRegularizer(self):
     """Test that Layer regularizers can reference data created in loops."""
 
