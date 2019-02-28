@@ -2194,6 +2194,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
     ],
+    grpc_enabled = True,
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
