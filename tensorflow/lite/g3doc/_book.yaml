@@ -27,8 +27,8 @@ upper_tabs:
       - title: iOS demo app
         path: /lite/demo_ios
       - break: true
-      - title: TensorFlow Lite APIs
-        path: /lite/apis
+      - title: TensorFlow Lite Inference
+        path: /lite/inference
       - title: Custom operators
         path: /lite/custom_operators
       - title: TensorFlow Lite ops versioning
