@@ -1048,7 +1048,7 @@ TEST_F(PlacerTest, TestColocationGroup) {
         b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
 
     // This will not be colocated with the input because TestInput is
-    // only availbale on CPU and TestRelu will default to GPU.
+    // only available on CPU and TestRelu will default to GPU.
     Node* not_colocated_with_input =
         ops::UnaryOp("TestRelu", input, b.opts().WithName("foo"));
     CHECK(colocated_with_input);
