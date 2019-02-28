@@ -1898,18 +1898,26 @@ if __name__ == "__main__":
     setattr(PoolingTest, "testMaxPoolFwd_" + name_,
             GetMaxPoolFwdTest(input_size_, filter_size_, stride_, padding_))
     if name_ == "maxpool5":
+      # TODO(b/126619220): maxpool5 does not work in eager on gpus.
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,
           test_util.disable_xla(
               "b/123926014: incorrect output with only constants")(
-                  GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
+                  test_util.deprecated_graph_mode_only(
+                      GetMaxPoolGradTest(input_size_, filter_size_,
+                                         output_size_, stride_, padding_))))
+      setattr(
+          PoolingTest, "testMaxPoolGradGrad_" + name_,
+          test_util.deprecated_graph_mode_only(
+              GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
                                      stride_, padding_)))
     else:
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,
           GetMaxPoolGradTest(input_size_, filter_size_, output_size_, stride_,
                              padding_))
-    setattr(PoolingTest, "testMaxPoolGradGrad_" + name_,
-            GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
-                                   stride_, padding_))
+      setattr(
+          PoolingTest, "testMaxPoolGradGrad_" + name_,
+          GetMaxPoolGradGradTest(input_size_, filter_size_, output_size_,
+                                 stride_, padding_))
   test.main()
