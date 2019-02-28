@@ -153,6 +153,8 @@ class BaseVisitor : public DfsHloVisitor {
 
   Status HandleTriangularSolve(HloInstruction* hlo) override;
 
+  Status HandleCholesky(HloInstruction* hlo) override;
+
   TensorMap tensor_map;
 
   poplar::program::Sequence sequence;
