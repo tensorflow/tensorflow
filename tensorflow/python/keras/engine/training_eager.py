@@ -237,14 +237,14 @@ def _process_single_batch(model,
         raise ValueError('The model cannot be run '
                          'because it has no loss to optimize.')
     if training:
-      if not model._collected_trainable_weights:
+      if not model.trainable_weights:
         logging.warning('The list of trainable weights is empty. Make sure that'
                         ' you are not setting model.trainable to False before '
                         'compiling the model.')
       else:
-        grads = tape.gradient(total_loss, model._collected_trainable_weights)
+        grads = tape.gradient(total_loss, model.trainable_weights)
         model.optimizer.apply_gradients(zip(grads,
-                                            model._collected_trainable_weights))
+                                            model.trainable_weights))
     return outs, total_loss, output_losses, aggregated_output_losses, masks
 
 
