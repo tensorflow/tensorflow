@@ -330,7 +330,7 @@ if __name__ == "__main__":
       dtypes = ([np.float32, np.float64]
                 + [np.complex64, np.complex128] * (not compute_uv))
       for dtype in dtypes:
-        mat_shapes = [(10, 11), (11, 10), (11, 11)]
+        mat_shapes = [(10, 11), (11, 10), (11, 11), (2, 2, 2, 3)]
         if not full_matrices or not compute_uv:
           mat_shapes += [(5, 11), (11, 5)]
         for mat_shape in mat_shapes:
