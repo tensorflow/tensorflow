@@ -62,6 +62,10 @@ _UNSUPPORTED_OPS = set([
     "TensorSummaryV2",
     ])
 
+# Ops which can be safely pruned from XLA compile if they have no consumers.
+#  These ops should also have no inputs.
+_UNCONNECTED_OPS_TO_PRUNE = set(["Placeholder", "VarHandleOp"])
+
 _MAX_WARNING_LINES = 5
 
 _TPU_REPLICATE_ATTR = "_tpu_replicate"
@@ -1574,3 +1578,31 @@ def rewrite_for_inference(computation,
       device_assignment=device_assignment,
       name=name)
   # pylint: enable=undefined-variable
+
+
+def prune_unconnected_ops_from_xla(prune_graph):
+  """Prunes unconnected ops as listed in _UNCONNECTED_OPS_TO_PRUNE.
+
+  Args:
+    prune_graph: A tensorflow graph from which we wish to prune unconnected ops
+      as listed in _UNCONNECTED_OPS_TO_PRUNE.  In general, these ops should have
+      no inputs and no consumers. These can often be left behind due to graph
+      construction rewiring (for instance TF-Hub). While they never execute,
+      they will cause XLA compile to fail so we strip them from XLA compile by
+      removing the tpu_replicate attribute.
+  """
+  # Scan over the top level graph and all function graphs.
+  for graph in [prune_graph] + list(prune_graph._functions.values()):  # pylint: disable=protected-access
+    for op in graph.get_operations():
+      if op.type not in _UNCONNECTED_OPS_TO_PRUNE:
+        continue
+      outputs_consumed = False
+      for output in op.outputs:
+        if output.consumers():
+          outputs_consumed = True
+          break
+      if not outputs_consumed:
+        logging.info(
+            "Pruning OP %s of type %s from XLA Compile due to "
+            "it being disconnected.", op.name, op.type)
+        op._clear_attr(_TPU_REPLICATE_ATTR)  # pylint: disable=protected-access
