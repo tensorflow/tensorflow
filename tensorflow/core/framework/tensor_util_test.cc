@@ -446,6 +446,9 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceTooSmall) {
   tensor_proto =
       tensor::CreateTensorProto(std::vector<bool>(kLength), {kLength});
   EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
+  EXPECT_FALSE(tensor::CompressTensorProtoInPlace(&tensor_proto));
 }
 
 TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
@@ -472,13 +475,22 @@ TEST(TensorProtoUtil, CompressTensorProtoInPlaceAllEqual) {
   EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
   EXPECT_EQ(tensor::internal::TensorProtoHelper<bool>::NumValues(tensor_proto),
             1);
+
+  tensor_proto =
+      tensor::CreateTensorProto(std::vector<Eigen::half>(kLength), {kLength});
+  EXPECT_TRUE(tensor::CompressTensorProtoInPlace(&tensor_proto));
+  EXPECT_EQ(
+      tensor::internal::TensorProtoHelper<Eigen::half>::NumValues(tensor_proto),
+      1);
 }
 
 template <typename T>
 std::vector<T> VectorWithConstantTail(int size, int tail_length) {
   CHECK_LE(tail_length, size);
   std::vector<T> v(size, T(0));
-  std::iota(v.begin(), v.end() - tail_length, T(1));
+  for (int i = 0; i < size - tail_length; ++i) {
+    v[i] = T(i + 1);
+  }
   return v;
 }
 
@@ -558,6 +570,8 @@ TEST(TensorProtoUtil, CompressTensorProtoConstantTail) {
       ConstantTailTest<uint8>(kLength, tail_length, as_field);
       ConstantTailTest<int16>(kLength, tail_length, as_field);
       ConstantTailTest<uint16>(kLength, tail_length, as_field);
+      ConstantTailTest<Eigen::half>(kLength, tail_length, as_field);
+      ConstantTailTest<bfloat16>(kLength, tail_length, as_field);
     }
   }
 }
