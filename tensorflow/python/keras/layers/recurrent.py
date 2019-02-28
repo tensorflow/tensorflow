@@ -2370,7 +2370,7 @@ class UnifiedGRU(DropoutRNNCellMixin, GRU):
       output = last_output
 
     if self.return_state:
-      return [output] + states
+      return [output] + list(states)
     elif self._return_runtime:
       return output, runtime
     else:
@@ -3404,7 +3404,7 @@ class UnifiedLSTM(DropoutRNNCellMixin, LSTM):
       output = last_output
 
     if self.return_state:
-      return [output] + states
+      return [output] + list(states)
     elif self.return_runtime:
       return output, runtime
     else:

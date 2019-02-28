@@ -238,8 +238,9 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
     num_samples = 2
 
     inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+    masked = keras.layers.Masking()(inputs)
     layer = keras.layers.UnifiedLSTM(units, return_state=True, stateful=True)
-    outputs = layer(inputs)
+    outputs = layer(masked)
     state = outputs[1:]
     assert len(state) == num_states
     model = keras.models.Model(inputs, state[0])
