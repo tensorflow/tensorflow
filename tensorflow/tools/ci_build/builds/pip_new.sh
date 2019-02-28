@@ -657,15 +657,17 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     cp "${WHL_DIR}"/"${WHL_BASE_NAME}" "${WHL_PATH}"
     echo "Copied manylinux1 wheel file at ${WHL_PATH}"
   else
-    # Repair the wheels for cpu manylinux1
-    echo "auditwheel repairing ${WHL_PATH}"
-    auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
+    if [[ ${OS_TYPE} == "ubuntu" ]]; then
+      # Repair the wheels for cpu manylinux1
+      echo "auditwheel repairing ${WHL_PATH}"
+      auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 
-    if [[ -f ${AUDITED_WHL_NAME} ]]; then
-      WHL_PATH=${AUDITED_WHL_NAME}
-      echo "Repaired manylinux1 wheel file at: ${WHL_PATH}"
-    else
-      die "WARNING: Cannot find repaired wheel."
+      if [[ -f ${AUDITED_WHL_NAME} ]]; then
+        WHL_PATH=${AUDITED_WHL_NAME}
+        echo "Repaired manylinux1 wheel file at: ${WHL_PATH}"
+      else
+        die "WARNING: Cannot find repaired wheel."
+      fi
     fi
   fi
 done
