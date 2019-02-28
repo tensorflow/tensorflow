@@ -644,8 +644,9 @@ llvm::Value* IrEmitter::EmitElementalMap(
   return EmitThreadLocalCall(*map_instr.to_apply(), elemental_operands, name);
 }
 
-StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
-    HloReduceWindowInstruction* reduce_window,
+StatusOr<llvm::Value*> IrEmitter::EmitElementalReduceWindow(
+    const HloReduceWindowInstruction* reduce_window,
+    const llvm_ir::ElementGenerator& input_generator,
     const llvm_ir::IrArray::Index& index) {
   const HloInstruction* operand = reduce_window->operand(0);
   const Window& window = reduce_window->window();
@@ -716,8 +717,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduceWindow(
   SetToFirstInsertPoint(if_data.true_block, &b_);
 
   // We are not in the padding, so carry out the computation.
-  llvm_ir::IrArray input_array(GetIrArrayFor(operand));
-  llvm::Value* input_value = input_array.EmitReadArrayElement(input_index, &b_);
+  TF_ASSIGN_OR_RETURN(llvm::Value* const input_value,
+                      input_generator(input_index));
   llvm::Value* result = EmitThreadLocalCall(
       *reduce_window->to_apply(), {Load(accumulator_address), input_value},
       "reducer_function");
@@ -741,11 +742,7 @@ Status IrEmitter::HandleReduceWindow(HloInstruction* reduce_window) {
   //
   // This is completely un-optimized and just here to have something
   // that works.
-  return EmitTargetElementLoop(
-      reduce_window, [&](const llvm_ir::IrArray::Index& index) {
-        return EmitTargetElementLoopBodyForReduceWindow(
-            Cast<HloReduceWindowInstruction>(reduce_window), index);
-      });
+  return DefaultAction(reduce_window);
 }
 
 Status IrEmitter::HandleSelectAndScatter(HloInstruction* select_and_scatter) {
@@ -948,8 +945,10 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
                           hlo_module_config_, target_machine_features_);
 }
 
-StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
-    HloConvolutionInstruction* convolution,
+StatusOr<llvm::Value*> IrEmitter::EmitElementalConvolution(
+    const HloConvolutionInstruction* convolution,
+    const llvm_ir::ElementGenerator& input_generator,
+    const llvm_ir::ElementGenerator& kernel_generator,
     const llvm_ir::IrArray::Index& index) {
   const HloInstruction* lhs = convolution->operand(0);
   const HloInstruction* rhs = convolution->operand(1);
@@ -1061,7 +1060,6 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
   input_index[dnums.input_feature_dimension()] = input_feature;
   input_index[dnums.input_batch_dimension()] = batch;
 
-  llvm_ir::IrArray kernel_array(GetIrArrayFor(rhs));
   llvm_ir::IrArray::Index kernel_index(b_.getInt64Ty(), num_dims);
   for (int i = 0; i < num_spatial_dims; ++i) {
     kernel_index[dnums.kernel_spatial_dimensions(i)] =
@@ -1074,10 +1072,11 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForConvolution(
   kernel_index[dnums.kernel_input_feature_dimension()] = input_feature;
   kernel_index[dnums.kernel_output_feature_dimension()] = output_feature;
 
-  llvm_ir::IrArray input_array(GetIrArrayFor(lhs));
-  llvm::Value* product =
-      FMul(input_array.EmitReadArrayElement(input_index, &b_),
-           kernel_array.EmitReadArrayElement(kernel_index, &b_));
+  TF_ASSIGN_OR_RETURN(llvm::Value* const input_value,
+                      input_generator(input_index));
+  TF_ASSIGN_OR_RETURN(llvm::Value* const kernel_value,
+                      kernel_generator(kernel_index));
+  llvm::Value* product = FMul(input_value, kernel_value);
   llvm::Value* sum = FAdd(Load(sum_address), product);
   Store(sum, sum_address);
 
@@ -1245,11 +1244,7 @@ Status IrEmitter::HandleConvolution(HloInstruction* convolution) {
   //
   // See the description of convolution in the XLA documentation for the pseudo
   // code for convolution.
-  return EmitTargetElementLoop(
-      convolution, [&](const llvm_ir::IrArray::Index& index) {
-        return EmitTargetElementLoopBodyForConvolution(
-            Cast<HloConvolutionInstruction>(convolution), index);
-      });
+  return DefaultAction(convolution);
 }
 
 Status IrEmitter::HandleFft(HloInstruction* fft) {
@@ -1805,10 +1800,12 @@ StatusOr<bool> IrEmitter::EmitVectorizedReduce(
   return true;
 }
 
-StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
-    HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index) {
-  const HloInstruction* arg = reduce->mutable_operand(0);
-  const HloInstruction* init_value = reduce->mutable_operand(1);
+StatusOr<llvm::Value*> IrEmitter::EmitElementalReduce(
+    const HloReduceInstruction* reduce,
+    const llvm_ir::ElementGenerator& input_generator,
+    const llvm_ir::ElementGenerator& initial_value_generator,
+    const llvm_ir::IrArray::Index& index) {
+  const HloInstruction* arg = reduce->operand(0);
   absl::Span<const int64> dimensions(reduce->dimensions());
 
   // Initialize an accumulator with init_value.
@@ -1816,9 +1813,10 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
   llvm::AllocaInst* accumulator_addr = llvm_ir::EmitAllocaAtFunctionEntry(
       llvm_ir::PrimitiveTypeToIrType(accumulator_type, module_), "accumulator",
       &b_, MinimumAlignmentForPrimitiveType(accumulator_type));
-  llvm::Value* init_value_addr = GetEmittedValueFor(init_value);
-  llvm::Value* load_init_value = Load(init_value_addr);
-  Store(load_init_value, accumulator_addr);
+  TF_ASSIGN_OR_RETURN(
+      llvm::Value* const init_value,
+      initial_value_generator(llvm_ir::IrArray::Index(index.GetType())));
+  Store(init_value, accumulator_addr);
 
   // The enclosing loops go over all the target elements. Now we have to compute
   // the actual target element. For this, we build a new loop nest to iterate
@@ -1837,7 +1835,6 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
   // fill in the rest of the dimensions with induction Value*s taken from
   // 'index' which iterates over the target array.  See the high-level
   // description in the XLA documentation for details.
-  llvm_ir::IrArray arg_array(GetIrArrayFor(arg));
   llvm_ir::IrArray::Index input_index = reduced_dims_index;
   llvm_ir::IrArray::Index::const_iterator it = index.begin();
 
@@ -1849,7 +1846,8 @@ StatusOr<llvm::Value*> IrEmitter::EmitTargetElementLoopBodyForReduce(
   CHECK(index.end() == it);
 
   // Apply the reduction function to the loaded value.
-  llvm::Value* input_element = arg_array.EmitReadArrayElement(input_index, &b_);
+  TF_ASSIGN_OR_RETURN(llvm::Value* const input_element,
+                      input_generator(input_index));
   llvm::Value* result = EmitThreadLocalCall(
       *reduce->to_apply(), {Load(accumulator_addr), input_element},
       "reduce_function");
@@ -1884,11 +1882,7 @@ Status IrEmitter::HandleReduce(HloInstruction* reduce) {
     }
   }
 
-  return EmitTargetElementLoop(reduce,
-                               [&](const llvm_ir::IrArray::Index& index) {
-                                 return EmitTargetElementLoopBodyForReduce(
-                                     Cast<HloReduceInstruction>(reduce), index);
-                               });
+  return DefaultAction(reduce);
 }
 
 Status IrEmitter::HandleAllToAll(HloInstruction*) {
