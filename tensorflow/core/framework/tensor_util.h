@@ -119,7 +119,6 @@ struct CopyHelper {
   }
 };
 
-template <>
 template <typename SrcIter>
 struct CopyHelper<SrcIter, SrcIter> {
   void operator()(SrcIter begin, SrcIter end, SrcIter dst) {
@@ -129,7 +128,6 @@ struct CopyHelper<SrcIter, SrcIter> {
 
 // Overloads for Eigen::half and bfloat16 that are stored in 32 bit fields and
 // need to go via a reinterpret cast to uint16.
-template <>
 template <typename SrcIter>
 struct CopyHelper<SrcIter, Eigen::half*> {
   void operator()(SrcIter begin, SrcIter end, Eigen::half* dst) {
@@ -142,7 +140,6 @@ struct CopyHelper<SrcIter, Eigen::half*> {
   }
 };
 
-template <>
 template <typename DstIter>
 struct CopyHelper<const Eigen::half*, DstIter> {
   void operator()(const Eigen::half* begin, const Eigen::half* end,
@@ -154,7 +151,6 @@ struct CopyHelper<const Eigen::half*, DstIter> {
   }
 };
 
-template <>
 template <typename SrcIter>
 struct CopyHelper<SrcIter, bfloat16*> {
   void operator()(SrcIter begin, SrcIter end, bfloat16* dst) {
@@ -167,7 +163,6 @@ struct CopyHelper<SrcIter, bfloat16*> {
   }
 };
 
-template <>
 template <typename DstIter>
 struct CopyHelper<const bfloat16*, DstIter> {
   void operator()(const bfloat16* begin, const bfloat16* end, DstIter dst) {
