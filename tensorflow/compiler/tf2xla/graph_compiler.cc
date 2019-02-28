@@ -98,6 +98,7 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   }
   return Status::OK();
 }
+
 }  // namespace
 Status GraphCompiler::Compile() {
   // Check that the graph has no illegal cycles.
@@ -113,6 +114,9 @@ Status GraphCompiler::Compile() {
       }
     }
   });
+
+  // Maintain a mapping from node id to control dependency op
+  std::vector<xla::XlaOp> control_dependency_registry(graph_->num_node_ids());
 
   // XLA requires determinism, generate a stable ordering from DFS.
   std::vector<Node*> topo_sorted_nodes;
@@ -145,17 +149,49 @@ Status GraphCompiler::Compile() {
     tensor_inputs_.clear();
     tensor_inputs_.resize(n->num_inputs());
 
-    // Set up inputs from outputs of previous nodes.
-    for (auto* e : n->in_edges()) {
-      if (e->IsControlEdge()) continue;
-      const Node* src = e->src();
-      TF_RET_CHECK(src->id() < output_registry.size());
-      const NodeOutputs& src_outputs = output_registry[src->id()];
+    // Temporary tensor for holding control dependency
+    std::unique_ptr<Tensor> control_dep_tensor;
 
-      tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
+    // Set up inputs from outputs of previous nodes.
+    std::vector<xla::XlaOp> dependencies;
+    for (auto* e : n->in_edges()) {
+      if (e->IsControlEdge()) {
+        if (n->IsOp() && e->src()->IsOp()) {
+          auto xlaop_id = control_dependency_registry[e->src()->id()];
+          if (xlaop_id.valid()) {
+            dependencies.push_back(xlaop_id);
+          }
+        }
+      } else {
+        const Node* src = e->src();
+        TF_RET_CHECK(src->id() < output_registry.size());
+        const NodeOutputs& src_outputs = output_registry[src->id()];
+
+        tensor_inputs_.at(e->dst_input()) = src_outputs.at(e->src_output());
+      }
     }
 
     OpKernelContext op_context(&params, n->num_outputs());
+
+    // Add a dependency on any control dependencies onto the tensor 0 input
+    if (dependencies.size() > 0 && n->num_inputs() > 0) {
+      auto* tensor = tensor_inputs_.at(0).tensor;
+      auto* expr = CastExpressionFromTensor(*tensor);
+      if (expr->kind() == XlaExpression::Kind::kXlaOp) {
+        xla::XlaOp op0 = expr->handle();
+        for (const auto& dep : dependencies) {
+          op0 = xla::AddDependency(op0, dep);
+        }
+
+        control_dep_tensor.reset(new Tensor(device_->GetAllocator({}),
+                                            tensor->dtype(), tensor->shape()));
+
+        AssignExpressionToTensor(control_dep_tensor.get(),
+                                 XlaExpression::XlaOp(op0, tensor->dtype()));
+        tensor_inputs_.at(0) = control_dep_tensor.get();
+      }
+    }
+
     VLOG(3) << "Translating " << params.op_kernel->name();
     if (IsFunctional(n)) {
       TF_RETURN_IF_ERROR(CompileFunctionalNode(n, &op_context));
@@ -178,6 +214,40 @@ Status GraphCompiler::Compile() {
                                 FormatNodeForError(*n));
       }
     }
+
+    // Create an AfterAll if this node is the source of a control dependency
+    if (n->IsOp()) {
+      bool is_control_dependency_source = false;
+      for (auto* e : n->out_edges()) {
+        if (e->IsControlEdge() && e->dst()->IsOp()) {
+          is_control_dependency_source = true;
+          break;
+        }
+      }
+
+      if (is_control_dependency_source) {
+        auto* b = XlaContext::Get(&op_context).builder();
+
+        // Downstream ops can be dependent on output 0
+        if (n->num_outputs() > 0) {
+          auto* expr = CastExpressionFromTensor(*(outputs[0].tensor));
+          if (expr->kind() == XlaExpression::Kind::kXlaOp) {
+            control_dependency_registry[n->id()] =
+                xla::AfterAll(b, {expr->handle()});
+          }
+        } else {
+          // Downstream ops need to be dependent on upstream dependencies or for
+          // ops with no upstream dependencies, create a token out of nothing.
+          if (dependencies.size() > 0) {
+            control_dependency_registry[n->id()] =
+                xla::AfterAll(b, dependencies);
+          } else {
+            control_dependency_registry[n->id()] = xla::CreateToken(b);
+          }
+        }
+      }
+    }
+
   }
   return Status::OK();
 }
