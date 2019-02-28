@@ -1097,9 +1097,9 @@ class _RNNCellWrapperV1(RNNCell):
 
   def __init__(self, cell):
     super(_RNNCellWrapperV1, self).__init__()
-    self._cell = cell
+    self.cell = cell
     if isinstance(cell, trackable.Trackable):
-      self._track_trackable(self._cell, name="cell")
+      self._track_trackable(self.cell, name="cell")
 
   def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
     """Calls the wrapped cell and performs the wrapping logic.
@@ -1143,29 +1143,19 @@ class _RNNCellWrapperV1(RNNCell):
       - New state: A tensor or tuple of tensors with new wrapped cell's state.
     """
     return self._call_wrapped_cell(
-        inputs, state, cell_call_fn=self._cell.__call__, scope=scope)
+        inputs, state, cell_call_fn=self.cell.__call__, scope=scope)
 
 
-class _RNNCellWrapperV2(keras_layer.AbstractRNNCell, _RNNCellWrapperV1):
+class _RNNCellWrapperV2(keras_layer.AbstractRNNCell):
   """Base class for cells wrappers V2 compatibility.
 
   This class along with `_RNNCellWrapperV1` allows to define cells wrappers that
   are compatible with V1 and V2, and defines helper methods for this purpose.
   """
 
-  def __init__(self, *args, **kwargs):
+  def __init__(self, cell, *args, **kwargs):
     super(_RNNCellWrapperV2, self).__init__(*args, **kwargs)
-    self._layers = [self._cell]
-    # Force the keras_style to be true so that it will suppress all the legacy
-    # behavior from base_layer.
-    self._keras_style = True
-
-  def __call__(self, inputs, *args, **kwargs):
-    # Override the __call__() so that it does not fall to
-    # _RNNCellWrapperV1.__call__(), instead, directly use keras base_layer so
-    # that it will properly invoke the self.call() here.
-    return keras_layer.Layer.__call__(self, inputs, *args, **kwargs)
-
+    self.cell = cell
 
   def call(self, inputs, state, **kwargs):
     """Runs the RNN cell step computation.
@@ -1189,16 +1179,15 @@ class _RNNCellWrapperV2(keras_layer.AbstractRNNCell, _RNNCellWrapperV1):
       - New state: A tensor or tuple of tensors with new wrapped cell's state.
     """
     return self._call_wrapped_cell(
-        inputs, state, cell_call_fn=self._cell.call, **kwargs)
+        inputs, state, cell_call_fn=self.cell.call, **kwargs)
 
   def build(self, inputs_shape):
     """Builds the wrapped cell."""
-    self._cell.build(inputs_shape)
+    self.cell.build(inputs_shape)
     self.built = True
 
 
-@tf_export(v1=["nn.rnn_cell.DropoutWrapper"])
-class DropoutWrapper(_RNNCellWrapperV1):
+class DropoutWrapperBase(object):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
   def __init__(self, cell, input_keep_prob=1.0, output_keep_prob=1.0,
@@ -1268,7 +1257,7 @@ class DropoutWrapper(_RNNCellWrapperV1):
         but not `callable`.
       ValueError: if any of the keep_probs are not between 0 and 1.
     """
-    super(DropoutWrapper, self).__init__(cell)
+    super(DropoutWrapperBase, self).__init__(cell)
     assert_like_rnncell("cell", cell)
 
     if (dropout_state_filter_visitor is not None
@@ -1345,19 +1334,19 @@ class DropoutWrapper(_RNNCellWrapperV1):
 
   @property
   def wrapped_cell(self):
-    return self._cell
+    return self.cell
 
   @property
   def state_size(self):
-    return self._cell.state_size
+    return self.cell.state_size
 
   @property
   def output_size(self):
-    return self._cell.output_size
+    return self.cell.output_size
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self._cell.zero_state(batch_size, dtype)
+      return self.cell.zero_state(batch_size, dtype)
 
   def _variational_recurrent_dropout_value(
       self, index, value, noise, keep_prob):
@@ -1440,18 +1429,27 @@ class DropoutWrapper(_RNNCellWrapperV1):
     return output, new_state
 
 
-@tf_export("nn.DropoutWrapper", v1=[])
-class DropoutWrapperV2(DropoutWrapper, _RNNCellWrapperV2):
+@tf_export(v1=["nn.rnn_cell.DropoutWrapper"])
+class DropoutWrapper(DropoutWrapperBase, _RNNCellWrapperV1):
+  """Operator adding dropout to inputs and outputs of the given cell."""
+
+  def __init__(self, *args, **kwargs):
+    super(DropoutWrapper, self).__init__(*args, **kwargs)
+
+  __init__.__doc__ = DropoutWrapperBase.__init__.__doc__
+
+
+@tf_export("nn.RNNCellDropoutWrapper", v1=[])
+class DropoutWrapperV2(DropoutWrapperBase, _RNNCellWrapperV2):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
   def __init__(self, *args, **kwargs):
     super(DropoutWrapperV2, self).__init__(*args, **kwargs)
 
-  __init__.__doc__ = DropoutWrapper.__init__.__doc__
+  __init__.__doc__ = DropoutWrapperBase.__init__.__doc__
 
 
-@tf_export(v1=["nn.rnn_cell.ResidualWrapper"])
-class ResidualWrapper(_RNNCellWrapperV1):
+class ResidualWrapperBase(object):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
   def __init__(self, cell, residual_fn=None):
@@ -1464,20 +1462,20 @@ class ResidualWrapper(_RNNCellWrapperV1):
         Defaults to calling nest.map_structure on (lambda i, o: i + o), inputs
         and outputs.
     """
-    super(ResidualWrapper, self).__init__(cell)
+    super(ResidualWrapperBase, self).__init__(cell)
     self._residual_fn = residual_fn
 
   @property
   def state_size(self):
-    return self._cell.state_size
+    return self.cell.state_size
 
   @property
   def output_size(self):
-    return self._cell.output_size
+    return self.cell.output_size
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
-      return self._cell.zero_state(batch_size, dtype)
+      return self.cell.zero_state(batch_size, dtype)
 
   def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
     """Run the cell and then apply the residual_fn on its inputs to its outputs.
@@ -1508,18 +1506,27 @@ class ResidualWrapper(_RNNCellWrapperV1):
     return (res_outputs, new_state)
 
 
-@tf_export("nn.ResidualWrapper", v1=[])
-class ResidualWrapperV2(ResidualWrapper, _RNNCellWrapperV2):
+@tf_export(v1=["nn.rnn_cell.ResidualWrapper"])
+class ResidualWrapper(ResidualWrapperBase, _RNNCellWrapperV1):
+  """RNNCell wrapper that ensures cell inputs are added to the outputs."""
+
+  def __init__(self, *args, **kwargs):
+    super(ResidualWrapper, self).__init__(*args, **kwargs)
+
+  __init__.__doc__ = ResidualWrapperBase.__init__.__doc__
+
+
+@tf_export("nn.RNNCellResidualWrapper", v1=[])
+class ResidualWrapperV2(ResidualWrapperBase, _RNNCellWrapperV2):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
   def __init__(self, *args, **kwargs):
     super(ResidualWrapperV2, self).__init__(*args, **kwargs)
 
-  __init__.__doc__ = ResidualWrapper.__init__.__doc__
+  __init__.__doc__ = ResidualWrapperBase.__init__.__doc__
 
 
-@tf_export("nn.rnn_cell.DeviceWrapper")
-class DeviceWrapper(RNNCell):
+class DeviceWrapperBase(object):
   """Operator that ensures an RNNCell runs on a particular device."""
 
   def __init__(self, cell, device):
@@ -1531,29 +1538,45 @@ class DeviceWrapper(RNNCell):
       cell: An instance of `RNNCell`.
       device: A device string or function, for passing to `tf.device`.
     """
-    super(DeviceWrapper, self).__init__()
-    self._cell = cell
-    if isinstance(cell, trackable.Trackable):
-      self._track_trackable(self._cell, name="cell")
+    super(DeviceWrapperBase, self).__init__(cell)
     self._device = device
 
   @property
   def state_size(self):
-    return self._cell.state_size
+    return self.cell.state_size
 
   @property
   def output_size(self):
-    return self._cell.output_size
+    return self.cell.output_size
 
   def zero_state(self, batch_size, dtype):
     with ops.name_scope(type(self).__name__ + "ZeroState", values=[batch_size]):
       with ops.device(self._device):
-        return self._cell.zero_state(batch_size, dtype)
+        return self.cell.zero_state(batch_size, dtype)
 
-  def __call__(self, inputs, state, scope=None):
+  def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
     """Run the cell on specified device."""
     with ops.device(self._device):
-      return self._cell(inputs, state, scope=scope)
+      return cell_call_fn(inputs, state, **kwargs)
+
+
+@tf_export(v1=["nn.rnn_cell.DeviceWrapper"])
+class DeviceWrapper(DeviceWrapperBase, _RNNCellWrapperV1):
+
+  def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
+    super(DeviceWrapper, self).__init__(*args, **kwargs)
+
+  __init__.__doc__ = DeviceWrapperBase.__init__.__doc__
+
+
+@tf_export("nn.RNNCellDeviceWrapper", v1=[])
+class DeviceWrapperV2(DeviceWrapperBase, _RNNCellWrapperV2):
+  """Operator that ensures an RNNCell runs on a particular device."""
+
+  def __init__(self, *args, **kwargs):  # pylint: disable=useless-super-delegation
+    super(DeviceWrapperV2, self).__init__(*args, **kwargs)
+
+  __init__.__doc__ = DeviceWrapperBase.__init__.__doc__
 
 
 @tf_export(v1=["nn.rnn_cell.MultiRNNCell"])
