@@ -22,7 +22,7 @@ from absl import app
 from absl import flags
 
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 from tensorflow.examples.saved_model.integration_tests import util
 
 FLAGS = flags.FLAGS
