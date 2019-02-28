@@ -2135,26 +2135,27 @@ class KerasTPUModel(models.Model):
 def _validate_shapes(model):
   """Validate that all layers in `model` have constant shape."""
   for layer in model.layers:
-    if isinstance(layer.input_shape, tuple):
-      input_shapes = [layer.input_shape]
-    else:
-      input_shapes = layer.input_shape
+    for node_idx in range(len(layer._inbound_nodes)):
+      input_shape = layer.get_input_shape_at(node_idx)
+      if isinstance(input_shape, tuple):
+        input_shapes = [input_shape]
+      else:
+        input_shapes = input_shape
 
-    if isinstance(layer.output_shape, tuple):
-      output_shapes = [layer.output_shape]
-    else:
-      output_shapes = layer.output_shape
+      output_shape = layer.get_output_shape_at(node_idx)
+      if isinstance(output_shape, tuple):
+        output_shapes = [output_shape]
+      else:
+        output_shapes = output_shape
 
-    for shape in input_shapes + output_shapes:
-      for dim in shape[1:]:
-        if dim is None:
-          raise ValueError(
+      for shape in input_shapes + output_shapes:
+        for dim in shape[1:]:
+          if dim is None:
+            raise ValueError(
               """
 Layer %(layer)s has a variable shape in a non-batch dimension.  TPU models must
 have constant shapes for all operations.
-
 You may have to specify `input_length` for RNN/TimeDistributed layers.
-
 Layer: %(layer)s
 Input shape: %(input_shape)s
 Output shape: %(output_shape)s
@@ -2163,7 +2164,6 @@ Output shape: %(output_shape)s
           'input_shape': layer.input_shape,
           'output_shape': layer.output_shape
           })
-
 
 # pylint: enable=bad-continuation
 
