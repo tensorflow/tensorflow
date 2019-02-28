@@ -1,16 +1,16 @@
 path: "tensorflow.nn"
 tf_module {
   member {
-    name: "DropoutWrapper"
+    name: "RNNCellDeviceWrapper"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "ResidualWrapper"
+    name: "RNNCellDropoutWrapper"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "rnn_cell"
-    mtype: "<type \'module\'>"
+    name: "RNNCellResidualWrapper"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "swish"
