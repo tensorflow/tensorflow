@@ -122,11 +122,7 @@ def get_reachable_from_inputs(inputs, targets=None):
     elif isinstance(x, variables.Variable):
       outputs = [x.op]
     elif tensor_util.is_tensor(x):
-      try:
-        outputs = x.consumers()
-      except AttributeError:
-        # `RaggedTensors` have no `.consumers()` method.
-        continue
+      outputs = x.consumers()
     else:
       raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
 
