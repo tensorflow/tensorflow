@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/transfer_manager.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/core/common_runtime/eigen_thread_pool.h"
+#include "tensorflow/core/lib/core/blocking_counter.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -269,8 +270,8 @@ StatusOr<ScopedShapedBuffer> HloRunner::ExecuteWithDeviceBuffers(
 }
 
 StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
-    std::unique_ptr<HloModule> module,
-    const ReplicatedExecuteOptions& options) {
+    std::unique_ptr<HloModule> module, const ReplicatedExecuteOptions& options,
+    bool use_threads) {
   TF_ASSIGN_OR_RETURN(
       std::unique_ptr<Executable> executable,
       CreateExecutable(std::move(module), options.run_hlo_passes));
@@ -369,9 +370,39 @@ StatusOr<std::vector<Literal>> HloRunner::ExecuteReplicated(
   }
 
   LOG(INFO) << "Replicated execution started";
-  TF_ASSIGN_OR_RETURN(std::vector<ScopedShapedBuffer> results,
-                      executable->ExecuteOnStreams(service_run_options,
-                                                   argument_buffer_slices));
+  std::vector<ScopedShapedBuffer> results;
+  if (!use_threads) {
+    TF_ASSIGN_OR_RETURN(results,
+                        executable->ExecuteOnStreams(service_run_options,
+                                                     argument_buffer_slices));
+  } else {
+    tensorflow::mutex mutex;
+    std::vector<StatusOr<ScopedShapedBuffer>> thread_results(
+        options.num_replicas);
+    {
+      LOG(INFO) << "Creating thread pool for " << options.num_replicas
+                << " replicas";
+      tensorflow::thread::ThreadPool pool(tensorflow::Env::Default(),
+                                          "replicas", options.num_replicas);
+      for (int64 i = 0; i < options.num_replicas; ++i) {
+        pool.Schedule([&, i] {
+          auto result = executable->ExecuteOnStream(
+              &service_run_options[i], argument_buffer_slices[i], nullptr);
+          tensorflow::mutex_lock lock(mutex);
+          thread_results[i] = std::move(result);
+        });
+      }
+
+      // Note: the thread pool destructor guarantees it completes all work
+      // before we leave this scope.
+    }
+    for (auto& thread_result : thread_results) {
+      if (!thread_result.ok()) {
+        return thread_result.status();
+      }
+      results.push_back(std::move(thread_result).ValueOrDie());
+    }
+  }
   LOG(INFO) << "Replicated execution terminated";
 
   std::vector<Literal> exec_results;

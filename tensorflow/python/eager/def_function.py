@@ -514,7 +514,8 @@ class Function(object):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    # Note: there is no reason not to autograph once the overhead is negligible.
+    @function_lib.defun(autograph=False)  # tf.function internal, pure graph
     def initialize_variables():
       for v, init in initializer_map.items():
         with ops.init_scope():

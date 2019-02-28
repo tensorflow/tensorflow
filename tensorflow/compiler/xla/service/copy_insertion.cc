@@ -319,8 +319,7 @@ Status AddCopiesForConditional(const HloAliasAnalysis& alias_analysis,
           << conditional->name();
   TF_RET_CHECK(conditional->opcode() == HloOpcode::kConditional);
 
-  for (HloComputation* computation :
-       {conditional->true_computation(), conditional->false_computation()}) {
+  for (HloComputation* computation : conditional->branch_computations()) {
     HloInstruction* root = computation->root_instruction();
     std::vector<HloInstruction*> users = root->users();
     TF_ASSIGN_OR_RETURN(HloInstruction * deep_copy,

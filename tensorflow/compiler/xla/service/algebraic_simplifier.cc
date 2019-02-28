@@ -109,7 +109,7 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
 
   int exp;
   double mantissa = std::frexp(*val, &exp);
-  // frexp returns a value in the range (-1; -0.5] U [0.5, 1).  A return value
+  // frexp returns a value in the range (-1, -0.5] U [0.5, 1).  A return value
   // of +/-0.5 therefore indicates that the floating point value is a power of
   // 2.
   return mantissa == 0.5 || mantissa == -0.5;
@@ -2836,6 +2836,27 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
         slice, HloInstruction::CreateSlice(
                    slice->shape(), operand_slice->mutable_operand(0),
                    new_slice_starts, new_slice_limits, slice->slice_strides()));
+  }
+
+  auto only_broadcast_dims_sliced = [&] {
+    if (slice->operand(0)->opcode() != HloOpcode::kBroadcast) {
+      return false;
+    }
+    for (int64 dim : slice->operand(0)->dimensions()) {
+      if (slice->slice_starts(dim) != 0 || slice->slice_strides(dim) != 1 ||
+          slice->slice_limits(dim) !=
+              slice->operand(0)->shape().dimensions(dim)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (only_broadcast_dims_sliced()) {
+    return ReplaceWithNewInstruction(
+        slice,
+        HloInstruction::CreateBroadcast(
+            slice->shape(), slice->mutable_operand(0)->mutable_operand(0),
+            slice->mutable_operand(0)->dimensions()));
   }
 
   TF_ASSIGN_OR_RETURN(bool replaced, TrySimplifyScalarSlice(slice));

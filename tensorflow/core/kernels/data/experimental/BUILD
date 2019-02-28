@@ -129,6 +129,7 @@ tf_kernel_library(
         "//tensorflow/core/kernels:inplace_ops",
         "//tensorflow/core/kernels/data:captured_function",
         "//tensorflow/core/kernels/data:dataset_utils",
+        "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
 
@@ -205,6 +206,7 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
         "//tensorflow/core/kernels/data:parallel_map_iterator",
+        "//tensorflow/core/kernels/data:stats_utils",
     ],
 )
 

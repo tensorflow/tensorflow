@@ -56,12 +56,22 @@ class CollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
   which mirrores models on GPUs of all machines in a cluster. In the current
   implementation, it uses all GPUs in a cluster and it assumes all workers have
   the same number of GPUs.
+
+  Args:
+    communication: optional Enum of type
+      `distribute.experimental.CollectiveCommunication`.  This provides a way
+      for the user to override the choice of collective op communication.
+      Possible values include `AUTO`, `RING`, and `NCCL`.
   """
 
-  def __init__(self):
+  def __init__(
+      self,
+      communication=cross_device_ops_lib.CollectiveCommunication.AUTO):
     """Initializes the object."""
     super(CollectiveAllReduceStrategy, self).__init__(
-        CollectiveAllReduceExtended(self))
+        CollectiveAllReduceExtended(
+            self,
+            communication=communication))
 
 
 class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
@@ -69,10 +79,14 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
 
   def __init__(self,
                container_strategy,
+               communication,
                cluster_resolver=TFConfigClusterResolver()):
     distribute_lib.DistributionStrategyExtended.__init__(
         self, container_strategy)
-    self._cross_device_ops = None
+    assert isinstance(
+        communication,
+        cross_device_ops_lib.CollectiveCommunication)
+    self._communication = communication
     self._initialize_strategy(cluster_resolver)
     assert isinstance(self._get_cross_device_ops(),
                       cross_device_ops_lib.CollectiveAllReduce)
@@ -166,10 +180,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._task_id = task_id
 
     logging.info(
-        "Multi-worker CollectiveAllReduceStrategy with "
-        "cluster_spec = %r, task_type = %r, task_id = %r, "
-        "num_workers = %r, local_devices = %r", cluster_spec.as_dict(),
-        task_type, task_id, self._num_workers, local_devices)
+        "Multi-worker CollectiveAllReduceStrategy with cluster_spec = %r, "
+        "task_type = %r, task_id = %r, num_workers = %r, local_devices = %r, "
+        "communication = %s", cluster_spec.as_dict(), task_type,
+        task_id, self._num_workers, local_devices,
+        self._communication)
 
   def _create_variable(self, next_creator, *args, **kwargs):
     colocate_with = kwargs.pop("colocate_with", None)
@@ -332,6 +347,11 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # clear and then append.
     del rewrite_options.scoped_allocator_opts.enable_op[:]
     rewrite_options.scoped_allocator_opts.enable_op.append("CollectiveReduce")
+
+    if ((self._communication ==
+         cross_device_ops_lib.CollectiveCommunication.NCCL) and
+        self._num_gpus_per_worker > 0):
+      updated_config.experimental.collective_nccl = True
 
     if not self._cluster_spec:
       return updated_config

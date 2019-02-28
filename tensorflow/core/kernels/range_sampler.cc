@@ -154,7 +154,7 @@ int64 UniformSampler::Sample(random::SimplePhilox* rnd) const {
 float UniformSampler::Probability(int64 value) const { return inv_range_; }
 
 LogUniformSampler::LogUniformSampler(int64 range)
-    : RangeSampler(range), log_range_(log(range + 1)) {}
+    : RangeSampler(range), log_range_(log1p(range)) {}
 
 int64 LogUniformSampler::Sample(random::SimplePhilox* rnd) const {
   const int64 value =

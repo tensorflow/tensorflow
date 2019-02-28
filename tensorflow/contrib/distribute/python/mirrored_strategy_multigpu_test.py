@@ -35,6 +35,7 @@ from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -269,6 +270,28 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
+  def testFunctionInCallForEachReplicaNoMergeCall(self, distribution):
+    @def_function.function
+    def model_fn():
+      return 0.
+
+    with distribution.scope():
+      result = distribution.extended.call_for_each_replica(model_fn)
+      self.assertEqual((0., 0.), self.evaluate(result.values))
+
+  def testFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+    def merge_fn(_):
+      pass
+
+    @def_function.function
+    def model_fn():
+      ds_context.get_replica_context().merge_call(merge_fn)
+      return 0.
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
 
 @combinations.generate(combinations.combine(
     distribution=[

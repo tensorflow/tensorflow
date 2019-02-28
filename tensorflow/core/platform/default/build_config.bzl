@@ -725,6 +725,12 @@ def tf_additional_gdr_lib_defines():
         "//conditions:default": [],
     })
 
+def tf_additional_numa_lib_defines():
+    return select({
+        "//tensorflow:with_numa_support": ["TENSORFLOW_USE_NUMA"],
+        "//conditions:default": [],
+    })
+
 def tf_py_clif_cc(name, visibility = None, **kwargs):
     pass
 
@@ -757,3 +763,26 @@ def tf_additional_binary_deps():
             "//third_party/mkl:intel_binary_blob",
         ],
     )
+
+def tf_additional_numa_deps():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:darwin": [],
+        "//conditions:default": [
+            "@hwloc",
+        ],
+    })
+
+def tf_additional_numa_copts():
+    return select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:darwin": [],
+        "//conditions:default": [
+            "-Ithird_party/hwloc/hwloc-master/include",
+            "-DTENSORFLOW_USE_NUMA",
+        ],
+    })

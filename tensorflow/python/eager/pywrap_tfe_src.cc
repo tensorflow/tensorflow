@@ -1953,8 +1953,6 @@ bool OpGradientDoesntRequireOutputIndices(
           {"SparseSegmentSum", {true, {}}},
           {"SparseSegmentMean", {true, {}}},
           {"SparseSegmentSqrtN", {true, {}}},
-          {"SegmentMin", {true, {}}},
-          {"SegmentMax", {true, {}}},
           {"UnsortedSegmentSum", {true, {}}},
           {"UnsortedSegmentMax", {true, {}}},
           {"Abs", {true, {}}},

@@ -64,6 +64,7 @@ py_library(
         ":saving",
         "//tensorflow/python:training",
         "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
@@ -171,6 +172,8 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -563,7 +566,7 @@ tf_py_test(
 
 tf_py_test(
     name = "convolutional_recurrent_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/convolutional_recurrent_test.py"],
     additional_deps = [
         ":keras",
@@ -571,7 +574,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
 )
 
 cuda_py_test(

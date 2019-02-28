@@ -378,6 +378,12 @@ class Concatenation
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& input_name = op_signature.op->inputs[0];
+    const Array& input_array = op_signature.model->GetArray(input_name);
+    // If the op take int8 input, it is version 2.
+    if (input_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -618,6 +624,12 @@ class L2Normalization
   }
 
   int GetVersion(const OperatorSignature& op_signature) const override {
+    const string& output_name = op_signature.op->outputs[0];
+    const Array& output_array = op_signature.model->GetArray(output_name);
+    // Version 2 supports signed int8 input types.
+    if (output_array.data_type == ArrayDataType::kInt8) {
+      return 2;
+    }
     return 1;
   }
 };
@@ -1915,7 +1927,7 @@ class UnidirectionalSequenceRnn
   }
   void ReadOptions(const TfLiteOptions& options,
                    TocoOperator* op) const override {
-    // Only support tanh actication, so check that tflite type is tanh.
+    // Only support tanh activation, so check that tflite type is tanh.
     DCHECK(options.fused_activation_function() ==
            ::tflite::ActivationFunctionType_TANH);
   }

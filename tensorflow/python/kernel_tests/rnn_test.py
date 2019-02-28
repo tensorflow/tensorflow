@@ -655,13 +655,14 @@ class RNNTest(test.TestCase):
       save.restore(sess, save_path)
       self.assertAllEqual([10.] * 4, self.evaluate(lstm_cell._bias))
 
+  # TODO(scottzhu): Look into updating for V2 Intializers.
+  @test_util.run_deprecated_v1
   def testRNNCellSerialization(self):
     for cell in [
         rnn_cell_impl.LSTMCell(32, use_peepholes=True, cell_clip=True),
         rnn_cell_impl.BasicLSTMCell(32, dtype=dtypes.float32),
         rnn_cell_impl.BasicRNNCell(32, activation="relu", dtype=dtypes.float32),
-        rnn_cell_impl.GRUCell(
-            32, kernel_initializer="ones", dtype=dtypes.float32)
+        rnn_cell_impl.GRUCell(32, dtype=dtypes.float32)
     ]:
       with self.cached_session():
         x = keras.Input((None, 5))

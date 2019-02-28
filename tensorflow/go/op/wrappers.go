@@ -13502,6 +13502,14 @@ func ResizeBicubicAlignCorners(value bool) ResizeBicubicAttr {
 	}
 }
 
+// ResizeBicubicHalfPixelCenters sets the optional half_pixel_centers attribute to value.
+// If not specified, defaults to false
+func ResizeBicubicHalfPixelCenters(value bool) ResizeBicubicAttr {
+	return func(m optionalAttr) {
+		m["half_pixel_centers"] = value
+	}
+}
+
 // Resize `images` to `size` using bicubic interpolation.
 //
 // Input images can be of different types but output images are always float.
@@ -20795,6 +20803,14 @@ type QuantizedResizeBilinearAttr func(optionalAttr)
 func QuantizedResizeBilinearAlignCorners(value bool) QuantizedResizeBilinearAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
+	}
+}
+
+// QuantizedResizeBilinearHalfPixelCenters sets the optional half_pixel_centers attribute to value.
+// If not specified, defaults to false
+func QuantizedResizeBilinearHalfPixelCenters(value bool) QuantizedResizeBilinearAttr {
+	return func(m optionalAttr) {
+		m["half_pixel_centers"] = value
 	}
 }
 
@@ -31504,6 +31520,14 @@ func ResizeBilinearAlignCorners(value bool) ResizeBilinearAttr {
 	}
 }
 
+// ResizeBilinearHalfPixelCenters sets the optional half_pixel_centers attribute to value.
+// If not specified, defaults to false
+func ResizeBilinearHalfPixelCenters(value bool) ResizeBilinearAttr {
+	return func(m optionalAttr) {
+		m["half_pixel_centers"] = value
+	}
+}
+
 // Resize `images` to `size` using bilinear interpolation.
 //
 // Input images can be of different types but output images are always float.
@@ -33395,6 +33419,14 @@ type ResizeBilinearGradAttr func(optionalAttr)
 func ResizeBilinearGradAlignCorners(value bool) ResizeBilinearGradAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
+	}
+}
+
+// ResizeBilinearGradHalfPixelCenters sets the optional half_pixel_centers attribute to value.
+// If not specified, defaults to false
+func ResizeBilinearGradHalfPixelCenters(value bool) ResizeBilinearGradAttr {
+	return func(m optionalAttr) {
+		m["half_pixel_centers"] = value
 	}
 }
 
@@ -36117,6 +36149,14 @@ func ResizeBicubicGradAlignCorners(value bool) ResizeBicubicGradAttr {
 	}
 }
 
+// ResizeBicubicGradHalfPixelCenters sets the optional half_pixel_centers attribute to value.
+// If not specified, defaults to false
+func ResizeBicubicGradHalfPixelCenters(value bool) ResizeBicubicGradAttr {
+	return func(m optionalAttr) {
+		m["half_pixel_centers"] = value
+	}
+}
+
 // Computes the gradient of bicubic interpolation.
 //
 // Arguments:
@@ -36160,6 +36200,14 @@ func ResizeNearestNeighborAlignCorners(value bool) ResizeNearestNeighborAttr {
 	}
 }
 
+// ResizeNearestNeighborHalfPixelCenters sets the optional half_pixel_centers attribute to value.
+// If not specified, defaults to false
+func ResizeNearestNeighborHalfPixelCenters(value bool) ResizeNearestNeighborAttr {
+	return func(m optionalAttr) {
+		m["half_pixel_centers"] = value
+	}
+}
+
 // Resize `images` to `size` using nearest neighbor interpolation.
 //
 // Arguments:
@@ -36199,6 +36247,14 @@ type ResizeNearestNeighborGradAttr func(optionalAttr)
 func ResizeNearestNeighborGradAlignCorners(value bool) ResizeNearestNeighborGradAttr {
 	return func(m optionalAttr) {
 		m["align_corners"] = value
+	}
+}
+
+// ResizeNearestNeighborGradHalfPixelCenters sets the optional half_pixel_centers attribute to value.
+// If not specified, defaults to false
+func ResizeNearestNeighborGradHalfPixelCenters(value bool) ResizeNearestNeighborGradAttr {
+	return func(m optionalAttr) {
+		m["half_pixel_centers"] = value
 	}
 }
 

@@ -2986,6 +2986,45 @@ def sobel_edges(image):
   return output
 
 
+def resize_bicubic(images,
+                   size,
+                   align_corners=False,
+                   name=None,
+                   half_pixel_centers=False):
+  return gen_image_ops.resize_bicubic(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
+def resize_bilinear(images,
+                    size,
+                    align_corners=False,
+                    name=None,
+                    half_pixel_centers=False):
+  return gen_image_ops.resize_bilinear(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
+def resize_nearest_neighbor(images,
+                            size,
+                            align_corners=False,
+                            name=None,
+                            half_pixel_centers=False):
+  return gen_image_ops.resize_nearest_neighbor(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
 resize_area_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
@@ -2998,14 +3037,14 @@ resize_bicubic_deprecation = deprecation.deprecated(
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
 tf_export(v1=['image.resize_bicubic'])(
-    resize_bicubic_deprecation(gen_image_ops.resize_bicubic))
+    resize_bicubic_deprecation(resize_bicubic))
 
 resize_bilinear_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
 tf_export(v1=['image.resize_bilinear'])(
-    resize_bilinear_deprecation(gen_image_ops.resize_bilinear))
+    resize_bilinear_deprecation(resize_bilinear))
 
 resize_nearest_neighbor_deprecation = deprecation.deprecated(
     date=None,
@@ -3013,7 +3052,7 @@ resize_nearest_neighbor_deprecation = deprecation.deprecated(
         'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
         'instead.'))
 tf_export(v1=['image.resize_nearest_neighbor'])(
-    resize_nearest_neighbor_deprecation(gen_image_ops.resize_nearest_neighbor))
+    resize_nearest_neighbor_deprecation(resize_nearest_neighbor))
 
 
 @tf_export('image.crop_and_resize', v1=[])

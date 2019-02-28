@@ -120,6 +120,9 @@ class ShapeInference {
   static StatusOr<Shape> InferTriangularSolveShape(
       const Shape& a, const Shape& b, const TriangularSolveOptions& options);
 
+  // Infers the shape produced by the given triangular solve operation.
+  static StatusOr<Shape> InferCholeskyShape(const Shape& a);
+
   // Infers the shape produced by a cross replica sum with the given operand
   // shapes.
   static StatusOr<Shape> InferAllReduceShape(
@@ -205,11 +208,11 @@ class ShapeInference {
                                          const ProgramShape& body,
                                          const Shape& init);
 
-  // Infers the shape produced by a conditional operation.
+  // Infers the shape produced by a predicated or indexed conditional operation.
   static StatusOr<Shape> InferConditionalShape(
-      const Shape& predicate, const Shape& true_operand,
-      const Shape& false_operand, const ProgramShape& true_computation,
-      const ProgramShape& false_computation);
+      const Shape& branch_index,
+      absl::Span<const ProgramShape> branch_computations,
+      absl::Span<const Shape> branch_operands);
 
   // Infers the shape produced by a broadcast operation.
   static StatusOr<Shape> InferBroadcastShape(

@@ -228,40 +228,40 @@ class MyClass final : public tensorflow::XlaCompiledCpuFunction {
   //   with dim indices specifying which value. No bounds checking is performed
   //   on dim indices.
 
-  void set_var_myvar_input_data(float* data) {
+  void set_var_myvar_data(float* data) {
     set_arg_data(2, data);
   }
 
-  void set_var_myvar2_input_data(tensorflow::int32* data) {
+  void set_var_myvar2_data(tensorflow::int32* data) {
     set_arg_data(3, data);
   }
 
-  float* var_myvar_result_data() {
+  float* var_myvar_data() {
     return static_cast<float*>(result_data(1));
   }
-  float& var_myvar_result() {
+  float& var_myvar() {
     return (*static_cast<float(*)[1]>(
         result_data(1)))[0];
   }
-  const float* var_myvar_result_data() const {
+  const float* var_myvar_data() const {
     return static_cast<const float*>(result_data(1));
   }
-  const float& var_myvar_result() const {
+  const float& var_myvar() const {
     return (*static_cast<const float(*)[1]>(
         result_data(1)))[0];
   }
 
-  tensorflow::int32* var_myvar2_result_data() {
+  tensorflow::int32* var_myvar2_data() {
     return static_cast<tensorflow::int32*>(result_data(2));
   }
-  tensorflow::int32& var_myvar2_result(size_t dim0) {
+  tensorflow::int32& var_myvar2(size_t dim0) {
     return (*static_cast<tensorflow::int32(*)[5]>(
         result_data(2)))[dim0];
   }
-  const tensorflow::int32* var_myvar2_result_data() const {
+  const tensorflow::int32* var_myvar2_data() const {
     return static_cast<const tensorflow::int32*>(result_data(2));
   }
-  const tensorflow::int32& var_myvar2_result(size_t dim0) const {
+  const tensorflow::int32& var_myvar2(size_t dim0) const {
     return (*static_cast<const tensorflow::int32(*)[5]>(
         result_data(2)))[dim0];
   }

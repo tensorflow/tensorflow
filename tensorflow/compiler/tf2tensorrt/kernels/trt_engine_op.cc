@@ -197,7 +197,11 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
           errors::InvalidArgument("Failed to parse segment graphdef!"));
       return;
     }
-    serialized_segment_.resize(0);
+    VLOG(1) << "Size of serialized GraphDef: "
+            << serialized_segment_.capacity();
+    string tmp;
+    // Swap with temporary empty string to deallocate the CPU memory.
+    serialized_segment_.swap(tmp);
   }
   VLOG(1) << "Constructing " << name();
   string precision_string;
@@ -564,7 +568,11 @@ EngineContext* TRTEngineOp::GetEngine(
                       TrtUniquePtrType<nvinfer1::IExecutionContext>(
                           raw_static_engine->createExecutionContext())));
     // Runtime is safe to delete after engine creation
-    serialized_segment_.clear();
+    VLOG(1) << "Size of serialized TRT engine: "
+            << serialized_segment_.capacity();
+    string tmp;
+    // Swap with temporary empty string to deallocate the CPU memory.
+    serialized_segment_.swap(tmp);
     if (max_batch_size < batch_size) {
       return &empty_context;
     }
