@@ -1435,8 +1435,9 @@ static void PackRhsHelper(int iters,
       /*Alignment*/ 0>;
 
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
-  using PackRhsImpl = Eigen::internal::mkldnn_gemm_pack<float, Eigen::Index,
-                                                        SubMapper, ColMajor>;
+  using PackRhsImpl =
+      Eigen::internal::gemm_pack_colmajor_block<float, Eigen::Index, SubMapper,
+                                                ColMajor>;
 #else
   using PackRhsImpl =
       Eigen::internal::gemm_pack_rhs<float, Eigen::Index, SubMapper,  //
@@ -1606,8 +1607,9 @@ static void PackLhsHelper(int iters,
       /*Alignment*/ 0>;
 
 #if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
-  using PackLhsImpl = Eigen::internal::mkldnn_gemm_pack<float, Eigen::Index,
-                                                        SubMapper, ColMajor>;
+  using PackLhsImpl =
+      Eigen::internal::gemm_pack_colmajor_block<float, Eigen::Index, SubMapper,
+                                                ColMajor>;
 #else
   using Traits = typename Eigen::internal::gebp_traits<float, float>;
   using PackLhsImpl =
