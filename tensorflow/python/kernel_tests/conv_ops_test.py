@@ -1191,6 +1191,7 @@ class Conv2DTest(test.TestCase):
             use_gpu=use_gpu,
             err=1e-5)
 
+  @test_util.deprecated_graph_mode_only
   def testConv2DEmptyBackpropFilterDilation1x2(self):
     if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
@@ -1220,6 +1221,7 @@ class Conv2DTest(test.TestCase):
             use_gpu=use_gpu,
             err=1e-5)
 
+  @test_util.deprecated_graph_mode_only
   def testConv2DKernelSizeMatchesInputSizeBackpropFilterDilation2x2(self):
     if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
@@ -1264,6 +1266,7 @@ class Conv2DTest(test.TestCase):
             use_gpu=use_gpu,
             err=1e-5)
 
+  @test_util.deprecated_graph_mode_only
   def testConv2DEmptyBackpropInputDilation1x2(self):
     if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
@@ -1295,6 +1298,7 @@ class Conv2DTest(test.TestCase):
             use_gpu=use_gpu,
             err=1e-4)
 
+  @test_util.deprecated_graph_mode_only
   def testConv2DKernelSizeMatchesInputSizeBackpropInputDilation2x2(self):
     if test.is_gpu_available(cuda_only=True) or test_util.IsMklEnabled():
       for (data_format, use_gpu) in GetTestConfigs():
@@ -2624,6 +2628,7 @@ class SeparableConv2DTest(test.TestCase):
         expected=expected_output,
         data_format=data_format)
 
+  @test_util.deprecated_graph_mode_only
   def testSeparableConv2DEqualInputOutputDepth(self):
     self._testSeparableConv2DEqualInputOutputDepth("NHWC")
 
