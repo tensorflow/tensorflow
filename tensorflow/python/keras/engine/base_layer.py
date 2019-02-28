@@ -1776,7 +1776,9 @@ class Layer(trackable.Trackable):
 
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
-        getattr(self, '_is_graph_network', False)):
+        getattr(self, '_is_graph_network', False) or
+        # Exclude @property.setters from tracking
+        hasattr(self.__class__, name)):
       super(Layer, self).__setattr__(name, value)
       return
 
