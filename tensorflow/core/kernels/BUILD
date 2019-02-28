@@ -6863,6 +6863,61 @@ tf_mkl_kernel_library(
 )
 
 tf_mkl_kernel_library(
+    name = "mkl_dequantize_op",
+    srcs = [
+        "mkl_dequantize_op.cc",
+    ],
+    hdrs = [
+        "meta_support.h",
+        "reference_gemm.h",
+    ],
+    deps = if_mkl(
+        [
+            ":concat_lib_hdrs",
+            ":conv_ops",
+            ":cwise_op",
+            ":eigen_helpers",
+            ":image_resizer_state",
+            ":ops_util",
+            ":pooling_ops",
+            ":quantization_utils",
+            ":quantized_ops",
+            "//tensorflow/core:array_ops_op_lib",
+            "//tensorflow/core:core_cpu",
+            "//tensorflow/core:framework",
+            "//tensorflow/core:lib",
+            "//tensorflow/core:math_ops_op_lib",
+            "//tensorflow/core:nn_ops_op_lib",
+            "//third_party/eigen3",
+            "@gemmlowp",
+            ":transpose_functor",
+            "@mkl_dnn",
+            "//third_party/mkl:intel_binary_blob",
+        ],
+    ),
+)
+
+tf_cc_test_mkl(
+    name = "mkl_dequantize_op_test",
+    size = "small",
+    srcs = ["mkl_dequantize_op_test.cc"],
+    deps = [
+        ":mkl_dequantize_op",
+        ":ops_testutil",
+        ":ops_util",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:mkl_array_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_mkl_kernel_library(
     name = "mkl_relu_op",
     prefix = "mkl_relu",
     deps = [

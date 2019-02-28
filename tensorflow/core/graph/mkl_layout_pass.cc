@@ -262,6 +262,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     csinfo_.depthwise_conv2d_grad_input = "DepthwiseConv2dNativeBackpropInput";
     csinfo_.depthwise_conv2d_grad_filter =
         "DepthwiseConv2dNativeBackpropFilter";
+    csinfo_.dequantize = "Dequantize";
     csinfo_.fused_batch_norm = "FusedBatchNorm";
     csinfo_.fused_batch_norm_grad = "FusedBatchNormGrad";
     csinfo_.fused_conv2d = "_FusedConv2D";
@@ -391,6 +392,9 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
         {csinfo_.depthwise_conv2d_grad_filter,
          mkl_op_registry::GetMklOpName(csinfo_.depthwise_conv2d_grad_filter),
          CopyAttrsConv2DDepthwise, AlwaysRewrite});
+    rinfo_.push_back({csinfo_.dequantize,
+                      mkl_op_registry::GetMklOpName(csinfo_.dequantize),
+                      CopyAttrsDequantize, DequantizeRewrite});
     rinfo_.push_back({csinfo_.fused_batch_norm,
                       mkl_op_registry::GetMklOpName(csinfo_.fused_batch_norm),
                       CopyAttrsFusedBatchNorm, AlwaysRewrite});
@@ -694,6 +698,7 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
     string depthwise_conv2d;
     string depthwise_conv2d_grad_input;
     string depthwise_conv2d_grad_filter;
+    string dequantize;
     string fused_batch_norm;
     string fused_batch_norm_grad;
     string fused_conv2d;
@@ -1187,6 +1192,31 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
   // @return - true (since we want to always rewrite)
   static bool AlwaysRewrite(const Node* n) { return true; }
 
+  static bool DequantizeRewrite(const Node* n) {
+    DCHECK(n);
+    Node* input = nullptr;
+    n->input_node(0, &input);
+    string mode_string;
+    GetNodeAttr(n->def(), "mode", &mode_string);
+    if (mode_string != "SCALED") {
+      VLOG(1) << "DequantizeRewrite: Mode is not SCALED."
+              << "This case is not optimized by Intel MKL kernel, thus using "
+                 "Eigen op"
+              << "for Dequantize op ";
+      return false;
+    }
+    if (input->IsConstant()) {
+      VLOG(1) << "DequantizeRewrite: Trying to dequantize a Const node which "
+              << "could possibly be a filter."
+              << "This case is not supported by Intel MKL kernel, thus using "
+                 "Eigen op"
+              << "for Dequantize op ";
+
+      return false;
+    }
+    return true;
+  }
+
   // Check if we are performing pooling on depth or batch. If it is, then we
   // do not rewrite MaxPool node to Mkl version.
   // @return - true (if it is not a depth/batch wise pooling case);
@@ -1491,6 +1521,8 @@ class MklLayoutRewritePass : public GraphOptimizationPass {
                                             bool change_format = false);
   static void CopyAttrsDataType(const Node* orig_node, NodeBuilder* nb,
                                 bool change_format = false);
+  static void CopyAttrsDequantize(const Node* orig_node, NodeBuilder* nb,
+                                  bool change_format = false);
   static void CopyAttrsFusedBatchNorm(const Node* orig_node, NodeBuilder* nb,
                                       bool change_format = false);
   static void CopyAttrsLeakyRelu(const Node* orig_node, NodeBuilder* nb,
@@ -1860,6 +1892,7 @@ Status MklLayoutRewritePass::SetUpInputs(
   // Avoid workspace check for QuantizedConv2D and the fused
   // Ops as they don't have attribute: "T".
   std::vector<string> quant_ops{
+      "Dequantize",
       "QuantizedConv2D",
       "QuantizedConv2DWithBias",
       "QuantizedConv2DAndRelu",
@@ -2080,6 +2113,21 @@ void MklLayoutRewritePass::CopyAttrsConv(const Node* orig_node, NodeBuilder* nb,
 
   // Add attributes related to `data_format`.
   CopyFormatAttrsConv(orig_node, nb, strides, dilations, change_format);
+}
+
+void MklLayoutRewritePass::CopyAttrsDequantize(const Node* orig_node,
+                                               NodeBuilder* nb,
+                                               bool change_format) {
+  DataType T;
+  string mode;
+
+  // Get all attributes from old node.
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "T", &T));
+  TF_CHECK_OK(GetNodeAttr(orig_node->def(), "mode", &mode));
+
+  // Add attributes to new node.
+  nb->Attr("T", T);
+  nb->Attr("mode", mode);
 }
 
 // Used in rinfo when replacing __MklDummyPadWithConv2D by _MklPadWithConv2D
