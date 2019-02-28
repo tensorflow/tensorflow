@@ -233,7 +233,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kFusedConv2dBiasActivation,
        wrap(&OpLevelCostEstimator::PredictFusedConv2DBiasActivation)},
-      // reuse Conv2D for DepthwiseConv2dNative because the caculation is the
+      // reuse Conv2D for DepthwiseConv2dNative because the calculation is the
       // same although the actual meaning of the parameters are different. See
       // comments in PredictConv2D and related functions
       {kDepthwiseConv2dNative, wrap(&OpLevelCostEstimator::PredictConv2D)},
