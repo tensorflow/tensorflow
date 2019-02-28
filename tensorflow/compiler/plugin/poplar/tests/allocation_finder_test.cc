@@ -2406,7 +2406,7 @@ ENTRY %top (arg0.1: f32[1,1,2,2]) -> f32[] {
   %arg0.1 = f32[1,1,2,2] parameter(0)
   %tuple.6.clone = (s32[], f32[], f32[1,1,2,2]) tuple(s32[] %constant.7, f32[] %constant.5, f32[1,1,2,2] %arg0.1)
   %call = (s32[], f32[], f32[1,1,2,2]) call((s32[], f32[], f32[1,1,2,2]) %tuple.6.clone), to_apply=%_body, backend_config="{\"repeatConfig\":{\"isRepeatLoop\":true,\"repeatCount\":\"100\"}}"
-  ROOT %get-tuple-element.45 = f32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]) %fusion), index=1
+  ROOT %get-tuple-element.45 = f32[] get-tuple-element((s32[], f32[], f32[1,1,2,2]) %call), index=1
 }
 
 )";
