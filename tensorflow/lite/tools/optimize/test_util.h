@@ -46,6 +46,9 @@ extern const char* kSingleAvgPoolModelMinMinus5MaxPlus5;
 // and an add operation.
 extern const char* kModelWithSharedWeights;
 
+// Test model with Add followed by a reshape. Model has 2 inputs for add.
+extern const char* kMultiInputAddWithReshape;
+
 // An error reporter that fails on testing.
 class FailOnErrorReporter : public ErrorReporter {
  public:
