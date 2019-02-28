@@ -501,7 +501,10 @@ Attribute NamedAttributeList::get(StringRef name) const {
   return nullptr;
 }
 Attribute NamedAttributeList::get(Identifier name) const {
-  return get(name.strref());
+  for (auto elt : getAttrs())
+    if (elt.first == name)
+      return elt.second;
+  return nullptr;
 }
 
 /// If the an attribute exists with the specified name, change it to the new

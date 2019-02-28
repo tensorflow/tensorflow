@@ -178,17 +178,40 @@ public:
   /// constants to names.  Attributes may be dynamically added and removed over
   /// the lifetime of an function.
 
-  /// Return all of the attributes on this instruction.
+  /// Return all of the attributes on this function.
   ArrayRef<NamedAttribute> getAttrs() const { return attrs.getAttrs(); }
+
+  /// Return all of the attributes for the argument at 'index'.
+  ArrayRef<NamedAttribute> getArgAttrs(unsigned index) const {
+    assert(index < getNumArguments() && "invalid argument number");
+    return argAttrs[index].getAttrs();
+  }
 
   /// Set the attributes held by this function.
   void setAttrs(ArrayRef<NamedAttribute> attributes) {
     attrs.setAttrs(getContext(), attributes);
   }
 
+  /// Set the attributes held by the argument at 'index'.
+  void setArgAttrs(unsigned index, ArrayRef<NamedAttribute> attributes) {
+    assert(index < getNumArguments() && "invalid argument number");
+    argAttrs[index].setAttrs(getContext(), attributes);
+  }
+
   /// Return the specified attribute if present, null otherwise.
   Attribute getAttr(Identifier name) const { return attrs.get(name); }
   Attribute getAttr(StringRef name) const { return attrs.get(name); }
+
+  /// Return the specified attribute, if present, for the argument at 'index',
+  /// null otherwise.
+  Attribute getArgAttr(unsigned index, Identifier name) const {
+    assert(index < getNumArguments() && "invalid argument number");
+    return argAttrs[index].get(name);
+  }
+  Attribute getArgAttr(unsigned index, StringRef name) const {
+    assert(index < getNumArguments() && "invalid argument number");
+    return argAttrs[index].get(name);
+  }
 
   template <typename AttrClass> AttrClass getAttrOfType(Identifier name) const {
     return getAttr(name).dyn_cast_or_null<AttrClass>();
@@ -198,15 +221,34 @@ public:
     return getAttr(name).dyn_cast_or_null<AttrClass>();
   }
 
+  template <typename AttrClass>
+  AttrClass getArgAttrOfType(unsigned index, Identifier name) const {
+    return getArgAttr(index, name).dyn_cast_or_null<AttrClass>();
+  }
+
+  template <typename AttrClass>
+  AttrClass getArgAttrOfType(unsigned index, StringRef name) const {
+    return getArgAttr(index, name).dyn_cast_or_null<AttrClass>();
+  }
+
   /// If the an attribute exists with the specified name, change it to the new
   /// value.  Otherwise, add a new attribute with the specified name/value.
   void setAttr(Identifier name, Attribute value) {
     attrs.set(getContext(), name, value);
   }
+  void setArgAttr(unsigned index, Identifier name, Attribute value) {
+    assert(index < getNumArguments() && "invalid argument number");
+    argAttrs[index].set(getContext(), name, value);
+  }
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.
   NamedAttributeList::RemoveResult removeAttr(Identifier name) {
+    return attrs.remove(getContext(), name);
+  }
+  NamedAttributeList::RemoveResult removeArgAttr(unsigned index,
+                                                 Identifier name) {
+    assert(index < getNumArguments() && "invalid argument number");
     return attrs.remove(getContext(), name);
   }
 
@@ -271,6 +313,9 @@ private:
 
   /// This holds general named attributes for the function.
   NamedAttributeList attrs;
+
+  /// The attributes lists for each of the function arguments.
+  std::vector<NamedAttributeList> argAttrs;
 
   /// The contents of the body.
   BlockList blocks;

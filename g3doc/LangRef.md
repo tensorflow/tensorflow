@@ -1101,8 +1101,8 @@ function ::= `func` function-signature function-attributes? function-body?
 
 function-signature ::= function-id `(` argument-list `)` (`->` function-result-type)?
 argument-list ::= named-argument (`,` named-argument)* | /*empty*/
-argument-list ::= type (`,` type)* | /*empty*/ named-argument ::= ssa-id `:`
-type
+argument-list ::= type attribute-dict? (`,` type attribute-dict?)* | /*empty*/
+named-argument ::= ssa-id `:` type attribute-dict?
 
 function-attributes ::= `attributes` attribute-dict
 function-body ::= `{` block+ `}`

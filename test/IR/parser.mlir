@@ -812,3 +812,11 @@ func @internal_attrs()
 
 // CHECK-LABEL: func @_valid.function$name
 func @_valid.function$name()
+
+// CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {arg.attr: 10}, i32)
+func @external_func_arg_attrs(i32, i1 {arg.attr: 10}, i32)
+
+// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {arg.attr: 10})
+func @func_arg_attrs(%arg0: i1 {arg.attr: 10}) {
+  return
+}

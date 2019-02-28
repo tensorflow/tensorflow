@@ -1299,20 +1299,21 @@ void FunctionPrinter::printFunctionSignature() {
   os << "func @" << function->getName() << '(';
 
   auto fnType = function->getType();
+  bool isExternal = function->isExternal();
+  for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
+    if (i > 0)
+      os << ", ";
 
-  // If this is an external function, don't print argument labels.
-  if (function->isExternal()) {
-    interleaveComma(fnType.getInputs(),
-                    [&](Type eltType) { printType(eltType); });
-  } else {
-    for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i) {
-      if (i > 0)
-        os << ", ";
-      auto *arg = function->getArgument(i);
-      printOperand(arg);
+    // If this is an external function, don't print argument labels.
+    if (!isExternal) {
+      printOperand(function->getArgument(i));
       os << ": ";
-      printType(arg->getType());
     }
+
+    printType(fnType.getInput(i));
+
+    // Print the attributes for this argument.
+    printOptionalAttrDict(function->getArgAttrs(i));
   }
   os << ')';
 

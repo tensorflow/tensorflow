@@ -29,7 +29,8 @@ using namespace mlir;
 Function::Function(Location location, StringRef name, FunctionType type,
                    ArrayRef<NamedAttribute> attrs)
     : name(Identifier::get(name, type.getContext())), location(location),
-      type(type), attrs(type.getContext(), attrs), blocks(this) {}
+      type(type), attrs(type.getContext(), attrs),
+      argAttrs(type.getNumInputs()), blocks(this) {}
 
 Function::~Function() {
   // Instructions may have cyclic references, which need to be dropped before we
@@ -167,7 +168,8 @@ Function *Function::clone(BlockAndValueMapping &mapper) const {
   // If the function has a body, then the user might be deleting arguments to
   // the function by specifying them in the mapper. If so, we don't add the
   // argument to the input type vector.
-  if (!empty()) {
+  bool isExternalFn = isExternal();
+  if (!isExternalFn) {
     SmallVector<Type, 4> inputTypes;
     for (unsigned i = 0, e = getNumArguments(); i != e; ++i)
       if (!mapper.contains(getArgument(i)))
@@ -175,8 +177,15 @@ Function *Function::clone(BlockAndValueMapping &mapper) const {
     newType = FunctionType::get(inputTypes, type.getResults(), getContext());
   }
 
-  // Create a new function and clone the current function into it.
+  // Create the new function.
   Function *newFunc = new Function(getLoc(), getName(), newType);
+
+  /// Set the argument attributes for arguments that aren't being replaced.
+  for (unsigned i = 0, e = getNumArguments(), destI = 0; i != e; ++i)
+    if (isExternalFn || !mapper.contains(getArgument(i)))
+      newFunc->setArgAttrs(destI++, getArgAttrs(i));
+
+  /// Clone the current function into the new one and return it.
   cloneInto(newFunc, mapper);
   return newFunc;
 }

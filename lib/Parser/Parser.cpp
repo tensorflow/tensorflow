@@ -3380,10 +3380,13 @@ private:
   ParseResult parseTypeAliasDef();
 
   // Functions.
-  ParseResult parseArgumentList(SmallVectorImpl<Type> &argTypes,
-                                SmallVectorImpl<StringRef> &argNames);
-  ParseResult parseFunctionSignature(StringRef &name, FunctionType &type,
-                                     SmallVectorImpl<StringRef> &argNames);
+  ParseResult
+  parseArgumentList(SmallVectorImpl<Type> &argTypes,
+                    SmallVectorImpl<StringRef> &argNames,
+                    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs);
+  ParseResult parseFunctionSignature(
+      StringRef &name, FunctionType &type, SmallVectorImpl<StringRef> &argNames,
+      SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs);
   ParseResult parseFunc();
 };
 } // end anonymous namespace
@@ -3466,13 +3469,14 @@ ParseResult ModuleParser::parseTypeAliasDef() {
 
 /// Parse a (possibly empty) list of Function arguments with types.
 ///
-///   named-argument ::= ssa-id `:` type
+///   named-argument ::= ssa-id `:` type attribute-dict?
 ///   argument-list  ::= named-argument (`,` named-argument)* | /*empty*/
-///   argument-list ::= type (`,` type)* | /*empty*/
+///   argument-list ::= type attribute-dict? (`,` type attribute-dict?)*
+///                     | /*empty*/
 ///
-ParseResult
-ModuleParser::parseArgumentList(SmallVectorImpl<Type> &argTypes,
-                                SmallVectorImpl<StringRef> &argNames) {
+ParseResult ModuleParser::parseArgumentList(
+    SmallVectorImpl<Type> &argTypes, SmallVectorImpl<StringRef> &argNames,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
   consumeToken(Token::l_paren);
 
   // The argument list either has to consistently have ssa-id's followed by
@@ -3502,6 +3506,14 @@ ModuleParser::parseArgumentList(SmallVectorImpl<Type> &argTypes,
     if (!elt)
       return ParseFailure;
     argTypes.push_back(elt);
+
+    // Parse the attribute dict.
+    SmallVector<NamedAttribute, 2> attrs;
+    if (getToken().is(Token::l_brace)) {
+      if (parseAttributeDict(attrs))
+        return ParseFailure;
+    }
+    argAttrs.push_back(attrs);
     return ParseSuccess;
   };
 
@@ -3514,9 +3526,9 @@ ModuleParser::parseArgumentList(SmallVectorImpl<Type> &argTypes,
 ///   function-signature ::=
 ///      function-id `(` argument-list `)` (`->` type-list)?
 ///
-ParseResult
-ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
-                                     SmallVectorImpl<StringRef> &argNames) {
+ParseResult ModuleParser::parseFunctionSignature(
+    StringRef &name, FunctionType &type, SmallVectorImpl<StringRef> &argNames,
+    SmallVectorImpl<SmallVector<NamedAttribute, 2>> &argAttrs) {
   if (getToken().isNot(Token::at_identifier))
     return emitError("expected a function identifier like '@foo'");
 
@@ -3527,7 +3539,7 @@ ModuleParser::parseFunctionSignature(StringRef &name, FunctionType &type,
     return emitError("expected '(' in function signature");
 
   SmallVector<Type, 4> argTypes;
-  if (parseArgumentList(argTypes, argNames))
+  if (parseArgumentList(argTypes, argNames, argAttrs))
     return ParseFailure;
 
   // Parse the return type if present.
@@ -3553,9 +3565,10 @@ ParseResult ModuleParser::parseFunc() {
   StringRef name;
   FunctionType type;
   SmallVector<StringRef, 4> argNames;
+  SmallVector<SmallVector<NamedAttribute, 2>, 4> argAttrs;
 
   auto loc = getToken().getLoc();
-  if (parseFunctionSignature(name, type, argNames))
+  if (parseFunctionSignature(name, type, argNames, argAttrs))
     return ParseFailure;
 
   // If function attributes are present, parse them.
@@ -3578,6 +3591,10 @@ ParseResult ModuleParser::parseFunc() {
   // Parse an optional trailing location.
   if (parseOptionalTrailingLocation(function))
     return ParseFailure;
+
+  // Add the attributes to the function arguments.
+  for (unsigned i = 0, e = function->getNumArguments(); i != e; ++i)
+    function->setArgAttrs(i, argAttrs[i]);
 
   // External functions have no body.
   if (getToken().isNot(Token::l_brace))

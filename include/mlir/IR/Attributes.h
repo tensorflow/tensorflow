@@ -548,6 +548,7 @@ using NamedAttribute = std::pair<Identifier, Attribute>;
 /// searches for everything.
 class NamedAttributeList {
 public:
+  NamedAttributeList() : attrs(nullptr) {}
   NamedAttributeList(MLIRContext *context, ArrayRef<NamedAttribute> attributes);
 
   /// Return all of the attributes on this operation.

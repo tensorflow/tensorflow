@@ -38,6 +38,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/Module.h"
+#include "llvm/Support/FormatVariadic.h"
 #include "llvm/Support/PrettyStackTrace.h"
 #include "llvm/Support/Regex.h"
 #include "llvm/Support/raw_ostream.h"
@@ -125,15 +126,6 @@ bool FuncVerifier::verify() {
   if (!funcNameRegex.match(fn.getName().strref()))
     return failure("invalid function name '" + fn.getName().strref() + "'", fn);
 
-  // External functions have nothing more to check.
-  if (fn.isExternal())
-    return false;
-
-  // Verify the first block has no predecessors.
-  auto *firstBB = &fn.front();
-  if (!firstBB->hasNoPredecessors())
-    return failure("entry block of function may not have predecessors", fn);
-
   /// Verify that all of the attributes are okay.
   for (auto attr : fn.getAttrs()) {
     if (!attrNameRegex.match(attr.first))
@@ -142,6 +134,28 @@ bool FuncVerifier::verify() {
     if (verifyAttribute(attr.second, fn))
       return true;
   }
+
+  /// Verify that all of the argument attributes are okay.
+  for (unsigned i = 0, e = fn.getNumArguments(); i != e; ++i) {
+    for (auto attr : fn.getArgAttrs(i)) {
+      if (!attrNameRegex.match(attr.first))
+        return failure(
+            llvm::formatv("invalid attribute name '{0}' on argument {1}",
+                          attr.first.strref(), i),
+            fn);
+      if (verifyAttribute(attr.second, fn))
+        return true;
+    }
+  }
+
+  // External functions have nothing more to check.
+  if (fn.isExternal())
+    return false;
+
+  // Verify the first block has no predecessors.
+  auto *firstBB = &fn.front();
+  if (!firstBB->hasNoPredecessors())
+    return failure("entry block of function may not have predecessors", fn);
 
   // Verify that the argument list of the function and the arg list of the first
   // block line up.
