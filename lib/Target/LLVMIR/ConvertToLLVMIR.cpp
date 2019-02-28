@@ -263,14 +263,15 @@ bool ModuleTranslation::convertInstruction(const Instruction &inst,
   };
 
   // Emit calls.  If the called function has a result, remap the corresponding
-  // value.
+  // value.  Note that LLVM IR dialect CallOp has either 0 or 1 result.
   if (auto op = inst.dyn_cast<LLVM::CallOp>()) {
-    valueMapping[op->getResult()] = convertCall(inst);
-    return false;
-  }
-  if (inst.isa<LLVM::Call0Op>()) {
-    convertCall(inst);
-    return false;
+    llvm::Value *result = convertCall(inst);
+    if (inst.getNumResults() != 0) {
+      valueMapping[inst.getResult(0)] = result;
+      return false;
+    }
+    // Check that LLVM call returns void for 0-result functions.
+    return !result->getType()->isVoidTy();
   }
 
   // Emit branches.  We need to look up the remapped blocks and ignore the block

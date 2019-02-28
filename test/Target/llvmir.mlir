@@ -51,7 +51,7 @@ func @simple_loop() {
 // CHECK-NEXT:   %{{[0-9]+}} = add i64 %{{[0-9]+}}, 1
 // CHECK-NEXT:   br label %[[SIMPLE_bb2]]
 ^bb3:   // pred: ^bb2
-  "llvm.call0"(%2) {callee: @body : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.call"(%2) {callee: @body : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
   %4 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
   %5 = "llvm.add"(%2, %4) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb2(%5 : !llvm<"i64">)] : () -> ()
@@ -67,7 +67,7 @@ func @simple_loop() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func @simple_caller() {
-  "llvm.call0"() {callee: @simple_loop : () -> ()} : () -> ()
+  "llvm.call"() {callee: @simple_loop : () -> ()} : () -> ()
   "llvm.return"() : () -> ()
 }
 
@@ -84,8 +84,8 @@ func @simple_caller() {
 // CHECK-NEXT:   ret void
 // CHECK-NEXT: }
 func @ml_caller() {
-  "llvm.call0"() {callee: @simple_loop : () -> ()} : () -> ()
-  "llvm.call0"() {callee: @more_imperfectly_nested_loops : () -> ()} : () -> ()
+  "llvm.call"() {callee: @simple_loop : () -> ()} : () -> ()
+  "llvm.call"() {callee: @more_imperfectly_nested_loops : () -> ()} : () -> ()
   "llvm.return"() : () -> ()
 }
 
@@ -173,7 +173,7 @@ func @imperfectly_nested_loops() {
 // CHECK-NEXT:   call void @pre(i64 %3)
 // CHECK-NEXT:   br label %[[IMPER_bb4:[0-9]+]]
 ^bb3:   // pred: ^bb2
-  "llvm.call0"(%2) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.call"(%2) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
   "llvm.br"()[^bb4] : () -> ()
 
 // CHECK: <label>:[[IMPER_bb4]]:
@@ -196,7 +196,7 @@ func @imperfectly_nested_loops() {
 // CHECK-NEXT:   %11 = add i64 %8, 2
 // CHECK-NEXT:   br label %[[IMPER_bb5]]
 ^bb6:   // pred: ^bb5
-  "llvm.call0"(%2, %6) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+  "llvm.call"(%2, %6) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
   %8 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
   %9 = "llvm.add"(%6, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb5(%9 : !llvm<"i64">)] : () -> ()
@@ -206,7 +206,7 @@ func @imperfectly_nested_loops() {
 // CHECK-NEXT:   %13 = add i64 %3, 1
 // CHECK-NEXT:   br label %[[IMPER_bb2]]
 ^bb7:   // pred: ^bb5
-  "llvm.call0"(%2) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.call"(%2) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
   %10 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
   %11 = "llvm.add"(%2, %10) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb2(%11 : !llvm<"i64">)] : () -> ()
@@ -275,7 +275,7 @@ func @more_imperfectly_nested_loops() {
   %3 = "llvm.icmp"(%2, %1) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
   "llvm.cond_br"(%3)[^bb3, ^bb12] : (!llvm<"i1">) -> ()
 ^bb3:   // pred: ^bb2
-  "llvm.call0"(%2) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.call"(%2) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
   "llvm.br"()[^bb4] : () -> ()
 ^bb4:   // pred: ^bb3
   %4 = "llvm.constant"() {value: 7 : index} : () -> !llvm<"i64">
@@ -285,12 +285,12 @@ func @more_imperfectly_nested_loops() {
   %7 = "llvm.icmp"(%6, %5) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
   "llvm.cond_br"(%7)[^bb6, ^bb7] : (!llvm<"i1">) -> ()
 ^bb6:   // pred: ^bb5
-  "llvm.call0"(%2, %6) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+  "llvm.call"(%2, %6) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
   %8 = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
   %9 = "llvm.add"(%6, %8) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb5(%9 : !llvm<"i64">)] : () -> ()
 ^bb7:   // pred: ^bb5
-  "llvm.call0"(%2) {callee: @mid : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.call"(%2) {callee: @mid : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
   "llvm.br"()[^bb8] : () -> ()
 ^bb8:   // pred: ^bb7
   %10 = "llvm.constant"() {value: 18 : index} : () -> !llvm<"i64">
@@ -300,12 +300,12 @@ func @more_imperfectly_nested_loops() {
   %13 = "llvm.icmp"(%12, %11) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
   "llvm.cond_br"(%13)[^bb10, ^bb11] : (!llvm<"i1">) -> ()
 ^bb10:  // pred: ^bb9
-  "llvm.call0"(%2, %12) {callee: @body3 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+  "llvm.call"(%2, %12) {callee: @body3 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
   %14 = "llvm.constant"() {value: 3 : index} : () -> !llvm<"i64">
   %15 = "llvm.add"(%12, %14) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb9(%15 : !llvm<"i64">)] : () -> ()
 ^bb11:  // pred: ^bb9
-  "llvm.call0"(%2) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+  "llvm.call"(%2) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
   %16 = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
   %17 = "llvm.add"(%2, %16) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
   "llvm.br"()[^bb2(%17 : !llvm<"i64">)] : () -> ()
@@ -754,7 +754,7 @@ func @ops(%arg0: !llvm<"float">, %arg1: !llvm<"float">, %arg2: !llvm<"i32">, %ar
 func @indirect_const_call(%arg0: !llvm<"i64">) {
 // CHECK-NEXT:  call void @body(i64 %0)
   %0 = "llvm.constant"() {value: @body : (!llvm<"i64">) -> ()} : () -> !llvm<"void (i64)*">
-  "llvm.call0"(%0, %arg0) : (!llvm<"void (i64)*">, !llvm<"i64">) -> ()
+  "llvm.call"(%0, %arg0) : (!llvm<"void (i64)*">, !llvm<"i64">) -> ()
 // CHECK-NEXT:  ret void
   "llvm.return"() : () -> ()
 }

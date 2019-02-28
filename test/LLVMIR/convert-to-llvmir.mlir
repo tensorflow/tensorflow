@@ -34,7 +34,7 @@ func @simple_loop() {
   cond_br %1, ^bb3, ^bb4
 
 // CHECK:      ^bb3:	// pred: ^bb2
-// CHECK-NEXT:   "llvm.call0"({{.*}}) {callee: @body : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}) {callee: @body : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
 // CHECK-NEXT:   {{.*}} = "llvm.add"({{.*}}, {{.*}}) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT:   "llvm.br"()[^bb2({{.*}} : !llvm<"i64">)] : () -> ()
@@ -51,7 +51,7 @@ func @simple_loop() {
 }
 
 // CHECK-LABEL: func @simple_caller() {
-// CHECK-NEXT:   "llvm.call0"() {callee: @simple_loop : () -> ()} : () -> ()
+// CHECK-NEXT:   "llvm.call"() {callee: @simple_loop : () -> ()} : () -> ()
 // CHECK-NEXT:   "llvm.return"() : () -> ()
 // CHECK-NEXT: }
 func @simple_caller() {
@@ -61,8 +61,8 @@ func @simple_caller() {
 }
 
 // CHECK-LABEL: func @ml_caller() {
-// CHECK-NEXT:   "llvm.call0"() {callee: @simple_loop : () -> ()} : () -> ()
-// CHECK-NEXT:   "llvm.call0"() {callee: @more_imperfectly_nested_loops : () -> ()} : () -> ()
+// CHECK-NEXT:   "llvm.call"() {callee: @simple_loop : () -> ()} : () -> ()
+// CHECK-NEXT:   "llvm.call"() {callee: @more_imperfectly_nested_loops : () -> ()} : () -> ()
 // CHECK-NEXT:   "llvm.return"() : () -> ()
 // CHECK-NEXT: }
 func @ml_caller() {
@@ -160,7 +160,7 @@ func @imperfectly_nested_loops() {
   cond_br %1, ^bb3, ^bb8
 
 // CHECK-NEXT: ^bb3:
-// CHECK-NEXT:   "llvm.call0"({{.*}}) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
 // CHECK-NEXT:   "llvm.br"()[^bb4] : () -> ()
 ^bb3:	// pred: ^bb2
   call @pre(%0) : (index) -> ()
@@ -183,7 +183,7 @@ func @imperfectly_nested_loops() {
   cond_br %3, ^bb6, ^bb7
 
 // CHECK-NEXT: ^bb6:	// pred: ^bb5
-// CHECK-NEXT:   "llvm.call0"({{.*}}, {{.*}}) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}, {{.*}}) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
 // CHECK-NEXT:   {{.*}} = "llvm.add"({{.*}}, {{.*}}) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT:   "llvm.br"()[^bb5({{.*}} : !llvm<"i64">)] : () -> ()
@@ -194,7 +194,7 @@ func @imperfectly_nested_loops() {
   br ^bb5(%4 : index)
 
 // CHECK-NEXT: ^bb7:	// pred: ^bb5
-// CHECK-NEXT:   "llvm.call0"({{.*}}) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
 // CHECK-NEXT:   {{.*}} = "llvm.add"({{.*}}, {{.*}}) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT:   "llvm.br"()[^bb2({{.*}} : !llvm<"i64">)] : () -> ()
@@ -227,7 +227,7 @@ func @body3(index, index)
 // CHECK-NEXT:   {{.*}} = "llvm.icmp"({{.*}}, {{.*}}) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
 // CHECK-NEXT:   "llvm.cond_br"({{.*}})[^bb3, ^bb12] : (!llvm<"i1">) -> ()
 // CHECK-NEXT: ^bb3:	// pred: ^bb2
-// CHECK-NEXT:   "llvm.call0"({{.*}}) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}) {callee: @pre : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
 // CHECK-NEXT:   "llvm.br"()[^bb4] : () -> ()
 // CHECK-NEXT: ^bb4:	// pred: ^bb3
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 7 : index} : () -> !llvm<"i64">
@@ -237,12 +237,12 @@ func @body3(index, index)
 // CHECK-NEXT:   {{.*}} = "llvm.icmp"({{.*}}, {{.*}}) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
 // CHECK-NEXT:   "llvm.cond_br"({{.*}})[^bb6, ^bb7] : (!llvm<"i1">) -> ()
 // CHECK-NEXT: ^bb6:	// pred: ^bb5
-// CHECK-NEXT:   "llvm.call0"({{.*}}, {{.*}}) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}, {{.*}}) {callee: @body2 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 2 : index} : () -> !llvm<"i64">
 // CHECK-NEXT:   {{.*}} = "llvm.add"({{.*}}, {{.*}}) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT:   "llvm.br"()[^bb5({{.*}} : !llvm<"i64">)] : () -> ()
 // CHECK-NEXT: ^bb7:	// pred: ^bb5
-// CHECK-NEXT:   "llvm.call0"({{.*}}) {callee: @mid : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}) {callee: @mid : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
 // CHECK-NEXT:   "llvm.br"()[^bb8] : () -> ()
 // CHECK-NEXT: ^bb8:	// pred: ^bb7
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 18 : index} : () -> !llvm<"i64">
@@ -252,12 +252,12 @@ func @body3(index, index)
 // CHECK-NEXT:   {{.*}} = "llvm.icmp"({{.*}}, {{.*}}) {predicate: 2} : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i1">
 // CHECK-NEXT:   "llvm.cond_br"({{.*}})[^bb10, ^bb11] : (!llvm<"i1">) -> ()
 // CHECK-NEXT: ^bb10:	// pred: ^bb9
-// CHECK-NEXT:   "llvm.call0"({{.*}}, {{.*}}) {callee: @body3 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}, {{.*}}) {callee: @body3 : (!llvm<"i64">, !llvm<"i64">) -> ()} : (!llvm<"i64">, !llvm<"i64">) -> ()
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 3 : index} : () -> !llvm<"i64">
 // CHECK-NEXT:   {{.*}} = "llvm.add"({{.*}}, {{.*}}) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT:   "llvm.br"()[^bb9({{.*}} : !llvm<"i64">)] : () -> ()
 // CHECK-NEXT: ^bb11:	// pred: ^bb9
-// CHECK-NEXT:   "llvm.call0"({{.*}}) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
+// CHECK-NEXT:   "llvm.call"({{.*}}) {callee: @post : (!llvm<"i64">) -> ()} : (!llvm<"i64">) -> ()
 // CHECK-NEXT:   {{.*}} = "llvm.constant"() {value: 1 : index} : () -> !llvm<"i64">
 // CHECK-NEXT:   {{.*}} = "llvm.add"({{.*}}, {{.*}}) : (!llvm<"i64">, !llvm<"i64">) -> !llvm<"i64">
 // CHECK-NEXT:   "llvm.br"()[^bb2({{.*}} : !llvm<"i64">)] : () -> ()

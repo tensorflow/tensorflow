@@ -441,18 +441,14 @@ struct OneToOneLLVMOpLowering : public LLVMLegalizationPattern<SourceOp> {
     unsigned numResults = op->getNumResults();
     auto *mlirContext = op->getContext();
 
-    // FIXME: using void here because there is a special case in the
-    // builder... change this to use an empty type instead.
-    auto voidType = LLVM::LLVMType::get(
-        mlirContext, llvm::Type::getVoidTy(this->dialect.getLLVMContext()));
-    auto packedType =
-        numResults == 0
-            ? voidType
-            : TypeConverter::pack(getTypes(op->getResults()),
-                                  this->dialect.getLLVMModule(), *mlirContext);
-    assert(
-        packedType &&
-        "type conversion failed, such operation should not have been matched");
+    Type packedType;
+    if (numResults != 0) {
+      packedType =
+          TypeConverter::pack(getTypes(op->getResults()),
+                              this->dialect.getLLVMModule(), *mlirContext);
+      assert(packedType && "type conversion failed, such operation should not "
+                           "have been matched");
+    }
 
     auto newOp = rewriter.create<TargetOp>(op->getLoc(), packedType, operands,
                                            op->getAttrs());
@@ -525,53 +521,13 @@ struct SelectOpLowering
     : public OneToOneLLVMOpLowering<SelectOp, LLVM::SelectOp> {
   using Super::Super;
 };
-
-// Refine the matcher for call operations that return one result or more.
-// Since tablegen'ed MLIR Ops cannot have variadic results, we separate calls
-// that have 0 or 1 result (LLVM calls cannot have more than 1).
-template <typename SourceOp>
-struct NonZeroResultCallLowering
-    : public OneToOneLLVMOpLowering<SourceOp, LLVM::CallOp> {
-  using OneToOneLLVMOpLowering<SourceOp, LLVM::CallOp>::OneToOneLLVMOpLowering;
-  using Super = NonZeroResultCallLowering<SourceOp>;
-
-  PatternMatchResult match(Instruction *op) const override {
-    if (op->getNumResults() > 0)
-      return OneToOneLLVMOpLowering<SourceOp, LLVM::CallOp>::match(op);
-    return this->matchFailure();
-  }
-};
-
-// Refine the matcher for call operations that return zero results.
-// Since tablegen'ed MLIR Ops cannot have variadic results, we separate calls
-// that have 0 or 1 result (LLVM calls cannot have more than 1).
-template <typename SourceOp>
-struct ZeroResultCallLowering
-    : public OneToOneLLVMOpLowering<SourceOp, LLVM::Call0Op> {
-  using OneToOneLLVMOpLowering<SourceOp, LLVM::Call0Op>::OneToOneLLVMOpLowering;
-  using Super = ZeroResultCallLowering<SourceOp>;
-
-  PatternMatchResult match(Instruction *op) const override {
-    if (op->getNumResults() == 0)
-      return OneToOneLLVMOpLowering<SourceOp, LLVM::Call0Op>::match(op);
-    return this->matchFailure();
-  }
-};
-
-struct Call0OpLowering : public ZeroResultCallLowering<CallOp> {
-  using Super::Super;
-};
-struct CallOpLowering : public NonZeroResultCallLowering<CallOp> {
-  using Super::Super;
-};
-struct CallIndirect0OpLowering : public ZeroResultCallLowering<CallIndirectOp> {
+struct CallOpLowering : public OneToOneLLVMOpLowering<CallOp, LLVM::CallOp> {
   using Super::Super;
 };
 struct CallIndirectOpLowering
-    : public NonZeroResultCallLowering<CallIndirectOp> {
+    : public OneToOneLLVMOpLowering<CallIndirectOp, LLVM::CallOp> {
   using Super::Super;
 };
-
 struct ConstLLVMOpLowering
     : public OneToOneLLVMOpLowering<ConstantOp, LLVM::ConstantOp> {
   using Super::Super;
@@ -657,10 +613,12 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
     // descriptor.
     auto mallocNamedAttr = NamedAttribute{rewriter.getIdentifier("callee"),
                                           rewriter.getFunctionAttr(mallocFunc)};
-    Value *allocated = rewriter.create<LLVM::CallOp>(
-        op->getLoc(), getVoidPtrType(), ArrayRef<Value *>(cumulativeSize),
-        llvm::makeArrayRef(mallocNamedAttr));
-
+    Value *allocated =
+        rewriter
+            .create<LLVM::CallOp>(op->getLoc(), getVoidPtrType(),
+                                  ArrayRef<Value *>(cumulativeSize),
+                                  llvm::makeArrayRef(mallocNamedAttr))
+            ->getResult(0);
     auto structElementType = TypeConverter::convert(elementType, getModule());
     auto elementPtrType = LLVM::LLVMType::get(
         op->getContext(), structElementType.cast<LLVM::LLVMType>()
@@ -734,8 +692,8 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
         op->getLoc(), getVoidPtrType(), bufferPtr);
     auto freeNamedAttr = NamedAttribute{rewriter.getIdentifier("callee"),
                                         rewriter.getFunctionAttr(freeFunc)};
-    rewriter.create<LLVM::Call0Op>(op->getLoc(), casted,
-                                   llvm::makeArrayRef(freeNamedAttr));
+    rewriter.create<LLVM::CallOp>(op->getLoc(), casted,
+                                  llvm::makeArrayRef(freeNamedAttr));
     return {};
   }
 };
@@ -1165,13 +1123,13 @@ protected:
     // FIXME: this should be tablegen'ed
     return ConversionListBuilder<
         AddFOpLowering, AddIOpLowering, AllocOpLowering, BranchOpLowering,
-        Call0OpLowering, CallIndirect0OpLowering, CallIndirectOpLowering,
-        CallOpLowering, CmpIOpLowering, CondBranchOpLowering,
-        ConstLLVMOpLowering, DeallocOpLowering, DimOpLowering, DivISOpLowering,
-        DivIUOpLowering, DivFOpLowering, LoadOpLowering, MemRefCastOpLowering,
-        MulFOpLowering, MulIOpLowering, RemISOpLowering, RemIUOpLowering,
-        RemFOpLowering, ReturnOpLowering, SelectOpLowering, StoreOpLowering,
-        SubFOpLowering, SubIOpLowering>::build(&converterStorage, *llvmDialect);
+        CallIndirectOpLowering, CallOpLowering, CmpIOpLowering,
+        CondBranchOpLowering, ConstLLVMOpLowering, DeallocOpLowering,
+        DimOpLowering, DivISOpLowering, DivIUOpLowering, DivFOpLowering,
+        LoadOpLowering, MemRefCastOpLowering, MulFOpLowering, MulIOpLowering,
+        RemISOpLowering, RemIUOpLowering, RemFOpLowering, ReturnOpLowering,
+        SelectOpLowering, StoreOpLowering, SubFOpLowering,
+        SubIOpLowering>::build(&converterStorage, *llvmDialect);
   }
 
   // Convert types using the stored LLVM IR module.

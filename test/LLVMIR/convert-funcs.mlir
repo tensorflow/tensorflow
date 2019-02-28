@@ -36,7 +36,7 @@ func @body(i32)
 func @indirect_const_call(%arg0: i32) {
 // CHECK-NEXT:  %0 = "llvm.constant"() {value: @body : (!llvm<"i32">) -> ()} : () -> !llvm<"void (i32)*">
   %0 = constant @body : (i32) -> ()
-// CHECK-NEXT:  "llvm.call0"(%0, %arg0) : (!llvm<"void (i32)*">, !llvm<"i32">) -> ()
+// CHECK-NEXT:  "llvm.call"(%0, %arg0) : (!llvm<"void (i32)*">, !llvm<"i32">) -> ()
   call_indirect %0(%arg0) : (i32) -> ()
 // CHECK-NEXT:  "llvm.return"() : () -> ()
   return

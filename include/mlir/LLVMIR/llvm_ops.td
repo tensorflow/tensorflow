@@ -39,15 +39,12 @@ def LLVM_Type : Type<CPred<"{0}.isa<::mlir::LLVM::LLVMType>()">,
 class LLVM_Op<string mnemonic, list<OpTrait> traits = []> :
     Op<!strconcat("llvm.", mnemonic), traits>;
 
-// Base class for LLVM operations with one result.
-class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
-    LLVM_Op<mnemonic, traits>, Results<(outs LLVM_Type)> {
-  let builder = [{
-    static void build(Builder *builder, OperationState *result, Type resultType,
-                      ArrayRef<Value *> operands,
-                      ArrayRef<NamedAttribute> attributes = {}) {
-      (void) builder;
-      result->addTypes(resultType);
+def LLVM_OneResultOpBuilder {
+  code builder = [{
+      static void build(Builder *, OperationState *result,
+                        Type resultType, ArrayRef<Value *> operands,
+                        ArrayRef<NamedAttribute> attributes = {}) {
+      if (resultType) result->addTypes(resultType);
       result->addOperands(operands);
       for (auto namedAttr : attributes) {
         result->addAttribute(namedAttr.first, namedAttr.second);
@@ -56,10 +53,33 @@ class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 }
 
+def LLVM_ZeroResultOpBuilder {
+  code builder = [{
+    static void build(Builder *, OperationState *result,
+                      ArrayRef<Value *> operands,
+                      ArrayRef<NamedAttribute> attributes = {}) {
+      result->addOperands(operands);
+      for (auto namedAttr : attributes) {
+        result->addAttribute(namedAttr.first, namedAttr.second);
+      }
+    }
+  }];
+}
+
+class LLVM_TwoBuilders<code b1, code b2> {
+  code builder = !cast<code>(!strconcat(!cast<string>(b1), !cast<string>(b2)));
+}
+
+// Base class for LLVM operations with one result.
+class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
+    LLVM_Op<mnemonic, traits>, Results<(outs LLVM_Type)> {
+  let builder = LLVM_OneResultOpBuilder.builder;
+}
+
 // Base class for LLVM operations with zero results.
 class LLVM_ZeroResultOp<string mnemonic, list<OpTrait> traits = []> :
     LLVM_Op<mnemonic, traits>, Results<(outs)> {
-  let builder = [{
+  let builder = LLVM_TwoBuilders<[{
     // Compatibility builder that takes an instance of wrapped llvm::VoidType
     // to indicate no result.
     static void build(Builder *builder, OperationState *result, Type resultType,
@@ -72,18 +92,8 @@ class LLVM_ZeroResultOp<string mnemonic, list<OpTrait> traits = []> :
              "for zero-result operands, only 'void' is accepted as result type");
       build(builder, result, operands, attributes);
     }
-
-    // Convenience builder that does not take a return type.
-    static void build(Builder *builder, OperationState *result,
-                      ArrayRef<Value *> operands,
-                      ArrayRef<NamedAttribute> attributes = {}) {
-      (void) builder;
-      result->addOperands(operands);
-      for (auto namedAttr : attributes) {
-        result->addAttribute(namedAttr.first, namedAttr.second);
-      }
-    }
-  }];
+  }],
+  LLVM_ZeroResultOpBuilder.builder>.builder;
 }
 
 // Base class for LLVM terminator operations.  All terminator operations have
@@ -149,10 +159,21 @@ def LLVM_StoreOp : LLVM_ZeroResultOp<"store">,
 def LLVM_BitcastOp : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
                      Arguments<(ins LLVM_Type)>;
 
+
 // Call-related instructions.
-def LLVM_CallOp : LLVM_VariadicOneResultOp<"call">;
-def LLVM_Call0Op : LLVM_ZeroResultOp<"call0", []>,
-                   Arguments<(ins Variadic<LLVM_Type>)>;
+def LLVM_CallOp : LLVM_Op<"call">, Arguments<(ins Variadic<LLVM_Type>)>,
+                     Results<(outs Variadic<LLVM_Type>)> {
+  let builder = LLVM_TwoBuilders<
+    LLVM_OneResultOpBuilder.builder,
+    LLVM_ZeroResultOpBuilder.builder
+  >.builder;
+
+  let verifier = [{
+    if (getNumResults() > 1)
+      return emitOpError("must have 0 or 1 result");
+    return false;
+  }];
+}
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
                           Arguments<(ins LLVM_Type)>;
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,

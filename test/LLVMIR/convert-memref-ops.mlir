@@ -34,7 +34,7 @@ func @mixed_alloc(%arg0: index, %arg1: index) -> memref<?x42x?xf32> {
 func @mixed_dealloc(%arg0: memref<?x42x?xf32>) {
 // CHECK-NEXT:  %0 = "llvm.extractvalue"(%arg0) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
 // CHECK-NEXT:  %1 = "llvm.bitcast"(%0) : (!llvm<"float*">) -> !llvm<"i8*">
-// CHECK-NEXT:  "llvm.call0"(%1) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
+// CHECK-NEXT:  "llvm.call"(%1) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
   dealloc %arg0 : memref<?x42x?xf32>
 // CHECK-NEXT:  "llvm.return"() : () -> ()
   return
@@ -59,7 +59,7 @@ func @dynamic_alloc(%arg0: index, %arg1: index) -> memref<?x?xf32> {
 func @dynamic_dealloc(%arg0: memref<?x?xf32>) {
 // CHECK-NEXT: %0 = "llvm.extractvalue"(%arg0) {position: [0]} : (!llvm<"{ float*, i64, i64 }">) -> !llvm<"float*">
 // CHECK-NEXT: %1 = "llvm.bitcast"(%0) : (!llvm<"float*">) -> !llvm<"i8*">
-// CHECK-NEXT: "llvm.call0"(%1) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
+// CHECK-NEXT: "llvm.call"(%1) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
   dealloc %arg0 : memref<?x?xf32>
   return
 }
@@ -80,7 +80,7 @@ func @static_alloc() -> memref<32x18xf32> {
 // CHECK-LABEL: func @static_dealloc(%arg0: !llvm<"float*">) {
 func @static_dealloc(%static: memref<10x8xf32>) {
 // CHECK-NEXT: %0 = "llvm.bitcast"(%arg0) : (!llvm<"float*">) -> !llvm<"i8*">
-// CHECK-NEXT: "llvm.call0"(%0) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
+// CHECK-NEXT: "llvm.call"(%0) {callee: @free : (!llvm<"i8*">) -> ()} : (!llvm<"i8*">) -> ()
   dealloc %static : memref<10x8xf32>
   return
 }
