@@ -3362,6 +3362,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
