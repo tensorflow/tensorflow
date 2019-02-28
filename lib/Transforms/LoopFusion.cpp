@@ -91,7 +91,7 @@ struct LoopFusion : public FunctionPass<LoopFusion> {
       : localBufSizeThreshold(localBufSizeThreshold),
         fastMemorySpace(fastMemorySpace) {}
 
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 
   // Any local buffers smaller than this size (in bytes) will be created in
   // `fastMemorySpace` if provided.
@@ -1800,7 +1800,7 @@ public:
 
 } // end anonymous namespace
 
-PassResult LoopFusion::runOnFunction() {
+void LoopFusion::runOnFunction() {
   // Override if a command line argument was provided.
   if (clFusionFastMemorySpace.getNumOccurrences() > 0) {
     fastMemorySpace = clFusionFastMemorySpace.getValue();
@@ -1814,7 +1814,6 @@ PassResult LoopFusion::runOnFunction() {
   MemRefDependenceGraph g;
   if (g.init(&getFunction()))
     GreedyFusion(&g).run(localBufSizeThreshold, fastMemorySpace);
-  return success();
 }
 
 static PassRegistration<LoopFusion> pass("loop-fusion", "Fuse loop nests");

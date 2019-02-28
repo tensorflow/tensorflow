@@ -79,7 +79,7 @@ struct LoopUnroll : public FunctionPass<LoopUnroll> {
       : unrollFactor(unrollFactor), unrollFull(unrollFull),
         getUnrollFactor(getUnrollFactor) {}
 
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 
   /// Unroll this for inst. Returns false if nothing was done.
   bool runOnAffineForOp(OpPointer<AffineForOp> forOp);
@@ -88,7 +88,7 @@ struct LoopUnroll : public FunctionPass<LoopUnroll> {
 };
 } // end anonymous namespace
 
-PassResult LoopUnroll::runOnFunction() {
+void LoopUnroll::runOnFunction() {
   // Gathers all innermost loops through a post order pruned walk.
   struct InnermostLoopGatherer {
     // Store innermost loops as we walk.
@@ -137,7 +137,7 @@ PassResult LoopUnroll::runOnFunction() {
     });
     for (auto forOp : loops)
       loopUnrollFull(forOp);
-    return success();
+    return;
   }
 
   unsigned numRepetitions = clUnrollNumRepetitions.getNumOccurrences() > 0
@@ -158,7 +158,6 @@ PassResult LoopUnroll::runOnFunction() {
       // Break out if nothing was unrolled.
       break;
   }
-  return success();
 }
 
 /// Unrolls a 'for' inst. Returns true if the loop was unrolled, false

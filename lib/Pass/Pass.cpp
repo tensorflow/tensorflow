@@ -35,21 +35,28 @@ using namespace mlir::detail;
 void Pass::anchor() {}
 
 /// Forwarding function to execute this pass.
-PassResult FunctionPassBase::run(Function *fn) {
+bool FunctionPassBase::run(Function *fn) {
   /// Initialize the pass state.
   passState.emplace(fn);
 
   /// Invoke the virtual runOnFunction function.
-  return runOnFunction();
+  runOnFunction();
+
+  // Return false if the pass signaled a failure.
+  return !passState->irAndPassFailed.getInt();
 }
 
-/// Forwarding function to execute this pass.
-PassResult ModulePassBase::run(Module *module) {
+/// Forwarding function to execute this pass. Returns false if the pass
+/// execution failed, true otherwise.
+bool ModulePassBase::run(Module *module) {
   /// Initialize the pass state.
   passState.emplace(module);
 
   /// Invoke the virtual runOnModule function.
-  return runOnModule();
+  runOnModule();
+
+  // Return false if the pass signaled a failure.
+  return !passState->irAndPassFailed.getInt();
 }
 
 //===----------------------------------------------------------------------===//
@@ -82,7 +89,9 @@ public:
   FunctionPassExecutor(const FunctionPassExecutor &) = delete;
   FunctionPassExecutor &operator=(const FunctionPassExecutor &) = delete;
 
-  /// Run the executor on the given function.
+  /// Run the executor on the given function. Returns false if the pass
+  /// execution failed, true otherwise.
+  LLVM_NODISCARD
   bool run(Function *function);
 
   /// Add a pass to the current executor. This takes ownership over the provided
@@ -107,7 +116,9 @@ public:
   ModulePassExecutor(const ModulePassExecutor &) = delete;
   ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
 
-  /// Run the executor on the given module.
+  /// Run the executor on the given module. Returns false if the pass
+  /// execution failed, true otherwise.
+  LLVM_NODISCARD
   bool run(Module *module);
 
   /// Add a pass to the current executor. This takes ownership over the provided
@@ -129,25 +140,25 @@ private:
 bool detail::FunctionPassExecutor::run(Function *function) {
   for (auto &pass : passes) {
     /// Create an execution state for this pass.
-    if (pass->run(function))
-      return true;
+    if (!pass->run(function))
+      return false;
     // TODO: This should be opt-out and handled separately.
     if (function->verify())
-      return true;
+      return false;
   }
-  return false;
+  return true;
 }
 
 /// Run all of the passes in this manager over the current module.
 bool detail::ModulePassExecutor::run(Module *module) {
   for (auto &pass : passes) {
-    if (pass->run(module))
-      return true;
+    if (!pass->run(module))
+      return false;
     // TODO: This should be opt-out and handled separately.
     if (module->verify())
-      return true;
+      return false;
   }
-  return false;
+  return true;
 }
 
 //===----------------------------------------------------------------------===//
@@ -168,9 +179,9 @@ public:
   ModuleToFunctionPassAdaptor &
   operator=(const ModuleToFunctionPassAdaptor &) = delete;
 
-  /// run the held function pipeline over all non-external functions within the
+  /// Run the held function pipeline over all non-external functions within the
   /// module.
-  PassResult runOnModule() override;
+  void runOnModule() override;
 
   /// Returns the function pass executor for this adaptor.
   FunctionPassExecutor &getFunctionExecutor() { return fpe; }
@@ -182,17 +193,16 @@ private:
 
 /// Execute the held function pass over all non-external functions within the
 /// module.
-PassResult ModuleToFunctionPassAdaptor::runOnModule() {
+void ModuleToFunctionPassAdaptor::runOnModule() {
   for (auto &func : getModule()) {
     // Skip external functions.
     if (func.isExternal())
       continue;
 
     // Run the held function pipeline over the current function.
-    if (fpe.run(&func))
-      return failure();
+    if (!fpe.run(&func))
+      return signalPassFailure();
   }
-  return success();
 }
 
 //===----------------------------------------------------------------------===//

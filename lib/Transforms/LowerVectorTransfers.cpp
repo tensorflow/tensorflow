@@ -426,11 +426,10 @@ public:
 
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
-  PassResult runOnFunction() {
+  void runOnFunction() {
     Function *f = &getFunction();
     applyMLPatternsGreedily<VectorTransferExpander<VectorTransferReadOp>,
                             VectorTransferExpander<VectorTransferWriteOp>>(f);
-    return success();
   }
 
   // Thread-safe RAII context with local scope. BumpPtrAllocator freed on exit.

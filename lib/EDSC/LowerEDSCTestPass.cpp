@@ -34,13 +34,13 @@ using namespace mlir;
 namespace {
 // Testing pass to lower EDSC.
 struct LowerEDSCTestPass : public FunctionPass<LowerEDSCTestPass> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 } // end anonymous namespace
 
 #include "mlir/EDSC/reference-impl.inc"
 
-PassResult LowerEDSCTestPass::runOnFunction() {
+void LowerEDSCTestPass::runOnFunction() {
   getFunction().walk([](Instruction *op) {
     if (op->getName().getStringRef() == "print") {
       auto opName = op->getAttrOfType<StringAttr>("op");
@@ -56,7 +56,6 @@ PassResult LowerEDSCTestPass::runOnFunction() {
       printRefImplementation(opName.getValue(), function.getValue());
     }
   });
-  return success();
 }
 
 static PassRegistration<LowerEDSCTestPass> pass("lower-edsc-test",

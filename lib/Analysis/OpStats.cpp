@@ -30,7 +30,7 @@ struct PrintOpStatsPass : public ModulePass<PrintOpStatsPass> {
   explicit PrintOpStatsPass(llvm::raw_ostream &os = llvm::errs()) : os(os) {}
 
   // Prints the resultant operation statistics post iterating over the module.
-  PassResult runOnModule() override;
+  void runOnModule() override;
 
   // Print summary of op stats.
   void printSummary();
@@ -41,7 +41,7 @@ private:
 };
 } // namespace
 
-PassResult PrintOpStatsPass::runOnModule() {
+void PrintOpStatsPass::runOnModule() {
   opCount.clear();
 
   // Compute the operation statistics for each function in the module.
@@ -49,7 +49,6 @@ PassResult PrintOpStatsPass::runOnModule() {
     fn.walk(
         [&](Instruction *inst) { ++opCount[inst->getName().getStringRef()]; });
   printSummary();
-  return success();
 }
 
 void PrintOpStatsPass::printSummary() {

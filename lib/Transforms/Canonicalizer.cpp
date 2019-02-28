@@ -34,11 +34,11 @@ namespace {
 
 /// Canonicalize operations in functions.
 struct Canonicalizer : public FunctionPass<Canonicalizer> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 } // end anonymous namespace
 
-PassResult Canonicalizer::runOnFunction() {
+void Canonicalizer::runOnFunction() {
   OwningRewritePatternList patterns;
   auto &func = getFunction();
 
@@ -50,7 +50,6 @@ PassResult Canonicalizer::runOnFunction() {
     op->getCanonicalizationPatterns(patterns, context);
 
   applyPatternsGreedily(&func, std::move(patterns));
-  return success();
 }
 
 /// Create a Canonicalizer pass.

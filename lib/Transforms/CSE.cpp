@@ -111,7 +111,7 @@ struct CSE : public FunctionPass<CSE> {
   void simplifyBlock(DominanceInfo &domInfo, Block *bb);
   void simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList);
 
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 
 private:
   /// A scoped hash table of defining operations within a function.
@@ -216,7 +216,7 @@ void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
   }
 }
 
-PassResult CSE::runOnFunction() {
+void CSE::runOnFunction() {
   DominanceInfo domInfo(&getFunction());
   simplifyBlockList(domInfo, getFunction().getBlockList());
 
@@ -224,8 +224,6 @@ PassResult CSE::runOnFunction() {
   for (auto *op : opsToErase)
     op->erase();
   opsToErase.clear();
-
-  return success();
 }
 
 FunctionPassBase *mlir::createCSEPass() { return new CSE(); }

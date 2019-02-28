@@ -131,7 +131,7 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
   PassManager pm;
   for (const auto *passEntry : *passList)
     passEntry->addToPipeline(pm);
-  if (pm.run(module.get()))
+  if (!pm.run(module.get()))
     return OptFailure;
 
   std::string errorMessage;

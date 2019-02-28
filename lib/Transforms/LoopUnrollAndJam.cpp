@@ -78,7 +78,7 @@ struct LoopUnrollAndJam : public FunctionPass<LoopUnrollAndJam> {
   explicit LoopUnrollAndJam(Optional<unsigned> unrollJamFactor = None)
       : unrollJamFactor(unrollJamFactor) {}
 
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
   bool runOnAffineForOp(OpPointer<AffineForOp> forOp);
 };
 } // end anonymous namespace
@@ -88,15 +88,13 @@ FunctionPassBase *mlir::createLoopUnrollAndJamPass(int unrollJamFactor) {
       unrollJamFactor == -1 ? None : Optional<unsigned>(unrollJamFactor));
 }
 
-PassResult LoopUnrollAndJam::runOnFunction() {
+void LoopUnrollAndJam::runOnFunction() {
   // Currently, just the outermost loop from the first loop nest is
   // unroll-and-jammed by this pass. However, runOnAffineForOp can be called on
   // any for operation.
   auto &entryBlock = getFunction().front();
   if (auto forOp = entryBlock.front().dyn_cast<AffineForOp>())
     runOnAffineForOp(forOp);
-
-  return success();
 }
 
 /// Unroll and jam a 'for' inst. Default unroll jam factor is

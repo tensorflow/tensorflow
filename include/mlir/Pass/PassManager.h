@@ -50,7 +50,9 @@ public:
   /// executor if necessary.
   void addPass(FunctionPassBase *pass);
 
-  /// Run the passes within this manager on the provided module.
+  /// Run the passes within this manager on the provided module. Returns false
+  /// if the run failed, true otherwise.
+  LLVM_NODISCARD
   bool run(Module *module);
 
 private:

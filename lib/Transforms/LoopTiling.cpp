@@ -48,7 +48,7 @@ namespace {
 
 /// A pass to perform loop tiling on all suitable loop nests of a Function.
 struct LoopTiling : public FunctionPass<LoopTiling> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 
   constexpr static unsigned kDefaultTileSize = 4;
 };
@@ -253,7 +253,7 @@ getTileableBands(Function *f,
         getMaximalPerfectLoopNest(forOp);
 }
 
-PassResult LoopTiling::runOnFunction() {
+void LoopTiling::runOnFunction() {
   std::vector<SmallVector<OpPointer<AffineForOp>, 6>> bands;
   getTileableBands(&getFunction(), &bands);
 
@@ -265,11 +265,9 @@ PassResult LoopTiling::runOnFunction() {
               clTileSizes.begin() + std::min(clTileSizes.size(), band.size()),
               tileSizes.begin());
 
-    if (tileCodeGen(band, tileSizes)) {
-      return failure();
-    }
+    if (tileCodeGen(band, tileSizes))
+      return signalPassFailure();
   }
-  return success();
 }
 
 static PassRegistration<LoopTiling> pass("loop-tile", "Tile loop nests");

@@ -1097,10 +1097,11 @@ static void ensureDistinctSuccessors(Module *m) {
 /// dialect.
 class LLVMLowering : public ModulePass<LLVMLowering>, public DialectConversion {
 public:
-  PassResult runOnModule() override {
+  void runOnModule() override {
     Module *m = &getModule();
     uniqueSuccessorsWithArguments(m);
-    return DialectConversion::convert(m) ? failure() : success();
+    if (DialectConversion::convert(m))
+      signalPassFailure();
   }
 
 protected:

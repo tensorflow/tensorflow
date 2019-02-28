@@ -33,7 +33,7 @@ struct ConstantFold : public FunctionPass<ConstantFold> {
   std::vector<Instruction *> opInstsToErase;
 
   void foldInstruction(Instruction *op);
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 } // end anonymous namespace
 
@@ -92,7 +92,7 @@ void ConstantFold::foldInstruction(Instruction *op) {
 // For now, we do a simple top-down pass over a function folding constants.  We
 // don't handle conditional control flow, block arguments, folding
 // conditional branches, or anything else fancy.
-PassResult ConstantFold::runOnFunction() {
+void ConstantFold::runOnFunction() {
   existingConstants.clear();
   opInstsToErase.clear();
 
@@ -113,8 +113,6 @@ PassResult ConstantFold::runOnFunction() {
     if (cst->use_empty())
       cst->getDefiningInst()->erase();
   }
-
-  return success();
 }
 
 /// Creates a constant folding pass.

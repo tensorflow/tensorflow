@@ -652,7 +652,7 @@ static std::vector<NestedPattern> makePatterns() {
 namespace {
 
 struct Vectorize : public FunctionPass<Vectorize> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 
 } // end anonymous namespace
@@ -1260,7 +1260,7 @@ static bool vectorizeRootMatch(NestedMatch m, VectorizationStrategy *strategy) {
 
 /// Applies vectorization to the current Function by searching over a bunch of
 /// predetermined patterns.
-PassResult Vectorize::runOnFunction() {
+void Vectorize::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
@@ -1295,7 +1295,6 @@ PassResult Vectorize::runOnFunction() {
     }
   }
   LLVM_DEBUG(dbgs() << "\n");
-  return PassResult::Success;
 }
 
 FunctionPassBase *mlir::createVectorizePass() { return new Vectorize(); }

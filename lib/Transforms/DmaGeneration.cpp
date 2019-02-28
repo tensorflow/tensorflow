@@ -84,7 +84,7 @@ struct DmaGeneration : public FunctionPass<DmaGeneration> {
         minDmaTransferSize(minDmaTransferSize),
         fastMemCapacityBytes(fastMemCapacityBytes) {}
 
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
   bool runOnBlock(Block *block);
   uint64_t runOnBlock(Block::iterator begin, Block::iterator end);
 
@@ -754,16 +754,13 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
   return totalDmaBuffersSizeInBytes;
 }
 
-PassResult DmaGeneration::runOnFunction() {
+void DmaGeneration::runOnFunction() {
   Function *f = &getFunction();
   FuncBuilder topBuilder(f);
   zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
 
-  for (auto &block : *f) {
+  for (auto &block : *f)
     runOnBlock(&block);
-  }
-  // This function never leaves the IR in an invalid state.
-  return success();
 }
 
 static PassRegistration<DmaGeneration>

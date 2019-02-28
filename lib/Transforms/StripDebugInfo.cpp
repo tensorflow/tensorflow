@@ -24,18 +24,17 @@ using namespace mlir;
 
 namespace {
 struct StripDebugInfo : public FunctionPass<StripDebugInfo> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 } // end anonymous namespace
 
-PassResult StripDebugInfo::runOnFunction() {
+void StripDebugInfo::runOnFunction() {
   Function &func = getFunction();
   UnknownLoc unknownLoc = UnknownLoc::get(func.getContext());
 
   // Strip the debug info from the function and its instructions.
   func.setLoc(unknownLoc);
   func.walk([&](Instruction *inst) { inst->setLoc(unknownLoc); });
-  return success();
 }
 
 /// Creates a pass to strip debug information from a function.

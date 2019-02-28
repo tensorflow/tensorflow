@@ -197,7 +197,7 @@ struct MaterializationState {
 };
 
 struct MaterializeVectorsPass : public FunctionPass<MaterializeVectorsPass> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 
 } // end anonymous namespace
@@ -729,14 +729,14 @@ static bool materialize(Function *f,
   return false;
 }
 
-PassResult MaterializeVectorsPass::runOnFunction() {
+void MaterializeVectorsPass::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
   // TODO(ntv): Check to see if this supports arbitrary top-level code.
   Function *f = &getFunction();
   if (f->getBlocks().size() != 1)
-    return success();
+    return;
 
   using matcher::Op;
   LLVM_DEBUG(dbgs() << "\nMaterializeVectors on Function\n");
@@ -764,8 +764,8 @@ PassResult MaterializeVectorsPass::runOnFunction() {
     terminators.insert(m.getMatchedInstruction());
   }
 
-  auto fail = materialize(f, terminators, &state);
-  return fail ? PassResult::Failure : PassResult::Success;
+  if (materialize(f, terminators, &state))
+    signalPassFailure();
 }
 
 FunctionPassBase *mlir::createMaterializeVectorsPass() {

@@ -18,21 +18,13 @@
 #ifndef MLIR_PASS_PASS_H
 #define MLIR_PASS_PASS_H
 
+#include "mlir/IR/Module.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "llvm/ADT/PointerIntPair.h"
 
 namespace mlir {
 class Function;
 class Module;
-
-// Values that can be used by to signal success/failure. This can be implicitly
-// converted to/from boolean values, with false representing success and true
-// failure.
-struct LLVM_NODISCARD PassResult {
-  enum ResultEnum { Success, Failure } value;
-  PassResult(ResultEnum v) : value(v) {}
-  operator bool() const { return value == Failure; }
-};
 
 /// The abstract base pass class. This class contains information describing the
 /// derived pass object, e.g its kind and abstract PassInfo.
@@ -44,9 +36,6 @@ public:
 
   /// Returns the unique identifier that corresponds to this pass.
   const PassID *getPassID() const { return passIDAndKind.getPointer(); }
-
-  static PassResult success() { return PassResult::Success; }
-  static PassResult failure() { return PassResult::Failure; }
 
   /// Returns the pass info for the specified pass class or null if unknown.
   static const PassInfo *lookupPassInfo(const PassID *passID);
@@ -79,10 +68,10 @@ class ModulePassExecutor;
 /// The state for a single execution of a pass. This provides a unified
 /// interface for accessing and initializing necessary state for pass execution.
 template <typename IRUnitT> struct PassExecutionState {
-  explicit PassExecutionState(IRUnitT *ir) : ir(ir) {}
+  explicit PassExecutionState(IRUnitT *ir) : irAndPassFailed(ir, false) {}
 
   /// The current IR unit being transformed.
-  IRUnitT *ir;
+  llvm::PointerIntPair<IRUnitT *, 1, bool> irAndPassFailed;
 };
 } // namespace detail
 
@@ -99,17 +88,24 @@ protected:
   explicit FunctionPassBase(const PassID *id) : Pass(id, Kind::FunctionPass) {}
 
   /// The polymorphic API that runs the pass over the currently held function.
-  virtual PassResult runOnFunction() = 0;
+  virtual void runOnFunction() = 0;
 
   /// Return the current function being transformed.
   Function &getFunction() {
+    return *getPassState().irAndPassFailed.getPointer();
+  }
+
+  /// Returns the current pass state.
+  detail::PassExecutionState<Function> &getPassState() {
     assert(passState && "pass state was never initialized");
-    return *passState->ir;
+    return *passState;
   }
 
 private:
-  /// Forwarding function to execute this pass.
-  PassResult run(Function *fn);
+  /// Forwarding function to execute this pass. Returns false if the pass
+  /// execution failed, true otherwise.
+  LLVM_NODISCARD
+  bool run(Function *fn);
 
   /// The current execution state for the pass.
   llvm::Optional<detail::PassExecutionState<Function>> passState;
@@ -130,17 +126,22 @@ protected:
   explicit ModulePassBase(const PassID *id) : Pass(id, Kind::ModulePass) {}
 
   /// The polymorphic API that runs the pass over the currently held module.
-  virtual PassResult runOnModule() = 0;
+  virtual void runOnModule() = 0;
 
   /// Return the current module being transformed.
-  Module &getModule() {
+  Module &getModule() { return *getPassState().irAndPassFailed.getPointer(); }
+
+  /// Returns the current pass state.
+  detail::PassExecutionState<Module> &getPassState() {
     assert(passState && "pass state was never initialized");
-    return *passState->ir;
+    return *passState;
   }
 
 private:
-  /// Forwarding function to execute this pass.
-  PassResult run(Module *module);
+  /// Forwarding function to execute this pass. Returns false if the pass
+  /// execution failed, true otherwise.
+  LLVM_NODISCARD
+  bool run(Module *module);
 
   /// The current execution state for the pass.
   llvm::Optional<detail::PassExecutionState<Module>> passState;
@@ -162,6 +163,12 @@ protected:
 
   /// TODO(riverriddle) Provide additional utilities for cloning, getting the
   /// derived class name, etc..
+
+  /// Signal that some invariant was broken when running. The IR is allowed to
+  /// be in an invalid state.
+  void signalPassFailure() {
+    this->getPassState().irAndPassFailed.setInt(true);
+  }
 };
 } // end namespace detail
 
@@ -174,14 +181,14 @@ protected:
 ///     additional functions.
 ///
 /// Derived function passes are expected to provide the following:
-///   - A 'PassResult runOnFunction()' method.
+///   - A 'void runOnFunction()' method.
 template <typename T>
 using FunctionPass = detail::PassModel<Function, T, FunctionPassBase>;
 
 /// A model for providing module pass specific utilities.
 ///
 /// Derived module passes are expected to provide the following:
-///   - A 'PassResult runOnModule()' method.
+///   - A 'void runOnModule()' method.
 template <typename T>
 using ModulePass = detail::PassModel<Module, T, ModulePassBase>;
 } // end namespace mlir

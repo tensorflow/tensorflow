@@ -38,7 +38,7 @@ namespace {
 /// on AffineMap and driven from the existing canonicalization pass.
 struct SimplifyAffineStructures
     : public FunctionPass<SimplifyAffineStructures> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 
 } // end anonymous namespace
@@ -57,7 +57,7 @@ static IntegerSet simplifyIntegerSet(IntegerSet set) {
   return set;
 }
 
-PassResult SimplifyAffineStructures::runOnFunction() {
+void SimplifyAffineStructures::runOnFunction() {
   getFunction().walk([&](Instruction *opInst) {
     for (auto attr : opInst->getAttrs()) {
       if (auto mapAttr = attr.second.dyn_cast<AffineMapAttr>()) {
@@ -71,8 +71,6 @@ PassResult SimplifyAffineStructures::runOnFunction() {
       }
     }
   });
-
-  return success();
 }
 
 static PassRegistration<SimplifyAffineStructures>

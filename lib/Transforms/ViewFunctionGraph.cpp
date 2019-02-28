@@ -77,9 +77,8 @@ struct PrintCFGPass : public FunctionPass<PrintCFGPass> {
   PrintCFGPass(llvm::raw_ostream &os = llvm::errs(), bool shortNames = false,
                const llvm::Twine &title = "")
       : os(os), shortNames(shortNames), title(title) {}
-  PassResult runOnFunction() {
+  void runOnFunction() {
     mlir::writeGraph(os, &getFunction(), shortNames, title);
-    return success();
   }
 
 private:

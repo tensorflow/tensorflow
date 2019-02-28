@@ -39,8 +39,8 @@ using namespace mlir;
 namespace {
 
 struct PipelineDataTransfer : public FunctionPass<PipelineDataTransfer> {
-  PassResult runOnFunction() override;
-  PassResult runOnAffineForOp(OpPointer<AffineForOp> forOp);
+  void runOnFunction() override;
+  void runOnAffineForOp(OpPointer<AffineForOp> forOp);
 
   std::vector<OpPointer<AffineForOp>> forOps;
 };
@@ -139,7 +139,7 @@ static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
 }
 
 /// Returns success if the IR is in a valid state.
-PassResult PipelineDataTransfer::runOnFunction() {
+void PipelineDataTransfer::runOnFunction() {
   // Do a post order walk so that inner loop DMAs are processed first. This is
   // necessary since 'for' instructions nested within would otherwise become
   // invalid (erased) when the outer loop is pipelined (the pipelined one gets
@@ -148,11 +148,8 @@ PassResult PipelineDataTransfer::runOnFunction() {
   forOps.clear();
   getFunction().walkPostOrder<AffineForOp>(
       [&](OpPointer<AffineForOp> forOp) { forOps.push_back(forOp); });
-  bool ret = false;
-  for (auto forOp : forOps) {
-    ret = ret | runOnAffineForOp(forOp);
-  }
-  return ret ? failure() : success();
+  for (auto forOp : forOps)
+    runOnAffineForOp(forOp);
 }
 
 // Check if tags of the dma start op and dma wait op match.
@@ -252,13 +249,12 @@ static void findMatchingStartFinishInsts(
 /// Overlap DMA transfers with computation in this loop. If successful,
 /// 'forOp' is deleted, and a prologue, a new pipelined loop, and epilogue are
 /// inserted right before where it was.
-PassResult
-PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
+void PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
     LLVM_DEBUG(
         forOp->emitNote("won't pipeline due to unknown trip count loop"));
-    return success();
+    return;
   }
 
   SmallVector<std::pair<Instruction *, Instruction *>, 4> startWaitPairs;
@@ -266,7 +262,7 @@ PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
 
   if (startWaitPairs.empty()) {
     LLVM_DEBUG(forOp->emitNote("No dma start/finish pairs\n"));
-    return success();
+    return;
   }
 
   // Double the buffers for the higher memory space memref's.
@@ -287,7 +283,7 @@ PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
       LLVM_DEBUG(llvm::dbgs() << "double buffering failed for: \n";);
       LLVM_DEBUG(dmaStartInst->dump());
       // IR still in a valid state.
-      return success();
+      return;
     }
     // If the old memref has no more uses, remove its 'dead' alloc if it was
     // alloc'ed. (note: DMA buffers are rarely function live-in; but a 'dim'
@@ -315,7 +311,7 @@ PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
         dmaFinishInst->getOperand(getTagMemRefPos(*dmaFinishInst));
     if (!doubleBuffer(oldTagMemRef, forOp)) {
       LLVM_DEBUG(llvm::dbgs() << "tag double buffering failed\n";);
-      return success();
+      return;
     }
     // If the old tag has no more uses, remove its 'dead' alloc if it was
     // alloc'ed.
@@ -377,15 +373,13 @@ PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   if (!isInstwiseShiftValid(forOp, shifts)) {
     // Violates dependences.
     LLVM_DEBUG(llvm::dbgs() << "Shifts invalid - unexpected\n";);
-    return success();
+    return;
   }
 
   if (instBodySkew(forOp, shifts)) {
     LLVM_DEBUG(llvm::dbgs() << "inst body skewing failed - unexpected\n";);
-    return success();
+    return;
   }
-
-  return success();
 }
 
 static PassRegistration<PipelineDataTransfer> pass(

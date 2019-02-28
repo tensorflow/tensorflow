@@ -87,7 +87,7 @@ struct VectorizerTestPass : public FunctionPass<VectorizerTestPass> {
   static constexpr auto kTestAffineMapOpName = "test_affine_map";
   static constexpr auto kTestAffineMapAttrName = "affine_map";
 
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
   void testVectorShapeRatio(Function *f);
   void testForwardSlicing(Function *f);
   void testBackwardSlicing(Function *f);
@@ -260,14 +260,14 @@ void VectorizerTestPass::testNormalizeMaps(Function *f) {
   }
 }
 
-PassResult VectorizerTestPass::runOnFunction() {
+void VectorizerTestPass::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
   // Only support single block functions at this point.
   Function *f = &getFunction();
   if (f->getBlocks().size() != 1)
-    return success();
+    return;
 
   if (!clTestVectorShapeRatio.empty()) {
     testVectorShapeRatio(f);
@@ -287,7 +287,6 @@ PassResult VectorizerTestPass::runOnFunction() {
   if (clTestNormalizeMaps) {
     testNormalizeMaps(f);
   }
-  return PassResult::Success;
 }
 
 FunctionPassBase *mlir::createVectorizerTestPass() {

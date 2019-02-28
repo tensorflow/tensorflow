@@ -243,7 +243,7 @@ Optional<SmallVector<Value *, 8>> static expandAffineMap(
 
 namespace {
 struct LowerAffinePass : public FunctionPass<LowerAffinePass> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 
   bool lowerAffineFor(OpPointer<AffineForOp> forOp);
   bool lowerAffineIf(AffineIfOp *ifOp);
@@ -604,7 +604,7 @@ bool LowerAffinePass::lowerAffineApply(AffineApplyOp *op) {
 // construction.  When an Value is used, it gets replaced with the
 // corresponding Value that has been defined previously.  The value flow
 // starts with function arguments converted to basic block arguments.
-PassResult LowerAffinePass::runOnFunction() {
+void LowerAffinePass::runOnFunction() {
   SmallVector<Instruction *, 8> instsToRewrite;
 
   // Collect all the For instructions as well as AffineIfOps and AffineApplyOps.
@@ -620,16 +620,14 @@ PassResult LowerAffinePass::runOnFunction() {
   for (auto *inst : instsToRewrite) {
     if (auto ifOp = inst->dyn_cast<AffineIfOp>()) {
       if (lowerAffineIf(ifOp))
-        return failure();
+        return signalPassFailure();
     } else if (auto forOp = inst->dyn_cast<AffineForOp>()) {
       if (lowerAffineFor(forOp))
-        return failure();
+        return signalPassFailure();
     } else if (lowerAffineApply(inst->cast<AffineApplyOp>())) {
-      return failure();
+      return signalPassFailure();
     }
   }
-
-  return success();
 }
 
 /// Lowers If and For instructions within a function into their lower level CFG

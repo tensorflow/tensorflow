@@ -38,7 +38,7 @@ namespace {
 
 /// Checks for out of bound memef access subscripts..
 struct MemRefBoundCheck : public FunctionPass<MemRefBoundCheck> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 
 } // end anonymous namespace
@@ -47,7 +47,7 @@ FunctionPassBase *mlir::createMemRefBoundCheckPass() {
   return new MemRefBoundCheck();
 }
 
-PassResult MemRefBoundCheck::runOnFunction() {
+void MemRefBoundCheck::runOnFunction() {
   getFunction().walk([](Instruction *opInst) {
     if (auto loadOp = opInst->dyn_cast<LoadOp>()) {
       boundCheckLoadOrStoreOp(loadOp);
@@ -56,7 +56,6 @@ PassResult MemRefBoundCheck::runOnFunction() {
     }
     // TODO(bondhugula): do this for DMA ops as well.
   });
-  return success();
 }
 
 static PassRegistration<MemRefBoundCheck>

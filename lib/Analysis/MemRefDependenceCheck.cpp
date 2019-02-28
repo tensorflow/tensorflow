@@ -39,7 +39,7 @@ namespace {
 /// Checks dependences between all pairs of memref accesses in a Function.
 struct MemRefDependenceCheck : public FunctionPass<MemRefDependenceCheck> {
   SmallVector<Instruction *, 4> loadsAndStores;
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 };
 
 } // end anonymous namespace
@@ -111,7 +111,7 @@ static void checkDependences(ArrayRef<Instruction *> loadsAndStores) {
 
 // Walks the Function 'f' adding load and store ops to 'loadsAndStores'.
 // Runs pair-wise dependence checks.
-PassResult MemRefDependenceCheck::runOnFunction() {
+void MemRefDependenceCheck::runOnFunction() {
   // Collect the loads and stores within the function.
   loadsAndStores.clear();
   getFunction().walk([&](Instruction *inst) {
@@ -120,7 +120,6 @@ PassResult MemRefDependenceCheck::runOnFunction() {
   });
 
   checkDependences(loadsAndStores);
-  return success();
 }
 
 static PassRegistration<MemRefDependenceCheck>

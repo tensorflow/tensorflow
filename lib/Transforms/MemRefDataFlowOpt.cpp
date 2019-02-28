@@ -70,7 +70,7 @@ namespace {
 // than dealloc) remain.
 //
 struct MemRefDataFlowOpt : public FunctionPass<MemRefDataFlowOpt> {
-  PassResult runOnFunction() override;
+  void runOnFunction() override;
 
   void forwardStoreToLoad(OpPointer<LoadOp> loadOp);
 
@@ -209,11 +209,11 @@ void MemRefDataFlowOpt::forwardStoreToLoad(OpPointer<LoadOp> loadOp) {
   loadOpsToErase.push_back(loadOpInst);
 }
 
-PassResult MemRefDataFlowOpt::runOnFunction() {
+void MemRefDataFlowOpt::runOnFunction() {
   // Only supports single block functions at the moment.
   Function &f = getFunction();
   if (f.getBlocks().size() != 1)
-    return success();
+    return;
 
   DominanceInfo theDomInfo(&f);
   domInfo = &theDomInfo;
@@ -254,9 +254,6 @@ PassResult MemRefDataFlowOpt::runOnFunction() {
       use.getOwner()->erase();
     defInst->erase();
   }
-
-  // This function never leaves the IR in an invalid state.
-  return success();
 }
 
 static PassRegistration<MemRefDataFlowOpt>
