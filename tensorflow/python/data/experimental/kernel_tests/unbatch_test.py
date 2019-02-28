@@ -49,9 +49,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = dataset_ops.Dataset.from_tensor_slices(data)
     expected_types = (dtypes.int32,) * 3
     data = data.batch(2)
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(data, [(i,) * 3 for i in range(10)])
 
@@ -61,9 +61,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = data.map(lambda x, y, z: (x, string_ops.as_string(y), z))
     expected_types = (dtypes.int32, dtypes.string, dtypes.int32)
     data = data.batch(2)
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(
         data, [(i, compat.as_bytes(str(i)), i) for i in range(10)])
@@ -100,9 +100,9 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = dataset_ops.Dataset.from_tensor_slices(data)
     expected_types = ((dtypes.int32,),) * 3
     data = data.batch(2)
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertEqual(expected_types, data.output_types)
+    self.assertEqual(expected_types, dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(data, [((i,),) * 3 for i in range(10)])
 
@@ -112,9 +112,11 @@ class UnbatchTest(test_base.DatasetTestBase, parameterized.TestCase):
     data = dataset_ops.Dataset.from_tensor_slices(data)
     expected_types = ((dtypes.int32, dtypes.string),) * 3
     data = data.batch(2)
-    self.assertAllEqual(expected_types, data.output_types)
+    self.assertAllEqual(expected_types,
+                        dataset_ops.get_legacy_output_types(data))
     data = data.apply(batching.unbatch())
-    self.assertAllEqual(expected_types, data.output_types)
+    self.assertAllEqual(expected_types,
+                        dataset_ops.get_legacy_output_types(data))
 
     self.assertDatasetProduces(
         data,
