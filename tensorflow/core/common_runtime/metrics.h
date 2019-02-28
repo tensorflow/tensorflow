@@ -37,7 +37,7 @@ void RecordTFDataBytesRead(const string& name, int64 num_bytes);
 // The `name` argument identifies the Dataset type (e.g. "Batch" or "Map").
 void RecordTFDataElements(const string& name, int64 num_elements);
 
-// Records the number of independent graph changes resulting from the applicaton
+// Records the number of independent graph changes resulting from the application
 // of a tf.data optimization.
 //
 // The `name` argument identifies the optimization (e.g. "noop_eliminiation").
