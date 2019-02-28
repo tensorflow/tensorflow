@@ -623,7 +623,7 @@ OpLevelCostEstimator::ConvolutionDimensionsFromInputs(
   // Only check equality when both sizes are known (in other words, when
   // neither is set to a minimum dimension size of 1).
   if (iz != 1 && kz != 1) {
-    CHECK(iz % kz == 0) << "Input channel " << iz << " is not a multiple of filter channel " << kz << ".";
+    CHECK_EQ(iz % kz, 0) << "Input channel " << iz << " is not a multiple of filter channel " << kz << ".";
   } else {
     iz = std::max<int64>(iz, filter_shape.dim(in_channel_index).size());
   }
@@ -1434,7 +1434,7 @@ OpLevelCostEstimator::OpDimensionsFromInputs(
   int64 oz = iz;
 
   OpLevelCostEstimator::ConvolutionDimensions conv_dims = {
-      batch, ix, iy, iz, kx, ky, oz, ox, oy, sx, sy, padding};
+      batch, ix, iy, iz, kx, ky, kz, oz, ox, oy, sx, sy, padding};
   return conv_dims;
 }
 
