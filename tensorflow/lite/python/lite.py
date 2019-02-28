@@ -242,17 +242,18 @@ class TFLiteConverterV2(object):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    graph_def = _convert_to_constants.convert_variables_to_constants_v2(
+    frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
         self._func)
     input_tensors = [
-        tensor for tensor in self._func.inputs
+        tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
     ]
-    output_tensors = self._func.outputs
+    output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(graph_def, input_tensors,
-                                         output_tensors, self._func.graph)
+    graph_def = _run_graph_optimizations(frozen_func.graph.as_graph_def(),
+                                         input_tensors, output_tensors,
+                                         frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:

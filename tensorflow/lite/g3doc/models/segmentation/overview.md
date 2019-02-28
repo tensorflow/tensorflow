@@ -1,18 +1,26 @@
-# Segmentation (GPU)
+# Segmentation
+
 <img src="../images/segmentation.png" class="attempt-right" />
 
-<i>DeepLab</i> is a state-of-art deep learning model for semantic image segmentation, where the goal is to assign semantic labels (e.g., person, dog, cat and so on) to every pixel in the input image.
+## Get started
 
-<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Download starter model</a>
+_DeepLab_ is a state-of-art deep learning model for semantic image segmentation,
+where the goal is to assign semantic labels (e.g. person, dog, cat) to every
+pixel in the input image.
 
-## Tutorials (coming soon)
-<a class="button button-primary" href="">iOS</a>
-<a class="button button-primary" href="">Android</a>
+<a class="button button-primary" href="https://storage.googleapis.com/download.tensorflow.org/models/tflite/gpu/deeplabv3_257_mv_gpu.tflite">Download
+starter model</a>
 
 ## How it works
-It all started with classification where the model predicts an entire input. With advances in data, hardware, and software, object detection can infer objects with spatial location. Semantic segmentation offers the highest level of granularity with labels at a pixel level.
 
-Current implementation includes the following features:
+Semantic image segmentation predicts whether each pixel of an image is
+associated with a certain class. This is in contrast to
+<a href="../object_detection/overview.md">object detection</a>, which detects
+objects in rectangular regions, and
+<a href="../image_classification/overview.md">image classification</a>, which
+classifies the overall image.
+
+The current implementation includes the following features:
 <ol>
   <li>DeepLabv1: We use atrous convolution to explicitly control the resolution at which feature responses are computed within Deep Convolutional Neural Networks.</li>
   <li>DeepLabv2: We use atrous spatial pyramid pooling (ASPP) to robustly segment objects at multiple scales with filters at multiple sampling rates and effective fields-of-views.</li>
@@ -21,12 +29,15 @@ Current implementation includes the following features:
 </ol>
 
 ## Example output
-The model will create a mask over the target objects with high accuracy.
-<img src="images/segmentation.gif" />
 
-## Read more about this
+The model will create a mask over the target objects with high accuracy.
+
+<img alt="Animation showing image segmentation" src="images/segmentation.gif" />
+
+## Read more about segmentation
+
 <ul>
-  <li>Blog post: <a href="https://ai.googleblog.com/2018/03/semantic-image-segmentation-with.html">Semantic Image Segmentation with DeepLab in TensorFlow</a></li>
-  <li><a href="https://medium.com/tensorflow/tensorflow-lite-now-faster-with-mobile-gpus-developer-preview-e15797e6dee7">Blog post: TensorFlow Lite Now Faster with Mobile GPUs (Developer Preview)</a></li>
-  <li><a href="https://github.com/tensorflow/models/tree/master/research/deeplab">DeepLab GitHub: DeepLab: Deep Labelling for Semantic Image Segmentation</a></li>
+  <li><a href="https://ai.googleblog.com/2018/03/semantic-image-segmentation-with.html">Semantic Image Segmentation with DeepLab in TensorFlow</a></li>
+  <li><a href="https://medium.com/tensorflow/tensorflow-lite-now-faster-with-mobile-gpus-developer-preview-e15797e6dee7">TensorFlow Lite Now Faster with Mobile GPUs (Developer Preview)</a></li>
+  <li><a href="https://github.com/tensorflow/models/tree/master/research/deeplab">DeepLab: Deep Labelling for Semantic Image Segmentation</a></li>
 </ul>

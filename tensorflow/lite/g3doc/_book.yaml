@@ -79,40 +79,36 @@ upper_tabs:
         - title: Optimizing for mobile
           path: /lite/tfmobile/optimizing
 
-    # - name: Models
-    #   contents:
-    #   - title: Overview
-    #     path: /lite/models/
-    #   - title: Hosted models
-    #     path: /lite/models/hosted
-    #   - title: Image classification
-    #     section:
-    #     - title: Overview
-    #       path: /lite/models/image_classification/overview
-    #     - title: Android
-    #       path: /lite/models/image_classification/android
-    #     - title: iOS
-    #       path: /lite/models/image_classification/ios
-    #   - title: Object detection
-    #     section:
-    #     - title: Overview
-    #       path: /lite/models/object_detection/overview
-    #   - title: Speech recognition
-    #     section:
-    #     - title: Overview
-    #       path: /lite/models/speech_recognition/overview
-    #   - title: Pose estimation
-    #     section:
-    #     - title: Overview
-    #       path: /lite/models/pose_estimation/overview
-    #   - title: Segmentation
-    #     section:
-    #     - title: Overview
-    #       path: /lite/models/segmentation/overview
-    #   - title: Smart reply
-    #     section:
-    #     - title: Overview
-    #       path: /lite/models/smart_reply/overview
+    - name: Models
+      contents:
+      - title: Overview
+        path: /lite/models/
+      - title: Hosted models
+        path: /lite/models/hosted
+      - title: Image classification
+        section:
+        - title: Overview
+          path: /lite/models/image_classification/overview
+        - title: Android
+          path: /lite/models/image_classification/android
+        - title: iOS
+          path: /lite/models/image_classification/ios
+      - title: Object detection
+        section:
+        - title: Overview
+          path: /lite/models/object_detection/overview
+      - title: Pose estimation
+        section:
+        - title: Overview
+          path: /lite/models/pose_estimation/overview
+      - title: Segmentation
+        section:
+        - title: Overview
+          path: /lite/models/segmentation/overview
+      - title: Smart reply
+        section:
+        - title: Overview
+          path: /lite/models/smart_reply/overview
 
     - name: API
       skip_translation: true
