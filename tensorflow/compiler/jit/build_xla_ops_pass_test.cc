@@ -54,11 +54,9 @@ using ::tensorflow::testing::matchers::Op;
 using ::tensorflow::testing::matchers::Out;
 using ::testing::_;
 
-Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
-                   std::unique_ptr<Graph>* result) {
+Status BuildXlaOps(const Scope& s, std::unique_ptr<Graph>* result) {
   auto graph = absl::make_unique<Graph>(OpRegistry::Global());
   TF_RETURN_IF_ERROR(s.ToGraph(graph.get()));
-  FunctionLibraryDefinition flib_def(graph->op_registry(), fdef_lib);
 
   // Assign all nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";
@@ -72,10 +70,7 @@ Status BuildXlaOps(const Scope& s, const FunctionDefLibrary& fdef_lib,
 
   FixupSourceAndSinkEdges(graph.get());
 
-  SessionOptions session_options;
   GraphOptimizationPassOptions opt_options;
-  opt_options.session_options = &session_options;
-  opt_options.flib_def = &flib_def;
   opt_options.graph = &graph;
   BuildXlaOpsPass pass(/*enable_lazy_compilation=*/true);
   TF_RETURN_IF_ERROR(pass.Run(opt_options));
@@ -119,23 +114,23 @@ Node* MakeWrite(const Scope& scope, const string& id) {
 }
 
 FunctionDefLibrary CreateFunctionDefLibWithConstFunction(const string& name) {
-  FunctionDefLibrary fdef_lib;
+  FunctionDefLibrary flib_def;
   FunctionDef func = FunctionDefHelper::Create(
       /*function_name=*/name, /*in_def=*/{}, /*out_def=*/{"out: float"},
       /*attr_def*/
       {}, /*node_def=*/{FunctionDefHelper::Const("one", 1.0f)},
       /*ret_def=*/{{"out", "out:output:0"}});
-  *fdef_lib.add_function() = std::move(func);
-  return fdef_lib;
+  *flib_def.add_function() = std::move(func);
+  return flib_def;
 }
 
 TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
   const char* kXlaDeviceName = "/job:worker/replica:0/task:0/device:XLA_CPU:0";
   Scope root = Scope::NewRootScope().WithDevice(kXlaDeviceName).ExitOnError();
 
-  FunctionDefLibrary fdef_lib =
+  FunctionDefLibrary flib_def =
       CreateFunctionDefLibWithConstFunction("cluster_0");
-  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
   call->set_requested_device(kXlaDeviceName);
@@ -143,7 +138,7 @@ TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
   root.graph()->AddControlEdge(call, write_op);
 
   std::unique_ptr<Graph> graph;
-  TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
+  TF_ASSERT_OK(BuildXlaOps(root, &graph));
 
   Node* write_op_new = FindNodeByName(graph.get(), write_op->name());
   ASSERT_NE(write_op_new, nullptr);
@@ -153,9 +148,9 @@ TEST_F(BuildXlaOpsTest, ControlDepsPreserved) {
 TEST_F(BuildXlaOpsTest, CleanFailureOnBogusAttr) {
   Scope root = Scope::NewRootScope().ExitOnError();
 
-  FunctionDefLibrary fdef_lib =
+  FunctionDefLibrary flib_def =
       CreateFunctionDefLibWithConstFunction("cluster_0");
-  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
 
   Node* call;
   TF_ASSERT_OK(
@@ -165,7 +160,7 @@ TEST_F(BuildXlaOpsTest, CleanFailureOnBogusAttr) {
   root.graph()->AddControlEdge(call, write_op);
 
   std::unique_ptr<Graph> graph;
-  Status failure_status = BuildXlaOps(root, fdef_lib, &graph);
+  Status failure_status = BuildXlaOps(root, &graph);
   ASSERT_FALSE(failure_status.ok());
   EXPECT_EQ(failure_status.code(), error::INVALID_ARGUMENT);
 }
@@ -173,9 +168,9 @@ TEST_F(BuildXlaOpsTest, CleanFailureOnBogusAttr) {
 TEST_F(BuildXlaOpsTest, OnNonXlaDevice) {
   Scope root = Scope::NewRootScope().ExitOnError();
 
-  FunctionDefLibrary fdef_lib =
+  FunctionDefLibrary flib_def =
       CreateFunctionDefLibWithConstFunction("cluster_0");
-  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
 
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
@@ -189,14 +184,14 @@ TEST_F(BuildXlaOpsTest, OnNonXlaDevice) {
   auto xla_run =
       NodeWith(Op("_XlaRun"), Inputs(Out(1, predicated_compilation_key)));
   auto tf_call =
-      NodeWith(Op("PartitionedCall"),
+      NodeWith(Op("cluster_0"),
                CtrlDeps(NodeWith(Op("Identity"),
                                  Inputs(Out(0, predicated_compilation_key)))));
   auto merge = NodeWith(Op("Merge"), Inputs(Out(tf_call), Out(xla_run)));
   auto assign_var = NodeWith(Op("AssignVariableOp"), Inputs(_, Out(merge)));
 
   std::unique_ptr<Graph> graph;
-  TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
+  TF_ASSERT_OK(BuildXlaOps(root, &graph));
 
   Node* write_op_new = FindNodeByName(graph.get(), write_op->name());
   ASSERT_NE(write_op_new, nullptr);
@@ -207,9 +202,9 @@ TEST_F(BuildXlaOpsTest, OnXlaDevice) {
   const char* kXlaDeviceName = "/job:worker/replica:0/task:0/device:XLA_CPU:0";
   Scope root = Scope::NewRootScope().WithDevice(kXlaDeviceName).ExitOnError();
 
-  FunctionDefLibrary fdef_lib =
+  FunctionDefLibrary flib_def =
       CreateFunctionDefLibWithConstFunction("cluster_0");
-  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
 
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
@@ -219,7 +214,7 @@ TEST_F(BuildXlaOpsTest, OnXlaDevice) {
   Node* write_op = MakeWrite(root, Output(call), "write_result");
 
   std::unique_ptr<Graph> graph;
-  TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
+  TF_ASSERT_OK(BuildXlaOps(root, &graph));
 
   auto xla_op =
       NodeWith(Op("_XlaRun"), Inputs(Out(NodeWith(Op("_XlaCompile")))));
@@ -234,18 +229,18 @@ TEST_F(BuildXlaOpsTest, OnXlaDevice) {
 TEST_F(BuildXlaOpsTest, NoExtraMergeForEdgeToSink) {
   Scope root = Scope::NewRootScope().ExitOnError();
 
-  FunctionDefLibrary fdef_lib =
+  FunctionDefLibrary flib_def =
       CreateFunctionDefLibWithConstFunction("cluster_0");
-  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(fdef_lib));
+  TF_ASSERT_OK(root.graph()->AddFunctionLibrary(flib_def));
   Node* call;
   TF_ASSERT_OK(MakeXlaCompiledKernel(root.graph(), "cluster_0", "C", &call));
 
   std::unique_ptr<Graph> graph;
-  TF_ASSERT_OK(BuildXlaOps(root, fdef_lib, &graph));
+  TF_ASSERT_OK(BuildXlaOps(root, &graph));
 
   Node* sink_node = graph->sink_node();
   EXPECT_THAT(sink_node, NodeWith(CtrlDeps(NodeWith(Op("_XlaRun")),
-                                           NodeWith(Op("PartitionedCall")),
+                                           NodeWith(Op("cluster_0")),
                                            NodeWith(Op("NoOp")))));
 }
 }  // namespace
