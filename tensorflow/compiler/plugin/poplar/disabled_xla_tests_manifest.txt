@@ -287,3 +287,5 @@ DynamicUpdateSliceTest.R3ContiguousLarger POPLAR // Update slice is too big for 
 BatchGroupedConvolution2DTest POPLAR // don't support batch_group_count
 
 ExhaustiveF32ElementwiseOpTest POPLAR // Too long
+ExhaustiveOpTest POPLAR
+

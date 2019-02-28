@@ -31,11 +31,6 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFnForCustomOp(
   std::tie(poplibs_lib, poplibs_op) = ret.value();
 
   switch (poplibs_op) {
-    case PoplibsOp::Sqrt:
-      return popops::expr::UnaryOpType::SQRT;
-    case PoplibsOp::Rsqrt:
-      return popops::expr::UnaryOpType::RSQRT;
-    default:
       return tensorflow::errors::Unknown(absl::StrCat(
           "[Poplar] Invalid opcode lookup ", PoplibsOpToString(poplibs_op)));
   }
@@ -44,8 +39,6 @@ StatusOr<popops::expr::UnaryOpType> LookupUnaryFnForCustomOp(
 
 const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopopsOpInfoMap() {
   static absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo> info_map = {
-      {PoplibsOp::Sqrt, {AllocateUnaryOp, CreateUnaryOp}},
-      {PoplibsOp::Rsqrt, {AllocateUnaryOp, CreateUnaryOp}},
   };
   return info_map;
 }

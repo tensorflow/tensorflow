@@ -54,8 +54,6 @@ enum class PoplibsOp : uint32 {
   GroupNormGrad,
   GroupNormStatistics,
   // Popops:
-  Sqrt,
-  Rsqrt,
   // Poprand:
   // Do not add beyond this point.
   _NumOps
