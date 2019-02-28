@@ -326,6 +326,10 @@ public:
 
   VectorOrTensorType getType() const;
 
+  /// Return the value at the given index. If index does not refer to a valid
+  /// element, then a null attribute is returned.
+  Attribute getValue(ArrayRef<uint64_t> index) const;
+
   /// Method for support type inquiry through isa, cast and dyn_cast.
   static bool kindof(Kind kind) {
     return kind >= Kind::FIRST_ELEMENTS_ATTR &&

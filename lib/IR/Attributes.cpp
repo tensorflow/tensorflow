@@ -164,6 +164,24 @@ VectorOrTensorType ElementsAttr::getType() const {
   return static_cast<ImplType *>(attr)->type;
 }
 
+/// Return the value at the given index. If index does not refer to a valid
+/// element, then a null attribute is returned.
+Attribute ElementsAttr::getValue(ArrayRef<uint64_t> index) const {
+  switch (getKind()) {
+  case Attribute::Kind::SplatElements:
+    return cast<SplatElementsAttr>().getValue();
+  case Attribute::Kind::DenseFPElements:
+  case Attribute::Kind::DenseIntElements:
+    return cast<DenseElementsAttr>().getValue(index);
+  case Attribute::Kind::OpaqueElements:
+    return cast<OpaqueElementsAttr>().getValue(index);
+  case Attribute::Kind::SparseElements:
+    return cast<SparseElementsAttr>().getValue(index);
+  default:
+    llvm_unreachable("unknown ElementsAttr kind");
+  }
+}
+
 /// SplatElementsAttr
 
 Attribute SplatElementsAttr::getValue() const {

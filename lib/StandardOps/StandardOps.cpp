@@ -1180,19 +1180,10 @@ Attribute ExtractElementOp::constantFold(ArrayRef<Attribute> operands,
     indices.push_back(indice.cast<IntegerAttr>().getInt());
   }
 
-  // Get the element value of the aggregate attribute with the given constant
-  // indices.
-  switch (aggregate.getKind()) {
-  case Attribute::Kind::DenseFPElements:
-  case Attribute::Kind::DenseIntElements:
-    return aggregate.cast<DenseElementsAttr>().getValue(indices);
-  case Attribute::Kind::OpaqueElements:
-    return aggregate.cast<OpaqueElementsAttr>().getValue(indices);
-  case Attribute::Kind::SparseElements:
-    return aggregate.cast<SparseElementsAttr>().getValue(indices);
-  default:
-    return Attribute();
-  }
+  // If this is an elements attribute, query the value at the given indices.
+  if (auto elementsAttr = aggregate.dyn_cast<ElementsAttr>())
+    return elementsAttr.getValue(indices);
+  return Attribute();
 }
 
 //===----------------------------------------------------------------------===//
