@@ -23912,6 +23912,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DAndReluAndRequantize"
@@ -24024,6 +24032,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -24142,6 +24158,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBias"
@@ -24253,6 +24277,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBiasAndRelu"
@@ -24361,6 +24393,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -24493,6 +24533,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBiasAndRequantize"
@@ -24619,6 +24667,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -24776,6 +24832,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBiasSumAndRelu"
@@ -24888,6 +24952,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -25042,6 +25114,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
