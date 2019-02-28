@@ -165,6 +165,22 @@ def relu(x, alpha=0., max_value=None, threshold=0):
 
 @keras_export('keras.activations.tanh')
 def tanh(x):
+  """Hyperbolic Tangent (tanh).
+
+  Applies the following formula:
+  
+  $ \text{Tanh}(x) = \tanh(x) = \frac{e^x}} {e^x + e^{-x}} $
+
+  Arguments:
+      x: A tensor or variable to compute the activation function for.
+
+  Returns:
+      The hyperbolic tangent activation: `tanh(x)`.
+
+  Usage:
+      `tf.keras.activations.tanh(0.0)`
+
+  """
   return nn.tanh(x)
 
 
