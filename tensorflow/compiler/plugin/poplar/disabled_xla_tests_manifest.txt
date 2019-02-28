@@ -171,10 +171,12 @@ ArrayElementwiseOpTest.CompareEqZeroElementC64s POPLAR
 ArrayElementwiseOpTest.CompareNeC64s POPLAR
 TupleTest.ComplexTuples POPLAR
 DotOperationTest.MatrixVectorC64 POPLAR
+DotOperationTextTest.MatrixVectorComplex POPLAR
 ConvertTest.ConvertC64ToC64 POPLAR
 ArrayElementwiseOpTest.PowC64s POPLAR
 TriangularSolveTest.SimpleRightLowerTransposeConjugate POPLAR
 TriangularSolveTest.SimpleLeftUpperTransposeNoconjugate POPLAR
+
 
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
 
@@ -289,3 +291,9 @@ BatchGroupedConvolution2DTest POPLAR // don't support batch_group_count
 ExhaustiveF32ElementwiseOpTest POPLAR // Too long
 ExhaustiveOpTest POPLAR
 
+TriangularSolveParametricTest.Random POPLAR // Too long
+
+DotOperationTextTest.GpuIntegerDotCodegen POPLAR // GPU codegen
+
+FmaxSimpleTest.FmaxEdgeCases POPLAR // Tests NaN behaviour on CPU model
+FmaxSimpleTest.FminEdgeCases POPLAR
