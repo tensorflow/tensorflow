@@ -1855,8 +1855,7 @@ ENTRY %TokensShouldNotBeCopied () -> s32[] {
 }
 )";
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
-                          HloRunner::CreateModuleFromString(
-                              module_string, GetDebugOptionsForTest()));
+                          ParseAndReturnVerifiedModule(module_string));
   InsertCopies(module.get());
 
   // There should be no copies added because tokens should not be copied.
@@ -2119,8 +2118,7 @@ ENTRY TestComputation {
   ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   auto module = module_or_status.ConsumeValueOrDie();
   InsertCopies(module.get());
 }
@@ -2220,8 +2218,7 @@ ENTRY TestComputation {
   ROOT while.3 = (s32[], s32[], s32[], s32[], s32[]) while(arg_tuple.6), condition=cond_wrapper.v3.2, body=_functionalize_body_2__.v25
 }
 )";
-  auto module_or_status =
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest());
+  auto module_or_status = ParseAndReturnVerifiedModule(hlo_string);
   auto module = module_or_status.ConsumeValueOrDie();
   InsertCopies(module.get());
 }
@@ -2238,7 +2235,7 @@ cond.inner {
 
 body.inner {
   param.body.inner = pred[] parameter(0)
-  ROOT neg = pred[] negate(param.body.inner)
+  ROOT not = pred[] not(param.body.inner)
 }
 
 cond.outer {
@@ -2255,9 +2252,8 @@ ENTRY TestComputation {
   ROOT while = pred[] while(entry_param), condition=cond.outer, body=body.outer
 }
 )";
-  TF_ASSERT_OK_AND_ASSIGN(
-      std::unique_ptr<HloModule> module,
-      HloRunner::CreateModuleFromString(hlo_string, GetDebugOptionsForTest()));
+  TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<HloModule> module,
+                          ParseAndReturnVerifiedModule(hlo_string));
   InsertCopies(module.get());
 
   // There should only be a single copy inserted, and it's in the entry

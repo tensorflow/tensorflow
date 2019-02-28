@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -29,8 +29,7 @@ limitations under the License.
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_join.h"
-#include "absl/strings/string_view_utils.h"
-#include "absl/strings/util.h"
+#include "absl/strings/str_split.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
@@ -56,7 +55,8 @@ bool ReadLine(const char *prompt, string *line) {
   return util::ReadLine(prompt, line);
 #else
   std::cout << prompt;
-  return std::getline(std::cin, *line);
+  std::getline(std::cin, *line);
+  return std::cin.good();
 #endif
 }
 
@@ -139,9 +139,10 @@ HloComputation* FindComputation(const HloModule& module,
 // Print a help message describing the various available commands.
 void DoHelpCommand() {
   std::cout << R"(Commands:
-  <instruction> [<width>]
-    Renders a neighborhood of <width> nodes around <instruction>.  If <width>
-    is not provided, the default value is )"
+  <instruction> [<width>] [/ <boundary_instruction>+]
+    Renders a neighborhood of <width> nodes around <instruction>, without going
+    beyond the optional boundary instructions.  If <width> is not provided, 
+    the default value is )"
             << kDefaultWidth << R"(.
   allpaths <instruction> <instruction> [<n>]
     Renders a subset of all paths from one instruction to the other.  Either
@@ -391,9 +392,9 @@ void DisplayGraphHandle(const Options &opts, const string& handle) {
   std::cout << handle << std::endl;
 
   // If it is a url, try to open it up in the user's browser too.
-  if (strings::StartsWithIgnoreCase(handle, "http://") ||
-      strings::StartsWithIgnoreCase(handle, "https://") ||
-      strings::StartsWithIgnoreCase(handle, "file://")) {
+  if (absl::StartsWithIgnoreCase(handle, "http://") ||
+      absl::StartsWithIgnoreCase(handle, "https://") ||
+      absl::StartsWithIgnoreCase(handle, "file://")) {
     const char* browser_bin = opts.browser.empty() ? "/usr/bin/sensible-browser"
                                                    : opts.browser.c_str();
     tensorflow::SubProcess p;
@@ -457,12 +458,6 @@ void DoAllPathsCommand(const Options& opts, const HloModule& module,
 // Plot a given instruction neighborhood or computation with graphviz.
 void DoPlotCommand(const Options& opts, const HloModule& module,
                    const std::vector<string>& tokens) {
-  if (tokens.size() > 2) {
-    std::cerr << R"(Illegal input.  Enter e.g. "%fusion.1 42" or "%fusion.1".)"
-              << std::endl;
-    return;
-  }
-
   string node_name = tokens[0];
 
   // Find the node with the given name.
@@ -475,16 +470,43 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
   }
 
   uint64 graph_width = kDefaultWidth;
-  if (tokens.size() == 2) {
+  absl::flat_hash_set<const HloInstruction*> boundary;
+  if (tokens.size() >= 2) {
     if (comp) {
       std::cerr << "Can only use graph-size parameter with instructions, but "
                 << node_name << " is a computation." << std::endl;
       return;
     }
-    if (!absl::SimpleAtoi(tokens[1], &graph_width)) {
-      std::cerr << "Can't parse '" << tokens[1] << "' as an integer."
-                << std::endl;
-      return;
+
+    int bound_index = 1;
+    // Get the <width> if present.
+    if (absl::SimpleAtoi(tokens[bound_index], &graph_width)) {
+      bound_index++;
+    } else {
+      // <width> not found, need to reset graph_width.
+      graph_width = kDefaultWidth;
+    }
+    // Get the '/'.
+    if (bound_index < tokens.size()) {
+      // This token must be a '/'.
+      if (tokens[bound_index] != "/") {
+        std::cerr << "Expect a /, but get a '" << tokens[bound_index] << "'."
+                  << std::endl;
+        return;
+      }
+      bound_index++;
+    }
+    // Get the boundary nodes.
+    while (bound_index < tokens.size()) {
+      string bnode_name = tokens[bound_index];
+      const HloInstruction* binstr = FindInstruction(module, bnode_name);
+      if (!binstr) {
+        std::cerr << "Couldn't find HloInstruction named " << bnode_name << "."
+                  << std::endl;
+        return;
+      }
+      boundary.insert(binstr);
+      bound_index++;
     }
   }
 
@@ -496,7 +518,9 @@ void DoPlotCommand(const Options& opts, const HloModule& module,
         /*show_backend_config=*/show_backend_config));
   } else {
     DisplayGraphHandle(opts, hlo_graph_dumper::DumpNeighborhoodAround(
-        *instr, graph_width, /*show_backend_config=*/show_backend_config));
+                                 *instr, graph_width,
+                                 /*show_backend_config=*/show_backend_config,
+                                 /*boundary=*/boundary));
   }
 }
 
@@ -515,7 +539,7 @@ void InteractiveDumpGraphs(const Options& opts, const HloModule& module) {
                 << std::endl;
       continue;
     }
-    std::vector<string> tokens = strings::Split(line, ' ');
+    std::vector<string> tokens = absl::StrSplit(line, ' ', absl::SkipEmpty());
     if (tokens[0] == "quit" || tokens[0] == "exit") {
       break;
     } else if (tokens[0] == "help") {

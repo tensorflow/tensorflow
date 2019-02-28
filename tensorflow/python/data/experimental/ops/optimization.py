@@ -162,10 +162,12 @@ class _ChooseFastestDataset(dataset_ops.DatasetV2):
       A `Dataset` that has the same elements the inputs.
     """
     self._datasets = list(datasets)
+    self._structure = self._datasets[0]._element_structure  # pylint: disable=protected-access
     variant_tensor = (
         gen_experimental_dataset_ops.experimental_choose_fastest_dataset(
             [dataset._variant_tensor for dataset in self._datasets],  # pylint: disable=protected-access
-            num_experiments=num_experiments))
+            num_experiments=num_experiments,
+            **dataset_ops.flat_structure(self)))
     super(_ChooseFastestDataset, self).__init__(variant_tensor)
 
   def _inputs(self):

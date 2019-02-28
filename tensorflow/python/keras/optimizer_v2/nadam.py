@@ -18,6 +18,8 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.python.framework import ops
+from tensorflow.python.keras import backend_config
+from tensorflow.python.keras.optimizer_v2 import learning_rate_schedule
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
@@ -85,6 +87,14 @@ class Nadam(optimizer_v2.OptimizerV2):
 
     # Backwards compatiblity with keras NAdam optimizer.
     kwargs['decay'] = kwargs.pop('schedule_decay', 0.004)
+    learning_rate = kwargs.get('lr', learning_rate)
+    if isinstance(learning_rate, learning_rate_schedule.LearningRateSchedule):
+      raise ValueError('The Nadam optimizer does not support '
+                       'tf.keras.optimizers.LearningRateSchedules as the '
+                       'learning rate.')
+
+    if epsilon is None:
+      epsilon = backend_config.epsilon()
     super(Nadam, self).__init__(name, **kwargs)
     self._set_hyper('learning_rate', kwargs.get('lr', learning_rate))
     self._set_hyper('decay', self._initial_decay)

@@ -115,11 +115,12 @@ std::unordered_set<string> GrapplerItem::NodesToPreserve() const {
     }
   }
 
-  // Tensorflow functions do not prune side effects, or dataset-output ops from
+  // Tensorflow functions do not prune stateful or dataset-output ops from
   // the function body (see PruneFunctionBody in common_runtime/function.cc).
-  if (optimization_options_.is_function_instantiation) {
+  if (!optimization_options_.allow_pruning_stateful_and_dataset_ops) {
+    FunctionLibraryDefinition fn_library(OpRegistry::Global(), graph.library());
     for (const NodeDef& node : graph.node()) {
-      if (!IsFreeOfSideEffect(node) || IsDataset(node)) {
+      if (IsStateful(node, &fn_library) || IsDataset(node)) {
         result.insert(node.name());
       }
     }

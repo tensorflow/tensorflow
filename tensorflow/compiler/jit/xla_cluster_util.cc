@@ -19,9 +19,9 @@ limitations under the License.
 
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/jit/resource_operation_safety_analysis.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/graph/control_flow.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/util/device_name_utils.h"
 
 namespace tensorflow {
@@ -43,7 +43,7 @@ string DescribeCycle(const GraphCycles* cycles, const Graph& graph, int src,
     return "";
   }
 
-  auto node_name = [cycles, &graph](int node_id) {
+  auto node_name = [&graph](int node_id) {
     if (!FastBoundsCheck(node_id, graph.num_node_ids())) {
       return string("(null)");
     }

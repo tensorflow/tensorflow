@@ -77,7 +77,7 @@ tensorflow::Status Convert(const string& graph_def_contents,
                            string* output_file_contents) {
   std::unique_ptr<Model> model =
       Import(toco_flags, model_flags, graph_def_contents);
-  Transform(toco_flags, model.get());
+  TF_RETURN_IF_ERROR(TransformWithStatus(toco_flags, model.get()));
   return Export(toco_flags, *model, toco_flags.allow_custom_ops(),
                 output_file_contents);
 }

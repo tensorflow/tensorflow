@@ -282,9 +282,6 @@ class DType(object):
     """Returns the string name for this `DType`."""
     return _TYPE_TO_STRING[self._type_enum]
 
-  def __int__(self):
-    return self._type_enum
-
   def __str__(self):
     return "<dtype: %r>" % self.name
 
@@ -561,9 +558,14 @@ _NP_TO_TF = {
     _np_bfloat16: bfloat16,
 }
 
-# On Python 2.X `np.longlong` could be a distinct type used for long
-# integers e.g. 42L. See numpy/numpy#9799.
+# Map (some) NumPy platform dtypes to TF ones using their fixed-width
+# synonyms. Note that platform dtypes are not always simples aliases,
+# i.e. reference equality is not guaranteed. See e.g. numpy/numpy#9799.
 for pdt in [
+    np.intc,
+    np.uintc,
+    np.int_,
+    np.uint,
     np.longlong,
     np.ulonglong,
 ]:
@@ -723,4 +725,4 @@ def as_dtype(type_value):
     pass
 
   raise TypeError(
-      "Cannot convert value %r to a TensorFlow DType." % type_value)
+      "Cannot convert value %r to a TensorFlow DType." % (type_value,))

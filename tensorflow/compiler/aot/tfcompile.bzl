@@ -207,7 +207,7 @@ def tf_library(
         #
         # Note that setting the local=1 attribute on a *test target* causes the
         # test infrastructure to skip that test.  However this is a genrule, not
-        # a test target, and runs with --genrule_strategy=forced_forge, meaning
+        # a test target, and runs with --strategy=Genrule=forced_forge, meaning
         # the local=1 attribute is ignored, and the genrule is still run.
         #
         # https://www.bazel.io/versions/master/docs/be/general.html#genrule

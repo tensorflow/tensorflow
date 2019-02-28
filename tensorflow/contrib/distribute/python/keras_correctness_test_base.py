@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from absl.testing import parameterized
 import numpy as np
+import six
 
 from tensorflow.contrib.distribute.python import combinations
 from tensorflow.contrib.distribute.python import mirrored_strategy
@@ -77,11 +78,7 @@ def strategies_for_embedding_models():
   and DefaultStrategy in order to prevent testing timeouts.
   """
 
-  strategies = [s for s in all_strategies
-                if not s.required_tpu and s.required_gpus is not None]
-  strategies.append(combinations.tpu_strategy_loop_on_device)
-  strategies.append(combinations.tpu_strategy_one_step_loop_on_device)
-  return strategies
+  return [s for s in all_strategies if s.required_tpu or s.required_gpus]
 
 
 def test_combinations_for_embedding_model():
@@ -91,6 +88,16 @@ def test_combinations_for_embedding_model():
                                strategies_for_embedding_models()),
           (graph_mode_test_configuration() +
            eager_mode_test_configuration())))
+
+
+def test_combinations_with_tpu_strategies():
+  tpu_strategies = [combinations.tpu_strategy,
+                    combinations.tpu_strategy_one_step]
+
+  return (
+      combinations.times(
+          combinations.combine(distribution=tpu_strategies),
+          graph_mode_test_configuration()))
 
 
 class MaybeDistributionScope(object):
@@ -133,6 +140,19 @@ def get_batch_size(global_batch_size, distribution):
   return batch_size
 
 
+def get_data_size(data):
+  """Gets the size of data in list, tuple, dict, or a numpy array."""
+  assert isinstance(data, (np.ndarray, list, dict, tuple))
+
+  if isinstance(data, np.ndarray):
+    return len(data)
+
+  if isinstance(data, (list, tuple)):
+    return len(data[0])
+
+  return len(six.next(six.itervalues(data)))
+
+
 def get_correctness_test_inputs(use_numpy, use_validation_data,
                                 with_distribution, x_train, y_train, x_predict):
   """Generates the inputs for correctness check when enable Keras with DS."""
@@ -159,11 +179,12 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
           'y': y_train,
       }
     predict_inputs = {
-        'x': np.array(x_predict, dtype=np.float32),
+        'x': x_predict
     }
   else:
-    if len(x_train) < _GLOBAL_BATCH_SIZE * _EVAL_STEPS:
-      # Currently, we cannot detech the size of a dataset. So, the eval steps is
+    training_data_size = get_data_size(x_train)
+    if training_data_size < _GLOBAL_BATCH_SIZE * _EVAL_STEPS:
+      # Currently, we cannot detect the size of a dataset. So, the eval steps is
       # hard coded.
       raise ValueError('x_train must have at least '
                        '_GLOBAL_BATCH_SIZE * _EVAL_STEPS samples')
@@ -179,7 +200,7 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
         'y': None,
         'epochs': training_epochs,
         'shuffle': False,
-        'steps_per_epoch': len(x_train) // global_batch_size,
+        'steps_per_epoch': training_data_size // global_batch_size,
     }
     if use_validation_data:
       eval_inputs = None  # Remove the eval_inputs
@@ -195,7 +216,8 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
           'steps': _EVAL_STEPS,
       }
 
-    predict_batch_size = get_batch_size(len(x_predict), with_distribution)
+    predict_batch_size = get_batch_size(get_data_size(x_predict),
+                                        with_distribution)
     predict_dataset = dataset_ops.Dataset.from_tensor_slices(x_predict)
     predict_dataset = batch_wrapper(predict_dataset, predict_batch_size,
                                     with_distribution)
@@ -207,8 +229,8 @@ def get_correctness_test_inputs(use_numpy, use_validation_data,
   return training_inputs, eval_inputs, predict_inputs
 
 
-def fit_eval_and_predict(
-    initial_weights, input_fn, model_fn, distribution=None):
+def fit_eval_and_predict(initial_weights, input_fn, model_fn,
+                         distribution=None, is_stateful_model=False):
   """Generates results for fit/predict/evaluate for given model."""
   model = model_fn(initial_weights=initial_weights, distribution=distribution)
   training_inputs, eval_inputs, predict_inputs = input_fn(distribution)
@@ -222,7 +244,15 @@ def fit_eval_and_predict(
   result['weights_1'] = model.get_weights()
 
   if predict_inputs is not None:
-    result['predict_result_1'] = model.predict(**predict_inputs)
+    # Check correctness of the result of predict() invoked
+    # multiple times -- as for stateful models, result of
+    # predict may differ for each batch.
+    predict_length = 1
+    if is_stateful_model:
+      predict_length = 3
+    for i in range(predict_length):
+      result_key = 'predict_result_{}'.format(i)
+      result[result_key] = model.predict(**predict_inputs)
 
   # Train and eval again to mimic user's flow.
 
@@ -241,19 +271,20 @@ def compare_results(results_with_ds, results_without_ds, distribution,
   """Compares results of model compiled with/without distribution strategy."""
 
   default_tolerance = 1e-5
-  tol_table = {}
+  relaxed_tolerance = 1e-4
 
-  if isinstance(distribution, (
-      mirrored_strategy.MirroredStrategy,
-      mirrored_strategy.CoreMirroredStrategy,
-      distribute_lib._DefaultDistributionStrategy)):  # pylint: disable=protected-access
-    # TODO(b/119257215): Weights are not exactly the same, so use larger
-    # tolerance for now. Predict should be related to weights.
-    tol_table = {
-        'weights_1': 1e-4,
-        'weights_2': 1e-4,
-        'predict_result_1': 1e-4,
-    }
+  def _get_compare_result_tolerance(key):
+    """Returns tolerance to compare results."""
+    # TODO(b/119257215): For MirroredStrategy, weights are not exactly the same,
+    # so use larger tolerance for now. Predict should be related to weights.
+    if (isinstance(distribution, (
+        mirrored_strategy.MirroredStrategy,
+        mirrored_strategy.CoreMirroredStrategy,
+        distribute_lib._DefaultDistributionStrategy)) and  # pylint: disable=protected-access
+        key.startswith(('weights_1', 'weights_2', 'predict_result'))):
+      return relaxed_tolerance
+
+    return default_tolerance
 
   for key in results_with_ds:
     if (key.startswith('training_history') and
@@ -263,8 +294,7 @@ def compare_results(results_with_ds, results_without_ds, distribution,
       # underlying bug is fixed.
       continue
 
-    tolerance = tol_table.get(key, default_tolerance)
-
+    tolerance = _get_compare_result_tolerance(key)
     testcase.assertAllClose(
         results_with_ds[key],
         results_without_ds[key],
@@ -334,7 +364,8 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
                            distribution,
                            use_numpy,
                            use_validation_data,
-                           with_batch_norm=False):
+                           with_batch_norm=False,
+                           is_stateful_model=False):
     with self.cached_session():
       self.set_up_test_config(use_numpy, use_validation_data, with_batch_norm)
       self.skip_unsupported_test_configuration(distribution)
@@ -355,10 +386,10 @@ class TestDistributionStrategyCorrectnessBase(test.TestCase,
 
       results_with_ds = fit_eval_and_predict(
           initial_weights, input_fn=input_fn, model_fn=self.get_model,
-          distribution=distribution)
+          distribution=distribution, is_stateful_model=is_stateful_model)
       results_without_ds = fit_eval_and_predict(
           initial_weights, input_fn=input_fn, model_fn=self.get_model,
-          distribution=None)
+          distribution=None, is_stateful_model=is_stateful_model)
 
       # First, special case, for multi-replica distributed training, batch norm
       # is not aggregated globally. So it is expected to have different weights.
@@ -448,7 +479,7 @@ class TestDistributionStrategyEmbeddingModelCorrectnessBase(
         features, maxlen=max_words)
     x_train = np.asarray(features, dtype=np.float32)
     y_train = np.asarray(labels, dtype=np.int32).reshape((count, 1))
-    x_predict = x_train
+    x_predict = x_train[:_GLOBAL_BATCH_SIZE]
     return x_train, y_train, x_predict
 
 

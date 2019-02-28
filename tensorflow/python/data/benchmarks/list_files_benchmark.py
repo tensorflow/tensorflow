@@ -58,6 +58,9 @@ class ListFilesBenchmark(test.Benchmark):
     for _ in range(iters):
       with ops.Graph().as_default():
         dataset = dataset_ops.Dataset.list_files(patterns)
+        options = dataset_ops.Options()
+        options.experimental_optimization.apply_default_optimizations = False
+        dataset = dataset.with_options(options)
         next_element = dataset.make_one_shot_iterator().get_next()
         with session.Session() as sess:
           sub_deltas = []
@@ -71,11 +74,6 @@ class ListFilesBenchmark(test.Benchmark):
               break
           deltas.append(sub_deltas)
     median_deltas = np.median(deltas, axis=0)
-    print('Nested directory size (width*depth): %d*%d Median wall time: '
-          '%fs (read first filename), %fs (read second filename), avg %fs'
-          ' (read %d more filenames)' %
-          (width, depth, median_deltas[0], median_deltas[1],
-           np.average(median_deltas[2:]), len(median_deltas) - 2))
     self.report_benchmark(
         iters=iters,
         wall_time=np.sum(median_deltas),

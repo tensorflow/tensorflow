@@ -38,15 +38,17 @@ enum class TokKind {
   kError,
 
   // Tokens with no info.
-  kEqual,  // =
-  kComma,  // ,
-  kColon,  // :
+  kEqual,     // =
+  kComma,     // ,
+  kColon,     // :
+  kAsterisk,  // *
   kLsquare,
   kRsquare,  // [  ]
   kLbrace,
   kRbrace,  // {  }
   kLparen,
   kRparen,  // (  )
+  kDots,    // ...
 
   kArrow,  // ->
   kLeq,    // <=
@@ -107,7 +109,7 @@ class HloLexer {
         LOG(FATAL) << "This token does not have string value";
     }
   }
-  tensorflow::int64 GetInt64Val() const {
+  int64 GetInt64Val() const {
     CHECK(GetKind() == TokKind::kInt);
     return token_state_.int64_val;
   }
@@ -170,7 +172,7 @@ class HloLexer {
     const char* token_start = nullptr;
     TokKind current_kind;
     string str_val;
-    tensorflow::int64 int64_val;
+    int64 int64_val;
     double decimal_val;
     PrimitiveType primitive_type_val;
   };

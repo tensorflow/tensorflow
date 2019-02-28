@@ -30,9 +30,8 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import resource_variable_ops
-from tensorflow.python.ops import variable_scope
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util.tf_export import tf_export
@@ -56,6 +55,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
                dtype=None,
                constraint=None,
                add_initializers_to=None,
+               lifted_initializer_graph=None,
                **unused_kwargs):
     """Creates a variable.
 
@@ -87,15 +87,16 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
         (which must have the same shape). Constraints are not safe to
         use when doing asynchronous distributed training.
       add_initializers_to: if not None and not in legacy graph mode, the
-        initializer tensor will be added to this map instead of adding the
+        initializer tensor will be added to this map in addition to adding the
         assignment to the function.
+      lifted_initializer_graph: FuncGraph to try to lift initializers to.
 
     Raises:
       ValueError: If the initial value is not specified, or does not have a
         shape and `validate_shape` is `True`.
       RuntimeError: If called outside of a function definition.
     """
-    if context.executing_eagerly():
+    if not ops.inside_function():
       # If we've been init_scope()d out of the function definition nothing to do
       # here; we can't really do the capturing or conditional logic.
       resource_variable_ops.ResourceVariable.__init__(
@@ -112,8 +113,8 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
     if constraint is not None and not callable(constraint):
       raise ValueError("The `constraint` argument must be a callable.")
 
-    if isinstance(initial_value, checkpointable.CheckpointInitialValue):
-      self._maybe_initialize_checkpointable()
+    if isinstance(initial_value, trackable.CheckpointInitialValue):
+      self._maybe_initialize_trackable()
       self._update_uid = initial_value.checkpoint_position.restore_uid
       initial_value = initial_value.wrapped_value
 
@@ -142,8 +143,7 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
             name="initial_value", dtype=dtype)
       with ops.init_scope():
         self._handle = resource_variable_ops.eager_safe_variable_handle(
-            shape=initial_value.get_shape(),
-            dtype=initial_value.dtype.base_dtype,
+            initial_value=initial_value,
             shared_name=shared_name,
             name=name,
             graph_mode=self._in_graph_mode)
@@ -156,8 +156,14 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       if self._in_graph_mode:
         with ops.init_scope():
           outer_graph = ops.get_default_graph()
+        func_graph = ops.get_default_graph()
+        function_placeholders = (
+            func_graph.inputs + func_graph.internal_captures)
+        placeholder_ops = set(
+            [tensor.op for tensor in function_placeholders])
         lifted_initializer = lift_to_graph.lift_to_graph(
-            initial_value, outer_graph)[initial_value]
+            [initial_value], outer_graph,
+            disallowed_placeholders=placeholder_ops)[initial_value]
         with ops.init_scope():
           self._initial_value = lifted_initializer
           with ops.name_scope("IsInitialized"):
@@ -177,22 +183,21 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       else:
         if add_initializers_to is not None:
           add_initializers_to[self] = initial_value
-        else:
-          def assign_fn():
-            with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
-              resource_variable_ops.assign_variable_op(
-                  self._handle,
-                  initial_value,
-                  name=n)
-              # Returning values to keep tf.cond happy.
-            return ops.convert_to_tensor(1)
-          def not_assign_fn():
-            return ops.convert_to_tensor(0)
-          # Note: this cond is always guaranteed to run because we're inside a
-          # defun which will insert automatic control dependencies.
-          control_flow_ops.cond(
-              resource_variable_ops.var_is_initialized_op(self._handle),
-              not_assign_fn, assign_fn)
+        def assign_fn():
+          with ops.name_scope("Assign") as n, ops.colocate_with(self._handle):
+            resource_variable_ops.assign_variable_op(
+                self._handle,
+                initial_value,
+                name=n)
+            # Returning values to keep tf.cond happy.
+          return ops.convert_to_tensor(1)
+        def not_assign_fn():
+          return ops.convert_to_tensor(0)
+        # Note: this cond is always guaranteed to run because we're inside a
+        # defun which will insert automatic control dependencies.
+        control_flow_ops.cond(
+            resource_variable_ops.var_is_initialized_op(self._handle),
+            not_assign_fn, assign_fn)
 
     # After the handle has been created, set up a way to clean it up when
     # executing eagerly. We'll hold the only reference to the deleter, so that
@@ -203,6 +208,42 @@ class UnliftedInitializerVariable(resource_variable_ops.ResourceVariable):
       self._handle_deleter = resource_variable_ops.EagerResourceDeleter(
           handle=self._handle, handle_device=self._handle.device)
     self._cached_shape_as_list = None
+
+
+RUN_FUNCTIONS_EAGERLY = False
+
+
+@tf_export("config.experimental_run_functions_eagerly")
+def run_functions_eagerly(run_eagerly):
+  """Enables / disables eager execution of `tf.function`s.
+
+  After calling `tf.config.experimental_run_functions_eagerly(True)` all
+  invocations of tf.function will run eagerly instead of running through a graph
+  function.
+
+  This can be useful for debugging or profiling.
+
+  Similarly, calling `tf.config.experimental_run_functions_eagerly(False)` will
+  revert the behavior of all functions to graph functions.
+
+  Args:
+    run_eagerly: Boolean. Whether to run functions eagerly.
+  """
+  global RUN_FUNCTIONS_EAGERLY
+  RUN_FUNCTIONS_EAGERLY = bool(run_eagerly)
+
+
+class FunctionDeleter(object):
+
+  def __init__(self, func_graph):
+    self.func_graph = func_graph
+
+  def __del__(self):
+    try:
+      func_graph_module.dismantle_func_graph(self.func_graph)
+    except:  # pylint: disable=bare-except
+      # Note: bare except here because this can be noisy at shutdown time.
+      pass
 
 
 class Function(object):
@@ -246,8 +287,6 @@ class Function(object):
         python_function, input_signature)
     self._autograph = autograph
     self._experimental_autograph_options = experimental_autograph_options
-    if self._experimental_autograph_options is not None:
-      raise NotImplementedError()
     self._created_variables = None
     self._stateful_fn = None
     self._stateless_fn = None
@@ -259,7 +298,20 @@ class Function(object):
 
     weak_wrapped_fn = None
     def wrapped_fn(*args, **kwds):
-      with variable_scope.variable_creator_scope(scope):
+      """Wraps `self._python_function` in a variable creator scope."""
+      # We register a variable creator with reduced priority. If an outer
+      # variable creator is just modifying keyword arguments to the variable
+      # constructor, this will work harmoniously. Since the `scope` registered
+      # here actually creates the variable, it taking priority would otherwise
+      # ignore the outer creator.
+      #
+      # If an outer variable creator calls the variable constructor manually,
+      # for example creating a MirroredVariable, then they won't call our
+      # creator. This means we won't be able to trace the initialization graph,
+      # and so variable initializers can't depend on function arguments. This is
+      # better than the alternative, tracing the initialization graph but giving
+      # the user a variable type they didn't want.
+      with ops.get_default_graph()._variable_creator_scope(scope, priority=50):  # pylint: disable=protected-access
         # __wrapped__ allows AutoGraph to swap in a converted function. We give
         # the function a weak reference to itself to avoid a reference cycle.
         return weak_wrapped_fn().__wrapped__(*args, **kwds)
@@ -269,7 +321,8 @@ class Function(object):
     return function_lib.defun(
         tf_decorator.make_decorator(self._python_function, wrapped_fn),
         input_signature=self._input_signature,
-        autograph=self._autograph)
+        autograph=self._autograph,
+        experimental_autograph_options=self._experimental_autograph_options)
 
   def _canonicalize_function_inputs(self, args, kwds):
     """Canonicalize the inputs to the Python function."""
@@ -296,11 +349,13 @@ class Function(object):
     """
 
     created_variables = []
+    lifted_initializer_graph = func_graph_module.FuncGraph("initializer")
 
     def variable_capturing_scope(unused_next_creator, **kwds):
       """Creates UnliftedInitializerVariables and saves references to them."""
       v = UnliftedInitializerVariable(
-          add_initializers_to=add_initializers_to, **kwds)
+          add_initializers_to=add_initializers_to,
+          lifted_initializer_graph=lifted_initializer_graph, **kwds)
       created_variables.append(weakref.ref(v))
       return v
 
@@ -308,6 +363,8 @@ class Function(object):
     self._stateful_fn = self._defun_with_scope(variable_capturing_scope)
     self._stateful_fn._name = self._name  # pylint: disable=protected-access
     # Force the definition of the function for these arguments
+    self._lifted_initializer_graph = lifted_initializer_graph
+    self._graph_deleter = FunctionDeleter(self._lifted_initializer_graph)
     self._concrete_stateful_fn = (
         self._stateful_fn._get_concrete_function_internal_garbage_collected(  # pylint: disable=protected-access
             *args, **kwds))
@@ -321,7 +378,35 @@ class Function(object):
     self._stateless_fn = self._defun_with_scope(invalid_creator_scope)
     self._stateless_fn._name = self._name  # pylint: disable=protected-access
 
+  def _decorate(self, decorator):
+    """Allows the captured Python function to be decorated in place.
+
+    This method is only safe to call when the Function has not been called by a
+    user. It makes sense to use this method to push a decorator into the
+    function rather than wrapping the function in the decorator.
+
+    We use this in tf.Module to allow user annotated `tf.functions` to remain as
+    `Function` objects but still automatically enter the Module name_scope
+    when they are evaluated like all other methods.
+
+    Args:
+      decorator: A callable accepting a single argument which is the function
+        to decorate and returning a callable result.
+
+    Raises:
+      ValueError: If the function has been called a ValueError is raised.
+    """
+    if self._stateful_fn is not None or self._stateless_fn is not None:
+      raise ValueError(
+          "Functions cannot be decorated after they have been traced.")
+
+    self._python_function = decorator(self._python_function)
+    self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
+        self._python_function, self._input_signature)
+
   def __call__(self, *args, **kwds):
+    if RUN_FUNCTIONS_EAGERLY:
+      return self._python_function(*args, **kwds)
     """Calls the graph function."""
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
@@ -337,10 +422,22 @@ class Function(object):
       return results
 
     # This is the first call of __call__, so we have to initialize.
-    self._initialize(args, kwds)
-    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
-
-    if not self._created_variables:
+    initializer_map = {}
+    self._initialize(args, kwds, add_initializers_to=initializer_map)
+    if self._created_variables:
+      try:
+        # Attempt to initialize variables eagerly and without conds by lifting
+        # out initialization graphs. This is the only initialization strategy
+        # compatible with XLA at the moment.
+        self._initialize_uninitialized_variables(initializer_map)
+      except lift_to_graph.UnliftableError:
+        pass  # Fall through to cond-based initialization.
+      else:
+        # Lifting succeeded, so variables are initialized and we can run the
+        # stateless function.
+        return self._stateless_fn(*args, **kwds)
+    else:
+      canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
       # If we did not create any variables the trace we have is good enough.
       return self._concrete_stateful_fn._filtered_call(canon_args, canon_kwds)  # pylint: disable=protected-access
 
@@ -395,6 +492,9 @@ class Function(object):
           functools.partial(self._concrete_stateful_fn._filtered_call,  # pylint: disable=protected-access
                             inner_args, inner_kwds))
 
+    # We've created variables and are unable to lift the initialization graphs,
+    # so we fall back to initializing with conds while running the function.
+    canon_args, canon_kwds = self._canonicalize_function_inputs(args, kwds)
     return function_lib.defun(fn_with_cond)(*canon_args, **canon_kwds)
 
   @property
@@ -410,6 +510,24 @@ class Function(object):
   def function_spec(self):
     return self._function_spec
 
+  def _initialize_uninitialized_variables(self, initializer_map):
+    """Make and call a `ConcreteFunction` which initializes variables."""
+
+    # Note: using defun here avoids an infinite recursion.
+    # Note: there is no reason not to autograph once the overhead is negligible.
+    @function_lib.defun(autograph=False)  # tf.function internal, pure graph
+    def initialize_variables():
+      for v, init in initializer_map.items():
+        with ops.init_scope():
+          if resource_variable_ops.var_is_initialized_op(v.handle):
+            # Ignore variables which are already initialized at trace time.
+            continue
+        v.assign(lift_to_graph.lift_to_graph(
+            [init], ops.get_default_graph())[init])
+
+    with ops.init_scope():
+      return initialize_variables.get_concrete_function()()
+
   def get_initialization_function(self, *args, **kwargs):
     """Returns a `ConcreteFunction` which initializes this function's variables.
 
@@ -417,6 +535,9 @@ class Function(object):
     it or calling get_concrete_function. Fails if we cannot build an initializer
     function which does not depend on the concrete values of the inputs to this
     function.
+
+    Note that running this function will overwrite any values currently assigned
+    to variables, for example restores from a checkpoint.
 
     Args:
       *args: arguments to the underlying python callable.
@@ -443,7 +564,7 @@ class Function(object):
     def initialize_variables():
       for v, init in initializer_map.items():
         v.assign(lift_to_graph.lift_to_graph(
-            init, ops.get_default_graph())[init])
+            [init], ops.get_default_graph())[init])
 
     return initialize_variables.get_concrete_function()
 
@@ -458,9 +579,11 @@ class Function(object):
     concrete_functions = []
     # pylint: disable=protected-access
     if self._stateful_fn:
-      concrete_functions.extend(self._stateful_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateful_fn._function_cache.all_values())
     if self._stateless_fn:
-      concrete_functions.extend(self._stateless_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
     deduplicated_concrete_functions = list()
     seen_signatures = list()
@@ -560,9 +683,10 @@ class Function(object):
     Raises:
       ValueError: if this object has not yet been called on concrete values.
     """
-    assert context.executing_eagerly()
     if self._stateful_fn is None:
-      self.get_initialization_function(*args, **kwargs)()
+      initializer_map = {}
+      self._initialize(args, kwargs, add_initializers_to=initializer_map)
+      self._initialize_uninitialized_variables(initializer_map)
 
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
@@ -605,8 +729,7 @@ class Function(object):
     return self._descriptor_cache[instance]
 
 
-# In TensorFlow 1.x, exported as tf.contrib.eager.function
-@tf_export("function", v1=[])
+@tf_export("function")
 def function(func=None,
              input_signature=None,
              autograph=True,
@@ -662,6 +785,9 @@ def function(func=None,
       tf.py_func(lambda i: l.append(i))(i)  # Works
       l.append(i)                           # Caution! Doesn't work.
   ```
+
+  Note that unlike other TensorFlow operations, we don't convert python
+  numerical inputs to tensors.
 
   _Referencing `tf.Variable`s_
 
@@ -763,8 +889,8 @@ def function(func=None,
   def f(x): return tf.add(x, 1.)
   ```
 
-  When an `input_signature` is specified, the callable will only accept `Tensor`
-  (or NumPy `ndarray`) objects as arguments.
+  When an `input_signature` is specified, the callable will convert the inputs
+  to the specified TensorSpecs.
 
   _Tracing and staging_
 

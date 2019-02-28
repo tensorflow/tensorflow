@@ -350,10 +350,13 @@ Status ProcessFunctionLibraryRuntime::PinArgsAndRets(
               }
               std::vector<Device*> matching_devices;
               device_set.FindMatchingDevices(parsed, &matching_devices);
-              if (matching_devices.size() != 1) {
+              if (matching_devices.empty()) {
+                return errors::InvalidArgument(
+                    "Unable to find any devices for spec ", *src_device);
+              } else if (matching_devices.size() != 1) {
                 // Convert a vector of devices to a string.
                 // Using absl::StrJoin did not work in Android builds.
-                string devices = "]";
+                string devices = "[";
                 for (Device* device : matching_devices) {
                   devices.append(device->name());
                   devices.append(", ");
@@ -461,7 +464,8 @@ Status GetGraphAndRets(const string& function_name, AttrSlice attrs,
                        const FunctionDef* fdef,
                        const FunctionLibraryDefinition* lib_def,
                        std::unique_ptr<Graph>* graph,
-                       std::vector<string>* ret_node_names) {
+                       std::vector<string>* ret_node_names,
+                       std::vector<string>* control_ret_node_names) {
   auto get_func_sig = [lib_def](const string& op, const OpDef** sig) {
     return lib_def->LookUpOpDef(op, sig);
   };
@@ -480,6 +484,10 @@ Status GetGraphAndRets(const string& function_name, AttrSlice attrs,
   ret_node_names->reserve(fbody->ret_nodes.size());
   for (const Node* node : fbody->ret_nodes) {
     ret_node_names->push_back(node->name());
+  }
+  control_ret_node_names->reserve(fbody->control_ret_nodes.size());
+  for (const Node* node : fbody->control_ret_nodes) {
+    control_ret_node_names->push_back(node->name());
   }
   return Status::OK();
 }
@@ -519,9 +527,18 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
 
   std::unique_ptr<Graph> graph;
   std::vector<string> ret_node_names;
+  std::vector<string> control_ret_node_names;
 
   TF_RETURN_IF_ERROR(GetGraphAndRets(function_name, attrs, fdef, lib_def,
-                                     &graph, &ret_node_names));
+                                     &graph, &ret_node_names,
+                                     &control_ret_node_names));
+
+  if (options.graph_collector != nullptr) {
+    GraphDef def;
+    graph->ToGraphDef(&def);
+    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
+    options.graph_collector->CollectRawGraph(def);
+  }
 
   DeviceSet device_set;
   for (auto d : device_mgr_->ListDevices()) {
@@ -551,6 +568,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
   session_options.env = flr->env();
+  session_options.config = options.config_proto;
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
   optimization_options.flib_def = &data->overlay_lib_;
@@ -561,6 +579,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
   DumpGraph("Before calling Placer", graph.get());
+  // TODO(b/124993244): Smartly merge options in nested defuns, and raise
+  // exceptions/warnings in case where nested function call options are ignored.
+  // TODO(b/125933502): Currently config proto in function call options is not
+  // respected by placer, because placer and config proto has different default
+  // behaviors (allowing soft placement by default, vs. not allowing it). Pass
+  // config proto with appropriate default values to placer here.
   Placer placer(graph.get(), &device_set, nullptr, /* No session options */
                 flr->device() /* Default device */);
   TF_RETURN_IF_ERROR(placer.Run());
@@ -568,23 +592,32 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   DumpGraph("Before running POST_PLACEMENT passes", graph.get());
   TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
       OptimizationPassRegistry::POST_PLACEMENT, optimization_options));
-  DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
-  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
-      OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
-  DumpGraph("After all optimization passes", graph.get());
 
   Device* cpu_device;
   TF_RETURN_IF_ERROR(device_mgr_->LookupDevice("CPU:0", &cpu_device));
 
   if (options.optimize_graph_fn) {
-    Status status = options.optimize_graph_fn(std::move(ret_node_names),
-                                              &data->overlay_lib_, device_set,
-                                              cpu_device, &graph);
+    DumpGraph("Before running graph optimization fn", graph.get());
+    Status status = options.optimize_graph_fn(
+        std::move(ret_node_names), std::move(control_ret_node_names),
+        &data->overlay_lib_, device_set, cpu_device, &graph);
     if (!status.ok()) {
       LOG(WARNING) << "Ignoring multi-device function optimization failure: "
                    << status.ToString();
     }
     DumpGraph("After optimization", graph.get());
+  }
+
+  DumpGraph("Before running POST_REWRITE_FOR_EXEC passes", graph.get());
+  TF_RETURN_IF_ERROR(OptimizationPassRegistry::Global()->RunGrouping(
+      OptimizationPassRegistry::POST_REWRITE_FOR_EXEC, optimization_options));
+  DumpGraph("After all optimization passes", graph.get());
+
+  if (options.graph_collector != nullptr) {
+    GraphDef def;
+    graph->ToGraphDef(&def);
+    *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
+    options.graph_collector->CollectOptimizedGraph(def);
   }
 
   std::unordered_map<string, std::unique_ptr<Graph>> subgraphs;
@@ -595,7 +628,8 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
     for (const auto& pair : subgraphs) {
       GraphDef def;
       pair.second->ToGraphDef(&def);
-      options.graph_collector->CollectGraph(def);
+      *def.mutable_library() = lib_def->ReachableDefinitions(def).ToProto();
+      options.graph_collector->CollectPartitionedGraph(def);
     }
   }
 

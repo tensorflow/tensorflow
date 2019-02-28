@@ -41,12 +41,9 @@ from tensorflow.python.ops.losses import losses_impl
 
 class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
 
-  def _get_iterator(self, ds):
-    if context.executing_eagerly():
-      iterator = ds.make_one_shot_iterator()
-    else:
-      iterator = ds.make_initializable_iterator()
-      self.evaluate(iterator.initializer)
+  def _get_iterator(self, strategy, input_fn):
+    iterator = strategy.make_input_fn_iterator(lambda _: input_fn())
+    self.evaluate(iterator.initialize())
     return iterator
 
   @combinations.generate(
@@ -70,7 +67,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             distribution.extended.call_for_each_replica(
                 model_fn, args=(inputs,)))
 
-      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
+      iterator = self._get_iterator(distribution, dataset_fn)
 
       def run_step():
         return distribution.extended.experimental_run_steps_on_iterator(
@@ -102,7 +99,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
       model_fn, dataset_fn, layer = minimize_loss_example(
           optimizer_fn, use_bias=True, use_callable_loss=use_callable_loss)
 
-      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
+      iterator = self._get_iterator(distribution, dataset_fn)
 
       def run_step():
         return distribution.group(
@@ -161,7 +158,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             distribution.extended.call_for_each_replica(
                 model_fn, args=(inputs,)))
 
-      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
+      iterator = self._get_iterator(distribution, dataset_fn)
 
       def run_step():
         return distribution.extended.experimental_run_steps_on_iterator(
@@ -230,7 +227,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
           fetches += tuple(ops.get_collection(ops.GraphKeys.UPDATE_OPS))
         return control_flow_ops.group(fetches)
 
-      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
+      iterator = self._get_iterator(distribution, dataset_fn)
 
       def run_step():
         return distribution.extended.experimental_run_steps_on_iterator(
@@ -322,7 +319,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             distribution.extended.call_for_each_replica(
                 model_fn, args=(inputs,)))
 
-      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
+      iterator = self._get_iterator(distribution, dataset_fn)
 
       def run_step():
         return distribution.extended.experimental_run_steps_on_iterator(
@@ -413,7 +410,7 @@ class MinimizeLossStepTest(test.TestCase, parameterized.TestCase):
             output=loss)
         return distribution.group(train_op)
 
-      iterator = self._get_iterator(distribution.distribute_dataset(dataset_fn))
+      iterator = self._get_iterator(distribution, dataset_fn)
 
       def run_step():
         initial_loss = lambda: constant_op.constant(1e7)

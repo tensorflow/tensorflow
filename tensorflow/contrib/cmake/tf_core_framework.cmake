@@ -125,9 +125,9 @@ endfunction()
 
 file(GLOB_RECURSE tf_protos_cc_srcs RELATIVE ${tensorflow_source_dir}
     "${tensorflow_source_dir}/tensorflow/core/*.proto"
+    "${tensorflow_source_dir}/tensorflow/core/protobuf/tpu/*.proto"
     "${tensorflow_source_dir}/tensorflow/compiler/xla/*.proto"
     "${tensorflow_source_dir}/tensorflow/contrib/boosted_trees/proto/*.proto"
-    "${tensorflow_source_dir}/tensorflow/contrib/tpu/proto/*.proto"
 )
 
 RELATIVE_PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS
@@ -147,7 +147,6 @@ set(tf_proto_text_srcs
     "tensorflow/core/framework/function.proto"
     "tensorflow/core/framework/graph.proto"
     "tensorflow/core/framework/graph_transfer_info.proto"
-    "tensorflow/core/framework/iterator.proto"
     "tensorflow/core/framework/kernel_def.proto"
     "tensorflow/core/framework/log_memory.proto"
     "tensorflow/core/framework/node_def.proto"

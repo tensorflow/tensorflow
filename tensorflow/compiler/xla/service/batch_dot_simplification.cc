@@ -28,6 +28,13 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
                  *rhs = batch_dot->mutable_operand(1);
   const Shape& lhs_shape = lhs->shape();
 
+  // A dot with no contracting dims will be rewritten into a multiply by
+  // AlgebraicSimplifier. Dots with multiple contracting dims are currently
+  // unsupported.
+  if (dim_numbers.lhs_contracting_dimensions_size() != 1) {
+    return false;
+  }
+
   std::vector<int64> degenerate_dims;
   for (int64 batch_dim : dim_numbers.lhs_batch_dimensions()) {
     if (lhs_shape.dimensions(batch_dim) == 1) {

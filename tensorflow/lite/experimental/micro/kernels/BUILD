@@ -22,7 +22,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         "//tensorflow/lite/c:c_api_internal",
-        "//tensorflow/lite/experimental/micro:micro_framework",
         "//tensorflow/lite/kernels:kernel_util",
         "//tensorflow/lite/kernels:op_macros",
         "//tensorflow/lite/kernels:padding",
@@ -43,7 +42,6 @@ cc_library(
     copts = tflite_copts(),
     deps = [
         ":micro_ops",
-        "//tensorflow/lite/c:c_api_internal",
         "//tensorflow/lite/experimental/micro:micro_framework",
     ],
 )

@@ -30,7 +30,12 @@ platform(
         properties: {
             name: "container-image"
             value:"docker://gcr.io/asci-toolchain/nosla-ubuntu16_04-tf@sha256:63a0e981a4e7ce5da2a851cf063e430f72947fd999d9336b7e54e2eebe8e0bf5"
-        }""",
+        }
+        properties: {
+            name: "Pool"
+            value: "default"
+        }
+        """,
 )
 
 # Remote build platforms.
@@ -49,7 +54,12 @@ platform(
         properties: {
             name: "container-image"
             value:"docker://gcr.io/tensorflow-testing/nosla-ubuntu16.04@%s"
-        }""" % container_digests["ubuntu16.04"],
+        }
+        properties: {
+            name: "Pool"
+            value: "default"
+        }
+        """ % container_digests["ubuntu16.04"],
 )
 
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda9.0-cudnn7-ubuntu14.04.
@@ -63,7 +73,12 @@ platform(
         properties: {
             name: "container-image"
             value:"docker://gcr.io/tensorflow-testing/nosla-cuda9.0-cudnn7-ubuntu14.04@%s"
-        }""" % container_digests["cuda9.0-cudnn7-ubuntu14.04"],
+        }
+        properties: {
+            name: "Pool"
+            value: "default"
+        }
+        """ % container_digests["cuda9.0-cudnn7-ubuntu14.04"],
 )
 
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.0-cudnn7-ubuntu14.04.
@@ -77,7 +92,12 @@ platform(
         properties: {
             name: "container-image"
             value:"docker://gcr.io/tensorflow-testing/nosla-cuda10.0-cudnn7-ubuntu14.04@%s"
-        }""" % container_digests["cuda10.0-cudnn7-ubuntu14.04"],
+        }
+        properties: {
+            name: "Pool"
+            value: "default"
+        }
+        """ % container_digests["cuda10.0-cudnn7-ubuntu14.04"],
 )
 
 # The above platform with GPU support.

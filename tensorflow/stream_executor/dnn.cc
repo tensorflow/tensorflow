@@ -581,5 +581,15 @@ string NormalizeDescriptor::ToShortString() const {
                       "_size:", segment_size_);
 }
 
+bool DnnSupport::IsStatusOk(const port::Status& status, bool report_error) {
+  if (status.ok()) {
+    return true;
+  }
+  if (report_error) {
+    LOG(ERROR) << status.error_message();
+  }
+  return false;
+}
+
 }  // namespace dnn
 }  // namespace stream_executor

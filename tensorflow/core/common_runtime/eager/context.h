@@ -30,6 +30,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/platform/env.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
@@ -62,8 +63,7 @@ enum ContextDevicePlacementPolicy {
   // Silently copy the tensor, which has a performance cost since the operation
   // will be blocked till the copy completes. This is the default policy.
   DEVICE_PLACEMENT_SILENT = 2,
-  // Default placement policy which silently copies int32 tensors but not other
-  // dtypes.
+  // Placement policy which silently copies int32 tensors but not other dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 };
 
@@ -182,8 +182,10 @@ class EagerContext {
 
   // TODO(apassos) clean up RunMetadata storage.
   mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
-  bool ShouldStoreMetadata() LOCKS_EXCLUDED(metadata_mu_);
-  void SetShouldStoreMetadata(bool value);
+  bool ShouldStoreStepStats() LOCKS_EXCLUDED(metadata_mu_);
+  void SetShouldStoreStepStats(bool value);
+  bool ShouldStoreGraphs() LOCKS_EXCLUDED(metadata_mu_);
+  void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
   void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
 
@@ -238,6 +240,9 @@ class EagerContext {
 
   tensorflow::Env* TFEnv() const { return env_; }
 
+  // All child threads will be reset() when destructing EagerContext.
+  void AddChildThread(std::unique_ptr<Thread> thread);
+
  private:
   void InitDeviceMapAndAsync();
   Status MaybeRegisterFunctionRemotely(const FunctionDef& fdef);
@@ -280,7 +285,8 @@ class EagerContext {
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.
-  std::atomic<bool> should_store_metadata_{false};
+  std::atomic<bool> should_store_step_stats_{false};
+  std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
   RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
@@ -334,6 +340,7 @@ class EagerContext {
 
   bool use_send_tensor_rpc_;
   const bool pin_small_ops_to_cpu_;
+  std::vector<std::unique_ptr<tensorflow::Thread>> child_threads_;
 };
 
 }  // namespace tensorflow

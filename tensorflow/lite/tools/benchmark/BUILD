@@ -141,10 +141,6 @@ cc_library(
         ":logging",
         "//tensorflow/core:stats_calculator_portable",
         "//tensorflow/lite:framework",
-        "//tensorflow/lite:string_util",
-        "//tensorflow/lite/kernels:builtin_ops",
-        "//tensorflow/lite/profiling:profile_summarizer",
-        "//tensorflow/lite/profiling:profiler",
         "//tensorflow/lite/profiling:time",
     ],
 )

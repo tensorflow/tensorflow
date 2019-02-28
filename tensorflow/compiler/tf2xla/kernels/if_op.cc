@@ -80,7 +80,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.name = resource->name();
       VLOG(2) << "Resource " << resource->name()
               << " type: " << DataTypeString(arg.type)
-              << " shape: " << arg.shape.DebugString()
+              << " shape: " << arg.HumanString()
               << " initialized: " << arg.initialized;
 
       num_resource_args++;
@@ -89,7 +89,7 @@ void XlaIfOp::Compile(XlaOpKernelContext* ctx) {
       arg.type = input_types_[i];
       arg.shape = ctx->InputShape(i + 1);
       VLOG(2) << "Arg type: " << DataTypeString(arg.type)
-              << " shape: " << arg.shape.DebugString();
+              << " shape: " << arg.HumanString();
     }
   }
 

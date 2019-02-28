@@ -203,6 +203,10 @@ Status GetWindowedOutputSizeFromDims(
 
 Status UnchangedShape(shape_inference::InferenceContext* c) {
   c->set_output(0, c->input(0));
+  auto* handle_data = c->input_handle_shapes_and_types(0);
+  if (handle_data != nullptr) {
+    c->set_output_handle_shapes_and_types(0, *handle_data);
+  }
   return Status::OK();
 }
 
@@ -1297,6 +1301,12 @@ Status ConcatV2Shape(InferenceContext* c) {
   return ConcatShapeHelper(c, 0 /* start_value_index */,
                            c->num_inputs() - 1 /* end_value_index */,
                            c->num_inputs() - 1 /* dim_index */);
+}
+
+Status QuantizedConcatV2Shape(InferenceContext* c, int num_inputs_to_concat) {
+  return ConcatShapeHelper(c, 0 /* start_value_index */,
+                           num_inputs_to_concat /* end_value_index */,
+                           num_inputs_to_concat /* dim_index */);
 }
 
 Status BroadcastBinaryOpOutputShapeFnHelper(InferenceContext* c,

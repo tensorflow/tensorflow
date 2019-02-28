@@ -30,7 +30,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import collective_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nccl_ops
 
@@ -350,7 +350,7 @@ def build_collective_reduce(input_tensors,
   """
   group_size = len(input_tensors) * num_workers
   if group_size < 2:
-    raise ValueError('num_workers * len(input_tensors) must be 2 or greater')
+    return input_tensors
   devices = [t.device for t in input_tensors]
   num_devices = len(devices)
   group_key = collective_keys.get_group_key(devices)
@@ -645,14 +645,14 @@ def unpack_small_tensors(replica_grads, packing):
 def aggregate_tensors_or_indexed_slices(values, accumulation_fn=math_ops.add_n):
   """Aggregate tensors using `accumulation_fn` and IndexedSlices via concat."""
   if any(isinstance(v, ops.IndexedSlices) for v in values):
-    return gradients_impl._AggregateIndexedSlicesGradients(values)  # pylint: disable=protected-access
+    return gradients_util._AggregateIndexedSlicesGradients(values)  # pylint: disable=protected-access
   else:
     return accumulation_fn(values)
 
 
 def divide_by_n_tensors_or_indexed_slices(value, n):
   if isinstance(value, ops.IndexedSlices):
-    value = gradients_impl._HandleNestedIndexedSlices(value)  # pylint: disable=protected-access
+    value = gradients_util._HandleNestedIndexedSlices(value)  # pylint: disable=protected-access
     return ops.IndexedSlices(
         value.values / n, value.indices, value.dense_shape)
   else:
@@ -681,3 +681,58 @@ def contains_indexed_slices(value):
     return contains_indexed_slices(value.values)
   else:
     return False
+
+
+def is_indexed_slices(value):
+  if isinstance(value, ops.IndexedSlices):
+    return True
+  assert isinstance(value, value_lib.DistributedValues)
+  return all([isinstance(v, ops.IndexedSlices) for v in value.values])
+
+
+def split_by_sparsity(values):
+  """Split values into dense and sparse values.
+
+  Args:
+    values: a list of tensors or `PerReplica`s.
+
+  Returns:
+    Four lists:
+      a list of dense values, a list of their indices in `values` and
+      a list of sparse values, a list of their indices in `values`.
+  """
+  dense_values = []
+  dense_indices = []
+  sparse_values = []
+  sparse_indices = []
+  for i, v in enumerate(values):
+    if is_indexed_slices(v):
+      sparse_values.append(v)
+      sparse_indices.append(i)
+    else:
+      dense_values.append(v)
+      dense_indices.append(i)
+  return dense_values, dense_indices, sparse_values, sparse_indices
+
+
+def stitch_values(values_and_indices_list):
+  """Stitch values together according to their indices.
+
+  Args:
+    values_and_indices_list: a list of tuples of values and indices indicating
+      the values and postions in the returned list.
+
+  Returns:
+    a stitched list of values.
+  """
+  length = 0
+  for values_and_indices in values_and_indices_list:
+    length += len(values_and_indices[0])
+
+  result = [None] * length
+  for values_and_indices in values_and_indices_list:
+    if values_and_indices and values_and_indices[0]:
+      for v, i in zip(*values_and_indices):
+        assert result[i] is None
+        result[i] = v
+  return result

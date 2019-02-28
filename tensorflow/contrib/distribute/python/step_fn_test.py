@@ -46,10 +46,11 @@ class SingleLossStepTest(test.TestCase, parameterized.TestCase):
           optimizer_fn, distribution, use_bias=True, iterations_per_step=2)
 
       if context.executing_eagerly():
+        single_loss_step.initialize()
         run_step = single_loss_step
       else:
         with self.cached_session() as sess:
-          sess.run(single_loss_step._iterator.initializer)
+          sess.run(single_loss_step.initialize())
           run_step = sess.make_callable(single_loss_step())
       self.evaluate(variables.global_variables_initializer())
 

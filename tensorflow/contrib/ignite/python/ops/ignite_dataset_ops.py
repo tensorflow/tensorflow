@@ -735,8 +735,6 @@ class IgniteDataset(dataset_ops.DatasetSource):
       cert_password: Password to be used if the private key is encrypted and a
         password is necessary.
     """
-    super(IgniteDataset, self).__init__()
-
     with IgniteClient(host, port, username, password, certfile, keyfile,
                       cert_password) as client:
       client.handshake()
@@ -759,6 +757,8 @@ class IgniteDataset(dataset_ops.DatasetSource):
     self._structure = structure.convert_legacy_structure(
         self.cache_type.to_output_types(), self.cache_type.to_output_shapes(),
         self.cache_type.to_output_classes())
+
+    super(IgniteDataset, self).__init__(self._as_variant_tensor())
 
   def _as_variant_tensor(self):
     return gen_dataset_ops.ignite_dataset(self.cache_name, self.host, self.port,

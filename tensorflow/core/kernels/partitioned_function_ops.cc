@@ -12,6 +12,7 @@ WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
+#include "absl/strings/match.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
 #include "tensorflow/core/framework/function.h"
@@ -156,13 +157,27 @@ class PartitionedCallOp : public AsyncOpKernel {
   Status Instantiate(FunctionLibraryRuntime* lib, OpKernelContext* ctx,
                      std::vector<Tensor>* inputs,
                      FunctionLibraryRuntime::Handle* handle) {
+    grappler::GrapplerItem::OptimizationOptions optimization_options;
+
+    // Tensorflow 2.0 in eager mode with automatic control dependencies will
+    // prune all nodes that are not in the transitive fanin of the fetch nodes.
+    // However because the function will be executed via FunctionLibraryRuntime,
+    // and current function implementation does not prune stateful and dataset
+    // ops, we rely on Grappler to do the correct graph pruning.
+    optimization_options.allow_pruning_stateful_and_dataset_ops = true;
+
+    // All the nested function calls will be executed and optimized via
+    // PartitionedCallOp, there is no need to optimize functions now.
+    optimization_options.optimize_function_library = false;
+
     FunctionLibraryRuntime::InstantiateOptions opts;
     opts.target = lib->device()->name();
     opts.is_multi_device_function = true;
     opts.optimize_graph_fn =
         std::bind(grappler::OptimizeGraph, std::placeholders::_1,
                   std::placeholders::_2, std::placeholders::_3,
-                  std::placeholders::_4, config_proto_, std::placeholders::_5);
+                  std::placeholders::_4, std::placeholders::_5, config_proto_,
+                  func_.name(), optimization_options, std::placeholders::_6);
     opts.graph_collector = ctx->graph_collector();
     opts.executor_type = executor_type_;
 

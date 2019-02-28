@@ -35,7 +35,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import resources
 from tensorflow.python.platform import resource_loader
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 
 _model_ops = loader.load_op_library(
@@ -103,9 +103,9 @@ class TreeVariable(tracking.TrackableResource):
     self._container = container
     self._init_op = None
     super(TreeVariable, self).__init__()
-    self._resource_handle = self.create_resource()
+    self._resource_handle = self._create_resource()
 
-  def create_resource(self):
+  def _create_resource(self):
     if context.executing_eagerly():
       # TODO(allenl): This will leak memory due to kernel caching by the
       # shared_name attribute value (but is better than the alternative of
@@ -117,7 +117,7 @@ class TreeVariable(tracking.TrackableResource):
     return gen_model_ops.decision_tree_resource_handle_op(
         self._container, shared_name=shared_name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return gen_model_ops.create_tree_variable(
         self.resource_handle,
         self._tree_config,
@@ -126,7 +126,7 @@ class TreeVariable(tracking.TrackableResource):
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):

@@ -38,8 +38,7 @@ void GraphOptimizer::Optimize(
     std::unique_ptr<Graph>* graph,
     const std::unordered_map<string, std::vector<PartialTensorShape>>*
         shape_map,
-    const std::function<bool(const Node*)>& cse_consider_fn,
-    const std::function<bool(const Node*)>& cf_consider_fn) {
+    const NodePredicate& cse_consider_fn, const NodePredicate& cf_consider_fn) {
   Graph* g = graph->get();
   DumpGraph("Initial", g);
 
@@ -101,6 +100,13 @@ void GraphOptimizer::Optimize(
   graph->swap(copy);
 
   DumpGraph("ReCopy", graph->get());
+}
+
+void GraphOptimizer::Optimize(FunctionLibraryRuntime* runtime, Env* env,
+                              Device* device, std::unique_ptr<Graph>* graph,
+                              const Options& options) {
+  Optimize(runtime, env, device, graph, options.shape_map,
+           options.cse_consider_fn, options.cf_consider_fn);
 }
 
 }  // end namespace tensorflow

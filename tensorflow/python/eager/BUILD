@@ -6,6 +6,7 @@ load(
     "//tensorflow/tools/test:performance.bzl",
     "tf_py_logged_benchmark",
 )
+load("//tensorflow/compiler/tests:build_defs.bzl", "tf_xla_py_test")
 
 cc_library(
     name = "pywrap_tfe_lib",
@@ -57,6 +58,7 @@ py_library(
         ":function",
         ":graph_only_ops",
         ":profiler",
+        ":profiler_client",
         ":tape",
         ":test",
         ":wrap_function",
@@ -108,8 +110,18 @@ cuda_py_test(
     additional_deps = [
         ":profiler",
         ":test",
-        "//tensorflow/core/profiler:protos_all_py",
         "//tensorflow/python:constant_op",
+        "//tensorflow/core/profiler:protos_all_py",
+    ],
+)
+
+py_library(
+    name = "profiler_client",
+    srcs = ["profiler_client.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        "//tensorflow/python:pywrap_tensorflow",
     ],
 )
 
@@ -150,6 +162,7 @@ cuda_py_test(
         "//tensorflow/python:nn_grad",
         "//tensorflow/python:training",
     ],
+    tags = ["no_rocm"],
 )
 
 cuda_py_test(
@@ -383,6 +396,7 @@ cuda_py_test(
         ":context",
         ":function",
         ":test",
+        ":profiler",
         "//third_party/py/numpy",
         "//tensorflow/python:math_ops",
         "//tensorflow/python:pywrap_tensorflow",
@@ -422,6 +436,7 @@ cuda_py_test(
         ":test",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -497,7 +512,7 @@ py_library(
         "//tensorflow/python:util",
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:while_v2",  # TODO(b/118513001): Imported via control_flow_ops; remove.
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 
@@ -509,6 +524,18 @@ py_library(
     deps = [
         ":context",
         "//tensorflow/python:framework_ops",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "lift_to_graph_test",
+    size = "medium",
+    srcs = ["lift_to_graph_test.py"],
+    additional_deps = [
+        "lift_to_graph",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python:framework_ops",
     ],
 )
 
@@ -517,6 +544,23 @@ tf_py_test(
     srcs = ["def_function_test.py"],
     additional_deps = [
         ":def_function",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+    ],
+)
+
+tf_xla_py_test(
+    name = "def_function_xla_test",
+    srcs = ["def_function_xla_test.py"],
+    tags = [
+        "no_pip",
+        "no_rocm",
+        "nomac",
+    ],
+    deps = [
+        ":def_function",
+        "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
@@ -535,7 +579,7 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:template",
         "//tensorflow/python:variable_scope",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
     ],
 )
 

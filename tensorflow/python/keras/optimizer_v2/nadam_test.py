@@ -178,6 +178,15 @@ class NadamOptimizerTest(test.TestCase):
     self.evaluate(variables.global_variables_initializer())
     self.assertAllClose(self.evaluate(opt.decay), (0.2))
 
+  def testConstructNAdamWithEpsilonValues(self):
+    opt = nadam.Nadam(epsilon=None)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-7)
+
+    opt = nadam.Nadam(epsilon=1e-8)
+    config = opt.get_config()
+    self.assertEqual(config["epsilon"], 1e-8)
+
 
 if __name__ == "__main__":
   test.main()

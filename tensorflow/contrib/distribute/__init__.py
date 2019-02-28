@@ -35,8 +35,8 @@ from tensorflow.contrib.distribute.python.tpu_strategy import TPUStrategy
 from tensorflow.python.distribute.cross_device_ops import *
 from tensorflow.python.distribute.distribute_config import DistributeConfig
 from tensorflow.python.distribute.distribute_coordinator import run_standard_tensorflow_server
-from tensorflow.python.training.distribute import *
-from tensorflow.python.training.distribution_strategy_context import *
+from tensorflow.python.distribute.distribute_lib import *
+from tensorflow.python.distribute.distribution_strategy_context import *
 
 from tensorflow.python.util.all_util import remove_undocumented
 

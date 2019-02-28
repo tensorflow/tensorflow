@@ -422,6 +422,9 @@ class TestImage(test.TestCase):
                      keras.preprocessing.image.random_brightness(
                          x, brightness_range=(0.3, 0.5)).shape)
     self.assertEqual(x.shape,
+                     keras.preprocessing.image.apply_channel_shift(
+                         x, 2, 2).shape)
+    self.assertEqual(x.shape,
                      keras.preprocessing.image.apply_affine_transform(
                          x, theta=45, fill_mode='constant').shape)
     with self.assertRaisesRegexp(ValueError, "should be a tuple or list"):

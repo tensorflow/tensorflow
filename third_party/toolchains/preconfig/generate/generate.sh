@@ -38,8 +38,8 @@ TENSORRT_VERSION="${PLATFORM[5]}"
 # TODO(klimek): Put this into the name.
 
 if [[ -n "${CUDA_VERSION}" ]]; then
-  if [[ "${COMPILER}" == "gcc" ]]; then
-    COMPILER="gcc-nvcc-${CUDA_VERSION}"
+  if [[ "${COMPILER}" == gcc* ]]; then
+    COMPILER="${COMPILER}-nvcc-${CUDA_VERSION}"
   fi
   # Currently we create a special toolchain for clang when compiling with
   # cuda enabled. We can get rid of this once the default toolchain bazel
@@ -99,6 +99,7 @@ else
 fi
 
 # Cleanup for copybara.
+find "${OS}" -name '*.h' |xargs clang-format -i
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs buildifier
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs -I {} mv {} {}.oss
 

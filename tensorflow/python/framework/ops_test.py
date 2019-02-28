@@ -1587,6 +1587,8 @@ class CollectionTest(test_util.TensorFlowTestCase):
     self.assertSequenceEqual(g.collections, ["key"])
     g.add_to_collection("other", "foo")
     self.assertSequenceEqual(sorted(g.collections), ["key", "other"])
+    self.assertSequenceEqual(
+        sorted(g.get_all_collection_keys()), ["key", "other"])
 
   def test_add_to_collection(self):
     g = ops.Graph()
@@ -2153,13 +2155,19 @@ class InitScopeTest(test_util.TensorFlowTestCase):
     with g0.as_default(), ops.device("CPU:0"):
       g1 = ops.Graph()
       g1._building_function = True  # pylint: disable=protected-access
-      with g1.as_default(), ops.device("GPU:0"):
+      with g1.as_default():
+        with ops.device("GPU:0"):
+          with ops.init_scope():
+            # init_scope should preserve device set under `g1`.
+            on_gpu = constant_op.constant(1.0)
+            self.assertEqual(on_gpu.device, "/device:GPU:0")
+          still_on_gpu = constant_op.constant(1.0)
+          self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+        blank = constant_op.constant(1.0)
+        self.assertEqual(blank.device, "")
         with ops.init_scope():
-          # init_scope should preserve device set under `g1`.
-          on_gpu = constant_op.constant(1.0)
-          self.assertEqual(on_gpu.device, "/device:GPU:0")
-        still_on_gpu = constant_op.constant(1.0)
-        self.assertEqual(still_on_gpu.device, "/device:GPU:0")
+          now_on_cpu = constant_op.constant(1.0)
+          self.assertEqual(now_on_cpu.device, "/device:CPU:0")
       on_cpu = constant_op.constant(1.0)
       self.assertEqual(on_cpu.device, "/device:CPU:0")
 
@@ -2348,7 +2356,7 @@ class InitScopeTest(test_util.TensorFlowTestCase):
           math_ops.add(c, c)
         c2 = constant_op.constant(2.0)
       with self.assertRaisesRegexp(
-          TypeError, "contains objects other than 'EagerTensor'"):
+          TypeError, "Graph tensors"):
         math_ops.add(c2, c2)
 
   def testPreservesNameScopeInEagerExecution(self):
@@ -2408,17 +2416,22 @@ class GraphTest(test_util.TensorFlowTestCase):
 
   def testDefaultGraph(self):
     orig = ops.get_default_graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     g0 = ops.Graph()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     context_manager_0 = g0.as_default()
+    self.assertFalse(ops.has_default_graph())
     self._AssertDefault(orig)
     with context_manager_0 as g0:
       self._AssertDefault(g0)
       with ops.Graph().as_default() as g1:
+        self.assertTrue(ops.has_default_graph())
         self._AssertDefault(g1)
       self._AssertDefault(g0)
     self._AssertDefault(orig)
+    self.assertFalse(ops.has_default_graph())
 
   def testPreventFeeding(self):
     g = ops.Graph()

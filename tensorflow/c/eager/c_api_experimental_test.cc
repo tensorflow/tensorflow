@@ -23,7 +23,7 @@ limitations under the License.
 #include "tensorflow/core/platform/protobuf.h"
 #include "tensorflow/core/platform/test.h"
 #include "tensorflow/core/platform/test_benchmark.h"
-#include "tensorflow/core/profiler/tfprof_log.pb.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 
 using tensorflow::string;
 
@@ -41,9 +41,12 @@ void ExecuteWithProfiling(bool async) {
   TFE_ContextOptions* opts = TFE_NewContextOptions();
   TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(async));
   TFE_Context* ctx = TFE_NewContext(opts, status);
-  TFE_Profiler* profiler = TFE_NewProfiler(ctx);
+  TFE_ProfilerContext* profiler_context = TFE_NewProfilerContext();
+  TFE_ProfilerContextSetEagerContext(profiler_context, ctx);
+  TFE_Profiler* profiler = TFE_NewProfiler(profiler_context);
   CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
   TFE_DeleteContextOptions(opts);
+  TFE_DeleteProfilerContext(profiler_context);
 
   TFE_TensorHandle* m = TestMatrixTensorHandle();
   TFE_Op* matmul = MatMulOp(ctx, m, m);
@@ -70,17 +73,17 @@ void ExecuteWithProfiling(bool async) {
   TFE_ProfilerSerializeToString(ctx, profiler, profiler_result, status);
   TFE_DeleteProfiler(profiler);
   ASSERT_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
-  tensorflow::tfprof::ProfileProto profile_proto;
+  profiler::Trace profile_proto;
   EXPECT_TRUE(profile_proto.ParseFromString(
       {reinterpret_cast<const char*>(profiler_result->data),
        profiler_result->length}));
   string profile_proto_str = profile_proto.DebugString();
   if (!gpu_device_name.empty()) {
-    EXPECT_TRUE(HasSubstr(profile_proto_str, "gpu:0"));
+    EXPECT_TRUE(HasSubstr(profile_proto_str, "GPU:0"));
     // device name with "stream:all" is collected by Device Tracer.
     EXPECT_TRUE(HasSubstr(profile_proto_str, "stream:all"));
   }
-  EXPECT_TRUE(HasSubstr(profile_proto_str, "cpu:0"));
+  EXPECT_TRUE(HasSubstr(profile_proto_str, "CPU:0"));
   TF_DeleteBuffer(profiler_result);
 
   TF_Tensor* t = TFE_TensorHandleResolve(retvals[0], status);
@@ -99,6 +102,28 @@ void ExecuteWithProfiling(bool async) {
 }
 TEST(CAPI, ExecuteWithTracing) { ExecuteWithProfiling(false); }
 TEST(CAPI, ExecuteWithTracingAsync) { ExecuteWithProfiling(true); }
+
+TEST(CAPI, MultipleProfilerSession) {
+  TF_Status* status = TF_NewStatus();
+  TFE_ContextOptions* opts = TFE_NewContextOptions();
+  TFE_ContextOptionsSetAsync(opts, static_cast<unsigned char>(false));
+  TFE_Context* ctx = TFE_NewContext(opts, status);
+  CHECK_EQ(TF_OK, TF_GetCode(status)) << TF_Message(status);
+  TFE_DeleteContextOptions(opts);
+
+  TFE_ProfilerContext* profiler_context = TFE_NewProfilerContext();
+  TFE_ProfilerContextSetEagerContext(profiler_context, ctx);
+
+  TFE_Profiler* profiler1 = TFE_NewProfiler(profiler_context);
+  EXPECT_TRUE(TFE_ProfilerIsOk(profiler1));
+
+  TFE_Profiler* profiler2 = TFE_NewProfiler(profiler_context);
+  EXPECT_FALSE(TFE_ProfilerIsOk(profiler2));
+
+  TFE_DeleteProfiler(profiler1);
+  TFE_DeleteProfiler(profiler2);
+  TFE_DeleteProfilerContext(profiler_context);
+}
 
 }  // namespace
 }  // namespace tensorflow

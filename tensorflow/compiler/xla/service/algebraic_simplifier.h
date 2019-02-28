@@ -71,17 +71,6 @@ class AlgebraicSimplifierOptions {
     return enable_conv_simplification_;
   }
 
-  // If enable_permutation_sort_replacement is true, a sort op that is known to
-  // sort a permutation will be replaced with a scatter op.
-  void set_enable_permutation_sort_replacement(
-      bool enable_permutation_sort_replacement) {
-    enable_permutation_sort_replacement_ = enable_permutation_sort_replacement;
-  }
-
-  bool enable_permutation_sort_replacement() const {
-    return enable_permutation_sort_replacement_;
-  }
-
   // If enable_window_reduce_replacement is true, the kReduceWindow instruction
   // can be optimized by replacement with simpler operations.
   void set_enable_window_reduce_to_reduce_replacement(
@@ -99,7 +88,6 @@ class AlgebraicSimplifierOptions {
   bool is_layout_sensitive_{false};
   bool enable_dot_strength_reduction_{true};
   bool enable_conv_simplification_{true};
-  bool enable_permutation_sort_replacement_{false};
   bool enable_window_reduce_to_reduce_replacement_{true};
 };
 

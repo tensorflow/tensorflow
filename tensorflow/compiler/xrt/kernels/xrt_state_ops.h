@@ -25,6 +25,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
+#include "tensorflow/compiler/tf2xla/type_util.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/layout_util.h"
 #include "tensorflow/compiler/xla/literal.h"
@@ -40,6 +41,7 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/refcount.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
@@ -215,27 +217,29 @@ class XRTAllocateFromTensorOp : public OpKernel {
     OP_REQUIRES_OK(ctx, ctx->GetAttr("shapes", &tf_shapes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
     OP_REQUIRES_OK(ctx, ctx->GetAttr("make_tuple", &make_tuple));
+    std::vector<int64> minor_to_major;
     if (ctx->HasAttr("layouts")) {
-      OP_REQUIRES_OK(ctx, ctx->GetAttr("layouts", &minor_to_major_));
+      OP_REQUIRES_OK(ctx, ctx->GetAttr("layouts", &minor_to_major));
     }
     OP_REQUIRES(
         ctx, tf_shapes_.size() == dtypes_.size(),
         errors::InvalidArgument("shapes and dtypes must be the same length"));
     std::vector<xla::Shape> xla_shapes;
+    xla_shapes.reserve(tf_shapes_.size());
     for (int i = 0; i < tf_shapes_.size(); i++) {
       xla::Shape xla_shape;
       OP_REQUIRES_OK(
           ctx, TensorShapeToXLAShape(dtypes_[i], tf_shapes_[i], &xla_shape));
-      xla_shapes.push_back(xla_shape);
+      xla_shapes.push_back(std::move(xla_shape));
     }
     if (xla_shapes.size() > 1 || make_tuple) {
       shape_ = xla::ShapeUtil::MakeTupleShape(xla_shapes);
     } else {
       shape_.Swap(&xla_shapes.front());
     }
-    if (!minor_to_major_.empty()) {
+    if (!minor_to_major.empty()) {
       xla::Shape shape_with_layouts;
-      OP_REQUIRES_OK(ctx, GetShapeWithLayout(shape_, minor_to_major_,
+      OP_REQUIRES_OK(ctx, GetShapeWithLayout(shape_, minor_to_major,
                                              /*layout_func=*/nullptr,
                                              &shape_with_layouts));
       shape_.Swap(&shape_with_layouts);
@@ -304,7 +308,6 @@ class XRTAllocateFromTensorOp : public OpKernel {
  private:
   std::vector<TensorShape> tf_shapes_;
   DataTypeVector dtypes_;
-  std::vector<int64> minor_to_major_;
   xla::Shape shape_;
 };
 
@@ -487,7 +490,7 @@ class XRTReadLiteralOp : public OpKernel {
     OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(
                             ctx, allocation->device_ordinal(), &device_ref));
 
-    xla::Literal literal;
+    xla::Literal literal(allocation->on_host_shape());
     OP_REQUIRES_OK(
         ctx, allocation->ToLiteral(device_ref.backend(),
                                    device_ref.device_ordinal(), &literal));
@@ -497,6 +500,96 @@ class XRTReadLiteralOp : public OpKernel {
     literal_proto.SerializeToString(&output.scalar<string>()());
     ctx->set_output(0, output);
   }
+};
+
+// Op that reads a device-resident tuple to host memory and returns it as a
+// literal.
+template <class DeviceAccessor>
+class XRTReadToTensorOp : public OpKernel {
+ public:
+  explicit XRTReadToTensorOp(OpKernelConstruction* ctx) : OpKernel(ctx) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("release_handles", &discard_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("dtypes", &dtypes_));
+  }
+  ~XRTReadToTensorOp() override = default;
+  XRTReadToTensorOp(const XRTReadToTensorOp&) = delete;
+  XRTReadToTensorOp& operator=(const XRTReadToTensorOp&) = delete;
+
+  void Compute(OpKernelContext* ctx) override {
+    VLOG(1) << "XRTReadToTensorOp::Compute";
+
+    const Tensor& handle_tensor = ctx->input(0);
+    // TODO(phawkins,dlibenzi): accept multiple handles (i.e., vectors, not
+    // just scalars.)
+    OP_REQUIRES(
+        ctx, TensorShapeUtils::IsScalar(handle_tensor.shape()),
+        errors::Internal("computation input should be an int64 scalar"));
+    int64 allocation_handle = handle_tensor.scalar<int64>()();
+
+    ResourceMgr* rm;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::GetResourceManager(ctx, &rm));
+
+    XRTTupleAllocation* allocation;
+    OP_REQUIRES_OK(
+        ctx, XRTTupleAllocation::Lookup(rm, allocation_handle, &allocation));
+    core::ScopedUnref allocation_unref(allocation);
+
+    if (discard_) {
+      VLOG(2) << "Releasing handle " << allocation_handle;
+      OP_REQUIRES_OK(ctx, XRTTupleAllocation::DeleteFromResourceManager(
+                              rm, allocation_handle));
+    }
+
+    // We are guaranteed that the underlying device object won't be deleted out
+    // from under us, while the ScopedRef is live.
+    class DeviceAccessor::ScopedRef device_ref;
+    OP_REQUIRES_OK(ctx, DeviceAccessor::InitScopedRef(
+                            ctx, allocation->device_ordinal(), &device_ref));
+
+    xla::Shape shape = allocation->on_host_shape();
+    int output = 0;
+    Status status = xla::ShapeUtil::ForEachMutableSubshapeWithStatus(
+        &shape,
+        [&](xla::Shape* subshape, const xla::ShapeIndex& index) -> Status {
+          if (subshape->IsTuple()) return Status::OK();
+
+          xla::PrimitiveType xla_type;
+          TF_RETURN_IF_ERROR(DataTypeToPrimitiveType(
+              ctx->expected_output_dtype(output), &xla_type));
+          if (xla_type != subshape->element_type()) {
+            return errors::InvalidArgument(
+                "Type mismatch between buffer type (", subshape->ToString(),
+                ") and tensor type (",
+                DataTypeString(ctx->expected_output_dtype(output)),
+                ") for output tensor ", output);
+          }
+
+          TensorShape output_shape;
+          TF_RETURN_IF_ERROR(XLAShapeToTensorShape(*subshape, &output_shape));
+
+          Tensor* output_tensor;
+          TF_RETURN_IF_ERROR(
+              ctx->allocate_output(output, output_shape, &output_tensor));
+
+          XRTTupleAllocation* sub;
+          TF_RETURN_IF_ERROR(XRTTupleAllocation::MakeSubBuffer(
+              allocation, index, &sub, /*alias_parent_allocation=*/true));
+          core::ScopedUnref sub_unref(sub);
+
+          xla::MutableBorrowingLiteral literal;
+          TF_RETURN_IF_ERROR(HostTensorToMutableBorrowingLiteral(
+              xla::LayoutUtil::GetWithDefaultLayout(*subshape), output_tensor,
+              &literal));
+          TF_RETURN_IF_ERROR(sub->ToLiteral(
+              device_ref.backend(), device_ref.device_ordinal(), &literal));
+
+          ++output;
+          return Status::OK();
+        });
+    OP_REQUIRES_OK(ctx, status);
+  }
+  bool discard_;
+  DataTypeVector dtypes_;
 };
 
 // Op that writes a new literal value into device-resident memory.

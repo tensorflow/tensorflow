@@ -697,8 +697,8 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
         // Use the resource manager in the iterator context to get / create
         // a cache.
         ResourceMgr* mgr = ctx->resource_mgr();
-        const string name =
-            strings::StrCat(prefix(), "::", dataset()->name(), "::MemoryCache");
+        const string name = strings::StrCat(
+            prefix(), "::", dataset()->node_name(), "::MemoryCache");
         TF_RETURN_IF_ERROR(mgr->LookupOrCreate<MemoryCache>(
             "tf_data", name, &cache_, [](MemoryCache** cache) {
               *cache = new MemoryCache();
@@ -815,7 +815,7 @@ class CacheDatasetOp : public UnaryDatasetOpKernel {
             LOG(WARNING)
                 << "The calling iterator did not fully read the dataset being "
                    "cached. In order to avoid unexpected truncation of the "
-                   "dataset, the partially cached contents of the dataset"
+                   "dataset, the partially cached contents of the dataset "
                    "will be discarded. This can happen if you have an input "
                    "pipeline similar to `dataset.cache().take(k).repeat()`. "
                    "You should use `dataset.take(k).cache().repeat()` instead.";

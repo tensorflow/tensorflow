@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/core/grappler/optimizers/data/make_numa_aware.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/grappler/clusters/cluster.h"
 #include "tensorflow/core/grappler/grappler_item.h"
@@ -43,7 +44,7 @@ Status MakeNumaAware::OptimizeAndCollectStats(Cluster* cluster,
                                               OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
-  std::set<string> nodes_to_delete;
+  absl::flat_hash_set<string> nodes_to_delete;
 
   for (const NodeDef& node : item.graph.node()) {
     if (node.op() != "ExperimentalMapAndBatchDataset") continue;
@@ -53,7 +54,7 @@ Status MakeNumaAware::OptimizeAndCollectStats(Cluster* cluster,
     nodes_to_delete.insert(node.name());
     stats->num_changes++;
   }
-  graph.DeleteNodes(nodes_to_delete);
+  TF_RETURN_IF_ERROR(graph.DeleteNodes(nodes_to_delete));
   return Status::OK();
 }
 

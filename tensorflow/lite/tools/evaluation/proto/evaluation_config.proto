@@ -1,0 +1,48 @@
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+==============================================================================*/
+
+syntax = "proto2";
+
+package tflite.evaluation;
+
+import "tensorflow/lite/tools/evaluation/proto/evaluation_stages.proto";
+
+// Next ID: 6
+message EvaluationStageConfig {
+  optional string name = 1;
+
+  // Specification defining what this stage does, and any required parameters.
+  optional ProcessSpecification specification = 2;
+
+  // initializers, inputs and outputs are strings that define colon-separated
+  // mappings between TAGs and their corresponding names.
+  // These names help EvaluationStages communicate with each other during runs.
+  // Format for TAGs: [A-Z0-9_]+ (Uppercase letters, numbers, "_")
+  // Format for names: [a-z0-9_]+ (Lowercase letters, numbers, "_")
+  // Example mapping: "BITMAP1:image_in"
+  // It is up to individual EvaluationStage sub-classes to specify the
+  // initializer/input TAGs they require, and outputs TAGs they provide.
+  repeated string initializers = 3;
+  repeated string inputs = 4;
+  repeated string outputs = 5;
+}
+
+message EvaluationStageMetrics {
+  // Total latency in ms.
+  optional double total_latency_ms = 1;
+
+  // Process-specific numbers such as accuracy, step-latencies, etc.
+  optional ProcessMetrics process_metrics = 2;
+}

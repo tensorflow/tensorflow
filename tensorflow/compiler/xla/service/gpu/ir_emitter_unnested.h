@@ -176,6 +176,7 @@ class IrEmitterUnnested : public IrEmitter {
   Status HandleScatter(HloInstruction* scatter) override;
   Status HandleSelect(HloInstruction* select) override;
   Status HandleSort(HloInstruction* sort) override;
+  Status HandleTriangularSolve(HloInstruction* hlo) override;
   Status HandleTupleSelect(HloInstruction* tuple_select) override;
   Status HandleAllReduce(HloInstruction* crs) override;
   Status HandleAfterAll(HloInstruction* after_all) override;
@@ -319,6 +320,9 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a FftThunk that calls cuFFT to implement `inst`.
   std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
 
+  // Returns a TriangularSolveThunk that calls cuBlas to implement `inst`.
+  std::unique_ptr<Thunk> BuildTriangularSolveThunk(const HloInstruction* inst);
+
   // Returns a GemmThunk that calls gemm to implement `inst`. The caller needs
   // to make sure `inst` outlives the lifetime of the returned Thunk object.
   std::unique_ptr<Thunk> BuildGemmThunk(const HloInstruction* inst);
@@ -352,9 +356,9 @@ class IrEmitterUnnested : public IrEmitter {
   std::unique_ptr<Thunk> BuildForThunk(const HloInstruction* hlo,
                                        const int64 loop_limit);
 
-  // Returns a ConditionalThunk that executes the thunk sequence for
-  // 'true_computation' or 'false_computation' depending on the value of the
-  // predicate in the given conditional instruction.
+  // Returns a ConditionalThunk which executes the thunk sequence for the
+  // 'branch_computation' corresponding to the predicate/branch_index of the
+  // given conditional instruction.
   std::unique_ptr<Thunk> BuildConditionalThunk(const HloInstruction* hlo);
 
   Status Postprocess(HloInstruction* hlo) override;

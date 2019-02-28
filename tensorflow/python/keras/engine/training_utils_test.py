@@ -25,8 +25,11 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
+from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.platform import test
@@ -44,10 +47,11 @@ class ModelInputsTest(test.TestCase):
     vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
     self.assertEqual(1, len(vals))
     self.assertTrue(tensor_util.is_tensor(vals[0]))
+    self.assertEqual(backend.floatx(), vals[0].dtype)
 
   def test_single_thing_eager(self):
     with context.eager_mode():
-      a = np.ones(10)
+      a = np.ones(10, dtype=np.int32)
       model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1'], model_inputs.get_input_names())
       val = model_inputs.get_symbolic_inputs()
@@ -55,6 +59,7 @@ class ModelInputsTest(test.TestCase):
       vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
       self.assertEqual(1, len(vals))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
+      self.assertEqual(dtypes.int32, vals[0].dtype)
 
   def test_list(self):
     a = [np.ones(10), np.ones(20)]
@@ -224,6 +229,25 @@ class StandardizeWeightsTest(keras_parameterized.TestCase):
                                                  class_weights)
     expected = sample_weights * np.array([0.5, 1., 0.5, 0.5, 1.5])
     self.assertAllClose(weights, expected)
+
+  def test_dataset_with_class_weight(self):
+    model = testing_utils.get_small_functional_mlp(1, 4, input_dim=3)
+    model.compile('rmsprop', 'mse')
+
+    inputs = np.zeros((10, 3), np.float32)
+    targets = np.zeros((10, 4), np.float32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.repeat(100)
+    dataset = dataset.batch(10)
+    class_weight_np = np.array([0.25, 0.25, 0.25, 0.25])
+    class_weight = dict(enumerate(class_weight_np))
+
+    model.fit(
+        dataset,
+        epochs=1,
+        steps_per_epoch=2,
+        verbose=1,
+        class_weight=class_weight)
 
 
 if __name__ == '__main__':

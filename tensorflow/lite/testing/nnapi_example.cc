@@ -26,7 +26,7 @@ limitations under the License.
 #include <iostream>
 #include <sstream>
 #include <string>
-#include "tensorflow/lite/nnapi/NeuralNetworksShim.h"
+#include "tensorflow/lite/nnapi/nnapi_implementation.h"
 #include "tensorflow/lite/testing/parse_testdata.h"
 #include "tensorflow/lite/testing/tflite_driver.h"
 

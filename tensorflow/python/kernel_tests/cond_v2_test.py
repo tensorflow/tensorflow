@@ -20,7 +20,9 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.protobuf import config_pb2
+from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -82,6 +84,21 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x])
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
+
+  def testExternalControlDependencies(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.0)
+      v.initializer.run()
+      op = v.assign_add(1.0)
+
+      def true_branch():
+        with ops.control_dependencies([op]):
+          return 1.0
+
+      cond_v2.cond_v2(array_ops.placeholder_with_default(False, None),
+                      true_branch,
+                      lambda: 2.0).eval()
+      self.assertAllEqual(self.evaluate(v), 2.0)
 
   @test_util.run_deprecated_v1
   def testMultipleOutputs(self):
@@ -628,6 +645,26 @@ class CondV2Test(test.TestCase):
         # d2[x]/dx2 = 0
         self.assertEqual(false_val, [0.0])
 
+  def testGradientTapeOfCondWithResourceVariableInFunction(self):
+    with context.eager_mode():
+      v = variables.Variable(2.)
+
+      @def_function.function
+      def fnWithCond():  # pylint: disable=invalid-name
+        with backprop.GradientTape() as tape:
+          pred = constant_op.constant(True, dtype=dtypes.bool)
+
+          def true_fn():
+            return math_ops.pow(v, 3)
+
+          def false_fn():
+            return v
+
+          cond = cond_v2.cond_v2(pred, true_fn, false_fn, name="cond")
+        return tape.gradient(cond, v)
+
+      self.assertAllEqual(fnWithCond(), 12.0)
+
   def testLowering(self):
     with ops.Graph().as_default() as g:
       with self.session(graph=g) as sess:
@@ -763,8 +800,8 @@ class CondV2Test(test.TestCase):
       return ((x,), y * 3.0)
 
     with self.assertRaisesRegexp(
-        ValueError, "Outputs of true_fn and false_fn must"
-        " have the same structure"):
+        TypeError, "true_fn and false_fn arguments to tf.cond must have the "
+        "same number, type, and overall structure of return values."):
       control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
 
   @test_util.enable_control_flow_v2

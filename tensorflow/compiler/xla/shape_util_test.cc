@@ -710,6 +710,26 @@ TEST(ShapeUtilTest, PermuteDimensionsLayout) {
   } while (std::next_permutation(layout.begin(), layout.end()));
 }
 
+TEST(ShapeUtilTest, PermuteDynamicDimensions) {
+  Shape shape =
+      ShapeUtil::MakeShape(F32, {10, 100, 1000},
+                           /*dynamic_dimensions*/ {false, true, true});
+  SCOPED_TRACE(absl::StrCat("shape=", shape.ToString()));
+
+  std::vector<int64> permutation(3);
+  std::iota(permutation.begin(), permutation.end(), 0);
+  do {
+    SCOPED_TRACE(absl::StrCat("permutation=", absl::StrJoin(permutation, ",")));
+
+    auto permuted = ShapeUtil::PermuteDimensions(permutation, shape);
+    for (int i = 0; i < shape.rank(); i++) {
+      EXPECT_EQ(permuted.dimensions(permutation[i]), shape.dimensions(i));
+      EXPECT_EQ(permuted.is_dynamic_dimension(permutation[i]),
+                shape.is_dynamic_dimension(i));
+    }
+  } while (std::next_permutation(permutation.begin(), permutation.end()));
+}
+
 TEST(AlgebraicSimplifierTest, ReshapeIsBitcast_3x2x2_6x2_Dim0IsMostMinor) {
   EXPECT_FALSE(ShapeUtil::ReshapeIsBitcast(
       ShapeUtil::MakeShapeWithLayout(F32, {3, 2, 2}, {0, 1, 2}),
@@ -741,8 +761,15 @@ TEST(AlignmentTest, AlignLayoutsWithTrivialDimensions) {
   auto aligned_shape = ShapeUtil::AlignLayouts(
       input, ShapeUtil::MakeShape(xla::F32, {1, 4, 1, 3, 2, 7, 5, 11, 1}));
   EXPECT_TRUE(aligned_shape);
-  EXPECT_THAT(aligned_shape.value().layout().minor_to_major(),
-              ElementsAre(6, 5, 4, 3, 1, 7, 0, 2, 8));
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
+}
+
+TEST(AlignmentTest, AlignLayoutsWithAllTrivialDimensions) {
+  Shape input =
+      ShapeUtil::MakeShapeWithLayout(xla::F32, {1, 1, 1, 1}, {0, 1, 3, 2});
+  auto aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {1, 1, 1, 1, 1}));
+  EXPECT_TRUE(aligned_shape);
   EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
 }
 

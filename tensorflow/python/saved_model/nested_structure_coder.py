@@ -34,10 +34,11 @@ import collections
 import functools
 import six
 
+from tensorflow.core.protobuf import struct_pb2
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_spec
-from tensorflow.python.saved_model import struct_pb2
+from tensorflow.python.util import compat
 
 
 class NotEncodableError(Exception):
@@ -82,7 +83,6 @@ class StructureCoder(object):
       NotEncodableError: For values for which there are no encoders.
     """
     return self._map_structure(nested_structure, self._get_encoders())
-
 
   def can_encode(self, nested_structure):
     """Determines whether a nested structure can be encoded into a proto.
@@ -305,7 +305,7 @@ class _StringCodec(object):
 
   def do_decode(self, value, decode_fn):
     del decode_fn
-    return value.string_value
+    return compat.as_str(value.string_value)
 
 
 StructureCoder.register_codec(_StringCodec())
