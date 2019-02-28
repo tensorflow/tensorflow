@@ -688,8 +688,8 @@ class BinaryOpsTest(test_util.TensorFlowTestCase):
     if context.executing_eagerly():
       error = errors_impl.InvalidArgumentError
       error_message = (
-          r"cannot compute Add as input #0\(zero-based\) was expected to be a "
-          r"float tensor but is a int32 tensor \[Op:Add\] name: add/")
+          r"cannot compute Add as input #1\(zero-based\) was expected to be a "
+          r"int32 tensor but is a float tensor \[Op:Add\] name: add/")
     else:
       error = TypeError
       error_message = ("Input 'y' of 'Add' Op has type float32 that does not "

@@ -147,6 +147,7 @@ tf_cuda_cc_test(
     ],
     deps = [
         ":c_api",
+        ":c_api_internal",
         ":c_api_test_util",
         "//tensorflow/c:c_test_util",
         "//tensorflow/core:lib",
