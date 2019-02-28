@@ -28,7 +28,7 @@ import traceback
 
 import six
 from six import iteritems
-from six.moves import xrange  # pylint: disable=redefined-builtin
+from six.moves import xrange, zip  # pylint: disable=redefined-builtin
 
 from tensorflow.python import tf2
 from tensorflow.python.eager import context
@@ -93,9 +93,7 @@ class _PartitionInfo(object):
           "full_shape is of length {}.".format(
               len(var_offset), len(full_shape)))
 
-    for i in xrange(len(full_shape)):
-      offset = var_offset[i]
-      shape = full_shape[i]
+    for offset, shape in zip(var_offset, full_shape):
       if offset < 0 or offset >= shape:
         raise ValueError(
             "Expected 0 <= offset < shape but found offset={}, shape={} for "

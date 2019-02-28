@@ -514,9 +514,9 @@ def make_vjp(f, params=None, persistent=True):
     try:
       sources = []
       args = [
-          ops.convert_to_tensor(args[i])
-          if i in parameter_positions else args[i]
-          for i in range(len(args))
+          ops.convert_to_tensor(arg)
+          if i in parameter_positions else arg
+          for i, arg in enumerate(args)
       ]
       args = _ensure_unique_tensor_objects(parameter_positions, args)
       for i in parameter_positions:
