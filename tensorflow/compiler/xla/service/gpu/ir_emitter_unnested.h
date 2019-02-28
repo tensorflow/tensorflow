@@ -320,6 +320,9 @@ class IrEmitterUnnested : public IrEmitter {
   // Returns a FftThunk that calls cuFFT to implement `inst`.
   std::unique_ptr<Thunk> BuildFftThunk(const HloInstruction* inst);
 
+  // Returns a CholeskyThunk that calls cuSolver to implement `inst`.
+  std::unique_ptr<Thunk> BuildCholeskyThunk(const HloInstruction* inst);
+
   // Returns a TriangularSolveThunk that calls cuBlas to implement `inst`.
   std::unique_ptr<Thunk> BuildTriangularSolveThunk(const HloInstruction* inst);
 
