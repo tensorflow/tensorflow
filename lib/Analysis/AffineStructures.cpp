@@ -592,8 +592,8 @@ bool FlatAffineConstraints::addAffineForOpDomain(
   }
 
   if (forOp->getStep() != 1)
-    LLVM_DEBUG(llvm::dbgs()
-               << "Domain conservative: non-unit stride not handled\n");
+    LLVM_DEBUG(
+        forOp->emitWarning("Domain conservative: non-unit stride not handled"));
 
   int64_t step = forOp->getStep();
 
@@ -639,12 +639,12 @@ bool FlatAffineConstraints::addAffineForOpDomain(
     FlatAffineConstraints localVarCst;
     std::vector<SmallVector<int64_t, 8>> flatExprs;
     if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
-      LLVM_DEBUG(llvm::dbgs() << "semi-affine expressions not yet supported\n");
+      forOp->emitError("semi-affine expressions not yet supported");
       return false;
     }
     if (localVarCst.getNumLocalIds() > 0) {
-      LLVM_DEBUG(llvm::dbgs()
-                 << "loop bounds with mod/floordiv expr's not yet supported\n");
+      forOp->emitError(
+          "loop bounds with mod/floordiv expr's not yet supported");
       return false;
     }
 
@@ -2179,7 +2179,7 @@ void FlatAffineConstraints::FourierMotzkinEliminate(
       bool ret = gaussianEliminateId(pos);
       (void)ret;
       assert(ret && "Gaussian elimination guaranteed to succeed");
-      LLVM_DEBUG(llvm::dbgs() << "FM output (through Gaussian):\n");
+      LLVM_DEBUG(llvm::dbgs() << "FM output (through Gaussian elimination):\n");
       LLVM_DEBUG(dump());
       return;
     }

@@ -224,7 +224,7 @@ UtilResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
   // constant trip count "full tiles" before applying this.
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
-    LLVM_DEBUG(llvm::dbgs() << "non-constant trip count loop\n";);
+    LLVM_DEBUG(forOp->emitNote("non-constant trip count loop not handled"));
     return UtilResult::Success;
   }
   uint64_t tripCount = mayBeConstTripCount.getValue();
@@ -243,7 +243,7 @@ UtilResult mlir::instBodySkew(OpPointer<AffineForOp> forOp,
   }
   // Such large shifts are not the typical use case.
   if (maxShift >= numChildInsts) {
-    LLVM_DEBUG(llvm::dbgs() << "inst shifts too large - unexpected\n";);
+    forOp->emitWarning("not shifting because shifts are unrealistically large");
     return UtilResult::Success;
   }
 

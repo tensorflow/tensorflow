@@ -119,14 +119,14 @@ static bool doubleBuffer(Value *oldMemRef, OpPointer<AffineForOp> forOp) {
                                                  forOp->getInductionVar());
 
   // replaceAllMemRefUsesWith will always succeed unless the forOp body has
-  // non-deferencing uses of the memref.
+  // non-deferencing uses of the memref (dealloc's are fine though).
   if (!replaceAllMemRefUsesWith(
           oldMemRef, newMemRef, /*extraIndices=*/{ivModTwoOp},
           /*indexRemap=*/AffineMap(),
           /*extraOperands=*/{},
           /*domInstFilter=*/&*forOp->getBody()->begin())) {
-    LLVM_DEBUG(llvm::dbgs()
-                   << "memref replacement for double buffering failed\n";);
+    LLVM_DEBUG(
+        forOp->emitError("memref replacement for double buffering failed"));
     ivModTwoOp->getInstruction()->erase();
     return false;
   }
@@ -256,7 +256,8 @@ PassResult
 PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   auto mayBeConstTripCount = getConstantTripCount(forOp);
   if (!mayBeConstTripCount.hasValue()) {
-    LLVM_DEBUG(forOp->emitNote("unknown trip count loop"));
+    LLVM_DEBUG(
+        forOp->emitNote("won't pipeline due to unknown trip count loop"));
     return success();
   }
 

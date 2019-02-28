@@ -131,6 +131,7 @@ func @test_semi_affine_bailout(%N : index) {
   for %i = 0 to 10 {
     %idx = affine.apply (d0)[s0] -> (d0 * s0)(%i)[%N]
     %y = load %B[%idx] : memref<10 x i32>
+    // expected-error@-1 {{getMemRefRegion: compose affine map failed}}
   }
   return
 }

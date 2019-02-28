@@ -229,7 +229,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
 
   // Add access function equalities to connect loop IVs to data dimensions.
   if (!cst.composeMap(&accessValueMap)) {
-    LLVM_DEBUG(llvm::dbgs() << "getMemRefRegion: compose affine map failed\n");
+    inst->emitError("getMemRefRegion: compose affine map failed");
     LLVM_DEBUG(accessValueMap.getAffineMap().dump());
     return false;
   }
