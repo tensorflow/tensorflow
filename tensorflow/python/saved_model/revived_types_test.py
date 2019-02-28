@@ -19,13 +19,13 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.core.framework import versions_pb2
+from tensorflow.core.protobuf import saved_object_graph_pb2
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import revived_types
-from tensorflow.python.saved_model import saved_object_graph_pb2
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 
-class CustomTestClass(tracking.AutoCheckpointable):
+class CustomTestClass(tracking.AutoTrackable):
 
   def __init__(self, version):
     self.version = version
@@ -56,7 +56,7 @@ revived_types.register_revived_type(
 class RegistrationMatchingTest(test.TestCase):
 
   def test_save_typecheck(self):
-    self.assertIs(revived_types.serialize(tracking.AutoCheckpointable()), None)
+    self.assertIs(revived_types.serialize(tracking.AutoTrackable()), None)
 
   def test_load_identifier_not_found(self):
     nothing_matches = revived_types.deserialize(

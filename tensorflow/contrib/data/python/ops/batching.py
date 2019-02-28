@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.contrib.framework import with_shape
 from tensorflow.python.data.experimental.ops import batching
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.util import deprecation
 
@@ -215,14 +216,14 @@ def assert_element_shape(expected_shapes):
     return nest.pack_sequence_as(elements, checked_tensors)
 
   def _apply_fn(dataset):
-    output_shapes = _merge_output_shapes(dataset.output_shapes,
-                                         expected_shapes)
+    output_shapes = _merge_output_shapes(
+        dataset_ops.get_legacy_output_shapes(dataset), expected_shapes)
     # pylint: disable=protected-access
     return batching._RestructuredDataset(
         dataset.map(_check_shape),
-        dataset.output_types,
+        dataset_ops.get_legacy_output_types(dataset),
         output_shapes=output_shapes,
-        output_classes=dataset.output_classes)
+        output_classes=dataset_ops.get_legacy_output_classes(dataset))
 
   return _apply_fn
 

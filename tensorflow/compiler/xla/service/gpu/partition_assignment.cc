@@ -41,7 +41,7 @@ std::ostream& operator<<(std::ostream& out,
 
 int64 ThreadsPerBlockLimit(const se::DeviceDescription& device_desc) {
   int64 threads_per_block = device_desc.threads_per_block_limit();
-  if (threads_per_block == 0) {
+  if (threads_per_block <= 0) {
     static std::atomic<int64> log_count{0};
     if (log_count.fetch_add(1) < 8) {
       LOG(WARNING) << "Attempting to calculate launch dimensions for GPU "
@@ -71,18 +71,17 @@ LaunchDimensions CalculateLaunchDimensions(
   num_elements = num_elements / unroll_factor;
 
   // Since we don't do any inter-warp communication, we're free to choose any
-  // block size we want, subject to hardware constraints.  We choose the
-  // smallest block size that allows the GPU to reach full occupancy (assuming
-  // the kernel uses sufficiently few registers).  This gives us max performance
-  // when the kernel uses few registers, and lets us scale down gracefully as
-  // the kernel uses more registers.
+  // block size we want, subject to hardware constraints.  We choose the largest
+  // block size allowed, as empirically, this is a performance win on almost
+  // (but not all) benchmarks.
   //
-  // Specifically, we choose the number of threads per block such that
+  // My guess is that using a larger block size encourages ptxas to decrease
+  // per-thread register usage, thus allowing for higher occupancy, but I
+  // haven't verified this.
   //
-  //   <num threads per block> * <max blocks per core> = <max threads per core>
-
+  // TODO(jlebar): Investigate this further, and tune this heuristic so we can
+  // run faster on the few benchmarks where smaller block size helps.
   int64 threads_per_block = ThreadsPerBlockLimit(device_desc);
-
   if (num_elements < threads_per_block) {
     threads_per_block = num_elements;
     VLOG(2) << "Update # of threads per block to the element count ("

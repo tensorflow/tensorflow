@@ -36,6 +36,7 @@ from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.keras import activations
 from tensorflow.python.keras import initializers
+from tensorflow.python.keras import layers as keras_layer
 from tensorflow.python.keras.engine import input_spec
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.layers import base as base_layer
@@ -50,7 +51,7 @@ from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
@@ -180,7 +181,7 @@ def _zero_state_tensors(state_size, batch_size, dtype):
   return nest.map_structure(get_state_shape, state_size)
 
 
-@tf_export("nn.rnn_cell.RNNCell")
+@tf_export(v1=["nn.rnn_cell.RNNCell"])
 class RNNCell(base_layer.Layer):
   """Abstract object representing an RNN cell.
 
@@ -207,7 +208,9 @@ class RNNCell(base_layer.Layer):
     super(RNNCell, self).__init__(
         trainable=trainable, name=name, dtype=dtype, **kwargs)
     # Attribute that indicates whether the cell is a TF RNN cell, due the slight
-    # difference between TF and Keras RNN cell.
+    # difference between TF and Keras RNN cell. Notably the state is not wrapped
+    # in a list for TF cell where they are single tensor state, whereas keras
+    # cell will wrap the state into a list, and call() will have to unwrap them.
     self._is_tf_rnn_cell = True
 
   def __call__(self, inputs, state, scope=None):
@@ -606,7 +609,7 @@ class GRUCell(LayerRNNCell):
 _LSTMStateTuple = collections.namedtuple("LSTMStateTuple", ("c", "h"))
 
 
-@tf_export("nn.rnn_cell.LSTMStateTuple")
+@tf_export(v1=["nn.rnn_cell.LSTMStateTuple"])
 class LSTMStateTuple(_LSTMStateTuple):
   """Tuple used by LSTM Cells for `state_size`, `zero_state`, and output state.
 
@@ -1095,8 +1098,8 @@ class _RNNCellWrapperV1(RNNCell):
   def __init__(self, cell):
     super(_RNNCellWrapperV1, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.Checkpointable):
-      self._track_checkpointable(self._cell, name="cell")
+    if isinstance(cell, trackable.Trackable):
+      self._track_trackable(self._cell, name="cell")
 
   def _call_wrapped_cell(self, inputs, state, cell_call_fn, **kwargs):
     """Calls the wrapped cell and performs the wrapping logic.
@@ -1143,7 +1146,7 @@ class _RNNCellWrapperV1(RNNCell):
         inputs, state, cell_call_fn=self._cell.__call__, scope=scope)
 
 
-class _RNNCellWrapperV2(LayerRNNCell, _RNNCellWrapperV1):
+class _RNNCellWrapperV2(keras_layer.AbstractRNNCell, _RNNCellWrapperV1):
   """Base class for cells wrappers V2 compatibility.
 
   This class along with `_RNNCellWrapperV1` allows to define cells wrappers that
@@ -1153,6 +1156,16 @@ class _RNNCellWrapperV2(LayerRNNCell, _RNNCellWrapperV1):
   def __init__(self, *args, **kwargs):
     super(_RNNCellWrapperV2, self).__init__(*args, **kwargs)
     self._layers = [self._cell]
+    # Force the keras_style to be true so that it will suppress all the legacy
+    # behavior from base_layer.
+    self._keras_style = True
+
+  def __call__(self, inputs, *args, **kwargs):
+    # Override the __call__() so that it does not fall to
+    # _RNNCellWrapperV1.__call__(), instead, directly use keras base_layer so
+    # that it will properly invoke the self.call() here.
+    return keras_layer.Layer.__call__(self, inputs, *args, **kwargs)
+
 
   def call(self, inputs, state, **kwargs):
     """Runs the RNN cell step computation.
@@ -1427,92 +1440,14 @@ class DropoutWrapper(_RNNCellWrapperV1):
     return output, new_state
 
 
-@tf_export("rnn.DropoutWrapper", v1=[])
-class DropoutWrapperV2(_RNNCellWrapperV2, DropoutWrapper):
+@tf_export("nn.DropoutWrapper", v1=[])
+class DropoutWrapperV2(DropoutWrapper, _RNNCellWrapperV2):
   """Operator adding dropout to inputs and outputs of the given cell."""
 
-  def __init__(self, cell, input_keep_prob=1.0, output_keep_prob=1.0,
-               state_keep_prob=1.0, variational_recurrent=False,
-               input_size=None, dtype=None, seed=None,
-               dropout_state_filter_visitor=None):
-    """Create a cell with added input, state, and/or output dropout.
+  def __init__(self, *args, **kwargs):
+    super(DropoutWrapperV2, self).__init__(*args, **kwargs)
 
-    If `variational_recurrent` is set to `True` (**NOT** the default behavior),
-    then the same dropout mask is applied at every step, as described in:
-
-    Y. Gal, Z Ghahramani.  "A Theoretically Grounded Application of Dropout in
-    Recurrent Neural Networks".  https://arxiv.org/abs/1512.05287
-
-    Otherwise a different dropout mask is applied at every time step.
-
-    Note, by default (unless a custom `dropout_state_filter` is provided),
-    the memory state (`c` component of any `LSTMStateTuple`) passing through
-    a `DropoutWrapper` is never modified.  This behavior is described in the
-    above article.
-
-    Runs initialization in Keras style scope to use Keras-style variable
-    management.
-
-    Args:
-      cell: a LayerRNNCell, a projection to output_size is added to it.
-      input_keep_prob: unit Tensor or float between 0 and 1, input keep
-        probability; if it is constant and 1, no input dropout will be added.
-      output_keep_prob: unit Tensor or float between 0 and 1, output keep
-        probability; if it is constant and 1, no output dropout will be added.
-      state_keep_prob: unit Tensor or float between 0 and 1, output keep
-        probability; if it is constant and 1, no output dropout will be added.
-        State dropout is performed on the outgoing states of the cell.
-        **Note** the state components to which dropout is applied when
-        `state_keep_prob` is in `(0, 1)` are also determined by
-        the argument `dropout_state_filter_visitor` (e.g. by default dropout
-        is never applied to the `c` component of an `LSTMStateTuple`).
-      variational_recurrent: Python bool.  If `True`, then the same
-        dropout pattern is applied across all time steps per run call.
-        If this parameter is set, `input_size` **must** be provided.
-      input_size: (optional) (possibly nested tuple of) `TensorShape` objects
-        containing the depth(s) of the input tensors expected to be passed in to
-        the `DropoutWrapper`.  Required and used **iff**
-         `variational_recurrent = True` and `input_keep_prob < 1`.
-      dtype: (optional) The `dtype` of the input, state, and output tensors.
-        Required and used **iff** `variational_recurrent = True`.
-      seed: (optional) integer, the randomness seed.
-      dropout_state_filter_visitor: (optional), default: (see below).  Function
-        that takes any hierarchical level of the state and returns
-        a scalar or depth=1 structure of Python booleans describing
-        which terms in the state should be dropped out.  In addition, if the
-        function returns `True`, dropout is applied across this sublevel.  If
-        the function returns `False`, dropout is not applied across this entire
-        sublevel.
-        Default behavior: perform dropout on all terms except the memory (`c`)
-        state of `LSTMCellState` objects, and don't try to apply dropout to
-        `TensorArray` objects:
-        ```
-        def dropout_state_filter_visitor(s):
-          if isinstance(s, LSTMCellState):
-            # Never perform dropout on the c state.
-            return LSTMCellState(c=False, h=True)
-          elif isinstance(s, TensorArray):
-            return False
-          return True
-        ```
-
-    Raises:
-      TypeError: if `cell` is not an `RNNCell`, or `keep_state_fn` is provided
-        but not `callable`.
-      ValueError: if any of the keep_probs are not between 0 and 1.
-    """
-
-    with base_layer.keras_style_scope():
-      super(DropoutWrapperV2, self).__init__(
-          cell=cell,
-          input_keep_prob=input_keep_prob,
-          output_keep_prob=output_keep_prob,
-          state_keep_prob=state_keep_prob,
-          variational_recurrent=variational_recurrent,
-          input_size=input_size,
-          dtype=dtype,
-          seed=seed,
-          dropout_state_filter_visitor=dropout_state_filter_visitor)
+  __init__.__doc__ = DropoutWrapper.__init__.__doc__
 
 
 @tf_export(v1=["nn.rnn_cell.ResidualWrapper"])
@@ -1573,27 +1508,14 @@ class ResidualWrapper(_RNNCellWrapperV1):
     return (res_outputs, new_state)
 
 
-@tf_export("rnn.ResidualWrapper", v1=[])
-class ResidualWrapperV2(_RNNCellWrapperV2, ResidualWrapper):
+@tf_export("nn.ResidualWrapper", v1=[])
+class ResidualWrapperV2(ResidualWrapper, _RNNCellWrapperV2):
   """RNNCell wrapper that ensures cell inputs are added to the outputs."""
 
-  def __init__(self, cell, residual_fn=None):
-    """Constructs a `ResidualWrapperV2` for `cell`.
+  def __init__(self, *args, **kwargs):
+    super(ResidualWrapperV2, self).__init__(*args, **kwargs)
 
-    Runs initialization in Keras style scope to use Keras-style variable
-    management.
-
-    Args:
-      cell: An instance of `LayerRNNCell`.
-      residual_fn: (Optional) The function to map raw cell inputs and raw cell
-        outputs to the actual cell outputs of the residual network.
-        Defaults to calling nest.map_structure on (lambda i, o: i + o), inputs
-        and outputs.
-    """
-
-    with base_layer.keras_style_scope():
-      super(ResidualWrapperV2, self).__init__(
-          cell=cell, residual_fn=residual_fn)
+  __init__.__doc__ = ResidualWrapper.__init__.__doc__
 
 
 @tf_export("nn.rnn_cell.DeviceWrapper")
@@ -1611,8 +1533,8 @@ class DeviceWrapper(RNNCell):
     """
     super(DeviceWrapper, self).__init__()
     self._cell = cell
-    if isinstance(cell, checkpointable.Checkpointable):
-      self._track_checkpointable(self._cell, name="cell")
+    if isinstance(cell, trackable.Trackable):
+      self._track_trackable(self._cell, name="cell")
     self._device = device
 
   @property
@@ -1678,11 +1600,11 @@ class MultiRNNCell(RNNCell):
 
     self._cells = cells
     for cell_number, cell in enumerate(self._cells):
-      # Add Checkpointable dependencies on these cells so their variables get
+      # Add Trackable dependencies on these cells so their variables get
       # saved with this object when using object-based saving.
-      if isinstance(cell, checkpointable.Checkpointable):
-        # TODO(allenl): Track down non-Checkpointable callers.
-        self._track_checkpointable(cell, name="cell-%d" % (cell_number,))
+      if isinstance(cell, trackable.Trackable):
+        # TODO(allenl): Track down non-Trackable callers.
+        self._track_trackable(cell, name="cell-%d" % (cell_number,))
     self._state_is_tuple = state_is_tuple
     if not state_is_tuple:
       if any(nest.is_sequence(c.state_size) for c in self._cells):

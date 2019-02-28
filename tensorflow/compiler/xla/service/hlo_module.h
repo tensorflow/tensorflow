@@ -167,6 +167,12 @@ class HloModule {
   // Gets the number of computations in this module.
   int64 computation_count() const { return computations_.size(); }
 
+  // Returns the mutable computation for the given index.
+  HloComputation* mutable_computation(int64 idx) {
+    CHECK(idx >= 0 && idx < computations_.size());
+    return computations_[idx].get();
+  }
+
   // Gets the number of instructions in this module.
   int64 instruction_count() const;
 

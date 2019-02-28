@@ -99,62 +99,6 @@ ENTRY MergeSharedFusionInstruction.Computation0 {
   EXPECT_EQ(7, operand2->fused_instruction_count());
 }
 
-// Tests that we do not merge a fusion instruction that above flops to bytes
-// threshold.
-//
-// Fusion2 is not merged because it exceeds the threshold flops-to-bytes ratio.
-TEST_F(FusionMergerTest, FlopsToBytesRatioThresholdExceeded) {
-  auto module = ParseHloString(R"(
-HloModule FlopsToBytesRatioThresholdExceeded
-
-comp.2 {
-  state.param_1.1 = (f32[4]{0}, f32[4]{0}) parameter(0)
-  get-tuple-element.3 = f32[4]{0} get-tuple-element(state.param_1.1), index=0
-  get-tuple-element.4 = f32[4]{0} get-tuple-element(state.param_1.1), index=2
-  multiply.29 = f32[4]{0} multiply(get-tuple-element.3, get-tuple-element.4)
-  multiply.30 = f32[4]{0} multiply(get-tuple-element.3, multiply.29)
-  multiply.31 = f32[4]{0} multiply(get-tuple-element.3, multiply.30)
-  multiply.32 = f32[4]{0} multiply(get-tuple-element.3, multiply.31)
-  multiply.33 = f32[4]{0} multiply(get-tuple-element.3, multiply.32)
-  multiply.34 = f32[4]{0} multiply(get-tuple-element.3, multiply.33)
-  multiply.35 = f32[4]{0} multiply(get-tuple-element.3, multiply.34)
-  multiply.36 = f32[4]{0} multiply(get-tuple-element.3, multiply.35)
-  multiply.37 = f32[4]{0} multiply(get-tuple-element.3, multiply.36)
-  multiply.38 = f32[4]{0} multiply(get-tuple-element.3, multiply.37)
-  multiply.39 = f32[4]{0} multiply(get-tuple-element.3, multiply.38)
-  multiply.40 = f32[4]{0} multiply(get-tuple-element.3, multiply.39)
-  ROOT multiply.41 = f32[4]{0} multiply(get-tuple-element.3, multiply.40)
-}
-
-comp.1 {
-  multiply.12.param_1.1 = f32[4]{0} parameter(1)
-  constant.param_1.3 = f32[4]{0} parameter(0)
-  add.3 = f32[4]{0} add(multiply.12.param_1.1, constant.param_1.3)
-  ROOT multiply.16 = f32[4]{0} multiply(add.3, constant.param_1.3)
-}
-
-comp {
-  multiply.12.param_1 = f32[4]{0} parameter(1)
-  constant.param_1.1 = f32[4]{0} parameter(0)
-  multiply.15 = f32[4]{0} multiply(multiply.12.param_1, constant.param_1.1)
-  ROOT add.2 = f32[4]{0} add(multiply.15, constant.param_1.1)
-}
-
-ENTRY FlopsToBytesRatioThresholdExceeded.Computation1 {
-  constant = f32[4]{0} constant({1, 1, 1, 1})
-  state = (f32[4]{0}, f32[4]{0}) parameter(0)
-  fusion.2 = f32[4]{0} fusion(state), kind=kLoop, calls=comp.2
-  fusion.3 = f32[4]{0} fusion(constant, fusion.2), kind=kLoop, calls=comp.1
-  fusion.4 = f32[4]{0} fusion(constant, fusion.2), kind=kLoop, calls=comp
-  ROOT tuple = (f32[4]{0}, f32[4]{0}) tuple(fusion.3, fusion.4)
-})")
-                    .ValueOrDie();
-  // Run fusion merger pass, which should detect that the flops/bytes of the
-  // shared fusion instruction exceeds the threshold ratio, and therefore
-  // cannot be merged with other fusion instructions.
-  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
-}
-
 // Tests that threshold for bytes transferred if merged is exceeded.
 //
 // Fusion2 is not merged because it exceeds the threshold bytes transferred.

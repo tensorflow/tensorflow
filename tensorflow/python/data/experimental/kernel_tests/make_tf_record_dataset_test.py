@@ -19,6 +19,7 @@ from __future__ import print_function
 
 from tensorflow.python.data.experimental.kernel_tests import reader_dataset_ops_test_base
 from tensorflow.python.data.experimental.ops import readers
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.util import nest
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
@@ -234,7 +235,7 @@ class MakeTFRecordDatasetTest(
   def testIndefiniteRepeatShapeInference(self):
     dataset = readers.make_tf_record_dataset(
         file_pattern=self.test_filenames, num_epochs=None, batch_size=32)
-    for shape in nest.flatten(dataset.output_shapes):
+    for shape in nest.flatten(dataset_ops.get_legacy_output_shapes(dataset)):
       self.assertEqual(32, shape[0])
 
 

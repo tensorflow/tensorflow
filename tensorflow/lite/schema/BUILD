@@ -9,6 +9,12 @@ load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
 py_binary(
     name = "upgrade_schema",
+    srcs = ["upgrade_schema.py"],
+    deps = [":upgrade_schema_main_lib"],
+)
+
+py_library(
+    name = "upgrade_schema_main_lib",
     srcs = [
         "upgrade_schema.py",
     ],
@@ -39,7 +45,7 @@ py_test(
         "notap",
     ],
     deps = [
-        ":upgrade_schema",
+        ":upgrade_schema_main_lib",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],

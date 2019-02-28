@@ -86,6 +86,7 @@ class KerasRegularizersTest(keras_parameterized.TestCase,
       ('l1', regularizers.l1()),
       ('l2', regularizers.l2()),
       ('l1_l2', regularizers.l1_l2()),
+      ('l2_zero', keras.regularizers.l2(0.)),
   ])
   def test_activity_regularization(self, regularizer):
     (x_train, y_train), _ = self.get_data()

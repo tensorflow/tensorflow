@@ -25,9 +25,9 @@ from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import lift_to_graph
 from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.util import nest
@@ -63,7 +63,7 @@ class VariableHolder(object):
       return self._fn(*args, **kwargs)
 
 
-# TODO(allenl): make this checkpointable
+# TODO(allenl): make this trackable
 class WrappedFunction(function.ConcreteFunction):
   """Wraps a tf V1 piece of code in a function."""
 
@@ -155,15 +155,16 @@ class WrappedFunction(function.ConcreteFunction):
           sink_tensor = identity_fetches[0]
         else:
           identity_fetches = []
-          sink_tensor = control_flow_ops.no_op()
+          sink_tensor = array_ops.zeros([])
     lift_map = lift_to_graph.lift_to_graph(
-        sink_tensor, pruned_graph,
-        sources=flat_feeds + internal_captures)
+        [sink_tensor], pruned_graph, sources=flat_feeds + internal_captures)
     for original_fetch, identity_fetch in zip(
         tensor_fetches, identity_fetches):
       lift_map[original_fetch] = lift_map[identity_fetch]
     pruned_graph.outputs.extend(
         lift_map[x] for x in flat_fetches if isinstance(x, ops.Tensor))
+    if not tensor_fetches:
+      pruned_graph.outputs.append(lift_map[sink_tensor])
     for external_capture, internal_capture in self.graph.captures.items():
       pruned_graph.captures[external_capture] = lift_map[internal_capture]
     pruned_graph.inputs.extend(lift_map[x] for x in flat_feeds)
@@ -256,3 +257,26 @@ def wrap_function(fn, signature, name=None):
           collections={}),
       variable_holder=holder,
       signature=signature)
+
+
+def function_from_graph_def(graph_def, inputs, outputs):
+  """Creates a ConcreteFunction from a GraphDef.
+
+  Args:
+    graph_def: A GraphDef to make a function out of.
+    inputs: A Tensor name or nested structure of names in `graph_def` which
+      should be inputs to the function.
+    outputs: A Tensor name or nested structure of names in `graph_def` which
+      should be outputs of the function.
+
+  Returns:
+    A ConcreteFunction.
+  """
+  def _imports_graph_def():
+    importer.import_graph_def(graph_def, name="")
+
+  wrapped_import = wrap_function(_imports_graph_def, [])
+  import_graph = wrapped_import.graph
+  return wrapped_import.prune(
+      nest.map_structure(import_graph.as_graph_element, inputs),
+      nest.map_structure(import_graph.as_graph_element, outputs))

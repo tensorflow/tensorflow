@@ -47,15 +47,29 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMax(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
+}
+
 bool IsAnyMaxPool(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
          op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
 }
 
+bool IsAnyMin(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
+
+bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
+
+bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
@@ -229,6 +243,8 @@ bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
 
+bool IsHostConstant(const NodeDef& node) { return node.op() == "HostConst"; }
+
 bool IsHistogramSummary(const NodeDef& node) {
   return node.op() == "HistogramSummary";
 }
@@ -279,8 +295,8 @@ bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
 bool IsMatMul(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
-         op == "SparseMatMul";
+  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
+         IsQuantizedMatMul(node);
 }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
@@ -349,6 +365,10 @@ bool IsPrint(const NodeDef& node) {
 }
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
+bool IsQuantizedMatMul(const NodeDef& node) {
+  return node.op() == "QuantizedMatMul" || node.op() == "QuantizedMatMulV2";
+}
 
 bool IsQueue(const NodeDef& node) {
   return str_util::EndsWith(node.op(), "QueueV2");
@@ -554,7 +574,7 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }  // namespace
 
 bool IsPersistent(const NodeDef& node) {
-  return IsConstant(node) || IsVariable(node);
+  return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
 bool MaybeHasRefInput(const NodeDef& node) {

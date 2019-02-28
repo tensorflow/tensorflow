@@ -22,7 +22,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/no_op.h"
 
 namespace tensorflow {
 namespace {
@@ -856,15 +855,12 @@ class ResourceApplyAdadelta : public XlaOpKernel {
     xla::XlaOp grad = ctx->Input(6);
 
     xla::XlaBuilder* b = ctx->builder();
-    xla::XlaOp neg_half = XlaHelpers::FloatLiteral(b, dtype_, -0.5);
-    xla::XlaOp half = XlaHelpers::FloatLiteral(b, dtype_, 0.5);
     xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype_, 1.0);
-    xla::XlaOp two = XlaHelpers::FloatLiteral(b, dtype_, 2.0);
 
-    accum = rho * accum + (one - rho) * xla::Pow(grad, two);
-    xla::XlaOp update = xla::Pow(accum_update + epsilon, half) *
-                        xla::Pow(accum + epsilon, neg_half) * grad;
-    accum_update = rho * accum_update + (one - rho) * xla::Pow(update, two);
+    accum = rho * accum + (one - rho) * xla::Square(grad);
+    xla::XlaOp update =
+        xla::Sqrt(accum_update + epsilon) * xla::Rsqrt(accum + epsilon) * grad;
+    accum_update = rho * accum_update + (one - rho) * xla::Square(update);
     var = var - update * lr;
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(0, dtype_, var));
     OP_REQUIRES_OK(ctx, ctx->AssignVariable(1, dtype_, accum));

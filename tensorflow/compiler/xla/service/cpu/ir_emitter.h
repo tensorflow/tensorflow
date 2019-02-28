@@ -72,13 +72,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //              index in the profiling array.
   // computation_to_profile_idx: the mapping from HLO computations to their
   //              index in the profiling array.
+  // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             std::unordered_map<const HloInstruction*, int64>
                 instruction_to_profile_idx,
             std::unordered_map<const HloComputation*, int64>
                 computation_to_profile_idx,
-            const TargetMachineFeatures* target_machine);
+            const TargetMachineFeatures* target_machine,
+            bool emit_code_for_msan);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -125,6 +127,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* hlo) override;
 
+  Status HandleAllToAll(HloInstruction* instruction) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleCopy(HloInstruction* copy) override;
@@ -573,6 +576,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   std::vector<const HloComputation*> thread_local_computations_;
   std::vector<const HloComputation*> global_computations_;
+
+  bool emit_code_for_msan_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

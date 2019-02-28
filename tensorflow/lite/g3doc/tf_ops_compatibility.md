@@ -8,7 +8,9 @@ operations are mapped to their TensorFlow Lite counterparts.
 Since the set of TensorFlow Lite operations is smaller than TensorFlow's, not
 every model is convertible. Even for supported operations, very specific usage
 patterns are sometimes expected, for performance reasons. We expect to expand
-the set of supported operations in future TensorFlow Lite releases.
+the set of supported operations in future TensorFlow Lite releases. Additional
+ops can be included by [using select TensorFlow ops](using_select_tf_ops.md), at
+the cost of binary size.
 
 The best way to understand how to build a TensorFlow model that can be used with
 TensorFlow Lite is to carefully consider how operations are converted and
@@ -17,15 +19,15 @@ optimized, along with the limitations imposed by this process.
 ## Supported Types
 
 Most TensorFlow Lite operations target both floating-point (float32) and
-quantized (uint8) inference, but usually there is little or no support for other
-types like tf.float16 and strings.
+quantized (uint8, int8) inference, but many ops do not yet for other types like
+tf.float16 and strings.
 
 Apart from using different version of the operations, the other difference
 between floating-point and quantized models lies in the way they are converted.
-Quantized conversion expect the models to be annotated with "fake quantization"
-nodes that record the dynamic range of the tensors. Without that information TF
-Lite is not able to accurately quantize a model, which means that proper
-quantized training is necessary before conversion.
+Quantized conversion requires dynamic range information for tensors. This
+requires "fake-quantization" during model training, getting range information
+via a calibration data set, or doing "on-the-fly" range estimation. See
+[quantization](performance/model_optimization.md).
 
 ## Data Format and Broadcasting
 
@@ -89,7 +91,8 @@ be simply removed from the graph (tf.identity), replaced by tensors
 some supported operations may sometimes be removed through one of these
 processes.
 
-Here is a list of TensorFlow operations that are usually removed from the graph:
+Here is a non-exhaustive list of TensorFlow operations that are usually removed
+from the graph:
 
 *   [tf.add](https://www.tensorflow.org/api_docs/python/tf/add)
 *   [tf.check_numerics](https://www.tensorflow.org/api_docs/python/tf/check_numerics)
@@ -302,6 +305,17 @@ Options {
 }
 ```
 
+**ELU**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a tensor equivalent to exp(features) - 1 if < 0, features otherwise.
+}
+```
+
 **EQUAL**
 
 ```
@@ -408,6 +422,18 @@ Inputs {
   0: params tensor
   1: indices tensor
   2: axis tensor (optional)
+}
+Outputs {
+  0: a tensor with same type as the params tensor.
+}
+```
+
+**GATHER_ND**
+
+```
+Inputs {
+  0: params tensor
+  1: indices tensor
 }
 Outputs {
   0: a tensor with same type as the params tensor.
@@ -713,6 +739,17 @@ Options {
 }
 ```
 
+**RANK**
+
+```
+Inputs {
+  0: a tensor
+}
+Outputs {
+  0: a 0-D int32 Tensor representing the rank of input
+}
+```
+
 **RELU**
 
 ```
@@ -769,7 +806,7 @@ Inputs {
   1: a 1D tensor with 2 elements
 }
 Outputs {
-  0: A tensor of type `tensor 0` resized according to `tensor 1` heigh/width values
+  0: A tensor of type `tensor 0` resized according to `tensor 1` height/width values
   using nearest neighbors interpolation.
 }
 Options {
@@ -785,6 +822,25 @@ Inputs {
 }
 Outputs {
   0: result of computing element-wise reciprocal square root of the input tensor
+}
+```
+
+**REVERSE_SEQUENCE**
+
+```
+Inputs {
+  0: a tensor
+  1: a 1-D tensor which specifies the length of sequence to be reversed in each
+  dim
+}
+Outputs {
+  0: a tensor with the same shape as the input tensor
+}
+Options {
+  seq_dim: a 0-D int tensor (scalar). The dimension which is partially
+  reversed.
+  batch_dim: a 0-D int tensor (scalar). Defaults to 0. The dimension along
+  which reversal is performed.
 }
 ```
 
@@ -997,6 +1053,22 @@ Inputs {
 }
 Outputs {
   0-N: tensors of unpacked tensor.
+}
+```
+
+**WHERE**
+
+```
+Inputs {
+  0: A tensor of type bool.
+  1: A tensor which may have the same shape as condition. If condition is rank
+     1, x may have higher rank, but its first dimension must match the size of
+     condition.
+  2: A tensor with the same shape and type as x.
+}
+Outputs {
+  0: A tensor with the same type and shape as x, y if they are non-None, or
+     a tensor with shape (num_true, dim_size(condition)).
 }
 ```
 

@@ -5048,6 +5048,48 @@ class Graph(object):
     self._thread_local._distribution_strategy_stack = (  # pylint: disable=protected-access
         _distribution_strategy_stack)
 
+  @property
+  def _auto_cast_variable_read_dtype(self):
+    """The dtype that instances of `AutoCastVariable` will be casted to.
+
+    This is None if `AutoCastVariables` should not be casted.
+
+    See `AutoCastVariable` for more information.
+
+    Returns:
+      The dtype that instances of `AutoCastVariable` will be casted to.
+    """
+    if not hasattr(self._thread_local, "_auto_cast_variable_read_dtype"):
+      self._thread_local._auto_cast_variable_read_dtype = None  # pylint: disable=protected-access
+    return self._thread_local._auto_cast_variable_read_dtype  # pylint: disable=protected-access
+
+  @_auto_cast_variable_read_dtype.setter
+  def _auto_cast_variable_read_dtype(self, _auto_cast_variable_read_dtype):
+    self._thread_local._auto_cast_variable_read_dtype = (  # pylint: disable=protected-access
+        _auto_cast_variable_read_dtype)
+
+  @tf_contextlib.contextmanager
+  def _enable_auto_casting_variables(self, dtype):
+    """Context manager to automatically cast AutoCastVariables.
+
+    If an AutoCastVariable `var` is used under this context manager, it will be
+    casted to `dtype` before being used.
+
+    See `AutoCastVariable` for more information.
+
+    Args:
+      dtype: The dtype that AutoCastVariables should be casted to.
+
+    Yields:
+      Nothing.
+    """
+    prev_read_dtype = self._auto_cast_variable_read_dtype
+    try:
+      self._auto_cast_variable_read_dtype = dtype
+      yield
+    finally:
+      self._auto_cast_variable_read_dtype = prev_read_dtype
+
   def _mutation_lock(self):
     """Returns a lock to guard code that creates & mutates ops.
 
@@ -5675,7 +5717,7 @@ def disable_eager_execution():
   context.default_execution_mode = context.GRAPH_MODE
   c = context.context_safe()
   if c is not None:
-    c._eager_context.is_eager = False  # pylint: disable=protected-access
+    c._thread_local_data.is_eager = False  # pylint: disable=protected-access
 
 
 def enable_eager_execution_internal(config=None,

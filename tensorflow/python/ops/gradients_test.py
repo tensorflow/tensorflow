@@ -587,11 +587,12 @@ class FunctionGradientsTest(test_util.TensorFlowTestCase):
       def Foo():
         x = constant_op.constant(10.0, name="x")
         y = math_ops.multiply(x, c, name="y")
-        z = math_ops.multiply(y, 3.0, name="z")
+        # Regression test for b/122564611.
+        z = math_ops.multiply(c, y, name="z")
         g = gradients_impl.gradients(z, x)
         return g[0]
 
-      self.assertEqual(Foo().numpy(), 6.0)
+      self.assertEqual(Foo().numpy(), 4.0)
 
 
 class StopGradientTest(test_util.TensorFlowTestCase):

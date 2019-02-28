@@ -339,10 +339,11 @@ class XlaCompiler {
   // Compiles a tensorflow::Graph into an xla::XlaComputation.
   // Similar to CompileFunction, but takes a Graph as input rather than a
   // function.
-  Status CompileGraph(const CompileOptions& options, string const& name,
-                      std::unique_ptr<Graph> graph,
-                      absl::Span<const Argument> args,
-                      CompilationResult* result);
+  Status CompileGraph(
+      const CompileOptions& options, string const& name,
+      std::unique_ptr<Graph> graph, absl::Span<const Argument> args,
+      absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
+      CompilationResult* result);
 
   // Compiles a single Op, given by `node_def`, into an
   // xla::XlaComputation. Similar to CompileFunction but takes a single Op as

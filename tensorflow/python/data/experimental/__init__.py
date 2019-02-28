@@ -42,6 +42,7 @@ See [Importing Data](https://tensorflow.org/guide/datasets) for an overview.
 @@ThreadingOptions
 
 @@bucket_by_sequence_length
+@@bytes_produced_stats
 @@cardinality
 @@choose_from_datasets
 @@copy_to_device
@@ -116,6 +117,7 @@ from tensorflow.python.data.experimental.ops.resampling import rejection_resampl
 from tensorflow.python.data.experimental.ops.scan_ops import scan
 from tensorflow.python.data.experimental.ops.shuffle_ops import shuffle_and_repeat
 from tensorflow.python.data.experimental.ops.stats_aggregator import StatsAggregator
+from tensorflow.python.data.experimental.ops.stats_ops import bytes_produced_stats
 from tensorflow.python.data.experimental.ops.stats_ops import latency_stats
 from tensorflow.python.data.experimental.ops.stats_options import StatsOptions
 from tensorflow.python.data.experimental.ops.take_while_ops import take_while

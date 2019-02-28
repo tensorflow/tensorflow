@@ -68,13 +68,13 @@ class Masking(Layer):
   You want to mask timestep #3 and #5 because you lack data for
   these timesteps. You can:
 
-      - set `x[:, 3, :] = 0.` and `x[:, 5, :] = 0.`
-      - insert a `Masking` layer with `mask_value=0.` before the LSTM layer:
+  - Set `x[:, 3, :] = 0.` and `x[:, 5, :] = 0.`
+  - Insert a `Masking` layer with `mask_value=0.` before the LSTM layer:
 
   ```python
-      model = Sequential()
-      model.add(Masking(mask_value=0., input_shape=(timesteps, features)))
-      model.add(LSTM(32))
+  model = Sequential()
+  model.add(Masking(mask_value=0., input_shape=(timesteps, features)))
+  model.add(LSTM(32))
   ```
   """
 
@@ -113,14 +113,19 @@ class Dropout(Layer):
   which helps prevent overfitting.
 
   Arguments:
-      rate: float between 0 and 1. Fraction of the input units to drop.
-      noise_shape: 1D integer tensor representing the shape of the
-          binary dropout mask that will be multiplied with the input.
-          For instance, if your inputs have shape
-          `(batch_size, timesteps, features)` and
-          you want the dropout mask to be the same for all timesteps,
-          you can use `noise_shape=(batch_size, 1, features)`.
-      seed: A Python integer to use as random seed.
+    rate: Float between 0 and 1. Fraction of the input units to drop.
+    noise_shape: 1D integer tensor representing the shape of the
+      binary dropout mask that will be multiplied with the input.
+      For instance, if your inputs have shape
+      `(batch_size, timesteps, features)` and
+      you want the dropout mask to be the same for all timesteps,
+      you can use `noise_shape=(batch_size, 1, features)`.
+    seed: A Python integer to use as random seed.
+
+  Call arguments:
+    inputs: Input tensor (of any rank).
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (doing nothing).
   """
 
   def __init__(self, rate, noise_shape=None, seed=None, **kwargs):
@@ -180,18 +185,23 @@ class SpatialDropout1D(Dropout):
   between feature maps and should be used instead.
 
   Arguments:
-      rate: float between 0 and 1. Fraction of the input units to drop.
+    rate: Float between 0 and 1. Fraction of the input units to drop.
+
+  Call arguments:
+    inputs: A 3D tensor.
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (doing nothing).
 
   Input shape:
-      3D tensor with shape:
-      `(samples, timesteps, channels)`
+    3D tensor with shape:
+    `(samples, timesteps, channels)`
 
   Output shape:
-      Same as input
+    Same as input.
 
   References:
-      - [Efficient Object Localization Using Convolutional
-        Networks](https://arxiv.org/abs/1411.4280)
+    - [Efficient Object Localization Using Convolutional
+      Networks](https://arxiv.org/abs/1411.4280)
   """
 
   def __init__(self, rate, **kwargs):
@@ -217,27 +227,32 @@ class SpatialDropout2D(Dropout):
   between feature maps and should be used instead.
 
   Arguments:
-      rate: float between 0 and 1. Fraction of the input units to drop.
-      data_format: 'channels_first' or 'channels_last'.
-          In 'channels_first' mode, the channels dimension
-          (the depth) is at index 1,
-          in 'channels_last' mode is it at index 3.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    rate: Float between 0 and 1. Fraction of the input units to drop.
+    data_format: 'channels_first' or 'channels_last'.
+      In 'channels_first' mode, the channels dimension
+      (the depth) is at index 1,
+      in 'channels_last' mode is it at index 3.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
+
+  Call arguments:
+    inputs: A 4D tensor.
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (doing nothing).
 
   Input shape:
-      4D tensor with shape:
-      `(samples, channels, rows, cols)` if data_format='channels_first'
-      or 4D tensor with shape:
-      `(samples, rows, cols, channels)` if data_format='channels_last'.
+    4D tensor with shape:
+    `(samples, channels, rows, cols)` if data_format='channels_first'
+    or 4D tensor with shape:
+    `(samples, rows, cols, channels)` if data_format='channels_last'.
 
   Output shape:
-      Same as input
+    Same as input.
 
   References:
-      - [Efficient Object Localization Using Convolutional
-        Networks](https://arxiv.org/abs/1411.4280)
+    - [Efficient Object Localization Using Convolutional
+      Networks](https://arxiv.org/abs/1411.4280)
   """
 
   def __init__(self, rate, data_format=None, **kwargs):
@@ -271,26 +286,31 @@ class SpatialDropout3D(Dropout):
   between feature maps and should be used instead.
 
   Arguments:
-      rate: float between 0 and 1. Fraction of the input units to drop.
-      data_format: 'channels_first' or 'channels_last'.
-          In 'channels_first' mode, the channels dimension (the depth)
-          is at index 1, in 'channels_last' mode is it at index 4.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    rate: Float between 0 and 1. Fraction of the input units to drop.
+    data_format: 'channels_first' or 'channels_last'.
+        In 'channels_first' mode, the channels dimension (the depth)
+        is at index 1, in 'channels_last' mode is it at index 4.
+        It defaults to the `image_data_format` value found in your
+        Keras config file at `~/.keras/keras.json`.
+        If you never set it, then it will be "channels_last".
+
+  Call arguments:
+    inputs: A 5D tensor.
+    training: Python boolean indicating whether the layer should behave in
+      training mode (adding dropout) or in inference mode (doing nothing).
 
   Input shape:
-      5D tensor with shape:
-      `(samples, channels, dim1, dim2, dim3)` if data_format='channels_first'
-      or 5D tensor with shape:
-      `(samples, dim1, dim2, dim3, channels)` if data_format='channels_last'.
+    5D tensor with shape:
+    `(samples, channels, dim1, dim2, dim3)` if data_format='channels_first'
+    or 5D tensor with shape:
+    `(samples, dim1, dim2, dim3, channels)` if data_format='channels_last'.
 
   Output shape:
-      Same as input
+    Same as input.
 
   References:
-      - [Efficient Object Localization Using Convolutional
-        Networks](https://arxiv.org/abs/1411.4280)
+    - [Efficient Object Localization Using Convolutional
+      Networks](https://arxiv.org/abs/1411.4280)
   """
 
   def __init__(self, rate, data_format=None, **kwargs):
@@ -316,16 +336,16 @@ class Activation(Layer):
   """Applies an activation function to an output.
 
   Arguments:
-      activation: name of activation function to use
-          or alternatively, a Theano or TensorFlow operation.
+    activation: Activation function, such as `tf.nn.relu`, or string name of
+      built-in activation function, such as "relu".
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as input.
+    Same shape as input.
   """
 
   def __init__(self, activation, **kwargs):
@@ -350,34 +370,34 @@ class Reshape(Layer):
   """Reshapes an output to a certain shape.
 
   Arguments:
-      target_shape: target shape. Tuple of integers,
-          does not include the samples dimension (batch size).
+    target_shape: Target shape. Tuple of integers,
+      does not include the samples dimension (batch size).
 
   Input shape:
-      Arbitrary, although all dimensions in the input shaped must be fixed.
-      Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary, although all dimensions in the input shaped must be fixed.
+    Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      `(batch_size,) + target_shape`
+    `(batch_size,) + target_shape`
 
   Example:
 
   ```python
-      # as first layer in a Sequential model
-      model = Sequential()
-      model.add(Reshape((3, 4), input_shape=(12,)))
-      # now: model.output_shape == (None, 3, 4)
-      # note: `None` is the batch dimension
+  # as first layer in a Sequential model
+  model = Sequential()
+  model.add(Reshape((3, 4), input_shape=(12,)))
+  # now: model.output_shape == (None, 3, 4)
+  # note: `None` is the batch dimension
 
-      # as intermediate layer in a Sequential model
-      model.add(Reshape((6, 2)))
-      # now: model.output_shape == (None, 6, 2)
+  # as intermediate layer in a Sequential model
+  model.add(Reshape((6, 2)))
+  # now: model.output_shape == (None, 6, 2)
 
-      # also supports shape inference using `-1` as dimension
-      model.add(Reshape((-1, 2, 2)))
-      # now: model.output_shape == (None, 3, 2, 2)
+  # also supports shape inference using `-1` as dimension
+  model.add(Reshape((-1, 2, 2)))
+  # now: model.output_shape == (None, 3, 2, 2)
   ```
   """
 
@@ -392,21 +412,18 @@ class Reshape(Layer):
     `_fix_unknown_dimension` in `numpy/core/src/multiarray/shape.c`
 
     Arguments:
-        input_shape: shape of array being reshaped
-        output_shape: desired shape of the array with at most
-            a single -1 which indicates a dimension that should be
-            derived from the input shape.
+      input_shape: Shape of array being reshaped
+      output_shape: Desired shape of the array with at most
+        a single -1 which indicates a dimension that should be
+        derived from the input shape.
 
     Returns:
-        The new output shape with a -1 replaced with its computed value.
-
-        Raises a ValueError if the total array size of the output_shape is
-        different then the input_shape, or more than one unknown dimension
-        is specified.
+      The new output shape with a -1 replaced with its computed value.
 
     Raises:
-        ValueError: in case of invalid values
-            for `input_shape` or `input_shape`.
+      ValueError: If the total array size of the output_shape is
+      different than the input_shape, or more than one unknown dimension
+      is specified.
     """
     output_shape = list(output_shape)
     msg = 'total size of new array must be unchanged'
@@ -461,26 +478,26 @@ class Permute(Layer):
   Example:
 
   ```python
-      model = Sequential()
-      model.add(Permute((2, 1), input_shape=(10, 64)))
-      # now: model.output_shape == (None, 64, 10)
-      # note: `None` is the batch dimension
+  model = Sequential()
+  model.add(Permute((2, 1), input_shape=(10, 64)))
+  # now: model.output_shape == (None, 64, 10)
+  # note: `None` is the batch dimension
   ```
 
   Arguments:
-      dims: Tuple of integers. Permutation pattern, does not include the
-          samples dimension. Indexing starts at 1.
-          For instance, `(2, 1)` permutes the first and second dimensions
-          of the input.
+    dims: Tuple of integers. Permutation pattern, does not include the
+      samples dimension. Indexing starts at 1.
+      For instance, `(2, 1)` permutes the first and second dimensions
+      of the input.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same as the input shape, but with the dimensions re-ordered according
-      to the specified pattern.
+    Same as the input shape, but with the dimensions re-ordered according
+    to the specified pattern.
   """
 
   def __init__(self, dims, **kwargs):
@@ -518,27 +535,27 @@ class Flatten(Layer):
   adds an extra channel dimension and output shapes are `(batch, 1)`.
 
   Arguments:
-      data_format: A string,
-          one of `channels_last` (default) or `channels_first`.
-          The ordering of the dimensions in the inputs.
-          `channels_last` corresponds to inputs with shape
-          `(batch, ..., channels)` while `channels_first` corresponds to
-          inputs with shape `(batch, channels, ...)`.
-          It defaults to the `image_data_format` value found in your
-          Keras config file at `~/.keras/keras.json`.
-          If you never set it, then it will be "channels_last".
+    data_format: A string,
+      one of `channels_last` (default) or `channels_first`.
+      The ordering of the dimensions in the inputs.
+      `channels_last` corresponds to inputs with shape
+      `(batch, ..., channels)` while `channels_first` corresponds to
+      inputs with shape `(batch, channels, ...)`.
+      It defaults to the `image_data_format` value found in your
+      Keras config file at `~/.keras/keras.json`.
+      If you never set it, then it will be "channels_last".
 
   Example:
 
   ```python
-      model = Sequential()
-      model.add(Convolution2D(64, 3, 3,
-                              border_mode='same',
-                              input_shape=(3, 32, 32)))
-      # now: model.output_shape == (None, 64, 32, 32)
+  model = Sequential()
+  model.add(Convolution2D(64, 3, 3,
+                          border_mode='same',
+                          input_shape=(3, 32, 32)))
+  # now: model.output_shape == (None, 64, 32, 32)
 
-      model.add(Flatten())
-      # now: model.output_shape == (None, 65536)
+  model.add(Flatten())
+  # now: model.output_shape == (None, 65536)
   ```
   """
 
@@ -587,23 +604,23 @@ class RepeatVector(Layer):
   Example:
 
   ```python
-      model = Sequential()
-      model.add(Dense(32, input_dim=32))
-      # now: model.output_shape == (None, 32)
-      # note: `None` is the batch dimension
+  model = Sequential()
+  model.add(Dense(32, input_dim=32))
+  # now: model.output_shape == (None, 32)
+  # note: `None` is the batch dimension
 
-      model.add(RepeatVector(3))
-      # now: model.output_shape == (None, 3, 32)
+  model.add(RepeatVector(3))
+  # now: model.output_shape == (None, 3, 32)
   ```
 
   Arguments:
-      n: integer, repetition factor.
+    n: Integer, repetition factor.
 
   Input shape:
-      2D tensor of shape `(num_samples, features)`.
+    2D tensor of shape `(num_samples, features)`.
 
   Output shape:
-      3D tensor of shape `(num_samples, n, features)`.
+    3D tensor of shape `(num_samples, n, features)`.
   """
 
   def __init__(self, n, **kwargs):
@@ -631,48 +648,48 @@ class Lambda(Layer):
   Examples:
 
   ```python
-      # add a x -> x^2 layer
-      model.add(Lambda(lambda x: x ** 2))
+  # add a x -> x^2 layer
+  model.add(Lambda(lambda x: x ** 2))
   ```
   ```python
-      # add a layer that returns the concatenation
-      # of the positive part of the input and
-      # the opposite of the negative part
+  # add a layer that returns the concatenation
+  # of the positive part of the input and
+  # the opposite of the negative part
 
-      def antirectifier(x):
-          x -= K.mean(x, axis=1, keepdims=True)
-          x = K.l2_normalize(x, axis=1)
-          pos = K.relu(x)
-          neg = K.relu(-x)
-          return K.concatenate([pos, neg], axis=1)
+  def antirectifier(x):
+      x -= K.mean(x, axis=1, keepdims=True)
+      x = K.l2_normalize(x, axis=1)
+      pos = K.relu(x)
+      neg = K.relu(-x)
+      return K.concatenate([pos, neg], axis=1)
 
-      model.add(Lambda(antirectifier))
+  model.add(Lambda(antirectifier))
   ```
 
   Arguments:
-      function: The function to be evaluated.
-          Takes input tensor as first argument.
-      output_shape: Expected output shape from function.
-            This argument can be inferred if not explicitly provided.
-            Can be a tuple or function.
-            If a tuple, it only specifies the first dimension onward;
-                 sample dimension is assumed either the same as the input:
-                 `output_shape = (input_shape[0], ) + output_shape`
-                 or, the input is `None` and
-                 the sample dimension is also `None`:
-                 `output_shape = (None, ) + output_shape`
-            If a function, it specifies the entire shape as a function of the
-            input shape: `output_shape = f(input_shape)`
-      arguments: optional dictionary of keyword arguments to be passed
-            to the function.
+    function: The function to be evaluated.
+      Takes input tensor as first argument.
+    output_shape: Expected output shape from function.
+      This argument can be inferred if not explicitly provided.
+      Can be a tuple or function.
+      If a tuple, it only specifies the first dimension onward;
+      sample dimension is assumed either the same as the input:
+      `output_shape = (input_shape[0], ) + output_shape`
+      or, the input is `None` and
+      the sample dimension is also `None`:
+      `output_shape = (None, ) + output_shape`
+      If a function, it specifies the entire shape as a function of the
+      input shape: `output_shape = f(input_shape)`
+    arguments: Optional dictionary of keyword arguments to be passed
+      to the function.
 
   Input shape:
-      Arbitrary. Use the keyword argument input_shape
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument input_shape
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Specified by `output_shape` argument
+    Specified by `output_shape` argument
   """
 
   def __init__(self, function, output_shape=None, mask=None, arguments=None,
@@ -864,49 +881,49 @@ class Dense(Layer):
   created by the layer, and `bias` is a bias vector created by the layer
   (only applicable if `use_bias` is `True`).
 
-  Note: if the input to the layer has a rank greater than 2, then
+  Note: If the input to the layer has a rank greater than 2, then
   it is flattened prior to the initial dot product with `kernel`.
 
   Example:
 
   ```python
-      # as first layer in a sequential model:
-      model = Sequential()
-      model.add(Dense(32, input_shape=(16,)))
-      # now the model will take as input arrays of shape (*, 16)
-      # and output arrays of shape (*, 32)
+  # as first layer in a sequential model:
+  model = Sequential()
+  model.add(Dense(32, input_shape=(16,)))
+  # now the model will take as input arrays of shape (*, 16)
+  # and output arrays of shape (*, 32)
 
-      # after the first layer, you don't need to specify
-      # the size of the input anymore:
-      model.add(Dense(32))
+  # after the first layer, you don't need to specify
+  # the size of the input anymore:
+  model.add(Dense(32))
   ```
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          If you don't specify anything, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix.
-      bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation")..
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      If you don't specify anything, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    activity_regularizer: Regularizer function applied to
+      the output of the layer (its "activation")..
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
 
   Input shape:
-      nD tensor with shape: `(batch_size, ..., input_dim)`.
-      The most common situation would be
-      a 2D input with shape `(batch_size, input_dim)`.
+    N-D tensor with shape: `(batch_size, ..., input_dim)`.
+    The most common situation would be
+    a 2D input with shape `(batch_size, input_dim)`.
 
   Output shape:
-      nD tensor with shape: `(batch_size, ..., units)`.
-      For instance, for a 2D input with shape `(batch_size, input_dim)`,
-      the output would have shape `(batch_size, units)`.
+    N-D tensor with shape: `(batch_size, ..., units)`.
+    For instance, for a 2D input with shape `(batch_size, input_dim)`,
+    the output would have shape `(batch_size, units)`.
   """
 
   def __init__(self,
@@ -984,7 +1001,11 @@ class Dense(Layer):
         output_shape = shape[:-1] + [self.units]
         outputs.set_shape(output_shape)
     else:
-      inputs = math_ops.cast(inputs, self.dtype)
+      # Cast the inputs to self.dtype, which is the variable dtype. We do not
+      # cast if `should_cast_variables` is True, as in that case the variable
+      # will be automatically casted to inputs.dtype.
+      if not self._mixed_precision_policy.should_cast_variables:
+        inputs = math_ops.cast(inputs, self.dtype)
       outputs = gen_math_ops.mat_mul(inputs, self.kernel)
     if self.use_bias:
       outputs = nn.bias_add(outputs, self.bias)
@@ -1024,16 +1045,16 @@ class ActivityRegularization(Layer):
   """Layer that applies an update to the cost function based input activity.
 
   Arguments:
-      l1: L1 regularization factor (positive float).
-      l2: L2 regularization factor (positive float).
+    l1: L1 regularization factor (positive float).
+    l2: L2 regularization factor (positive float).
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as input.
+    Same shape as input.
   """
 
   def __init__(self, l1=0., l2=0., **kwargs):
