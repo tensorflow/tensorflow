@@ -558,6 +558,21 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(1, len(model.losses))
 
   @keras_parameterized.run_all_keras_modes
+  def test_custom_mapping_in_config(self):
+
+    class MyModel(keras.Model):
+
+      def call(self, inputs):
+        return inputs
+
+      def get_config(self):
+        self.a = {}
+        return {'a': self.a}
+
+    model = MyModel()
+    self.assertIn('{"a": {}}', model.to_json())
+
+  @keras_parameterized.run_all_keras_modes
   def test_training_on_sparse_data_with_dense_placeholders(self):
     # TODO(kaftan) Test seems to not work, file ticket
     if testing_utils.should_run_eagerly() and context.executing_eagerly():

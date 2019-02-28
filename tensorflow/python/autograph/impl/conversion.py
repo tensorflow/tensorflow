@@ -199,7 +199,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
         'conversion. For example, instead of converting the method '
         'of a class, try converting the entire class instead. '
         'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
-        'contrib/autograph/README.md#using-the-functional-api '
+        'python/autograph/README.md#using-the-functional-api '
         'for more information.')
   else:
     raise ValueError(

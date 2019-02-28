@@ -30,6 +30,7 @@ from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.distribute import collective_all_reduce_strategy as core_collective_all_reduce_strategy
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import cross_device_utils
 from tensorflow.python.distribute import distribute_lib
 from tensorflow.python.distribute import multi_worker_util
@@ -62,7 +63,9 @@ class MockCollectiveAllReduceStrategy(distribute_lib.DistributionStrategy):
   def __init__(self, cluster_resolver):
     super(MockCollectiveAllReduceStrategy, self).__init__(
         core_collective_all_reduce_strategy.CollectiveAllReduceExtended(
-            self, cluster_resolver=cluster_resolver))
+            self,
+            communication=cross_device_ops_lib.CollectiveCommunication.AUTO,
+            cluster_resolver=cluster_resolver))
 
 
 def create_test_objects(cluster_spec=None,

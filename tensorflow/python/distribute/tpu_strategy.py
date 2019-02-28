@@ -235,7 +235,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
         d.name: i for i, d in enumerate(self._tpu_metadata.devices)
         if "device:TPU:" in d.name
     }
-    self._host_device = self.get_host_cpu_device(0)
+    self._host_device = tpu_strategy_util.get_first_tpu_host_device(
+        self._tpu_cluster_resolver)
     self._tpu_devices = tuple(sorted(self._device_index.keys()))
     # Only create variables for the number of replicas we're running.
     self._tpu_devices = self._tpu_devices[:self._num_replicas_in_sync]
@@ -258,67 +259,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
   def _validate_colocate_with_variable(self, colocate_with_variable):
     values.validate_colocate_tpu_variable(colocate_with_variable, self)
 
-  def _get_enqueue_op_per_host(self, host_id, multi_worker_iterator,
-                               input_shapes, iterations):
-    """Create an enqueue op for a single host identified using host_id.
-
-    The while_loop op returned will run `iterations` times and in each run
-    enqueue batches for each shard.
-
-    Args:
-      host_id: integer, id of the host to run the enqueue ops on.
-      multi_worker_iterator: MultiWorkerDataIterator to read the input data.
-      input_shapes: shape of inputs to be enqueue on the queue. This is same as
-        the value of `nest.flatten(iterator.output_shapes)`.
-      iterations: integer, number of iterations to be run; determines the
-        number of batches to be enqueued.
-
-    Returns:
-      while_loop_op running `iterations` times; in each run we enqueue a batch
-      on the infeed queue from the host with id `host_id` for each device shard.
-    """
-    host = self.get_host_cpu_device(host_id)
-    # TODO(sourabhbajaj): Possibly make changes to MultiWorkerDataset
-    # to work with TPU Prefetch so clean up this code.
-    iterator = (
-        multi_worker_iterator.get_iterator(self.get_host(host_id))._iterator)  # pylint: disable=protected-access
-
-    def _infeed_enqueue_ops_fn():
-      """Enqueue ops for one iteration."""
-      control_deps = []
-      sharded_inputs = []
-      enqueue_ops = []
-
-      with ops.device(host):
-        for _ in range(self.num_replicas_per_host):
-          # Use control dependencies to ensure a deterministic ordering.
-          with ops.control_dependencies(control_deps):
-            inputs = nest.flatten(iterator.get_next())
-            control_deps.extend(inputs)
-            sharded_inputs.append(inputs)
-
-      for core_id, shard_input in enumerate(sharded_inputs):
-        enqueue_ops.append(
-            tpu_ops.infeed_enqueue_tuple(
-                inputs=shard_input,
-                shapes=input_shapes,
-                device_ordinal=core_id))
-      return enqueue_ops
-
-    def enqueue_ops_loop_body(i):
-      """Callable for the loop body of the while_loop instantiated below."""
-      with ops.control_dependencies(_infeed_enqueue_ops_fn()):
-        return i + 1
-
-    with ops.device(host):
-      enqueue_op_per_host = control_flow_ops.while_loop(
-          lambda i: i < iterations,
-          enqueue_ops_loop_body,
-          [constant_op.constant(0)],
-          parallel_iterations=1)
-
-    return enqueue_op_per_host
-
   def _make_dataset_iterator(self, dataset):
     """Make iterators for each of the TPU hosts."""
     return input_lib.DatasetIterator(dataset, self._input_workers,
@@ -340,7 +280,7 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
 
   def _experimental_make_numpy_dataset(self, numpy_input, session):
     return numpy_dataset.one_host_numpy_dataset(
-        numpy_input, numpy_dataset.SingleDevice(self.get_host_cpu_device(0)),
+        numpy_input, numpy_dataset.SingleDevice(self._host_device),
         session)
 
   # TODO(priyag): Deal with OutOfRange errors once b/111349762 is fixed.
@@ -408,8 +348,8 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
     assert isinstance(initial_loop_values, list)
     initial_loop_values = initial_loop_values * self._num_replicas_in_sync
 
-    # Put the while loop op on host 0.
-    with ops.device(self.get_host_cpu_device(0)):
+    # Put the while loop op on TPU host 0.
+    with ops.device(self._host_device):
       replicate_outputs = training_loop.repeat(iterations, rewrite_fn,
                                                initial_loop_values)
 
@@ -652,15 +592,6 @@ class TPUExtended(distribute_lib.DistributionStrategyExtended):
         return result
       else:
         return nest.map_structure(self._unwrap, result)
-
-  def get_host(self, host_id):
-    if self._tpu_cluster_resolver.get_master() in ("", "local"):
-      return "/replica:0/task:0"
-    job_name = self._tpu_cluster_resolver.get_job_name() or "tpu_worker"
-    return "/job:%s/task:%d" % (job_name, host_id)
-
-  def get_host_cpu_device(self, host_id):
-    return self.get_host(host_id) + "/device:CPU:0"
 
   def _configure(self,
                  session_config=None,

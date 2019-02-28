@@ -2986,7 +2986,7 @@ def make_lstm_tests(zip_path):
           shape=[num_batchs, input_vec_size])
       inputs_after_split.append(one_timestamp_input)
     # Currently lstm identifier has a few limitations: only supports
-    # forget_bias == 0, inner state activiation == tanh.
+    # forget_bias == 0, inner state activation == tanh.
     # TODO(zhixianyan): Add another test with forget_bias == 1.
     # TODO(zhixianyan): Add another test with relu as activation.
     lstm_cell = tf.contrib.rnn.BasicLSTMCell(

@@ -22,6 +22,7 @@ limitations under the License.
 #include "absl/strings/str_format.h"
 #include "absl/strings/str_join.h"
 #include "absl/strings/str_split.h"
+#include "absl/types/span.h"
 #include "absl/types/variant.h"
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/literal_util.h"
@@ -180,6 +181,7 @@ class HloParser {
     kBracedInt64List,
     kBracedInt64ListList,
     kHloComputation,
+    kBracedHloComputationList,
     kFftType,
     kWindow,
     kConvolutionDimensionNumbers,
@@ -276,6 +278,8 @@ class HloParser {
 
   bool ParseSliceRanges(SliceRanges* result);
   bool ParsePrecisionList(std::vector<PrecisionConfig::Precision>* result);
+  bool ParseHloComputation(HloComputation** result);
+  bool ParseHloComputationList(std::vector<HloComputation*>* result);
   bool ParseShapeList(std::vector<Shape>* result);
   bool ParseInt64List(const TokKind start, const TokKind end,
                       const TokKind delim, std::vector<int64>* result);
@@ -1436,18 +1440,36 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kConditional: {
       optional<HloComputation*> true_computation;
       optional<HloComputation*> false_computation;
-      attrs["true_computation"] = {/*required=*/true, AttrTy::kHloComputation,
-                                   &true_computation};
-      attrs["false_computation"] = {/*required=*/true, AttrTy::kHloComputation,
-                                    &false_computation};
-      if (!ParseOperands(&operands, /*expected_size=*/3) ||
-          !ParseAttributes(attrs)) {
+      optional<std::vector<HloComputation*>> branch_computations;
+      if (!ParseOperands(&operands)) {
+        return false;
+      }
+      const bool branch_index_is_bool =
+          operands[0]->shape().element_type() == PRED;
+      if (branch_index_is_bool) {
+        attrs["true_computation"] = {/*required=*/true, AttrTy::kHloComputation,
+                                     &true_computation};
+        attrs["false_computation"] = {
+            /*required=*/true, AttrTy::kHloComputation, &false_computation};
+      } else {
+        attrs["branch_computations"] = {/*required=*/true,
+                                        AttrTy::kBracedHloComputationList,
+                                        &branch_computations};
+      }
+      if (!ParseAttributes(attrs)) {
+        return false;
+      }
+      if (branch_index_is_bool) {
+        branch_computations.emplace({*true_computation, *false_computation});
+      }
+      if (branch_computations->empty() ||
+          operands.size() != branch_computations->size() + 1) {
         return false;
       }
       instruction = builder->AddInstruction(HloInstruction::CreateConditional(
-          shape, /*pred=*/operands[0],
-          /*true_computation_arg=*/operands[1], *true_computation,
-          /*false_computation_arg=*/operands[2], *false_computation));
+          shape, /*branch_index=*/operands[0],
+          absl::MakeSpan(*branch_computations),
+          absl::MakeSpan(operands).subspan(1)));
       break;
     }
     case HloOpcode::kCustomCall: {
@@ -2683,18 +2705,19 @@ bool HloParser::ParseAttributeHelper(
       }
       case AttrTy::kHloComputation: {
         HloComputation* result = nullptr;
-        if (lexer_.GetKind() == TokKind::kLbrace) {
-          // This means it is a nested computation.
-          if (!ParseInstructionList(&result, /*computation_name=*/"_")) {
-            return false;
-          }
-        } else {
-          // This means it is a computation name.
-          if (!ParseComputationName(&result)) {
-            return false;
-          }
+        if (!ParseHloComputation(&result)) {
+          return false;
         }
         static_cast<optional<HloComputation*>*>(attr_out_ptr)->emplace(result);
+        return true;
+      }
+      case AttrTy::kBracedHloComputationList: {
+        std::vector<HloComputation*> result;
+        if (!ParseHloComputationList(&result)) {
+          return false;
+        }
+        static_cast<optional<std::vector<HloComputation*>>*>(attr_out_ptr)
+            ->emplace(result);
         return true;
       }
       case AttrTy::kFftType: {
@@ -3224,6 +3247,29 @@ bool HloParser::ParsePrecisionList(
       return false;
     }
     result->push_back(item);
+    return true;
+  };
+  return ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,
+                   parse_and_add_item);
+}
+
+bool HloParser::ParseHloComputation(HloComputation** result) {
+  if (lexer_.GetKind() == TokKind::kLbrace) {
+    // This means it is a nested computation.
+    return ParseInstructionList(result, /*computation_name=*/"_");
+  }
+  // This means it is a computation name.
+  return ParseComputationName(result);
+}
+
+bool HloParser::ParseHloComputationList(std::vector<HloComputation*>* result) {
+  auto parse_and_add_item = [&]() {
+    HloComputation* computation;
+    if (!ParseHloComputation(&computation)) {
+      return false;
+    }
+    LOG(INFO) << "parsed computation " << computation->name();
+    result->push_back(computation);
     return true;
   };
   return ParseList(TokKind::kLbrace, TokKind::kRbrace, TokKind::kComma,

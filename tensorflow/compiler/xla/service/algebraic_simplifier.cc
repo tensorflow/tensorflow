@@ -2838,6 +2838,27 @@ Status AlgebraicSimplifierVisitor::HandleSlice(HloInstruction* slice) {
                    new_slice_starts, new_slice_limits, slice->slice_strides()));
   }
 
+  auto only_broadcast_dims_sliced = [&] {
+    if (slice->operand(0)->opcode() != HloOpcode::kBroadcast) {
+      return false;
+    }
+    for (int64 dim : slice->operand(0)->dimensions()) {
+      if (slice->slice_starts(dim) != 0 || slice->slice_strides(dim) != 1 ||
+          slice->slice_limits(dim) !=
+              slice->operand(0)->shape().dimensions(dim)) {
+        return false;
+      }
+    }
+    return true;
+  };
+  if (only_broadcast_dims_sliced()) {
+    return ReplaceWithNewInstruction(
+        slice,
+        HloInstruction::CreateBroadcast(
+            slice->shape(), slice->mutable_operand(0)->mutable_operand(0),
+            slice->mutable_operand(0)->dimensions()));
+  }
+
   TF_ASSIGN_OR_RETURN(bool replaced, TrySimplifyScalarSlice(slice));
   if (replaced) {
     return Status::OK();

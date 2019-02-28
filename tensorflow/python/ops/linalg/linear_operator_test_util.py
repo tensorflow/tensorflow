@@ -589,7 +589,7 @@ def random_positive_definite_matrix(shape, dtype, force_well_conditioned=False):
   if not tensor_util.is_tensor(shape):
     shape = tensor_shape.TensorShape(shape)
     # Matrix must be square.
-    shape[-1].assert_is_compatible_with(shape[-2])
+    shape.dims[-1].assert_is_compatible_with(shape.dims[-2])
 
   with ops.name_scope("random_positive_definite_matrix"):
     tril = random_tril_matrix(

@@ -1,6 +1,10 @@
 path: "tensorflow.distribute.experimental"
 tf_module {
   member {
+    name: "CollectiveCommunication"
+    mtype: "<class \'enum.EnumMeta\'>"
+  }
+  member {
     name: "MultiWorkerMirroredStrategy"
     mtype: "<type \'type\'>"
   }

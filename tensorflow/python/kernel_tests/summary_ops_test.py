@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine.sequential import Sequential
+from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.layers.core import Activation
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.lib.io import tf_record
@@ -574,6 +575,22 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     # Even though we didn't use it, an event file will have been created.
     self.assertEqual(1, len(gfile.Glob(os.path.join(logdir, '*'))))
 
+  def testCreate_immediateSetAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    try:
+      with context.eager_mode():
+        summary_ops.create_file_writer_v2(logdir).set_as_default()
+        summary_ops.flush()
+    finally:
+      # Ensure we clean up no matter how the test executes.
+      context.context().summary_writer_resource = None
+
+  def testCreate_immediateAsDefault_retainsReference(self):
+    logdir = self.get_temp_dir()
+    with context.eager_mode():
+      with summary_ops.create_file_writer_v2(logdir).as_default():
+        summary_ops.flush()
+
   def testNoSharing(self):
     # Two writers with the same logdir should not share state.
     logdir = self.get_temp_dir()
@@ -687,7 +704,7 @@ class SummaryWriterTest(test_util.TensorFlowTestCase):
     with context.eager_mode():
       writer = summary_ops.create_file_writer_v2(
           logdir, max_queue=999999, flush_millis=999999)
-      with writer.as_default(), summary_ops.always_record_summaries():
+      with writer.as_default():
         get_total = lambda: len(events_from_logdir(logdir))
         # Note: First tf.Event is always file_version.
         self.assertEqual(1, get_total())
@@ -960,6 +977,40 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
+
+  @test_util.run_v2_only
+  def testKerasModel_subclass(self):
+
+    class SimpleSubclass(Model):
+
+      def __init__(self):
+        super(SimpleSubclass, self).__init__(name='subclass')
+        self.dense = Dense(10, input_shape=(100,))
+        self.activation = Activation('relu', name='my_relu')
+
+      def call(self, inputs):
+        x = self.dense(inputs)
+        return self.activation(x)
+
+    model = SimpleSubclass()
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      self.assertFalse(
+          summary_ops.keras_model(name='my_name', data=model, step=1))
+      self.assertRegexpMatches(
+          str(mock_log.call_args), 'Model failed to serialize as JSON.')
+
+  @test_util.run_v2_only
+  def testKerasModel_otherExceptions(self):
+    model = Sequential()
+
+    with test.mock.patch.object(model, 'to_json') as mock_to_json:
+      with test.mock.patch.object(logging, 'warn') as mock_log:
+        mock_to_json.side_effect = Exception('oops')
+        self.assertFalse(
+            summary_ops.keras_model(name='my_name', data=model, step=1))
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'Model failed to serialize as JSON. Ignoring... oops')
 
   @test_util.run_v2_only
   def testTrace(self):

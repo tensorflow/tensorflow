@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import os
 
+from tensorflow.python import keras
 from tensorflow.python.client import session
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
@@ -182,6 +183,40 @@ class VariablesToConstantsTest(test.TestCase):
 
     # Check value.
     expected_value = root.add(input_data)
+    actual_value = self._evaluateGraphDef(constant_graph_def, concrete_func,
+                                          [input_data.numpy()])
+    self.assertEqual(expected_value.numpy(), actual_value)
+
+  @test_util.run_v2_only
+  def testKerasModel(self):
+    input_data = constant_op.constant(1., shape=[1, 1])
+
+    # Create a simple Keras model.
+    x = [-1, 0, 1, 2, 3, 4]
+    y = [-3, -1, 1, 3, 5, 7]
+
+    model = keras.models.Sequential(
+        [keras.layers.Dense(units=1, input_shape=[1])])
+    model.compile(optimizer="sgd", loss="mean_squared_error")
+    model.fit(x, y, epochs=1)
+
+    # Get the concrete function from the Keras model.
+    @def_function.function
+    def to_save(x):
+      return model(x)
+
+    concrete_func = to_save.get_concrete_function(input_data)
+
+    variable_graph_def = concrete_func.graph.as_graph_def()
+    self.assertEqual(2, self._getNumVariables(variable_graph_def))
+
+    constant_graph_def = convert_to_constants.convert_variables_to_constants_v2(
+        concrete_func)
+    self.assertEqual(0, self._getNumVariables(constant_graph_def))
+    self.assertFalse(self._hasStatefulPartitionedCallOp(constant_graph_def))
+
+    # Check value.
+    expected_value = to_save(input_data)
     actual_value = self._evaluateGraphDef(constant_graph_def, concrete_func,
                                           [input_data.numpy()])
     self.assertEqual(expected_value.numpy(), actual_value)

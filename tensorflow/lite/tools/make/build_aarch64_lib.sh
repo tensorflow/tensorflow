@@ -1,4 +1,5 @@
-# Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+#!/bin/bash -x
+# Copyright 2017 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,15 +13,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-from __future__ import absolute_import
-from __future__ import division
-from __future__ import print_function
 
-from tensorflow import lite
+set -e
 
-import warnings as _warnings
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR/../../../.."
 
-WARNING = ("WARNING: TF Lite has moved from tf.contrib.lite to tf.lite. Please "
-           "update your imports. This will be a breaking error in TensorFlow "
-           "version 2.0.")
-_warnings.warn(WARNING, PendingDeprecationWarning)
+CC_PREFIX=aarch64-linux-gnu- make -j 3 -f tensorflow/lite/tools/make/Makefile TARGET=aarch64 TARGET_ARCH=armv8-a

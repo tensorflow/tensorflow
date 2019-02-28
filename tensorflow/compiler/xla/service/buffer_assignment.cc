@@ -1620,62 +1620,46 @@ void BufferAssigner::BuildColocatedBufferSets(
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
       } else if (opcode == HloOpcode::kConditional) {
-        const HloInstruction* conditional_hlo = instruction;
+        const HloInstruction* conditional = instruction;
         ShapeUtil::ForEachSubshape(
-            conditional_hlo->shape(),
-            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
+            conditional->shape(),
+            [this, conditional, &points_to_analysis, colocated_buffer_sets](
                 const Shape& /*subshape*/, const ShapeIndex& index) {
               std::vector<const LogicalBuffer*> colocated_set;
-              // Add conditional.result.
-              AddBufferToColocatedSet(conditional_hlo, index,
-                                      points_to_analysis, &colocated_set);
-              // Add conditional.true_computation.root.
-              AddBufferToColocatedSet(
-                  conditional_hlo->true_computation()->root_instruction(),
-                  index, points_to_analysis, &colocated_set);
-              // Add conditional.false_computation.root.
-              AddBufferToColocatedSet(
-                  conditional_hlo->false_computation()->root_instruction(),
-                  index, points_to_analysis, &colocated_set);
+              // Add cond.result.
+              AddBufferToColocatedSet(conditional, index, points_to_analysis,
+                                      &colocated_set);
+              for (int j = 0; j < conditional->branch_count(); ++j) {
+                // Add each cond.branch_computation[j].root.
+                AddBufferToColocatedSet(
+                    conditional->branch_computation(j)->root_instruction(),
+                    index, points_to_analysis, &colocated_set);
+              }
               AddSetToColocatedBufferSets(colocated_set, colocated_buffer_sets);
             });
 
-        // Add true_operand and conditional.true_computation.parameter(0) as a
-        // colocated buffer set. Note that this has to be done for each subshape
-        // in the true_operand of the conditional.
-        ShapeUtil::ForEachSubshape(
-            conditional_hlo->operand(1)->shape(),
-            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
-                const Shape& /*subshape*/, const ShapeIndex& index) {
-              std::vector<const LogicalBuffer*> true_set;
-              // Add conditional.true_operand.
-              AddBufferToColocatedSet(conditional_hlo->operand(1), index,
-                                      points_to_analysis, &true_set);
-              // Add conditional.true_computation.parameter_instruction(0).
-              AddBufferToColocatedSet(
-                  conditional_hlo->true_computation()->parameter_instruction(0),
-                  index, points_to_analysis, &true_set);
-              AddSetToColocatedBufferSets(true_set, colocated_buffer_sets);
-            });
-
-        // Add false_operand and conditional.false_computation.parameter(0) as a
-        // colocated buffer set. Note that this has to be done for each subshape
-        // in the false_operand of the conditional.
-        ShapeUtil::ForEachSubshape(
-            conditional_hlo->operand(2)->shape(),
-            [this, conditional_hlo, &points_to_analysis, colocated_buffer_sets](
-                const Shape& /*subshape*/, const ShapeIndex& index) {
-              std::vector<const LogicalBuffer*> false_set;
-              // Add conditional.false_operand.
-              AddBufferToColocatedSet(conditional_hlo->operand(2), index,
-                                      points_to_analysis, &false_set);
-              // Add conditional.false_computation.parameter_instruction(0).
-              AddBufferToColocatedSet(
-                  conditional_hlo->false_computation()->parameter_instruction(
-                      0),
-                  index, points_to_analysis, &false_set);
-              AddSetToColocatedBufferSets(false_set, colocated_buffer_sets);
-            });
+        for (int j = 0; j < conditional->branch_count(); ++j) {
+          // Add branch_operand[j] (which is operand[j+1]) and
+          // cond.branch_computation[j].parameter(0) as a colocated
+          // buffer set. Note that this has to be done for each subshape in the
+          // branch_operand of the case.
+          ShapeUtil::ForEachSubshape(
+              conditional->operand(j + 1)->shape(),
+              [this, j, conditional, &points_to_analysis,
+               colocated_buffer_sets](const Shape& /*subshape*/,
+                                      const ShapeIndex& index) {
+                std::vector<const LogicalBuffer*> branch_set;
+                // Add cond.operand[j+1].
+                AddBufferToColocatedSet(conditional->operand(j + 1), index,
+                                        points_to_analysis, &branch_set);
+                // Add cond.branch_computation[j].parameter_instruction(0).
+                AddBufferToColocatedSet(
+                    conditional->branch_computation(j)->parameter_instruction(
+                        0),
+                    index, points_to_analysis, &branch_set);
+                AddSetToColocatedBufferSets(branch_set, colocated_buffer_sets);
+              });
+        }
       }
     }
   }

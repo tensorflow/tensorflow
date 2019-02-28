@@ -557,6 +557,10 @@ def _slice_helper(tensor, slice_spec, var=None):
   print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+
+  # masks
+  foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+  print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
   ```
 
   Notes:
@@ -579,6 +583,10 @@ def _slice_helper(tensor, slice_spec, var=None):
     TypeError: If the slice indices aren't int, slice, ellipsis,
       tf.newaxis or scalar int32/int64 tensors.
   """
+  if isinstance(slice_spec, bool) or \
+  (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
+  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
+    return boolean_mask(tensor=tensor, mask=slice_spec)
 
   if not isinstance(slice_spec, (list, tuple)):
     slice_spec = [slice_spec]

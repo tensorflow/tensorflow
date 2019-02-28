@@ -1270,28 +1270,27 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
 }
 
 Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
-  const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
-  const auto& true_computation_arg =
-      GetEvaluatedLiteralFor(conditional->operand(1));
-  const auto& false_computation_arg =
-      GetEvaluatedLiteralFor(conditional->operand(2));
-
-  auto* true_computation = conditional->true_computation();
-  auto* false_computation = conditional->false_computation();
+  const auto& branch_index_literal =
+      GetEvaluatedLiteralFor(conditional->operand(0));
+  int branch_index;
+  if (conditional->operand(0)->shape().element_type() == PRED) {
+    branch_index = branch_index_literal.Get<bool>({}) ? 0 : 1;
+  } else {
+    branch_index = branch_index_literal.Get<int32>({});
+    if (branch_index < 0 || branch_index >= conditional->branch_count()) {
+      branch_index = conditional->branch_count() - 1;
+    }
+  }
+  const auto& branch_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(1 + branch_index));
 
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result;
-  if (pred.Get<bool>({})) {
-    result =
-        embedded_evaluator.Evaluate(*true_computation, {&true_computation_arg})
-            .ConsumeValueOrDie();
-  } else {
-    result = embedded_evaluator
-                 .Evaluate(*false_computation, {&false_computation_arg})
-                 .ConsumeValueOrDie();
-  }
+  Literal result = embedded_evaluator
+                       .Evaluate(*conditional->branch_computation(branch_index),
+                                 {&branch_computation_arg})
+                       .ConsumeValueOrDie();
 
   evaluated_[conditional] = std::move(result);
   return Status::OK();

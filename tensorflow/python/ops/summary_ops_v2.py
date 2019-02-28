@@ -211,22 +211,22 @@ class ResourceSummaryWriter(SummaryWriter):
     """Enables this summary writer for the current thread."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    context.context().summary_writer_resource = self._resource
+    context.context().summary_writer = self
 
   @tf_contextlib.contextmanager
   def as_default(self):
     """Returns a context manager that enables summary writing."""
     if self._v2 and context.executing_eagerly() and self._closed:
       raise RuntimeError("SummaryWriter is already closed")
-    old = context.context().summary_writer_resource
+    old = context.context().summary_writer
     try:
-      context.context().summary_writer_resource = self._resource
+      context.context().summary_writer = self
       yield self
       # Flushes the summary writer in eager mode or in graph functions, but
       # not in legacy graph mode (you're on your own there).
       self.flush()
     finally:
-      context.context().summary_writer_resource = old
+      context.context().summary_writer = old
 
   def init(self):
     """Initializes the summary writer."""
@@ -305,7 +305,7 @@ def initialize(
   """
   if context.executing_eagerly():
     return
-  if context.context().summary_writer_resource is None:
+  if context.context().summary_writer is None:
     raise RuntimeError("No default tf.contrib.summary.SummaryWriter found")
   if session is None:
     session = ops.get_default_session()
@@ -600,7 +600,7 @@ def write(tag, tensor, step=None, metadata=None, name=None):
       `tf.summary.experimental.get_step()` is None.
   """
   with ops.name_scope(name, "write_summary") as scope:
-    if context.context().summary_writer_resource is None:
+    if context.context().summary_writer is None:
       return constant_op.constant(False)
     if step is None:
       step = get_step()
@@ -619,7 +619,7 @@ def write(tag, tensor, step=None, metadata=None, name=None):
       # Note the identity to move the tensor to the CPU.
       with ops.device("cpu:0"):
         write_summary_op = gen_summary_ops.write_summary(
-            context.context().summary_writer_resource,
+            context.context().summary_writer._resource,  # pylint: disable=protected-access
             step,
             array_ops.identity(tensor),
             tag,
@@ -654,7 +654,7 @@ def summary_writer_function(name, tensor, function, family=None):
       with ops.control_dependencies([function(tag, scope)]):
         return constant_op.constant(True)
 
-  if context.context().summary_writer_resource is None:
+  if context.context().summary_writer is None:
     return control_flow_ops.no_op()
   with ops.device("cpu:0"):
     op = smart_cond.smart_cond(
@@ -676,7 +676,7 @@ def generic(name, tensor, metadata=None, family=None, step=None):
       serialized_metadata = metadata
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         array_ops.identity(tensor),
         tag,
@@ -708,7 +708,7 @@ def scalar(name, tensor, family=None, step=None):
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_scalar_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -723,7 +723,7 @@ def histogram(name, tensor, family=None, step=None):
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_histogram_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -740,7 +740,7 @@ def image(name, tensor, bad_color=None, max_images=3, family=None, step=None):
                   if bad_color is None else bad_color)
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_image_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -757,7 +757,7 @@ def audio(name, tensor, sample_rate, max_outputs, family=None, step=None):
   def function(tag, scope):
     # Note the identity to move the tensor to the CPU.
     return gen_summary_ops.write_audio_summary(
-        context.context().summary_writer_resource,
+        context.context().summary_writer._resource,  # pylint: disable=protected-access
         _choose_step(step),
         tag,
         array_ops.identity(tensor),
@@ -801,7 +801,7 @@ def graph(param, step=None, name=None):
   if not context.executing_eagerly() and not isinstance(param, ops.Tensor):
     raise TypeError("graph() needs a tf.Tensor (e.g. tf.placeholder) in graph "
                     "mode, but was: %s" % type(param))
-  writer = context.context().summary_writer_resource
+  writer = context.context().summary_writer
   if writer is None:
     return control_flow_ops.no_op()
   with ops.device("cpu:0"):
@@ -810,7 +810,7 @@ def graph(param, step=None, name=None):
     else:
       tensor = array_ops.identity(param)
     return gen_summary_ops.write_graph_summary(
-        writer, _choose_step(step), tensor, name=name)
+        writer._resource, _choose_step(step), tensor, name=name)  # pylint: disable=protected-access
 
 
 _graph = graph  # for functions with a graph parameter
@@ -833,7 +833,7 @@ def import_event(tensor, name=None):
     The created `tf.Operation`.
   """
   return gen_summary_ops.import_event(
-      context.context().summary_writer_resource, tensor, name=name)
+      context.context().summary_writer._resource, tensor, name=name)  # pylint: disable=protected-access
 
 
 @tf_export("summary.flush", v1=[])
@@ -852,14 +852,16 @@ def flush(writer=None, name=None):
     The created `tf.Operation`.
   """
   if writer is None:
-    writer = context.context().summary_writer_resource
+    writer = context.context().summary_writer
     if writer is None:
       return control_flow_ops.no_op()
+  if isinstance(writer, ResourceSummaryWriter):
+    resource = writer._resource  # pylint: disable=protected-access
   else:
-    if isinstance(writer, SummaryWriter):
-      writer = writer._resource  # pylint: disable=protected-access
+    # Assume we were passed a raw resource tensor.
+    resource = writer
   with ops.device("cpu:0"):
-    return gen_summary_ops.flush_summary_writer(writer, name=name)
+    return gen_summary_ops.flush_summary_writer(resource, name=name)
 
 
 _flush_fn = flush  # for within SummaryWriter.flush()
@@ -1003,7 +1005,8 @@ def keras_model(name, data, step=None):
   """Writes a Keras model as JSON to as a Summary.
 
   Writing the Keras model configuration allows the TensorBoard graph plugin to
-  render a conceptual graph, as opposed to graph of ops.
+  render a conceptual graph, as opposed to graph of ops. In case the model fails
+  to serialze as JSON, it ignores and returns False.
 
   Args:
     name: A name for this summary. The summary tag used for TensorBoard will be
@@ -1014,7 +1017,7 @@ def keras_model(name, data, step=None):
       not be None.
 
   Returns:
-    True on success, or false if no summary was written because no default
+    True on success, or False if no summary was written because no default
     summary writer was available.
 
   Raises:
@@ -1028,7 +1031,12 @@ def keras_model(name, data, step=None):
   # version number = 1
   summary_metadata.plugin_data.content = b"1"
 
-  json_string = data.to_json()
+  try:
+    json_string = data.to_json()
+  except Exception as exc:  # pylint: disable=broad-except
+    # An exception should not break a model code.
+    logging.warn("Model failed to serialize as JSON. Ignoring... %s" % exc)
+    return False
 
   with summary_scope(name, "graph_keras_model", [data, step]) as (tag, _):
     return write(
@@ -1103,7 +1111,7 @@ def trace_export(name, step=None, profiler_outdir=None):
   with _current_trace_context_lock:
     if _current_trace_context is None:
       raise ValueError("Must enable trace before export.")
-    graph, profiler = _current_trace_context
+    graph, profiler = _current_trace_context  # pylint: disable=redefined-outer-name
     if profiler and profiler_outdir is None:
       raise ValueError("Required profiler_outdir is not specified")
 
