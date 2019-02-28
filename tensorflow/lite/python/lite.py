@@ -264,7 +264,10 @@ class TFLiteConverterV2(object):
             "None is only supported in the 1st dimension. Tensor '{0}' has "
             "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
       elif shape_list and shape_list[0] is None:
-        self._set_batch_size(batch_size=1)
+        # Set the batch size to 1 if undefined.
+        shape = tensor.get_shape().as_list()
+        shape[0] = 1
+        tensor.set_shape(shape)
 
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):
