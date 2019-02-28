@@ -567,43 +567,6 @@ ENTRY entry {
   }
 }
 
-TEST_F(HloInplaceDependencyTest, CustomPoplibsOpInplace) {
-  std::string hlo = R"(
-HloModule top
-
-ENTRY c1 {
-  p0 = s32[20] parameter(0)
-  p1 = s32[20] parameter(1)
-
-  c = s32[20] custom-call(p0, p1), custom_call_target="Popops::Sqrt", opaque="{\"allocating_indexes\":[],\"layout_dependencies\":{\"keys\":[],\"values\":[]},\"num_inplace_operands\":1}\n"
-
-  ROOT t = (s32[20]) tuple(c)
-}
-
-)";
-
-  auto config = GetModuleConfigForTest();
-  config.set_argument_count(2);
-  config.set_resource_input_count(2);
-  config.set_input_mapping({0, 1});
-  config.set_resource_update_to_input_index({0});
-  auto module = ParseHloString(hlo, config);
-  EXPECT_TRUE(module.ok());
-  auto* module0 = module.ValueOrDie().get();
-
-  CompilerAnnotations annotations(module0);
-
-  InplaceFinder inplaceFinder(annotations);
-  EXPECT_TRUE(inplaceFinder.Run(module0).ValueOrDie());
-
-  auto inplace_instructions = annotations.inplace_instructions;
-  EXPECT_THAT(inplace_instructions.size(), 2);
-  std::set<std::string> in_place_ops = {"c", "t"};
-  for (auto i : inplace_instructions) {
-    EXPECT_TRUE(in_place_ops.count(i->name()));
-  }
-}
-
 TEST_F(HloInplaceDependencyTest, CustomPoplibsOpNotInplace) {
   std::string hlo = R"(
 HloModule top

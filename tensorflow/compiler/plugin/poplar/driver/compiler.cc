@@ -56,6 +56,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/visitors/entry_visitor.h"
 
 #include "tensorflow/compiler/xla/service/algebraic_simplifier.h"
+#include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/computation_placer.h"
 #include "tensorflow/compiler/xla/service/dot_decomposer.h"
 #include "tensorflow/compiler/xla/service/dynamic_index_splitter.h"
@@ -63,11 +64,11 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_cse.h"
 #include "tensorflow/compiler/xla/service/hlo_dce.h"
 #include "tensorflow/compiler/xla/service/hlo_get_dimension_size_rewriter.h"
+#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/hlo_memory_scheduler.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_fix.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_pipeline.h"
 #include "tensorflow/compiler/xla/service/hlo_subcomputation_unification.h"
-#include "tensorflow/compiler/xla/service/hlo_graph_dumper.h"
 #include "tensorflow/compiler/xla/service/map_inliner.h"
 #include "tensorflow/compiler/xla/service/reshape_mover.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
@@ -231,8 +232,8 @@ bool AreAllOutputsParameters(
 }  // namespace
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
-  std::string buffer = hlo_graph_dumper::DumpGraph(comp, "main_computation",
-                                                   {}, nullptr, true);
+  std::string buffer =
+      hlo_graph_dumper::DumpGraph(comp, "main_computation", {}, nullptr, true);
   return buffer;
 }
 
@@ -334,6 +335,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     }
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<HloComputationNameUniquify>();
+    pipeline.AddPass<CholeskyExpander>();
     pipeline.AddPass<TriangularSolveExpander>();
     pipeline.AddPass<NotSupportedGatherExpander>();
     pipeline.AddPass<NotSupportedScatterExpander>();

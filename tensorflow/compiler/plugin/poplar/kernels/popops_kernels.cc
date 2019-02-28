@@ -41,68 +41,6 @@ using namespace xla::poplarplugin;
 
 namespace tensorflow {
 namespace {
-class PopopsUnaryOp : public XlaOpKernel, IpuOpKernel {
- public:
-  explicit PopopsUnaryOp(const PoplibsOp& op_type, OpKernelConstruction* ctx)
-      : XlaOpKernel(ctx), op_type_(op_type) {
-    AddRequiredAttributesToMap();
-  }
-
- public:
-  ~PopopsUnaryOp() override{};
-
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp input = ctx->Input(0);
-
-    // Get the input shape
-    xla::PrimitiveType input_type;
-    OP_REQUIRES_OK(ctx,
-                   DataTypeToPrimitiveType(ctx->input_type(0), &input_type));
-    xla::Shape input_shape =
-        TensorShapeToXLAShape(input_type, ctx->InputShape(0));
-
-    xla::XlaBuilder& b = *ctx->builder();
-
-    std::vector<xla::XlaOp> args = {input};
-    xla::XlaOp output = xla::CustomCall(
-        &b, GetPoplibsCustomOpTargetString(PoplibsLib::Popops, op_type_), args,
-        input_shape, attribute_map_.Serialise());
-
-    ctx->SetOutput(0, output);
-  }
-
- protected:
-  const absl::flat_hash_set<int64> AllocatingIndexes() override { return {}; }
-
-  const absl::flat_hash_map<int64, int64> LayoutDependencies() override {
-    return {};
-  };
-
-  const uint64 NumberOfInplaceOperands() override { return 1; }
-
- private:
-  PoplibsOp op_type_;
-};
 }  // namespace
-
-class PopopsSqrtOp : public PopopsUnaryOp {
- public:
-  explicit PopopsSqrtOp(OpKernelConstruction* ctx)
-      : PopopsUnaryOp(PoplibsOp::Sqrt, ctx) {}
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(PopopsSqrtOp);
-};
-REGISTER_XLA_OP(Name("Sqrt").Device(DEVICE_IPU_XLA_JIT), PopopsSqrtOp);
-
-class PopopsRsqrtOp : public PopopsUnaryOp {
- public:
-  explicit PopopsRsqrtOp(OpKernelConstruction* ctx)
-      : PopopsUnaryOp(PoplibsOp::Rsqrt, ctx) {}
-
- private:
-  TF_DISALLOW_COPY_AND_ASSIGN(PopopsRsqrtOp);
-};
-REGISTER_XLA_OP(Name("Rsqrt").Device(DEVICE_IPU_XLA_JIT), PopopsRsqrtOp);
 
 }  // namespace tensorflow

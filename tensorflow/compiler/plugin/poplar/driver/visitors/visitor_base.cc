@@ -546,5 +546,9 @@ Status BaseVisitor::HandleTriangularSolve(HloInstruction* inst) {
   return Unimplemented(inst);
 }
 
+Status BaseVisitor::HandleCholesky(HloInstruction* inst) {
+  return Unimplemented(inst);
+}
+
 }  // namespace poplarplugin
 }  // namespace xla
