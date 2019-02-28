@@ -66,10 +66,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "trainable"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "trainable_variables"
     mtype: "<type \'property\'>"
   }
