@@ -345,8 +345,9 @@ TEST_P(ParameterizedDatasetTest, Roundtrip) {
   }
 }
 
-INSTANTIATE_TEST_SUITE_P(ConcatenateDatasetOpTest, ParameterizedDatasetTest,
-                         ::testing::ValuesIn({TestCase1(), TestCase2()}));
+INSTANTIATE_TEST_SUITE_P(
+    ConcatenateDatasetOpTest, ParameterizedDatasetTest,
+    ::testing::ValuesIn(std::vector<TestParam>({TestCase1(), TestCase2()})));
 }  // namespace
 }  // namespace data
 }  // namespace tensorflow
