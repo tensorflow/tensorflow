@@ -255,16 +255,12 @@ def fix_image_flip_shape(image, result):
   return result
 
 
-@tf_export('image.random_flip_up_down')
-def random_flip_up_down(image, seed=None):
-  """Randomly flips an image vertically (upside down).
-
-  With a 1 in 2 chance, outputs the contents of `image` flipped along the first
-  dimension, which is `height`.  Otherwise output the image as-is.
-
+@tf_export('image.random_flip')
+def random_flip(image, flip_index, seed=None):
+  """Randomly flips an image along a given flip_index.
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
+    image: N-D Tensor of shape [D0, D1, ... Dn-1].
+    flip_index: Dimension along which to flip image.
     seed: A Python integer. Used to create a random seed. See
       `tf.set_random_seed`
       for behavior.
@@ -274,7 +270,30 @@ def random_flip_up_down(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _random_flip(image, 0, seed, 'random_flip_up_down')
+  return _random_flip(image, flip_index, seed, 'random_flip')
+
+
+@tf_export('image.random_flip_up_down')
+def random_flip_up_down(image, seed=None):
+  """Randomly flips an image vertically (upside down).
+
+  With a 1 in 2 chance, outputs the contents of `image` flipped along the first
+  dimension, which is `height`.  Otherwise output the image as-is.
+
+  Args:
+    image: N-D Tensor of shape [D0, D1, ... Dn-1].
+    seed: A Python integer. Used to create a random seed. See
+      `tf.set_random_seed`
+      for behavior.
+
+  Returns:
+    A tensor of the same type and shape as `image`.
+  Raises:
+    ValueError: if the shape of `image` not supported.
+  """
+  ndims = image.get_shape().ndims
+  flip_index = 0 if ndims == 3 or ndims is None else 1
+  return _random_flip(image, flip_index, seed, 'random_flip_up_down')
 
 
 @tf_export('image.random_flip_left_right')
@@ -285,8 +304,7 @@ def random_flip_left_right(image, seed=None):
   second dimension, which is `width`.  Otherwise output the image as-is.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
+    image: N-D Tensor of shape [D0, D1, ... Dn-1].
     seed: A Python integer. Used to create a random seed. See
       `tf.set_random_seed`
       for behavior.
@@ -297,15 +315,16 @@ def random_flip_left_right(image, seed=None):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _random_flip(image, 1, seed, 'random_flip_left_right')
+  ndims = image.get_shape().ndims
+  flip_index = 1 if ndims == 3 or ndims is None else 2
+  return _random_flip(image, flip_index, seed, 'random_flip_left_right')
 
 
 def _random_flip(image, flip_index, seed, scope_name):
   """Randomly (50% chance) flip an image along axis `flip_index`.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
+    image:  N-D Tensor of shape [D0, D1, ... Dn-1].
     flip_index: Dimension along which to flip image. Vertical: 0, Horizontal: 1
     seed: A Python integer. Used to create a random seed. See
       `tf.set_random_seed`
@@ -332,19 +351,20 @@ def _random_flip(image, flip_index, seed, scope_name):
           name=scope
       )
       return fix_image_flip_shape(image, result)
-    elif shape.ndims == 4:
+    else:
       batch_size = array_ops.shape(image)[0]
       uniform_random = random_ops.random_uniform(
           [batch_size], 0, 1.0, seed=seed
       )
+
+      shape_list = [1] * shape.ndims
+      shape_list[0] = batch_size
       flips = math_ops.round(
-          array_ops.reshape(uniform_random, [batch_size, 1, 1, 1])
+          array_ops.reshape(uniform_random, shape_list)
       )
       flips = math_ops.cast(flips, image.dtype)
-      flipped_input = array_ops.reverse(image, [flip_index + 1])
+      flipped_input = array_ops.reverse(image, [flip_index])
       return flips * flipped_input + (1 - flips) * image
-    else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
 
 
 @tf_export('image.flip_left_right')
@@ -356,8 +376,7 @@ def flip_left_right(image):
   See also `reverse()`.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
+    image: N-D Tensor of shape [D0, D1, ... Dn-1].
 
   Returns:
     A tensor of the same type and shape as `image`.
@@ -365,7 +384,9 @@ def flip_left_right(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _flip(image, 1, 'flip_left_right')
+  ndims = image.get_shape().ndims
+  flip_index = 1 if ndims == 3 or ndims is None else 2
+  return _flip(image, flip_index, 'flip_left_right')
 
 
 @tf_export('image.flip_up_down')
@@ -377,8 +398,7 @@ def flip_up_down(image):
   See also `reverse()`.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
+    image: N-D Tensor of shape [D0, D1, ... Dn-1].
 
   Returns:
     A tensor of the same type and shape as `image`.
@@ -386,7 +406,9 @@ def flip_up_down(image):
   Raises:
     ValueError: if the shape of `image` not supported.
   """
-  return _flip(image, 0, 'flip_up_down')
+  ndims = image.get_shape().ndims
+  flip_index = 0 if ndims == 3 or ndims is None else 1
+  return _flip(image, flip_index, 'flip_up_down')
 
 
 def _flip(image, flip_index, scope_name):
@@ -397,8 +419,7 @@ def _flip(image, flip_index, scope_name):
   See also `reverse()`.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
+    image: N-D Tensor of shape [D0, D1, ... Dn-1].
     flip_index: 0 For vertical, 1 for horizontal.
 
   Returns:
@@ -413,20 +434,18 @@ def _flip(image, flip_index, scope_name):
     shape = image.get_shape()
     if shape.ndims == 3 or shape.ndims is None:
       return fix_image_flip_shape(image, array_ops.reverse(image, [flip_index]))
-    elif shape.ndims == 4:
-      return array_ops.reverse(image, [flip_index+1])
     else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      return array_ops.reverse(image, [flip_index])
 
 
 @tf_export('image.rot90')
-def rot90(image, k=1, name=None):
+def rot90(image, k=1, name=None, axes=None):
   """Rotate image(s) counter-clockwise by 90 degrees.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
+    image: N-D Tensor of shape [D0, D1, ... Dn-1].
     k: A scalar integer. The number of times the image is rotated by 90 degrees.
+    axes: A pair of axis defining the plane that the N-D tensor rotates in.
     name: A name for this operation (optional).
 
   Returns:
@@ -442,75 +461,56 @@ def rot90(image, k=1, name=None):
     k.get_shape().assert_has_rank(0)
     k = math_ops.mod(k, 4)
 
-    shape = image.get_shape()
+    return _rot90_ND(image, k, scope, axes)
+
+def _rot90_ND(image, k, name_scope, axes):
+  shape = image.get_shape()
+  axes_list = np.arange(0, 3) if shape.ndims is None else np.arange(0, shape.ndims)
+  ndims = len(axes_list)
+
+  if axes is None:
     if shape.ndims == 3 or shape.ndims is None:
-      return _rot90_3D(image, k, scope)
-    elif shape.ndims == 4:
-      return _rot90_4D(image, k, scope)
+      axes = (0, 1)
     else:
-      raise ValueError('\'image\' must have either 3 or 4 dimensions.')
+      axes = (1, 2)
 
+  if not isinstance(axes, (list, tuple)):
+    raise TypeError("Axes must be either list or tuple.")
 
-def _rot90_3D(image, k, name_scope):
-  """Rotate image counter-clockwise by 90 degrees `k` times.
+  if len(axes) != 2:
+    raise ValueError("len(axes) must be 2.")
 
-  Args:
-    image: 3-D Tensor of shape `[height, width, channels]`.
-    k: A scalar integer. The number of times the image is rotated by 90 degrees.
-    name_scope: A valid TensorFlow name scope.
+  if axes[0] == axes[1]:
+    raise ValueError("Axes must be different.")
 
-  Returns:
-    A 3-D tensor of the same type and shape as `image`.
+  if (axes[0] >= ndims or axes[0] < 0
+          or axes[1] >= ndims or axes[1] < 0):
+    raise ValueError("Axes={} out of range for array of ndim={}."
+                     .format(axes, ndims))
 
-  """
+  (axes_list[axes[0]], axes_list[axes[1]]) = (axes_list[axes[1]],
+                                              axes_list[axes[0]])
 
   def _rot90():
-    return array_ops.transpose(array_ops.reverse_v2(image, [1]), [1, 0, 2])
+    return array_ops.transpose(array_ops.reverse_v2(image, [axes[1]]), axes_list)
 
   def _rot180():
-    return array_ops.reverse_v2(image, [0, 1])
+    return array_ops.reverse_v2(image, axes)
 
   def _rot270():
-    return array_ops.reverse_v2(array_ops.transpose(image, [1, 0, 2]), [1])
+    return array_ops.reverse_v2(array_ops.transpose(image, axes_list), [axes[1]])
 
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
 
   result = control_flow_ops.case(
-      cases, default=lambda: image, exclusive=True, name=name_scope)
-  result.set_shape([None, None, image.get_shape()[2]])
-  return result
+    cases, default=lambda: image, exclusive=True, name=name_scope)
 
-
-def _rot90_4D(images, k, name_scope):
-  """Rotate batch of images counter-clockwise by 90 degrees `k` times.
-
-  Args:
-    images: 4-D Tensor of shape `[height, width, channels]`.
-    k: A scalar integer. The number of times the images are rotated by 90
-      degrees.
-    name_scope: A valid TensorFlow name scope.
-
-  Returns:
-    A 4-D tensor of the same type and shape as `images`.
-
-  """
-
-  def _rot90():
-    return array_ops.transpose(array_ops.reverse_v2(images, [2]), [0, 2, 1, 3])
-
-  def _rot180():
-    return array_ops.reverse_v2(images, [1, 2])
-  def _rot270():
-    return array_ops.reverse_v2(array_ops.transpose(images, [0, 2, 1, 3]), [2])
-
-  cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
-           (math_ops.equal(k, 3), _rot270)]
-
-  result = control_flow_ops.case(
-      cases, default=lambda: images, exclusive=True, name=name_scope)
-  shape = result.get_shape()
-  result.set_shape([shape[0], None, None, shape[3]])
+  shape_list = (None, None, None)
+  if shape.ndims is not None:
+    shape_list = shape.as_list()
+    (shape_list[axes[0]], shape_list[axes[1]]) = (None, None)
+  result.set_shape(shape_list)
   return result
 
 
