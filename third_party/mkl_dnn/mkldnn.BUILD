@@ -18,11 +18,11 @@ config_setting(
 )
 
 # Create the file mkldnn_version.h with MKL DNN version numbers.
-# Currently, the version numbers are hard code here. If MKL DNN is upgraded then
+# Currently, the version numbers are hard coded here. If MKL DNN is upgraded then
 # the version numbers have to be updated manually. The version numbers can be
 # obtained from the PROJECT_VERSION settings in CMakeLists.txt. The variable is
 # set to "version_major.version_minor.version_patch". The git hash version can
-# be set to Unknown.
+# be set to NA.
 # TODO(agramesh1) Automatically get the version numbers from CMakeLists.txt.
 
 template_rule(
