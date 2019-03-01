@@ -25,7 +25,6 @@ import time
 import numpy as np
 
 from six.moves import xrange  # pylint: disable=redefined-builtin
-from tensorflow.contrib import layers
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session as session_lib
@@ -36,6 +35,7 @@ from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
+from tensorflow.python.layers import convolutional
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gradient_checker
@@ -2704,7 +2704,7 @@ class Conv2DBenchmark(test.Benchmark):
       kernel_w = 3
       x = inputs
       for num_outputs in num_outputs_list:
-        x = layers.convolution2d(x, num_outputs, [1, kernel_w])
+        x = convolutional.conv2d(x, num_outputs, [1, kernel_w])
       outputs = x
 
       variables.global_variables_initializer().run()
