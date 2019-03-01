@@ -6,18 +6,18 @@ export OS=$(uname)
 if [ "${OS}" = "Linux" ]; then
     export DS_ROOT_TASK=$(/usr/bin/realpath "${HOME}")
 
-    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.15.2/bazel-0.15.2-installer-linux-x86_64.sh
-    BAZEL_SHA256=13eae0f09565cf17fc1c9ce1053b9eac14c11e726a2215a79ebaf5bdbf435241
+    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.19.2/bazel-0.19.2-installer-linux-x86_64.sh
+    BAZEL_SHA256=42ba631103011594cdf5591ef07658a9e9a5d73c5ee98a9f09651ac4ac535d8c
 
-    CUDA_URL=https://developer.nvidia.com/compute/cuda/9.0/Prod/local_installers/cuda_9.0.176_384.81_linux-run
-    CUDA_SHA256=96863423feaa50b5c1c5e1b9ec537ef7ba77576a3986652351ae43e66bcd080c
+    CUDA_URL=https://developer.nvidia.com/compute/cuda/10.0/Prod/local_installers/cuda_10.0.130_410.48_linux
+    CUDA_SHA256=92351f0e4346694d0fcb4ea1539856c9eb82060c25654463bfd8574ec35ee39a
 
     # From https://gitlab.com/nvidia/cuda/blob/centos7/9.0/devel/cudnn7/Dockerfile
-    CUDNN_URL=http://developer.download.nvidia.com/compute/redist/cudnn/v7.2.1/cudnn-9.0-linux-x64-v7.2.1.38.tgz
-    CUDNN_SHA256=cf007437b9ac6250ec63b89c25f248d2597fdd01369c80146567f78e75ce4e37
+    CUDNN_URL=http://developer.download.nvidia.com/compute/redist/cudnn/v7.5.0/cudnn-10.0-linux-x64-v7.5.0.56.tgz
+    CUDNN_SHA256=701097882cb745d4683bb7ff6c33b8a35c7c81be31bac78f05bad130e7e0b781
 
-    NCCL_URL=https://s3.amazonaws.com/pytorch/nccl_2.2.13-1%2Bcuda9.0_x86_64.txz
-    NCCL_SHA256=5ae976f47f9dd1caf4f5fa0da51be9ecbdeed54065d1b654ce308cc803e0af0d
+    NCCL_URL=https://s3.amazonaws.com/pytorch/nccl_2.3.7-1%2Bcuda10.0_x86_64.txz
+    NCCL_SHA256=8b41f19cfa0054aae2550ba0e02c167c0e052ee247c79f4b97aaa3167d12efde
 
     ANDROID_NDK_URL=https://dl.google.com/android/repository/android-ndk-r18b-linux-x86_64.zip
     ANDROID_NDK_SHA256=4f61cbe4bbf6406aa5ef2ae871def78010eed6271af72de83f8bd0b07a9fd3fd
@@ -35,8 +35,8 @@ elif [ "${OS}" = "Darwin" ]; then
 
     export DS_ROOT_TASK=${TASKCLUSTER_TASK_DIR}
 
-    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.15.2/bazel-0.15.2-installer-darwin-x86_64.sh
-    BAZEL_SHA256=84ee271274e7c8904a48f7894fe0569174d162c7428a19dda57fc6a6c95c628b
+    BAZEL_URL=https://github.com/bazelbuild/bazel/releases/download/0.19.2/bazel-0.19.2-installer-darwin-x86_64.sh
+    BAZEL_SHA256=25ea85d4974ead87a7600e17b733bf8035a075fc8671c97e1c1f7dc8ff304231
 fi;
 
 # /tmp/artifacts for docker-worker on linux,
@@ -100,7 +100,7 @@ if [ "${OS}" = "Darwin" ]; then
 fi;
 
 ### Define build parameters/env variables that we will re-ues in sourcing scripts.
-TF_CUDA_FLAGS="TF_NEED_CUDA=1 TF_CUDA_CLANG=0 TF_CUDA_VERSION=9.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.2 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
+TF_CUDA_FLAGS="TF_NEED_CUDA=1 TF_CUDA_CLANG=0 TF_CUDA_VERSION=10.0 TF_CUDNN_VERSION=7 CUDA_TOOLKIT_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA CUDNN_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_NCCL_VERSION=2.3 NCCL_INSTALL_PATH=${DS_ROOT_TASK}/DeepSpeech/CUDA TF_CUDA_COMPUTE_CAPABILITIES=\"3.0,3.5,3.7,5.2,6.0,6.1\""
 BAZEL_ARM_FLAGS="--config=rpi3 --config=rpi3_opt"
 BAZEL_ARM64_FLAGS="--config=rpi3-armv8 --config=rpi3-armv8_opt"
 BAZEL_ANDROID_ARM_FLAGS="--config=android --config=android_arm --action_env ANDROID_NDK_API_LEVEL=21 --cxxopt=-std=c++11 --copt=-D_GLIBCXX_USE_C99"
