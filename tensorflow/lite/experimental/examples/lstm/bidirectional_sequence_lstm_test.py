@@ -55,7 +55,7 @@ class BidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     self.num_units = 16
 
   def buildLstmLayer(self):
-    return tf.nn.rnn_cell.MultiRNNCell([
+    return tf.keras.layers.StackedRNNCells([
         tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
         tf.lite.experimental.nn.TFLiteLSTMCell(
