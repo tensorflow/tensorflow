@@ -523,9 +523,12 @@ class OptimizersCompatibilityTest(test.TestCase, parameterized.TestCase):
       if test_numeric:
         hist_1 = model.fit(x, y, batch_size=5, epochs=1, shuffle=False)
         hist_2 = model_2.fit(x, y, batch_size=5, epochs=1, shuffle=False)
-        self.assertAllClose(model.get_weights(), model_2.get_weights())
-        self.assertAllClose(model.get_weights(), model_2.get_weights())
-        self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'])
+        self.assertAllClose(model.get_weights(), model_2.get_weights(),
+                            rtol=1e-5, atol=1e-5)
+        self.assertAllClose(model.get_weights(), model_2.get_weights(),
+                            rtol=1e-5, atol=1e-5)
+        self.assertAllClose(hist_1.history['loss'], hist_2.history['loss'],
+                            rtol=1e-5, atol=1e-5)
 
       if old_mode is not None:
         os.environ['TF2_BEHAVIOR'] = old_mode

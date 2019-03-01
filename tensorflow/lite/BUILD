@@ -60,16 +60,13 @@ cc_library(
     ],
 )
 
-cc_test(
+tf_cc_test(
     name = "arena_planner_test",
     size = "small",
     srcs = ["arena_planner_test.cc"],
-    tags = [
-        "tflite_not_portable",
-    ],
     deps = [
         ":arena_planner",
-        "//tensorflow/core:lib",
+        "//tensorflow/core:tflite_portable_logging",
         "//tensorflow/lite/testing:util",
         "@com_google_googletest//:gtest",
     ],

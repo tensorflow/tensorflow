@@ -1317,11 +1317,12 @@ class DatasetV1(DatasetV2):
   def __init__(self):  # pylint: disable=useless-super-delegation
     super(DatasetV1, self).__init__()
 
-  @deprecation.deprecated(
-      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
-      "`tf.estimator`, return the `Dataset` object directly from your input "
-      "function. As a last resort, you can use "
-      "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
+  # There is nothing actionable yet so omitting only for v1.13.0
+  # @deprecation.deprecated(
+  #     None, "Use `for ... in dataset:` to iterate over a dataset. If using "
+  #     "`tf.estimator`, return the `Dataset` object directly from your input "
+  #     "function. As a last resort, you can use "
+  #     "`tf.compat.v1.data.make_one_shot_iterator(dataset)`.")
   def make_one_shot_iterator(self):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 
@@ -1371,11 +1372,12 @@ class DatasetV1(DatasetV2):
             dataset_factory=_make_dataset, **flat_structure(self)),
         None, self.output_types, self.output_shapes, self.output_classes)
 
-  @deprecation.deprecated(
-      None, "Use `for ... in dataset:` to iterate over a dataset. If using "
-      "`tf.estimator`, return the `Dataset` object directly from your input "
-      "function. As a last resort, you can use "
-      "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
+  # There is nothing actionable yet so omitting only for v1.13.0
+  # @deprecation.deprecated(
+  #     None, "Use `for ... in dataset:` to iterate over a dataset. If using "
+  #     "`tf.estimator`, return the `Dataset` object directly from your input "
+  #     "function. As a last resort, you can use "
+  #     "`tf.compat.v1.data.make_initializable_iterator(dataset)`.")
   def make_initializable_iterator(self, shared_name=None):
     """Creates an `Iterator` for enumerating the elements of this dataset.
 

@@ -915,6 +915,18 @@ TEST_F(ConverterTest, GetTrtBroadcastShape) {
                  "(tensor #dims 4 vs broadcast #dims 5)");
 }
 
+TEST_F(ConverterTest, CreateConstantLayer) {
+  for (auto dtype : {DT_FLOAT, DT_INT32}) {
+    TRT_ShapedWeights weights =
+        weight_store_->GetTempWeights(dtype, GetTestDims({2, 3, 5}));
+    nvinfer1::ITensor* tensor =
+        converter_->CreateConstantLayer(weights, GetTestDims({3, 10}));
+    ASSERT_NE(nullptr, tensor);
+    ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
+    EXPECT_EQ(TfDataTypeToTrt(dtype), tensor->getType());
+  }
+}
+
 // Class to test various op converters, using both a TrtNodeValidator and
 // Converter.
 class OpConverterTest : public ::testing::Test {

@@ -38,7 +38,6 @@ MODEL_LIST = [
     (applications.DenseNet169, 1664),
     (applications.DenseNet201, 1920),
     (applications.NASNetMobile, 1056),
-    (applications.NASNetLarge, 4032),
 ]
 
 
@@ -47,7 +46,8 @@ class ApplicationsTest(test.TestCase, parameterized.TestCase):
   @parameterized.parameters(*MODEL_LIST)
   def test_feature_extration_model(self, model_fn, output_dim):
     model = model_fn(include_top=False, weights=None)
-    self.assertEqual(model.output_shape, (None, None, None, output_dim))
+    self.assertEqual(len(model.output_shape), 4)
+    self.assertEqual(model.output_shape[-1], output_dim)
 
 
 if __name__ == '__main__':

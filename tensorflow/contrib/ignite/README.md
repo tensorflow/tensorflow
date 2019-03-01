@@ -97,6 +97,7 @@ jdbc:ignite:thin://localhost/> INSERT INTO KITTEN_CACHE VALUES (3, 'LITTLE BALL 
 ```python
 >>> import tensorflow as tf
 >>> from tensorflow.contrib.ignite import IgniteDataset
+>>> tf.enable_eager_execution()
 >>>
 >>> dataset = IgniteDataset(cache_name="IMAGES").map(lambda obj: obj['val']['pixels'])
 >>>
@@ -153,11 +154,13 @@ contains an integration between IGFS and TensorFlow. The integration is based
 on [custom filesystem plugin](https://www.tensorflow.org/extend/add_filesys)
 from TensorFlow side and
 [IGFS Native API](https://ignite.apache.org/features/igfs.html) from Apache
-Ignite side. It has numerous uses, for example: * Checkpoints of state can be
-saved to IGFS for reliability and fault-tolerance. * Training processes
-communicate with TensorBoard by writing event files to a directory, which
-TensorBoard watches. IGFS allows this communication to work even when
-TensorBoard runs in a different process or machine.
+Ignite side. It has numerous uses, for example:
+
+* Checkpoints of state can be saved to IGFS for reliability and
+fault-tolerance.
+* Training processes communicate with TensorBoard by writing event files to a
+directory, which TensorBoard watches. IGFS allows this communication to work
+even when TensorBoard runs in a different process or machine.
 
 ### SSL Connection
 
@@ -166,6 +169,7 @@ Apache Ignite allows to protect data transfer channels by [SSL](https://en.wikip
 ```python
 >>> import tensorflow as tf
 >>> from tensorflow.contrib.ignite import IgniteDataset
+>>> tf.enable_eager_execution()
 >>>
 >>> dataset = IgniteDataset(cache_name="IMAGES",
                             certfile="client.pem",
@@ -197,7 +201,7 @@ docker run -it -p 10800:10800 dmitrievanthony/ignite-with-mnist
 
 After that you will be able to work with it following way:
 
-![ignite-dataset-mnist](https://s3.amazonaws.com/helloworld23423423ew23/ignite-dataset-mnist.png "Ignite Dataset Mnist")
+![ignite-dataset-mnist](https://s3.amazonaws.com/helloworld23423423ew23/ignite-dataset-mnist-2.png "Ignite Dataset Mnist")
 
 ### IGFS
 

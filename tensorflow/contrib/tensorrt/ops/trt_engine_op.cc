@@ -28,6 +28,9 @@ namespace shape_inference {
 extern Status TRTEngineOpShapeInference(InferenceContext* c);
 }
 
+// TODO(laigd): consider making this op stateful. The only problem is it uses TF
+// function which has to be stateless, but we can use function library as the
+// key to cache the instantiated functions for different executor subgraphs.
 REGISTER_OP("TRTEngineOp")
     .Attr("serialized_segment: string")
     .Attr("input_shapes: list(shape)")

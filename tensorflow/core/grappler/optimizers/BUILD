@@ -674,7 +674,7 @@ tf_cc_test(
     ],
 )
 
-cc_library(
+tf_kernel_library(
     name = "remapper",
     srcs = ["remapper.cc"],
     hdrs = [
