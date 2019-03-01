@@ -294,7 +294,6 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
 
       self.assertEqual(len(bn.updates), 4)
       self.assertEqual(len(model.updates), 2)
-      self.assertEqual(len(model.get_updates_for(x1)), 0)
       self.assertEqual(len(model.get_updates_for(x2)), 2)
 
       # Test model-level reuse
