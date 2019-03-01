@@ -1,8 +1,11 @@
 /* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
+
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
 You may obtain a copy of the License at
+
     http://www.apache.org/licenses/LICENSE-2.0
+
 Unless required by applicable law or agreed to in writing, software
 distributed under the License is distributed on an "AS IS" BASIS,
 WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -37,6 +40,8 @@ namespace tensorflow {
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
 
+// TODO nammbash: Move this helper class to mkl_utils or mkl_test_utils
+// so that all tests can use. (set a seperate PR that changes all Mkl tests).
 // Helper class for converting MKL tensors to TF tensors
 class ConvMklToTF : public OpsTestBase {
  public:
@@ -46,7 +51,7 @@ class ConvMklToTF : public OpsTestBase {
     // Create an MKL to TF conversion node and execute it
     TF_EXPECT_OK(NodeDefBuilder("mkl_to_tf_op", "_MklToTf")
                      .Input(FakeInput(dtype))     // Input
-                     .Input(FakeInput(DT_UINT8))  // Mkl second tensor
+                     .Input(FakeInput(DT_UINT8))  // MKL second tensor
                      .Attr("T", dtype)
                      .Attr("_kernel", "MklOp")
                      .Finalize(node_def()));
@@ -57,7 +62,7 @@ class ConvMklToTF : public OpsTestBase {
 
     output = *GetOutput(0);
   }
-  void TestBody(){};
+  void TestBody(){}
 };
 
 class QuantizedConv2DPerchannelTest : public OpsTestBase {};
@@ -187,7 +192,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   // (1*0)+(4*5)+(7*6)+(2*0)+(5*9)+(8*10)+(3*0)+(6*0)+(9*0)=187
   // (1*5)+(4*6)+(7*7)+(2*9)+(5*10)+(8*11)+(3*0)+(6*0)+(9*0)=234
   // (1*6)+(4*7)+(7*8)+(2*10)+(5*11)+(8*12)+(3*0)+(6*0)+(9*0)=261
-  // (1*7)+(4*11)+(7*0)+(2*8)+(5*12)+(8*0)+(3*0)+(6*0)+(9*0)=121
+  // (1*7)+(4*8)+(7*0)+(2*11)+(5*12)+(8*0)+(3*0)+(6*0)+(9*0)=121
 
   // This means we should end up with this matrix for each channel:
   // |  105  |  150  |  183  |   95  |
@@ -195,7 +200,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   // |  187  |  234  |  261  |  121  |
 
   // Shape of expected (output) tensor: N x IH x IW x filter_count
-  // Create the expectated output tensor
+  // Create the expected output tensor
   const int expected_width = image_width;
   const int expected_height = image_height;
 
