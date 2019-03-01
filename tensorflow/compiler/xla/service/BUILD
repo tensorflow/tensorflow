@@ -3532,6 +3532,7 @@ tf_cc_test(
     ],
 )
 
+
 cc_library(
     name = "tuple_util",
     srcs = ["tuple_util.cc"],

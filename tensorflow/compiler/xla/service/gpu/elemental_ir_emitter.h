@@ -45,16 +45,12 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   GpuElementalIrEmitter(const HloModuleConfig& hlo_module_config,
                         llvm::Module* module, llvm::IRBuilder<>* b,
-                        NestedComputer compute_nested, 
-                        llvm_ir::LLVMTargetFeatures* llvm_target_features);
+                        NestedComputer compute_nested);
 
   llvm_ir::ElementGenerator MakeElementGenerator(
       const HloInstruction* hlo,
       const HloToElementGeneratorMap& operand_to_generator) override;
 
-  llvm_ir::LLVMTargetFeatures& GetTargetMachineFeatures() {
-    return llvm_target_features_;
-  };
 
  protected:
   StatusOr<llvm::Value*> EmitFloatBinaryOp(const HloInstruction* op,
@@ -129,8 +125,6 @@ class GpuElementalIrEmitter : public ElementalIrEmitter {
 
   const HloModuleConfig& hlo_module_config_;
   NestedComputer compute_nested_;
- // GPU Target machine features for code generation
-  llvm_ir::LLVMTargetFeatures& llvm_target_features_;
 };
 
 }  // namespace gpu

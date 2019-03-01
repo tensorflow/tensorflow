@@ -18,64 +18,9 @@ limitations under the License.
 
 namespace xla {
 namespace llvm_ir {
-  llvm::Intrinsic::ID AMDGPUMachineFeatures::GetIntrinsicID  (
-      const std::string &name) {
-    if (tensorflow::str_util::EndsWith(name, "__thread_id_x")) {
-      return llvm::Intrinsic::amdgcn_workitem_id_x;
-    } else if (tensorflow::str_util::EndsWith(name, "__thread_id_y")) {
-      return llvm::Intrinsic::amdgcn_workitem_id_y;
-    } else if (tensorflow::str_util::EndsWith(name, "__thread_id_z")) {
-      return llvm::Intrinsic::amdgcn_workitem_id_z;
-    } else if (tensorflow::str_util::EndsWith(name, "__block_id_x")) {
-      return llvm::Intrinsic::amdgcn_workgroup_id_x;
-    } else if (tensorflow::str_util::EndsWith(name, "__block_id_y")) {
-      return llvm::Intrinsic::amdgcn_workgroup_id_y;
-    } else if (tensorflow::str_util::EndsWith(name, "__block_id_z")) {
-      return llvm::Intrinsic::amdgcn_workgroup_id_z;
-    } else if (tensorflow::str_util::EndsWith(name, "barrier")) {
-      return llvm::Intrinsic::amdgcn_s_barrier;
-    }
-    return llvm::Intrinsic::not_intrinsic;
-  }
-
-
-  std::tuple <bool, std::string> AMDGPUMachineFeatures::GetDeviceFunctionCall  (
-      const std::string &name) {
-    if (tensorflow::str_util::EndsWith(name, "fmod")) {
-      return std::make_tuple(true,std::string("__ocml_fmod"));
-    }
-
-    return std::make_tuple(false, std::string());
-  };
-
-  llvm::Intrinsic::ID NVPTXMachineFeatures::GetIntrinsicID  (
-      const std::string &name) {
-    if (tensorflow::str_util::EndsWith(name, "__thread_id_x")) {
-      return llvm::Intrinsic::nvvm_read_ptx_sreg_tid_x;
-    } else if (tensorflow::str_util::EndsWith(name, "__thread_id_y")) {
-      return llvm::Intrinsic::nvvm_read_ptx_sreg_tid_y;
-    } else if (tensorflow::str_util::EndsWith(name, "__thread_id_z")) {
-      return llvm::Intrinsic::nvvm_read_ptx_sreg_tid_z;
-    } else if (tensorflow::str_util::EndsWith(name, "__block_id_x")) {
-      return llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_x;
-    } else if (tensorflow::str_util::EndsWith(name, "__block_id_y")) {
-      return llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_y;
-    } else if (tensorflow::str_util::EndsWith(name, "__block_id_z")) {
-      return llvm::Intrinsic::nvvm_read_ptx_sreg_ctaid_z;
-    } else if (tensorflow::str_util::EndsWith(name, "barrier")) {
-      return llvm::Intrinsic::nvvm_barrier0;
-    }  
-    return llvm::Intrinsic::not_intrinsic;
-  }
-
-
-  std::tuple <bool, std::string> NVPTXMachineFeatures::GetDeviceFunctionCall  (
-      const std::string &name) {
-    if (tensorflow::str_util::EndsWith(name, "fmod")) {
-      return std::make_tuple(true,std::string("__nv_fmod"));
-    }
-    return std::make_tuple(false, std::string());
-  }
-
+// AMDGPU llvm Intrinsics 
+const constexpr llvm::Intrinsic::ID AMDGPUMachineFeatures::amdgpu_intrins[];
+// NVIDIA PTX llvm  Intrinsics 
+const constexpr llvm::Intrinsic::ID NVPTXMachineFeatures::nvptx_intrins[];
 }  // namespace llvm_ir 
 }  // namespace xla

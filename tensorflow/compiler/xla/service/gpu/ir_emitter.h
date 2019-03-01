@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_builder_mixin.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -107,8 +109,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   llvm::IRBuilder<>* builder() { return &b_; }
 
-  llvm_ir::LLVMTargetFeatures& GetTargetMachineFeatures() {
-    return llvm_target_features_;
+  llvm_ir::LLVMTargetIRBuilder& GetTargetIRBuilder() {
+    return (*llvm_target_ir_builder_);
   };
 
  protected:
@@ -117,7 +119,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // object.
   explicit IrEmitter(const HloModuleConfig& hlo_module_config,
                      IrEmitterContext* ir_emitter_context, bool is_nested,
-                     llvm_ir::LLVMTargetFeatures* target_machine);
+                     llvm_ir::LLVMTargetFeatures* llvm_target_features);
 
   // Helper for calling HloToIrBindings::GetIrArray.
   //
@@ -183,14 +185,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // management rules, their memory is owned by the module.
   llvm::IRBuilder<> b_;
 
+  // Wrapper class providing access to builder and LLVMTargetFeatures;
+  std::unique_ptr<llvm_ir::LLVMTargetIRBuilder> llvm_target_ir_builder_;
+
   // Mapping from HLO to its underlying LLVM value.
   HloToIrBindings bindings_;
 
+
   // Hlo configuration data used during code generation.
   const HloModuleConfig& hlo_module_config_;
-
-  // GPU Target machine features for code generation
-  llvm_ir::LLVMTargetFeatures& llvm_target_features_;
 
  protected:
   GeneratorForOperandIrArrays GetGeneratorForOperandIrArrays(

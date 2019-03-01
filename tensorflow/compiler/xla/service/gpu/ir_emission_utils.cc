@@ -226,14 +226,20 @@ llvm::Value* EmitPrintf(absl::string_view fmt,
        arguments_ptr});
 }
 
-llvm::Value* EmitFullWarpShuffleDown(llvm::Value* value, llvm::Value* offset,
-                                     llvm::IRBuilder<>* builder, llvm::Module* module) {
+llvm::Value* EmitFullWarpShuffleDown(
+    llvm::Value* value, llvm::Value* offset,
+
+    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder, 
+    llvm::Module* module
+
+) {
+  llvm::IRBuilder<>* builder = llvm_target_ir_builder.builder();
+
   int bit_width = value->getType()->getPrimitiveSizeInBits();
   llvm::Value* all_warps_mask = builder->getInt32(-1);
 
   // Special case for efficiency
   if (value->getType()->isFloatTy() && bit_width == 32) {
-
     llvm::Value* value_as_int = builder->CreateBitCast(value, builder->getIntNTy(bit_width));
     llvm::Value*  result = EmitDeviceFunctionCall(
         "__ockl_readuplane_i32",
@@ -300,17 +306,16 @@ string CudnnConvKindToString(CudnnConvKind kind) {
   }
 }
 
-llvm::Value* IsBlock0Thread0(llvm::IRBuilder<>* b,
-                             llvm_ir::LLVMTargetFeatures& llvm_target_features) {
-  llvm::Intrinsic::ID tid_intrinsic =
-      llvm_target_features.GetIntrinsicID("__thread_id_x");
-  llvm::Intrinsic::ID group_id_intrinsic =
-      llvm_target_features.GetIntrinsicID("__block_id_x");
+llvm::Value* IsBlock0Thread0(
+    llvm_ir::LLVMTargetIRBuilder& llvm_target_ir_builder) {
+  llvm::IRBuilder<>* b = llvm_target_ir_builder.builder();
   return b->CreateAnd(
-      b->CreateICmpEQ(b->getInt32(0),
-                      llvm_ir::EmitCallToIntrinsic(tid_intrinsic, {}, {}, b)),
-      b->CreateICmpEQ(b->getInt32(0), llvm_ir::EmitCallToIntrinsic(
-                                          group_id_intrinsic, {}, {}, b)));
+      b->CreateICmpEQ(b->getInt32(0), llvm_ir::EmitCallToTargetIntrinsic(
+                                          llvm_ir::kTHREAD_ID_X, {}, {},
+                                          llvm_target_ir_builder)),
+      b->CreateICmpEQ(b->getInt32(0), llvm_ir::EmitCallToTargetIntrinsic(
+                                          llvm_ir::kBLOCK_ID_X, {}, {},
+                                          llvm_target_ir_builder)));
 }
 
 }  // namespace gpu

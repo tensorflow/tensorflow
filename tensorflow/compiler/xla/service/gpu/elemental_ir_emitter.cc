@@ -69,12 +69,10 @@ bool IsFPLiteralWithValue(const HloInstruction* operand, float value) {
 
 GpuElementalIrEmitter::GpuElementalIrEmitter(
     const HloModuleConfig& hlo_module_config, llvm::Module* module,
-    llvm::IRBuilder<>* b, NestedComputer compute_nested,
-     llvm_ir::LLVMTargetFeatures* llvm_target_features)
+    llvm::IRBuilder<>* b, NestedComputer compute_nested)
     : ElementalIrEmitter(hlo_module_config, module, b),
       hlo_module_config_(hlo_module_config),
-      compute_nested_(std::move(compute_nested)), 
-       llvm_target_features_(*llvm_target_features) {}
+      compute_nested_(std::move(compute_nested)){}
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitLibdeviceMathCall(
     const string& callee_name, absl::Span<llvm::Value* const> operands,
@@ -179,11 +177,7 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitFloatBinaryOp(
   switch (op->opcode()) {
     case HloOpcode::kRemainder: {
 
-      llvm_ir::LLVMTargetFeatures& llvm_target_features = GetTargetMachineFeatures();
-
-      std::string MathCallName = std::get<1>(llvm_target_features.GetDeviceFunctionCall("fmod"));
-      
-      return EmitLibdeviceMathCall(MathCallName, {lhs_value, rhs_value},
+      return EmitLibdeviceMathCall("fmod", {lhs_value, rhs_value},
                                    {lhs_input_type, rhs_input_type},
                                    output_type);
     }

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/gpu/partition_assignment.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/ir_array.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -40,10 +41,11 @@ using EmitCallToNestedComputationCallback =
 Status EmitSortInPlace(
     int64 dimension_to_sort, const std::vector<IrArray>& values_arrays,
     absl::string_view name, absl::Span<const int64> xor_masks,
-    llvm::IRBuilder<>* b, const gpu::LaunchDimensions& launch_dimensions,
+    const gpu::LaunchDimensions& launch_dimensions,
     int64 num_iterations_in_sort_dim, int64 tile_size,
-    LLVMTargetFeatures& llvm_target_features,
-    const EmitCallToNestedComputationCallback& emit_compare_callback);
+    const EmitCallToNestedComputationCallback& emit_compare_callback,
+    LLVMTargetIRBuilder& llvm_target_ir_builder);
+
 }  // namespace llvm_ir
 }  // namespace xla
 

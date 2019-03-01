@@ -39,6 +39,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_loop.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/llvm_util.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/loop_emitter.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_ir_builder.h"
+#include "tensorflow/compiler/xla/service/llvm_ir/llvm_target_features.h"
 #include "tensorflow/compiler/xla/service/llvm_ir/tuple_ops.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 #include "tensorflow/compiler/xla/shape_util.h"
@@ -80,8 +82,8 @@ IrEmitter::IrEmitter(const HloModuleConfig& hlo_module_config,
                 &ir_emitter_context->buffer_assignment(), &b_, module_,
                 is_nested),
       hlo_module_config_(hlo_module_config),
-      llvm_target_features_(*llvm_target_features) {
-}
+      llvm_target_ir_builder_(std::unique_ptr<llvm_ir::LLVMTargetIRBuilder>(
+          new llvm_ir::LLVMTargetIRBuilder(&b_, llvm_target_features))) {}
 
 Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   ElementalIrEmitter::HloToElementGeneratorMap operand_to_generator;
@@ -92,7 +94,7 @@ Status IrEmitter::DefaultAction(HloInstruction* hlo) {
   }
   return EmitTargetElementLoop(
       *hlo, GpuElementalIrEmitter(hlo_module_config_, module_, &b_,
-                                  GetNestedComputer(), &llvm_target_features_)
+                                  GetNestedComputer())
                 .MakeElementGenerator(hlo, operand_to_generator));
 }
 
@@ -575,7 +577,7 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
   }
 
   // Create the reduction loop which does the sum of products reduction.
-  std::unique_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
+  std::shared_ptr<llvm_ir::ForLoop> reduction_loop = loop_nest.AddLoop(
       /*start_index=*/0,
       /*end_index=*/lhs_shape.dimensions(lhs_reduction_dimension),
       /*suffix=*/"reduction");
@@ -745,7 +747,7 @@ Status IrEmitter::HandleFusion(HloInstruction* fusion) {
   // IrEmitterUnnested::HandleFusion.
   CHECK_EQ(HloInstruction::FusionKind::kLoop, fusion->fusion_kind());
   GpuElementalIrEmitter elemental_emitter(hlo_module_config_, module_, &b_,
-                                          GetNestedComputer(), &llvm_target_features_);
+                                          GetNestedComputer());
   FusedIrEmitter fused_emitter(GetGeneratorForOperandIrArrays(fusion),
                                &elemental_emitter);
   TF_RETURN_IF_ERROR(fusion->fused_expression_root()->Accept(&fused_emitter));

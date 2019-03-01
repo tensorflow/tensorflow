@@ -444,7 +444,9 @@ StatusOr<std::unique_ptr<Executable>> AMDGPUCompiler::RunBackend(
                                       &llvm_module);
 
   HloComputation* entry_computation = module->entry_computation();
-  llvm_ir::AMDGPUMachineFeatures llvm_target_features;
+  llvm_ir::AMDGPUMachineFeatures llvm_target_features = 
+       llvm_ir::AMDGPUMachineFeatures::Singleton();
+
   IrEmitterUnnested ir_emitter(module->config(), entry_computation,
                                &ir_emitter_context, &llvm_target_features);
 
