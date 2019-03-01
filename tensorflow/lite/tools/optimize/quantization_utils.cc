@@ -81,7 +81,7 @@ void SymmetricPerChannelQuantization(const float* const input,
                                      int32_t channel_dim_index,
                                      std::vector<float>* output_scales,
                                      std::vector<int8_t>* output_value) {
-  const int32_t channel_dim_size = dimension[channel_dim_index];
+  const size_t channel_dim_size = dimension[channel_dim_index];
   std::vector<float> min_vals(channel_dim_size);
   std::vector<float> max_vals(channel_dim_size);
   std::vector<bool> has_min_max_value(channel_dim_size, false);
