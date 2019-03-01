@@ -181,7 +181,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:sparse_to_dense_op",
         "//tensorflow/core/kernels:stack_ops",
         "//tensorflow/core/kernels:training_ops",
-        "//tensorflow/core/kernels:transpose_op",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:span",
