@@ -147,7 +147,7 @@ class XRTTupleAllocation : public ResourceBase {
 
   // Copies the allocation from device to host and returns it in literal.
   Status ToLiteral(xla::Backend* backend, int device_ordinal,
-                   xla::Literal* literal);
+                   xla::MutableLiteralBase* literal);
 
   // Write a new literal value to the allocation.
   Status WriteLiteral(xla::Backend* backend, const xla::Literal& literal);

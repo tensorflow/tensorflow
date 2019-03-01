@@ -22,11 +22,6 @@ limitations under the License.
 #include "google/protobuf/text_format.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/string_view.h"
-#include "tensorflow/lite/toco/model.h"
-#include "tensorflow/lite/toco/model_flags.pb.h"
-#include "tensorflow/lite/toco/runtime/types.h"
-#include "tensorflow/lite/toco/tensorflow_util.h"
-#include "tensorflow/lite/toco/tooling_util.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/graph.pb.h"
 #include "tensorflow/core/framework/node_def.pb.h"
@@ -34,6 +29,11 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor_shape.pb.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/lite/toco/model.h"
+#include "tensorflow/lite/toco/model_flags.pb.h"
+#include "tensorflow/lite/toco/runtime/types.h"
+#include "tensorflow/lite/toco/tensorflow_util.h"
+#include "tensorflow/lite/toco/tooling_util.h"
 
 using tensorflow::DT_BOOL;
 using tensorflow::DT_COMPLEX64;
@@ -1305,7 +1305,8 @@ void ConvertTensorFlowShapeOperator(const Model& model,
       GetTensorFlowDataType(model, src_op.outputs[0]));
 }
 
-void ConvertRankOperator(const Model& model, const RankOperator& src_op,
+void ConvertRankOperator(const Model& model,
+                         const TensorFlowRankOperator& src_op,
                          GraphDef* tensorflow_graph) {
   tensorflow::NodeDef* rank_op = tensorflow_graph->add_node();
   rank_op->set_op("Rank");
@@ -2076,6 +2077,19 @@ void ConvertReverseV2Operator(const Model& model,
   (*reverse_v2_op->mutable_attr())["T"].set_type(data_type);
 }
 
+void ConvertReverseSequenceOperator(const Model& model,
+                                    const ReverseSequenceOperator& src_op,
+                                    GraphDef* tensorflow_graph) {
+  tensorflow::NodeDef* reverse_seq_op = tensorflow_graph->add_node();
+  reverse_seq_op->set_op("ReverseSequence");
+  reverse_seq_op->set_name(src_op.outputs[0]);
+  CHECK_EQ(src_op.inputs.size(), 2);
+  *reverse_seq_op->add_input() = src_op.inputs[0];
+  *reverse_seq_op->add_input() = src_op.inputs[1];
+  (*reverse_seq_op->mutable_attr())["seq_dim"].set_i(src_op.seq_dim);
+  (*reverse_seq_op->mutable_attr())["batch_dim"].set_i(src_op.batch_dim);
+}
+
 void ConvertOperator(const Model& model, const Operator& src_op,
                      GraphDef* tensorflow_graph) {
   if (src_op.fused_activation_function != FusedActivationFunctionType::kNone) {
@@ -2274,7 +2288,8 @@ void ConvertOperator(const Model& model, const Operator& src_op,
         model, static_cast<const TensorFlowShapeOperator&>(src_op),
         tensorflow_graph);
   } else if (src_op.type == OperatorType::kRank) {
-    ConvertRankOperator(model, static_cast<const RankOperator&>(src_op),
+    ConvertRankOperator(model,
+                        static_cast<const TensorFlowRankOperator&>(src_op),
                         tensorflow_graph);
   } else if (src_op.type == OperatorType::kRange) {
     ConvertRangeOperator(model, static_cast<const RangeOperator&>(src_op),
@@ -2359,6 +2374,10 @@ void ConvertOperator(const Model& model, const Operator& src_op,
     ConvertReverseV2Operator(model,
                              static_cast<const ReverseV2Operator&>(src_op),
                              "Reverse_V2", tensorflow_graph);
+  } else if (src_op.type == OperatorType::kReverseSequence) {
+    ConvertReverseSequenceOperator(
+        model, static_cast<const ReverseSequenceOperator&>(src_op),
+        tensorflow_graph);
   } else {
     LOG(FATAL) << "Unhandled operator type " << OperatorTypeName(src_op.type);
   }

@@ -23,7 +23,6 @@ import tempfile
 
 from absl.testing import parameterized
 import numpy as np
-import six
 
 from tensorflow.contrib import layers
 from tensorflow.contrib.gan.python import namedtuples as tfgan_tuples
@@ -235,10 +234,10 @@ class StarGANEstimatorIntegrationTest(test.TestCase):
     # EVALUTE
     scores = est.evaluate(eval_input_fn)
     self.assertEqual(num_steps, scores[ops.GraphKeys.GLOBAL_STEP])
-    self.assertIn('loss', six.iterkeys(scores))
+    self.assertIn('loss', scores)
     self.assertEqual(scores['discriminator_loss'] + scores['generator_loss'],
                      scores['loss'])
-    self.assertIn('mse_custom_metric', six.iterkeys(scores))
+    self.assertIn('mse_custom_metric', scores)
 
     # PREDICT
     predictions = np.array([x for x in est.predict(predict_input_fn)])

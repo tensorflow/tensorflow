@@ -172,6 +172,9 @@ def einsum(equation, *inputs, **kwargs):
   # Transpose
   >>> einsum('ij->ji', m)  # output[j,i] = m[i,j]
 
+  # Trace
+  >>> einsum('ii', m)  # output[j,i] = trace(m) = sum_i m[i, i]
+
   # Batch matrix multiplication
   >>> einsum('aij,ajk->aik', s, t)  # out[a,i,k] = sum_j s[a,i,j] * t[a, j, k]
   ```
@@ -180,7 +183,7 @@ def einsum(equation, *inputs, **kwargs):
 
   * Ellipses (subscripts like `ij...,jk...->ik...`)
   * Subscripts where an axis appears more than once for a single input
-    (e.g. `ijj,k->ik`).
+    (e.g. `ijj,k->ik`) unless it is a trace (e.g. `ijji`).
 
   Args:
     equation: a `str` describing the contraction, in the same format as
@@ -217,7 +220,6 @@ def einsum(equation, *inputs, **kwargs):
 
     inputs = list(inputs)
     input_axis_labels = match.group(1).split(',')
-
     if len(inputs) != len(input_axis_labels):
       raise ValueError('Got %d arguments for equation "%s", expecting %d' %
                        (len(inputs), equation, len(input_axis_labels)))
@@ -235,14 +237,15 @@ def einsum(equation, *inputs, **kwargs):
 
       output_axis_labels = ''.join(
           sorted(ax for ax in indices if counts[ax] == 1))
-
     for a in axis_labels:
       for input_labels in input_axis_labels:
+        if (len(input_axis_labels) == 1 and input_labels.count(a) == 2 and
+            input_labels == input_labels[::-1] and '->' not in equation):
+          return math_ops.trace(inputs[0])
         if input_labels.count(a) > 1:
           raise ValueError(
               'Subscript not supported: an axis appears more than once: %s' %
               input_labels)
-
     for a in axis_labels:
       input_count = sum(1 for s in input_axis_labels if a in s)
       if input_count > 2 and a not in output_axis_labels:
@@ -261,6 +264,7 @@ def einsum(equation, *inputs, **kwargs):
           temp, temp_axis_labels, inputs[i + 1], input_axis_labels[i + 1],
           axes_to_sum)
 
+
     missing_indices = set(temp_axis_labels) - set(output_axis_labels)
     if missing_indices:
       axis = [
@@ -270,7 +274,6 @@ def einsum(equation, *inputs, **kwargs):
       temp = math_ops.reduce_sum(temp, axis=axis)
       temp_axis_labels = ''.join(
           a for a in temp_axis_labels if a in output_axis_labels)
-
     if sorted(temp_axis_labels) != sorted(output_axis_labels):
       raise ValueError('Invalid equation: %s' % equation)
 

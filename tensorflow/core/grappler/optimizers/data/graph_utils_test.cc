@@ -228,6 +228,21 @@ TEST(GraphUtilsTest, GetInputNode) {
   EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
 }
 
+TEST(GraphUtilsTest, GetIthInputNode) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node1 = AddNode("", "A", {}, {}, &graph);
+  NodeDef* node2 = AddNode("", "A", {}, {}, &graph);
+  NodeDef* node3 = AddNode("", "A", {node1->name(), node2->name()}, {}, &graph);
+
+  EXPECT_EQ(GetInputNode(*node3, graph), node1);
+  EXPECT_EQ(GetInputNode(*node3, graph, 1), node2);
+  EXPECT_EQ(GetInputNode(*node3, graph, 0), node1);
+  EXPECT_EQ(GetInputNode(*node3, graph, 2), nullptr);
+  EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
+}
+
 TEST(GraphUtilsTest, EnsureNodeNamesUnique) {
   Graph g(OpRegistry::Global());
 

@@ -547,7 +547,7 @@ bool GenEagerPythonOp::GetEagerFunctionSetup(const string& indentation,
       strings::StrAppend(function_setup, indentation, attr_api_name,
                          " = [_execute.make_tensor(_t, \"", attr_api_name,
                          "\") for _t in ", attr_api_name, "]\n");
-    } else if (attr_type != "func") {
+    } else if (attr_type != "func" && attr_type != "list(func)") {
       *function_setup =
           strings::StrCat("# No definition for ", function_name_,
                           " since we don't support attrs with type\n"
@@ -650,10 +650,11 @@ bool GenEagerPythonOp::AddEagerFastPathAndGraphCode(
   AddDocStringOutputs();
   strings::StrAppend(&result_, "  \"\"\"\n");
 
-  strings::StrAppend(&result_,
-                     "  _ctx = _context._context or _context.context()\n"
-                     "  if _ctx is not None and _ctx._eager_context.is_eager:",
-                     "\n");
+  strings::StrAppend(
+      &result_,
+      "  _ctx = _context._context or _context.context()\n"
+      "  if _ctx is not None and _ctx._thread_local_data.is_eager:",
+      "\n");
   if (eager_not_allowed_error.empty()) {
     AddEagerFastPathExecute();
   } else {
@@ -715,7 +716,7 @@ bool GenEagerPythonOp::AddEagerFallbackCode(
 
 void GenEagerPythonOp::AddEagerFastPathExecute() {
   string fastpath_execute_params = strings::StrCat(
-      "_ctx._context_handle, _ctx._eager_context.device_name, \"",
+      "_ctx._context_handle, _ctx._thread_local_data.device_name, \"",
       op_def_.name(), "\", ", "name, _ctx._post_execution_callbacks");
   string fallback_params;
 

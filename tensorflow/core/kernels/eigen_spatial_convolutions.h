@@ -832,7 +832,7 @@ struct gemm_pack_rhs<
   typedef SubMapper DataMapper;
   typedef typename packet_traits<Scalar>::type Packet;
 
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -1039,7 +1039,7 @@ struct gemm_pack_rhs<
   typedef SubMapper DataMapper;
   typedef typename packet_traits<Scalar>::type Packet;
 
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -1254,7 +1254,7 @@ struct gemm_pack_rhs<
       SubMapper;
   typedef SubMapper DataMapper;
 
-  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE);
+  EIGEN_STATIC_ASSERT((nr == 4), YOU_MADE_A_PROGRAMMING_MISTAKE)
 
   EIGEN_DEVICE_FUNC
   EIGEN_DONT_INLINE void operator()(Scalar* block, const DataMapper& rhs,
@@ -1301,20 +1301,17 @@ struct gemm_pack_rhs<
   }
 };
 
-#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
-// Arrange a block of the right input matrix (in our case it's always a
+#if defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
+// Pack a block of the right input matrix (in our case it's always a
 // "virtual matrix" constructed from extracted image patches) in contiguous
-// memory.
-//
-// Mkldnn doesn't require Lhs/Rhs blocks to be packed in any specific format, so
-// this is basically the same as taking a slice of the matrix. Knowing
-// properties of the original patch op we can do it more efficient than default
-// mkldnn_gemm_pack.
+// block in column-major storage order. Knowing the properties of the
+// original patch op we can do it more efficient than the default
+// gemm_pack_colmajor_block.
 template <typename NewDimension, Index Rows, Index Cols, typename ArgType,
           typename Device, typename Scalar, typename StorageIndex,
           typename nocontract_t, typename contract_t, int packet_size,
           bool inner_dim_contiguous, bool inner_dim_reordered, int Alignment>
-struct mkldnn_gemm_pack<
+struct gemm_pack_colmajor_block<
     Scalar, StorageIndex,
     TensorContractionSubMapper<
         Scalar, StorageIndex, Rhs,
@@ -1503,7 +1500,7 @@ struct mkldnn_gemm_pack<
     }
   }
 };
-#endif  // defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+#endif  // defined(TENSORFLOW_USE_CUSTOM_CONTRACTION_KERNEL)
 
 }  // end namespace internal
 
@@ -1583,7 +1580,7 @@ EIGEN_DEVICE_FUNC
 
   EIGEN_STATIC_ASSERT(
       internal::traits<Input>::Layout == internal::traits<Kernel>::Layout,
-      YOU_MADE_A_PROGRAMMING_MISTAKE);
+      YOU_MADE_A_PROGRAMMING_MISTAKE)
   const bool isColMajor = (internal::traits<Input>::Layout == ColMajor);
 
   const int NumDims = internal::traits<Input>::NumDimensions;

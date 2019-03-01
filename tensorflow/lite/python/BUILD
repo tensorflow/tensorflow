@@ -13,7 +13,6 @@ py_library(
     visibility = ["//visibility:public"],
     deps = [
         "//tensorflow/lite/python/interpreter_wrapper:tensorflow_wrap_interpreter_wrapper",
-        "//tensorflow/python:util",
         "//third_party/py/numpy",
     ],
 )
@@ -23,7 +22,9 @@ py_test(
     srcs = ["interpreter_test.py"],
     data = ["//tensorflow/lite/python/testdata:interpreter_test_data"],
     srcs_version = "PY2AND3",
-    tags = ["no_oss"],
+    tags = [
+        "no_windows",
+    ],
     deps = [
         ":interpreter",
         "//tensorflow/python:client_testlib",
@@ -35,6 +36,22 @@ py_test(
 
 py_binary(
     name = "tflite_convert",
+    srcs = ["tflite_convert.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [":tflite_convert_main_lib"],
+)
+
+py_library(
+    name = "tflite_convert_main_lib",
+    srcs = ["tflite_convert.py"],
+    srcs_version = "PY2AND3",
+    visibility = ["//visibility:public"],
+    deps = [":tflite_convert_lib"],
+)
+
+py_library(
+    name = "tflite_convert_lib",
     srcs = ["tflite_convert.py"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
@@ -54,6 +71,8 @@ py_library(
         ":interpreter",
         ":lite_constants",
         ":op_hint",
+        "//tensorflow/lite/experimental/examples/lstm:tflite_lstm_ops",
+        "//tensorflow/lite/python/optimize:calibrator",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:tf_optimizer",
         "//tensorflow/python/keras",
@@ -69,6 +88,36 @@ py_test(
     shard_count = 4,
     srcs_version = "PY2AND3",
     tags = [
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "lite_v2_test",
+    srcs = ["lite_v2_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_windows",
+    ],
+    deps = [
+        ":lite",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework_test_lib",
+    ],
+)
+
+py_test(
+    name = "lite_flex_test",
+    srcs = ["lite_flex_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        # TODO(b/111881877): Enable in oss after resolving op registry issues.
         "no_oss",
         "no_windows",
     ],

@@ -67,17 +67,17 @@ struct OpWithBiasTensors {
 
 const OpWithBiasTensors* GetInfoForOpWithBiasTensor(BuiltinOperator op_code) {
   if (op_code == BuiltinOperator_CONV_2D) {
-    static OpWithBiasTensors op_info = {.activation_input_index = 0,
-                                        .weights_input_index = 1,
-                                        .bias_input_index = 2,
-                                        .index_for_channel_in_weights = 0};
+    static OpWithBiasTensors op_info = {/* activation_input_index */ 0,
+                                        /* weights_input_index */ 1,
+                                        /* bias_input_index */ 2,
+                                        /* index_for_channel_in_weights */ 0};
     return &op_info;
   }
   if (op_code == BuiltinOperator_DEPTHWISE_CONV_2D) {
-    static OpWithBiasTensors op_info = {.activation_input_index = 0,
-                                        .weights_input_index = 1,
-                                        .bias_input_index = 2,
-                                        .index_for_channel_in_weights = 3};
+    static OpWithBiasTensors op_info = {/* bias_input_index */ 0,
+                                        /* bias_input_index */ 1,
+                                        /* bias_input_index */ 2,
+                                        /* index_for_channel_in_weights */ 3};
     return &op_info;
   }
 
@@ -307,7 +307,7 @@ TfLiteStatus SubgraphQuantizer::PropagateMinMaxForAvgAndMaxPool(
   return kTfLiteOk;
 }
 
-TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSingleInputOutputOp(
+TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSoftmax(
     BuiltinOperator op_code, OperatorT* op) {
   TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
   TF_LITE_ENSURE_EQ(this->error_reporter_, op->outputs.size(), 1);
@@ -320,8 +320,34 @@ TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSingleInputOutputOp(
   if (output_tensor->type != TensorType_FLOAT32) {
     return kTfLiteOk;
   }
-  auto quant_params = absl::make_unique<QuantizationParametersT>();
-  TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->outputs[0]));
+
+  // Softmax output is hardcoded to have 1/256 as scale and -128 as zero point.
+  output_tensor->type = TensorType_INT8;
+  output_tensor->quantization->scale = {1.0f / 256.0f};
+  output_tensor->quantization->zero_point = {-128};
+  return kTfLiteOk;
+}
+
+TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeInputsAndOutputs(
+    BuiltinOperator op_code, OperatorT* op) {
+  TF_LITE_ENSURE(this->error_reporter_, !op->inputs.empty());
+  TF_LITE_ENSURE(this->error_reporter_, !op->outputs.empty());
+  for (size_t input_idx = 0; input_idx < op->inputs.size(); ++input_idx) {
+    auto input_tensor = subgraph_->tensors[op->inputs[input_idx]].get();
+    if (IsSubgraphInput(op->inputs[input_idx]) &&
+        input_tensor->type == TensorType_FLOAT32) {
+      TF_LITE_ENSURE_STATUS(
+          AsymmetricQuantizeTensor(op_code, op->inputs[input_idx]));
+    }
+  }
+
+  for (size_t output_idx = 0; output_idx < op->outputs.size(); ++output_idx) {
+    auto output_tensor = subgraph_->tensors[op->outputs[output_idx]].get();
+    if (output_tensor->type == TensorType_FLOAT32) {
+      TF_LITE_ENSURE_STATUS(
+          AsymmetricQuantizeTensor(op_code, op->outputs[output_idx]));
+    }
+  }
   return kTfLiteOk;
 }
 
@@ -342,8 +368,11 @@ TfLiteStatus SubgraphQuantizer::QuantizeOperator(int op_idx) {
     case BuiltinOperator_MAX_POOL_2D:
       return PropagateMinMaxForAvgAndMaxPool(op_code, op);
     case BuiltinOperator_SQUEEZE:
+    case BuiltinOperator_RESHAPE:
+    case BuiltinOperator_ADD:
+      return AsymmetricQuantizeInputsAndOutputs(op_code, op);
     case BuiltinOperator_SOFTMAX:
-      return AsymmetricQuantizeSingleInputOutputOp(op_code, op);
+      return AsymmetricQuantizeSoftmax(op_code, op);
     default:
       return kTfLiteError;
   }

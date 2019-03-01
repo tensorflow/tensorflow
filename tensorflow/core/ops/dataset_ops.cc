@@ -27,7 +27,7 @@ namespace tensorflow {
 // to a stateful "iterator" by passing the "dataset" to the
 // "MakeIterator" op.
 //
-// TODO(b/65524810): DT_VARIANT tensors that represent "dataset" objects are
+// TODO(b/123753214): DT_VARIANT tensors that represent "dataset" objects are
 // not presently serializable. To avoid issues with constant folding, ensure
 // that any "source dataset" ops (i.e. ops that output a dataset and do not
 // take one as input) are marked "stateful".
@@ -37,7 +37,7 @@ REGISTER_OP("TensorDataset")
     .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate that
                                                 // `components` have shapes
@@ -49,7 +49,7 @@ REGISTER_OP("TensorSliceDataset")
     .Output("handle: variant")
     .Attr("Toutput_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);  // TODO(mrry): Validate that the
                                                 // dim-0 slices of `components`
@@ -62,7 +62,7 @@ REGISTER_OP("SparseTensorSliceDataset")
     .Input("dense_shape: int64")
     .Output("handle: variant")
     .Attr("Tvalues: type")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
@@ -79,7 +79,7 @@ REGISTER_OP("GeneratorDataset")
     .Attr("Tfinalize_func_args: list(type) >= 0")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn(shape_inference::ScalarShape);
 
@@ -275,6 +275,22 @@ REGISTER_OP("BatchDatasetV2")
       return shape_inference::ScalarShape(c);
     });
 
+REGISTER_OP("ShardDataset")
+    .Input("input_dataset: variant")
+    .Input("num_shards: int64")
+    .Input("index: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // num_shards should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      // index should be a scalar.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 // TODO(mrry): Validate that `padded_shapes` are all vectors, the lengths of
 // `output_types` and `output_shapes` are `N` the `output_shapes` are (as far as
 // possible to tell statically) compatible with `padded_shapes`, and that
@@ -322,7 +338,7 @@ REGISTER_OP("RangeDataset")
     .Output("handle: variant")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -388,7 +404,7 @@ REGISTER_OP("TextLineDataset")
     .Input("compression_type: string")
     .Input("buffer_size: int64")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -408,7 +424,7 @@ REGISTER_OP("FixedLengthRecordDataset")
     .Input("footer_bytes: int64")
     .Input("buffer_size: int64")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -431,7 +447,7 @@ REGISTER_OP("FixedLengthRecordDatasetV2")
     .Input("buffer_size: int64")
     .Input("compression_type: string")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -451,7 +467,7 @@ REGISTER_OP("TFRecordDataset")
     .Input("compression_type: string")
     .Input("buffer_size: int64")
     .Output("handle: variant")
-    .SetIsStateful()  // TODO(b/65524810): Source dataset ops must be marked
+    .SetIsStateful()  // TODO(b/123753214): Source dataset ops must be marked
                       // stateful to inhibit constant folding.
     .SetShapeFn([](shape_inference::InferenceContext* c) {
       shape_inference::ShapeHandle unused;
@@ -538,13 +554,22 @@ REGISTER_OP("IteratorGetNextSync")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(IteratorGetNextShapeFn);
 
+// TODO(b/124308596): Instead of conservatively marking this op as stateful,
+// implement a mechanism to determine whether `dataset` has a side-effect
+// and use it to decide whether to use a stateless or stateful version of this
+// op.
 REGISTER_OP("DatasetToSingleElement")
     .Input("dataset: variant")
     .Output("components: output_types")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
+    .SetIsStateful()
     .SetShapeFn(IteratorGetNextShapeFn);
 
+// TODO(b/124308596): Instead of conservatively marking this op as stateful,
+// implement a mechanism to determine whether `dataset` has a side-effect
+// and use it to decide whether to use a stateless or stateful version of this
+// op.
 REGISTER_OP("ReduceDataset")
     .Input("input_dataset: variant")
     .Input("initial_state: Tstate")
@@ -556,6 +581,7 @@ REGISTER_OP("ReduceDataset")
     .Attr("output_types: list(type) >= 1")
     .Attr("output_shapes: list(shape) >= 1")
     .Attr("use_inter_op_parallelism: bool = true")
+    .SetIsStateful()
     .SetShapeFn(IteratorGetNextShapeFn);
 
 REGISTER_OP("IteratorToStringHandle")
@@ -636,6 +662,8 @@ REGISTER_OP("ModelDataset")
     .Attr("output_shapes: list(shape) >= 1")
     .SetShapeFn(shape_inference::ScalarShape);
 
+// TODO(b/124308749): Add a stateful version of MapDefun and use it when `f`
+// is stateful.
 REGISTER_OP("MapDefun")
     .Input("arguments: Targuments")
     .Input("captured_inputs: Tcaptured")

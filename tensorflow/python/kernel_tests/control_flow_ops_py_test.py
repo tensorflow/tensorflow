@@ -654,6 +654,27 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(pred, fn1, fn2)
       self.assertAllEqual([11, 12], self.evaluate(r))
 
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testCond_Device(self):
+    x = constant_op.constant(-10)
+
+    # True branch function defined outside of device scope
+    def true_fn():
+      return math_ops.exp(x)
+
+    with ops.device("CPU:0"):
+      r = control_flow_ops.cond(
+          constant_op.constant(True), true_fn, lambda: 0.)
+      self.assertIn("cpu", r.device.lower())
+
+    with session.Session() as sess:
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(r, options=options, run_metadata=run_metadata)
+      # We expect that everything runs on CPU, even if GPU is available.
+      self.assertEqual(len(run_metadata.partition_graphs), 1)
+
   def testCondListOutput(self):
     with self.cached_session() as sess:
       x = constant_op.constant(10)
@@ -756,7 +777,7 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.cond(constant_op.constant(False), true_fn, false_fn)
       self.assertAllEqual([2.0], self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/79881896 (control deps)")
+  @test_util.disable_control_flow_v2("b/79881896 (placeholder)")
   @test_util.run_v1_only("b/120545219")
   def testCondWithControl(self):
     with self.cached_session():
@@ -1017,6 +1038,31 @@ class ControlFlowTest(test.TestCase):
     r = control_flow_ops.cond(foo()[1], lambda: 1.0, lambda: 2.0)
     self.assertEqual(self.evaluate(r), 1.0)
 
+  @test_util.run_v1_only("Tests Session.run() pruning logic.")
+  def testCondFeedConstantPredicate(self):
+    with self.cached_session() as sess:
+      value = constant_op.constant(37.0)
+      predicate = constant_op.constant(True)
+      cond_output = control_flow_ops.cond(
+          predicate, lambda: constant_op.constant(0.0), lambda: value)
+      result = array_ops.identity(cond_output)
+      self.assertEqual(37.0, sess.run(result, feed_dict={predicate: False}))
+      self.assertEqual(0.0, sess.run(result, feed_dict={predicate: True}))
+      self.assertEqual(0.0, sess.run(result))
+
+  @test_util.run_v1_only("Tests Session.run() pruning logic.")
+  def testCondFeedPlaceholderWithDefaultPredicate(self):
+    with self.cached_session() as sess:
+      value = constant_op.constant(37.0)
+      predicate = array_ops.placeholder_with_default(
+          constant_op.constant(True), [])
+      cond_output = control_flow_ops.cond(
+          predicate, lambda: constant_op.constant(0.0), lambda: value)
+      result = array_ops.identity(cond_output)
+      self.assertAllEqual(37.0, sess.run(result, feed_dict={predicate: False}))
+      self.assertAllEqual(0.0, sess.run(result, feed_dict={predicate: True}))
+      self.assertAllEqual(0.0, sess.run(result))
+
   @test_util.run_in_graph_and_eager_modes
   def testCondAutoControlDeps(self):
 
@@ -1055,7 +1101,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(cond()), 10)
-      self.assertEqual(printed.contents(), "A\nB\nC\n")
+      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
+                      printed.contents())
 
       @eager_function.defun
       def nested_cond():
@@ -1063,7 +1110,8 @@ class ControlFlowTest(test.TestCase):
 
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_cond()), 10)
-      self.assertEqual(printed.contents(), "A\nB\nC\n")
+      self.assertTrue(printed.contents().endswith("A\nB\nC\n"),
+                      printed.contents())
 
     # wrap_function should prune.
     def pruned_cond():
@@ -1112,11 +1160,13 @@ class ControlFlowTest(test.TestCase):
       with self.cached_session():
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_while()[0]), 2)
-        self.assertEqual(printed.contents(), "D\nD\n")
+        self.assertTrue(printed.contents().endswith("D\nD\n"),
+                        printed.contents())
 
         with self.captureWritesToStream(sys.stderr) as printed:
           self.assertEqual(self.evaluate(build_nested_while()[0]), 2)
-        self.assertEqual(printed.contents(), "D\nD\n")
+        self.assertTrue(printed.contents().endswith("D\nD\n"),
+                        printed.contents())
 
     # In defuns, all prints should execute in program order.
     @eager_function.defun
@@ -1125,7 +1175,8 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(while_loop()), 2)
-    self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
+    self.assertTrue(printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
+                    printed.contents())
 
     @eager_function.defun
     def nested_while_loop():
@@ -1135,7 +1186,9 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(nested_while_loop()), 2)
-      self.assertEqual(printed.contents(), "A\nB\nC\nD\nA\nB\nC\nD\nA\n")
+      self.assertTrue(
+          printed.contents().endswith("A\nB\nC\nD\nA\nB\nC\nD\nA\n"),
+          printed.contents())
 
     # wrap_function should prune.
     def pruned_while():
@@ -1144,7 +1197,7 @@ class ControlFlowTest(test.TestCase):
 
     with self.captureWritesToStream(sys.stderr) as printed:
       self.assertEqual(self.evaluate(pruned_while()), 2)
-    self.assertEqual(printed.contents(), "D\nD\n")
+    self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
 
     def pruned_nested_while():
       return build_nested_while()[0]
@@ -1154,7 +1207,7 @@ class ControlFlowTest(test.TestCase):
     if not context.executing_eagerly():
       with self.captureWritesToStream(sys.stderr) as printed:
         self.assertEqual(self.evaluate(pruned_nested_while()), 2)
-      self.assertEqual(printed.contents(), "D\nD\n")
+      self.assertTrue(printed.contents().endswith("D\nD\n"), printed.contents())
 
   # Microbenchmark: 256,000 iterations/s.
   def testWhile_1(self):
@@ -1165,7 +1218,6 @@ class ControlFlowTest(test.TestCase):
       r = control_flow_ops.while_loop(c, b, [n], parallel_iterations=20)
       self.assertEqual(10000, self.evaluate(r))
 
-  @test_util.disable_control_flow_v2("b/79881896 (control deps)")
   @test_util.run_v1_only("b/120545219")
   def testWhileExternalControlDependencies(self):
     with self.cached_session():
@@ -1182,7 +1234,6 @@ class ControlFlowTest(test.TestCase):
       self.assertAllEqual(result, 2)
       self.assertAllEqual(v.read_value(), 1.0)
 
-  @test_util.disable_control_flow_v2("b/79881896 (control deps)")
   @test_util.run_v1_only("b/120545219")
   def testWhileExternalControlDependenciesNoInput(self):
     with self.cached_session():
@@ -1358,7 +1409,6 @@ class ControlFlowTest(test.TestCase):
           r"while loop context '' \(currently defined in 'cond/.+'\)"):
         _ = gradients_impl.gradients(loop, v)
 
-  @test_util.disable_control_flow_v2("b/123601232")
   @test_util.run_v1_only("b/120545219")
   def testNestedWhileLoopWithMaxItersFromOuterContextInXLAContext(self):
     v = constant_op.constant(1.0)
@@ -1403,12 +1453,14 @@ class ControlFlowTest(test.TestCase):
 
     with self.session(use_gpu=False) as sess:
       opts = config_pb2.RunOptions(trace_level=config_pb2.RunOptions.FULL_TRACE)
+      run_metadata_without_xla_context = config_pb2.RunMetadata()
       run_metadata = config_pb2.RunMetadata()
 
       final_value_without_xla_context = sess.run(
-          final_without_xla_context, feed_dict={
-              p: [0, 0, 0]
-          })
+          final_without_xla_context,
+          feed_dict={p: [0, 0, 0]},
+          options=opts,
+          run_metadata=run_metadata_without_xla_context)
 
       final_value_with_xla_context = sess.run(
           final_with_xla_context,
@@ -1416,9 +1468,18 @@ class ControlFlowTest(test.TestCase):
           options=opts,
           run_metadata=run_metadata)
 
-      node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+      if control_flow_util.ENABLE_CONTROL_FLOW_V2:
+        # With while_v2 on xla, run_metadata only contains the unlowered While
+        # op so node_stats does not have statistics for the pushes. So as a
+        # loose check we check the pushes in the lowered version.
+        node_stats = run_metadata_without_xla_context.step_stats.dev_stats[
+            0].node_stats
+        stack_push_op = "TensorListPushBack"
+      else:
+        node_stats = run_metadata.step_stats.dev_stats[0].node_stats
+        stack_push_op = "StackPushV2"
       stack_push_count = len(
-          [x for x in node_stats if x.node_name.endswith("StackPushV2")])
+          [x for x in node_stats if x.node_name.endswith(stack_push_op)])
       # Pushes to the stack = product of maximum_iterations values;
       # the last two "3"s comes from size(p), when p == [0, 0, 0].
       self.assertEqual(stack_push_count, 5 * 3 * 3)
@@ -1495,6 +1556,26 @@ class ControlFlowTest(test.TestCase):
                                       ])
       result = r[2]
     self.assertAllEqual(np.array([0, 1, 2, 3, 4, 5, 6]), result)
+
+  @test_util.run_gpu_only
+  @test_util.run_deprecated_v1
+  def testWhile_Device(self):
+
+    # Body function defined outside of device scope
+    def body(x):
+      return math_ops.exp(x)
+
+    with ops.device("CPU:0"):
+      r = control_flow_ops.while_loop(
+          lambda x: x < 10, body, [constant_op.constant(-10.)])
+      self.assertIn("cpu", r.device.lower())
+
+    with session.Session() as sess:
+      options = config_pb2.RunOptions(output_partition_graphs=True)
+      run_metadata = config_pb2.RunMetadata()
+      sess.run(r, options=options, run_metadata=run_metadata)
+      # We expect that everything runs on CPU, even if GPU is available.
+      self.assertEqual(len(run_metadata.partition_graphs), 1)
 
   @test_util.disable_control_flow_v2("b/116338794 (buffer_reuse)")
   @test_util.run_v1_only("b/120545219")
@@ -1737,6 +1818,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensor(self):
+    if context.executing_eagerly():
+      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[1, 2], [3], [4, 5, 6]])
     c = lambda i, _: i < 10
@@ -1780,6 +1863,8 @@ class ControlFlowTest(test.TestCase):
 
   @test_util.disable_control_flow_v2("b/116328420 (RaggedTensor)")
   def testWhileShapeInferenceRaggedTensorRaggedRank2(self):
+    if context.executing_eagerly():
+      self.skipTest("b/116328420")
     i = constant_op.constant(0)
     x = ragged_factory_ops.constant([[[1, 2], [3], [4, 5, 6]],
                                      [[], [8, 9, 10]]])
@@ -1904,7 +1989,6 @@ class ControlFlowTest(test.TestCase):
             lambda x: x < 10, lambda x: x + array_ops.identity(c), [x0])
       self.assertEqual(10, sess.run(r, {b: True}))
 
-  @test_util.disable_control_flow_v2("b/79881896 (control_deps)")
   @test_util.run_v1_only("b/120545219")
   def testWhileWithControl_5(self):
     with self.cached_session() as sess:
@@ -2518,6 +2602,115 @@ class ControlFlowTest(test.TestCase):
       self.evaluate(variables.global_variables_initializer())
       self.assertAllClose(216.0, g[0])
 
+  def testWhileGrad_EagerResourceVariable(self):
+    with context.eager_mode():
+      a = resource_variable_ops.ResourceVariable(
+          np.ones([2, 2], dtype=np.float32))
+      v = constant_op.constant(1.0)
+
+      @eager_function.defun
+      def fn():
+        r = control_flow_ops.while_loop(
+            lambda i, _: i < 2,
+            lambda i, x: (i + 1, x * math_ops.reduce_sum(a) * v),
+            [0, 1.0])[1]
+        return gradients_impl.gradients(r, [v])[0]
+
+      self.assertEqual(self.evaluate(fn()), 32.)
+
+  def testWhileGrad_ResourceVarInFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return x + math_ops.reduce_sum(var.sparse_read([1, 3]))
+
+    @def_function.function
+    def bar(var):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 2,
+          lambda i, x: (i + 1, foo(x, var)),
+          [0, 0.0])[1]
+      return gradients_impl.gradients(r, var)[0]
+
+    var = resource_variable_ops.ResourceVariable([1., 2., 3., 4.])
+    self.evaluate(variables.global_variables_initializer())
+    grad = self.evaluate(bar(var))
+    self.assertIsInstance(grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
+
+  def testWhileGrad_ResourceVarInNestedFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return x + math_ops.reduce_sum(var.sparse_read([1, 3]))
+
+    @def_function.function
+    def foo2(x, var):
+      return foo(x, var)
+
+    @def_function.function
+    def bar(var):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 2,
+          lambda i, x: (i + 1, foo2(x, var)),
+          [0, 0.0])[1]
+      return gradients_impl.gradients(r, var)[0]
+
+    var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
+    self.evaluate(variables.global_variables_initializer())
+    grad = self.evaluate(bar(var))
+    self.assertIsInstance(grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 2., 0., 2.])
+
+  def testWhileGrad_ResourceVarInLoopInFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return control_flow_ops.while_loop(
+          lambda j, _: j < 3,
+          lambda j, y: (j + 1,
+                        y + math_ops.reduce_sum(var.sparse_read([1, 2]))),
+          [0, x])[1]
+
+    @def_function.function
+    def bar(var):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 2,
+          lambda i, x: (i + 1, foo(x, var)),
+          [0, 0.0])[1]
+      return gradients_impl.gradients(r, var)[0]
+
+    var = resource_variable_ops.ResourceVariable([1., 1., 1., 1.])
+    self.evaluate(variables.global_variables_initializer())
+    grad = self.evaluate(bar(var))
+    self.assertIsInstance(grad, ops.IndexedSlicesValue)
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grad), [0., 6., 6., 0.])
+
+  def testWhileCondGrad_ResourceVarInFunctionCall(self):
+
+    @def_function.function
+    def foo(x, var):
+      return x + var.sparse_read([1])[0]
+
+    def body(i, x):
+      return (i + 1, control_flow_ops.cond(
+          math_ops.equal(i % 2, 0),
+          lambda: foo(x, var1),
+          lambda: foo(x, var2)))
+
+    @def_function.function
+    def bar(var1, var2):
+      r = control_flow_ops.while_loop(
+          lambda i, _: i < 4, body, [0, 0.0])
+      return gradients_impl.gradients(r, [var1, var2])
+
+    var1 = resource_variable_ops.ResourceVariable([1., 2., 3.])
+    var2 = resource_variable_ops.ResourceVariable([4., 5.])
+    self.evaluate(variables.global_variables_initializer())
+    grads = self.evaluate(bar(var1, var2))
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grads[0]), [0., 2., 0.])
+    self.assertAllEqual(gradient_checker_v2._to_numpy(grads[1]), [0., 2.])
+
   @test_util.run_deprecated_v1
   def testWhileGrad_ResourceVarSparseRead(self):
     # NOTE(skyewm): this test is interesting because the
@@ -2669,8 +2862,6 @@ class ControlFlowTest(test.TestCase):
       self.assertEqual(i_val, 3)
       self.assertAllClose(x_val, 1.0)
 
-  @test_util.disable_xla("This test never passed for XLA"
-                        )  # Resource variable issue for ControlFlowV2
   @test_util.run_gpu_only
   def testGpuResourceAccess(self):
     with ops.device(test.gpu_device_name()):

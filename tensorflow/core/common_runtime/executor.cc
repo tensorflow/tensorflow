@@ -46,6 +46,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/notification.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
+#include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/lib/gtl/flatset.h"
 #include "tensorflow/core/lib/gtl/inlined_vector.h"
@@ -55,6 +56,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/context.h"
+#include "tensorflow/core/platform/env.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
@@ -1278,7 +1280,7 @@ class ExecutorState {
 
   // Available via OpKernelContext to every OpKernel invocation.
   mutex num_deferred_ops_mu_;
-  condition_variable num_deferred_ops_cv_;
+  condition_variable no_deferred_ops_cv_;
   int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
 
   mutex mu_;
@@ -1358,6 +1360,9 @@ class ExecutorState {
 
   // Clean up when this executor is done.
   void Finish();
+  // Schedule Finish() on a separate thread if it needs to wait for deferred
+  // async ops to complete; otherwise run it on the current thread.
+  void ScheduleFinish();
 
   // A standalone routine for this expression so that we can express
   // that we don't want thread safety analysis on this reference (it's
@@ -1643,7 +1648,9 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   params.dec_num_deferred_ops_function = [this]() {
     mutex_lock lock(num_deferred_ops_mu_);
     num_deferred_ops_--;
-    num_deferred_ops_cv_.notify_all();
+    if (num_deferred_ops_ == 0) {
+      no_deferred_ops_cv_.notify_all();
+    }
   };
 
   Status s;
@@ -1778,7 +1785,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
           const bool completed =
               NodeDone(s, state->item->node, ready, stats, nullptr);
           delete state;
-          if (completed) Finish();
+          if (completed) ScheduleFinish();
         };
         nodestats::SetOpStart(stats);
         device->ComputeAsync(async, &state->ctx, done);
@@ -1865,7 +1872,7 @@ void ExecutorState::Process(TaggedNode tagged_node, int64 scheduled_nsec) {
   }  // while !inline_ready.empty()
 
   // This thread of computation is done if completed = true.
-  if (completed) Finish();
+  if (completed) ScheduleFinish();
 }
 
 Status ExecutorState::PrepareInputs(const NodeItem& item, Entry* first_input,
@@ -2421,6 +2428,25 @@ void ExecutorState::DumpState() {
   }
 }
 
+void ExecutorState::ScheduleFinish() {
+  int num_deferred_ops;
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops = num_deferred_ops_;
+  }
+  if (num_deferred_ops > 0) {
+    // Finish() may be blocked waiting for deferred async ops to complete. The
+    // execution of deferred async ops may be waiting for non-enqueued ops of
+    // other executors to complete. So running Finish() on the current thread
+    // (inter-op threadpool thread) may lead to a deadlock due to threadpool
+    // exhaustion. Instead, we run it on a separate thread to unblock the
+    // threadpool thread.
+    Env::Default()->SchedClosure([this]() { Finish(); });
+  } else {
+    Finish();
+  }
+}
+
 void ExecutorState::Finish() {
   mu_.lock();
   auto status = status_;
@@ -2432,11 +2458,11 @@ void ExecutorState::Finish() {
 
   // There are several potential race conditions below. To name a few:
   // 1. Even if the device's status is OK at the precise moment when
-  // num_deferred_ops_ reaches 0, it could go bad before device->CurrentStatus()
+  // num_deferred_ops_ reaches 0, it could go bad before device->RefreshStatus()
   // is called below, caused by work enqueued onto the same device by other
   // concurrent ExecutorState objects.
-  // 2. Some implementations of Device::CurrentStatus, such as
-  // XlaDevice::CurrentStatus, may be inherently racy because it releases the
+  // 2. Some implementations of Device::RefreshStatus, such as
+  // XlaDevice::RefreshStatus, may be inherently racy because it releases the
   // device mutex after a stream pointer is acquired and before the stream is
   // queried for status.
   // 3. It's the same for some implementations of Device::Sync, such as
@@ -2454,7 +2480,7 @@ void ExecutorState::Finish() {
   {
     mutex_lock lock(num_deferred_ops_mu_);
     while (num_deferred_ops_ > 0) {
-      num_deferred_ops_cv_.wait(lock);
+      no_deferred_ops_cv_.wait(lock);
     }
   }
 
@@ -2462,7 +2488,21 @@ void ExecutorState::Finish() {
   // these devices should have used num_deferred_ops correctly to ensure the
   // device has finished all relevant work at this point.
   if (!device->AllowsSyncOnCompletion()) {
-    status.Update(device->CurrentStatus());
+    status.Update(device->RefreshStatus());
+    if (!status.ok()) {
+      // In device async execution mode, it's possible for device execution to
+      // lag behind ExecutorState scheduling so much that this is the first
+      // place a device execution error surfaces.
+      // If so, all ExecutorState::NodeDone calls have already happened with OK
+      // status. This is the last defense where StartCancel must be called to
+      // abort all computation still running on any device.
+      // TODO(b/124523000): Always call Finish in a separate thread, so even if
+      // StartCancel blocks the current thread's execution, we won't encounter
+      // deadlocks caused by inter-op thread exhaustion.
+      if (cancellation_manager_) {
+        cancellation_manager_->StartCancel();
+      }
+    }
     delete this;
     runner([=]() { done_cb(status); });
     return;

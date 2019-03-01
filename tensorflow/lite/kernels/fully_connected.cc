@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/lite/kernels/gemm_support.h"
 #include "tensorflow/lite/kernels/internal/optimized/optimized_ops.h"
 #include "tensorflow/lite/kernels/internal/quantization_util.h"
+#include "tensorflow/lite/kernels/internal/reference/integer_ops/fully_connected.h"
 #include "tensorflow/lite/kernels/internal/reference/reference_ops.h"
 #include "tensorflow/lite/kernels/internal/tensor.h"
 #include "tensorflow/lite/kernels/internal/tensor_utils.h"
@@ -212,7 +213,9 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
   TF_LITE_ENSURE_EQ(context, input->type, kTfLiteFloat32);
   TF_LITE_ENSURE(context,
                  filter->type == kTfLiteUInt8 || filter->type == kTfLiteInt8);
-  TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  if (bias) {
+    TF_LITE_ENSURE_EQ(context, bias->type, kTfLiteFloat32);
+  }
   TF_LITE_ENSURE_EQ(context, output->type, kTfLiteFloat32);
 
   int total_input_size = 1;
@@ -286,6 +289,27 @@ TfLiteStatus EvalHybrid(TfLiteContext* context, TfLiteNode* node,
     macro_name(target_namespace, kRelu6);                            \
   }
 
+namespace {
+void FullyConnectedInt8(const OpData* data, const TfLiteTensor* input,
+                        const TfLiteTensor* filter, const TfLiteTensor* bias,
+                        TfLiteTensor* output,
+                        gemmlowp::GemmContext* gemm_context) {
+  FullyConnectedParams op_params;
+  op_params.input_offset = -input->params.zero_point;
+  op_params.weights_offset = -filter->params.zero_point;
+  op_params.output_offset = output->params.zero_point;
+  op_params.output_multiplier = data->output_multiplier;
+  op_params.output_shift = -data->output_shift;
+  op_params.quantized_activation_min = data->output_activation_min;
+  op_params.quantized_activation_max = data->output_activation_max;
+  reference_integer_ops::FullyConnected(
+      op_params, GetTensorShape(input), GetTensorData<int8_t>(input),
+      GetTensorShape(filter), GetTensorData<int8_t>(filter),
+      GetTensorShape(bias), GetTensorData<int32_t>(bias),
+      GetTensorShape(output), GetTensorData<int8_t>(output), gemm_context);
+}
+}  // namespace
+
 template <KernelType kernel_type>
 TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
                            TfLiteFullyConnectedParams* params, OpData* data,
@@ -319,6 +343,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
       case kTfLiteUInt8:
         TF_LITE_FULLY_CONNECTED(reference_ops, uint8_t);
         break;
+      case kTfLiteInt8:
+        FullyConnectedInt8(data, input, filter, bias, output, gemm_context);
+        break;
       case kTfLiteInt16:
         TF_LITE_FULLY_CONNECTED(reference_ops, int16_t);
         break;
@@ -338,6 +365,9 @@ TfLiteStatus EvalQuantized(TfLiteContext* context, TfLiteNode* node,
     switch (output->type) {
       case kTfLiteUInt8:
         TF_LITE_FULLY_CONNECTED(optimized_ops, uint8_t);
+        break;
+      case kTfLiteInt8:
+        FullyConnectedInt8(data, input, filter, bias, output, gemm_context);
         break;
       case kTfLiteInt16:
         TF_LITE_FULLY_CONNECTED(optimized_ops, int16_t);

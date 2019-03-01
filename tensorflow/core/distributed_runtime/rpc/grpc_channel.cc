@@ -62,7 +62,7 @@ Status ValidateHostPortPair(const string& host_port) {
   args.SetInt(GRPC_ARG_MAX_MESSAGE_LENGTH, std::numeric_limits<int32>::max());
   // NOTE(mrry): Some versions of gRPC use a 20-second minimum backoff
   // on connection failure, which makes our tests time out.
-  args.SetInt("grpc.testing.fixed_reconnect_backoff_ms", 1000);
+  args.SetInt(GRPC_ARG_MAX_RECONNECT_BACKOFF_MS, 1000);
   if (rpc_options != nullptr) {
     if (rpc_options->compression_algorithm() == "deflate") {
       args.SetCompressionAlgorithm(GRPC_COMPRESS_DEFLATE);

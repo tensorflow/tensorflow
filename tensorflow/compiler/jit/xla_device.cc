@@ -102,7 +102,8 @@ XlaDeviceAllocator* XlaDeviceAllocatorState::GetOrCreateXlaDeviceAllocator(
   }
 
   std::unique_ptr<XlaDeviceAllocator> alloc =
-      absl::make_unique<XlaDeviceAllocator>();
+      absl::make_unique<XlaDeviceAllocator>(
+          backend->stream_executors()[device_ordinal]);
   XlaDeviceAllocator* alloc_ptr = alloc.get();
   state.allocators_[{backend, device_ordinal}] = std::move(alloc);
   return alloc_ptr;
@@ -428,7 +429,7 @@ void XlaDevice::Sync(const DoneCallback& done) {
   // moment--when ThenEnqueueOnBackgroundThread is called--will have finished.
   // This achieves a device-wide sync.
   stream->ThenEnqueueOnBackgroundThread(
-      [this, stream, done](se::StreamExecutor*) {
+      [stream, done](se::StreamExecutor*) {
         tracing::ScopedActivity activity("XlaDevice::Sync::Callback",
                                          /*is_expensive=*/true);
         done(stream->ok() ? Status::OK()
@@ -479,7 +480,24 @@ bool XlaDevice::AllowsSyncOnCompletion() const {
   return sync_on_completion_;
 }
 
-Status XlaDevice::CurrentStatus() {
+void XlaDevice::SetHandleDeviceErrorCallback(std::function<Status()> callback) {
+  mutex_lock lock(mu_);
+  device_error_callback_ = callback;
+}
+
+Status XlaDevice::HandleDeviceError() {
+  std::function<Status()> local_device_error_callback;
+  {
+    mutex_lock lock(mu_);
+    local_device_error_callback = device_error_callback_;
+  }
+  if (local_device_error_callback != nullptr) {
+    return local_device_error_callback();
+  }
+  return Status::OK();
+}
+
+Status XlaDevice::RefreshStatus() {
   std::shared_ptr<se::Stream> stream;
   {
     mutex_lock lock(mu_);
@@ -488,7 +506,14 @@ Status XlaDevice::CurrentStatus() {
   if (!stream) {
     return Status::OK();
   }
-  return stream->ok() ? Status::OK() : errors::Internal("XlaDevice is not OK.");
+  Status status = stream->RefreshStatus();
+  if (!status.ok()) {
+    // Ignore errors from HandleDeviceError, since by definition the status is
+    // already non-ok, so there's nothing extra to report if HandleDeviceError
+    // itself returns an error.
+    HandleDeviceError().IgnoreError();
+  }
+  return status;
 }
 
 XlaDeviceOpRegistrations* RegisterXlaDeviceKernels(const char* device,

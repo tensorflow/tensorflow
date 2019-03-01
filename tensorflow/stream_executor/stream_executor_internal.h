@@ -27,6 +27,8 @@ limitations under the License.
 #include <utility>
 #include <vector>
 
+#include "absl/types/optional.h"
+#include "tensorflow/stream_executor/allocator_stats.h"
 #include "tensorflow/stream_executor/device_description.h"
 #include "tensorflow/stream_executor/device_memory.h"
 #include "tensorflow/stream_executor/device_options.h"
@@ -253,6 +255,10 @@ class StreamExecutorInterface {
   virtual bool StartTimer(Stream *stream, Timer *timer) = 0;
   virtual bool StopTimer(Stream *stream, Timer *timer) = 0;
   virtual port::Status BlockHostUntilDone(Stream *stream) = 0;
+  virtual port::Status GetStatus(Stream *stream) {
+    return port::Status(port::error::UNIMPLEMENTED,
+                        "GetStatus is not supported on this executor.");
+  }
   virtual int PlatformDeviceCount() = 0;
   virtual port::Status EnablePeerAccessTo(StreamExecutorInterface *other) = 0;
   virtual bool CanEnablePeerAccessTo(StreamExecutorInterface *other) = 0;
@@ -362,6 +368,11 @@ class StreamExecutorInterface {
   // use from distbelief code, which temporarily has strong ties to CUDA or ROCm
   // as a platform.
   virtual void *GpuContextHack() { return nullptr; }
+
+  // Return allocator statistics.
+  virtual absl::optional<AllocatorStats> GetAllocatorStats() {
+    return absl::nullopt;
+  }
 
  private:
   SE_DISALLOW_COPY_AND_ASSIGN(StreamExecutorInterface);

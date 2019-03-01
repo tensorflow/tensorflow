@@ -36,68 +36,6 @@ limitations under the License.
 
 namespace tflite {
 
-// TODO(b/77858996): Add these to gemmlowp.
-template <typename IntegerType>
-IntegerType SaturatingAddNonGemmlowp(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
-  return a;
-}
-
-template <>
-inline std::int32_t SaturatingAddNonGemmlowp(std::int32_t a, std::int32_t b) {
-  std::int64_t a64 = a;
-  std::int64_t b64 = b;
-  std::int64_t sum = a64 + b64;
-  return static_cast<std::int32_t>(std::min(
-      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
-      std::max(
-          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-          sum)));
-}
-
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingAddNonGemmlowp(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingAddNonGemmlowp(a.raw(), b.raw()));
-}
-
-template <typename IntegerType>
-IntegerType SaturatingSub(IntegerType a, IntegerType b) {
-  static_assert(std::is_same<IntegerType, void>::value, "unimplemented");
-  return a;
-}
-
-template <>
-inline std::int16_t SaturatingSub(std::int16_t a, std::int16_t b) {
-  std::int32_t a32 = a;
-  std::int32_t b32 = b;
-  std::int32_t diff = a32 - b32;
-  return static_cast<std::int16_t>(std::min(32767, std::max(-32768, diff)));
-}
-
-template <>
-inline std::int32_t SaturatingSub(std::int32_t a, std::int32_t b) {
-  std::int64_t a64 = a;
-  std::int64_t b64 = b;
-  std::int64_t diff = a64 - b64;
-  return static_cast<std::int32_t>(std::min(
-      static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::max()),
-      std::max(
-          static_cast<std::int64_t>(std::numeric_limits<std::int32_t>::min()),
-          diff)));
-}
-
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits> SaturatingSub(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a,
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> b) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingSub(a.raw(), b.raw()));
-}
-// End section to be moved to gemmlowp.
-
 namespace reference_ops {
 
 // Return true for broadcast case, false otherwise.
@@ -190,59 +128,6 @@ inline bool ProcessBroadcastShapes(const RuntimeShape& shape0,
     params->broadcast_category = BroadcastableOpCategory::kGenericBroadcast;
   }
   return true;
-}
-
-template <typename T>
-int CountLeadingZeros(T integer_input) {
-  static_assert(std::is_unsigned<T>::value,
-                "Only unsigned integer types handled.");
-  if (integer_input == 0) {
-    return std::numeric_limits<T>::digits;
-  }
-  const T one_in_leading_positive = static_cast<T>(1)
-                                    << (std::numeric_limits<T>::digits - 1);
-  int leading_zeros = 0;
-  while (integer_input < one_in_leading_positive) {
-    integer_input <<= 1;
-    ++leading_zeros;
-  }
-  return leading_zeros;
-}
-
-template <typename IntegerType>
-IntegerType SaturatingRoundingMultiplyByPOTParam(IntegerType x, int exponent) {
-  if (exponent == 0) {
-    return x;
-  }
-  using ScalarIntegerType =
-      typename gemmlowp::FixedPointRawTypeTraits<IntegerType>::ScalarRawType;
-  const IntegerType min =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::min());
-  const IntegerType max =
-      gemmlowp::Dup<IntegerType>(std::numeric_limits<ScalarIntegerType>::max());
-  const int ScalarIntegerTypeBits = 8 * sizeof(ScalarIntegerType);
-
-  const std::int32_t threshold =
-      ((1 << (ScalarIntegerTypeBits - 1 - exponent)) - 1);
-  const IntegerType positive_mask =
-      gemmlowp::MaskIfGreaterThan(x, gemmlowp::Dup<IntegerType>(threshold));
-  const IntegerType negative_mask =
-      gemmlowp::MaskIfLessThan(x, gemmlowp::Dup<IntegerType>(-threshold));
-
-  IntegerType result = gemmlowp::ShiftLeft(x, exponent);
-  result = gemmlowp::SelectUsingMask(positive_mask, max, result);
-  result = gemmlowp::SelectUsingMask(negative_mask, min, result);
-  return result;
-}
-
-// If we want to leave IntegerBits fixed, then multiplication
-// by a power of two has to be saturating/rounding, not exact anymore.
-template <typename tRawType, int tIntegerBits>
-gemmlowp::FixedPoint<tRawType, tIntegerBits>
-SaturatingRoundingMultiplyByPOTParam(
-    gemmlowp::FixedPoint<tRawType, tIntegerBits> a, int exponent) {
-  return gemmlowp::FixedPoint<tRawType, tIntegerBits>::FromRaw(
-      SaturatingRoundingMultiplyByPOTParam(a.raw(), exponent));
 }
 
 inline void Conv(const ConvParams& params, const RuntimeShape& input_shape,
@@ -506,6 +391,15 @@ inline void SpaceToDepth(const tflite::SpaceToDepthParams& op_params,
   }
 }
 
+inline void Elu(const RuntimeShape& input_shape, const float* input_data,
+                const RuntimeShape& output_shape, float* output_data) {
+  const int flat_size = MatchingFlatSize(input_shape, output_shape);
+  for (int i = 0; i < flat_size; ++i) {
+    const float val = input_data[i];
+    output_data[i] = val < 0.0 ? std::exp(val) - 1 : val;
+  }
+}
+
 inline void Relu(const RuntimeShape& input_shape, const float* input_data,
                  const RuntimeShape& output_shape, float* output_data) {
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
@@ -543,16 +437,17 @@ inline void Relu6(const RuntimeShape& input_shape, const float* input_data,
   }
 }
 
+template <typename T>
 inline void ReluX(const tflite::ActivationParams& params,
-                  const RuntimeShape& input_shape, const uint8* input_data,
-                  const RuntimeShape& output_shape, uint8* output_data) {
+                  const RuntimeShape& input_shape, const T* input_data,
+                  const RuntimeShape& output_shape, T* output_data) {
   gemmlowp::ScopedProfilingLabel label("Quantized ReluX (not fused)");
   const int flat_size = MatchingFlatSize(input_shape, output_shape);
-  const uint8 max_value = params.quantized_activation_max;
-  const uint8 min_value = params.quantized_activation_min;
+  const T max_value = params.quantized_activation_max;
+  const T min_value = params.quantized_activation_min;
   for (int i = 0; i < flat_size; ++i) {
-    const uint8 val = input_data[i];
-    const uint8 clamped =
+    const T val = input_data[i];
+    const T clamped =
         val > max_value ? max_value : val < min_value ? min_value : val;
     output_data[i] = clamped;
   }
@@ -594,55 +489,6 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
   }
 }
 
-inline void GetInvSqrtQuantizedMultiplierExp(int32 input,
-                                             int32* output_inv_sqrt,
-                                             int* output_shift) {
-  *output_shift = 11;
-  while (input >= (1 << 29)) {
-    input /= 4;
-    ++*output_shift;
-  }
-  TFLITE_DCHECK_GT(input, 0);
-  const unsigned max_left_shift_bits =
-      CountLeadingZeros(static_cast<uint32>(input)) - 1;
-  const unsigned max_left_shift_bit_pairs = max_left_shift_bits / 2;
-  const unsigned left_shift_bit_pairs = max_left_shift_bit_pairs - 1;
-  *output_shift -= left_shift_bit_pairs;
-  input <<= 2 * left_shift_bit_pairs;
-  TFLITE_DCHECK_GE(input, (1 << 27));
-  TFLITE_DCHECK_LT(input, (1 << 29));
-  using gemmlowp::FixedPoint;
-  using gemmlowp::Rescale;
-  using gemmlowp::SaturatingRoundingMultiplyByPOT;
-  // Using 3 integer bits gives us enough room for the internal arithmetic in
-  // this Newton-Raphson iteration.
-  using F3 = FixedPoint<int32, 3>;
-  using F0 = FixedPoint<int32, 0>;
-  const F3 fixedpoint_input = F3::FromRaw(input >> 1);
-  const F3 fixedpoint_half_input =
-      SaturatingRoundingMultiplyByPOT<-1>(fixedpoint_input);
-  const F3 fixedpoint_half_three =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(F3, (1 << 28) + (1 << 27), 1.5);
-  // Newton-Raphson iteration
-  // Naive unoptimized starting guess: x = 1
-  F3 x = F3::One();
-  // Naive unoptimized number of iterations: 5
-  for (int i = 0; i < 5; i++) {
-    const F3 x3 = Rescale<3>(x * x * x);
-    x = Rescale<3>(fixedpoint_half_three * x - fixedpoint_half_input * x3);
-  }
-  const F0 fixedpoint_half_sqrt_2 =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(F0, 1518500250, std::sqrt(2.) / 2.);
-  x = x * fixedpoint_half_sqrt_2;
-  *output_inv_sqrt = x.raw();
-  if (*output_shift < 0) {
-    *output_inv_sqrt <<= -*output_shift;
-    *output_shift = 0;
-  }
-  // Convert right shift (right is positive) to left shift.
-  *output_shift *= kReverseShift;
-}
-
 inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
                             const RuntimeShape& input_shape,
                             const uint8* input_data,
@@ -662,9 +508,8 @@ inline void L2Normalization(const tflite::L2NormalizationParams& op_params,
     }
     int32 inv_l2norm_multiplier;
     int inv_l2norm_shift;
-    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, &inv_l2norm_multiplier,
-                                     &inv_l2norm_shift);
-
+    GetInvSqrtQuantizedMultiplierExp(square_l2_norm, kReverseShift,
+                                     &inv_l2norm_multiplier, &inv_l2norm_shift);
     for (int c = 0; c < depth; c++) {
       int32 diff = input_data[depth * i + c] - input_zero_point;
       int32 rescaled_diff = MultiplyByQuantizedMultiplierSmallerThanOneExp(
@@ -699,6 +544,22 @@ inline void Add(const ArithmeticParams& params,
     auto x = input1_data[i] + input2_data[i];
     output_data[i] = ActivationFunctionWithMinMax(
         x, params.float_activation_min, params.float_activation_max);
+  }
+}
+
+// T is expected to be either float or int.
+template <typename T>
+inline void AddN(const RuntimeShape& input_shape, const size_t num_inputs,
+                 T* const* input_data, T* output_data) {
+  // All inputs and output should have the same shape, this is checked during
+  // Prepare stage.
+  const size_t size = input_shape.FlatSize();
+  for (int i = 0; i < size; ++i) {
+    T x = 0;
+    for (int j = 0; j < num_inputs; ++j) {
+      x += input_data[j][i];
+    }
+    output_data[i] = x;
   }
 }
 
@@ -1885,11 +1746,17 @@ void Unpack(const UnpackParams& params, const RuntimeShape& input_shape,
   const int outputs_count = params.num_split;
 
   int outer_size = 1;
-  for (int i = 0; i < params.axis; i++) {
+  int axis = params.axis;
+  if (axis < 0) {
+    axis += dimensions;
+  }
+  TFLITE_DCHECK_GE(axis, 0);
+  TFLITE_DCHECK_LT(axis, dimensions);
+  for (int i = 0; i < axis; ++i) {
     outer_size *= input_shape.Dims(i);
   }
   int copy_size = 1;
-  for (int i = params.axis + 1; i < dimensions; i++) {
+  for (int i = axis + 1; i < dimensions; ++i) {
     copy_size *= input_shape.Dims(i);
   }
   TFLITE_DCHECK_EQ(output_shape.FlatSize(), copy_size * outer_size);
@@ -2729,121 +2596,6 @@ inline void LogSoftmax(const SoftmaxParams& params,
   }
 }
 
-// Although currently the name of this function says that it cannot handle
-// values less than 1, in practice it can handle as low as 1/x_max, where
-// x_max is the largest representable input.  In other words, the output range
-// is symmetric.
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1_impl(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  using FixedPoint0 = gemmlowp::FixedPoint<int32, 0>;
-  // The reason for accumulating the result with an extra bit of headroom is
-  // that z_pow_2_adj * log_2 might be saturated, and adding num_scaled *
-  // recip_denom will otherwise introduce an error.
-  static constexpr int kAccumIntegerBits = OutputIntegerBits + 1;
-  using FixedPointAccum = gemmlowp::FixedPoint<int32, kAccumIntegerBits>;
-
-  const FixedPoint0 log_2 = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1488522236, std::log(2.0));
-  const FixedPoint0 sqrt_sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1805811301, std::sqrt(std::sqrt(0.5)));
-  const FixedPoint0 sqrt_half = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1518500250, std::sqrt(0.5));
-  const FixedPoint0 one_quarter =
-      GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(FixedPoint0, 536870912, 1.0 / 4.0);
-
-  const FixedPoint0 alpha_n = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 117049297, 11.0 / 240.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_d = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 127690142, 1.0 / 20.0 * std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_i = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 1057819769,
-      2.0 / std::sqrt(std::sqrt(2.0)) - std::sqrt(std::sqrt(2.0)));
-  const FixedPoint0 alpha_f = GEMMLOWP_CHECKED_FIXEDPOINT_CONSTANT(
-      FixedPoint0, 638450708, 1.0 / 4.0 * std::sqrt(std::sqrt(2.0)));
-
-  const FixedPointAccum shifted_quarter =
-      gemmlowp::Rescale<kAccumIntegerBits>(one_quarter);
-
-  // Reinterpret the input value as Q0.31, because we will figure out the
-  // required shift "ourselves" instead of using, say, Rescale.
-  FixedPoint0 z_a = FixedPoint0::FromRaw(input_val.raw());
-  // z_a_pow_2 = input_integer_bits - z_a_headroom;
-  int z_a_headroom_plus_1 = CountLeadingZeros(static_cast<uint32>(z_a.raw()));
-  FixedPoint0 r_a_tmp =
-      SaturatingRoundingMultiplyByPOTParam(z_a, (z_a_headroom_plus_1 - 1));
-  const int32 r_a_raw =
-      SaturatingRoundingMultiplyByPOTParam((r_a_tmp * sqrt_half).raw(), 1);
-  // z_pow_2_adj = max(z_pow_2_a - 0.75, z_pow_2_b - 0.25);
-  // z_pow_2_adj = max(InputIntegerBits - z_a_headroom_plus_1 + 0.25,
-  //                   InputIntegerBits - z_b_headroom - 0.25);
-  const FixedPointAccum z_a_pow_2_adj = SaturatingAddNonGemmlowp(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_a_headroom_plus_1, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  // z_b is treated like z_a, but premultiplying by sqrt(0.5).
-  FixedPoint0 z_b = z_a * sqrt_half;
-  int z_b_headroom = CountLeadingZeros(static_cast<uint32>(z_b.raw())) - 1;
-  const int32 r_b_raw =
-      SaturatingRoundingMultiplyByPOTParam(z_a.raw(), z_b_headroom);
-  const FixedPointAccum z_b_pow_2_adj = SaturatingSub(
-      FixedPointAccum::FromRaw(SaturatingRoundingMultiplyByPOTParam(
-          InputIntegerBits - z_b_headroom, 31 - kAccumIntegerBits)),
-      shifted_quarter);
-
-  const FixedPoint0 r = FixedPoint0::FromRaw(std::min(r_a_raw, r_b_raw));
-  const FixedPointAccum z_pow_2_adj = FixedPointAccum::FromRaw(
-      std::max(z_a_pow_2_adj.raw(), z_b_pow_2_adj.raw()));
-
-  const FixedPoint0 p = gemmlowp::RoundingHalfSum(r, sqrt_sqrt_half);
-  FixedPoint0 q = r - sqrt_sqrt_half;
-  q = q + q;
-
-  const FixedPoint0 common_sq = q * q;
-  const FixedPoint0 num = q * r + q * common_sq * alpha_n;
-  const FixedPoint0 denom_minus_one_0 =
-      p * (alpha_i + q + alpha_d * common_sq) + alpha_f * q;
-  const FixedPoint0 recip_denom =
-      one_over_one_plus_x_for_x_in_0_1(denom_minus_one_0);
-
-  const FixedPointAccum num_scaled = gemmlowp::Rescale<kAccumIntegerBits>(num);
-  return gemmlowp::Rescale<OutputIntegerBits>(z_pow_2_adj * log_2 +
-                                              num_scaled * recip_denom);
-}
-
-// Minimum output bits to accommodate log of maximum input range.  It actually
-// does not matter if one considers, say, [-64,64] or [-64,64).
-//
-// For example, run this through Octave:
-// [0:127; ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2)); ...
-//  ceil(log(abs( log(2.^(0:127))+1 ))/log(2))]
-constexpr int min_log_x_output_bits(int input_bits) {
-  return input_bits > 90
-             ? 7
-             : input_bits > 44
-                   ? 6
-                   : input_bits > 21
-                         ? 5
-                         : input_bits > 10
-                               ? 4
-                               : input_bits > 4 ? 3 : input_bits > 1 ? 2 : 1;
-}
-
-template <int OutputIntegerBits, int InputIntegerBits>
-inline gemmlowp::FixedPoint<int32, OutputIntegerBits>
-log_x_for_x_greater_than_or_equal_to_1(
-    gemmlowp::FixedPoint<int32, InputIntegerBits> input_val) {
-  static_assert(
-      OutputIntegerBits >= min_log_x_output_bits(InputIntegerBits),
-      "Output integer bits must be sufficent to accommodate logs of inputs.");
-  return log_x_for_x_greater_than_or_equal_to_1_impl<OutputIntegerBits,
-                                                     InputIntegerBits>(
-      input_val);
-}
-
 inline void LogSoftmax(const SoftmaxParams& params,
                        const RuntimeShape& input_shape, const uint8* input_data,
                        const RuntimeShape& output_shape, uint8* output_data) {
@@ -3214,6 +2966,43 @@ inline void Gather(const tflite::GatherParams& op_params,
           input_data + (outer * axis_size + coords_data[i]) * inner_size,
           sizeof(T) * inner_size);
     }
+  }
+}
+
+template <typename ParamsT, typename IndicesT = int32>
+inline void GatherNd(const RuntimeShape& params_shape,
+                     const ParamsT* params_data,
+                     const RuntimeShape& indices_shape,
+                     const IndicesT* indices_data,
+                     const RuntimeShape& output_shape, ParamsT* output_data) {
+  gemmlowp::ScopedProfilingLabel label("GatherNd");
+
+  int n_slices = 1;
+  int slice_size = 1;
+  const int indices_dims = indices_shape.DimensionsCount();
+  const int indices_nd = indices_shape.Dims(indices_dims - 1);
+  const int params_dims = params_shape.DimensionsCount();
+  for (int i = 0; i < indices_dims - 1; ++i) {
+    n_slices *= indices_shape.Dims(i);
+  }
+  for (int i = indices_nd; i < params_dims; ++i) {
+    slice_size *= params_shape.Dims(i);
+  }
+
+  int remain_flat_size = params_shape.FlatSize();
+  std::vector<int> dims_to_count(indices_nd, 0);
+  for (int i = 0; i < indices_nd; ++i) {
+    dims_to_count[i] = remain_flat_size / params_shape.Dims(i);
+    remain_flat_size = dims_to_count[i];
+  }
+
+  for (int i = 0; i < n_slices; ++i) {
+    int from_pos = 0;
+    for (int j = 0; j < indices_nd; ++j) {
+      from_pos += indices_data[i * indices_nd + j] * dims_to_count[j];
+    }
+    std::memcpy(output_data + i * slice_size, params_data + from_pos,
+                sizeof(ParamsT) * slice_size);
   }
 }
 
@@ -4532,6 +4321,34 @@ void RankOneSelect(const RuntimeShape& input_condition_shape,
   }
 }
 
+template <typename D, typename T>
+void SelectTrueCoords(const RuntimeShape& input_condition_shape,
+                      const D* input_condition_data, T* output_data) {
+  const size_t size = input_condition_shape.FlatSize();
+  const size_t cond_rank = input_condition_shape.DimensionsCount();
+
+  std::vector<int> dims_to_count(cond_rank, 0);
+  int cur_flat_size = size;
+  for (int i = 0; i < cond_rank; ++i) {
+    dims_to_count[i] = cur_flat_size / input_condition_shape.Dims(i);
+    cur_flat_size = dims_to_count[i];
+  }
+
+  int output_index = 0;
+  for (int i = 0; i < size; ++i) {
+    if (input_condition_data[i]) {
+      // Insert the coordinate of the current item (row major) into output.
+      int flat_index = i;
+      for (int j = 0; j < cond_rank; ++j) {
+        int coord_j = flat_index / dims_to_count[j];
+        output_data[output_index * cond_rank + j] = coord_j;
+        flat_index %= dims_to_count[j];
+      }
+      output_index++;
+    }
+  }
+}
+
 // For easy implementation, the indices is always a vector of size-4 vectors.
 template <typename T, typename TI>
 inline void SparseToDense(const std::vector<std::vector<TI>>& indices,
@@ -4850,6 +4667,85 @@ void Reverse(int axis, const RuntimeShape& input_shape,
       Scalar* output_ptr = output_data + start_pos;
       int loc = (i * dims_at_axis + dims_at_axis - j - 1) * copy_size;
       memcpy(output_ptr, input_data + loc, copy_size * sizeof(Scalar));
+    }
+  }
+}
+
+template <typename Scalar, typename TS>
+void ReverseSequence(const TS* seq_lengths, const int seq_dim,
+                     const int batch_dim, const RuntimeShape& input_shape,
+                     const Scalar* input_data, const RuntimeShape& output_shape,
+                     Scalar* output_data) {
+  gemmlowp::ScopedProfilingLabel label("ReverseSequence");
+
+  int outer_size = 1;
+  int outer_dim = std::min(batch_dim, seq_dim);
+  int medium_dim = std::max(batch_dim, seq_dim);
+  for (int i = 0; i < outer_dim; ++i) {
+    outer_size *= input_shape.Dims(i);
+  }
+
+  int medium_size = 1;
+  for (int i = outer_dim + 1; i < medium_dim; ++i) {
+    medium_size *= input_shape.Dims(i);
+  }
+
+  int copy_size = 1;
+  for (int i = medium_dim + 1; i < input_shape.DimensionsCount(); ++i) {
+    copy_size *= input_shape.Dims(i);
+  }
+
+  const int dims_at_outer_dim = input_shape.Dims(outer_dim);
+  const int dims_at_medium_dim = input_shape.Dims(medium_dim);
+
+  Scalar* output_ptr;
+  if (batch_dim > seq_dim) {
+    for (int i = 0; i < outer_size; ++i) {
+      for (int j = 0; j < dims_at_outer_dim; ++j) {
+        const int in_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        for (int p = 0; p < medium_size; ++p) {
+          for (int q = 0; q < dims_at_medium_dim; ++q) {
+            const int in_pos =
+                ((in_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+            const Scalar* in_ptr = input_data + in_pos;
+            int sl = seq_lengths[q] - 1;
+            if (j > sl) {
+              output_ptr = output_data + in_pos;
+            } else {
+              const int out_pos_base =
+                  (i * dims_at_outer_dim + sl - j) * medium_size;
+              const int out_pos =
+                  ((out_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+              output_ptr = output_data + out_pos;
+            }
+            memcpy(output_ptr, in_ptr, copy_size * sizeof(Scalar));
+          }
+        }
+      }
+    }
+  } else if (batch_dim < seq_dim) {
+    for (int i = 0; i < outer_size; ++i) {
+      for (int j = 0; j < dims_at_outer_dim; ++j) {
+        const int in_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        int sl = seq_lengths[j] - 1;
+        const int out_pos_base = (i * dims_at_outer_dim + j) * medium_size;
+        for (int p = 0; p < medium_size; ++p) {
+          for (int q = 0; q < dims_at_medium_dim; ++q) {
+            const int in_pos =
+                ((in_pos_base + p) * dims_at_medium_dim + q) * copy_size;
+            const Scalar* in_ptr = input_data + in_pos;
+            if (q > sl) {
+              output_ptr = output_data + in_pos;
+            } else {
+              const int out_pos =
+                  ((out_pos_base + p) * dims_at_medium_dim + sl - q) *
+                  copy_size;
+              output_ptr = output_data + out_pos;
+            }
+            memcpy(output_ptr, in_ptr, copy_size * sizeof(Scalar));
+          }
+        }
+      }
     }
   }
 }

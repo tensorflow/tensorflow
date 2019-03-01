@@ -18,7 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-from tensorflow.contrib.tpu.profiler import trace_events_pb2
+from tensorflow.core.profiler import trace_events_pb2
 from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -33,7 +33,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     five = constant_op.constant(5)
     product = three * five
     self.assertAllEqual(15, product)
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(profiler.ProfilerAlreadyRunningError):
       profiler.start()
 
     profile_result = profiler.stop()
@@ -41,7 +41,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     profile_pb.ParseFromString(profile_result)
     profile_pb_str = '%s' % profile_pb
     self.assertTrue('Mul' in profile_pb_str)
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(profiler.ProfilerNotRunningError):
       profiler.stop()
 
 

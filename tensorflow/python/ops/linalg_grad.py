@@ -412,10 +412,16 @@ def _SvdGrad(op, grad_s, grad_u, grad_v):
     # only defined up a (k-dimensional) subspace. In practice, this can
     # lead to numerical instability when singular values are close but not
     # exactly equal.
+    # Also, even with distinct singular values, the diagonal of f can have Inf
+    # values before setting to zero, which hurt when differentiating through
+    # this op. To avoid that, we add eye to the matrix before taking
+    # the reciprocal.
+    s_shape = array_ops.shape(s)
+    eye = _linalg.eye(s_shape[-1], batch_shape=s_shape[:-1], dtype=s.dtype)
     f = array_ops.matrix_set_diag(
         math_ops.reciprocal(
-            array_ops.expand_dims(s2, -2) - array_ops.expand_dims(s2, -1)),
-        array_ops.zeros_like(s))
+            array_ops.expand_dims(s2, -2) - array_ops.expand_dims(s2, -1) +
+            eye), array_ops.zeros_like(s))
     s_inv_mat = array_ops.matrix_diag(math_ops.reciprocal(s))
 
     v1 = v[..., :, :m]
