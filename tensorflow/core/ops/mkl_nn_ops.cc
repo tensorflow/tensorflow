@@ -755,7 +755,7 @@ REGISTER_OP("_MklQuantizedConv2DPerChannel")
       return Status::OK();
     })
     .Doc(R"doc(
-MKLDNN implementation of QuantizedConv2D OP.
+MKL-DNN implementation of QuantizedConv2D op.
 )doc");
 REGISTER_OP("_MklDepthwiseConv2dNativeBackpropInput")
     .Input("input_sizes: int32")
