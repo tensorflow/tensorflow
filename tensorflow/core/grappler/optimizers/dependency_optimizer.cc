@@ -75,16 +75,8 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
   // Recv.
   if (IsVariable(*input) || IsRecv(*input)) {
     return false;
-  } else if (IsSwitch(*input)) {
-    // Don't turn Identity nodes following Switch into NoOp or remove them
-    // if it requires anchoring a control dependencies the Switch node, which
-    // is not valid.
-    if (str_util::StartsWith(node.name(), kConstantFoldingCtrl)) {
-      // TODO(rmlarsen): Try to remove this artificial contraint.
-      return false;
-    }
   }
-  for (auto consumer : node_map_->GetOutputs(node.name())) {
+  for (const auto& consumer : node_map_->GetOutputs(node.name())) {
     if (node.input_size() > 1 && IsMerge(*consumer)) {
       return false;
     }
