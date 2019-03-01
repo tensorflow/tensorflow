@@ -216,8 +216,6 @@ class MklConcatOp : public OpKernel {
 
         if (s_dims != 4 && s_dims != 2) invoke_eigen = true;
 
-        if (s_dims == 2 && are_all_mkl_inputs) invoke_eigen = true;
-
         ++i;
       }
 
@@ -358,12 +356,22 @@ class MklConcatOp : public OpKernel {
         // Since we are passing a specific format for destination,
         // we need to have dst_dims in MklDnn order (NCHW).
         auto orig_tf_format = mkl_input_shapes[0].GetTfDataFormat();
-        dst_dims_in_nchw = MklDnnDimsInNCHW(
-            dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
-        // Set the output format same as the most common format of inputs
-        // to avoid layout conversions.
-        dst_md =
-            memory::desc(dst_dims_in_nchw, MklDnnType<T>(), mkl_common_format);
+        if (dst_dims.size() == 4) {
+          dst_dims_in_nchw = MklDnnDimsInNCHW(
+              dst_dims, MklDnnDataFormatToTFDataFormat(orig_tf_format));
+          // Set the output format same as the most common format of inputs
+          // to avoid layout conversions.
+          dst_md = memory::desc(dst_dims_in_nchw, MklDnnType<T>(),
+                                mkl_common_format);
+        } else if (dst_dims.size() == 2 &&
+                   mkl_common_format == memory::format::nc) {
+          // When memory::format::nc, dst_dims are already in MKLDNN order
+          dst_md = memory::desc(dst_dims, MklDnnType<T>(), mkl_common_format);
+        } else {
+          TF_CHECK_OK(Status(error::Code::FAILED_PRECONDITION,
+                             "Unsupported tensor dimension or"
+                             "MKLDNN memory format"));
+        }
       } else {
         // All inputs are TF tensors.
         // Set the output format same as input format (nchw/nc).
@@ -410,8 +418,7 @@ class MklConcatOp : public OpKernel {
         }
         AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
                                   dnn_shape_dst);
-        DCHECK(dst_tensor == nullptr)
-            << "Output tensor pointer is NULL";
+        DCHECK(dst_tensor == nullptr) << "Output tensor pointer is NULL";
 
         dst_md =
             dnn_shape_dst.IsMklTensor() ? dnn_shape_dst.GetMklLayout() : dst_md;
@@ -447,8 +454,7 @@ class MklConcatOp : public OpKernel {
 
         AllocateOutputSetMklShape(context, 0, &dst_tensor, tf_shape_dst,
                                   dnn_shape_dst);
-        DCHECK(dst_tensor == nullptr)
-            << "Output tensor pointer is NULL";
+        DCHECK(dst_tensor == nullptr) << "Output tensor pointer is NULL";
       }
 
     } catch (mkldnn::error& e) {
