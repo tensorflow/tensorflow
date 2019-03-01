@@ -517,6 +517,16 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
+  def testGetVariableWithUseResource(self):
+    text = "tf.get_variable(name=\"a\")"
+    expected_text = "tf.compat.v1.get_variable(name=\"a\", use_resource=False)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.get_variable(name=\"a\", use_resource=None)"
+    expected_text = "tf.compat.v1.get_variable(name=\"a\", use_resource=None)"
+    _, unused_report, unused_errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
 
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "
