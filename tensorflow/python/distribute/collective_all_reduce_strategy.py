@@ -102,17 +102,19 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
       self._initialize_multi_worker(cluster_resolver)
     else:
       self._initialize_local(cluster_resolver)
-    # Save the num_gpus_per_worker and rpc_layer for configure method.
-    self._num_gpus_per_worker = (
-        cluster_resolver.num_accelerators().get("GPU", 0))
-    self._rpc_layer = cluster_resolver.rpc_layer
 
   def _initialize_local(self, cluster_resolver):
     """Initializes the object for local training."""
     self._is_chief = True
     self._num_workers = 1
 
-    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
+    # some cases.
+    if isinstance(cluster_resolver, TFConfigClusterResolver):
+      num_gpus = context.num_gpus()
+    else:
+      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+
     if num_gpus:
       local_devices = tuple("/device:GPU:%d" % i for i in range(num_gpus))
     else:
@@ -138,6 +140,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # configure call.
     self._local_or_standalone_client_mode = True
 
+    # Save the num_gpus_per_worker and rpc_layer for configure method.
+    self._num_gpus_per_worker = num_gpus
+    self._rpc_layer = cluster_resolver.rpc_layer
+
     logging.info("CollectiveAllReduceStrategy with local_devices = %r",
                  local_devices)
 
@@ -146,7 +152,13 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     # TODO(yuefengz): The `num_gpus` is only for this particular task. It
     # assumes all workers have the same number of GPUs. We should remove this
     # assumption by querying all tasks for their numbers of GPUs.
-    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
+    # some cases.
+    if isinstance(cluster_resolver, TFConfigClusterResolver):
+      num_gpus = context.num_gpus()
+    else:
+      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+
     cluster_spec = multi_worker_util.normalize_cluster_spec(
         cluster_resolver.cluster_spec())
     task_type = cluster_resolver.task_type
@@ -187,6 +199,10 @@ class CollectiveAllReduceExtended(mirrored_strategy.MirroredExtended):
     self._cluster_spec = cluster_spec
     self._task_type = task_type
     self._task_id = task_id
+
+    # Save the num_gpus_per_worker and rpc_layer for configure method.
+    self._num_gpus_per_worker = num_gpus
+    self._rpc_layer = cluster_resolver.rpc_layer
 
     logging.info(
         "Multi-worker CollectiveAllReduceStrategy with cluster_spec = %r, "

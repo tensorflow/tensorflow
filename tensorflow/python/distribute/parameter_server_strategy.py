@@ -111,9 +111,6 @@ class ParameterServerStrategyExtended(
       self._initialize_multi_worker(cluster_resolver)
     else:
       self._initialize_local(cluster_resolver)
-    # Save the num_gpus_per_worker for configure method.
-    self._num_gpus_per_worker = (
-        cluster_resolver.num_accelerators().get("GPU", 0))
 
   def _initialize_multi_worker(self, cluster_resolver):
     """Initialize devices for multiple workers.
@@ -130,7 +127,16 @@ class ParameterServerStrategyExtended(
     Raises:
       ValueError: if the cluster doesn't have ps jobs.
     """
-    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
+    # some cases.
+    if isinstance(cluster_resolver, TFConfigClusterResolver):
+      num_gpus = context.num_gpus()
+    else:
+      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+
+    # Save the num_gpus_per_worker for configure method.
+    self._num_gpus_per_worker = num_gpus
+
     cluster_spec = cluster_resolver.cluster_spec()
     task_type = cluster_resolver.task_type
     task_id = cluster_resolver.task_id
@@ -201,7 +207,17 @@ class ParameterServerStrategyExtended(
     """Initialize internal devices for local training."""
     worker_device = device_util.canonicalize("/device:CPU:0")
     self._input_host_device = numpy_dataset.SingleDevice(worker_device)
-    num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+
+    # TODO(b/126786766): TFConfigClusterResolver returns wrong number of GPUs in
+    # some cases.
+    if isinstance(cluster_resolver, TFConfigClusterResolver):
+      num_gpus = context.num_gpus()
+    else:
+      num_gpus = cluster_resolver.num_accelerators().get("GPU", 0)
+
+    # Save the num_gpus_per_worker for configure method.
+    self._num_gpus_per_worker = num_gpus
+
     # Define compute devices which is a list of device strings and one for each
     # replica. When there are GPUs, replicate operations on these GPUs.
     # Otherwise, place operations on CPU.
