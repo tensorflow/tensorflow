@@ -209,6 +209,11 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
 fi
 # Get python version for configuring pip later in installation.
 PYTHON_VER_CFG=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f-2)
+if [[ $OS_TYPE == "macos" ]]; then
+  echo "PYTHON_VER_CFG (-V): $(${PYTHON_BIN_PATH} -V 2>&1)"
+  echo "PYTHON_VER_CFG (--version): $(${PYTHON_BIN_PATH} --version 2>&1)"
+  PYTHON_VER_CFG=$(${PYTHON_BIN_PATH} --version 2>&1 | awk '{print $NF}' | cut -d. -f-2)
+fi
 echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH} (version: ${PYTHON_VER_CFG})"
 
 # Default values for optional global variables in case they are not user
@@ -660,6 +665,8 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
+      auditwheel --version
+      pip show auditwheel
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 
       if [[ -f ${AUDITED_WHL_NAME} ]]; then

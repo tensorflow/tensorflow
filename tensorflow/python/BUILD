@@ -73,6 +73,7 @@ py_library(
     deps = [
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/tpu:tpu_estimator",
     ] + if_not_v2(["//tensorflow/contrib:contrib_py"]),
 )
 
@@ -180,6 +181,7 @@ py_library(
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:profiler",
         "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
@@ -501,7 +503,7 @@ tf_cc_shared_object(
         "//conditions:default": [
             "-lm",
         ],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
     }),
     deps = [
@@ -1299,6 +1301,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "framework/contrib_test.py",
+    tags = [
+        "no_pip",
+    ],
 )
 
 tf_py_test(
@@ -4046,16 +4051,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "future_api_test",
-    size = "small",
-    srcs = ["util/future_api_test.py"],
-    additional_deps = [
-        ":util",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-tf_py_test(
     name = "function_utils_test",
     srcs = ["util/function_utils_test.py"],
     additional_deps = [
@@ -5158,6 +5153,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     tags = [
+        "no_pip",  # Relies on contrib
         "no_windows",
         "notsan",  # intermittent races on a few percent of runs
     ],

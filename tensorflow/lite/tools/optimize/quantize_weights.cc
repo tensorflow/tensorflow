@@ -190,41 +190,6 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
   return kTfLiteOk;
 }
 
-// Quantizes tensor using symmetric quantization with the min and max elements
-// of the tensor. This is need for operations with hybrid evaluation
-// implemented.
-TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
-  BufferT* buffer = model->buffers[tensor->buffer].get();
-  float* float_data = reinterpret_cast<float*>(buffer->data.data());
-  uint64_t num_elements;
-  TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
-  LOG(INFO) << "Quantizing tensor " << tensor->name << " with " << num_elements
-            << " elements.";
-
-  std::vector<int8_t> quantized_buffer;
-  quantized_buffer.resize(num_elements);
-
-  float min_value, max_value, scaling_factor;
-  tensor_utils::SymmetricQuantizeFloats(float_data, num_elements,
-                                        quantized_buffer.data(), &min_value,
-                                        &max_value, &scaling_factor);
-
-  if (tensor->quantization == nullptr) {
-    tensor->quantization = absl::make_unique<QuantizationParametersT>();
-  }
-  tensor->quantization->scale = std::vector<float>(1, scaling_factor);
-  tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
-
-  uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(quantized_buffer.data());
-  model->buffers[tensor->buffer]->data.assign(uint8_buffer,
-                                              uint8_buffer + num_elements);
-
-  // Update the tensor type.
-  tensor->type = TensorType_INT8;
-
-  return kTfLiteOk;
-}
-
 // Returns the index of the Dequantize op_code.
 // If a Dequantize op_code doesn't exist, adds it and returns its index.
 int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
@@ -314,7 +279,7 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
   for (std::pair<int32_t, TensorT*> tensor_pair : tensor_map) {
     // Quantize the tensor.
     TF_LITE_ENSURE_STATUS(
-        SymmetricQuantizeTensor(model.get(), tensor_pair.second));
+        utils::SymmetricQuantizeTensor(model.get(), tensor_pair.second));
   }
 
   // Examine the tensor consumers to determine which require dequantize ops.

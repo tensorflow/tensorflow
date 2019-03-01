@@ -769,7 +769,7 @@ def tf_additional_numa_deps():
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//conditions:default": [
             "@hwloc",
         ],
@@ -780,7 +780,7 @@ def tf_additional_numa_copts():
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//conditions:default": [
             "-Ithird_party/hwloc/hwloc-master/include",
             "-DTENSORFLOW_USE_NUMA",
