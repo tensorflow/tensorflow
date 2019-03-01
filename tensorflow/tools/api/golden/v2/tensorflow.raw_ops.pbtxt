@@ -2457,6 +2457,18 @@ tf_module {
     argspec: "args=[\'a\', \'b\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'Tactivation\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "QuantizedMatMulWithBias"
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'Tactivation\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "QuantizedMatMulWithBiasAndRelu"
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'Tactivation\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "QuantizedMatMulWithBiasAndReluAndRequantize"
+    argspec: "args=[\'a\', \'b\', \'bias\', \'min_a\', \'max_a\', \'min_b\', \'max_b\', \'min_freezed_output\', \'max_freezed_output\', \'Toutput\', \'transpose_a\', \'transpose_b\', \'Tactivation\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "QuantizedMaxPool"
     argspec: "args=[\'input\', \'min_input\', \'max_input\', \'ksize\', \'strides\', \'padding\'], varargs=None, keywords=None, defaults=None"
   }
