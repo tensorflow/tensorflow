@@ -145,7 +145,7 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(const TensorT* input_tensor,
         tensor->shape[0], weight_tensor->shape[channel_dim_index]);
     return kTfLiteError;
   }
-  int32_t channel_dim_size = tensor->shape[0];
+  size_t channel_dim_size = tensor->shape[0];
   if (!input_tensor->quantization ||
       input_tensor->quantization->scale.size() != 1) {
     error_reporter->Report("Input tensor missing quantization information");
@@ -174,7 +174,7 @@ TfLiteStatus SymmetricPerChannelBiasQuantize(const TensorT* input_tensor,
   std::vector<int32_t> final_buffer(num_elements);
   const int32_t kScale = std::numeric_limits<int32_t>::max();
 
-  for (int32_t channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
+  for (size_t channel_idx = 0; channel_idx < channel_dim_size; channel_idx++) {
     float scaling_factor = scales[channel_idx];
     float scaling_factor_inv = (scaling_factor == 0) ? 0 : 1.0 / scaling_factor;
     const int32_t quantized_value = static_cast<int32_t>(
