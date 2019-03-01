@@ -30,18 +30,20 @@ Since the number of TensorFlow Lite operations is smaller than TensorFlow's,
 some inference models may not be able to convert. For unimplemented operations,
 take a look at the question on
 [missing operators](faq.md#why-are-some-operations-not-implemented-in-tensorflow-lite).
-Unsupported operators include embeddings and LSTM/RNNs.
-For conversion issues not related to missing operations, search our
+Unsupported operators include embeddings and LSTM/RNNs. For conversion issues
+not related to missing operations, search our
 [GitHub issues](https://github.com/tensorflow/tensorflow/issues?q=label%3Acomp%3Alite+)
 or file a [new one](https://github.com/tensorflow/tensorflow/issues).
 
 #### How do I determine the inputs/outputs for GraphDef protocol buffer?
 
-The recommended approach is to visualize the GraphDef with
-[TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) and
-look for the inputs and outputs in the graph.
+The easiest way to inspect a graph from a `.pb` file is to use the
+[summarize_graph](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/tools/graph_transforms/README.md#inspecting-graphs)
+tool.
 
-To visualize a `.pb` file, use the
+If that approach yields an error, you can visualize the GraphDef with
+[TensorBoard](https://www.tensorflow.org/guide/summaries_and_tensorboard) and
+look for the inputs and outputs in the graph. To visualize a `.pb` file, use the
 [`import_pb_to_tensorboard.py`](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/python/tools/import_pb_to_tensorboard.py)
 script like below:
 
