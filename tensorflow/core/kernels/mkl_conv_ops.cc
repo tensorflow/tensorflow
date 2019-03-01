@@ -96,7 +96,7 @@ struct MklConvFwdParams {
 typedef mkldnn::convolution_forward::primitive_desc ConvFwdPd;
 
 // With quantization, input, filter, and output can have different types
-// so we use differnt template parameter for each type
+// so we use different template parameter for each type
 template <typename T, typename Tinput, typename Tfilter, typename Tbias,
           typename Toutput>
 class MklConvFwdPrimitive : public MklPrimitive {
