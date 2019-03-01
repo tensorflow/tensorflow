@@ -59,7 +59,7 @@ def make_feature_extractor(l2_strength, dropout_rate):
   net = tf.keras.layers.MaxPooling2D(pool_size=(2, 2), name='pool1')(net)
   net = tf.keras.layers.Dropout(dropout_rate, name='dropout1')(net)
   net = tf.keras.layers.Flatten(name='flatten')(net)
-  net = tf.keras.layers.Dense(128, activation='relu', name='dense1',
+  net = tf.keras.layers.Dense(10, activation='relu', name='dense1',
                               kernel_regularizer=regularizer())(net)
   return tf.keras.Model(inputs=inp, outputs=net)
 
