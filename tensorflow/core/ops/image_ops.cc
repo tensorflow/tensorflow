@@ -252,6 +252,7 @@ REGISTER_OP("ScaleAndTranslate")
         "T: {int8, uint8, int16, uint16, int32, int64, bfloat16, half, "
         "float, double}")
     .Attr("kernel_type: string = 'lanczos3'")
+    .Attr("antialias: bool = true")
     .SetShapeFn(ResizeShapeFn);
 
 // --------------------------------------------------------------------------
@@ -299,6 +300,7 @@ REGISTER_OP("ScaleAndTranslateGrad")
     .Output("output: T")
     .Attr("T: {float}")
     .Attr("kernel_type: string = 'lanczos3'")
+    .Attr("antialias: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       c->set_output(0, c->input(1));
       return Status::OK();

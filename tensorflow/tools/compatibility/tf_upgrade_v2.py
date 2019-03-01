@@ -92,6 +92,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.extract_image_patches": {
             "ksizes": "sizes",
         },
+        "tf.image.resize": {
+            "align_corners": None,
+        },
+        "tf.image.resize_images": {
+            "align_corners": None,
+        },
         "tf.extract_image_patches": {
             "ksizes": "sizes",
         },
@@ -225,11 +231,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.max_pool": {
             "value": "input"
         },
-
         "tf.nn.avg_pool": {
             "value": "input"
         },
-
         "tf.nn.avg_pool2d": {
             "value": "input"
         },
@@ -1382,6 +1386,46 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "argument; instead name scoping should be used. This call site "
                 "specifies a family argument so it cannot be converted safely.")
         },
+        "tf.image.resize": {
+            ("align_corners",
+             3): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize."),
+        },
+        "tf.image.resize_bilinear": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bilinear."),
+        },
+        "tf.image.resize_area": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_area."),
+        },
+        "tf.image.resize_bicubic": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bicubic."),
+        },
+        "tf.image.resize_nearest_neighbor": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_nearest_neighbor."),
+        },
     }
 
     # Specially handled functions
@@ -1761,7 +1805,12 @@ def _image_resize_transformer(parent, node, full_name, name, logs):
     pos_arg = ast.keyword(arg="align_corners",
                           value=node.args[-1])
     node.args = node.args[:-1]
-    node.keywords.append(pos_arg)
+
+  new_keywords = []
+  for kw in node.keywords:
+    if kw.arg != "align_corners":
+      new_keywords.append(kw)
+  node.keywords = new_keywords
 
   # Python3 ast requires the args for the Attribute, but codegen will mess up
   # the arg order if we just set them to 0.
@@ -1943,4 +1992,3 @@ def _add_uniform_scaling_initializer_transformer(
   node.func.value.col_offset = col_offset
   node.func.attr = "VarianceScaling"
   return node
-
