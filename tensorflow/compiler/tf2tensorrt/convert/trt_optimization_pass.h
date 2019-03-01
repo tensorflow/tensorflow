@@ -30,7 +30,7 @@ namespace tensorflow {
 namespace tensorrt {
 namespace convert {
 
-class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
+class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
  public:
   TRTOptimizationPass(const string& name = "TRTOptimizationPass")
       : name_(name),
@@ -40,25 +40,25 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
         is_dynamic_op_(false),
         max_cached_batches_(1),
         max_workspace_size_bytes_(256LL << 20),
-        use_calibration_(true) {
+        use_calibration_(true),
+        use_function_backup_(true) {
     VLOG(1) << "Constructing " << name_;
   }
 
   string name() const override { return name_; };
 
-  tensorflow::Status Init(const tensorflow::RewriterConfig_CustomGraphOptimizer*
-                              config = nullptr) override;
+  Status Init(
+      const RewriterConfig_CustomGraphOptimizer* config = nullptr) override;
 
-  tensorflow::Status Optimize(tensorflow::grappler::Cluster* cluster,
-                              const tensorflow::grappler::GrapplerItem& item,
-                              GraphDef* optimized_graph) override;
+  Status Optimize(grappler::Cluster* cluster,
+                  const grappler::GrapplerItem& item,
+                  GraphDef* optimized_graph) override;
 
-  void Feedback(tensorflow::grappler::Cluster* cluster,
-                const tensorflow::grappler::GrapplerItem& item,
+  void Feedback(grappler::Cluster* cluster, const grappler::GrapplerItem& item,
                 const GraphDef& optimized_graph, double result) override;
 
-  void PrintDebugInfo(tensorflow::grappler::Cluster* cluster,
-                      const tensorflow::grappler::GrapplerItem& item);
+  void PrintDebugInfo(grappler::Cluster* cluster,
+                      const grappler::GrapplerItem& item);
 
  private:
   const string name_;
@@ -70,6 +70,9 @@ class TRTOptimizationPass : public tensorflow::grappler::CustomGraphOptimizer {
   int max_cached_batches_;
   int64_t max_workspace_size_bytes_;
   bool use_calibration_;
+
+  // Whether to allow TF function fallback path in TRTEngineOp.
+  bool use_function_backup_;
 };
 
 }  // namespace convert

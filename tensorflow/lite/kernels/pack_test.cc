@@ -191,6 +191,37 @@ TEST(PackOpTest, Uint8MultilDimensions) {
               ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
 }
 
+// int8
+TEST(PackOpTest, Int8ThreeInputs) {
+  PackOpModel<int8_t> model({TensorType_INT8, {2}}, 0, 3);
+  model.SetInput(0, {1, 4});
+  model.SetInput(1, {2, 5});
+  model.SetInput(2, {3, 6});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(3, 2));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 4, 2, 5, 3, 6}));
+}
+
+TEST(PackOpTest, Int8ThreeInputsDifferentAxis) {
+  PackOpModel<int8_t> model({TensorType_INT8, {2}}, 1, 3);
+  model.SetInput(0, {1, 4});
+  model.SetInput(1, {2, 5});
+  model.SetInput(2, {3, 6});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 3));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({1, 2, 3, 4, 5, 6}));
+}
+
+TEST(PackOpTest, Int8MultilDimensions) {
+  PackOpModel<int8_t> model({TensorType_INT8, {2, 3}}, 1, 2);
+  model.SetInput(0, {1, 2, 3, 4, 5, 6});
+  model.SetInput(1, {7, 8, 9, 10, 11, 12});
+  model.Invoke();
+  EXPECT_THAT(model.GetOutputShape(), ElementsAre(2, 2, 3));
+  EXPECT_THAT(model.GetOutput(),
+              ElementsAreArray({1, 2, 3, 7, 8, 9, 4, 5, 6, 10, 11, 12}));
+}
+
 }  // namespace
 }  // namespace tflite
 

@@ -32,12 +32,18 @@ class KernelUtilTest : public ::testing::Test {
     memset(&tensor2_, 0, sizeof(TfLiteTensor));
     tensor1_.dims = nullptr;
     tensor2_.dims = nullptr;
+    tensor3_.dims = nullptr;
+    tensor4_.dims = nullptr;
     tensor1_.allocation_type = kTfLiteMmapRo;
     tensor2_.allocation_type = kTfLiteMmapRo;
+    tensor3_.allocation_type = kTfLiteMmapRo;
+    tensor4_.allocation_type = kTfLiteMmapRo;
   }
   ~KernelUtilTest() override {
     TfLiteTensorFree(&tensor1_);
     TfLiteTensorFree(&tensor2_);
+    TfLiteTensorFree(&tensor3_);
+    TfLiteTensorFree(&tensor4_);
   }
 
   void SetShape(TfLiteTensor* tensor, std::initializer_list<int> dims) {
@@ -62,6 +68,8 @@ class KernelUtilTest : public ::testing::Test {
   TfLiteContext context_;
   TfLiteTensor tensor1_;
   TfLiteTensor tensor2_;
+  TfLiteTensor tensor3_;
+  TfLiteTensor tensor4_;
 };
 
 TEST_F(KernelUtilTest, SameShapeEmpty) {
@@ -249,6 +257,30 @@ TEST_F(KernelUtilTest, CheckAndPopulate) {
   TfLiteTensorFree(&filter);
   TfLiteTensorFree(&bias);
   TfLiteTensorFree(&output);
+}
+
+TEST_F(KernelUtilTest, QuantizedConvolutionMultipler) {
+  TfLiteTensor* input = &tensor1_;
+  TfLiteTensor* filter = &tensor2_;
+  TfLiteTensor* bias = &tensor3_;
+  TfLiteTensor* output = &tensor4_;
+
+  // from quantized MobileNetV1's third conv.
+  constexpr float input_output_scale = 0.023528477177023888;
+  constexpr float filter_scale = 0.015148180536925793;
+  constexpr float bias_scale = 0.00035641359863802791;
+  constexpr double multiplier_expected = static_cast<double>(filter_scale);
+
+  input->params.scale = input_output_scale;
+  output->params.scale = input_output_scale;
+  filter->params.scale = filter_scale;
+  bias->params.scale = bias_scale;
+
+  double multiplier = 0.0f;
+  EXPECT_EQ(kTfLiteOk,
+            GetQuantizedConvolutionMultipler(&context_, input, filter, bias,
+                                             output, &multiplier));
+  EXPECT_EQ(multiplier, multiplier_expected);
 }
 
 }  // namespace

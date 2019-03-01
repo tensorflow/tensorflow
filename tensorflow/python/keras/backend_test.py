@@ -1743,8 +1743,12 @@ class BackendGraphTests(test.TestCase):
 
   def test_get_session_different_graphs(self):
     with ops.Graph().as_default():
+      x = keras.backend.constant(1)
       session = keras.backend.get_session()
+      self.assertIs(session, keras.backend.get_session((x,)))
+      self.assertIs(session, keras.backend.get_session())
     with ops.Graph().as_default():
+      self.assertIs(session, keras.backend.get_session((x,)))
       self.assertIsNot(session, keras.backend.get_session())
 
 

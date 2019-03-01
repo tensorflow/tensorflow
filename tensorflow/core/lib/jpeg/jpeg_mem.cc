@@ -409,7 +409,7 @@ uint8* UncompressLow(const void* srcdata, FewerArgsForCompiler* argball) {
       }
       break;
     default:
-      // will never happen, should be catched by the previous switch
+      // will never happen, should be caught by the previous switch
       LOG(ERROR) << "Invalid components value " << components << std::endl;
       jpeg_destroy_decompress(&cinfo);
       return nullptr;

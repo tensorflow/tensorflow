@@ -280,14 +280,13 @@ TEST_F(GPUDeviceTest, UnifiedMemoryAllocation) {
 class GPUKernelTrackerTest : public ::testing::Test {
  protected:
   void SetUp() {
-    std::unique_ptr<SharedCounter> counter(new SharedCounter);
-    timing_counter_ = counter.get();
+    timing_counter_.reset(new SharedCounter);
     kernel_tracker_.reset(
-        new GPUKernelTracker(Env::Default(), std::move(counter)));
+        new GPUKernelTracker(Env::Default(), timing_counter_.get()));
   }
 
   std::unique_ptr<GPUKernelTracker> kernel_tracker_;
-  SharedCounter* timing_counter_ = nullptr;
+  std::unique_ptr<SharedCounter> timing_counter_;
 };
 
 TEST_F(GPUKernelTrackerTest, basic) {

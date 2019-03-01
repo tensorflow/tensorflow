@@ -218,6 +218,7 @@ std::vector<int> ComputeNewPerm(std::vector<int> input_dims,
   CHECK_EQ(input_dims.size(), new_perm.size());
 
   auto& transpose_array = model->GetOrCreateArray(transpose_op->inputs[1]);
+  transpose_array.data_type = ArrayDataType::kInt32;
   transpose_array.GetMutableBuffer<ArrayDataType::kInt32>().data = new_perm;
   *(transpose_array.mutable_shape()->mutable_dims()) = {
       static_cast<int>(new_perm.size())};

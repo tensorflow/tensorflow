@@ -808,6 +808,10 @@ def constant_value(tensor, partial=False):  # pylint: disable=invalid-name
   """
   if isinstance(tensor, ops.EagerTensor):
     return tensor.numpy()
+  if not is_tensor(tensor):
+    return tensor
+  if not isinstance(tensor, ops.Tensor):
+    return None
   ret = _ConstantValue(tensor, partial)
   if ret is not None:
     # The caller may now depend on the constant value of `tensor`, so we
@@ -941,7 +945,7 @@ def is_tensor(x):  # pylint: disable=invalid-name
   equivalent to calling
   `isinstance(x, (tf.Tensor, tf.SparseTensor, tf.RaggedTensor, tf.Variable))`
   and also checks if all the component variables of a MirroredVariable or a
-  ReplicaLocalVariable are tensors.
+  SyncOnReadVariable are tensors.
 
   Args:
     x: A python object to check.

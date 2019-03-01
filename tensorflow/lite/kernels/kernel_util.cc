@@ -94,9 +94,11 @@ TfLiteStatus GetQuantizedConvolutionMultipler(TfLiteContext* context,
                                               const TfLiteTensor* input,
                                               const TfLiteTensor* filter,
                                               const TfLiteTensor* bias,
-                                              TfLiteTensor* output,
+                                              const TfLiteTensor* output,
                                               double* multiplier) {
-  const double input_product_scale = input->params.scale * filter->params.scale;
+  const double input_scale = input->params.scale;
+  const double filter_scale = filter->params.scale;
+  const double input_product_scale = input_scale * filter_scale;
   const double bias_scale = bias->params.scale;
   const double output_scale = output->params.scale;
 
@@ -149,6 +151,9 @@ TfLiteStatus CalculateActivationRangeQuantized(TfLiteContext* context,
   if (output->type == kTfLiteUInt8) {
     qmin = std::numeric_limits<uint8_t>::min();
     qmax = std::numeric_limits<uint8_t>::max();
+  } else if (output->type == kTfLiteInt8) {
+    qmin = std::numeric_limits<int8_t>::min();
+    qmax = std::numeric_limits<int8_t>::max();
   } else if (output->type == kTfLiteInt16) {
     qmin = std::numeric_limits<int16_t>::min();
     qmax = std::numeric_limits<int16_t>::max();

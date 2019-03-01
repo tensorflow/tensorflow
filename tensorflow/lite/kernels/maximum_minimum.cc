@@ -26,7 +26,7 @@ namespace ops {
 namespace builtin {
 namespace maximum_minimum {
 
-// This file has a reference implemenation of TFMaximum/TFMinimum.
+// This file has a reference implementation of TFMaximum/TFMinimum.
 enum KernelType {
   kReference,
 };
@@ -107,6 +107,9 @@ TfLiteStatus Eval(TfLiteContext* context, TfLiteNode* node) {
         break;
       case kTfLiteUInt8:
         TFLiteOperation<uint8_t, OpType>(context, node, op_context);
+        break;
+      case kTfLiteInt8:
+        TFLiteOperation<int8_t, OpType>(context, node, op_context);
         break;
       case kTfLiteInt32:
        TFLiteOperation<int32_t, OpType>(context, node, op_context);

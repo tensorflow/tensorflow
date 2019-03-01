@@ -31,10 +31,10 @@ from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import distributed_training_utils
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_keras
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops.parsing_ops import gen_parsing_ops
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import rmsprop
-from tensorflow.python.training.mode_keys import ModeKeys
 
 _RANDOM_SEED = 1337
 _TRAIN_SIZE = 200

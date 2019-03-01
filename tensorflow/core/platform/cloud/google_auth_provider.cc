@@ -22,6 +22,7 @@ limitations under the License.
 #endif
 #include <fstream>
 #include <utility>
+#include "absl/strings/match.h"
 #include "include/json/json.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/io/path.h"
@@ -44,8 +45,9 @@ constexpr char kGoogleAuthTokenForTesting[] = "GOOGLE_AUTH_TOKEN_FOR_TESTING";
 // The environment variable which can override '~/.config/gcloud' if set.
 constexpr char kCloudSdkConfig[] = "CLOUDSDK_CONFIG";
 
-// The environment variable used to skip attempting to fetch GCE credentials
-// if set.
+// The environment variable used to skip attempting to fetch GCE credentials:
+// setting this to 'true' (case insensitive) will skip attempting to contact
+// the GCE metadata service.
 constexpr char kNoGceCheck[] = "NO_GCE_CHECK";
 
 // The default path to the gcloud config folder, relative to the home folder.
@@ -155,7 +157,9 @@ Status GoogleAuthProvider::GetToken(string* t) {
     return Status::OK();
   }
 
-  bool skip_gce_check = std::getenv(kNoGceCheck) != nullptr;
+  char* no_gce_check_var = std::getenv(kNoGceCheck);
+  bool skip_gce_check = no_gce_check_var != nullptr &&
+                        absl::EqualsIgnoreCase(no_gce_check_var, "true");
   Status token_from_gce_status;
   if (skip_gce_check) {
     token_from_gce_status =

@@ -32,12 +32,13 @@ from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import optimizers
+from tensorflow.python.keras.engine import training_utils
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
+from tensorflow.python.keras.utils.mode_keys import ModeKeys
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.mode_keys import ModeKeys
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_contextlib
 
@@ -67,7 +68,7 @@ def set_weights(distribution_strategy, dist_model, weights):
     weights = weights[num_param:]
 
   if not ops.executing_eagerly_outside_functions():
-    K.get_session().run(assign_ops)
+    K.get_session(assign_ops).run(assign_ops)
 
 
 def unwrap_values(distribution_strategy, grouped_inputs, grouped_outputs,
@@ -196,14 +197,14 @@ def validate_callbacks(input_callbacks, optimizer):
       # features of the callback that involve accessing model attributes and
       # running ops.
       if isinstance(callback, callbacks.TensorBoard):
-        if callback.__getattribute__('histogram_freq'):
+        if getattr(callback, 'histogram_freq', False):
           logging.warning(
               UserWarning(
                   '`histogram_freq` in the TensorBoard callback is not '
                   'supported when using DistributionStrategy. Setting '
                   '`histogram_freq` to `0`.'))
           callback.histogram_freq = 0
-        if callback.__getattribute__('write_grads'):
+        if getattr(callback, 'write_grads', False):
           logging.warning(
               UserWarning(
                   '`write_grads` in the TensorBoard callback is not supported '
@@ -397,7 +398,7 @@ def is_tpu_strategy(strategy):
 
 def is_dataset_shape_fully_defined(dataset):
   """Returns whether a dataset contains a final partial batch."""
-  shapes = nest.flatten(dataset.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
   unknown_shapes = [s for s in shapes if not s.is_fully_defined()]
   return not unknown_shapes
 
@@ -453,10 +454,13 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       global_batch_size = batch_size
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
-    if not allow_partial_batch and num_samples % global_batch_size:
-      raise ValueError('The number of samples %s is not divisible by '
-                       'batch size %s.' % (num_samples, global_batch_size))
-    steps = num_samples // global_batch_size
+    if allow_partial_batch:
+      steps = np.ceil(num_samples / global_batch_size).astype(int)
+    else:
+      if num_samples % global_batch_size:
+        raise ValueError('The number of samples %s is not divisible by '
+                         'batch size %s.' % (num_samples, global_batch_size))
+      steps = num_samples // global_batch_size
   else:
     if batch_size is None:
       # We calculate the batch size based on the number of steps specified
@@ -497,7 +501,7 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
 
 
 def get_batch_dimension(iterator):
-  shapes = nest.flatten(iterator.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(iterator))
   # Take the batch size from the first element, as it should be the same for
   # all.
   dims = shapes[0].dims
@@ -522,7 +526,7 @@ def initialize_iterator(iterator, distribution_strategy):
   with distribution_strategy.scope():
     init_op = control_flow_ops.group(iterator.initialize())
     if not context.executing_eagerly():
-      K.get_session().run(init_op)
+      K.get_session((init_op,)).run(init_op)
 
 
 def _get_input_from_iterator(iterator, model):
@@ -563,6 +567,11 @@ def _prepare_feed_values(model, inputs, targets, sample_weights, mode):
   inputs, targets, sample_weights = _get_input_from_iterator(inputs, model)
   inputs = flatten_perdevice_values(strategy, inputs)
   targets = flatten_perdevice_values(strategy, targets)
+  # Expand 1-dimensional inputs.
+  # TODO(b/124535720): Remove once this standarize data logic is shared with
+  # main flow.
+  inputs, targets = nest.map_structure(training_utils.standardize_single_array,
+                                       (inputs, targets))
   if mode == ModeKeys.PREDICT:
     sample_weights = []
     targets = []
@@ -805,22 +814,31 @@ def _make_eager_execution_function(model, mode):
   # NOTE(priyag): Try creating a new FuncGraph within DS scope instead of using
   # the global one.
   strategy = model._distribution_strategy
-  with K.get_graph().as_default(), strategy.scope():
-    # Create train ops on each of the devices when we call
-    # `_per_device_fit_function`.
-    (grouped_inputs, grouped_outputs) = strategy.extended.call_for_each_replica(
-        _per_device_function, args=(get_distributed_model(model, mode),))
+  global_graph = K.get_graph()
 
-    # Unwrap all the per device values returned from `call_for_each_replica`.
-    # Unwrapping per device values gives you a list of values that can be
-    # used to construct a new train function that is composed of inptus/outputs
-    # on all the devices over which the model is distributed.
-    (all_inputs, all_outputs, _, _) = unwrap_values(
-        strategy,
-        grouped_inputs,
-        grouped_outputs,
-        with_loss_tensor=(mode != ModeKeys.PREDICT))
+  with global_graph.as_default(), strategy.scope():
+    # First we gather the relevant portions of the model across all replicas.
+    # `K._scratch_graph(global_graph)` signals to Keras that it should not
+    # lift to a separate graph when creating the per-replica functions.
+    with K._scratch_graph(global_graph):
+      # Create train ops on each of the devices when we call
+      # `_per_device_fit_function`.
+      grouped = strategy.extended.call_for_each_replica(
+          _per_device_function, args=(get_distributed_model(model, mode),))
+      grouped_inputs, grouped_outputs = grouped
 
+      # Unwrap all the per device values returned from `call_for_each_replica`.
+      # Unwrapping per device values gives you a list of values that can be
+      # used to construct a new train function that is composed of
+      # inputs/outputs on all the devices over which the model is distributed.
+      (all_inputs, all_outputs, _, _) = unwrap_values(
+          strategy,
+          grouped_inputs,
+          grouped_outputs,
+          with_loss_tensor=(mode != ModeKeys.PREDICT))
+
+    # Finally, a joint Keras function is created; this one will be created in
+    # a separate FuncGraph.
     return K.function(
         all_inputs,
         all_outputs,
@@ -888,3 +906,38 @@ def _generate_cache_key(mode):
 def distributed_scope(strategy, learning_phase):
   with strategy.scope(), K.learning_phase_scope(learning_phase):
     yield
+
+
+def filter_distributed_callbacks(callbacks_list):
+  """Filter Callbacks based on the worker context when running multi-worker.
+
+  Arguments:
+    callbacks_list: A list of `Callback` instances.
+
+  Returns:
+    The list of `Callback` instances that should be run on this worker.
+  """
+
+  if not K.in_multi_worker_mode():
+    raise ValueError(
+        'filter_distributed_callbacks() should only be called when Keras '
+        'is in multi worker mode.')
+
+  worker_context = dc_context.get_current_worker_context()
+  callbacks_list = callbacks_list or []
+  if not [
+      c for c in callbacks_list if isinstance(c, callbacks.ModelCheckpoint)
+  ]:
+    # TODO(rchao): Consider providing a ModelCheckpoint here if the user
+    # fails to.
+    logging.warning('ModelCheckpoint callback is not provided. '
+                    'Workers will need to restart training if any fails.')
+  # TODO(rchao): Add similar warning for restoring callback (to be designed).
+
+  if callbacks_list is None or worker_context.is_chief:
+    return callbacks_list
+
+  # Some Callbacks should only run on the chief worker.
+  return [
+      callback for callback in callbacks_list if not callback._chief_worker_only
+  ]  # pylint: disable=protected-access

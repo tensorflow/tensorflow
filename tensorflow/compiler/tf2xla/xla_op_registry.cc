@@ -137,6 +137,7 @@ XlaOpRegistry::~XlaOpRegistry() = default;
   static void* registration_init = [&registry]() {
     MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
     bool cpu_global_jit = flags->tf_xla_cpu_global_jit;
+    VLOG(2) << "tf_xla_cpu_global_jit = " << cpu_global_jit;
 
     mutex_lock lock(registry.mutex_);
     if (LaunchOpHasKernelForDevice(DeviceType(DEVICE_CPU)).ok()) {

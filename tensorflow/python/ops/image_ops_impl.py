@@ -2244,9 +2244,9 @@ def non_max_suppression(boxes,
 
   Prunes away boxes that have high intersection-over-union (IOU) overlap
   with previously selected boxes.  Bounding boxes are supplied as
-  [y1, x1, y2, x2], where (y1, x1) and (y2, x2) are the coordinates of any
+  `[y1, x1, y2, x2]`, where `(y1, x1)` and `(y2, x2)` are the coordinates of any
   diagonal pair of box corners and the coordinates can be provided as normalized
-  (i.e., lying in the interval [0, 1]) or absolute.  Note that this algorithm
+  (i.e., lying in the interval `[0, 1]`) or absolute.  Note that this algorithm
   is agnostic to where the origin is in the coordinate system.  Note that this
   algorithm is invariant to orthogonal transformations and translations
   of the coordinate system; thus translating or reflections of the coordinate
@@ -2254,10 +2254,12 @@ def non_max_suppression(boxes,
   The output of this operation is a set of integers indexing into the input
   collection of bounding boxes representing the selected boxes.  The bounding
   box coordinates corresponding to the selected indices can then be obtained
-  using the `tf.gather operation`.  For example:
+  using the `tf.gather` operation.  For example:
+    ```python
     selected_indices = tf.image.non_max_suppression(
         boxes, scores, max_output_size, iou_threshold)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
@@ -2301,12 +2303,14 @@ def non_max_suppression_padded(boxes,
   boxes and the number of valid indices in the index set.  The bounding box
   coordinates corresponding to the selected indices can then be obtained using
   the `tf.slice` and `tf.gather` operations.  For example:
+    ```python
     selected_indices_padded, num_valid = tf.image.non_max_suppression_padded(
         boxes, scores, max_output_size, iou_threshold,
         score_threshold, pad_to_max_output_size=True)
     selected_indices = tf.slice(
         selected_indices_padded, tf.constant([0]), num_valid)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     boxes: A 2-D float `Tensor` of shape `[num_boxes, 4]`.
@@ -2355,10 +2359,12 @@ def non_max_suppression_with_overlaps(overlaps,
   The output of this operation is a set of integers indexing into the input
   collection of bounding boxes representing the selected boxes.  The bounding
   box coordinates corresponding to the selected indices can then be obtained
-  using the `tf.gather operation`.  For example:
+  using the `tf.gather` operation.  For example:
+    ```python
     selected_indices = tf.image.non_max_suppression_overlaps(
         overlaps, scores, max_output_size, iou_threshold)
     selected_boxes = tf.gather(boxes, selected_indices)
+    ```
 
   Args:
     overlaps: A 2-D float `Tensor` of shape `[num_boxes, num_boxes]`.
@@ -2980,6 +2986,45 @@ def sobel_edges(image):
   return output
 
 
+def resize_bicubic(images,
+                   size,
+                   align_corners=False,
+                   name=None,
+                   half_pixel_centers=False):
+  return gen_image_ops.resize_bicubic(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
+def resize_bilinear(images,
+                    size,
+                    align_corners=False,
+                    name=None,
+                    half_pixel_centers=False):
+  return gen_image_ops.resize_bilinear(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
+def resize_nearest_neighbor(images,
+                            size,
+                            align_corners=False,
+                            name=None,
+                            half_pixel_centers=False):
+  return gen_image_ops.resize_nearest_neighbor(
+      images=images,
+      size=size,
+      align_corners=align_corners,
+      half_pixel_centers=half_pixel_centers,
+      name=name)
+
+
 resize_area_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
@@ -2992,14 +3037,14 @@ resize_bicubic_deprecation = deprecation.deprecated(
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.BICUBIC...)` instead.'))
 tf_export(v1=['image.resize_bicubic'])(
-    resize_bicubic_deprecation(gen_image_ops.resize_bicubic))
+    resize_bicubic_deprecation(resize_bicubic))
 
 resize_bilinear_deprecation = deprecation.deprecated(
     date=None,
     instructions=(
         'Use `tf.image.resize(...method=ResizeMethod.BILINEAR...)` instead.'))
 tf_export(v1=['image.resize_bilinear'])(
-    resize_bilinear_deprecation(gen_image_ops.resize_bilinear))
+    resize_bilinear_deprecation(resize_bilinear))
 
 resize_nearest_neighbor_deprecation = deprecation.deprecated(
     date=None,
@@ -3007,7 +3052,7 @@ resize_nearest_neighbor_deprecation = deprecation.deprecated(
         'Use `tf.image.resize(...method=ResizeMethod.NEAREST_NEIGHBOR...)` '
         'instead.'))
 tf_export(v1=['image.resize_nearest_neighbor'])(
-    resize_nearest_neighbor_deprecation(gen_image_ops.resize_nearest_neighbor))
+    resize_nearest_neighbor_deprecation(resize_nearest_neighbor))
 
 
 @tf_export('image.crop_and_resize', v1=[])

@@ -24,6 +24,7 @@ from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
@@ -33,6 +34,32 @@ from tensorflow.python.platform import test
 
 
 class TrainingTest(keras_parameterized.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes()
+  def test_dynamic_model_has_trainable_weights(self):
+    if not context.executing_eagerly():
+      # Only test Eager modes, as Graph mode is not relevant for dynamic models.
+      return
+
+    class DynamicModel(keras.Model):
+
+      def __init__(self):
+        super(DynamicModel, self).__init__(dynamic=True)
+        self.dense = keras.layers.Dense(
+            1, kernel_initializer='zeros', bias_initializer='ones')
+
+      def call(self, inputs):
+        return self.dense(inputs)
+
+    model = DynamicModel()
+    model.compile('rmsprop', 'mae')
+    hist = model.fit(np.zeros((1, 1)), np.zeros((1, 1)))
+    self.assertEqual(hist.history['loss'][-1], 1)
+    self.assertEqual(len(model.trainable_weights), 2)
+    loss = model.train_on_batch(np.zeros((1, 1)), np.zeros((1, 1)))
+    # The loss must have been updated if the trainable weights are taken into
+    # account during tracking.
+    self.assertLess(loss, 1)
 
   @keras_parameterized.run_with_all_model_types(exclude_models='sequential')
   @keras_parameterized.run_all_keras_modes

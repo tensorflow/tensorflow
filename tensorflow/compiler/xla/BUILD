@@ -192,6 +192,7 @@ cc_library(
         ":types",
         ":util",
         "//tensorflow/core:lib",
+        "@com_google_absl//absl/time",
     ],
 )
 

@@ -191,13 +191,13 @@ Status GraphDefBuilderWrapper::AddDataset(
     const std::vector<std::pair<size_t, gtl::ArraySlice<Node*>>>& list_inputs,
     const std::vector<std::pair<StringPiece, AttrValue>>& attrs,
     Node** output) {
-  const string& name = dataset->name();
+  const string& type_string = dataset->type_string();
   std::unique_ptr<const GraphDefBuilder::Options> opts(
       new GraphDefBuilder::Options(b_->opts()));
   // TODO(srbs|mrry): Not all datasets have output_types and output_shapes
   // attributes defined. It will be nice to have a consistent pattern.
-  bool has_output_types_attr = HasAttr(name, "output_types");
-  bool has_output_shapes_attr = HasAttr(name, "output_shapes");
+  bool has_output_types_attr = HasAttr(type_string, "output_types");
+  bool has_output_shapes_attr = HasAttr(type_string, "output_shapes");
   if (has_output_shapes_attr) {
     opts.reset(new GraphDefBuilder::Options(
         opts->WithAttr("output_shapes", dataset->output_shapes())));
@@ -214,7 +214,8 @@ Status GraphDefBuilderWrapper::AddDataset(
     return errors::Internal("AddDataset: Failed to build Options with error ",
                             opts->StatusToString());
   }
-  NodeBuilder node_builder(opts->GetNameForOp(name), name, opts->op_registry());
+  NodeBuilder node_builder(opts->GetNameForOp(type_string), type_string,
+                           opts->op_registry());
   {
     size_t total_size = inputs.size() + list_inputs.size();
     auto inputs_iter = inputs.begin();
@@ -239,7 +240,7 @@ Status GraphDefBuilderWrapper::AddDataset(
   }
   *output = opts->FinalizeBuilder(&node_builder);
   if (*output == nullptr) {
-    return errors::Internal("AddDataset: Failed to build ", name,
+    return errors::Internal("AddDataset: Failed to build ", type_string,
                             " op with error ", opts->StatusToString());
   }
   return Status::OK();

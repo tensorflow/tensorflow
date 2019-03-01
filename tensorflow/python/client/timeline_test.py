@@ -57,7 +57,7 @@ class TimelineTest(test.TestCase):
     ctf = tl.generate_chrome_trace_format()
     self._validateTrace(ctf)
 
-  @test_util.run_deprecated_v1
+  @test_util.deprecated_graph_mode_only
   def testTimelineCpu(self):
     run_options = config_pb2.RunOptions(
         trace_level=config_pb2.RunOptions.FULL_TRACE)
@@ -86,6 +86,7 @@ class TimelineTest(test.TestCase):
         show_memory=False, show_dataflow=False)
     self._validateTrace(ctf)
 
+  @test_util.deprecated_graph_mode_only
   def testTimelineGpu(self):
     if not test.is_gpu_available(cuda_only=True):
       return

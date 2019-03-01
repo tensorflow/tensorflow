@@ -110,7 +110,7 @@ class GPUProcessState {
   // Returns bus_id for the given GPU id.
   virtual int BusIdForGPU(TfGpuId tf_gpu_id);
 
-  std::unique_ptr<SharedCounter> ReleaseGPUAllocatorCounter(TfGpuId tf_gpu_id);
+  SharedCounter* GPUAllocatorCounter(TfGpuId tf_gpu_id);
 
  protected:
   // GPUProcessState is a singleton that should not normally be deleted except

@@ -26,6 +26,8 @@ test_suite(
         ":test_graph_tfmatmulandadd_test",
         ":test_graph_tfsplits_test",
         ":test_graph_tftop_k_test",
+        ":test_graph_tfvariable_sequential_updates_test",
+        ":test_graph_tfvariable_test",
         ":tfcompile_test",
     ],
 )
@@ -69,6 +71,8 @@ genrule(
         "test_graph_tfmatmulandadd.pb",
         "test_graph_tfsplits.pb",
         "test_graph_tftop_k.pb",
+        "test_graph_tfvariable.pb",
+        "test_graph_tfvariable_sequential_updates.pb",
     ],
     # Set CUDA_VISIBLE_DEVICES='' to prevent the code we launch from using any
     # GPUs which might be present.  This is important because builds may run
@@ -222,6 +226,28 @@ tf_library(
     ],
 )
 
+tf_library(
+    name = "test_graph_tfvariable",
+    testonly = 1,
+    config = "test_graph_tfvariable.config.pbtxt",
+    cpp_class = "VariableComp",
+    graph = "test_graph_tfvariable.pb",
+    tags = [
+        "manual",
+    ],
+)
+
+tf_library(
+    name = "test_graph_tfvariable_sequential_updates",
+    testonly = 1,
+    config = "test_graph_tfvariable_sequential_updates.config.pbtxt",
+    cpp_class = "VariableSequentialUpdatesComp",
+    graph = "test_graph_tfvariable_sequential_updates.pb",
+    tags = [
+        "manual",
+    ],
+)
+
 tf_cc_test(
     name = "tfcompile_test",
     srcs = ["tfcompile_test.cc"],
@@ -241,6 +267,8 @@ tf_cc_test(
         ":test_graph_tfmatmulandadd_with_profiling",
         ":test_graph_tfsplits",
         ":test_graph_tftop_k",
+        ":test_graph_tfvariable",
+        ":test_graph_tfvariable_sequential_updates",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:test",
         "//tensorflow/compiler/xla:xla_data_proto",

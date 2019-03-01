@@ -45,6 +45,7 @@ load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
 )
+
 def register_extension_info(**kwargs):
     pass
 
@@ -385,16 +386,13 @@ def tf_binary_additional_srcs():
         ],
     )
 
-def _linux_kernel_dso_name(kernel_build_target):
-    """Given a build target, construct the dso name for linux."""
-    parts = kernel_build_target.split(":")
-    return "%s:libtfkernel_%s.so" % (parts[0], parts[1])
-
 # Helper functions to add kernel dependencies to tf binaries when using dynamic
 # kernel linking.
-def tf_binary_dynamic_kernel_dsos(kernels):
+def tf_binary_dynamic_kernel_dsos():
     return if_dynamic_kernels(
-        extra_deps = [_linux_kernel_dso_name(k) for k in kernels],
+        extra_deps = [
+            "//tensorflow/core/kernels:libtfkernel_all_kernels.so",
+        ],
         otherwise = [],
     )
 
@@ -406,6 +404,17 @@ def tf_binary_dynamic_kernel_deps(kernels):
         otherwise = kernels,
     )
 
+# Shared libraries have different name pattern on different platforms,
+# but cc_binary cannot output correct artifact name yet,
+# so we generate multiple cc_binary targets with all name patterns when necessary.
+# TODO(pcloudy): Remove this workaround when https://github.com/bazelbuild/bazel/issues/4570
+# is done and cc_shared_library is available.
+SHARED_LIBRARY_NAME_PATTERNS = [
+    "lib%s.so",  # On Linux, shared libraries are usually named as libfoo.so
+    "lib%s.dylib",  # On macos, shared libraries are usually named as libfoo.dylib
+    "%s.dll",  # On Windows, shared libraries are usually named as foo.dll
+]
+
 def tf_cc_shared_object(
         name,
         srcs = [],
@@ -414,24 +423,42 @@ def tf_cc_shared_object(
         linkopts = [],
         framework_so = tf_binary_additional_srcs(),
         kernels = [],
+        per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
+        visibility = None,
         **kwargs):
-    native.cc_binary(
-        name = name,
-        srcs = srcs + framework_so,
-        deps = deps + tf_binary_dynamic_kernel_deps(kernels),
-        linkshared = 1,
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
-        linkopts = linkopts + _rpath_linkopts(name) + select({
-            clean_dep("//tensorflow:darwin"): [
-                "-Wl,-install_name,@rpath/" + name.split("/")[-1],
-            ],
-            clean_dep("//tensorflow:windows"): [],
-            "//conditions:default": [
-                "-Wl,-soname," + name.split("/")[-1],
-            ],
-        }),
-        **kwargs
-    )
+    if per_os_targets:
+        names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
+    else:
+        names = [name]
+    for name_os in names:
+        native.cc_binary(
+            name = name_os,
+            srcs = srcs + framework_so,
+            deps = deps,
+            linkshared = 1,
+            data = data,
+            linkopts = linkopts + _rpath_linkopts(name_os) + select({
+                clean_dep("//tensorflow:darwin"): [
+                    "-Wl,-install_name,@rpath/" + name_os.split("/")[-1],
+                ],
+                clean_dep("//tensorflow:windows"): [],
+                "//conditions:default": [
+                    "-Wl,-soname," + name_os.split("/")[-1],
+                ],
+            }),
+            visibility = visibility,
+            **kwargs
+        )
+    if name not in names:
+        native.filegroup(
+            name = name,
+            srcs = select({
+                "//tensorflow:windows": [":%s.dll" % name],
+                "//tensorflow:darwin": [":lib%s.dylib" % name],
+                "//conditions:default": [":lib%s.so" % name],
+            }),
+            visibility = visibility,
+        )
 
 register_extension_info(
     extension_name = "tf_cc_shared_object",
@@ -450,20 +477,43 @@ def tf_cc_binary(
         linkopts = [],
         copts = tf_copts(),
         kernels = [],
+        per_os_targets = False,  # Generate targets with SHARED_LIBRARY_NAME_PATTERNS
+        visibility = None,
         **kwargs):
-    native.cc_binary(
-        name = name,
-        copts = copts,
-        srcs = srcs + tf_binary_additional_srcs(),
-        deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
-            [
-                clean_dep("//third_party/mkl:intel_binary_blob"),
-            ],
-        ),
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
-        linkopts = linkopts + _rpath_linkopts(name),
-        **kwargs
-    )
+    if kernels:
+        added_data_deps = tf_binary_dynamic_kernel_dsos()
+    else:
+        added_data_deps = []
+
+    if per_os_targets:
+        names = [pattern % name for pattern in SHARED_LIBRARY_NAME_PATTERNS]
+    else:
+        names = [name]
+    for name_os in names:
+        native.cc_binary(
+            name = name_os,
+            copts = copts,
+            srcs = srcs + tf_binary_additional_srcs(),
+            deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_mkl_ml(
+                [
+                    clean_dep("//third_party/mkl:intel_binary_blob"),
+                ],
+            ),
+            data = depset(data + added_data_deps),
+            linkopts = linkopts + _rpath_linkopts(name_os),
+            visibility = visibility,
+            **kwargs
+        )
+    if name not in names:
+        native.filegroup(
+            name = name,
+            srcs = select({
+                "//tensorflow:windows": [":%s.dll" % name],
+                "//tensorflow:darwin": [":lib%s.dylib" % name],
+                "//conditions:default": [":lib%s.so" % name],
+            }),
+            visibility = visibility,
+        )
 
 register_extension_info(
     extension_name = "tf_cc_binary",
@@ -612,6 +662,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:core_cpu"),
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
+            clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
             clean_dep("//tensorflow/core:android_tensorflow_lib"),
@@ -628,6 +679,7 @@ def tf_gen_op_wrappers_cc(
             clean_dep("//tensorflow/core:core_cpu"),
             clean_dep("//tensorflow/core:framework"),
             clean_dep("//tensorflow/core:lib"),
+            clean_dep("//tensorflow/core:ops"),
             clean_dep("//tensorflow/core:protos_all_cc"),
         ]) + if_android([
             clean_dep("//tensorflow/core:android_tensorflow_lib"),
@@ -806,7 +858,7 @@ def tf_cc_test(
                 clean_dep("//third_party/mkl:intel_binary_blob"),
             ],
         ),
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        data = data + tf_binary_dynamic_kernel_dsos(),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         # Nested select() statements seem not to be supported when passed to
         # linkstatic, and we already have a cuda select() passed in to this
@@ -928,7 +980,7 @@ def tf_cuda_only_cc_test(
         args = args,
         copts = _cuda_copts() + rocm_copts() + tf_copts(),
         features = if_cuda(["-use_header_modules"]),
-        data = data + tf_binary_dynamic_kernel_dsos(kernels),
+        data = data + tf_binary_dynamic_kernel_dsos(),
         deps = deps + tf_binary_dynamic_kernel_deps(kernels) + if_cuda_is_configured([
             clean_dep("//tensorflow/core:cuda"),
             clean_dep("//tensorflow/core:gpu_lib"),
@@ -1007,7 +1059,7 @@ def tf_cc_test_mkl(
                 ],
             }) + _rpath_linkopts(src_to_test_name(src)),
             deps = deps + tf_binary_dynamic_kernel_deps(kernels) + mkl_deps(),
-            data = data + tf_binary_dynamic_kernel_dsos(kernels),
+            data = data + tf_binary_dynamic_kernel_dsos(),
             exec_compatible_with = tf_exec_compatible_with({"tags": tags}),
             linkstatic = linkstatic,
             tags = tags,
@@ -1061,7 +1113,7 @@ def tf_java_test(
     native.java_test(
         name = name,
         srcs = srcs,
-        deps = deps + tf_binary_additional_srcs() + tf_binary_dynamic_kernel_dsos(kernels) + tf_binary_dynamic_kernel_deps(kernels),
+        deps = deps + tf_binary_additional_srcs() + tf_binary_dynamic_kernel_dsos() + tf_binary_dynamic_kernel_deps(kernels),
         *args,
         **kwargs
     )
@@ -1352,7 +1404,7 @@ def _py_wrap_cc_impl(ctx):
     args += ["-I" + i for i in swig_include_dirs.to_list()]
     args += [src.path]
     outputs = [ctx.outputs.cc_out, ctx.outputs.py_out]
-    ctx.action(
+    ctx.actions.run(
         executable = ctx.executable._swig,
         arguments = args,
         inputs = inputs.to_list(),
@@ -1461,7 +1513,7 @@ def cc_header_only_library(name, deps = [], includes = [], extra_deps = [], **kw
 
 def tf_custom_op_library_additional_deps():
     return [
-      "@protobuf_archive//:protobuf_headers",
+        "@protobuf_archive//:protobuf_headers",
         clean_dep("//third_party/eigen3"),
         clean_dep("//tensorflow/core:framework_headers_lib"),
     ] + if_windows(["//tensorflow/python:pywrap_tensorflow_import_lib"])
@@ -1471,8 +1523,8 @@ def tf_custom_op_library_additional_deps():
 # exporting symbols from _pywrap_tensorflow.dll on Windows.
 def tf_custom_op_library_additional_deps_impl():
     return [
-      "@protobuf_archive//:protobuf",
-      "@nsync//:nsync_cpp",
+        "@protobuf_archive//:protobuf",
+        "@nsync//:nsync_cpp",
         # for //third_party/eigen3
         clean_dep("//third_party/eigen3"),
         # for //tensorflow/core:framework_headers_lib
@@ -1650,8 +1702,7 @@ _append_init_to_versionscript = rule(
     attrs = {
         "module_name": attr.string(mandatory = True),
         "template_file": attr.label(
-            allow_files = True,
-            single_file = True,
+            allow_single_file = True,
             mandatory = True,
         ),
         "is_version_script": attr.bool(
@@ -1781,7 +1832,7 @@ def py_test(deps = [], data = [], kernels = [], **kwargs):
         data = data + select({
             "//conditions:default": [],
             clean_dep("//tensorflow:no_tensorflow_py_deps"): ["//tensorflow/tools/pip_package:win_pip_package_marker"],
-        }) + tf_binary_dynamic_kernel_dsos(kernels),
+        }) + tf_binary_dynamic_kernel_dsos(),
         exec_compatible_with = tf_exec_compatible_with(kwargs),
         **kwargs
     )

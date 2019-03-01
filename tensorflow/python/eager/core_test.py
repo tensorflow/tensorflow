@@ -65,19 +65,21 @@ class TFETest(test_util.TensorFlowTestCase):
     ctx.scope_name = 'foo'
     self.assertEqual('foo', ctx.scope_name)
 
-    self.assertEqual(context.SYNC, ctx.get_execution_mode())
-    ctx.set_execution_mode(context.ASYNC)
-    self.assertEqual(context.ASYNC, ctx.get_execution_mode())
-    ctx.set_execution_mode(context.SYNC)
-    self.assertEqual(context.SYNC, ctx.get_execution_mode())
-    with ctx.execution_mode(context.ASYNC):
-      self.assertEqual(context.ASYNC, ctx.get_execution_mode())
-    ctx.set_execution_mode(context.SYNC)
-    self.assertEqual(context.SYNC, ctx.get_execution_mode())
+    self.assertEqual(context.SYNC, ctx.execution_mode)
+    ctx.execution_mode = context.ASYNC
+    self.assertEqual(context.ASYNC, ctx.execution_mode)
+    ctx.execution_mode = context.SYNC
+    self.assertEqual(context.SYNC, ctx.execution_mode)
 
-    self.assertIsNone(ctx.summary_writer_resource)
-    ctx.summary_writer_resource = 'mock'
-    self.assertEqual('mock', ctx.summary_writer_resource)
+    self.assertIsNone(ctx.summary_writer)
+    ctx.summary_writer = 'mock'
+    self.assertEqual('mock', ctx.summary_writer)
+    self.assertIsNone(ctx.summary_recording)
+    ctx.summary_recording = 'mock'
+    self.assertEqual('mock', ctx.summary_recording)
+    self.assertIsNone(ctx.summary_step)
+    ctx.summary_step = 'mock'
+    self.assertEqual('mock', ctx.summary_step)
 
     self.assertEqual('', ctx.device_name)
     self.assertEqual(ctx.device_name, ctx.device_spec.to_string())
@@ -167,7 +169,11 @@ class TFETest(test_util.TensorFlowTestCase):
 
     def get_context_values(ctx):
       return [
-          ctx.executing_eagerly(), ctx.scope_name, ctx.summary_writer_resource,
+          ctx.executing_eagerly(),
+          ctx.scope_name,
+          ctx.summary_writer,
+          ctx.summary_recording,
+          ctx.summary_step,
           ctx.device_name,
           ctx.num_gpus()
       ]
@@ -259,7 +265,7 @@ class TFETest(test_util.TensorFlowTestCase):
       self.skipTest('No GPUs found')
     constant = constant_op.constant(1.0)
     with ops.device('gpu:0'):
-      with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+      with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
         c = constant + 1.0
     self.assertAllEqual(c, 2.0)
 
@@ -315,7 +321,7 @@ class TFETest(test_util.TensorFlowTestCase):
                  three.dtype.as_datatype_enum))
       context.async_wait()
     context.async_clear_error()
-    context.set_execution_mode(context.SYNC)
+    context.context().execution_mode = context.SYNC
 
   def testExecuteTooManyNumOutputs(self):
     # num_outputs provided is 50, but only one output is produced.
@@ -660,6 +666,39 @@ class TFETest(test_util.TensorFlowTestCase):
 
     # Op not forced to CPU since the constants are not integers.
     self.assertEqual(c.device, '/job:localhost/replica:0/task:0/device:GPU:0')
+
+  def testExecutionModeIsStoredThreadLocal(self):
+    cv = threading.Condition()
+    count = [0]
+    num_threads = 10
+
+    def execution_mode_test(cond, count, num_threads, ctx, mode):
+      cond.acquire()
+      # Ensure that all threads set their mode simultaneously
+      # Note that this is not a simple assignment, as the execution_mode is an
+      # @property with a custom setter.
+      ctx.execution_mode = mode
+      count[0] = count[0] + 1
+      if count[0] < num_threads:
+        cond.wait()
+      else:
+        cond.notify_all()
+      cond.release()
+      self.assertEqual(ctx.execution_mode, mode)
+
+    ctx = context.Context()
+    threads = []
+    for i in range(num_threads):
+      t = threading.Thread(
+          target=execution_mode_test,
+          args=(cv, count, num_threads, ctx,
+                context.SYNC if i % 2 == 0 else context.ASYNC))
+      t.start()
+      threads.append(t)
+
+    for t in threads:
+      t.join()
+
 
 class SendRecvTest(test_util.TensorFlowTestCase):
 

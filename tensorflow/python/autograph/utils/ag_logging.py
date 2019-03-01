@@ -136,6 +136,8 @@ def log(level, msg, *args, **kwargs):
 
 def warn(msg, *args, **kwargs):
   logging.warn(msg, *args, **kwargs)
+  if echo_log_to_stdout:
+    print('WARNING:', msg % args)
 
 
 def warn_first_n(msg, *args, **kwargs):

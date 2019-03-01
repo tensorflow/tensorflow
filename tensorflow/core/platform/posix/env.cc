@@ -102,7 +102,7 @@ class PosixEnv : public Env {
   }
 
   bool GetCurrentThreadName(string* name) override {
-#ifdef __ANDROID__
+#if defined(__ANDROID__) || defined(__EMSCRIPTEN__)
     return false;
 #else
     char buf[100];

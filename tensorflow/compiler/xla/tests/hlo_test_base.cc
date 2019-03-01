@@ -205,6 +205,18 @@ Literal HloTestBase::ExecuteAndTransfer(std::unique_ptr<HloModule> module,
   return test_runner_.Execute(std::move(module), arguments).ValueOrDie();
 }
 
+StatusOr<std::vector<Literal>> HloTestBase::ExecuteReplicated(
+    std::unique_ptr<HloModule> module, absl::Span<Literal* const> arguments,
+    int64 num_replicas, bool use_threads) {
+  HloRunner::ReplicatedExecuteOptions options;
+  options.num_replicas = num_replicas;
+  for (auto argument : arguments) {
+    options.arguments.push_back(argument);
+  }
+  return test_runner_.ExecuteReplicated(std::move(module), options,
+                                        use_threads);
+}
+
 StatusOr<std::unique_ptr<HloModule>> HloTestBase::MakeReferenceModule(
     const HloModule& test_module,
     const std::function<void(HloModule*)>& reference_preprocessor) {
@@ -400,7 +412,7 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
       module->set_config(config);
     }
 
-    if (backend_config != "") {
+    if (!backend_config.empty()) {
       // Set backend configuration if it is given.
       HloInstruction* instruction =
           module->entry_computation()->root_instruction();
@@ -409,9 +421,10 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
 
     auto executable =
         test_runner_.CreateExecutable(std::move(module), run_hlo_passes);
-    if (!executable.ok())
+    if (!executable.ok()) {
       return ::testing::AssertionFailure()
              << executable.status().error_message();
+    }
     executables[i] = std::move(executable.ValueOrDie());
   }
 
@@ -419,8 +432,9 @@ StatusOr<::testing::AssertionResult> HloTestBase::RunAndCompareInternal(
     auto output =
         test_runner_.Execute(std::move(executables[i]), fake_argument_ptrs[i],
                              /*profile=*/&((*profiles)[i]));
-    if (!output.ok())
+    if (!output.ok()) {
       return ::testing::AssertionFailure() << output.status().error_message();
+    }
   }
 
   return ::testing::AssertionSuccess();

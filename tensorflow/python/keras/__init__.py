@@ -25,6 +25,7 @@ from tensorflow.python.keras import activations
 from tensorflow.python.keras import applications
 from tensorflow.python.keras import backend
 from tensorflow.python.keras import callbacks
+from tensorflow.python.keras import callbacks_v1
 from tensorflow.python.keras import constraints
 from tensorflow.python.keras import datasets
 from tensorflow.python.keras import estimator
