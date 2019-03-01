@@ -235,7 +235,7 @@ TEST_F(NodeDefBuilderTest, Polymorphic) {
       op: "Polymorphic" input: "a"
       attr { key: "T" value { type: DT_BOOL } } )proto");
 
-  // Conficting Attr()
+  // Conflicting Attr()
   ExpectFailure(Builder().Input(FakeInput(DT_BOOL)).Attr("T", DT_STRING),
                 "Inconsistent values for attr 'T' DT_BOOL vs. DT_STRING while");
 
