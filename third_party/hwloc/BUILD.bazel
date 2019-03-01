@@ -227,7 +227,6 @@ cc_library(
         "hwloc/topology-linux.c",
         "hwloc/topology-noos.c",
         "hwloc/topology-synthetic.c",
-        "hwloc/topology-x86.c",
         "hwloc/topology-xml.c",
         "hwloc/topology-xml-nolibxml.c",
         "hwloc/traversal.c",
@@ -236,13 +235,18 @@ cc_library(
         "include/hwloc/shmem.h",
         "include/private/autogen/config.h",
         "include/private/components.h",
-        "include/private/cpuid-x86.h",
         "include/private/debug.h",
         "include/private/internal-components.h",
         "include/private/misc.h",
         "include/private/private.h",
         "include/private/xml.h",
-    ],
+    ] + select({
+        "@org_tensorflow//tensorflow:linux_x86_64": [
+            "hwloc/topology-x86.c",
+            "include/private/cpuid-x86.h",
+        ],
+        "//conditions:default": [],
+    }),
     hdrs = [
         "include/hwloc.h",
         "include/hwloc/autogen/config.h",
