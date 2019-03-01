@@ -238,6 +238,10 @@ unsigned getNumCommonSurroundingLoops(const Instruction &A,
 /// in bytes; if the memory space is unspecified, considers all memory spaces.
 Optional<int64_t> getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
                                           int memorySpace = -1);
+
+/// Returns true if `forOp' is a parallel loop.
+bool isLoopParallel(OpPointer<AffineForOp> forOp);
+
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_UTILS_H

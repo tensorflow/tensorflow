@@ -701,37 +701,36 @@ mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
 void mlir::getSequentialLoops(
     OpPointer<AffineForOp> forOp,
     llvm::SmallDenseSet<Value *, 8> *sequentialLoops) {
+  forOp->getInstruction()->walk([&](Instruction *inst) {
+    if (auto innerFor = inst->dyn_cast<AffineForOp>())
+      if (!isLoopParallel(innerFor))
+        sequentialLoops->insert(innerFor->getInductionVar());
+  });
+}
+
+/// Returns true if 'forOp' is parallel.
+bool mlir::isLoopParallel(OpPointer<AffineForOp> forOp) {
   // Collect all load and store ops in loop nest rooted at 'forOp'.
-  SmallVector<Instruction *, 4> loadAndStoreOpInsts;
+  SmallVector<Instruction *, 8> loadAndStoreOpInsts;
   forOp->getInstruction()->walk([&](Instruction *opInst) {
     if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>())
       loadAndStoreOpInsts.push_back(opInst);
   });
 
-  // Check dependences on all pairs of ops in 'loadAndStoreOpInsts' and record
-  // loops which carry dependences in 'sequentialLoops'.
-  for (unsigned i = 0, e = loadAndStoreOpInsts.size(); i < e; ++i) {
-    auto *srcOpInst = loadAndStoreOpInsts[i];
+  // Dep check depth would be number of enclosing loops + 1.
+  unsigned depth = getNestingDepth(*forOp->getInstruction()) + 1;
+
+  // Check dependences between all pairs of ops in 'loadAndStoreOpInsts'.
+  for (auto *srcOpInst : loadAndStoreOpInsts) {
     MemRefAccess srcAccess(srcOpInst);
-    SmallVector<OpPointer<AffineForOp>, 4> srcLoopIVs;
-    getLoopIVs(*srcOpInst, &srcLoopIVs);
     for (auto *dstOpInst : loadAndStoreOpInsts) {
       MemRefAccess dstAccess(dstOpInst);
-
-      unsigned numCommonLoops =
-          getNumCommonSurroundingLoops(*srcOpInst, *dstOpInst);
-      for (unsigned d = 1; d <= numCommonLoops; ++d) {
-        auto *iv = srcLoopIVs[d - 1]->getInductionVar();
-        if (sequentialLoops->count(iv) > 0)
-          continue;
-        FlatAffineConstraints dependenceConstraints;
-        if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
-                                        &dependenceConstraints,
-                                        /*dependenceComponents=*/nullptr)) {
-          // Record loop with carried dependence between srcAccess/dstAccess.
-          sequentialLoops->insert(iv);
-        }
-      }
+      FlatAffineConstraints dependenceConstraints;
+      if (checkMemrefAccessDependence(srcAccess, dstAccess, depth,
+                                      &dependenceConstraints,
+                                      /*dependenceComponents=*/nullptr))
+        return false;
     }
   }
+  return true;
 }
