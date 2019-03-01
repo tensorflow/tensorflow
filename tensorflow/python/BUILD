@@ -503,7 +503,7 @@ tf_cc_shared_object(
         "//conditions:default": [
             "-lm",
         ],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
     }),
     deps = [

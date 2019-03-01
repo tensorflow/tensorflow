@@ -363,7 +363,7 @@ filegroup(
     name = "libtensorflow_jni",
     srcs = select({
         "//tensorflow:windows": [":tensorflow_jni.dll"],
-        "//tensorflow:darwin": [":libtensorflow_jni.dylib"],
+        "//tensorflow:macos": [":libtensorflow_jni.dylib"],
         "//conditions:default": [":libtensorflow_jni.so"],
     }),
     visibility = ["//visibility:public"],
@@ -380,7 +380,7 @@ tf_cc_binary(
     # considerably (~50% as of January 2017).
     linkopts = select({
         "//tensorflow:debug": [],  # Disable all custom linker options in debug mode
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location {})".format(LINKER_EXPORTED_SYMBOLS),
         ],
         "//tensorflow:windows": [],
