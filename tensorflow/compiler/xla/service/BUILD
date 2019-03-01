@@ -2384,6 +2384,7 @@ cc_library(
     deps = [
         ":call_graph",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_value",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla:status",
