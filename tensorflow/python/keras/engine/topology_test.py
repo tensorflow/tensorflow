@@ -85,7 +85,6 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
 
     network = network_lib.Network(x2, y2)
     self.assertEqual(len(network.updates), 2)
-    self.assertEqual(len(network.get_updates_for(x1)), 0)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
@@ -1284,6 +1283,19 @@ class NestedNetworkTest(test.TestCase):
 
     output_shape = network.compute_output_shape([(None, 1), (None, 1)])
     self.assertListEqual(output_shape.as_list(), [None, 1])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_updates_with_direct_call(self):
+    inputs = keras.Input(shape=(10,))
+    x = keras.layers.BatchNormalization()(inputs)
+    x = keras.layers.Dense(10)(x)
+    model = keras.Model(inputs, x)
+
+    ph = keras.backend.placeholder(shape=(10, 10))
+    model(ph)
+
+    self.assertLen(model.get_updates_for(ph), 2)
+    self.assertLen(model.get_updates_for(None), 0)
 
 
 if __name__ == '__main__':
