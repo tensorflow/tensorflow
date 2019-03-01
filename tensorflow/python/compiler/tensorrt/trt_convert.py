@@ -666,6 +666,7 @@ class TrtGraphConverter(GraphConverter):
                       ".".join([str(x) for x in loaded_version]))
 
     # Check input arguments.
+    precision_mode = precision_mode.upper()
     if precision_mode not in TrtPrecisionMode.supported_precision_modes():
       raise ValueError(("precision mode '{}' is not supported."
                         "It should be one of {}").format(
