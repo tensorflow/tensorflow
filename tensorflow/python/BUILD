@@ -4051,16 +4051,6 @@ tf_py_test(
 )
 
 tf_py_test(
-    name = "future_api_test",
-    size = "small",
-    srcs = ["util/future_api_test.py"],
-    additional_deps = [
-        ":util",
-        "//tensorflow:tensorflow_py",
-    ],
-)
-
-tf_py_test(
     name = "function_utils_test",
     srcs = ["util/function_utils_test.py"],
     additional_deps = [
