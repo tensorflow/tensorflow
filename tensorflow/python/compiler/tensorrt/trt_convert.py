@@ -113,8 +113,8 @@ class GraphConverter(object):
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
-      input_saved_model_signature_key: the key in the signature def map for a TF
-        2.0 SavedModel.
+      input_saved_model_signature_key: the key of the signature to optimize the
+        graph for.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -132,9 +132,6 @@ class GraphConverter(object):
         raise ValueError(
             "TF 2.0 only supports conversion of SavedModel, please specify "
             "input_saved_model_dir as input.")
-      self._input_saved_model_signature_key = (
-          input_saved_model_signature_key or
-          signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
     else:
       if input_graph_def and input_saved_model_dir:
         raise ValueError(
@@ -152,6 +149,9 @@ class GraphConverter(object):
 
     self._input_saved_model_tags = (
         input_saved_model_tags or [tag_constants.SERVING])
+    self._input_saved_model_signature_key = (
+        input_saved_model_signature_key or
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
     self._session_config = session_config or config_pb2.ConfigProto()
 
     # For calibration usage.
@@ -221,17 +221,16 @@ class GraphConverter(object):
     with session.Session(graph=graph, config=self._session_config) as sess:
       input_meta_graph_def = loader.load(sess, self._input_saved_model_tags,
                                          self._input_saved_model_dir)
+      input_signature_def = input_meta_graph_def.signature_def[
+          self._input_saved_model_signature_key]
 
       def _gather_names(tensor_info):
         """Get the node names from a TensorInfo."""
         return set([tensor_info[key].name.split(":")[0] for key in tensor_info])
 
       # Get input and outputs from all SignatureDef.
-      output_node_names = set()
-      for key in input_meta_graph_def.signature_def:
-        signature_def = input_meta_graph_def.signature_def[key]
-        output_node_names.update(_gather_names(signature_def.inputs))
-        output_node_names.update(_gather_names(signature_def.outputs))
+      output_node_names = _gather_names(input_signature_def.inputs).union(
+          _gather_names(input_signature_def.outputs))
 
       # Freeze the variables in the SavedModel graph and copy the frozen
       # graph over.
@@ -257,9 +256,8 @@ class GraphConverter(object):
       # Copy other information.
       self._grappler_meta_graph_def.meta_info_def.CopyFrom(
           input_meta_graph_def.meta_info_def)
-      for key in input_meta_graph_def.signature_def:
-        self._grappler_meta_graph_def.signature_def[key].CopyFrom(
-            input_meta_graph_def.signature_def[key])
+      self._grappler_meta_graph_def.signature_def[
+          self._input_saved_model_signature_key].CopyFrom(input_signature_def)
       # TODO(laigd): maybe add back AssetFileDef.
 
     self._run_conversion()
@@ -577,8 +575,8 @@ class TrtGraphConverter(GraphConverter):
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
-      input_saved_model_signature_key: the key in the signature def map for a TF
-        2.0 SavedModel.
+      input_saved_model_signature_key: the key of the signature to optimize the
+        graph for.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -832,8 +830,8 @@ def create_inference_graph(
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
-    input_saved_model_signature_key: the key in the signature def map for a TF
-      2.0 SavedModel.
+    input_saved_model_signature_key: the key of the signature to optimize the
+      graph for.
     output_saved_model_dir: if not None, construct a SavedModel using the
       returned GraphDef and save it to the specified directory. This option only
       works when the input graph is loaded from a SavedModel, i.e. when
