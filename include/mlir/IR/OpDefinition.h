@@ -173,6 +173,9 @@ public:
   void setAttr(Identifier name, Attribute value) {
     state->setAttr(name, value);
   }
+  void setAttr(StringRef name, Attribute value) {
+    setAttr(Identifier::get(name, getInstruction()->getContext()), value);
+  }
 
   /// Return true if there are no users of any results of this operation.
   bool use_empty() const { return state->use_empty(); }

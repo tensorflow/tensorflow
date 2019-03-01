@@ -899,8 +899,7 @@ void AffineForOp::setLowerBound(ArrayRef<Value *> lbOperands, AffineMap map) {
   newOperands.append(ubOperands.begin(), ubOperands.end());
   getInstruction()->setOperands(newOperands);
 
-  setAttr(Identifier::get(getLowerBoundAttrName(), map.getContext()),
-          AffineMapAttr::get(map));
+  setAttr(getLowerBoundAttrName(), AffineMapAttr::get(map));
 }
 
 void AffineForOp::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
@@ -911,8 +910,7 @@ void AffineForOp::setUpperBound(ArrayRef<Value *> ubOperands, AffineMap map) {
   newOperands.append(ubOperands.begin(), ubOperands.end());
   getInstruction()->setOperands(newOperands);
 
-  setAttr(Identifier::get(getUpperBoundAttrName(), map.getContext()),
-          AffineMapAttr::get(map));
+  setAttr(getUpperBoundAttrName(), AffineMapAttr::get(map));
 }
 
 void AffineForOp::setLowerBoundMap(AffineMap map) {
@@ -921,8 +919,7 @@ void AffineForOp::setLowerBoundMap(AffineMap map) {
          lbMap.getNumSymbols() == map.getNumSymbols());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
   (void)lbMap;
-  setAttr(Identifier::get(getLowerBoundAttrName(), map.getContext()),
-          AffineMapAttr::get(map));
+  setAttr(getLowerBoundAttrName(), AffineMapAttr::get(map));
 }
 
 void AffineForOp::setUpperBoundMap(AffineMap map) {
@@ -931,8 +928,7 @@ void AffineForOp::setUpperBoundMap(AffineMap map) {
          ubMap.getNumSymbols() == map.getNumSymbols());
   assert(map.getNumResults() >= 1 && "bound map has at least one result");
   (void)ubMap;
-  setAttr(Identifier::get(getUpperBoundAttrName(), map.getContext()),
-          AffineMapAttr::get(map));
+  setAttr(getUpperBoundAttrName(), AffineMapAttr::get(map));
 }
 
 bool AffineForOp::hasConstantLowerBound() const {
@@ -1133,9 +1129,7 @@ IntegerSet AffineIfOp::getIntegerSet() const {
   return getAttrOfType<IntegerSetAttr>(getConditionAttrName()).getValue();
 }
 void AffineIfOp::setIntegerSet(IntegerSet newSet) {
-  setAttr(
-      Identifier::get(getConditionAttrName(), getInstruction()->getContext()),
-      IntegerSetAttr::get(newSet));
+  setAttr(getConditionAttrName(), IntegerSetAttr::get(newSet));
 }
 
 /// Returns the list of 'then' blocks.

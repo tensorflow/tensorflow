@@ -376,8 +376,7 @@ public:
   Value *createIndexConstant(FuncBuilder &builder, Location loc,
                              uint64_t value) const {
     auto attr = builder.getIntegerAttr(builder.getIndexType(), value);
-    auto attrId = builder.getIdentifier("value");
-    auto namedAttr = NamedAttribute{attrId, attr};
+    auto namedAttr = builder.getNamedAttr("value", attr);
     return builder.create<LLVM::ConstantOp>(
         loc, getIndexType(), ArrayRef<Value *>{},
         ArrayRef<NamedAttribute>{namedAttr});
@@ -392,9 +391,8 @@ public:
     for (int64_t pos : positions)
       attrPositions.push_back(
           builder.getIntegerAttr(builder.getIndexType(), pos));
-    auto attr = builder.getArrayAttr(attrPositions);
-    auto attrId = builder.getIdentifier("position");
-    return {attrId, attr};
+    return builder.getNamedAttr("position",
+                                builder.getArrayAttr(attrPositions));
   }
 
   // Extract raw data pointer value from a value representing a memref.
@@ -611,8 +609,8 @@ struct AllocOpLowering : public LLVMLegalizationPattern<AllocOp> {
 
     // Allocate the underlying buffer and store a pointer to it in the MemRef
     // descriptor.
-    auto mallocNamedAttr = NamedAttribute{rewriter.getIdentifier("callee"),
-                                          rewriter.getFunctionAttr(mallocFunc)};
+    auto mallocNamedAttr =
+        rewriter.getNamedAttr("callee", rewriter.getFunctionAttr(mallocFunc));
     Value *allocated =
         rewriter
             .create<LLVM::CallOp>(op->getLoc(), getVoidPtrType(),
@@ -690,8 +688,8 @@ struct DeallocOpLowering : public LLVMLegalizationPattern<DeallocOp> {
         rewriter, op->getLoc(), operands[0], elementPtrType, statically_shaped);
     Value *casted = rewriter.create<LLVM::BitcastOp>(
         op->getLoc(), getVoidPtrType(), bufferPtr);
-    auto freeNamedAttr = NamedAttribute{rewriter.getIdentifier("callee"),
-                                        rewriter.getFunctionAttr(freeFunc)};
+    auto freeNamedAttr =
+        rewriter.getNamedAttr("callee", rewriter.getFunctionAttr(freeFunc));
     rewriter.create<LLVM::CallOp>(op->getLoc(), casted,
                                   llvm::makeArrayRef(freeNamedAttr));
     return {};

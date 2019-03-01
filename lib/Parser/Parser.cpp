@@ -3026,8 +3026,7 @@ public:
     if (!result)
       return true;
 
-    attrs.push_back(
-        NamedAttribute(parser.builder.getIdentifier(attrName), result));
+    attrs.push_back(parser.builder.getNamedAttr(attrName, result));
     return false;
   }
 

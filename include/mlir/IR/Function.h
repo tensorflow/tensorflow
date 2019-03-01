@@ -236,9 +236,15 @@ public:
   void setAttr(Identifier name, Attribute value) {
     attrs.set(getContext(), name, value);
   }
+  void setAttr(StringRef name, Attribute value) {
+    setAttr(Identifier::get(name, getContext()), value);
+  }
   void setArgAttr(unsigned index, Identifier name, Attribute value) {
     assert(index < getNumArguments() && "invalid argument number");
     argAttrs[index].set(getContext(), name, value);
+  }
+  void setArgAttr(unsigned index, StringRef name, Attribute value) {
+    setArgAttr(index, Identifier::get(name, getContext()), value);
   }
 
   /// Remove the attribute with the specified name if it exists.  The return

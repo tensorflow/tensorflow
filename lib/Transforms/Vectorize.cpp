@@ -972,10 +972,9 @@ static Value *vectorizeConstant(Instruction *inst, const ConstantOp &constant,
   auto attr = SplatElementsAttr::get(vectorType, constant.getValue());
   auto *constantOpInst = constant.getInstruction();
 
-  OperationState state(
-      b.getContext(), loc, constantOpInst->getName().getStringRef(), {},
-      {vectorType},
-      {std::make_pair(Identifier::get("value", b.getContext()), attr)});
+  OperationState state(b.getContext(), loc,
+                       constantOpInst->getName().getStringRef(), {},
+                       {vectorType}, {b.getNamedAttr("value", attr)});
 
   return b.createOperation(state)->getResult(0);
 }

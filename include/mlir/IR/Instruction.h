@@ -411,6 +411,9 @@ public:
   void setAttr(Identifier name, Attribute value) {
     attrs.set(getContext(), name, value);
   }
+  void setAttr(StringRef name, Attribute value) {
+    setAttr(Identifier::get(name, getContext()), value);
+  }
 
   /// Remove the attribute with the specified name if it exists.  The return
   /// value indicates whether the attribute was present or not.

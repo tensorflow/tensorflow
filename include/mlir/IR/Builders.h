@@ -94,6 +94,8 @@ public:
   }
 
   // Attributes.
+  NamedAttribute getNamedAttr(StringRef name, Attribute val);
+
   BoolAttr getBoolAttr(bool value);
   IntegerAttr getIntegerAttr(Type type, int64_t value);
   IntegerAttr getIntegerAttr(Type type, const APInt &value);

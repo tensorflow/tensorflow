@@ -100,6 +100,10 @@ UnrankedTensorType Builder::getTensorType(Type elementType) {
 // Attributes.
 //===----------------------------------------------------------------------===//
 
+NamedAttribute Builder::getNamedAttr(StringRef name, Attribute val) {
+  return NamedAttribute(getIdentifier(name), val);
+}
+
 BoolAttr Builder::getBoolAttr(bool value) {
   return BoolAttr::get(value, context);
 }
