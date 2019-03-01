@@ -648,7 +648,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=0)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -669,7 +669,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=2)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
