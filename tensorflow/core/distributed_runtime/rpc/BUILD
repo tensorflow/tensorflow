@@ -420,7 +420,7 @@ tf_cuda_cc_tests(
         "rpc_rendezvous_mgr_test.cc",
     ],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),

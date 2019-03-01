@@ -56,7 +56,7 @@ cc_library(
             "@mkl_linux//:mkl_headers",
             "@mkl_linux//:mkl_libs_linux",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "@mkl_darwin//:mkl_headers",
             "@mkl_darwin//:mkl_libs_darwin",
         ],

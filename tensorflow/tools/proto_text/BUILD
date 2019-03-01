@@ -50,7 +50,7 @@ cc_library(
     copts = if_ios(["-DGOOGLE_LOGGING"]),
     linkopts = select({
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-lm",
             "-lpthread",
         ],
