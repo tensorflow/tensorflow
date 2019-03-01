@@ -178,6 +178,7 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     """Helper method to convert a GraphDef or SavedModel using TF-TRT."""
     converter = trt_convert.TrtGraphConverter(
         input_saved_model_dir=input_saved_model_dir,
+        input_saved_model_signature_key="mypredict",
         input_graph_def=None if input_saved_model_dir else self._GetGraphDef(),
         nodes_blacklist=["output"],
         session_config=self._GetConfigProto(),
