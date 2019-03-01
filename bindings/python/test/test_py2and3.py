@@ -30,6 +30,17 @@ class EdscTest(unittest.TestCase):
       str = expr.__str__()
       self.assertIn("($1 * ($2 + $3))", str)
 
+  def testCustomOp(self):
+    with E.ContextManager():
+      a, b = (E.Expr(E.Bindable(self.i32Type)) for _ in range(2))
+      c1 = self.module.op(
+          "constant",
+          self.i32Type, [],
+          value=self.module.integerAttr(self.i32Type, 42))
+      expr = self.module.op("addi", self.i32Type, [c1, b])
+      str = expr.__str__()
+      self.assertIn("addi(42, $2)", str)
+
   def testOneLoop(self):
     with E.ContextManager():
       i, lb, ub, step = list(
@@ -318,6 +329,39 @@ class EdscTest(unittest.TestCase):
       # print(str)
       self.module.compile()
       self.assertNotEqual(self.module.get_engine_address(), 0)
+
+  def testCustomOpEmission(self):
+    f = self.module.make_function("fooer", [self.i32Type, self.i32Type], [])
+    with E.ContextManager():
+      emitter = E.MLIRFunctionEmitter(f)
+      funcArg1, funcArg2 = emitter.bind_function_arguments()
+      boolAttr = self.module.boolAttr(True)
+      expr = self.module.op(
+          "foo", self.i32Type, [funcArg1, funcArg2], attr=boolAttr)
+      block = E.Block([E.Stmt(expr), E.Return()])
+      emitter.emit_inplace(block)
+
+      code = str(f)
+      self.assertIn('%0 = "foo"(%arg0, %arg1) {attr: true} : (i32, i32) -> i32',
+                    code)
+
+  # Create 'addi' using the generic Op interface.  We need an operation known
+  # to the execution engine so that the engine can compile it.
+  def testCustomOpCompilation(self):
+    f = self.module.make_function("adder", [self.i32Type], [])
+    with E.ContextManager():
+      emitter = E.MLIRFunctionEmitter(f)
+      funcArg, = emitter.bind_function_arguments()
+      c1 = self.module.op(
+          "constant",
+          self.i32Type, [],
+          value=self.module.integerAttr(self.i32Type, 42))
+      expr = self.module.op("addi", self.i32Type, [c1, funcArg])
+      block = E.Block([E.Stmt(expr), E.Return()])
+      emitter.emit_inplace(block)
+      self.module.compile()
+      self.assertNotEqual(self.module.get_engine_address(), 0)
+
 
   def testMLIREmission(self):
     shape = [3, 4, 5]

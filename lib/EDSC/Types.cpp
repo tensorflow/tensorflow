@@ -408,6 +408,20 @@ llvm::SmallVector<Expr, 8> mlir::edsc::makeNewExprs(unsigned n, Type type) {
   return res;
 }
 
+template <typename Target, size_t N, typename Source>
+SmallVector<Target, N> convertCList(Source list) {
+  SmallVector<Target, N> result;
+  result.reserve(list.n);
+  for (unsigned i = 0; i < list.n; ++i) {
+    result.push_back(Target(list.list[i]));
+  }
+  return result;
+}
+
+SmallVector<StmtBlock, 4> makeBlocks(edsc_block_list_t list) {
+  return convertCList<StmtBlock, 4>(list);
+}
+
 static llvm::SmallVector<Expr, 8> makeExprs(edsc_expr_list_t exprList) {
   llvm::SmallVector<Expr, 8> exprs;
   exprs.reserve(exprList.n);
@@ -423,6 +437,28 @@ static void fillStmts(edsc_stmt_list_t enclosedStmts,
   for (unsigned i = 0; i < enclosedStmts.n; ++i) {
     stmts->push_back(Stmt(enclosedStmts.stmts[i]));
   }
+}
+
+edsc_expr_t Op(mlir_context_t context, const char *name, mlir_type_t resultType,
+               edsc_expr_list_t arguments, edsc_block_list_t successors,
+               mlir_named_attr_list_t attrs) {
+  mlir::MLIRContext *ctx = reinterpret_cast<mlir::MLIRContext *>(context);
+
+  auto blocks = makeBlocks(successors);
+
+  SmallVector<NamedAttribute, 4> attributes;
+  attributes.reserve(attrs.n);
+  for (int i = 0; i < attrs.n; ++i) {
+    auto attribute = Attribute::getFromOpaquePointer(
+        reinterpret_cast<const void *>(attrs.list[i].value));
+    auto name = Identifier::get(attrs.list[i].name, ctx);
+    attributes.emplace_back(name, attribute);
+  }
+
+  return VariadicExpr(
+      name, makeExprs(arguments),
+      Type::getFromOpaquePointer(reinterpret_cast<const void *>(resultType)),
+      attributes, blocks);
 }
 
 Expr mlir::edsc::alloc(llvm::ArrayRef<Expr> sizes, Type memrefType) {
@@ -880,6 +916,7 @@ void mlir::edsc::Expr::print(raw_ostream &os) const {
   // Special case for integer constants that are printed as is.  Use
   // sign-extended result for everything but i1 (booleans).
   if (this->is_op<ConstantIndexOp>() || this->is_op<ConstantIntOp>()) {
+    assert(getAttribute("value"));
     APInt value = getAttribute("value").cast<IntegerAttr>().getValue();
     if (value.getBitWidth() == 1)
       os << value.getZExtValue();
@@ -1326,6 +1363,18 @@ mlir_type_t makeIndexType(mlir_context_t context) {
   auto *ctx = reinterpret_cast<mlir::MLIRContext *>(context);
   auto type = mlir::IndexType::get(ctx);
   return mlir_type_t{type.getAsOpaquePointer()};
+}
+
+mlir_attr_t makeIntegerAttr(mlir_type_t type, int64_t value) {
+  auto ty = Type::getFromOpaquePointer(reinterpret_cast<const void *>(type));
+  auto attr = IntegerAttr::get(ty, value);
+  return mlir_attr_t{attr.getAsOpaquePointer()};
+}
+
+mlir_attr_t makeBoolAttr(mlir_context_t context, bool value) {
+  auto *ctx = reinterpret_cast<mlir::MLIRContext *>(context);
+  auto attr = BoolAttr::get(value, ctx);
+  return mlir_attr_t{attr.getAsOpaquePointer()};
 }
 
 unsigned getFunctionArity(mlir_func_t function) {

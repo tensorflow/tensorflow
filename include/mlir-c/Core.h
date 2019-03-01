@@ -36,6 +36,8 @@ typedef void *mlir_context_t;
 typedef const void *mlir_type_t;
 /// Opaque C type for mlir::Function*.
 typedef void *mlir_func_t;
+/// Opaque C type for mlir::Attribute.
+typedef const void *mlir_attr_t;
 /// Opaque C type for mlir::edsc::MLIREmiter.
 typedef void *edsc_mlir_emitter_t;
 /// Opaque C type for mlir::edsc::Expr.
@@ -85,6 +87,21 @@ typedef struct {
   uint64_t n;
 } edsc_indexed_list_t;
 
+typedef struct {
+  edsc_block_t *list;
+  uint64_t n;
+} edsc_block_list_t;
+
+typedef struct {
+  const char *name;
+  mlir_attr_t value;
+} mlir_named_attr_t;
+
+typedef struct {
+  mlir_named_attr_t *list;
+  uint64_t n;
+} mlir_named_attr_list_t;
+
 /// Minimal C API for exposing EDSCs to Swift, Python and other languages.
 
 /// Returns a simple scalar mlir::Type using the following convention:
@@ -112,6 +129,13 @@ mlir_type_t makeFunctionType(mlir_context_t context, mlir_type_list_t inputs,
 
 /// Returns an `mlir::IndexType`.
 mlir_type_t makeIndexType(mlir_context_t context);
+
+/// Returns an `mlir::IntegerAttr` of the specified type that contains the given
+/// value.
+mlir_attr_t makeIntegerAttr(mlir_type_t type, int64_t value);
+
+/// Returns an `mlir::BoolAttr` with the given value.
+mlir_attr_t makeBoolAttr(mlir_context_t context, bool value);
 
 /// Returns the arity of `function`.
 unsigned getFunctionArity(mlir_func_t function);
@@ -211,6 +235,12 @@ edsc_indexed_t makeIndexed(edsc_expr_t expr);
 /// Prerequisite:
 ///   - `indexed` must not have been indexed previously.
 edsc_indexed_t index(edsc_indexed_t indexed, edsc_expr_list_t indices);
+
+/// Returns an opaque expression that will emit an abstract operation identified
+/// by its name.
+edsc_expr_t Op(mlir_context_t context, const char *name, mlir_type_t resultType,
+               edsc_expr_list_t arguments, edsc_block_list_t successors,
+               mlir_named_attr_list_t attrs);
 
 /// Returns an opaque expression that will emit an mlir::LoadOp.
 edsc_expr_t Load(edsc_indexed_t indexed, edsc_expr_list_t indices);

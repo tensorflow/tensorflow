@@ -33,6 +33,7 @@ namespace python {
 
 namespace py = pybind11;
 
+struct PythonAttribute;
 struct PythonBindable;
 struct PythonExpr;
 struct PythonStmt;
@@ -122,6 +123,17 @@ struct PythonMLIRModule {
     declaration.define();
     return declaration;
   }
+
+  // Create a custom op given its name and arguments.
+  PythonExpr op(const std::string &name, PythonType type,
+                const py::list &arguments, const py::list &successors,
+                py::kwargs attributes);
+
+  // Create an integer attribute.
+  PythonAttribute integerAttr(PythonType type, int64_t value);
+
+  // Create a boolean attribute.
+  PythonAttribute boolAttr(bool value);
 
   void compile() {
     auto created = mlir::ExecutionEngine::create(module.get());
@@ -216,6 +228,26 @@ struct PythonBlock {
   edsc_block_t blk;
 };
 
+struct PythonAttribute {
+  PythonAttribute() : attr(nullptr) {}
+  PythonAttribute(const mlir_attr_t &a) : attr(a) {}
+  PythonAttribute(const PythonAttribute &other) = default;
+  operator mlir_attr_t() { return attr; }
+
+  std::string str() {
+    if (!attr)
+      return "##null attr##";
+
+    std::string res;
+    llvm::raw_string_ostream os(res);
+    Attribute::getFromOpaquePointer(reinterpret_cast<const void *>(attr))
+        .print(os);
+    return res;
+  }
+
+  mlir_attr_t attr;
+};
+
 struct PythonIndexed : public edsc_indexed_t {
   PythonIndexed(PythonExpr e) : edsc_indexed_t{makeIndexed(e)} {}
   PythonIndexed(PythonBindable b) : edsc_indexed_t{makeIndexed(b)} {}
@@ -273,28 +305,33 @@ private:
   edsc_mlir_emitter_t c_emitter;
 };
 
+template <typename ListTy, typename PythonTy, typename Ty>
+ListTy makeCList(SmallVectorImpl<Ty> &owning, const py::list &list) {
+  for (auto &inp : list) {
+    owning.push_back(Ty{inp.cast<PythonTy>()});
+  }
+  return ListTy{owning.data(), owning.size()};
+}
+
 static edsc_stmt_list_t makeCStmts(llvm::SmallVectorImpl<edsc_stmt_t> &owning,
                                    const py::list &stmts) {
-  for (auto &inp : stmts) {
-    owning.push_back(edsc_stmt_t{inp.cast<PythonStmt>()});
-  }
-  return edsc_stmt_list_t{owning.data(), owning.size()};
+  return makeCList<edsc_stmt_list_t, PythonStmt>(owning, stmts);
 }
 
 static edsc_expr_list_t makeCExprs(llvm::SmallVectorImpl<edsc_expr_t> &owning,
                                    const py::list &exprs) {
-  for (auto &inp : exprs) {
-    owning.push_back(edsc_expr_t{inp.cast<PythonExpr>()});
-  }
-  return edsc_expr_list_t{owning.data(), owning.size()};
+  return makeCList<edsc_expr_list_t, PythonExpr>(owning, exprs);
 }
 
 static mlir_type_list_t makeCTypes(llvm::SmallVectorImpl<mlir_type_t> &owning,
                                    const py::list &types) {
-  for (auto &inp : types) {
-    owning.push_back(mlir_type_t{inp.cast<PythonType>()});
-  }
-  return mlir_type_list_t{owning.data(), owning.size()};
+  return makeCList<mlir_type_list_t, PythonType>(owning, types);
+}
+
+static edsc_block_list_t
+makeCBlocks(llvm::SmallVectorImpl<edsc_block_t> &owning,
+            const py::list &blocks) {
+  return makeCList<edsc_block_list_t, PythonBlock>(owning, blocks);
 }
 
 PythonExpr::PythonExpr(const PythonBindable &bindable) : expr{bindable.expr} {}
@@ -388,6 +425,37 @@ void MLIRFunctionEmitter::emitBlock(PythonBlock block) {
 
 void MLIRFunctionEmitter::emitBlockBody(PythonBlock block) {
   emitter.emitStmts(StmtBlock(block).getBody());
+}
+
+PythonExpr PythonMLIRModule::op(const std::string &name, PythonType type,
+                                const py::list &arguments,
+                                const py::list &successors,
+                                py::kwargs attributes) {
+  SmallVector<edsc_expr_t, 8> owningExprs;
+  SmallVector<edsc_block_t, 4> owningBlocks;
+  SmallVector<mlir_named_attr_t, 4> owningAttrs;
+  SmallVector<std::string, 4> owningAttrNames;
+
+  owningAttrs.reserve(attributes.size());
+  owningAttrNames.reserve(attributes.size());
+  for (const auto &kvp : attributes) {
+    owningAttrNames.push_back(kvp.first.str());
+    auto value = kvp.second.cast<PythonAttribute>();
+    owningAttrs.push_back({owningAttrNames.back().c_str(), value});
+  }
+
+  return PythonExpr(::Op(mlir_context_t(&mlirContext), name.c_str(), type,
+                         makeCExprs(owningExprs, arguments),
+                         makeCBlocks(owningBlocks, successors),
+                         {owningAttrs.data(), owningAttrs.size()}));
+}
+
+PythonAttribute PythonMLIRModule::integerAttr(PythonType type, int64_t value) {
+  return PythonAttribute(::makeIntegerAttr(type, value));
+}
+
+PythonAttribute PythonMLIRModule::boolAttr(bool value) {
+  return PythonAttribute(::makeBoolAttr(&mlirContext, value));
 }
 
 PythonBlock PythonBlock::set(const py::list &stmts) {
@@ -548,6 +616,11 @@ PYBIND11_MODULE(pybind, m) {
       .def("set", &PythonBlock::set)
       .def("__str__", &PythonBlock::str);
 
+  py::class_<PythonAttribute>(m, "Attribute",
+                              "Wrapping class for mlir::Attribute")
+      .def(py::init<PythonAttribute>())
+      .def("__str__", &PythonAttribute::str);
+
   py::class_<PythonType>(m, "Type", "Wrapping class for mlir::Type.")
       .def(py::init<PythonType>())
       .def("__str__", &PythonType::str);
@@ -565,6 +638,15 @@ PYBIND11_MODULE(pybind, m) {
       "directly require integration with a tensor library (e.g. numpy). This "
       "is left as the prerogative of libraries and frameworks for now.")
       .def(py::init<>())
+      .def("op", &PythonMLIRModule::op, py::arg("name"), py::arg("type"),
+           py::arg("arguments"), py::arg("successors") = py::list(),
+           "Creates a new expression identified by its canonical name.")
+      .def("boolAttr", &PythonMLIRModule::boolAttr,
+           "Creates an mlir::BoolAttr with the given value")
+      .def(
+          "integerAttr", &PythonMLIRModule::integerAttr,
+          "Creates an mlir::IntegerAttr of the given type with the given value "
+          "in the context associated with this MLIR module.")
       .def("declare_function", &PythonMLIRModule::declareFunction,
            "Declares a new mlir::Function in the current mlir::Module.  The "
            "function has no definition and can be linked to an external "

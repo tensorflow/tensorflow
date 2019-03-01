@@ -128,6 +128,14 @@ public:
   void print(raw_ostream &os) const;
   void dump() const;
 
+  /// Get an opaque pointer to the attribute.
+  const void *getAsOpaquePointer() const { return attr; }
+  /// Construct an attribute from the opaque pointer representation.
+  static Attribute getFromOpaquePointer(const void *ptr) {
+    return Attribute(
+        const_cast<ImplType *>(reinterpret_cast<const ImplType *>(ptr)));
+  }
+
   friend ::llvm::hash_code hash_value(Attribute arg);
 
 protected:
