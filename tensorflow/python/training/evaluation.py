@@ -254,7 +254,7 @@ def _evaluate_once(checkpoint_path,
         h._set_evals_completed_tensor(eval_step_value)  # pylint: disable=protected-access
 
   logging.info('Starting evaluation at ' + time.strftime('%Y-%m-%dT%H:%M:%SZ',
-                                                         time.gmtime()))
+                                                         time.localtime()))
 
   # Prepare the session creator.
   session_creator = monitored_session.ChiefSessionCreator(
@@ -274,5 +274,5 @@ def _evaluate_once(checkpoint_path,
         session.run(eval_ops, feed_dict)
 
   logging.info('Finished evaluation at ' + time.strftime('%Y-%m-%d-%H:%M:%S',
-                                                         time.gmtime()))
+                                                         time.localtime()))
   return final_ops_hook.final_ops_values
