@@ -73,6 +73,7 @@ py_library(
     deps = [
         ":no_contrib",
         "//tensorflow/python/estimator:estimator_py",
+        "//tensorflow/python/tpu:tpu_estimator",
     ] + if_not_v2(["//tensorflow/contrib:contrib_py"]),
 )
 
@@ -180,6 +181,7 @@ py_library(
         "//tensorflow/python/distribute",
         "//tensorflow/python/distribute:estimator_training",
         "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:execution_callbacks",
         "//tensorflow/python/eager:profiler",
         "//tensorflow/python/eager:profiler_client",
         "//tensorflow/python/eager:remote",
