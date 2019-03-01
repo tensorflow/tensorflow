@@ -117,7 +117,7 @@ class Conv1D(keras_layers.Conv1D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use tf.keras.layers.Conv1D instead.')
+    instructions='Use `tf.keras.layers.Conv1D` instead.')
 @tf_export(v1=['layers.conv1d'])
 def conv1d(inputs,
            filters,
@@ -316,7 +316,7 @@ class Conv2D(keras_layers.Conv2D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use tf.keras.layers.Conv2D instead.')
+    instructions='Use `tf.keras.layers.Conv2D` instead.')
 @tf_export(v1=['layers.conv2d'])
 def conv2d(inputs,
            filters,
@@ -523,7 +523,7 @@ class Conv3D(keras_layers.Conv3D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use tf.keras.layers.Conv3D instead.')
+    instructions='Use `tf.keras.layers.Conv3D` instead.')
 @tf_export(v1=['layers.conv3d'])
 def conv3d(inputs,
            filters,
@@ -853,7 +853,7 @@ class SeparableConv2D(keras_layers.SeparableConv2D, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use tf.keras.layers.SeparableConv1D instead.')
+    instructions='Use `tf.keras.layers.SeparableConv1D` instead.')
 @tf_export(v1=['layers.separable_conv1d'])
 def separable_conv1d(inputs,
                      filters,
@@ -973,7 +973,7 @@ def separable_conv1d(inputs,
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use tf.keras.layers.SeparableConv2D instead.')
+    instructions='Use `tf.keras.layers.SeparableConv2D` instead.')
 @tf_export(v1=['layers.separable_conv2d'])
 def separable_conv2d(inputs,
                      filters,
@@ -1183,7 +1183,7 @@ class Conv2DTranspose(keras_layers.Conv2DTranspose, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use tf.keras.layers.Conv2DTranspose instead.')
+    instructions='Use `tf.keras.layers.Conv2DTranspose` instead.')
 @tf_export(v1=['layers.conv2d_transpose'])
 def conv2d_transpose(inputs,
                      filters,
@@ -1363,7 +1363,7 @@ class Conv3DTranspose(keras_layers.Conv3DTranspose, base.Layer):
 
 @deprecation.deprecated(
     date=None,
-    instructions='Use tf.keras.layers.Conv3DTranspose instead.')
+    instructions='Use `tf.keras.layers.Conv3DTranspose` instead.')
 @tf_export(v1=['layers.conv3d_transpose'])
 def conv3d_transpose(inputs,
                      filters,
