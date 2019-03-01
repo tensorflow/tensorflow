@@ -80,6 +80,22 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
   }
 }
 
+bool ShouldSkipPadOnOperand(const HloInstruction* inst, int64 operand_num,
+                            int64 dimension) {
+  if ((inst->opcode() == HloOpcode::kReduceWindow ||
+       inst->opcode() == HloOpcode::kSelectAndScatter) &&
+      operand_num == 0 && inst->window().dimensions(dimension).size() == 1) {
+    return true;
+  }
+
+  if (operand_num == 0 && inst->opcode() == HloOpcode::kConvolution &&
+      inst->convolution_dimension_numbers().input_batch_dimension() ==
+          dimension) {
+    return true;
+  }
+  return false;
+}
+
 }  // namespace
 
 StatusOr<bool> DynamicPadder::Run(HloModule* module) {
@@ -105,6 +121,11 @@ StatusOr<bool> DynamicPadder::Run(HloModule* module) {
           }
           VLOG(1) << "Has dynamic dimension of operand" << operand_num << " @"
                   << dim;
+
+          if (ShouldSkipPadOnOperand(inst, operand_num, dim)) {
+            continue;
+          }
+
           TF_ASSIGN_OR_RETURN(HloInstruction * identity_value,
                               ChooseIdentityValue(inst));
           if (identity_value == nullptr) {

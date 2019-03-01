@@ -648,7 +648,7 @@ class NNAPIDelegateKernel {
             // Note that we add the squeeze dimensions even if the dimensions
             // were unspecified (empty), as NNAPI requires the operand.
             mapping_args.builder->AddVectorInt32Operand(
-                builtin->squeeze_dims,
+                builtin->num_squeeze_dims ? builtin->squeeze_dims : nullptr,
                 static_cast<uint32_t>(builtin->num_squeeze_dims));
             return ANEURALNETWORKS_SQUEEZE;
           };
@@ -696,9 +696,10 @@ class NNAPIDelegateKernel {
         if (version == 1 &&
             reinterpret_cast<TfLiteConcatenationParams*>(node->builtin_data)
                     ->activation == kTfLiteActNone) {
-          if (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8) {
-            // NNAPI only support concatenating quantized tensor of the same
-            // scale and offset.
+          if (context->tensors[node->inputs->data[0]].type == kTfLiteUInt8 &&
+              android_sdk_version < kMinSdkVersionForNNAPI12) {
+            // NNAPI 1.0-1 only supported concatenating quantized tensor of the
+            // same scale and offset.
             auto first_param = context->tensors[node->inputs->data[0]].params;
             for (int i = 1; i < node->inputs->size; i++) {
               auto curr_param = context->tensors[node->inputs->data[i]].params;

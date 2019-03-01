@@ -205,6 +205,7 @@ cc_library(
         "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
         "reverse.cc",
+        "reverse_sequence.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -1369,6 +1370,18 @@ tf_cc_test(
     srcs = ["subgraph_test_util_test.cc"],
     deps = [
         ":subgraph_test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "reverse_sequence_test",
+    size = "small",
+    srcs = ["reverse_sequence_test.cc"],
+    deps = [
+        ":builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

@@ -18,13 +18,16 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl.testing import parameterized
+
 from tensorflow.python import keras
+from tensorflow.python import tf2
 from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.platform import test
 
 
 @tf_test_util.run_all_in_graph_and_eager_modes
-class LayerSerializationTest(test.TestCase):
+class LayerSerializationTest(parameterized.TestCase, test.TestCase):
 
   def test_serialize_deserialize(self):
     layer = keras.layers.Dense(
@@ -34,8 +37,12 @@ class LayerSerializationTest(test.TestCase):
     self.assertEqual(new_layer.activation, keras.activations.relu)
     self.assertEqual(new_layer.bias_regularizer.__class__,
                      keras.regularizers.L1L2)
-    self.assertEqual(new_layer.kernel_initializer.__class__,
-                     keras.initializers.Ones)
+    if tf2.enabled():
+      self.assertEqual(new_layer.kernel_initializer.__class__,
+                       keras.initializers.OnesV2)
+    else:
+      self.assertEqual(new_layer.kernel_initializer.__class__,
+                       keras.initializers.Ones)
     self.assertEqual(new_layer.units, 3)
 
   def test_serialize_deserialize_batchnorm(self):
@@ -45,10 +52,40 @@ class LayerSerializationTest(test.TestCase):
     self.assertEqual(config['class_name'], 'BatchNormalization')
     new_layer = keras.layers.deserialize(config)
     self.assertEqual(new_layer.momentum, 0.9)
-    self.assertEqual(new_layer.beta_initializer.__class__,
-                     keras.initializers.Zeros)
+    if tf2.enabled():
+      self.assertEqual(new_layer.beta_initializer.__class__,
+                       keras.initializers.ZerosV2)
+    else:
+      self.assertEqual(new_layer.beta_initializer.__class__,
+                       keras.initializers.Zeros)
     self.assertEqual(new_layer.gamma_regularizer.__class__,
                      keras.regularizers.L1L2)
+
+  @parameterized.parameters([keras.layers.LSTM, keras.layers.UnifiedLSTM])
+  def test_serialize_deserialize_lstm(self, layer):
+    lstm = layer(5, return_sequences=True)
+    config = keras.layers.serialize(lstm)
+    self.assertEqual(config['class_name'], 'LSTM')
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.units, 5)
+    self.assertEqual(new_layer.return_sequences, True)
+    if tf2.enabled():
+      self.assertIsInstance(new_layer, keras.layers.UnifiedLSTM)
+    else:
+      self.assertIsInstance(new_layer, keras.layers.LSTM)
+
+  @parameterized.parameters([keras.layers.GRU, keras.layers.UnifiedGRU])
+  def test_serialize_deserialize_gru(self, layer):
+    gru = layer(5, return_sequences=True)
+    config = keras.layers.serialize(gru)
+    self.assertEqual(config['class_name'], 'GRU')
+    new_layer = keras.layers.deserialize(config)
+    self.assertEqual(new_layer.units, 5)
+    self.assertEqual(new_layer.return_sequences, True)
+    if tf2.enabled():
+      self.assertIsInstance(new_layer, keras.layers.UnifiedGRU)
+    else:
+      self.assertIsInstance(new_layer, keras.layers.GRU)
 
 if __name__ == '__main__':
   test.main()

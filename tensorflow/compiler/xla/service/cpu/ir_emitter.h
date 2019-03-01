@@ -72,13 +72,15 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   //              index in the profiling array.
   // computation_to_profile_idx: the mapping from HLO computations to their
   //              index in the profiling array.
+  // emit_code_for_msan: whether emitted code should be compatible with msan.
   IrEmitter(const HloModule& hlo_module, const BufferAssignment& assignment,
             llvm::Module* llvm_module,
             std::unordered_map<const HloInstruction*, int64>
                 instruction_to_profile_idx,
             std::unordered_map<const HloComputation*, int64>
                 computation_to_profile_idx,
-            const TargetMachineFeatures* target_machine);
+            const TargetMachineFeatures* target_machine,
+            bool emit_code_for_msan);
   ~IrEmitter() override;
 
   // Emit and return the given HLO computation as an LLVM IR
@@ -116,6 +118,23 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const HloMapInstruction& map_instr,
       absl::Span<llvm::Value* const> elemental_operands,
       absl::string_view name);
+  // Emit code to emit the element at `index` for a reduce window instruction.
+  StatusOr<llvm::Value*> EmitElementalReduceWindow(
+      const HloReduceWindowInstruction* reduce_window,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::IrArray::Index& index);
+  // Emit code to emit the element at `index` for a convolution instruction.
+  StatusOr<llvm::Value*> EmitElementalConvolution(
+      const HloConvolutionInstruction* convolution,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::ElementGenerator& kernel_generator,
+      const llvm_ir::IrArray::Index& index);
+  // Emit code to emit the element at `index` for a reduce instruction.
+  StatusOr<llvm::Value*> EmitElementalReduce(
+      const HloReduceInstruction* reduce,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::ElementGenerator& initial_value_generator,
+      const llvm_ir::IrArray::Index& index);
 
  protected:
   //
@@ -125,6 +144,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* hlo) override;
 
+  Status HandleAllToAll(HloInstruction* instruction) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleCopy(HloInstruction* copy) override;
@@ -524,17 +544,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
 
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForMap(
-      HloMapInstruction* map, const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduceWindow(
-      HloReduceWindowInstruction* reduce_window,
-      const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForConvolution(
-      HloConvolutionInstruction* convolution,
-      const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduce(
-      HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index);
-
   enum class XfeedKind {
     kInfeed,
     kOutfeed,
@@ -573,6 +582,8 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   std::vector<const HloComputation*> thread_local_computations_;
   std::vector<const HloComputation*> global_computations_;
+
+  bool emit_code_for_msan_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(IrEmitter);
 };

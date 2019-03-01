@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -952,6 +953,22 @@ class ConstantValueTest(test.TestCase):
                                 constant_op.constant([[0], [1]]))
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(c_val, [[False, True], [True, False]])
+
+  def testLiteral(self):
+    x = "hi"
+    self.assertIs(x, tensor_util.constant_value(x))
+
+  def testNumpyNdarray(self):
+    np_val = np.random.rand(3, 4, 7).astype(np.float32)
+    self.assertIs(np_val, tensor_util.constant_value(np_val))
+
+  def testVariable(self):
+    var = variables.Variable(1.0, name="variable_node")
+    self.assertIsNone(tensor_util.constant_value(var))
+
+  def testVariableV1(self):
+    var = variables.VariableV1(1.0, name="variable_node")
+    self.assertIsNone(tensor_util.constant_value(var))
 
 
 class ConstantValueAsShapeTest(test.TestCase):

@@ -28,9 +28,10 @@
 #   TF_PYTHON_VERSION:   (python2 | python2.7 | python3.5 | python3.7)
 #
 # Optional environment variables. If provided, overwrites any default values.
-#   TF_BUILD_FLAGS:      Bazel build flags excluding `--test_tag_filters` and
-#                        test targets.
-#                          e.g. TF_BUILD_FLAGS="--verbose_failures=true \
+#   TF_BUILD_FLAGS:      Bazel build flags.
+#                          e.g. TF_BUILD_FLAGS="--config=opt"
+#   TF_TEST_FLAGS:       Bazel test flags.
+#                          e.g. TF_TEST_FLAGS="--verbose_failures=true \
 #                               --build_tests_only --test_output=errors"
 #   TF_TEST_FILTER_TAGS: Filtering tags for bazel tests. More specifically,
 #                        input tags for `--test_filter_tags` flag.
@@ -38,7 +39,7 @@
 #   TF_TEST_TARGETS:     Bazel test targets.
 #                          e.g. TF_TEST_TARGETS="//tensorflow/contrib/... \
 #                               //tensorflow/... \
-#                               //tensorflow/python/... "
+#                               //tensorflow/python/..."
 #   TF_PIP_TESTS:        PIP tests to run. If NOT specified, skips all tests.
 #                          e.g. TF_PIP_TESTS="test_pip_virtualenv_clean \
 #                               test_pip_virtualenv_clean \
@@ -134,8 +135,10 @@ update_bazel_flags() {
   fi
   # Clean up whitespaces
   BAZEL_BUILD_FLAGS=$(str_strip "${BAZEL_BUILD_FLAGS}")
+  BAZEL_TEST_FLAGS=$(str_strip "${BAZEL_TEST_FLAGS}")
   # Cleaned bazel flags
   echo "Bazel build flags (cleaned):\n" "${BAZEL_BUILD_FLAGS}"
+  echo "Bazel test flags (cleaned):\n" "${BAZEL_TEST_FLAGS}"
 }
 
 update_test_filter_tags() {
@@ -210,7 +213,8 @@ echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH} (version: ${PYTHON_VER_CFG})"
 
 # Default values for optional global variables in case they are not user
 # defined.
-DEFAULT_BAZEL_BUILD_FLAGS='--test_output=errors --verbose_failures=true'
+DEFAULT_BAZEL_BUILD_FLAGS='--config=opt'
+DEFAULT_BAZEL_TEST_FLAGS='--test_output=errors --verbose_failures=true'
 DEFAULT_BAZEL_TEST_FILTERS='-no_oss,-oss_serial'
 DEFAULT_BAZEL_TEST_TARGETS='//tensorflow/python/... -//tensorflow/core/... -//tensorflow/compiler/... '
 DEFAULT_PIP_TESTS="" # Do not run any tests by default
@@ -220,6 +224,7 @@ DEFAULT_PIP_TEST_ROOT="pip_test"
 
 # Take in optional global variables
 BAZEL_BUILD_FLAGS=${TF_BUILD_FLAGS:-$DEFAULT_BAZEL_BUILD_FLAGS}
+BAZEL_TEST_FLAGS=${TF_TEST_FLAGS:-$DEFAULT_BAZEL_TEST_FLAGS}
 BAZEL_TEST_TARGETS=${TF_TEST_TARGETS:-$DEFAULT_BAZEL_TEST_TARGETS}
 BAZEL_TEST_FILTER_TAGS=${TF_TEST_FILTER_TAGS:-$DEFAULT_BAZEL_TEST_FILTERS}
 PIP_TESTS=${TF_PIP_TESTS:-$DEFAULT_PIP_TESTS}
@@ -303,7 +308,7 @@ test_pip_virtualenv_clean() {
   pushd "${TMP_DIR}"
 
   # Run a quick check on tensorflow installation.
-  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2))")
+  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
 
   # Deactivate virtualenv.
   deactivate || source deactivate || die "FAILED: Unable to deactivate from existing virtualenv."
@@ -313,7 +318,7 @@ test_pip_virtualenv_clean() {
   sudo rm -rf "${TMP_DIR}" "${CLEAN_VENV_DIR}"
 
   # Check result to see if tensorflow is properly installed.
-  if [[ ${RET_VAL} == *'Tensor("Add:0", shape=(4,), dtype=int32)'* ]]; then
+  if [[ ${RET_VAL} == *'(4,)'* ]]; then
     echo "PIP test on clean virtualenv PASSED."
     return 0
   else
@@ -337,14 +342,14 @@ test_pip_virtualenv_non_clean() {
   pushd "${TMP_DIR}"
 
   # Run a quick check on tensorflow installation.
-  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2))")
+  RET_VAL=$(python -c "import tensorflow as tf; t1=tf.constant([1,2,3,4]); t2=tf.constant([5,6,7,8]); print(tf.add(t1,t2).shape)")
 
   # Return to original directory. Remove temp dirs.
   popd
   sudo rm -rf "${TMP_DIR}"
 
   # Check result to see if tensorflow is properly installed.
-  if ! [[ ${RET_VAL} == *'Tensor("Add:0", shape=(4,), dtype=int32)'* ]]; then
+  if ! [[ ${RET_VAL} == *'(4,)'* ]]; then
     echo "PIP test on virtualenv (non-clean) FAILED"
     return 1
   fi
@@ -538,7 +543,7 @@ run_test_with_bazel() {
 
   # TODO(hyey): Update test target after validation.
   # Run the test.
-  bazel test --build_tests_only ${BAZEL_BUILD_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- //$PIP_TEST_PREFIX/tensorflow/python/...
+  bazel test --build_tests_only ${BAZEL_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- //$PIP_TEST_PREFIX/tensorflow/python/...
 
   unlink ${TEST_ROOT}/tensorflow
 }
@@ -645,22 +650,24 @@ echo "Size of the PIP wheel file built: $(ls -l ${WHL_PATH} | awk '{print $5}')"
 # Run tests (if any is specified).
 run_all_tests
 
-for WHL_PATH in $(ls ${PIP_TEST_ROOT}/${PROJECT_NAME}*.whl); do
+for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
   if [[ "${TF_NEED_CUDA}" -eq "1" ]]; then
     # Copy and rename for gpu manylinux as we do not want auditwheel to package in libcudart.so
     WHL_PATH=${AUDITED_WHL_NAME}
     cp "${WHL_DIR}"/"${WHL_BASE_NAME}" "${WHL_PATH}"
     echo "Copied manylinux1 wheel file at ${WHL_PATH}"
   else
-    # Repair the wheels for cpu manylinux1
-    echo "auditwheel repairing ${WHL_PATH}"
-    auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
+    if [[ ${OS_TYPE} == "ubuntu" ]]; then
+      # Repair the wheels for cpu manylinux1
+      echo "auditwheel repairing ${WHL_PATH}"
+      auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 
-    if [[ -f ${AUDITED_WHL_NAME} ]]; then
-      WHL_PATH=${AUDITED_WHL_NAME}
-      echo "Repaired manylinux1 wheel file at: ${WHL_PATH}"
-    else
-      die "ERROR: Cannot find repaired wheel."
+      if [[ -f ${AUDITED_WHL_NAME} ]]; then
+        WHL_PATH=${AUDITED_WHL_NAME}
+        echo "Repaired manylinux1 wheel file at: ${WHL_PATH}"
+      else
+        die "WARNING: Cannot find repaired wheel."
+      fi
     fi
   fi
 done

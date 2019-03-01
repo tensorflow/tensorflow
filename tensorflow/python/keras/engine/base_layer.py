@@ -26,6 +26,7 @@ import numpy as np
 from six.moves import zip  # pylint: disable=redefined-builtin
 
 from tensorflow.core.framework import node_def_pb2
+from tensorflow.python.distribute import values as distribute_values
 from tensorflow.python.eager import context
 from tensorflow.python.eager import function
 from tensorflow.python.framework import dtypes
@@ -38,6 +39,8 @@ from tensorflow.python.keras import initializers
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer_utils
 from tensorflow.python.keras.engine import input_spec
+from tensorflow.python.keras.mixed_precision.experimental import autocast_variable
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import tf_utils
 # A module that only depends on `keras.layers` import these from here.
@@ -49,6 +52,7 @@ from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
 from tensorflow.python.training.tracking import layer_utils as trackable_layer_utils
+from tensorflow.python.training.tracking import object_identity
 from tensorflow.python.util import function_utils
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
@@ -171,7 +175,9 @@ class Layer(trackable.Trackable):
     # A dictionary that maps metric names to metric result tensors. The results
     # are the running averages of metric values over an epoch.
     self._metrics_tensors = {}
-    self._dtype = None if dtype is None else dtypes.as_dtype(dtype).name
+
+    self._set_dtype_and_policy(dtype)
+
     self._call_fn_args = function_utils.fn_args(self.call)
     self._compute_previous_mask = ('mask' in self._call_fn_args or
                                    hasattr(self, 'compute_mask'))
@@ -213,6 +219,12 @@ class Layer(trackable.Trackable):
       self._initial_weights = kwargs['weights']
     else:
       self._initial_weights = None
+
+    # This flag is used to keep track of whether symbolic tensors are added to
+    # the model outside of the call context. This is required for disabling
+    # `run_eagerly` on compile.
+    # TODO(b/124303407): Remove this flag after we add support for the use case.
+    self._contains_symbolic_tensors = False
 
   def build(self, input_shape):
     """Creates the variables of the layer (optional, for subclass implementers).
@@ -301,10 +313,13 @@ class Layer(trackable.Trackable):
     shape = shape or ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
-      if kwarg not in ['getter', 'collections']:
+      if kwarg not in ['getter', 'collections', 'experimental_autocast']:
         raise TypeError('Unknown keyword argument:', kwarg)
     getter = kwargs.pop('getter', None)
     collections = kwargs.pop('collections', None)
+    # 'experimental_autocast' can be set to False by the caller to indicate an
+    # AutoCastVariable should never be created.
+    autocast = kwargs.pop('experimental_autocast', True)
 
     if dtype is None:
       dtype = self.dtype or backend.floatx()
@@ -361,6 +376,12 @@ class Layer(trackable.Trackable):
         aggregation=aggregation)
     backend.track_variable(variable)
 
+    if autocast and self._mixed_precision_policy.should_cast_variables:
+      if isinstance(variable, distribute_values.DistributedVariable):
+        variable = autocast_variable.AutoCastDistributedVariable(variable)
+      else:
+        variable = autocast_variable.AutoCastVariable(variable)
+
     if regularizer is not None:
       # TODO(fchollet): in the future, this should be handled at the
       # level of variable creation, and weight regularization losses
@@ -395,6 +416,7 @@ class Layer(trackable.Trackable):
       config['batch_input_shape'] = self._batch_input_shape
     if hasattr(self, 'dtype'):
       config['dtype'] = self.dtype
+    # TODO(reedwm): Handle serializing self._mixed_precision_policy.
     return config
 
   @classmethod
@@ -550,6 +572,13 @@ class Layer(trackable.Trackable):
         # pass to __call__, hence we set previous_mask as the default value.
         kwargs['mask'] = previous_mask
 
+    # Clear eager losses on top level model call.
+    # We are clearing the losses only on the top level model call and not on
+    # every layer/mode call because layer/model may be reused.
+    if (context.executing_eagerly() and
+        not base_layer_utils.is_in_call_context()):
+      self._clear_losses()
+
     with base_layer_utils.call_context():
       # Check input assumptions set after layer building, e.g. input shape.
       if build_graph:
@@ -574,7 +603,14 @@ class Layer(trackable.Trackable):
             kwargs['training'] = backend.learning_phase()
           if not self.dynamic:
             try:
-              outputs = self.call(inputs, *args, **kwargs)
+              with base_layer_utils.autocast_context_manager(
+                  input_list,
+                  self._mixed_precision_policy.should_cast_variables), (
+                      base_layer_utils.AutoAddUpdates(self,
+                                                      inputs)) as auto_updater:
+                outputs = self.call(inputs, *args, **kwargs)
+                auto_updater.set_outputs(outputs)
+
             except TypeError as e:
               messages = ('`tf.Tensor` as a Python `bool` is not allowed',
                           'Tensor objects are only iterable when eager')
@@ -618,7 +654,9 @@ class Layer(trackable.Trackable):
         # Eager execution on data tensors.
         with ops.name_scope(self._name_scope()):
           self._maybe_build(inputs)
-          outputs = self.call(inputs, *args, **kwargs)
+          with base_layer_utils.autocast_context_manager(
+              input_list, self._mixed_precision_policy.should_cast_variables):
+            outputs = self.call(inputs, *args, **kwargs)
           self._handle_activity_regularization(inputs, outputs)
           self._set_mask_metadata(inputs, outputs, previous_mask)
 
@@ -763,9 +801,20 @@ class Layer(trackable.Trackable):
           # Ignoring constant values as this does not affect the gradients.
           return
         if tf_utils.is_symbolic_tensor(loss):
+          if not base_layer_utils.is_in_call_context():
+            self._contains_symbolic_tensors = True
           self._losses.append(_tag_unconditional(loss))
         else:
           self._eager_losses.append(_tag_unconditional(loss))
+
+  @trackable.no_automatic_dependency_tracking
+  def _clear_losses(self):
+    """Used every step in eager to reset losses."""
+    self._eager_losses = []
+    if hasattr(self, '_layers'):
+      for layer in trackable_layer_utils.filter_empty_layer_containers(
+          self._layers):
+        layer._clear_losses()
 
   @doc_controls.for_subclass_implementers
   def add_metric(self, value, aggregation=None, name=None):
@@ -1299,6 +1348,24 @@ class Layer(trackable.Trackable):
   # Methods & attributes below are all private and only used by the framework. #
   ##############################################################################
 
+  def _set_dtype_and_policy(self, dtype):
+    """Sets self._dtype and self._mixed_precision_policy."""
+    if dtype:
+      if isinstance(dtype, policy.Policy):
+        self._mixed_precision_policy = dtype
+        self._dtype = self._mixed_precision_policy.default_variable_dtype
+      else:
+        # If a non-policy dtype is passed, no casting should be done. So we use
+        # the "infer" policy, which does no casting.
+        self._mixed_precision_policy = policy.Policy('infer')
+        self._dtype = dtypes.as_dtype(dtype).name
+    else:
+      self._mixed_precision_policy = policy.global_policy()
+      # If the global policy has not been set, it will be an "infer" policy
+      # without a default variable dtype, and so self._dtype will be None. In
+      # that case, self._dtype will be set when the layer is built or called.
+      self._dtype = self._mixed_precision_policy.default_variable_dtype
+
   def _name_scope(self):
     return self.name
 
@@ -1337,6 +1404,8 @@ class Layer(trackable.Trackable):
       self._metrics.append(metric_obj)
 
   def _symbolic_add_metric(self, value, aggregation=None, name=None):
+    if not base_layer_utils.is_in_call_context():
+      self._contains_symbolic_tensors = True
     if aggregation is None:
       # Iterate over the metrics and check if the given metric exists already.
       # This can happen when a metric instance is created in subclassed model
@@ -1659,15 +1728,73 @@ class Layer(trackable.Trackable):
 
     return nest.map_structure(_make_placeholder_like, output_shapes)
 
+  @property
+  def _obj_reference_counts(self):
+    """A dictionary counting the number of attributes referencing an object."""
+    if not hasattr(self, '_obj_reference_counts_dict'):
+      super(Layer, self).__setattr__(
+          '_obj_reference_counts_dict',
+          object_identity.ObjectIdentityDictionary())
+    return self._obj_reference_counts_dict
+
+  def __delattr__(self, name):
+    existing_value = getattr(self, name, None)
+
+    # If this value is replacing an existing object assigned to an attribute, we
+    # should clean it out to avoid leaking memory. First we check if there are
+    # other attributes referencing it.
+    reference_counts = self._obj_reference_counts
+    if existing_value not in reference_counts:
+      super(Layer, self).__delattr__(name)
+      return
+
+    reference_count = reference_counts[existing_value]
+    if reference_count > 1:
+      # There are other remaining references. We can't remove this object from
+      # _layers etc.
+      reference_counts[existing_value] = reference_count - 1
+      super(Layer, self).__delattr__(name)
+      return
+    else:
+      # This is the last remaining reference.
+      del reference_counts[existing_value]
+
+    super(Layer, self).__delattr__(name)
+
+    if (isinstance(existing_value, Layer)
+        or trackable_layer_utils.has_weights(existing_value)):
+      super(Layer, self).__setattr__(
+          '_layers',
+          [l for l in self._layers if l is not existing_value])
+    if isinstance(existing_value, tf_variables.Variable):
+      super(Layer, self).__setattr__(
+          '_trainable_weights',
+          [w for w in self._trainable_weights if w is not existing_value])
+      super(Layer, self).__setattr__(
+          '_non_trainable_weights',
+          [w for w in self._non_trainable_weights if w is not existing_value])
+
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
-        getattr(self, '_is_graph_network', False)):
+        getattr(self, '_is_graph_network', False) or
+        # Exclude @property.setters from tracking
+        hasattr(self.__class__, name)):
       super(Layer, self).__setattr__(name, value)
       return
 
     # Keep track of trackable objects, for the needs of `Network.save_weights`.
     value = data_structures.sticky_attribute_assignment(
         trackable=self, value=value, name=name)
+
+    reference_counts = self._obj_reference_counts
+    reference_counts[value] = reference_counts.get(value, 0) + 1
+
+    # Clean out the old attribute, which clears _layers and _trainable_weights
+    # if necessary.
+    try:
+      self.__delattr__(name)
+    except AttributeError:
+      pass
 
     # Append value to self._layers if relevant
     if (isinstance(value, Layer) or
@@ -1685,26 +1812,36 @@ class Layer(trackable.Trackable):
           value._use_resource_variables = True
 
     # Append value to list of trainable / non-trainable weights if relevant
-    if isinstance(value, tf_variables.Variable):
-      # Users may add extra weights/variables
-      # simply by assigning them to attributes (invalid for graph networks)
-      if not hasattr(self, '_trainable_weights'):
-        super(Layer, self).__setattr__('_trainable_weights', [])
-      if not hasattr(self, '_non_trainable_weights'):
-        super(Layer, self).__setattr__('_non_trainable_weights', [])
-      if value not in self._trainable_weights + self._non_trainable_weights:
-        if value.trainable:
-          self._trainable_weights.append(value)
-        else:
-          self._non_trainable_weights.append(value)
+    # TODO(b/125122625): This won't pick up on any variables added to a
+    # list/dict after creation.
+    for val in nest.flatten(value):
+      if isinstance(val, tf_variables.Variable):
+        # Users may add extra weights/variables
+        # simply by assigning them to attributes (invalid for graph networks)
+        if not hasattr(self, '_trainable_weights'):
+          super(Layer, self).__setattr__('_trainable_weights', [])
+        if not hasattr(self, '_non_trainable_weights'):
+          super(Layer, self).__setattr__('_non_trainable_weights', [])
+        if val not in self._trainable_weights + self._non_trainable_weights:
+          if val.trainable:
+            self._trainable_weights.append(val)
+          else:
+            self._non_trainable_weights.append(val)
+          backend.track_variable(val)
+
     super(Layer, self).__setattr__(name, value)
 
   def _gather_children_attribute(self, attribute):
-    assert attribute in {'weights', 'trainable_weights',
-                         'non_trainable_weights', 'updates', 'losses'}
+    assert attribute in {
+        'weights', 'trainable_weights', 'non_trainable_weights', 'updates',
+        'losses'
+    }
     if hasattr(self, '_layers'):
-      return list(itertools.chain.from_iterable(
-          getattr(layer, attribute) for layer in self._layers))
+      nested_layers = trackable_layer_utils.filter_empty_layer_containers(
+          self._layers)
+      return list(
+          itertools.chain.from_iterable(
+              getattr(layer, attribute) for layer in nested_layers))
     return []
 
   # This is a hack so that the is_layer (within
@@ -1712,6 +1849,11 @@ class Layer(trackable.Trackable):
   # TODO(b/110718070): Remove when fixed.
   def _is_layer(self):
     return True
+
+  @property
+  def _unfiltered_updates(self):
+    # Overridden in `Network`.
+    return self.updates
 
 
 class Node(object):

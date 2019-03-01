@@ -829,8 +829,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return StrFormat("%s (%s)", constant->literal().ToString(),
-                       ShapeUtil::HumanString(constant->shape()));
+      return constant->literal().ToString();
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
@@ -953,6 +952,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -961,6 +961,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
@@ -1016,6 +1017,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kDot:
     case HloOpcode::kFft:
     case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
       return kDarkBlue;
     case HloOpcode::kReducePrecision:
       return kRed;

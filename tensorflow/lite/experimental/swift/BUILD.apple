@@ -59,7 +59,7 @@ swift_library(
 
 objc_library(
     name = "TestResources",
-    resources = [
+    data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
         "//tensorflow/lite:testdata/multi_add.bin",
@@ -98,7 +98,7 @@ swift_library(
 
 objc_library(
     name = "TensorFlowLiteAppResources",
-    storyboards = glob([
+    data = glob([
         "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/*.storyboard",
     ]),
     tags = DEFAULT_TAGS,

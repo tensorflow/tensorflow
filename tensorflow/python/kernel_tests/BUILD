@@ -290,6 +290,19 @@ cuda_py_test(
     xla_enable_strict_auto_jit = True,
 )
 
+cuda_py_test(
+    name = "cudnn_determinism_test",
+    size = "small",
+    srcs = ["cudnn_determinism_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:nn_ops",
+    ],
+)
+
 tf_py_test(
     name = "decode_csv_op_test",
     size = "small",
@@ -1084,7 +1097,7 @@ tf_py_test(
     ],
 )
 
-tf_py_test(
+cuda_py_test(
     name = "summary_ops_test",
     size = "small",
     srcs = ["summary_ops_test.py"],
@@ -1092,15 +1105,24 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:errors",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:framework_test_lib",
         "//tensorflow/python:lib",
+        "//tensorflow/python:math_ops",
         "//tensorflow/python:platform",
         "//tensorflow/python:summary_ops_v2",
+        "@six_archive//:six",
+        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:tensor_util",
+        "//tensorflow/python:variables",
         "//tensorflow/python/eager:function",
         "//tensorflow/python/eager:context",
+        "//tensorflow/python/keras:engine",
+        "//tensorflow/python/keras:layers",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 tf_py_test(
@@ -2172,6 +2194,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
     ],
+    grpc_enabled = True,
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
@@ -3079,6 +3102,20 @@ cuda_py_test(
 )
 
 cuda_py_test(
+    name = "extract_volume_patches_grad_test",
+    size = "medium",
+    srcs = ["extract_volume_patches_grad_test.py"],
+    additional_deps = [
+        "//third_party/py/numpy",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_for_generated_wrappers",
+    ],
+    tags = ["notap"],  # http://b/31080670
+)
+
+cuda_py_test(
     name = "stage_op_test",
     size = "medium",
     srcs = ["stage_op_test.py"],
@@ -3325,6 +3362,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],

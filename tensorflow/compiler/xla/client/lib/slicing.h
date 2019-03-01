@@ -57,6 +57,14 @@ XlaOp DynamicUpdateSliceInMinorDims(XlaOp x, XlaOp update,
 // `index`.
 XlaOp TorchGather(XlaOp input, XlaOp index, int64 dim);
 
+// Returns a new tensor which indexes the input tensor along dimension dim using
+// the entries in index.
+//
+// The returned tensor has the same number of dimensions as the original tensor
+// (input). The dimth dimension has the same size as the length of index; other
+// dimensions have the same size as in the original tensor.
+XlaOp TorchIndexSelect(XlaOp input, XlaOp index, int64 dim);
+
 }  // namespace xla
 
 #endif  // TENSORFLOW_COMPILER_XLA_CLIENT_LIB_SLICING_H_

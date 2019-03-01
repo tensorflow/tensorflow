@@ -441,7 +441,7 @@ Status FindCompilationCandidates(
   std::vector<bool> compile_time_const_nodes(graph.num_node_ids(), false);
   TF_RETURN_IF_ERROR(
       BackwardsConstAnalysis(graph, /*compile_time_const_arg_indices=*/nullptr,
-                             &compile_time_const_nodes));
+                             &compile_time_const_nodes, lib_runtime));
 
   int64& fuel = GetMarkForCompilationPassFlags()->tf_xla_clustering_fuel;
 
@@ -1176,6 +1176,8 @@ Status MarkForCompilationPass::RunImpl(
       if (absl::optional<absl::string_view> cluster_name =
               GetXlaClusterForNode(*n)) {
         n->set_name(absl::StrCat(*cluster_name, "/", n->name()));
+      } else if (n->type_string() == "VarHandleOp") {
+        n->set_name(absl::StrCat("varhandle/", n->name()));
       } else {
         // There is room for improvement here.  In particular, it may help to
         // split these unclustered nodes into classes where every node in a

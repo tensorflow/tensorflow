@@ -23,7 +23,7 @@ import tempfile
 from absl import app
 from absl import flags
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 # TODO(vbardiovsky): remove these when symbols are public.
 from tensorflow.python.ops import lookup_ops

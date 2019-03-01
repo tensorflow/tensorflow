@@ -112,6 +112,10 @@ def get_reachable_from_inputs(inputs, targets=None):
 
   while queue:
     x = queue.pop()
+    if isinstance(x, tuple(_user_convertible_tensor_types)):
+      # Can't find consumers of user-specific types.
+      continue
+
     if isinstance(x, ops.Operation):
       outputs = x.outputs[:] or []
       outputs += x._control_outputs  # pylint: disable=protected-access

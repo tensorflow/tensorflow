@@ -577,6 +577,19 @@ ENTRY %Transpose.v3 (input: c128[1,2,3]) -> c128[1,2,3] {
 
 )"
 },
+// Triangular solve
+{
+"TriangularSolve",
+R"(HloModule TriangularSolve_module
+
+ENTRY %SimpleRightLowerNotranspose.4 (a.1: f32[4,4], b.2: f32[3,4]) -> f32[3,4] {
+  %a.1 = f32[4,4]{1,0} parameter(0)
+  %b.2 = f32[3,4]{1,0} parameter(1)
+  ROOT %triangular-solve.3 = f32[3,4]{1,0} triangular-solve(f32[4,4]{1,0} %a.1, f32[3,4]{1,0} %b.2), lower=true, transpose_a=NO_TRANSPOSE
+}
+
+)"
+},
 // Dynamic slice
 {
 "DynamicSlice",
@@ -941,6 +954,36 @@ ENTRY %ParseC128Literal () -> c128[2] {
 
 )"
 },
+// Indexed Conditional
+{
+"IndexedConditional",
+R"(HloModule indexed_conditional
+
+%Negate (x: f32[]) -> f32[] {
+  %x = f32[] parameter(0)
+  ROOT %negate = f32[] negate(f32[] %x)
+}
+
+%Identity (y: f32[]) -> f32[] {
+  %y = f32[] parameter(0)
+  ROOT %copy = f32[] copy(f32[] %y)
+}
+
+%Floor (z: f32[]) -> f32[] {
+  %z = f32[] parameter(0)
+  ROOT %floor = f32[] floor(f32[] %z)
+}
+
+ENTRY %Parameters1.v4 () -> f32[] {
+  %constant = s32[] constant(1)
+  %constant.1 = f32[] constant(56)
+  %constant.2 = f32[] constant(12)
+  %constant.3 = f32[] constant(13)
+  ROOT %conditional = f32[] conditional(s32[] %constant, f32[] %constant.1, f32[] %constant.2, f32[] %constant.3), branch_computations={%Negate, %Identity, %Floor}
+}
+
+)"
+},
   });
   // clang-format on
 }
@@ -1178,10 +1221,40 @@ ENTRY Sort {
 
 )"
 },
-// Conditional
+// Indexed Conditional
 {
-"Conditional",
-R"(HloModule conditional
+"IndexedConditional",
+R"(HloModule indexed_conditional
+
+Negate {
+  x = f32[] parameter(0)
+  ROOT negate = f32[] negate(x)
+}
+
+Identity {
+  y = f32[] parameter(0)
+  ROOT copy = f32[] copy(y)
+}
+
+Floor {
+  z = f32[] parameter(0)
+  ROOT floor = f32[] floor(z)
+}
+
+ENTRY Parameters1.v4 {
+  constant = s32[] constant(1)
+  constant.1 = f32[] constant(56)
+  constant.2 = f32[] constant(12)
+  constant.3 = f32[] constant(13)
+  ROOT conditional = f32[] conditional(constant, constant.1, constant.2, constant.3), branch_computations={Negate, Identity, Floor}
+}
+
+)"
+},
+// Predicated Conditional
+{
+"PredicatedConditional",
+R"(HloModule pred_conditional
 
 Negate {
   x = f32[] parameter(0)
@@ -2294,6 +2367,31 @@ TEST(HloParserSingleOpTest, CanonicalOpWithNested) {
     tmp_2 = f32[10,20]{1,0} transpose(f32[20,10]{1,0} tmp_1), dimensions={1,0}
     ROOT tmp_3 = f32[5,20]{1,0} dot(f32[5,10]{1,0} tmp_0, f32[10,20]{1,0} tmp_2), lhs_contracting_dims={1}, rhs_contracting_dims={0}
   }
+})";
+
+  TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));
+  const HloComputation* computation = module->entry_computation();
+  ASSERT_NE(computation, nullptr);
+  EXPECT_EQ(
+      computation->root_instruction()->ToString(HloPrintOptions::Canonical()),
+      text);
+}
+
+TEST(HloParserSingleOpTest, CanonicalOpIndexedConditionalInlinedBranches) {
+  const string text =
+      R"(f32[5,10]{1,0} conditional(s32[], f32[5,10]{1,0}, f32[5,10]{1,0}, f32[5,10]{1,0}), branch_computations={
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} ceil(f32[5,10]{1,0} tmp_0)
+},
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} floor(f32[5,10]{1,0} tmp_0)
+},
+{
+  tmp_0 = f32[5,10]{1,0} parameter(0)
+  ROOT tmp_1 = f32[5,10]{1,0} copy(f32[5,10]{1,0} tmp_0)
+}
 })";
 
   TF_ASSERT_OK_AND_ASSIGN(auto module, ParseHloString(text));

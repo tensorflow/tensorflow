@@ -104,7 +104,7 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for unidirectional RNN on, e.g., CPU or mobile.
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
 
     # NOTE: Even if there's only one layer, the cell needs to be wrapped in
     # MultiRNNCell.
@@ -124,7 +124,7 @@ class _CudnnRNN(base_layer.Layer):
 
   # Inference subgraph for bidirectional RNN
   with tf.Graph().as_default():
-    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTM(num_units)
+    single_cell = lambda: tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell(num_units)
     cells_fw = [single_cell() for _ in range(num_layers)]
     cells_bw = [single_cell() for _ in range(num_layers)]
 

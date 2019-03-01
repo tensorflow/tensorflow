@@ -37,12 +37,6 @@ XlaOp IsNegZero(XlaOp operand);
 // std::nextafter(from, to) would.
 XlaOp NextAfter(XlaOp from, XlaOp to);
 
-// Computes the square root of 'operand'.
-XlaOp Sqrt(XlaOp operand);
-
-// Computes the reciprocal of the square root of 'operand'.
-XlaOp Rsqrt(XlaOp operand);
-
 // Computes the square of 'operand'.
 XlaOp Square(XlaOp operand);
 
