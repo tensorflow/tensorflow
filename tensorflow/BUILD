@@ -518,7 +518,8 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
     deps = [
@@ -547,7 +548,8 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow_cc
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
     deps = [
