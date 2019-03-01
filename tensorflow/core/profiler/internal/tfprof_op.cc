@@ -182,7 +182,7 @@ const ShowMultiNode* TFOp::ShowInternal(const Options& opts,
     // TODO(xpan): Is it the right choice?
     root_->formatted_str = display_str;
   }
-  // Populate the chidren field.
+  // Populate the children field.
   auto* pre_pb = root_->mutable_proto();
   for (auto& show_node : show_nodes) {
     pre_pb->clear_children();
