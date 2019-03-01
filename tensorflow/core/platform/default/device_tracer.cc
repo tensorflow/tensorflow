@@ -560,7 +560,7 @@ void DeviceTracerImpl::AddCorrelationId(uint32 correlation_id,
       auto *params = reinterpret_cast<const cuLaunchKernel_params *>(
           cbInfo->functionParams);
       if (VLOG_IS_ON(2)) {
-        VLOG(2) << "LAUNCH stream " << params->hStream << " correllation "
+        VLOG(2) << "LAUNCH stream " << params->hStream << " correlation "
                 << cbInfo->correlationId << " kernel " << cbInfo->symbolName;
       }
       const string annotation =
