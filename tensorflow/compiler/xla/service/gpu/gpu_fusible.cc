@@ -131,10 +131,19 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                              get_loop_shape(instr_2));
 }
 
+bool IsInputFusibleScatter(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kScatter ||
+     (instr.opcode() == HloOpcode::kFusion &&
+      instr.fusion_kind() == HloInstruction::FusionKind::kInput &&
+      instr.fused_expression_root()->opcode() == HloOpcode::kScatter)) {
+    return true;
+  }
+  return false;
+}
+
 bool IsInputFusible(const HloInstruction& instr) {
   // Input fusion only handles non-elemental reduction and scatter operations.
-  return IsInputFusibleReduction(instr) ||
-         instr.opcode() == HloOpcode::kScatter;
+  return IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr);
 }
 
 bool IsLoopFusible(const HloInstruction& instr) {

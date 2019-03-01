@@ -55,6 +55,10 @@ bool IsReduceInputFusion(const HloInstruction& instr);
 // is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
 
+// Whether `instr` is fusible as root of a reduce input fusions, i.e. `instr`
+// is either an unfused scatter op or a scatter input fusion.
+bool IsInputFusibleScatter(const HloInstruction& instr);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-conumser multi-output
