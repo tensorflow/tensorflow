@@ -53,7 +53,7 @@ def _is_variable_op(op):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.must_run_on_cpu")
+    instructions="Use `tf.compat.v1.graph_util.must_run_on_cpu`")
 @tf_export(v1=["graph_util.must_run_on_cpu"])
 def must_run_on_cpu(node, pin_variables_on_cpu=False):
   """Returns True if the given node_def must run on CPU, otherwise False.
@@ -156,7 +156,7 @@ def _bfs_for_reachable_nodes(target_nodes, name_to_input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.extract_sub_graph")
+    instructions="Use `tf.compat.v1.graph_util.extract_sub_graph`")
 @tf_export(v1=["graph_util.extract_sub_graph"])
 def extract_sub_graph(graph_def, dest_nodes):
   """Extract the subgraph that can reach any of the nodes in 'dest_nodes'.
@@ -197,7 +197,8 @@ def extract_sub_graph(graph_def, dest_nodes):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.tensor_shape_from_node_def_name")
+    instructions="Use `tf.compat.v1.graph_util.tensor_shape_from_node_def_name`"
+)
 @tf_export(v1=["graph_util.tensor_shape_from_node_def_name"])
 def tensor_shape_from_node_def_name(graph, input_name):
   """Convenience function to get a shape from a NodeDef's input string."""
@@ -215,7 +216,7 @@ def tensor_shape_from_node_def_name(graph, input_name):
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.convert_variables_to_constants")
+    instructions="Use `tf.compat.v1.graph_util.convert_variables_to_constants`")
 @tf_export(v1=["graph_util.convert_variables_to_constants"])
 def convert_variables_to_constants(sess,
                                    input_graph_def,
@@ -305,7 +306,7 @@ def convert_variables_to_constants(sess,
 
 @deprecation.deprecated(
     date=None,
-    instructions="Use tf.compat.v1.graph_util.remove_training_nodes")
+    instructions="Use `tf.compat.v1.graph_util.remove_training_nodes`")
 @tf_export(v1=["graph_util.remove_training_nodes"])
 def remove_training_nodes(input_graph, protected_nodes=None):
   """Prunes out nodes that aren't needed for inference.
