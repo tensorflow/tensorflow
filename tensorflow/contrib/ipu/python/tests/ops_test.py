@@ -7,7 +7,7 @@ import re
 
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-from tensorflow.contrib.compiler import xla
+from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session as sl
 from tensorflow.python.framework import test_util
@@ -125,7 +125,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
       events = gen_ipu_ops.ipu_event_trace()
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[a, b])
+      r = ipu_compiler.compile(my_net, inputs=[a, b])
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -185,7 +185,7 @@ class ContribIpuOpsTest(test_util.TensorFlowTestCase):
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
 
-      l = xla.compile(my_net, inputs=[a, b])
+      l = ipu_compiler.compile(my_net, inputs=[a, b])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)

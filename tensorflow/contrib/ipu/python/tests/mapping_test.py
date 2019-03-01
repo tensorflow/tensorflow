@@ -21,6 +21,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import googletest
+from tensorflow.contrib.ipu import ipu_compiler
 
 class MappingTest(test_util.TensorFlowTestCase):
 
@@ -36,7 +37,7 @@ class MappingTest(test_util.TensorFlowTestCase):
       report = gen_ipu_ops.ipu_event_trace()
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[w, i])
+      r = ipu_compiler.compile(my_net, inputs=[w, i])
 
     cfg = ipu.utils.create_ipu_config(profiling=True)
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)

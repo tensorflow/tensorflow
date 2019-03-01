@@ -18,7 +18,6 @@ from __future__ import print_function
 
 # Naive LSTM to learn three-char time steps to one-char mapping
 import numpy as np
-from tensorflow.contrib.compiler import xla
 from tensorflow.contrib import ipu
 from tensorflow.contrib.ipu import utils
 from tensorflow.contrib.ipu import popnn_rnn
@@ -36,6 +35,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.client import session as sl
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
+from tensorflow.contrib.ipu import ipu_compiler
 
 dataType = np.float32
 
@@ -77,7 +77,7 @@ def _RunLayer(layer_func, x, y):
     pc = array_ops.placeholder(dataType, shape=[batch_size, num_hidden])
     py = array_ops.placeholder(dataType, shape=y.shape)
   with ipu.ops.ipu_scope("/device:IPU:0"):
-    r = xla.compile(layer_func, inputs=[px, ph, pc, py])
+    r = ipu_compiler.compile(layer_func, inputs=[px, ph, pc, py])
 
   opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
   opts = ipu.utils.set_ipu_model_options(opts, compile_ipu_code=False)

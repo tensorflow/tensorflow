@@ -104,7 +104,7 @@ tf.Dataset.batch, set `drop_remainder=True`.""".format(output_shape))
       return = tf.conrib.ipu.loops.repeat(10000, body, [loss], infeed_queue)
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[])
+      res = ipu_compiler.compile(my_net, inputs=[])
 
     with tf.Session() as sess:
       sess.run(infeed_queue.initializer)

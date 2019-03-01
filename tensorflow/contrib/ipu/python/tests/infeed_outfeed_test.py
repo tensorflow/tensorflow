@@ -19,7 +19,6 @@ from __future__ import print_function
 import numpy as np
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-from tensorflow.contrib.compiler import xla
 from tensorflow.contrib import ipu
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
@@ -40,8 +39,9 @@ from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops.dataset_ops import Dataset
 from tensorflow.core.protobuf import config_pb2
 
-from tensorflow.contrib.ipu import loops
+from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib.ipu import ipu_infeed_queue
+from tensorflow.contrib.ipu import loops
 
 def create_increasing_dataset(value, shape=[4,4], dtype=np.float32):
   def _get_one_input(data):
@@ -70,7 +70,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       v = array_ops.placeholder(np.float32, [4, 4])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[v])
+      res = ipu_compiler.compile(my_net, inputs=[v])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -101,7 +101,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       return r
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[])
+      res = ipu_compiler.compile(my_net, inputs=[])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -133,7 +133,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       return r
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[])
+      res = ipu_compiler.compile(my_net, inputs=[])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -166,7 +166,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       return r
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[])
+      res = ipu_compiler.compile(my_net, inputs=[])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -194,7 +194,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       return r
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[])
+      res = ipu_compiler.compile(my_net, inputs=[])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -224,7 +224,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       v = array_ops.placeholder(np.float32, [4, 4])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[v])
+      res = ipu_compiler.compile(my_net, inputs=[v])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -261,7 +261,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       v = array_ops.placeholder(np.float32, [4, 4])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      res = xla.compile(my_net, inputs=[v])
+      res = ipu_compiler.compile(my_net, inputs=[v])
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -286,7 +286,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
         return r
 
       with ipu.ops.ipu_scope("/device:IPU:0"):
-        return xla.compile(my_net)
+        return ipu_compiler.compile(my_net)
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -322,7 +322,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
         return r
 
       with ipu.ops.ipu_scope("/device:IPU:0"):
-        return xla.compile(my_net)
+        return ipu_compiler.compile(my_net)
 
     cfg = ipu.utils.create_ipu_config()
     cfg = ipu.utils.set_ipu_model_options(cfg, compile_ipu_code=False)
@@ -371,7 +371,7 @@ class InfeedOutfeedTest(test_util.TensorFlowTestCase):
       iters = array_ops.placeholder(np.int32, shape=[])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[iters])
+      r = ipu_compiler.compile(my_net, inputs=[iters])
 
     with session_lib.Session() as sess:
       sess.run(infeed_queue.initializer)

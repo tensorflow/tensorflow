@@ -7,7 +7,6 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.compiler import xla
 from tensorflow.contrib import ipu
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import dtypes
@@ -24,6 +23,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.ops import variable_scope
 from tensorflow.python.training import gradient_descent
 from tensorflow.python.platform import googletest
+from tensorflow.contrib.ipu import ipu_compiler
 
 class WhileLoopTest(test_util.TensorFlowTestCase):
 
@@ -56,7 +56,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       Y = array_ops.placeholder(dataType, [1, timesteps, num_units])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[X, Y])
+      r = ipu_compiler.compile(my_net, inputs=[X, Y])
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
@@ -76,7 +76,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       Y = array_ops.placeholder(dtypes.int32, [2])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[X, Y])
+      r = ipu_compiler.compile(my_net, inputs=[X, Y])
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
@@ -95,7 +95,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       Y = array_ops.placeholder(dtypes.int32, [2])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[X, Y])
+      r = ipu_compiler.compile(my_net, inputs=[X, Y])
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
@@ -119,7 +119,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(dtypes.float32, [4])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[x])
+      r = ipu_compiler.compile(my_net, inputs=[x])
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
@@ -154,7 +154,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       x = array_ops.placeholder(dtypes.int32, [4])
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[x])
+      r = ipu_compiler.compile(my_net, inputs=[x])
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
@@ -194,7 +194,7 @@ class WhileLoopTest(test_util.TensorFlowTestCase):
       return control_flow_ops.while_loop(cond, body, (i, loss), maximum_iterations=10)
 
     with ipu.ops.ipu_scope("/device:IPU:0"):
-      r = xla.compile(my_net, inputs=[])
+      r = ipu_compiler.compile(my_net, inputs=[])
 
     with session_lib.Session() as sess:
       sess.run(variables.global_variables_initializer())
