@@ -32,7 +32,6 @@ sys.modules["imports85"] = imports85
 import tensorflow.data as data
 
 import tensorflow.examples.get_started.regression.dnn_regression as dnn_regression
-import tensorflow.examples.get_started.regression.linear_regression as linear_regression
 import tensorflow.examples.get_started.regression.linear_regression_categorical as linear_regression_categorical
 import tensorflow.examples.get_started.regression.custom_regression as custom_regression
 
@@ -65,13 +64,6 @@ def four_lines_dataset(*args, **kwargs):
 
 class RegressionTest(googletest.TestCase):
   """Test the regression examples in this directory."""
-
-  @test.mock.patch.dict(data.__dict__,
-                        {"TextLineDataset": four_lines_dataset})
-  @test.mock.patch.dict(imports85.__dict__, {"_get_imports85": (lambda: None)})
-  @test.mock.patch.dict(linear_regression.__dict__, {"STEPS": 1})
-  def test_linear_regression(self):
-    linear_regression.main([""])
 
   @test.mock.patch.dict(data.__dict__,
                         {"TextLineDataset": four_lines_dataset})
