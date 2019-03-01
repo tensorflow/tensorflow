@@ -159,15 +159,15 @@ def relu(x, alpha=0., max_value=None, threshold=0.):
 
   Arguments:
     `x`: A tensor or variable.
-    `alpha`: A scalar that governs the slope of the activation function for values lower than the threshold. By default, this is `0.`; small positive values correspond to 'leaky' ReLUs.
-    `max_value`: A float or `None` giving the saturation threshold (the largest value the function can take). The default is `None`, indicating that there is no such threshold.
-    `threshold`: A float giving the threshold value below which values will be damped or set to zero (`0.` by default).
+    `alpha`: A `float` that governs the slope of the activation function for values lower than the threshold. By default, this is `0.`; small positive values correspond to 'leaky' ReLUs.
+    `max_value`: A `float` or `None` giving the saturation threshold (the largest value the function can take). The default is `None`, indicating that there is no such threshold.
+    `threshold`: A `float` giving the threshold value below which values will be damped or set to zero (`0.` by default).
 
   Returns:
     A `Tensor` representing the input tensor transformed by the ReLU activation function.
 
   Raises:
-    ValueError: if an element of the input is not a permissible `float` or `int` type.
+    ValueError: if an element of the input is not of a permissible `float` or `int` type.
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
