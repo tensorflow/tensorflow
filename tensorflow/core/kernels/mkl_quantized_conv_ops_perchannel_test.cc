@@ -126,7 +126,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const int filter_count = 2;
 
   // Filter is of datatype int8
-  const float filter_min = -128.0f;
+  const float filter_min = -127.0f; //(-128.0f changed for symmetry)
   const float filter_max = 127.0f;
 
   // The filter matrix (for each output channel count) is:
@@ -214,7 +214,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
        357, 357, 178, 178, 187, 187, 234, 234, 261, 261, 121, 121});
 
   // Test whether the values are as expected.
-  test::ExpectTensorNear<float>(expected_float, output_float, 2.0);
+  test::ExpectTensorNear<float>(expected_float, output_float, 0.5);
 }
 
 }  // namespace tensorflow
