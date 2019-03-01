@@ -32420,6 +32420,13 @@ op {
       s: "lanczos3"
     }
   }
+  attr {
+    name: "antialias"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "ScaleAndTranslateGrad"
@@ -32457,6 +32464,13 @@ op {
     type: "string"
     default_value {
       s: "lanczos3"
+    }
+  }
+  attr {
+    name: "antialias"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }
