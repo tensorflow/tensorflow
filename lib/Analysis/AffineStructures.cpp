@@ -617,22 +617,22 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
   }
   assert(flatExprs.size() == vMap->getNumResults());
 
-  // Make the value map and the flat affine localCst dimensions compatible.
-  SmallVector<Value *, 8> values(vMap->getOperands().begin(),
-                                 vMap->getOperands().end());
-  localCst.setIdValues(0, localCst.getNumDimAndSymbolIds(), values);
-  // Align localCst and this - localCst's identifiers appear first in the union.
-  mergeAndAlignIds(&localCst, this);
+  // Add localCst information.
+  if (localCst.getNumLocalIds() > 0) {
+    SmallVector<Value *, 8> values(vMap->getOperands().begin(),
+                                   vMap->getOperands().end());
+    localCst.setIdValues(0, localCst.getNumDimAndSymbolIds(), values);
+    // Align localCst and this.
+    mergeAndAlignIds(&localCst, this);
+    // Finally, append localCst to this constraint set.
+    append(localCst);
+  }
 
   // Add dimensions corresponding to the map's results.
   for (unsigned t = 0, e = vMap->getNumResults(); t < e; t++) {
     // TODO: Consider using a batched version to add a range of IDs.
     addDimId(0);
-    localCst.addDimId(0);
   }
-
-  // Finally, append localCst to this constraint set.
-  append(localCst);
 
   // We add one equality for each result connecting the result dim of the map to
   // the other identifiers.
@@ -675,6 +675,15 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
   return true;
 }
 
+// Turn a dimension into a symbol.
+static void turnDimIntoSymbol(FlatAffineConstraints *cst, const Value &id) {
+  unsigned pos;
+  if (cst->findId(id, &pos) && pos < cst->getNumDimIds()) {
+    swapId(cst, pos, cst->getNumDimIds() - 1);
+    cst->setDimSymbolSeparation(cst->getNumSymbolIds() + 1);
+  }
+}
+
 bool FlatAffineConstraints::addAffineForOpDomain(
     ConstOpPointer<AffineForOp> forOp) {
   unsigned pos;
@@ -692,9 +701,27 @@ bool FlatAffineConstraints::addAffineForOpDomain(
 
   // Adds a lower or upper bound when the bounds aren't constant.
   auto addLowerOrUpperBound = [&](bool lower) -> bool {
-    auto operands =
+    auto boundMap =
+        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
+    auto boundOperands =
         lower ? forOp->getLowerBoundOperands() : forOp->getUpperBoundOperands();
-    for (const auto &operand : operands) {
+    unsigned numBoundOperands =
+        std::distance(boundOperands.begin(), boundOperands.end());
+
+    FlatAffineConstraints localVarCst;
+    std::vector<SmallVector<int64_t, 8>> flatExprs;
+    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
+      forOp->emitError("semi-affine expressions not yet supported");
+      return false;
+    }
+    // Set values for localVarCst.
+    SmallVector<Value *, 8> values;
+    for (auto operand : boundOperands) {
+      values.push_back(const_cast<Value *>(operand));
+    }
+    localVarCst.setIdValues(0, localVarCst.getNumDimAndSymbolIds(), values);
+
+    for (const auto &operand : boundOperands) {
       unsigned pos;
       if (!findId(*operand, &pos)) {
         if (isValidSymbol(operand)) {
@@ -706,6 +733,8 @@ bool FlatAffineConstraints::addAffineForOpDomain(
               setIdToConstant(*operand, constOp->getValue());
             }
           }
+          // If the local var cst has this as a dim, turn it into its symbol.
+          turnDimIntoSymbol(&localVarCst, *operand);
         } else {
           addDimId(getNumDimIds(), const_cast<Value *>(operand));
           pos = getNumDimIds() - 1;
@@ -717,35 +746,34 @@ bool FlatAffineConstraints::addAffineForOpDomain(
         }
       }
     }
+    // Merge and align with localVarCst.
+    if (localVarCst.getNumLocalIds() > 0) {
+      mergeAndAlignIds(this, &localVarCst);
+      append(localVarCst);
+    }
+
     // Record positions of the operands in the constraint system.
     SmallVector<unsigned, 8> positions;
-    for (const auto &operand : operands) {
+    for (const auto &operand : boundOperands) {
       unsigned pos;
       if (!findId(*operand, &pos))
         assert(0 && "expected to be found");
       positions.push_back(pos);
     }
 
-    auto boundMap =
-        lower ? forOp->getLowerBoundMap() : forOp->getUpperBoundMap();
-
-    FlatAffineConstraints localVarCst;
-    std::vector<SmallVector<int64_t, 8>> flatExprs;
-    if (!getFlattenedAffineExprs(boundMap, &flatExprs, &localVarCst)) {
-      forOp->emitError("semi-affine expressions not yet supported");
-      return false;
-    }
-    if (localVarCst.getNumLocalIds() > 0) {
-      forOp->emitError(
-          "loop bounds with mod/floordiv expr's not yet supported");
-      return false;
-    }
-
     for (const auto &flatExpr : flatExprs) {
       SmallVector<int64_t, 4> ineq(getNumCols(), 0);
       ineq[pos] = lower ? 1 : -1;
+      // Dims and symbols.
       for (unsigned j = 0, e = boundMap.getNumInputs(); j < e; j++) {
         ineq[positions[j]] = lower ? -flatExpr[j] : flatExpr[j];
+      }
+      // Copy over the local id coefficients.
+      unsigned numLocalIds = flatExpr.size() - 1 - numBoundOperands;
+      for (unsigned jj = 0, j = getNumIds() - numLocalIds; jj < numLocalIds;
+           jj++, j++) {
+        ineq[j] = lower ? -flatExpr[numBoundOperands + jj]
+                        : flatExpr[numBoundOperands + jj];
       }
       // Constant term.
       ineq[getNumCols() - 1] =

@@ -220,3 +220,49 @@ func @test_complex_mod_floordiv(%arg0: memref<4x4x16x1xf32>) {
   }
   return
 }
+
+// -----
+
+// The first load is within bounds, but not the second one.
+#map0 = (d0) -> (d0 mod 4)
+#map1 = (d0) -> (d0 mod 4 + 4)
+
+// CHECK-LABEL: func @test_mod_bound
+func @test_mod_bound() {
+  %0 = alloc() : memref<7 x f32>
+  %1 = alloc() : memref<6 x f32>
+  for %i0 = 0 to 4096 {
+    for %i1 = #map0(%i0) to #map1(%i0) {
+      load %0[%i1] : memref<7 x f32>
+      load %1[%i1] : memref<6 x f32>
+      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
+    }
+  }
+  return
+}
+
+// -----
+
+#map0 = (d0) -> (d0 floordiv 4)
+#map1 = (d0) -> (d0 floordiv 4 + 4)
+#map2 = (d0) -> (4 * (d0 floordiv 4)  + d0 mod 4)
+
+// CHECK-LABEL: func @test_floordiv_bound
+func @test_floordiv_bound() {
+  %0 = alloc() : memref<1027 x f32>
+  %1 = alloc() : memref<1026 x f32>
+  %2 = alloc() : memref<4096 x f32>
+  %N = constant 2048 : index
+  for %i0 = 0 to 4096 {
+    for %i1 = #map0(%i0) to #map1(%i0) {
+      load %0[%i1] : memref<1027 x f32>
+      load %1[%i1] : memref<1026 x f32>
+      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
+    }
+    for %i2 = 0 to #map2(%N) {
+      // Within bounds.
+      %v = load %2[%i2] : memref<4096 x f32>
+    }
+  }
+  return
+}
