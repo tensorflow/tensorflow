@@ -30,6 +30,7 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import random_seed
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras import initializers
 from tensorflow.python.keras import layers as keras_layers
@@ -53,6 +54,26 @@ from tensorflow.python.util import nest
 
 
 class RNNCellTest(test.TestCase):
+
+  def _assert_cell_builds(self, cell_class, dtype, batch_size, in_size,
+                          out_size):
+    cell = cell_class(out_size, dtype=dtype)
+    in_shape = tensor_shape.TensorShape((batch_size, in_size))
+    cell.build(in_shape)
+    state_output = cell.get_initial_state(
+        inputs=None, batch_size=batch_size, dtype=dtype)
+    cell_output, _ = cell(array_ops.zeros(in_shape, dtype), state_output)
+    self.assertAllEqual([batch_size, out_size], cell_output.shape.as_list())
+
+  def testCellsBuild(self):
+    f32 = dtypes.float32
+    f64 = dtypes.float64
+    self._assert_cell_builds(contrib_rnn_cell.IndRNNCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndRNNCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyGRUCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyGRUCell, f64, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyLSTMCell, f32, 5, 7, 3)
+    self._assert_cell_builds(contrib_rnn_cell.IndyLSTMCell, f64, 5, 7, 3)
 
   def testIndRNNCell(self):
     with self.cached_session() as sess:
