@@ -15,11 +15,30 @@ limitations under the License.
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
 #include <gmock/gmock.h>
 #include <gtest/gtest.h>
+#include "tensorflow/core/lib/io/path.h"
+#include "tensorflow/core/platform/init_main.h"
+#include "tensorflow/core/util/command_line_flags.h"
+#include "tensorflow/lite/model.h"
+#include "tensorflow/lite/schema/schema_generated.h"
+#include "tensorflow/lite/tools/optimize/test_util.h"
+
+namespace {
+tensorflow::string* g_test_model_dir = nullptr;
+}  // namespace
 
 namespace tflite {
 namespace optimize {
 namespace utils {
 namespace {
+
+std::unique_ptr<FlatBufferModel> ReadModel(const char* model) {
+  auto model_path = tensorflow::io::JoinPath(*g_test_model_dir, model);
+  return FlatBufferModel::BuildFromFile(model_path.c_str());
+}
+
+std::unique_ptr<FlatBufferModel> ReadConvModel() {
+  return ReadModel(internal::kConvModelWith0Plus10Weights);
+}
 
 using ::testing::ElementsAreArray;
 
@@ -201,12 +220,61 @@ TEST(QuantizationUtilsTest, SymmetricPerChannelQuantizeValues) {
   EXPECT_THAT(output_data, ElementsAreArray(expected_output_data));
 }
 
+TEST(QuantizationUtilsTest, SymmetricQuantizeTensorNullInputs) {
+  EXPECT_EQ(SymmetricQuantizeTensor(nullptr, nullptr), kTfLiteError);
+}
+
+TEST(QuantizationUtilsTest, SymmetricQuantizeTensor) {
+  // Conv model has weights between 0 and 10.
+  // Quantize the weights tensor.
+  ASSERT_TRUE(g_test_model_dir);
+  ASSERT_FALSE(g_test_model_dir->empty());
+  auto test_model = ReadConvModel();
+  ASSERT_TRUE(test_model);
+  auto readonly_model = test_model->GetModel();
+  ASSERT_TRUE(readonly_model);
+  ASSERT_TRUE(readonly_model->subgraphs());
+  ASSERT_GE(readonly_model->subgraphs()->size(), 1);
+  tflite::ModelT model;
+  readonly_model->UnPackTo(&model);
+  auto subgraph = model.subgraphs[0].get();
+  auto conv_op = subgraph->operators.at(0).get();
+  ASSERT_EQ(model.operator_codes.at(conv_op->opcode_index)->builtin_code,
+            BuiltinOperator_CONV_2D);
+  int32_t weights_tensor_idx = conv_op->inputs[1];
+  TensorT* weights_tensor = subgraph->tensors.at(weights_tensor_idx).get();
+
+  EXPECT_EQ(weights_tensor->type, TensorType_FLOAT32);
+  size_t float_buffer_size =
+      model.buffers.at(weights_tensor->buffer)->data.size();
+
+  EXPECT_EQ(SymmetricQuantizeTensor(&model, weights_tensor), kTfLiteOk);
+
+  size_t quant_buffer_size =
+      model.buffers.at(weights_tensor->buffer)->data.size();
+  EXPECT_EQ(weights_tensor->type, TensorType_INT8);
+  EXPECT_EQ(quant_buffer_size * 4, float_buffer_size);
+}
+
 }  // namespace
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite
 
 int main(int argc, char** argv) {
-  ::testing::InitGoogleTest(&argc, argv);
+  tensorflow::string model_file;
+  const std::vector<tensorflow::Flag> flag_list = {
+      tensorflow::Flag("test_model_file", &model_file,
+                       "Path to test tflite model file."),
+  };
+
+  const bool parse_result = tensorflow::Flags::Parse(&argc, argv, flag_list);
+  if (!parse_result) {
+    std::cerr << "Required test_model_file\n";
+    std::abort();
+  }
+  g_test_model_dir =
+      new tensorflow::string(tensorflow::io::Dirname(model_file));
+  ::tensorflow::port::InitMain(argv[0], &argc, &argv);
   return RUN_ALL_TESTS();
 }

@@ -60,6 +60,10 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
                                        int32_t channel_dim_index,
                                        std::vector<int8_t>* output_value);
 
+// Quantizes tensor using symmetric quantization with the min and max elements
+// of the tensor.
+TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor);
+
 }  // namespace utils
 }  // namespace optimize
 }  // namespace tflite
