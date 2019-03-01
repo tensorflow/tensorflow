@@ -61,7 +61,8 @@ absl::optional<PoplibsLib> StringToPoplibsLib(const std::string& name) {
 std::string PoplibsOpToString(const PoplibsOp& poplibs_op) {
   static std::vector<std::string> names = {
       "LstmLayerFwd",      "LstmLayerBwd",  "GroupNormInference",
-      "GroupNormTraining", "GroupNormGrad", "GroupNormStatistics"};
+      "GroupNormTraining", "GroupNormGrad", "GroupNormStatistics",
+      "TruncatedNormal"};
   if (names.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
     LOG(FATAL) << "The number of Poplibs Custom Ops does not match.";
   }
@@ -80,7 +81,7 @@ absl::optional<PoplibsOp> StringToPoplibsOp(const std::string& name) {
       {"GroupNormStatistics", PoplibsOp::GroupNormStatistics},
       // Popops:
       // Poprand:
-  };
+      {"TruncatedNormal", PoplibsOp::TruncatedNormal}};
   if (mapping.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
     LOG(FATAL) << "The number of Poplibs Custom Ops does not match.";
   }
@@ -150,6 +151,14 @@ const bool IsPoplibsCustomOpElementwise(const HloInstruction* inst) {
         default: { return false; }
       }
       break;
+    }
+    case PoplibsLib::Poprand: {
+      switch (poplibs_op) {
+        case PoplibsOp::TruncatedNormal: {
+          return true;
+        }
+        default: { return false; }
+      }
     }
     default: { return false; }
   }

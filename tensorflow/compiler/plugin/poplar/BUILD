@@ -275,6 +275,7 @@ cc_library(
         "kernels/ipu_kernels_common.cc",
         "kernels/popnn_kernels.cc",
         "kernels/popops_kernels.cc",
+        "kernels/poprand_kernels.cc",
         "kernels/pop_datastream_kernels.cc",
     ],
     hdrs = [

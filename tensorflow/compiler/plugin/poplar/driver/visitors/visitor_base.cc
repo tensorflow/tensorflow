@@ -61,7 +61,6 @@ static std::map<std::string, CustomCallFn> custom_call_map = {
     {"sigmoidgrad", CreateSigmoidGradOp},
     {"conv_biasadd", CreateConvBiasAddOp},
     {"matmul_biasadd", CreateMatMulBiasAddOp},
-    {"trunc_norm", TruncatedNormal},
     {"norm_scale_add", RandomNormalScale},
     {"uniform_scale_add", RandomUniformScale},
     {"avg_pool", CreatePoplibsWindowReduction},

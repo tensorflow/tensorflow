@@ -55,6 +55,7 @@ enum class PoplibsOp : uint32 {
   GroupNormStatistics,
   // Popops:
   // Poprand:
+  TruncatedNormal,
   // Do not add beyond this point.
   _NumOps
 };

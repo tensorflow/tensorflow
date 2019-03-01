@@ -266,8 +266,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion',
-            'z1/Initializer/truncated_normal/mul',
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/custom-call.*/TruncatedNormal',
+            'z1/Initializer/truncated_normal/mul/multiply.*/Op/Multiply',
             'z1/Initializer/truncated_normal/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -297,8 +297,8 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion',
-            'z1/Initializer/truncated_normal/mul',
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/custom-call.*/TruncatedNormal',
+            'z1/Initializer/truncated_normal/mul/multiply.*/Op/Multiply',
             'z1/Initializer/truncated_normal/add.*/AddTo']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
@@ -326,7 +326,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion']
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/custom-call.*/TruncatedNormal']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
 
@@ -353,7 +353,7 @@ class IpuXlaVariableTest(test_util.TensorFlowTestCase):
       s = tu.extract_all_strings_from_event_trace(r)
       cs_list = tu.get_compute_sets_from_report(s)
 
-      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/fusion']
+      ok = ['z1/Initializer/truncated_normal/TruncatedNormal/custom-call.*/TruncatedNormal']
       self.assertTrue(tu.check_all_compute_sets_and_list(cs_list, ok))
 
   def testUniformRandomInitalizer(self):

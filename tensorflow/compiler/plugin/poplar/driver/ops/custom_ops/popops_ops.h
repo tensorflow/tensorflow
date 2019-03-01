@@ -42,12 +42,15 @@ namespace poplarplugin {
 const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopopsOpInfoMap();
 
 // Allocating functions.
-StatusOr<poplar::Tensor> AllocateUnaryOp(
+StatusOr<poplar::Tensor> NonAllocatingOp(
     poplar::Graph&, CompilerResources&, const std::string&, const TensorTarget&,
     const IPUCustomKernelsUtil::AttributeMap&, const TensorMap&);
 
 // Creating functions.
 StatusOr<poplar::program::Program> CreateUnaryOp(
+    poplar::Graph&, CompilerResources&, const HloInstruction*,
+    const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
+StatusOr<poplar::program::Program> CreateNullaryOp(
     poplar::Graph&, CompilerResources&, const HloInstruction*,
     const xla::Shape&, TensorMap&, const IPUCustomKernelsUtil::AttributeMap&);
 }  // namespace poplarplugin
