@@ -1301,6 +1301,9 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     main = "framework/contrib_test.py",
+    tags = [
+        "no_pip",
+    ],
 )
 
 tf_py_test(
@@ -5160,6 +5163,7 @@ tf_py_test(
         "//tensorflow/core:protos_all_py",
     ],
     tags = [
+        "no_pip",  # Relies on contrib
         "no_windows",
         "notsan",  # intermittent races on a few percent of runs
     ],
