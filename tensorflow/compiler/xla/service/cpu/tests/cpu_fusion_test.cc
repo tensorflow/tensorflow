@@ -267,12 +267,9 @@ TEST_F(CpuFusionTest, TestOperandOrderToAvoidDuplication) {
   EXPECT_EQ(4, fusion1->fused_instruction_count());
   EXPECT_EQ(4, fusion2->fused_instruction_count());
 
-  // Each fusion instruction should have one parameter and the parameter should
-  // be the constant.
-  EXPECT_EQ(1, fusion1->operand_count());
-  EXPECT_EQ(constant, fusion1->operand(0));
-  EXPECT_EQ(1, fusion2->operand_count());
-  EXPECT_EQ(constant, fusion2->operand(0));
+  // The fusion has no parameters, everything is fused including constants.
+  EXPECT_EQ(0, fusion1->operand_count());
+  EXPECT_EQ(0, fusion2->operand_count());
 }
 
 TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
@@ -324,10 +321,9 @@ TEST_F(CpuFusionTest, DoNotDuplicateExpensiveOps) {
 
   auto fusion_inst = tuple->operand(0);
   // There should be three fused instructions: negate2, exp2, and the fused
-  // parameter.
+  // constant.
   EXPECT_EQ(3, fusion_inst->fused_instruction_count());
-  EXPECT_EQ(1, fusion_inst->operand_count());
-  EXPECT_EQ(constant, fusion_inst->operand(0));
+  EXPECT_EQ(0, fusion_inst->operand_count());
 }
 
 }  // namespace
