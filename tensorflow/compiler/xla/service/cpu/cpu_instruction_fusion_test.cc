@@ -623,7 +623,7 @@ TEST_F(OpcodeFusionTest, MessOfFusibleNodes) {
       module.get(),
       {HloOpcode::kDynamicSlice, HloOpcode::kDynamicSlice,
        HloOpcode::kDynamicUpdateSlice, HloOpcode::kReshape,
-       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter,
+       HloOpcode::kConstant, HloOpcode::kParameter, HloOpcode::kParameter,
        HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
@@ -811,7 +811,7 @@ TEST_P(GatherLoopFusionTest, GatherLoopFusion) {
   RunFusionAndCheckOpcodesWereFused(
       module.get(),
       {HloOpcode::kGather, HloOpcode::kAdd, HloOpcode::kBroadcast,
-       HloOpcode::kParameter, HloOpcode::kParameter, HloOpcode::kParameter});
+       HloOpcode::kConstant, HloOpcode::kParameter, HloOpcode::kParameter});
 }
 
 std::vector<GatherLoopFusionTestSpec> GetGatherLoopFusionTestSpecs() {
