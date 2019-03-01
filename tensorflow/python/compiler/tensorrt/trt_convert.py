@@ -24,7 +24,11 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
+from tensorflow.python.eager import function
+from tensorflow.python.framework import convert_to_constants
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -32,7 +36,10 @@ from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import tf_logging
 from tensorflow.python.saved_model import builder
+from tensorflow.python.saved_model import load
 from tensorflow.python.saved_model import loader
+from tensorflow.python.saved_model import save
+from tensorflow.python.saved_model import signature_constants
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.training import saver
 
@@ -92,9 +99,11 @@ class GraphConverter(object):
   ```
   """
 
+  # TODO(laigd): clean up the parameters.
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
+               input_saved_model_signature_key=None,
                input_graph_def=None,
                nodes_blacklist=None,
                session_config=None):
@@ -104,6 +113,8 @@ class GraphConverter(object):
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
+      input_saved_model_signature_key: the key in the signature def map for a TF
+        2.0 SavedModel.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -116,15 +127,25 @@ class GraphConverter(object):
     Raises:
       ValueError: if the combination of the parameters is invalid.
     """
-    if input_graph_def and input_saved_model_dir:
-      raise ValueError(
-          "Can only specify one of input_graph_def and input_saved_model_dir")
-    if not input_graph_def and not input_saved_model_dir:
-      raise ValueError("Must specify one of input_graph_def and "
-                       "input_saved_model_dir")
+    if context.executing_eagerly():
+      if input_graph_def or not input_saved_model_dir:
+        raise ValueError(
+            "TF 2.0 only supports conversion of SavedModel, please specify "
+            "input_saved_model_dir as input.")
+      self._input_saved_model_signature_key = (
+          input_saved_model_signature_key or
+          signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
+    else:
+      if input_graph_def and input_saved_model_dir:
+        raise ValueError(
+            "Can only specify one of input_graph_def and input_saved_model_dir")
+      if not input_graph_def and not input_saved_model_dir:
+        raise ValueError("Must specify one of input_graph_def and "
+                         "input_saved_model_dir")
 
-    self._input_graph_def = input_graph_def
-    self._nodes_blacklist = nodes_blacklist
+      self._input_graph_def = input_graph_def
+      self._nodes_blacklist = nodes_blacklist
+
     self._input_saved_model_dir = input_saved_model_dir
     self._converted = False
     self._grappler_meta_graph_def = None
@@ -243,19 +264,75 @@ class GraphConverter(object):
 
     self._run_conversion()
 
+  # TODO(laigd): provide a utility function to optimize a ConcreteFunction and
+  # use it here (b/124792963).
+  def _convert_saved_model_v2(self):
+    """Convert the input SavedModel in 2.0 format."""
+    self._saved_model = load.load(self._input_saved_model_dir,
+                                  self._input_saved_model_tags)
+    func = self._saved_model.signatures[self._input_saved_model_signature_key]
+    frozen_func = convert_to_constants.convert_variables_to_constants_v2(func)
+    self._grappler_meta_graph_def = saver.export_meta_graph(
+        graph_def=frozen_func.graph.as_graph_def(), graph=frozen_func.graph)
+
+    # Add a collection 'train_op' so that Grappler knows the outputs.
+    fetch_collection = meta_graph_pb2.CollectionDef()
+    for array in func.inputs + func.outputs:
+      fetch_collection.node_list.value.append(array.name)
+    self._grappler_meta_graph_def.collection_def["train_op"].CopyFrom(
+        fetch_collection)
+
+    # Run TRT optimizer in Grappler to convert the graph.
+    self._run_conversion()
+
+    def _get_tensor(graph, tensors):
+      new_tensors = []
+      for tensor in tensors:
+        new_tensor = graph.get_tensor_by_name(tensor.name)
+        new_tensor.set_shape(tensor.shape)
+        new_tensors.append(new_tensor)
+      return new_tensors
+
+    # TODO(laigd): do we need to use different name e.g. "trt_func_graph"?
+    converted_graph = func_graph.FuncGraph(func.graph.name)
+    with converted_graph.as_default():
+      importer.import_graph_def(self._converted_graph_def, name="")
+
+    converted_graph.inputs = _get_tensor(converted_graph, func.graph.inputs)
+    converted_graph.outputs = _get_tensor(converted_graph, func.graph.outputs)
+    converted_graph.structured_outputs = func.graph.structured_outputs
+    converted_graph.structured_input_signature = (
+        func.graph.structured_input_signature)
+
+    # pylint: disable=protected-access
+    # TODO(laigd): should we set up the signature as well?
+    self._converted_func = function.ConcreteFunction(
+        converted_graph, attrs=None, signature=None)
+    self._converted_func.add_to_graph()
+    self._converted_func._arg_keywords = func._arg_keywords
+    self._converted_func._num_positional_args = func._num_positional_args
+    self._converted_func._captured_inputs = func._captured_inputs
+    self._converted_func.graph.variables = func.graph.variables
+    # pylint: enable=protected-access
+
   def convert(self):
     """Run the conversion.
 
     Returns:
-      The converted GraphDef.
+      The converted GraphDef for TF 1.x, or the converted ConcreteFunction in TF
+      2.0+.
     """
     assert not self._converted
 
-    if self._input_graph_def:
-      self._convert_graph_def()
+    if context.executing_eagerly():
+      self._convert_saved_model_v2()
+      return self._converted_func
     else:
-      self._convert_saved_model()
-    return self._converted_graph_def
+      if self._input_graph_def:
+        self._convert_graph_def()
+      else:
+        self._convert_saved_model()
+      return self._converted_graph_def
 
   def calibrate(self,
                 fetch_names,
@@ -279,12 +356,17 @@ class GraphConverter(object):
 
     Raises:
       ValueError: if the input combination is invalid.
+      RuntimeError: if this method is called in eager mode.
 
     Returns:
       The GraphDef after the calibration.
     """
     assert self._converted
     assert not self._calibration_sess
+
+    if context.executing_eagerly():
+      raise RuntimeError("Calibration for TF 2.0 is not supported yet.")
+
     if (feed_dict_fn and input_map_fn) or (not feed_dict_fn and
                                            not input_map_fn):
       raise ValueError(
@@ -330,22 +412,30 @@ class GraphConverter(object):
     """
     assert self._converted
 
-    if self._input_graph_def:
-      raise ValueError(
-          "Not able to save to a SavedModel since input is a GraphDef")
+    if context.executing_eagerly():
+      # Rewrite the signature map using the optimized ConcreteFunction.
+      signatures = {
+          key: value for key, value in self._saved_model.signatures.items()
+      }
+      signatures[self._input_saved_model_signature_key] = self._converted_func
+      save.save(self._saved_model, output_saved_model_dir, signatures)
+    else:
+      if self._input_graph_def:
+        raise ValueError(
+            "Not able to save to a SavedModel since input is a GraphDef")
 
-    # Write the transformed graphdef as SavedModel.
-    saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
-    with ops.Graph().as_default():
-      importer.import_graph_def(self._converted_graph_def, name="")
-      # We don't use any specific converter here.
-      with session.Session(config=self._session_config) as sess:
-        saved_model_builder.add_meta_graph_and_variables(
-            sess,
-            self._input_saved_model_tags,
-            signature_def_map=self._grappler_meta_graph_def.signature_def)
-    # Ignore other meta graphs from the input SavedModel.
-    saved_model_builder.save()
+      # Write the transformed graphdef as SavedModel.
+      saved_model_builder = builder.SavedModelBuilder(output_saved_model_dir)
+      with ops.Graph().as_default():
+        importer.import_graph_def(self._converted_graph_def, name="")
+        # We don't use any specific converter here.
+        with session.Session(config=self._session_config) as sess:
+          saved_model_builder.add_meta_graph_and_variables(
+              sess,
+              self._input_saved_model_tags,
+              signature_def_map=self._grappler_meta_graph_def.signature_def)
+      # Ignore other meta graphs from the input SavedModel.
+      saved_model_builder.save()
 
 
 class TrtPrecisionMode(object):
@@ -463,6 +553,7 @@ class TrtGraphConverter(GraphConverter):
   def __init__(self,
                input_saved_model_dir=None,
                input_saved_model_tags=None,
+               input_saved_model_signature_key=None,
                input_graph_def=None,
                nodes_blacklist=None,
                session_config=None,
@@ -480,6 +571,8 @@ class TrtGraphConverter(GraphConverter):
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
+      input_saved_model_signature_key: the key in the signature def map for a TF
+        2.0 SavedModel.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -524,6 +617,7 @@ class TrtGraphConverter(GraphConverter):
     super(TrtGraphConverter, self).__init__(
         input_saved_model_dir=input_saved_model_dir,
         input_saved_model_tags=input_saved_model_tags,
+        input_saved_model_signature_key=input_saved_model_signature_key,
         input_graph_def=input_graph_def,
         nodes_blacklist=nodes_blacklist,
         session_config=session_config)
@@ -676,6 +770,7 @@ def create_inference_graph(
     use_calibration=True,
     input_saved_model_dir=None,
     input_saved_model_tags=None,
+    input_saved_model_signature_key=None,
     output_saved_model_dir=None,
     session_config=None):
   """Python wrapper for the TRT transformation.
@@ -717,6 +812,8 @@ def create_inference_graph(
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
+    input_saved_model_signature_key: the key in the signature def map for a TF
+      2.0 SavedModel.
     output_saved_model_dir: if not None, construct a SavedModel using the
       returned GraphDef and save it to the specified directory. This option only
       works when the input graph is loaded from a SavedModel, i.e. when
@@ -751,6 +848,7 @@ def create_inference_graph(
   trt_converter = TrtGraphConverter(
       input_saved_model_dir=input_saved_model_dir,
       input_saved_model_tags=input_saved_model_tags,
+      input_saved_model_signature_key=input_saved_model_signature_key,
       input_graph_def=input_graph_def,
       nodes_blacklist=outputs,
       session_config=session_config,

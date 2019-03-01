@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
@@ -100,6 +101,18 @@ uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
                : Env::Default()->NowMicros() +
                      cfg.meta_optimizer_timeout_ms() * 1000;
   }
+}
+
+Status CompressConstants(GraphDef* graph) {
+  for (int i = 0; i < graph->node_size(); ++i) {
+    NodeDef* node = graph->mutable_node(i);
+    if ((IsConstant(*node) || IsHostConstant(*node)) &&
+        HasNodeAttr(*node, "value")) {
+      AttrValue& attr_val = (*node->mutable_attr())["value"];
+      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+    }
+  }
+  return Status::OK();
 }
 
 }  // namespace
@@ -431,6 +444,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
   if (sa_optimizer != nullptr) {
     RUN_OPTIMIZER_OR_RETURN_IF_ERROR(sa_optimizer);
   }
+
+  // Compress the constants in the final graph.
+  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
 
   // Record graph optimization result.
   optimization_results_.push_back(optimization_result);

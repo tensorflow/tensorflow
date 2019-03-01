@@ -2,6 +2,9 @@
 INCLUDES += \
  -I$(MAKEFILE_DIR)/downloads/kissfft
 
+GENERATED_PROJECT_INCLUDES += \
+-I./third_party/kissfft
+
 PROJECT_INCLUDES += \
 third_party/kissfft
 
@@ -14,6 +17,12 @@ $(MAKEFILE_DIR)/downloads/kissfft/COPYING \
 $(MAKEFILE_DIR)/downloads/kissfft/kiss_fft.h \
 $(MAKEFILE_DIR)/downloads/kissfft/_kiss_fft_guts.h \
 $(MAKEFILE_DIR)/downloads/kissfft/tools/kiss_fftr.h
+
+THIRD_PARTY_CC_HDRS += \
+third_party/kissfft/COPYING \
+third_party/kissfft/kiss_fft.h \
+third_party/kissfft/_kiss_fft_guts.h \
+third_party/kissfft/tools/kiss_fftr.h
 
 MICRO_SPEECH_TEST_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_speech_test.cc \
@@ -37,8 +46,8 @@ tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/yes_pow
 SIMPLE_FEATURES_GENERATOR_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_model_settings.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/simple_features_generator.h \
-tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/no_30ms_sample_data.h \
-tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/yes_30ms_sample_data.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/no_30ms_sample_data.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/yes_30ms_sample_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/no_power_spectrum_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/simple_features/yes_power_spectrum_data.h
 
@@ -241,6 +250,13 @@ RECOGNIZE_COMMANDS_TEST_HDRS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h
 
+COMMAND_RESPONDER_TEST_SRCS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/command_responder_test.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.cc
+
+COMMAND_RESPONDER_TEST_HDRS := \
+tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h
+
 MICRO_SPEECH_SRCS := \
 tensorflow/lite/experimental/micro/examples/micro_speech/main.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.cc \
@@ -249,6 +265,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.cc \
 $(MICRO_FEATURES_GENERATOR_SRCS)
 
 MICRO_SPEECH_HDRS := \
@@ -258,6 +275,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h \
 $(MICRO_FEATURES_GENERATOR_HDRS)
 
 MICRO_SPEECH_MOCK_SRCS := \
@@ -270,6 +288,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.cc \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.cc \
+tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.cc \
 $(MICRO_FEATURES_GENERATOR_SRCS)
 
 MICRO_SPEECH_MOCK_HDRS := \
@@ -282,6 +301,7 @@ tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/no_micro
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/yes_micro_features_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/tiny_conv_micro_features_model_data.h \
 tensorflow/lite/experimental/micro/examples/micro_speech/recognize_commands.h \
+tensorflow/lite/experimental/micro/examples/micro_speech/command_responder.h \
 $(MICRO_FEATURES_GENERATOR_HDRS)
 
 # Find any platform-specific rules for this example.
@@ -339,6 +359,10 @@ $(FEATURE_PROVIDER_MOCK_TEST_SRCS),$(FEATURE_PROVIDER_MOCK_TEST_HDRS)))
 # Tests the command recognizer module.
 $(eval $(call microlite_test,recognize_commands_test,\
 $(RECOGNIZE_COMMANDS_TEST_SRCS),$(RECOGNIZE_COMMANDS_TEST_HDRS)))
+
+# Tests responding to a command.
+$(eval $(call microlite_test,command_responder_test,\
+$(COMMAND_RESPONDER_TEST_SRCS),$(COMMAND_RESPONDER_TEST_HDRS)))
 
 # Builds a standalone speech command recognizer binary.
 $(eval $(call microlite_test,micro_speech,\

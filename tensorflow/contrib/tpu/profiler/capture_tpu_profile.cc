@@ -76,7 +76,8 @@ int main(int argc, char** argv) {
     std::cout << usage.c_str() << std::endl;
     return 2;
   }
-  tensorflow::Status status =
+  tensorflow::Status status;
+  status =
       tensorflow::profiler::client::ValidateHostPortPair(FLAGS_service_addr);
   if (!status.ok()) {
     std::cout << status.error_message() << std::endl;
@@ -103,9 +104,14 @@ int main(int argc, char** argv) {
     tensorflow::profiler::client::StartMonitoring(
         FLAGS_service_addr, duration_ms, FLAGS_monitoring_level, num_queries);
   } else {
-    tensorflow::profiler::client::StartTracing(
+    status = tensorflow::profiler::client::StartTracing(
         FLAGS_service_addr, FLAGS_logdir, FLAGS_workers_list,
         FLAGS_include_dataset_ops, duration_ms, num_tracing_attempts);
+    if (!status.ok()) {
+      std::cout << status.error_message() << std::endl;
+      std::cout << usage.c_str() << std::endl;
+      return 2;
+    }
   }
   return 0;
 }

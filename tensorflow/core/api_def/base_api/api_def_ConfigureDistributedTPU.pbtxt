@@ -1,5 +1,6 @@
 op {
   graph_op_name: "ConfigureDistributedTPU"
+  visibility: HIDDEN
   out_arg {
     name: "topology"
     description: <<END

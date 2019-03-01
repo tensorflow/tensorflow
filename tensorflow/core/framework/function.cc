@@ -569,6 +569,9 @@ string Print(const FunctionDef& fdef) {
   for (const auto& n : fdef.node_def()) {
     strings::StrAppend(&out, "  ", Print(n), "\n");
   }
+  for (const auto& cr : fdef.control_ret()) {
+    strings::StrAppend(&out, "  @return ", cr.first, " = ", cr.second, "\n");
+  }
   for (const auto& r : fdef.ret()) {
     strings::StrAppend(&out, "  return ", r.first, " = ", r.second, "\n");
   }
@@ -913,6 +916,12 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   string executor_type = FunctionLibraryRuntime::ExecutorType(options, attrs);
   if (!executor_type.empty()) {
     entries.push_back(strings::StrCat(kExecutorAttr, "=", executor_type));
+  }
+  string config_proto_serialized;
+  options.config_proto.SerializeToString(&config_proto_serialized);
+  if (!config_proto_serialized.empty()) {
+    entries.push_back(strings::StrCat(
+        "_config_proto", "=", str_util::CEscape(config_proto_serialized)));
   }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");

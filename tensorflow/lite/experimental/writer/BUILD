@@ -47,6 +47,16 @@ cc_binary(
     ],
 )
 
+cc_binary(
+    name = "writer_test",
+    srcs = ["writer_test.cc"],
+    deps = [
+        ":writer_lib",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:builtin_ops",
+    ],
+)
+
 cc_test(
     name = "writer_lib_test",
     size = "small",

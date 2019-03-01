@@ -833,7 +833,8 @@ def make_batched_features_dataset_v2(file_pattern,
           sloppy=sloppy_ordering))
 
   # Extract values if the `Example` tensors are stored as key-value tuples.
-  if dataset.output_types == (dtypes.string, dtypes.string):
+  if dataset_ops.get_legacy_output_types(dataset) == (
+      dtypes.string, dtypes.string):
     dataset = dataset_ops.MapDataset(
         dataset, lambda _, v: v, use_inter_op_parallelism=False)
 
@@ -961,7 +962,7 @@ class SqlDatasetV2(dataset_ops.DatasetSource):
             lambda dtype: structure.TensorStructure(dtype, []), output_types))
     variant_tensor = gen_experimental_dataset_ops.experimental_sql_dataset(
         self._driver_name, self._data_source_name, self._query,
-        nest.flatten(self.output_types), nest.flatten(self.output_shapes))
+        **dataset_ops.flat_structure(self))
     super(SqlDatasetV2, self).__init__(variant_tensor)
 
   @property

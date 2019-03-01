@@ -22,13 +22,8 @@ from absl import app
 from absl import flags
 
 import numpy as np
-
-import tensorflow as tf
-# TODO(vbardiovsky): Remove when load symbol is public.
+import tensorflow.compat.v2 as tf
 from tensorflow.examples.saved_model.integration_tests import util
-from tensorflow.python.saved_model.load import load
-
-tf.saved_model.load = load
 
 FLAGS = flags.FLAGS
 

@@ -1495,6 +1495,34 @@ def set_other_mpi_vars(environ_cp):
         'Cannot find the MPI library file in %s/lib or %s/lib64 or %s/lib32' %
         (mpi_home, mpi_home, mpi_home))
 
+def system_specific_test_config(env):
+  """Add default test flags required for TF tests to bazelrc."""
+  write_to_bazelrc('test --flaky_test_attempts=3')
+  write_to_bazelrc('test --test_size_filters=small,medium')
+  write_to_bazelrc(
+      'test --test_tag_filters=-benchmark-test,-no_oss,-oss_serial')
+  write_to_bazelrc('test --build_tag_filters=-benchmark-test,-no_oss')
+  if is_windows():
+    if env.get('TF_NEED_CUDA', None) == 1:
+      write_to_bazelrc(
+          'test --test_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+      write_to_bazelrc(
+          'test --build_tag_filters=-no_windows,-no_windows_gpu,-no_gpu')
+    else:
+      write_to_bazelrc('test --test_tag_filters=-no_windows,-gpu')
+      write_to_bazelrc('test --build_tag_filters=-no_windows,-gpu')
+  elif is_macos():
+    write_to_bazelrc('test --test_tag_filters=-gpu,-nomac,-no_mac')
+    write_to_bazelrc('test --build_tag_filters=-gpu,-nomac,-no_mac')
+  elif is_linux():
+    if env.get('TF_NEED_CUDA', None) == 1:
+      write_to_bazelrc('test --test_tag_filters=-no_gpu')
+      write_to_bazelrc('test --build_tag_filters=-no_gpu')
+      write_to_bazelrc('test --test_env=LD_LIBRARY_PATH')
+    else:
+      write_to_bazelrc('test --test_tag_filters=-gpu')
+      write_to_bazelrc('test --build_tag_filters=-gpu')
+
 
 def set_system_libs_flag(environ_cp):
   syslibs = environ_cp.get('TF_SYSTEM_LIBS', '')
@@ -1519,6 +1547,9 @@ def set_windows_build_flags(environ_cp):
   write_to_bazelrc('build --config monolithic')
   # Suppress warning messages
   write_to_bazelrc('build --copt=-w --host_copt=-w')
+  # Fix winsock2.h conflicts
+  write_to_bazelrc(
+      'build --copt=-DWIN32_LEAN_AND_MEAN --host_copt=-DWIN32_LEAN_AND_MEAN')
   # Output more verbose information when something goes wrong
   write_to_bazelrc('build --verbose_failures')
   # The host and target platforms are the same in Windows build. So we don't
@@ -1705,6 +1736,8 @@ def main():
     create_android_ndk_rule(environ_cp)
     create_android_sdk_rule(environ_cp)
 
+  system_specific_test_config(os.environ)
+
   if get_var(
       environ_cp, 'TF_CONFIGURE_APPLE_BAZEL_RULES',
       'Configure Bazel rules for Apple platforms', False,
@@ -1721,6 +1754,7 @@ def main():
   config_info_line('gdr', 'Build with GDR support.')
   config_info_line('verbs', 'Build with libverbs support.')
   config_info_line('ngraph', 'Build with Intel nGraph support.')
+  config_info_line('numa', 'Build with NUMA support.')
   config_info_line(
       'dynamic_kernels',
       '(Experimental) Build kernels into separate shared objects.')

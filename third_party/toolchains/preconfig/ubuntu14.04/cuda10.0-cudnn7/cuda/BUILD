@@ -1192,7 +1192,7 @@ genrule(
         "cuda/include/vector_functions.hpp",
         "cuda/include/vector_types.h",
     ],
-    cmd = """cp -rf "/usr/local/cuda-10.0/include/." "$(@D)/cuda/include/" """,
+    cmd = """cp -rLf "/usr/local/cuda-10.0/include/." "$(@D)/cuda/include/" """,
 )
 
 genrule(
@@ -1200,7 +1200,7 @@ genrule(
     outs = [
         "cuda/nvvm/libdevice/libdevice.10.bc",
     ],
-    cmd = """cp -rf "/usr/local/cuda-10.0/nvvm/libdevice/." "$(@D)/" """,
+    cmd = """cp -rLf "/usr/local/cuda-10.0/nvvm/libdevice/." "$(@D)/" """,
 )
 
 genrule(
@@ -1237,7 +1237,7 @@ genrule(
         "cuda/extras/CUPTI/include/openmp/cupti_openmp.h",
         "cuda/extras/CUPTI/include/openmp/ompt.h",
     ],
-    cmd = """cp -rf "/usr/local/cuda-10.0/extras/CUPTI/include/." "$(@D)/cuda/extras/CUPTI/include/" """,
+    cmd = """cp -rLf "/usr/local/cuda-10.0/extras/CUPTI/include/." "$(@D)/cuda/extras/CUPTI/include/" """,
 )
 
 genrule(
@@ -1277,7 +1277,7 @@ genrule(
         "cuda/bin/nvprune",
         "cuda/bin/ptxas",
     ],
-    cmd = """cp -rf "/usr/local/cuda-10.0/bin/." "$(@D)/cuda/bin/" """,
+    cmd = """cp -rLf "/usr/local/cuda-10.0/bin/." "$(@D)/cuda/bin/" """,
 )
 
 genrule(

@@ -944,7 +944,30 @@ TfLiteStatus LeakyReluEval(TfLiteContext* context, TfLiteNode* node) {
   }
 }
 
+TfLiteStatus EluEval(TfLiteContext* context, TfLiteNode* node) {
+  const TfLiteTensor* input = GetInput(context, node, 0);
+  TfLiteTensor* output = GetOutput(context, node, 0);
+  switch (input->type) {
+    case kTfLiteFloat32: {
+      optimized_ops::Elu(GetTensorShape(input), GetTensorData<float>(input),
+                         GetTensorShape(output), GetTensorData<float>(output));
+      return kTfLiteOk;
+    } break;
+    default:
+      context->ReportError(context, "Only float32 supported currently, got %s.",
+                           TfLiteTypeGetName(input->type));
+      return kTfLiteError;
+  }
+}
+
 }  // namespace activations
+
+TfLiteRegistration* Register_ELU() {
+  static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,
+                                 activations::GenericPrepare,
+                                 activations::EluEval};
+  return &r;
+}
 
 TfLiteRegistration* Register_RELU() {
   static TfLiteRegistration r = {/*init=*/nullptr, /*free=*/nullptr,

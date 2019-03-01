@@ -414,11 +414,11 @@ bool HloDataflowAnalysis::UpdateCallValueSet(HloInstruction* call) {
 bool HloDataflowAnalysis::UpdateConditionalValueSet(
     HloInstruction* conditional) {
   CHECK_EQ(conditional->opcode(), HloOpcode::kConditional);
-  const InstructionValueSet* const inputs[] = {
-      &GetInstructionValueSet(
-          conditional->true_computation()->root_instruction()),
-      &GetInstructionValueSet(
-          conditional->false_computation()->root_instruction())};
+  std::vector<const InstructionValueSet*> inputs(conditional->branch_count());
+  for (int j = 0; j < conditional->branch_count(); ++j) {
+    inputs[j] = &GetInstructionValueSet(
+        conditional->branch_computation(j)->root_instruction());
+  }
   if (ssa_form_) {
     return Phi(conditional, inputs);
   } else {
@@ -546,20 +546,23 @@ bool HloDataflowAnalysis::UpdateParameterValueSet(HloInstruction* parameter) {
     } else if (callsite.instruction()->opcode() == HloOpcode::kConditional) {
       CHECK_EQ(parameter->parameter_number(), 0);
       auto conditional = callsite.instruction();
-      // Conditional has 3 operands. Operand 0 is the predicate, operand 1 is
-      // the argument to the true computation and operand 2 is the argument to
-      // the false computation.
+      // Conditional has branch_count+1 operands. Operand 0 is the branch_index,
+      // operands 1 and onward are the arguments to the branch computations.
       //
-      // If the parameter belongs to conditional's true computation, then
+      // If the parameter belongs to conditional's branch 0 computation, then
       // operand 1 is forwarded to this parameter instruction. If the parameter
-      // belongs to conditional's false computation, then operand 2 is forwarded
-      // to this parameter instruction.
-      if (parameter->parent() == conditional->true_computation()) {
-        inputs.push_back(&GetInstructionValueSet(conditional->operand(1)));
-      } else {
-        CHECK_EQ(parameter->parent(), conditional->false_computation());
-        inputs.push_back(&GetInstructionValueSet(conditional->operand(2)));
+      // belongs to conditional's branch 5 computation, then operand 6 is
+      // forwarded to this parameter instruction.
+      bool found_parent = false;
+      for (int j = 0; j < conditional->branch_count(); ++j) {
+        if (parameter->parent() == conditional->branch_computation(j)) {
+          inputs.push_back(
+              &GetInstructionValueSet(conditional->operand(j + 1)));
+          found_parent = true;
+          break;
+        }
       }
+      CHECK(found_parent);
       need_phi = true;
     } else {
       LOG(FATAL) << "CallContext::kSequential computations should only be "
@@ -710,19 +713,17 @@ void HloDataflowAnalysis::Propagate() {
       // parameter(s) of the computation need to be updated.
       if (user->opcode() == HloOpcode::kConditional) {
         // If operand 0 is the use of instruction, then no parameters need to be
-        // updated, since that is the predicate of the conditional.
-        // If operand 1 is the use of instruction, then the true_computation's
-        // parameter need to be updated.
-        // If operand 2 is the use of instruction, then the false_computation's
-        // parameter need to be updated.
+        // updated, since that is the branch_index of the conditional.
+        // If operand n+1 is the use of instruction, then the branch_computation
+        // n's parameter need to be updated.
         //
-        // Note that the same instruction can be used in both operand 1 and
-        // operand 2.
-        if (user->operand(1) == instruction) {
-          add_to_worklist(user->true_computation()->parameter_instruction(0));
-        }
-        if (user->operand(2) == instruction) {
-          add_to_worklist(user->false_computation()->parameter_instruction(0));
+        // Note that the same instruction can be used in multiple branches'
+        // operands.
+        for (int j = 0; j < user->branch_count(); ++j) {
+          if (user->operand(j + 1) == instruction) {
+            add_to_worklist(
+                user->branch_computation(j)->parameter_instruction(0));
+          }
         }
       } else {
         for (HloComputation* called_computation : user->called_computations()) {
@@ -744,8 +745,8 @@ void HloDataflowAnalysis::Propagate() {
       const CallGraphNode& call_graph_node =
           call_graph_->GetNode(instruction->parent());
       for (const CallSite& callsite : call_graph_node.caller_callsites()) {
-        if ((callsite.instruction()->opcode() == HloOpcode::kCall) ||
-            (callsite.instruction()->opcode() == HloOpcode::kConditional)) {
+        if (callsite.instruction()->opcode() == HloOpcode::kCall ||
+            callsite.instruction()->opcode() == HloOpcode::kConditional) {
           add_to_worklist(callsite.instruction());
         } else if (callsite.instruction()->opcode() == HloOpcode::kWhile) {
           // Add the while itself, and the body and condition parameters.

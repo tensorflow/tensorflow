@@ -13,9 +13,7 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-// SWIG typemaps and declarations for building, compiling, and
-// executing XLA computations, wrapping most of what is declared in
-// xla_data.h.
+// SWIG typemaps for building, compiling, and executing XLA computations.
 //
 // The typemaps below implement/assert the following correspondences
 // (with elaborations below):
@@ -33,11 +31,11 @@ limitations under the License.
 //  std::vector<Shape>                 <-  sequence of xla_client.Shape objects
 //  PrimitiveType                      <-  int
 //  Span<pair<int64, in64>>            <-  sequence of int pairs
-//  PaddingConfig proto                <-  corresponding Python proto
-//  ConvolutionDimensionNumbers proto  <-  corresponding Python proto
-//  DotDimensionNumbers proto          <-  corresponding Python proto
-//  GatherDimensionNumbers proto       <-  corresponding Python proto
-//  ScatterDimensionNumbers proto      <-  corresponding Python proto
+//  PaddingConfig proto                <-  ducktyped Python proto
+//  ConvolutionDimensionNumbers proto  <-  ducktyped Python proto
+//  DotDimensionNumbers proto          <-  ducktyped Python proto
+//  GatherDimensionNumbers proto       <-  ducktyped Python proto
+//  ScatterDimensionNumbers proto      <-  ducktyped Python proto
 //  Span<ReplicaGroup proto>           <-  sequence of ReplicaGroup Python proto
 //
 // Arrows indicate whether a conversion only ever occurs in one
@@ -102,6 +100,8 @@ limitations under the License.
 // Other SWIG object wrappers (e.g. of Computation) are further
 // wrapped by xla_client in order to set up a custom destructor that
 // triggers memory deallocation on the C++ side.
+//
+
 
 %module(threads="1") xla_data
 

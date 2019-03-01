@@ -26,7 +26,7 @@ namespace ops {
 namespace builtin {
 namespace maximum_minimum {
 
-// This file has a reference implemenation of TFMaximum/TFMinimum.
+// This file has a reference implementation of TFMaximum/TFMinimum.
 enum KernelType {
   kReference,
 };

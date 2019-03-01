@@ -20,7 +20,9 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_math_ops
@@ -83,7 +85,7 @@ def _py_for_stmt(iter_, extra_test, body, init_state):
   """Overload of for_stmt that executes a Python for loop."""
   state = init_state
   for target in iter_:
-    if not extra_test(*state):
+    if extra_test is not None and not extra_test(*state):
       break
     state = body(target, *state)
   return state
@@ -104,7 +106,9 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
     return state
 
   def while_cond(iterate_index, *state):
-    return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
+    if extra_test is not None:
+      return gen_math_ops.logical_and(iterate_index < n, extra_test(*state))
+    return iterate_index < n
 
   results = while_stmt(
       while_cond,
@@ -127,17 +131,26 @@ def _known_len_for_stmt(iter_, extra_test, body, init_state):
 
 def _dataset_for_stmt(ds, extra_test, body, init_state):
   """Overload of for_stmt that iterates over TF Datasets."""
-  if extra_test(*init_state) is not True:
+
+  if extra_test is not None:
     raise NotImplementedError(
-        'break statements are not yet supported in for/Dataset loops')
+        'break and return statements are not yet supported in '
+        'for/Dataset loops.')
 
   def reduce_body(state, iterate):
     new_state = body(iterate, *state)
     return new_state
 
-  results = ds.reduce(init_state, reduce_body)
+  if init_state:
+    return ds.reduce(init_state, reduce_body)
 
-  return results
+  # Workaround for Datset.reduce not allowing empty state tensors - create
+  # a dummy state variable that remains unused.
+  def reduce_body_with_dummy_state(state, iterate):
+    reduce_body((), iterate)
+    return state
+  ds.reduce((constant_op.constant(0),), reduce_body_with_dummy_state)
+  return ()
 
 
 def while_stmt(test, body, init_state, extra_deps, opts=None):
@@ -165,7 +178,9 @@ def while_stmt(test, body, init_state, extra_deps, opts=None):
   # TODO(mdan): Consider adding a generic mechanism for dynamic dispatch.
   # That could be something as simple as a collection of dispatch rules, with
   # some prioritization.
-  if any(tensor_util.is_tensor(v) for v in nest.flatten(extra_deps)):
+  if any(
+      tensor_util.is_tensor(v) or isinstance(v, data_flow_ops.QueueBase)
+      for v in nest.flatten(extra_deps)):
     # Check for undefined symbols and report an error. This prevents the error
     # from propagating into the TF runtime. We have more information here and
     # can provide a clearer error message.

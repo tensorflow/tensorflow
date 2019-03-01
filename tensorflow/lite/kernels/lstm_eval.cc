@@ -119,7 +119,7 @@ inline void LstmStepWithAuxInput(
     float* forget_gate_scratch, float* cell_scratch, float* output_gate_scratch,
     float* output_ptr_batch) {
   // Since we have already checked that weights are all there or none, we can
-  // check the existense of only one to the get the condition.
+  // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
   const bool is_layer_norm_lstm =
@@ -473,7 +473,7 @@ inline void LstmStepWithAuxInput(
     int8_t* quantized_cell_state_ptr, float* output_state_ptr,
     float* cell_state_ptr, float* output_ptr_batch) {
   // Since we have already checked that weights are all there or none, we
-  // can check the existense of only one to the get the condition.
+  // can check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights_ptr == nullptr);
   const bool use_peephole = (cell_to_output_weights_ptr != nullptr);
   const bool is_layer_norm_lstm =
@@ -913,7 +913,7 @@ TfLiteStatus EvalFloat(
   const int n_output = recurrent_to_output_weights->dims->data[1];
 
   // Since we have already checked that weights are all there or none, we can
-  // check the existense of only one to the get the condition.
+  // check the existence of only one to the get the condition.
   const bool use_cifg = (input_to_input_weights == nullptr);
   const bool use_peephole = (cell_to_output_weights != nullptr);
   const bool is_layer_norm_lstm = (forget_layer_norm_coefficients != nullptr);

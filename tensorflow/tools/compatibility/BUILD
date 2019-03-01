@@ -9,6 +9,12 @@ licenses(["notice"])  # Apache 2.0
 package(default_visibility = ["//tensorflow:internal"])
 
 py_library(
+    name = "ipynb",
+    srcs = ["ipynb.py"],
+    srcs_version = "PY2AND3",
+)
+
+py_library(
     name = "ast_edits",
     srcs = ["ast_edits.py"],
     srcs_version = "PY2AND3",
@@ -87,6 +93,7 @@ py_binary(
     srcs_version = "PY2AND3",
     deps = [
         ":ast_edits",
+        ":ipynb",
         ":tf_upgrade_v2_lib",
     ],
 )

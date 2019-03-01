@@ -943,38 +943,53 @@ def poisson(y_true, y_pred):
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
 
 
-@keras_export('keras.metrics.cosine_proximity',
-              'keras.metrics.cosine',
-              'keras.losses.cosine_proximity',
-              'keras.losses.cosine')
+# Retaining the legacy namespaces: 'cosine_proximity' and 'cosine'.
+# TODO(psv): Change name of this function to `cosine_similarity` after fixing
+# estimator test.
+@keras_export(
+    'keras.losses.cosine_similarity',
+    v1=[
+        'keras.metrics.cosine_proximity',
+        'keras.metrics.cosine',
+        'keras.losses.cosine_proximity',
+        'keras.losses.cosine',
+        'keras.losses.cosine_similarity',
+    ])
 def cosine_proximity(y_true, y_pred, axis=-1):
+  """Computes the cosine similarity between labels and predictions."""
   y_true = nn.l2_normalize(y_true, axis=axis)
   y_pred = nn.l2_normalize(y_pred, axis=axis)
-  return -math_ops.reduce_sum(y_true * y_pred, axis=axis)
+  return math_ops.reduce_sum(y_true * y_pred, axis=axis)
 
 
-@keras_export('keras.losses.CosineProximity')
-class CosineProximity(Loss):
-  """Computes the cosine proximity between `y_true` and `y_pred`.
+@keras_export('keras.losses.CosineSimilarity')
+class CosineSimilarity(LossFunctionWrapper):
+  """Computes the cosine similarity between `y_true` and `y_pred`.
 
   Usage:
 
   ```python
-  cosine_loss = tf.keras.losses.CosineProximity()
-  loss = cosine_loss([0., 1., 1.], [1., 0., 1.])
-  print('Loss: ', loss.numpy())  # Loss: -0.5
+  cosine_loss = tf.keras.losses.CosineSimilarity(axis=1)
+  loss = cosine_loss([[0., 1.], [1., 1.]], [[1., 0.], [1., 1.]])
+  # l2_norm(y_true) = [[0., 1.], [1./1.414], 1./1.414]]]
+  # l2_norm(y_pred) = [[1., 0.], [1./1.414], 1./1.414]]]
+  # l2_norm(y_true) . l2_norm(y_pred) = [[0., 0.], [0.5, 0.5]]
+  # loss = mean(sum(l2_norm(y_true) . l2_norm(y_pred), axis=1))
+         = ((0. + 0.) +  (0.5 + 0.5)) / 2
+
+  print('Loss: ', loss.numpy())  # Loss: 0.5
   ```
 
   Usage with tf.keras API:
 
   ```python
   model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.CosineProximity())
+  model.compile('sgd', loss=tf.keras.losses.CosineSimilarity(axis=1))
   ```
 
   Args:
     axis: (Optional) Defaults to -1. The dimension along which the cosine
-      proximity is computed.
+      similarity is computed.
     reduction: (Optional) Type of `tf.keras.losses.Reduction` to apply to loss.
       Default value is `SUM_OVER_BATCH_SIZE`.
     name: Optional name for the op.
@@ -983,23 +998,9 @@ class CosineProximity(Loss):
   def __init__(self,
                axis=-1,
                reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
-               name=None):
-    super(CosineProximity, self).__init__(reduction=reduction, name=name)
-    self.axis = axis
-
-  def call(self, y_true, y_pred):
-    """Calculates the cosine proximity loss.
-
-    Args:
-      y_true: Ground truth values.
-      y_pred: The predicted values.
-
-    Returns:
-      Cosine distance loss.
-    """
-    y_pred = ops.convert_to_tensor(y_pred)
-    y_true = math_ops.cast(y_true, y_pred.dtype)
-    return cosine_proximity(y_true, y_pred, axis=self.axis)
+               name='cosine_similarity'):
+    super(CosineSimilarity, self).__init__(
+        cosine_similarity, reduction=reduction, name=name, axis=axis)
 
 
 # Aliases.
@@ -1009,7 +1010,7 @@ mae = MAE = mean_absolute_error
 mape = MAPE = mean_absolute_percentage_error
 msle = MSLE = mean_squared_logarithmic_error
 kld = KLD = kullback_leibler_divergence
-cosine = cosine_proximity
+cosine_similarity = cosine_proximity
 
 
 def is_categorical_crossentropy(loss):

@@ -557,6 +557,10 @@ def _slice_helper(tensor, slice_spec, var=None):
   print(foo[tf.newaxis, :, :].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis, ...].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
   print(foo[tf.newaxis].eval())  # => [[[1,2,3], [4,5,6], [7,8,9]]]
+
+  # masks
+  foo = tf.constant([[1,2,3], [4,5,6], [7,8,9]])
+  print(foo[foo > 2].eval())  # => [3, 4, 5, 6, 7, 8, 9]
   ```
 
   Notes:
@@ -579,6 +583,10 @@ def _slice_helper(tensor, slice_spec, var=None):
     TypeError: If the slice indices aren't int, slice, ellipsis,
       tf.newaxis or scalar int32/int64 tensors.
   """
+  if isinstance(slice_spec, bool) or \
+  (isinstance(slice_spec, ops.Tensor) and slice_spec.dtype == dtypes.bool) or \
+  (isinstance(slice_spec, np.ndarray) and slice_spec.dtype == bool):
+    return boolean_mask(tensor=tensor, mask=slice_spec)
 
   if not isinstance(slice_spec, (list, tuple)):
     slice_spec = [slice_spec]
@@ -1464,14 +1472,14 @@ unique_with_counts.__doc__ = gen_array_ops.unique_with_counts.__doc__
 def split(value, num_or_size_splits, axis=0, num=None, name="split"):
   """Splits a tensor into sub tensors.
 
-  If `num_or_size_splits` is an integer type, then `value` is split
-  along dimension `axis` into `num_split` smaller tensors.
-  Requires that `num_split` evenly divides `value.shape[axis]`.
+  If `num_or_size_splits` is an integer, then `value` is split along dimension
+  `axis` into `num_split` smaller tensors. This requires that `num_split` evenly
+  divides `value.shape[axis]`.
 
-  If `num_or_size_splits` is not an integer type, it is presumed to be a Tensor
-  `size_splits`, then splits `value` into `len(size_splits)` pieces. The shape
-  of the `i`-th piece has the same size as the `value` except along dimension
-  `axis` where the size is `size_splits[i]`.
+  If `num_or_size_splits` is a 1-D Tensor (or list), we call it `size_splits`
+  and `value` is split into `len(size_splits)` elements. The shape of the `i`-th
+  element has the same size as the `value` except along dimension `axis` where
+  the size is `size_splits[i]`.
 
   For example:
 
@@ -1489,13 +1497,13 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
 
   Args:
     value: The `Tensor` to split.
-    num_or_size_splits: Either a 0-D integer `Tensor` indicating the number of
-      splits along split_dim or a 1-D integer `Tensor` containing
+    num_or_size_splits: Either an integer indicating the number of
+      splits along split_dim or a 1-D integer `Tensor` or Python list containing
       the sizes of each output tensor along split_dim. If a scalar then it must
       evenly divide `value.shape[axis]`; otherwise the sum of sizes along the
       split dimension must match that of the `value`.
-    axis: A 0-D `int32` `Tensor`. The dimension along which to split.
-      Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
+    axis: An integer or scalar `int32` `Tensor`. The dimension along which to
+    split. Must be in the range `[-rank(value), rank(value))`. Defaults to 0.
     num: Optional, used to specify the number of outputs when it cannot be
       inferred from the shape of `size_splits`.
     name: A name for the operation (optional).
@@ -1510,9 +1518,15 @@ def split(value, num_or_size_splits, axis=0, num=None, name="split"):
     ValueError: If `num` is unspecified and cannot be inferred.
   """
   size_splits = ops.convert_to_tensor(num_or_size_splits)
-  if size_splits._rank() == 0 and size_splits.dtype.is_integer:
+  if isinstance(num_or_size_splits,
+                six.integer_types + (tensor_shape.Dimension,)):
     return gen_array_ops.split(
         axis=axis, num_split=num_or_size_splits, value=value, name=name)
+
+  if size_splits._rank() == 0:
+    raise ValueError(
+        "Rank-0 tensors are not supported as the num_or_size_splits argument "
+        "to split. Argument provided: %s" % (num_or_size_splits,))
 
   if num is None:
     size_splits_shape = size_splits._shape_tuple()
@@ -3085,6 +3099,7 @@ def sequence_mask(lengths, maxlen=None, dtype=dtypes.bool, name=None):
 
     if maxlen is None:
       maxlen = gen_math_ops._max(lengths, _all_dimensions(lengths))
+      maxlen = gen_math_ops.maximum(constant(0, maxlen.dtype), maxlen)
     else:
       maxlen = ops.convert_to_tensor(maxlen)
     if maxlen.get_shape().ndims is not None and maxlen.get_shape().ndims != 0:

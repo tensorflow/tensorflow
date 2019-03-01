@@ -469,6 +469,16 @@ Status MulGrad(const AttrSlice& attrs, FunctionDef* g) {
 }
 REGISTER_OP_GRADIENT("Mul", MulGrad);
 
+Status MulNoNanGrad(const AttrSlice& attrs, FunctionDef* g) {
+  // clang-format off
+  return GradForBinaryCwise(g, {
+      {{"gx"}, "MulNoNan", {"y", "dz"}},  // y * dz
+      {{"gy"}, "MulNoNan", {"x", "dz"}},  // x * dz
+  });
+  // clang-format on
+}
+REGISTER_OP_GRADIENT("MulNoNan", MulGrad);
+
 Status DivGrad(const AttrSlice& attrs, FunctionDef* g) {
   // clang-format off
   return GradForBinaryCwise(g, {

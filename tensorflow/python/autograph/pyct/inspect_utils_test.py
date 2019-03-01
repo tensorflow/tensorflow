@@ -28,6 +28,7 @@ import six
 
 from tensorflow.python import lib
 from tensorflow.python.autograph.pyct import inspect_utils
+from tensorflow.python.eager import function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.platform import test
 
@@ -358,15 +359,13 @@ class InspectUtilsTest(test.TestCase):
   def test_getmethodclass_weakref_mechanism(self):
     test_obj = TestClass()
 
-    class WeakrefWrapper(object):
-
-      def __init__(self):
-        self.ag_self_weakref__ = weakref.ref(test_obj)
-
     def test_fn(self):
       return self
 
-    bound_method = types.MethodType(test_fn, WeakrefWrapper())
+    bound_method = types.MethodType(
+        test_fn,
+        function.TfMethodTarget(
+            weakref.ref(test_obj), test_obj.member_function))
     self.assertEqual(inspect_utils.getmethodclass(bound_method), TestClass)
 
   def test_getmethodclass_no_bool_conversion(self):

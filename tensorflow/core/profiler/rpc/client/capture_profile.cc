@@ -20,7 +20,6 @@ limitations under the License.
 #include <ctime>
 #include <vector>
 
-#include "tensorflow/contrib/tpu/profiler/dump_tpu_profile.h"
 #include "tensorflow/core/distributed_runtime/rpc/grpc_util.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -28,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/lib/strings/str_util.h"
 #include "tensorflow/core/platform/grpc_services.h"
+#include "tensorflow/core/profiler/rpc/client/dump_tpu_profile.h"
 
 namespace tensorflow {
 namespace profiler {
@@ -79,9 +79,9 @@ ProfileRequest PopulateProfileRequest(int duration_ms,
 
 // Returns whether the returned trace is empty.
 // Failure are handled by CHECK, i.e. abort()
-bool Profile(const string& service_addr, const string& logdir, int duration_ms,
-             const string& repository_root, const string& session_id,
-             const ProfileOptions& opts) {
+Status Profile(const string& service_addr, const string& logdir,
+               int duration_ms, const string& repository_root,
+               const string& session_id, const ProfileOptions& opts) {
   ProfileRequest request =
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
 
@@ -96,11 +96,12 @@ bool Profile(const string& service_addr, const string& logdir, int duration_ms,
           "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
           channel_args));
   ProfileResponse response;
-  TF_QCHECK_OK(FromGrpcStatus(stub->Profile(&context, request, &response)));
+  TF_RETURN_IF_ERROR(
+      FromGrpcStatus(stub->Profile(&context, request, &response)));
 
   if (!response.encoded_trace().empty()) {
-    TF_CHECK_OK(tensorflow::tpu::WriteTensorboardTPUProfile(
-        logdir, session_id, "", response, &std::cout));
+    TF_CHECK_OK(WriteTensorboardTPUProfile(logdir, session_id, "", response,
+                                           &std::cout));
     // Print this at the end so that it's not buried in irrelevant LOG messages.
     std::cout
         << "NOTE: using the trace duration " << duration_ms << "ms."
@@ -111,16 +112,20 @@ bool Profile(const string& service_addr, const string& logdir, int duration_ms,
         << std::endl;
   }
 
-  return response.encoded_trace().empty();
+  if (response.encoded_trace().empty()) {
+    return Status(tensorflow::error::Code::UNAVAILABLE,
+                  "No trace event is collected");
+  }
+  return Status::OK();
 }
 
 // Start a new profiling session that include all the hosts included in
 // hostnames, for the time interval of duration_ms. Possibly save the profiling
 // result in the directory specified by repository_root and session_id.
-bool NewSession(const string& service_addr,
-                const std::vector<tensorflow::string>& hostnames,
-                int duration_ms, const string& repository_root,
-                const string& session_id, const ProfileOptions& opts) {
+Status NewSession(const string& service_addr,
+                  const std::vector<tensorflow::string>& hostnames,
+                  int duration_ms, const string& repository_root,
+                  const string& session_id, const ProfileOptions& opts) {
   NewProfileSessionRequest new_session_request;
   *new_session_request.mutable_request() =
       PopulateProfileRequest(duration_ms, repository_root, session_id, opts);
@@ -145,22 +150,26 @@ bool NewSession(const string& service_addr,
           "dns:///" + service_addr, ::grpc::InsecureChannelCredentials(),
           channel_args));
   NewProfileSessionResponse new_session_response;
-  TF_QCHECK_OK(FromGrpcStatus(
+  TF_RETURN_IF_ERROR(FromGrpcStatus(
       stub->NewSession(&context, new_session_request, &new_session_response)));
 
   std::cout << "Profile session succeed for host(s):"
             << str_util::Join(hostnames, ",") << std::endl;
-  return new_session_response.empty_trace();
+  if (new_session_response.empty_trace()) {
+    return Status(tensorflow::error::Code::UNAVAILABLE,
+                  "No trace event is collected");
+  }
+  return Status::OK();
 }
 
 // Starts tracing on a single or multiple TPU hosts and saves the result in the
 // given logdir. If no trace was collected, retries tracing for
 // num_tracing_attempts.
-void StartTracing(const tensorflow::string& service_addr,
-                  const tensorflow::string& logdir,
-                  const tensorflow::string& workers_list,
-                  bool include_dataset_ops, int duration_ms,
-                  int num_tracing_attempts) {
+Status StartTracing(const tensorflow::string& service_addr,
+                    const tensorflow::string& logdir,
+                    const tensorflow::string& workers_list,
+                    bool include_dataset_ops, int duration_ms,
+                    int num_tracing_attempts) {
   // Use the current timestamp as the run name.
   tensorflow::string session_id = GetCurrentTimeStampAsString();
   constexpr char kProfilePluginDirectory[] = "plugins/profile/";
@@ -169,7 +178,7 @@ void StartTracing(const tensorflow::string& service_addr,
   std::vector<tensorflow::string> hostnames =
       tensorflow::str_util::Split(workers_list, ",");
 
-  bool empty_trace = false;
+  Status status = Status::OK();
   int remaining_attempts = num_tracing_attempts;
   tensorflow::ProfileOptions opts;
   opts.set_include_dataset_ops(include_dataset_ops);
@@ -177,27 +186,31 @@ void StartTracing(const tensorflow::string& service_addr,
     std::cout << "Starting to profile TPU traces for " << duration_ms << " ms. "
               << "Remaining attempt(s): " << remaining_attempts-- << std::endl;
     if (hostnames.empty()) {
-      empty_trace = Profile(service_addr, logdir, duration_ms, repository_root,
-                            session_id, opts);
+      status = Profile(service_addr, logdir, duration_ms, repository_root,
+                       session_id, opts);
     } else {
       tensorflow::string tpu_master = service_addr;
-      empty_trace = NewSession(tpu_master, hostnames, duration_ms,
-                               repository_root, session_id, opts);
+      status = NewSession(tpu_master, hostnames, duration_ms, repository_root,
+                          session_id, opts);
     }
-    if (remaining_attempts <= 0 || !empty_trace) break;
+    if (remaining_attempts <= 0 || status.ok() ||
+        status.code() != tensorflow::error::Code::UNAVAILABLE)
+      break;
     std::cout << "No trace event is collected. Automatically retrying."
               << std::endl
               << std::endl;
   }
 
-  if (empty_trace) {
+  if (status.code() == tensorflow::error::Code::UNAVAILABLE) {
     std::cout << "No trace event is collected after " << num_tracing_attempts
               << " attempt(s). "
               << "Perhaps, you want to try again (with more attempts?)."
               << std::endl
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
+    return status;
   }
+  return Status::OK();
 }
 
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {

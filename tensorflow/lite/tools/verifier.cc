@@ -110,9 +110,8 @@ bool VerifyNumericTensorBuffer(const Tensor& tensor, const Buffer& buffer,
                                ErrorReporter* error_reporter) {
   uint64_t bytes_required = 1;
   if (!tensor.shape()) {
-    ReportError(error_reporter, "Tensor %s shape is empty",
-                tensor.name()->c_str());
-    return false;
+    // Empty tensor. Avoid further checks.
+    return true;
   }
   for (int dim : *tensor.shape()) {
     bytes_required *= dim;

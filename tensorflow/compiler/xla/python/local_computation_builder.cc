@@ -21,7 +21,6 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
-#include "tensorflow/compiler/xla/client/lib/cholesky.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -443,6 +442,8 @@ StatusOr<Shape> ComputationBuilder::GetReturnValueShape() {
   return program_shape.result();
 }
 
+LocalOp ComputationBuilder::ReplicaId() { return xla::ReplicaId(&builder_); }
+
 LocalOp ComputationBuilder::Infeed(const Shape& shape) {
   return xla::Infeed(&builder_, shape);
 }
@@ -496,7 +497,8 @@ LocalOp ComputationBuilder::Collapse(const LocalOp& operand,
 LocalOp ComputationBuilder::AllToAll(
     const LocalOp& operand, int64 split_dimension, int64 concat_dimension,
     int64 split_count, absl::Span<const ReplicaGroup> replica_groups) {
-  std::vector<ReplicaGroup> rg(replica_groups.size());
+  std::vector<ReplicaGroup> rg;
+  rg.reserve(replica_groups.size());
   for (int i = 0; i < replica_groups.size(); ++i) {
     rg.push_back(replica_groups[i]);
   }
@@ -711,8 +713,8 @@ LocalOp ComputationBuilder::SortKeyVal(const LocalOp& keys,
   return xla::Sort(keys.op(), {values.op()}, dimension);
 }
 
-LocalOp ComputationBuilder::Cholesky(const LocalOp& a) {
-  return xla::Cholesky(a.op());
+LocalOp ComputationBuilder::Cholesky(const LocalOp& a, bool lower) {
+  return xla::Cholesky(a.op(), lower);
 }
 
 LocalOp ComputationBuilder::QR(const LocalOp& a, bool full_matrices) {

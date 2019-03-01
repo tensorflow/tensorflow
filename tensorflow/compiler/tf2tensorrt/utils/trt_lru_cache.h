@@ -100,26 +100,24 @@ class LRUCache {
   }
 
   // Creates n free positions in cache
-  tensorflow::Status DiscardOld(size_t n = 0) {
+  Status DiscardOld(size_t n = 0) {
     if (n > capacity_) {
-      return tensorflow::errors::Internal(
-          "Insufficient capacity in cache (capacity = ", capacity_,
-          ", requested ", n, ")");
+      return errors::Internal("Insufficient capacity in cache (capacity = ",
+                              capacity_, ", requested ", n, ")");
     }
     while (objects_.size() > (capacity_ - n)) {
       key_type discard_key = keys_.back();
       keys_.pop_back();
       objects_.erase(discard_key);
     }
-    return tensorflow::Status::OK();
+    return Status::OK();
   }
 };
 
 // Define a hash function for vector<TensorShape> because it is used as the key
 // for the engine cache.
 struct VectorTensorShapeHasher {
-  std::size_t operator()(
-      const std::vector<tensorflow::TensorShape>& key) const {
+  std::size_t operator()(const std::vector<TensorShape>& key) const {
     return std::hash<std::string>()(TensorShapeUtils::ShapeListString(key));
   }
 };
@@ -141,12 +139,12 @@ struct EngineContext {
       GUARDED_BY(mu);
 };
 
-class TRTEngineCacheResource : public tensorflow::ResourceBase {
+class TRTEngineCacheResource : public ResourceBase {
  public:
   TRTEngineCacheResource(OpKernelContext* ctx, size_t capacity)
       : cache_(capacity) {
     auto device = ctx->device();
-    auto alloc = device->GetAllocator(tensorflow::AllocatorAttributes());
+    auto alloc = device->GetAllocator(AllocatorAttributes());
     if (!alloc) {
       LOG(ERROR) << "Can't find device allocator for gpu device "
                  << device->name();

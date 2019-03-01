@@ -1012,10 +1012,12 @@ def py_func_if_in_function(f):
     if not ops.get_default_graph()._building_function:
       return f(*args, **kwds)
 
-    tensor_args, tensor_indices = zip(*[(x, i)
-                                        for i, x in enumerate(args)
-                                        if isinstance(x, (ops.Tensor,
-                                                          variables.Variable))])
+    tensor_args = []
+    tensor_indices = []
+    for i, arg in enumerate(args):
+      if isinstance(arg, (ops.Tensor, variables.Variable)):
+        tensor_args.append(arg)
+        tensor_indices.append(i)
 
     def inner_f(*inner_tensor_args):
       my_args = list(args)

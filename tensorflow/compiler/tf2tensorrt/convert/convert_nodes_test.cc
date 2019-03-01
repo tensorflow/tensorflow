@@ -123,7 +123,7 @@ template <typename T>
 NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals,
                          const TensorShape& shape) {
   Scope s = Scope::NewRootScope();
-  Tensor t = ::tensorflow::test::AsTensor<T>(vals, shape);
+  Tensor t = test::AsTensor<T>(vals, shape);
   auto const_op = ops::Const(s.WithOpName(name), t);
   return const_op.node()->def();
 }
@@ -389,8 +389,8 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  void AddOpValidator(const string& op_name, OpConverter op_validator) {
-    validator_.op_validators_[op_name] = op_validator;
+  std::unordered_map<string, OpConverter>& op_validators() {
+    return validator_.op_validators_;
   }
 
   Status ConvertToTensorOrWeights(
@@ -401,9 +401,17 @@ class ValidatorTest : public ::testing::Test {
         node_def, output_port, graph_properties, tensor_or_weights);
   }
 
+  const std::set<string>* GetQuantizeOps() { return validator_.quantize_ops; }
+
  protected:
   TrtNodeValidator validator_;
 };
+
+TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
+  for (const string& quantize_op : *GetQuantizeOps()) {
+    QCHECK(op_validators().count(quantize_op));
+  }
+}
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
@@ -477,18 +485,30 @@ TEST_F(ValidatorTest, ValidateNode) {
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {});
 
-  // Validator not registered, validation should pass.
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  // Validator not registered.
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED, "Op type MyOp is not supported.");
 
   // Register validator.
-  AddOpValidator("MyOp", op_converter);
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  op_validators()["MyOp"] = op_converter;
+  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties));
   EXPECT_EQ(false, start_conversion);
 
   // Let the converter return error.
   should_fail = true;
-  ExpectStatus(validator_.ValidateNode(node_def, {}, graph_properties),
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
                error::INVALID_ARGUMENT);
+
+  // Test quantization ops, they're only supported in INT8 mode. The success
+  // case is tested in OpConverterTest.ConvertQuantize.
+  node_def = MakeNodeDef("my_op", "FakeQuantWithMinMaxArgs", {});
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED,
+               "Op type FakeQuantWithMinMaxArgs is not supported.");
 }
 
 class ConverterTest : public ::testing::Test {
@@ -691,23 +711,34 @@ TEST_F(ConverterTest, PrepareTensorForShape_Tensor) {
   TRT_TensorOrWeights tw(input_tensor);
   const nvinfer1::ITensor* output_tensor = nullptr;
 
-  // Shape size doesn't match.
-  ExpectStatus(converter_->PrepareTensorForShape(tw, GetTestDims({2, 3, 6}),
-                                                 &output_tensor),
-               error::INVALID_ARGUMENT, "Reshape shapes are not compatible");
+  for (bool validation_only : {false, true}) {
+    // Shape size doesn't match.
+    ExpectStatus(
+        converter_->PrepareTensorForShape(tw, GetTestDims({2, 3, 6}),
+                                          validation_only, &output_tensor),
+        error::INVALID_ARGUMENT, "Reshape shapes are not compatible");
 
-  // TODO(aaroey): we should check the case where uninferred dimensions are not
-  // an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
+    // TODO(aaroey): we should check the case where uninferred dimensions are
+    // not an exact divisor of input dim ensions, e.g. for dims {-1, 7}.
 
-  // Infer shape, ok.
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({-1, 2}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({15, 2}, output_tensor->getDimensions());
+    // Infer shape, ok.
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({-1, 2}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({15, 2}, output_tensor->getDimensions());
+    }
 
-  // Regular shape.
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({10, 3}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    // Regular shape.
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({10, 3}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    }
+  }
 }
 
 TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
@@ -715,9 +746,15 @@ TEST_F(ConverterTest, PrepareTensorForShape_Weights) {
       weight_store_->GetTempWeights(DT_FLOAT, GetTestDims({2, 3, 5}));
   TRT_TensorOrWeights tw(weights);
   const nvinfer1::ITensor* output_tensor = nullptr;
-  TF_EXPECT_OK(converter_->PrepareTensorForShape(tw, GetTestDims({10, 3}),
-                                                 &output_tensor));
-  ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+  for (bool validation_only : {false, true}) {
+    TF_EXPECT_OK(converter_->PrepareTensorForShape(
+        tw, GetTestDims({10, 3}), validation_only, &output_tensor));
+    if (validation_only) {
+      EXPECT_EQ(nullptr, output_tensor);
+    } else {
+      ExpectTrtDimsEqualsArray({10, 3}, output_tensor->getDimensions());
+    }
+  }
 }
 
 TEST_F(ConverterTest, MaybeUpdateBatchSize) {
@@ -948,7 +985,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
   Status RunConvertGraphDefToEngine(Scope* s) {
     GraphDef gdef;
     TF_EXPECT_OK(s->ToGraphDef(&gdef));
-    std::vector<tensorflow::PartialTensorShape> input_shapes;
+    std::vector<PartialTensorShape> input_shapes;
     int batch_size = -1;
     for (const NodeDef& node : gdef.node()) {
       absl::string_view node_name(node.name());
@@ -1049,7 +1086,7 @@ class OpConverterTest : public ::testing::Test {
 
     // Reset the validator and converter.
     validator_.reset(new TrtNodeValidator);
-    converter_.reset(new Converter(network_.get(), TrtPrecisionMode::FP32,
+    converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
                                    /*use_calibration=*/false));
 
     // Reset other related artifacts.
@@ -1182,9 +1219,10 @@ class OpConverterTest : public ::testing::Test {
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    ExpectStatus(validator_->ValidateNode(node_def, input_node_and_ports,
-                                          graph_properties),
-                 expected_code, expected_msg_substr);
+    ExpectStatus(
+        validator_->ValidateNode(node_def, input_node_and_ports,
+                                 precision_mode_to_test_, graph_properties),
+        expected_code, expected_msg_substr);
   }
 
   void RunConversion(const NodeDef& node_def,
@@ -1213,6 +1251,10 @@ class OpConverterTest : public ::testing::Test {
 
   std::unique_ptr<Converter> converter_;
   std::unique_ptr<TrtNodeValidator> validator_;
+
+ protected:
+  // TODO(laigd): parameterize the test and make the precision mode a parameter.
+  TrtPrecisionMode precision_mode_to_test_ = TrtPrecisionMode::FP32;
 
  private:
   Logger logger_;
@@ -1298,34 +1340,34 @@ void TestConvertConst(OpConverterTest* test) {
     reset_and_test(t, false, {}, {});
   }
   {
-    Tensor t = ::tensorflow::test::AsScalar<InputCType>(12);
+    Tensor t = test::AsScalar<InputCType>(12);
     reset_and_test(t, false, {1}, {12});
     reset_and_test(t, true, {1}, {12});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2});
+    Tensor t = test::AsTensor<InputCType>({1, 2});
     reset_and_test(t, false, {2}, {1, 2});
     reset_and_test(t, true, {2}, {1, 2});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 2, 3, 4, 5, 6});
     reset_and_test(t, true, {2, 3}, {1, 2, 3, 4, 5, 6});
   }
   {
     // Set all tensor elements to the same value. Such tensors are encoded
     // using a single element list in tensor proto.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 1, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {1, 1, 1, 1, 1, 1});
   }
   {
     // Set trailing tensor elements to the same value. Such tensors are
     // encoded by truncating all equal elements except the first one.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {2, 2, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {2, 2, 1, 1, 1, 1});
   }
@@ -2006,6 +2048,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
+  precision_mode_to_test_ = TrtPrecisionMode::INT8;
   const std::pair<string, int> op_with_num_inputs[4] = {
       {"FakeQuantWithMinMaxArgs", 1},
       {"FakeQuantWithMinMaxVars", 3},
@@ -2133,48 +2176,6 @@ TEST_F(OpConverterTest, ConvertQuantize) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertRelu6) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_relu6", "Relu6", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Relu6 got 0 inputs but expected 1, at my_relu6");
-  }
-
-  // Get the NodeDef for Relu6.
-  Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-  auto relu6 = ops::Relu6(s.WithOpName("my_relu6"), input);
-  const NodeDef node_def = relu6.operation.node()->def();
-  {
-    // Input is weights, should fail.
-    Reset();
-    AddTestWeights<float>("input", {1}, {1.0f});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Relu6 must be a tensor, at my_relu6");
-  }
-  {
-    // Clip tensor values and set quantization ranges, ok.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_relu6", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-
-    const DataVec input_data{
-        {"input", test::AsTensor<float>({-100, -1, 0, 3, 5, 9})}};
-    DataVec output_data{{"my_relu6", ConstructTensor<float>(6)}};
-    BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAre(0, 0, 0, 3, 5, 6));
-  }
-}
-
 template <DataType dtype>
 void TestConvertSquare(OpConverterTest* test) {
   test->Reset();
@@ -2255,12 +2256,22 @@ TEST_F(OpConverterTest, ConvertActivation) {
         "The input \"input\" for Relu must be a tensor, at my_act");
   }
 
+  constexpr float kAlpha = 0.2f;
+
   // Get nodedef for activation layer.
   auto get_act_nodedef = [](string op_name) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    if (op_name == "Relu") {
+    if (op_name == "LeakyRelu") {
+      // LeakyRelu does not have a C++ API
+      NodeDef node_def = MakeNodeDef("my_act", "LeakyRelu", {"input"});
+      (*node_def.mutable_attr())["alpha"].set_f(kAlpha);
+      return node_def;
+    } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Relu6") {
+      auto act = ops::Relu6(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
     } else if (op_name == "Sigmoid") {
       auto act = ops::Sigmoid(s.WithOpName("my_act"), input);
@@ -2274,8 +2285,12 @@ TEST_F(OpConverterTest, ConvertActivation) {
   };
   // Get expected output for activation layer.
   auto get_act_output = [](string op_name, float input) -> float {
-    if (op_name == "Relu") {
+    if (op_name == "LeakyRelu") {
+      return (input > 0.0f) ? input : input * kAlpha;
+    } else if (op_name == "Relu") {
       return (input > 0.0f) ? input : 0.0f;
+    } else if (op_name == "Relu6") {
+      return std::min(std::max(input, 0.0f), 6.0f);
     } else if (op_name == "Sigmoid") {
       return 1.0f / (1.0f + std::exp(-input));
     } else if (op_name == "Tanh") {
@@ -2286,7 +2301,8 @@ TEST_F(OpConverterTest, ConvertActivation) {
   };
 
   // Ok.
-  for (string op_name : {"Relu", "Sigmoid", "Tanh"}) {
+  for (const string& op_name :
+       {"LeakyRelu", "Relu", "Relu6", "Sigmoid", "Tanh"}) {
     Reset();
     NodeDef node_def = get_act_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
@@ -2295,6 +2311,11 @@ TEST_F(OpConverterTest, ConvertActivation) {
     TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+    if (op_name == "Relu6") {
+      // Relu6 should set quantization range automatically.
+      auto ranges = quantization_ranges();
+      EXPECT_EQ(ranges[output.tensor()], 6.0f);
+    }
 
     const std::vector<float> input = {-100, -2, -1, 0, 1, 100};
     const DataVec input_data{{"input", test::AsTensor<float>(input)}};
@@ -2549,8 +2570,8 @@ TEST_F(OpConverterTest, ConvertStridedSlice) {
 
   // Get nodedef for StridedSlice layer.
   auto get_strided_slice_nodedef =
-      [](int begin_mask = 0, int end_mask = 0, int ellipsis_mask = 0,
-         int new_axis_mask = 0, int shrink_axis_mask = 0) -> NodeDef {
+      [](int64 begin_mask = 0, int64 end_mask = 0, int64 ellipsis_mask = 0,
+         int64 new_axis_mask = 0, int64 shrink_axis_mask = 0) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
     auto begin = ops::Placeholder(s.WithOpName("begin"), DT_INT32);

@@ -131,6 +131,19 @@ extern const char* const kCudnnConvBiasActivationForwardCallTarget;
 // kConvolution opcode.
 bool IsCustomCallToDnnConvolution(const HloInstruction& hlo);
 
+// Returns true if `hlo` will be implemented as a call to a cuSolver routine.
+//
+// This returns true if `hlo` is a CustomCall HLO with a call target equal to
+// one of the kCusolver... constants, but returns *false* for HLOs with
+// say, a kCholesky opcode.
+bool IsCustomCallToCusolver(const HloInstruction& hlo);
+
+// Cholesky decomposition. Takes a (batched) matrix as input, and returns a
+// tuple of (result, workspace, info), where result is the result of the
+// Cholesky decomposition, workspace is scratch space for cuSolver, and info
+// is a success/failure code per batch element.
+extern const char* const kCusolverCholeskyCallTarget;
+
 // Returns true if `hlo` will be implemented as a library call, e.g. cuBLAS gemm
 // or cuDNN convolution.
 bool ImplementedAsLibraryCall(const HloInstruction& hlo);
