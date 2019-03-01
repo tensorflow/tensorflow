@@ -51,17 +51,17 @@ class ExecutorTest : public ::testing::Test {
     // when the test completes.
     CHECK(rendez_->Unref());
     delete exec_;
-    delete device_;
   }
 
   // Resets executor_ with a new executor based on a graph 'gdef'.
   void Create(std::unique_ptr<const Graph> graph) {
     const int version = graph->versions().producer();
     LocalExecutorParams params;
-    params.device = device_;
+    params.device = device_.get();
     params.create_kernel = [this, version](const NodeDef& ndef,
                                            OpKernel** kernel) {
-      return CreateNonCachedKernel(device_, nullptr, ndef, version, kernel);
+      return CreateNonCachedKernel(device_.get(), nullptr, ndef, version,
+                                   kernel);
     };
     params.delete_kernel = [](OpKernel* kernel) {
       DeleteNonCachedKernel(kernel);
@@ -86,7 +86,7 @@ class ExecutorTest : public ::testing::Test {
     return exec_->Run(args);
   }
 
-  Device* device_ = nullptr;
+  std::unique_ptr<Device> device_;
   Executor* exec_ = nullptr;
   Executor::Args::Runner runner_;
   Rendezvous* rendez_ = nullptr;
@@ -139,7 +139,7 @@ Rendezvous::ParsedKey Key(const string& sender, const uint64 incarnation,
 
 TEST_F(ExecutorTest, SimpleAdd) {
   // c = a + b
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
   auto in0 = test::graph::Arg(g.get(), 0, DT_FLOAT);
   auto in1 = test::graph::Arg(g.get(), 0, DT_FLOAT);
   auto tmp = test::graph::Add(g.get(), in0, in1);
@@ -163,7 +163,7 @@ TEST_F(ExecutorTest, SelfAdd) {
   //
   // b <- v10
   // All nodes are executed by one thread.
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
   auto v = test::graph::Arg(g.get(), 0, DT_FLOAT);
   const int N = 10;
   for (int i = 1; i <= N; ++i) {
@@ -219,7 +219,7 @@ void BuildTree(int N, Graph* g) {
 }
 
 TEST_F(ExecutorTest, RandomTree) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
   BuildTree(4096, g.get());
   Create(std::move(g));
   FunctionCallFrame call_frame({DT_FLOAT}, {DT_FLOAT});
@@ -231,7 +231,7 @@ TEST_F(ExecutorTest, RandomTree) {
 }
 
 TEST_F(ExecutorTest, OpError) {
-  std::unique_ptr<Graph> g(new Graph(OpRegistry::Global()));
+  std::unique_ptr<Graph> g = absl::make_unique<Graph>(OpRegistry::Global());
   auto zero = test::graph::Constant(g.get(), V(0.0));
   auto inf = test::graph::Unary(g.get(), "Reciprocal", zero);
   auto check = test::graph::CheckNumerics(g.get(), inf, "message");

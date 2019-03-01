@@ -103,10 +103,10 @@ struct BucketizeFunctor<GPUDevice, T> {
              d.stream()>>>(input.size(), input.data(), boundaries_vector.size(),
                            boundaries_array.data(), output.data());
     } else {
-      BucketizeCustomKernel<T, false>
-          <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-              input.size(), input.data(), boundaries_vector.size(),
-              boundaries_array.data(), output.data());
+      TF_CHECK_OK(CudaLaunchKernel(
+          BucketizeCustomKernel<T, false>, config.block_count,
+          config.thread_per_block, 0, d.stream(), input.size(), input.data(),
+          boundaries_vector.size(), boundaries_array.data(), output.data()));
     }
     return Status::OK();
   }

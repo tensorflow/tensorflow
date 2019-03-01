@@ -109,6 +109,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "loader"
     mtype: "<type \'module\'>"
   }
@@ -145,6 +149,10 @@ tf_module {
     argspec: "args=[\'examples\', \'classes\', \'scores\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "contains_saved_model"
+    argspec: "args=[\'export_dir\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "get_tensor_from_tensor_info"
     argspec: "args=[\'tensor_info\', \'graph\', \'import_scope\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
@@ -155,6 +163,10 @@ tf_module {
   member_method {
     name: "load"
     argspec: "args=[\'sess\', \'tags\', \'export_dir\', \'import_scope\'], varargs=None, keywords=saver_kwargs, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "load_v2"
+    argspec: "args=[\'export_dir\', \'tags\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "main_op_with_restore"
@@ -171,6 +183,10 @@ tf_module {
   member_method {
     name: "regression_signature_def"
     argspec: "args=[\'examples\', \'predictions\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "save"
+    argspec: "args=[\'obj\', \'export_dir\', \'signatures\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {
     name: "simple_save"

@@ -70,11 +70,15 @@ struct NodeState {
   // Each output port uses up memory space from time_scheduled to its
   // time_no_references.
 
+  // How many times this node has been executed, e.g. in a while loop.
+  int num_executed_times;
+
   NodeState() {
     num_inputs_ready = 0;
     time_ready = Costs::Duration::max();
     time_scheduled = Costs::Duration::max();
     time_finished = Costs::Duration::max();
+    num_executed_times = 0;
     // Note that num_outputs_executed and time_no_references are not initialized
     // here, since we don't know the size (i.e., # outputs for this node).
   }
@@ -256,16 +260,9 @@ std::unique_ptr<ReadyNodeManager> ReadyNodeManagerFactory(
 // dependencies, device, etc.
 class VirtualScheduler {
  public:
-  // TODO(pcma): Modify power_analyzer.cc to use new API's.
-  // DEPRECATED
-  VirtualScheduler(const GrapplerItem* grappler_item,
-                   const bool use_static_shapes, Cluster* cluster,
-                   ReadyNodeManager* ready_nodes);
-  // DEPRECATED
-  Status Init();
-
   // Does not take ownership of cluster or ready_nodes.
-  VirtualScheduler(bool use_static_shapes, Cluster* cluster,
+  VirtualScheduler(const bool use_static_shapes,
+                   const bool use_aggressive_shape_inference, Cluster* cluster,
                    ReadyNodeManager* ready_nodes);
   // Initializes the scheduler for the specific grappler item.
   // Should be called immediately after the c'tor or when the scheduler will be
@@ -305,18 +302,22 @@ class VirtualScheduler {
     return &node_map_;
   }
 
+  void enable_mem_usage_tracking() { track_mem_usage_snapshot_ = true; }
+
  private:
   // Constants.
   const string kAttrInputSrc = "input_source_";
-  const string kAttrSrcDevice = "src_device_";
-  const string kAttrDstDevice = "dst_device_";
+  const string kAttrSrcDevice = "send_device";
+  const string kAttrDstDevice = "recv_device";
+  const string kAttrTensorName = "tensor_name";
   const string kChannelDevice = "Channel";
 
   // Methods called from Init(). Fails if initialize_ is set.
   void MaybeUpdateInputOutput(const NodeDef* node);
   NodeState& GetNodeStateOrCreateIt(const NodeDef* node);
   std::pair<const NodeDef*, const NodeDef*> CreateSendRecv(
-      const NodeDef* from, const NodeDef* to, const string& input_name);
+      const NodeDef* from, const NodeDef* to, const NodeDef* input_node,
+      const string& input_name);
   string DeviceName(const NodeDef* node) const;
   string SanitizedDeviceName(const NodeDef* node) const;
   string ChannelDeviceName(const NodeDef* from, const NodeDef* to) const;
@@ -326,6 +327,10 @@ class VirtualScheduler {
                           std::map<string, Costs>* op_cost);
   float Round2(const float x) const;
   bool IsPersistentNode(const NodeDef* node) const;
+  bool AddSwitchOutputsToReadyQueue(const NodeDef* node, int curr_iter,
+                                    const Costs::Duration& curr_time);
+  void AddOutputNodesToReadyQueue(const NodeDef* node,
+                                  const Costs::Duration& curr_time);
 
   // Scheduler states:
   ReadyNodeManager* ready_nodes_;  // Not owned.
@@ -354,6 +359,12 @@ class VirtualScheduler {
   const GrapplerItem* grappler_item_;  // Not owned.
   bool use_static_shapes_;
   bool initialized_;
+  bool track_mem_usage_snapshot_;
+  const bool use_aggressive_shape_inference_;
+
+  // Whether the input graph includes Switch nodes annotated with output slots
+  // information.
+  bool switch_outputs_annotated_ = false;
 
   VirtualPlacer placer_;  // owned.
 };

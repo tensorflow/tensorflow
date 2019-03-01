@@ -144,7 +144,11 @@ class ResizeAreaOp : public OpKernel {
 
   void Compute(OpKernelContext* context) override {
     const Tensor& input = context->input(0);
-    ImageResizerState st(align_corners_);
+    // The op always did the correct thing with regard to pixel centers, so we
+    // always pass false here for half_pixel_centers since ImageResizerState
+    // enforces that if align_corners_ is true, half_pixel_centers must be
+    // false.
+    ImageResizerState st(align_corners_, /*unused half_pixel_centers=*/false);
     st.ValidateAndCreateOutput(context, input);
 
     if (!context->status().ok()) return;

@@ -399,7 +399,7 @@ def _mean_squared_loss(logits, target):
     target = array_ops.expand_dims(target, axis=1)
 
   logits.get_shape().assert_is_compatible_with(target.get_shape())
-  return math_ops.square(logits - math_ops.to_float(target))
+  return math_ops.squared_difference(logits, math_ops.to_float(target))
 
 
 def _log_loss_with_two_classes(logits, target):

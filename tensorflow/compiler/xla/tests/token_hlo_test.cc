@@ -16,6 +16,7 @@ limitations under the License.
 #include <array>
 
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/service/hlo_parser.h"
 #include "tensorflow/compiler/xla/service/hlo_verifier.h"
 #include "tensorflow/compiler/xla/tests/hlo_test_base.h"
 #include "tensorflow/compiler/xla/tests/test_macros.h"
@@ -28,7 +29,7 @@ namespace {
 class TokenHloTest : public HloTestBase {};
 
 XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateToken());
 
@@ -38,8 +39,22 @@ XLA_TEST_F(TokenHloTest, SingleTokenInstruction) {
   EXPECT_TRUE(LiteralTestUtil::Equal(result, LiteralUtil::CreateToken()));
 }
 
+XLA_TEST_F(TokenHloTest, TokenInTuple) {
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
+  auto builder = HloComputation::Builder(TestName());
+  auto token = builder.AddInstruction(HloInstruction::CreateToken());
+  builder.AddInstruction(HloInstruction::CreateTuple({token}));
+
+  module->AddEntryComputation(builder.Build());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {}));
+  Literal token_literal = LiteralUtil::CreateToken();
+  EXPECT_TRUE(
+      LiteralTestUtil::Equal(result, LiteralUtil::MakeTuple({&token_literal})));
+}
+
 XLA_TEST_F(TokenHloTest, TokenTree) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   auto token0 = builder.AddInstruction(HloInstruction::CreateToken());
   auto token1 = builder.AddInstruction(HloInstruction::CreateToken());
@@ -54,7 +69,7 @@ XLA_TEST_F(TokenHloTest, TokenTree) {
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(
       HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
@@ -75,7 +90,7 @@ XLA_TEST_F(TokenHloTest, InvalidTokenShapedEntryParameter) {
 }
 
 XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
+  std::unique_ptr<HloModule> module = CreateNewUnverifiedModule();
   auto builder = HloComputation::Builder(TestName());
   builder.AddInstruction(HloInstruction::CreateParameter(
       0,
@@ -92,26 +107,6 @@ XLA_TEST_F(TokenHloTest, InvalidTupleTokenShapedEntryParameter) {
   EXPECT_THAT(
       status.error_message(),
       ::testing::HasSubstr("Entry parameter 0 is or contains a token shape"));
-}
-
-XLA_TEST_F(TokenHloTest, InvalidOperandToTokenInstruction) {
-  std::unique_ptr<HloModule> module = CreateNewModule();
-  auto builder = HloComputation::Builder(TestName());
-  auto param = builder.AddInstruction(
-      HloInstruction::CreateParameter(0, ShapeUtil::MakeShape(F32, {}), "p0"));
-  builder.AddInstruction(HloInstruction::CreateAfterAll({param}));
-  builder.AddInstruction(
-      HloInstruction::CreateConstant(LiteralUtil::CreateR0<int32>(123)));
-  module->AddEntryComputation(builder.Build());
-
-  Status status =
-      HloVerifier(/*layout_sensitive=*/false, /*allow_mixed_precision=*/false)
-          .Run(module.get())
-          .status();
-  ASSERT_IS_NOT_OK(status);
-  EXPECT_THAT(status.error_message(),
-              ::testing::HasSubstr(
-                  "Operands of token instructions must be TOKEN types"));
 }
 
 XLA_TEST_F(TokenHloTest, TokenInWhileLoop) {
@@ -204,6 +199,96 @@ ENTRY %TokenInConditional (param.3: pred[]) -> s32[] {
     TF_ASSERT_OK_AND_ASSIGN(Literal result, Execute(std::move(module), {&arg}));
     EXPECT_EQ(7, result.Get<int32>({}));
   }
+}
+
+XLA_TEST_F(TokenHloTest, AddDependency) {
+  string module_string = R"(
+HloModule AddDependency, is_scheduled=true
+
+// Computes (p0 + 42) * (-p1)
+// where there is a dependency from the add to the negation using a token
+// with after-all and add-dependency instructions.
+ENTRY %AddDependency (p0: f32[], p1: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %p1 = f32[] parameter(1)
+
+  %forty_two = f32[] constant(42.0)
+  %add = f32[] add(f32[] %p0, f32[] %forty_two)
+  %token0 = token[] after-all(f32[] %add)
+  %p1_after_token = f32[] add-dependency(f32[] %p1, token[] %token0)
+  %neg = f32[] negate(f32[] %p1_after_token)
+  ROOT %product = f32[] multiply(f32[] %add, f32[] %neg)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseHloString(module_string, GetModuleConfigForTest()));
+  auto p0 = LiteralUtil::CreateR0<float>(10.0);
+  auto p1 = LiteralUtil::CreateR0<float>(3.0);
+  auto expected = LiteralUtil::CreateR0<float>(-156.0);
+  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
+}
+
+XLA_TEST_F(TokenHloTest, AddDependencyOfConstant) {
+  string module_string = R"(
+HloModule AddDependencyOfConstant, is_scheduled=true
+
+ENTRY %AddDependency (p0: f32[]) -> f32[] {
+  %p0 = f32[] parameter(0)
+  %forty_two = f32[] constant(42.0)
+  %token0 = token[] after-all(f32[] %p0)
+  %forty_two_after_token = f32[] add-dependency(f32[] %forty_two, token[] %token0)
+  ROOT %product = f32[] multiply(f32[] %p0, f32[] %forty_two_after_token)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseHloString(module_string, GetModuleConfigForTest()));
+  auto p0 = LiteralUtil::CreateR0<float>(10.0);
+  auto expected = LiteralUtil::CreateR0<float>(420.0);
+  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0}));
+}
+
+XLA_TEST_F(TokenHloTest, AddDependencyAsRoot) {
+  string module_string = R"(
+HloModule AddDependencyAsRoot, is_scheduled=true
+ENTRY %AddDependency (p: f32[3]) -> f32[3] {
+  %p = f32[3] parameter(0)
+  %neg = f32[3] negate(f32[3] %p)
+  %token0 = token[] after-all()
+  ROOT %add_dep = f32[3] add-dependency(f32[3] %neg, token[] %token0)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseHloString(module_string, GetModuleConfigForTest()));
+  auto input = LiteralUtil::CreateR1<float>({1.0, 3.0, 7.0});
+  auto expected = LiteralUtil::CreateR1<float>({-1.0, -3.0, -7.0});
+  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&input}));
+}
+
+XLA_TEST_F(TokenHloTest, TupleShapedAddDependency) {
+  string module_string = R"(
+HloModule TupleShapedAddDependency, is_scheduled=true
+ENTRY %TupleShapedAddDependency (p0: f32[3], p1: f32[3]) -> f32[3] {
+  %p0 = f32[3] parameter(0)
+  %p1 = f32[3] parameter(1)
+  %forty_two = f32[] constant(42.0)
+  %token0 = token[] after-all()
+  %tuple = (f32[3], token[], f32[3], f32[]) tuple(f32[3] %p0, token[] %token0, f32[3] %p1, f32[] %forty_two)
+  %add_dep = (f32[3], token[], f32[3], f32[]) add-dependency((f32[3], token[], f32[3], f32[]) %tuple, token[] %token0)
+  %elem0 = f32[3] get-tuple-element((f32[3], token[], f32[3], f32[]) %add_dep), index=0
+  %elem2 = f32[3] get-tuple-element((f32[3], token[], f32[3], f32[]) %add_dep), index=2
+  ROOT %diff = f32[3] subtract(f32[3] %elem0, f32[3] %elem2)
+}
+)";
+  TF_ASSERT_OK_AND_ASSIGN(
+      std::unique_ptr<HloModule> module,
+      ParseHloString(module_string, GetModuleConfigForTest()));
+  auto p0 = LiteralUtil::CreateR1<float>({3.0, 3.0, 47.0});
+  auto p1 = LiteralUtil::CreateR1<float>({1.0, -2.0, 2.0});
+  auto expected = LiteralUtil::CreateR1<float>({2.0, 5.0, 45.0});
+  EXPECT_EQ(expected, ExecuteNoHloPasses(std::move(module), {&p0, &p1}));
 }
 
 }  // namespace

@@ -95,6 +95,11 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   if (!md) {
     return errors::Internal("Could not get a sha256 encryptor.");
   }
+
+  // EVP_MD_CTX_destroy is renamed to EVP_MD_CTX_free in OpenSSL 1.1.0 but
+  // the old name is still retained as a compatibility macro.
+  // Keep this around until support is dropped for OpenSSL 1.0
+  // https://www.openssl.org/news/cl110.txt
   std::unique_ptr<EVP_MD_CTX, std::function<void(EVP_MD_CTX*)>> md_ctx(
       EVP_MD_CTX_create(), [](EVP_MD_CTX* ptr) { EVP_MD_CTX_destroy(ptr); });
   if (!md_ctx) {
@@ -119,7 +124,6 @@ Status CreateSignature(RSA* private_key, StringPiece to_sign,
   if (EVP_DigestSignFinal(md_ctx.get(), sig.get(), &sig_len) != 1) {
     return errors::Internal("DigestFinal (signature compute) failed.");
   }
-  EVP_MD_CTX_cleanup(md_ctx.get());
   return Base64Encode(StringPiece(reinterpret_cast<char*>(sig.get()), sig_len),
                       signature);
 }

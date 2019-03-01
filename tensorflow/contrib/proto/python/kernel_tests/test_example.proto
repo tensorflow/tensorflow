@@ -61,6 +61,8 @@ message TestValue {
   optional sfixed64 sfixed64_value_with_default = 32 [default = 11];
   optional sint32 sint32_value_with_default = 33 [default = 12];
   optional sint64 sint64_value_with_default = 34 [default = 13];
+
+  extensions 100 to 199;
 }
 
 // A PackedTestValue looks exactly the same as a TestValue in the text format,
@@ -68,7 +70,7 @@ message TestValue {
 // by loading the same test cases using this definition instead of TestValue.
 //
 // NOTE: This definition must be kept in sync with TestValue in every way except
-// the packed=true declaration.
+// the packed=true declaration and the lack of extensions.
 message PackedTestValue {
   repeated double double_value = 1 [packed = true];
   repeated float float_value = 2 [packed = true];
@@ -130,6 +132,10 @@ message PrimitiveValue {
 message ExtraFields {
   optional string string_value = 1776;
   optional bool bool_value = 1777;
+}
+
+extend TestValue {
+  repeated PrimitiveValue ext_value = 100;
 }
 
 // The messages below are for yet-to-be created tests.

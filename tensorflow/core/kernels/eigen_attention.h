@@ -20,6 +20,13 @@ limitations under the License.
 
 namespace Eigen {
 
+// Noise mode used when padding.
+enum ExtractGlimpsesNoiseMode {
+  UNIFORM = 0,
+  GAUSSIAN = 1,
+  ZERO = 2,
+};
+
 /** ExtractGlimpses
  * \ingroup CXX11_NeuralNetworks_Module
  *
@@ -43,18 +50,19 @@ namespace Eigen {
  * for width and height which will be equal to the requested glimpse size.
  */
 namespace {
+
 template <typename Index>
 struct GlimpseExtractionOp {
   GlimpseExtractionOp(const Index width, const Index height,
                       const std::vector<IndexPair<float> >& offsets,
                       const bool normalized, const bool centered,
-                      const bool uniform_noise)
+                      const ExtractGlimpsesNoiseMode noise)
       : width_(width),
         height_(height),
         offsets_(offsets),
         normalized_(normalized),
         centered_(centered),
-        uniform_noise_(uniform_noise) {}
+        noise_(noise) {}
 
   template <typename Input>
   DSizes<Index, 4> dimensions(const Input& input) const {
@@ -144,64 +152,73 @@ struct GlimpseExtractionOp {
       slice_extent[2] = std::min<Index>(input_height, slice_extent[2]);
 
       if (partial_overlap) {
-        if (uniform_noise_) {
-          // Initialize the glimpse with uniform noise.
-          typedef typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type Scalar;
-          TensorFixedSize<Scalar, Sizes<> > mini;
-          mini.device(device) = input.template chip<3>(i).minimum();
-          TensorFixedSize<float, Sizes<> > range;
-          range.device(device) = (input.template chip<3>(i).maximum() - mini)
-                                     .template cast<float>();
-
-          DSizes<Index, 3> glimpse_size(num_channels, width_, height_);
-          TensorMap<Tensor<float, 3> > tmp(NULL, glimpse_size);
-          output.template chip<3>(i).device(device) =
-              mini.reshape(Sizes<1, 1, 1>()).broadcast(glimpse_size) +
-              (tmp.random(unigen) *
-               range.reshape(Sizes<1, 1, 1>()).broadcast(glimpse_size))
-                  .template cast<Scalar>();
-        } else {
-          // Initialize the glimpse with white noise: compute the mean and sigma
-          // of each channel, and use them to shape the gaussian.
-          DSizes<Index, 2> glimpse_size(width_, height_);
-          DSizes<Index, 2> input_size(input_width, input_height);
-          typedef typename internal::remove_const<
-              typename internal::traits<Input>::Scalar>::type Scalar;
-
-          for (int j = 0; j < num_channels; ++j) {
-            TensorFixedSize<Scalar, Sizes<> > mean;
-            mean.device(device) = input.template chip<3>(i)
-                                      .template chip<0>(j)
-                                      .template cast<float>()
-                                      .mean();
-            TensorFixedSize<float, Sizes<> > sigma;
-            sigma.device(device) =
-                (input.template chip<3>(i)
-                     .template chip<0>(j)
-                     .template cast<float>() -
-                 mean.reshape(Sizes<1, 1>()).broadcast(input_size))
-                    .square()
-                    .mean()
-                    .sqrt();
+        switch (noise_) {
+          case ZERO: {
+            // Initialize the glimpse with zero noise.
+            output.template chip<3>(i).device(device) =
+                output.template chip<3>(i).constant(0);
+          } break;
+          case UNIFORM: {
+            // Initialize the glimpse with uniform noise.
+            typedef typename internal::remove_const<
+                typename internal::traits<Input>::Scalar>::type Scalar;
             TensorFixedSize<Scalar, Sizes<> > mini;
-            mini.device(device) =
-                input.template chip<3>(i).template chip<0>(j).minimum();
-            TensorFixedSize<float, Sizes<> > maxi;
-            maxi.device(device) =
-                input.template chip<3>(i).template chip<0>(j).maximum();
+            mini.device(device) = input.template chip<3>(i).minimum();
+            TensorFixedSize<float, Sizes<> > range;
+            range.device(device) = (input.template chip<3>(i).maximum() - mini)
+                                       .template cast<float>();
 
-            TensorMap<Tensor<float, 2> > tmp(NULL, glimpse_size);
-            output.template chip<3>(i).template chip<0>(j).device(device) =
-                (mean.reshape(Sizes<1, 1>()).broadcast(glimpse_size) +
-                 (tmp.random(gen) *
-                  sigma.reshape(Sizes<1, 1>()).broadcast(glimpse_size))
-                     .template cast<Scalar>())
-                    .cwiseMin(
-                        maxi.reshape(Sizes<1, 1>()).broadcast(glimpse_size))
-                    .cwiseMax(
-                        mini.reshape(Sizes<1, 1>()).broadcast(glimpse_size));
-          }
+            DSizes<Index, 3> glimpse_size(num_channels, width_, height_);
+            TensorMap<Tensor<float, 3> > tmp(NULL, glimpse_size);
+            output.template chip<3>(i).device(device) =
+                mini.reshape(Sizes<1, 1, 1>()).broadcast(glimpse_size) +
+                (tmp.random(unigen) *
+                 range.reshape(Sizes<1, 1, 1>()).broadcast(glimpse_size))
+                    .template cast<Scalar>();
+          } break;
+          case GAUSSIAN: {
+            // Initialize the glimpse with white noise: compute the mean and
+            // sigma
+            // of each channel, and use them to shape the gaussian.
+            DSizes<Index, 2> glimpse_size(width_, height_);
+            DSizes<Index, 2> input_size(input_width, input_height);
+            typedef typename internal::remove_const<
+                typename internal::traits<Input>::Scalar>::type Scalar;
+
+            for (int j = 0; j < num_channels; ++j) {
+              TensorFixedSize<Scalar, Sizes<> > mean;
+              mean.device(device) = input.template chip<3>(i)
+                                        .template chip<0>(j)
+                                        .template cast<float>()
+                                        .mean();
+              TensorFixedSize<float, Sizes<> > sigma;
+              sigma.device(device) =
+                  (input.template chip<3>(i)
+                       .template chip<0>(j)
+                       .template cast<float>() -
+                   mean.reshape(Sizes<1, 1>()).broadcast(input_size))
+                      .square()
+                      .mean()
+                      .sqrt();
+              TensorFixedSize<Scalar, Sizes<> > mini;
+              mini.device(device) =
+                  input.template chip<3>(i).template chip<0>(j).minimum();
+              TensorFixedSize<float, Sizes<> > maxi;
+              maxi.device(device) =
+                  input.template chip<3>(i).template chip<0>(j).maximum();
+
+              TensorMap<Tensor<float, 2> > tmp(NULL, glimpse_size);
+              output.template chip<3>(i).template chip<0>(j).device(device) =
+                  (mean.reshape(Sizes<1, 1>()).broadcast(glimpse_size) +
+                   (tmp.random(gen) *
+                    sigma.reshape(Sizes<1, 1>()).broadcast(glimpse_size))
+                       .template cast<Scalar>())
+                      .cwiseMin(
+                          maxi.reshape(Sizes<1, 1>()).broadcast(glimpse_size))
+                      .cwiseMax(
+                          mini.reshape(Sizes<1, 1>()).broadcast(glimpse_size));
+            }
+          } break;
         }
 
         // Copy the part of the glimpse that cover the input image if any.
@@ -225,7 +242,7 @@ struct GlimpseExtractionOp {
   const std::vector<IndexPair<float> > offsets_;
   const bool normalized_;
   const bool centered_;
-  const bool uniform_noise_;
+  const ExtractGlimpsesNoiseMode noise_;
 };
 }  // namespace
 
@@ -233,12 +250,12 @@ template <typename Input>
 EIGEN_ALWAYS_INLINE static const TensorCustomUnaryOp<
     const GlimpseExtractionOp<typename internal::traits<Input>::Index>,
     const Input>
-ExtractGlimpses(const Input& input,
-                const typename internal::traits<Input>::Index width,
-                const typename internal::traits<Input>::Index height,
-                const std::vector<IndexPair<float> >& offsets,
-                const bool normalized = true, const bool centered = true,
-                const bool uniform_noise = true) {
+ExtractGlimpses(
+    const Input& input, const typename internal::traits<Input>::Index width,
+    const typename internal::traits<Input>::Index height,
+    const std::vector<IndexPair<float> >& offsets, const bool normalized = true,
+    const bool centered = true,
+    const ExtractGlimpsesNoiseMode noise = ExtractGlimpsesNoiseMode::UNIFORM) {
   EIGEN_STATIC_ASSERT(internal::traits<Input>::Layout == ColMajor,
                       YOU_MADE_A_PROGRAMMING_MISTAKE);
   EIGEN_STATIC_ASSERT(internal::traits<Input>::NumDimensions == 4,
@@ -246,7 +263,7 @@ ExtractGlimpses(const Input& input,
 
   typedef typename internal::traits<Input>::Index Index;
   const GlimpseExtractionOp<Index> op(width, height, offsets, normalized,
-                                      centered, uniform_noise);
+                                      centered, noise);
   return input.customOp(op);
 }
 

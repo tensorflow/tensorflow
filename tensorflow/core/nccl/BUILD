@@ -11,13 +11,19 @@ exports_files(["LICENSE"])
 load("//tensorflow:tensorflow.bzl", "tf_cuda_cc_test")
 load("//tensorflow:tensorflow.bzl", "tf_copts")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
+load(
+    "//tensorflow/core:platform/default/build_config_root.bzl",
+    "tf_cuda_tests_tags",
+)
 
 cc_library(
     name = "nccl_lib",
     srcs = if_cuda([
         "nccl_manager.cc",
-        "nccl_manager.h",
         "nccl_rewrite.cc",
+    ]),
+    hdrs = if_cuda([
+        "nccl_manager.h",
     ]),
     copts = tf_copts(),
     deps = if_cuda([
@@ -34,27 +40,17 @@ cc_library(
 tf_cuda_cc_test(
     name = "nccl_manager_test",
     size = "medium",
-    srcs = if_cuda(
-        [
-            "nccl_manager_test.cc",
-        ],
-        [],
-    ),
-    # Disabled on jenkins until errors finding nvmlShutdown are found.
-    tags = [
-        "manual",
-        "multi_gpu",
-        "no_oss",
-        "noguitar",
-        "notap",
+    srcs = ["nccl_manager_test.cc"],
+    tags = tf_cuda_tests_tags() + [
+        "no_cuda_on_cpu_tap",  # TODO(b/120284216): re-enable multi_gpu
     ],
-    deps =
-        if_cuda([
-            ":nccl_lib",
-            "@local_config_nccl//:nccl",
-            "//tensorflow/core:cuda",
-            "//tensorflow/core:test",
-            "//tensorflow/core:test_main",
-            "//tensorflow/core:testlib",
-        ]),
+    deps = [
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ] + if_cuda([
+        ":nccl_lib",
+        "@local_config_nccl//:nccl",
+        "//tensorflow/core:cuda",
+    ]),
 )

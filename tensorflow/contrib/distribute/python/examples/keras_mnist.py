@@ -20,6 +20,10 @@ from __future__ import print_function
 import tensorflow as tf
 
 
+from tensorflow.python.distribute import mirrored_strategy
+from tensorflow.python.keras.optimizer_v2 import rmsprop
+
+
 NUM_CLASSES = 10
 
 
@@ -61,7 +65,6 @@ def get_input_datasets(use_bfloat16=False):
   # train dataset
   train_ds = tf.data.Dataset.from_tensor_slices((x_train, y_train))
   train_ds = train_ds.repeat()
-  train_ds = train_ds.shuffle(100)
   train_ds = train_ds.map(lambda x, y: (tf.cast(x, cast_dtype), y))
   train_ds = train_ds.batch(64, drop_remainder=True)
 
@@ -103,20 +106,24 @@ def main(_):
   # Build the train and eval datasets from the MNIST data. Also return the
   # input shape which is constructed based on the `image_data_format`
   # i.e channels_first or channels_last.
+  tf.enable_eager_execution()
+
   train_ds, eval_ds, input_shape = get_input_datasets()
-  model = get_model(input_shape)
 
   # Instantiate the MirroredStrategy object. If we don't specify `num_gpus` or
   # the `devices` argument then all the GPUs available on the machine are used.
-  strategy = tf.contrib.distribute.MirroredStrategy()
+  # TODO(priyag): Use `tf.distribute.MirroredStrategy` once available.
+  strategy = mirrored_strategy.MirroredStrategy(['/gpu:0', '/cpu:0'])
 
-  # Compile the model by passing the distribution strategy object to the
-  # `distribute` argument. `fit`, `evaluate` and `predict` will be distributed
-  # based on the strategy instantiated.
-  model.compile(loss=tf.keras.losses.categorical_crossentropy,
-                optimizer=tf.train.RMSPropOptimizer(learning_rate=0.001),
-                metrics=['accuracy'],
-                distribute=strategy)
+  # Create and compile the model under Distribution strategy scope.
+  # `fit`, `evaluate` and `predict` will be distributed based on the strategy
+  # model was compiled with.
+  with strategy.scope():
+    model = get_model(input_shape)
+    optimizer = rmsprop.RMSProp(learning_rate=0.001)
+    model.compile(loss=tf.keras.losses.categorical_crossentropy,
+                  optimizer=optimizer,
+                  metrics=['accuracy'])
 
   # Train the model with the train dataset.
   model.fit(x=train_ds, epochs=20, steps_per_epoch=468)

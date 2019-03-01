@@ -20,6 +20,7 @@ limitations under the License.
 #include "absl/types/optional.h"
 #include "tensorflow/compiler/xla/service/compiler.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
+#include "tensorflow/compiler/xla/service/gpu/autotuning.pb.h"
 #include "tensorflow/compiler/xla/service/gpu/cudnn_conv_runner.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
@@ -47,16 +48,10 @@ class CudnnConvAlgorithmPicker : public HloModulePass {
   StatusOr<bool> Run(HloModule* module) override;
 
  private:
-  struct AutotuneResult {
-    int64 algorithm;
-    bool tensor_ops_enabled;
-    int64 scratch_bytes;
-    absl::Duration runtime;
-  };
-
   StatusOr<bool> RunOnComputation(HloComputation* computation);
   StatusOr<bool> RunOnInstruction(HloInstruction* instr);
-  StatusOr<AutotuneResult> PickBestAlgorithm(HloCustomCallInstruction* instr);
+  StatusOr<AutotuneResult> PickBestAlgorithm(
+      const HloCustomCallInstruction* instr);
 
   se::StreamExecutor* stream_exec_;                   // never null
   DeviceMemoryAllocator* allocator_;                  // may be null

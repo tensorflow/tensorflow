@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/gpu/gpu_id_utils.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_init.h"
 #include "tensorflow/core/common_runtime/pool_allocator.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/tracking_allocator.h"
@@ -55,35 +56,25 @@ bool useCudaMemoryGuardAllocator() {
 
 }  // namespace
 
-GPUProcessState* GPUProcessState::instance_ = nullptr;
-
-/*static*/ GPUProcessState* GPUProcessState::singleton() {
-  if (instance_ == nullptr) {
-    instance_ = new GPUProcessState;
-  }
-  CHECK(instance_->process_state_);
-
-  return instance_;
+/*static*/ GPUProcessState* GPUProcessState::singleton(GPUProcessState* ps) {
+  static GPUProcessState* instance = ps ? ps : new GPUProcessState;
+  DCHECK((!ps) || (ps == instance))
+      << "Multiple calls to GPUProcessState with non-null ps";
+  return instance;
 }
 
 GPUProcessState::GPUProcessState() : gpu_device_enabled_(false) {
-  CHECK(instance_ == nullptr);
-  instance_ = this;
   process_state_ = ProcessState::singleton();
-}
-
-// Normally the GPUProcessState singleton is never explicitly deleted.
-// This function is defined for debugging problems with the allocators.
-GPUProcessState::~GPUProcessState() {
-  CHECK_EQ(this, instance_);
-  instance_ = nullptr;
 }
 
 int GPUProcessState::BusIdForGPU(TfGpuId tf_gpu_id) {
   // Return the NUMA node associated with the GPU's StreamExecutor.
   se::StreamExecutor* se =
       GpuIdUtil::ExecutorForTfGpuId(tf_gpu_id).ValueOrDie();
-  return se->GetDeviceDescription().numa_node();
+  int numa_node = se->GetDeviceDescription().numa_node();
+  // bus_id must be non-negative.  If the numa_node is not known,
+  // use 0.
+  return numa_node >= 0 ? numa_node : 0;
 }
 
 Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
@@ -100,7 +91,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
   }
 
   AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
-  if (allocator_parts.allocator.get() == nullptr) {
+  if (allocator_parts.allocator == nullptr) {
     // Validate allocator types.
     if (!allocator_type.empty() && allocator_type != "BFC") {
       LOG(ERROR) << "Invalid allocator type: " << allocator_type;
@@ -110,6 +101,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
     PlatformGpuId platform_gpu_id;
     TF_CHECK_OK(GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id));
     int bus_id = BusIdForGPU(tf_gpu_id);
+    DCHECK_GE(bus_id, 0);
     while (bus_id >= gpu_visitors_.size()) {
       gpu_visitors_.push_back({});
     }
@@ -119,9 +111,15 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
         (options.per_process_gpu_memory_fraction() > 1.0 ||
          options.experimental().use_unified_memory()),
         gpu_visitors_[bus_id], {});
-    Allocator* gpu_allocator =
+    GPUBFCAllocator* gpu_bfc_allocator =
         new GPUBFCAllocator(sub_allocator, total_bytes, options,
                             strings::StrCat("GPU_", tf_gpu_id.value(), "_bfc"));
+    Allocator* gpu_allocator = gpu_bfc_allocator;
+    SharedCounter* timing_counter = nullptr;
+    if (options.experimental().timestamped_allocator()) {
+      timing_counter = new SharedCounter;
+      gpu_bfc_allocator->SetTimingCounter(timing_counter);
+    }
 
     // If true, checks for memory overwrites by writing
     // distinctive patterns on both ends of allocated memory.
@@ -146,7 +144,9 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
       recording_allocator = new internal::RecordingAllocator(
           &process_state_->mem_desc_map_, gpu_allocator, md, &mu_);
     }
-    allocator_parts = {std::unique_ptr<Allocator>(gpu_allocator), sub_allocator,
+    allocator_parts = {std::unique_ptr<Allocator>(gpu_allocator),
+                       std::unique_ptr<SharedCounter>(timing_counter),
+                       sub_allocator,
                        std::unique_ptr<Allocator>(recording_allocator)};
   }
   if (process_state_->ProcessState::FLAGS_brain_gpu_record_mem_types) {
@@ -160,13 +160,31 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
 #endif  // GOOGLE_CUDA
 }
 
+SharedCounter* GPUProcessState::GPUAllocatorCounter(TfGpuId tf_gpu_id) {
+  DCHECK(process_state_);
+#if GOOGLE_CUDA
+  GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
+  mutex_lock l(mu_);
+  if (tf_gpu_id.value() >= static_cast<int64>(gpu_allocators_.size())) {
+    return nullptr;
+  }
+
+  AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
+  return allocator_parts.counter.get();
+#else
+  return nullptr;
+#endif
+}
+
 Allocator* GPUProcessState::GetCUDAHostAllocator(int numa_node) {
   CHECK(process_state_);
   if (!HasGPUDevice() ||
       !process_state_->ProcessState::FLAGS_brain_mem_reg_cuda_dma) {
     return process_state_->GetCPUAllocator(numa_node);
   }
-  CHECK_GE(numa_node, 0);
+  if (numa_node == port::kNUMANoAffinity) {
+    numa_node = 0;
+  }
   {
     // Here we optimize the most common use case where cuda_host_allocators_
     // and cuda_al_ have already been populated and since we're only reading
@@ -231,6 +249,7 @@ Allocator* GPUProcessState::GetCUDAHostAllocator(int numa_node) {
       allocator = new TrackingAllocator(allocator, true);
     }
     cuda_host_allocators_.push_back({std::unique_ptr<Allocator>(allocator),
+                                     std::unique_ptr<SharedCounter>(nullptr),
                                      sub_allocator,
                                      std::unique_ptr<Allocator>(nullptr)});
     AllocatorParts& allocator_parts = cuda_host_allocators_.back();
@@ -260,6 +279,7 @@ void GPUProcessState::AddGPUAllocVisitor(int bus_id,
   CHECK(gpu_allocators_.empty())  // Crash OK
       << "AddGPUAllocVisitor must be called before "
          "first call to GetGPUAllocator.";
+  DCHECK_GE(bus_id, 0);
   while (bus_id >= static_cast<int64>(gpu_visitors_.size())) {
     gpu_visitors_.push_back(std::vector<SubAllocator::Visitor>());
   }

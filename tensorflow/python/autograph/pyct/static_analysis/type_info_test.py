@@ -72,12 +72,13 @@ class TypeInfoResolverTest(test.TestCase):
         owner_type=None)
     node = qual_names.resolve(node)
     graphs = cfg.build(node)
-    node = activity.resolve(node, entity_info)
-    node = reaching_definitions.resolve(node, entity_info, graphs,
+    ctx = transformer.Context(entity_info)
+    node = activity.resolve(node, ctx)
+    node = reaching_definitions.resolve(node, ctx, graphs,
                                         reaching_definitions.Definition)
-    node = live_values.resolve(node, entity_info, {})
-    node = type_info.resolve(node, entity_info)
-    node = live_values.resolve(node, entity_info, {})
+    node = live_values.resolve(node, ctx, {})
+    node = type_info.resolve(node, ctx)
+    node = live_values.resolve(node, ctx, {})
     return node
 
   def test_constructor_detection(self):
@@ -88,10 +89,21 @@ class TypeInfoResolverTest(test.TestCase):
 
     node = self._parse_and_analyze(test_fn, {'training': training})
     call_node = node.body[0].body[0].value
+    self.assertTrue(anno.getanno(call_node, 'is_constructor'))
     self.assertEquals(training.GradientDescentOptimizer,
                       anno.getanno(call_node, 'type'))
     self.assertEquals((training.__name__, 'GradientDescentOptimizer'),
                       anno.getanno(call_node, 'type_fqn'))
+
+  def test_constructor_detection_builtin_class(self):
+
+    def test_fn(x):
+      res = zip(x)
+      return res
+
+    node = self._parse_and_analyze(test_fn, {})
+    call_node = node.body[0].body[0].value
+    self.assertFalse(anno.hasanno(call_node, 'is_constructor'))
 
   def test_class_members_of_detected_constructor(self):
 

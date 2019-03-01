@@ -41,18 +41,6 @@ HloModule::HloModule(const string& name, const HloModuleConfig& config)
       config_(config),
       unique_id_(next_unique_module_id_++) {}
 
-StatusOr<HloInstruction*> HloModule::LaunderConstInstructionFromModule(
-    const HloInstruction* hlo) {
-  if (hlo == nullptr) {
-    return nullptr;
-  }
-
-  TF_RET_CHECK(hlo->GetModule() == this);
-
-  // TODO(b/78350259): Eliminate const laundering.
-  return const_cast<HloInstruction*>(hlo);
-}
-
 Status HloModule::set_schedule(HloSchedule schedule) {
   TF_RET_CHECK(schedule.module() == this);
   TF_RETURN_IF_ERROR(schedule.Verify());
@@ -119,11 +107,10 @@ HloComputation* HloModule::AddEntryComputation(
 }
 
 Status HloModule::RemoveEmbeddedComputation(HloComputation* to_remove) {
-  auto it =
-      std::find_if(computations_.begin(), computations_.end(),
-                   [&to_remove](const std::unique_ptr<HloComputation>& comp) {
-                     return comp.get() == to_remove;
-                   });
+  auto it = absl::c_find_if(
+      computations_, [&to_remove](const std::unique_ptr<HloComputation>& comp) {
+        return comp.get() == to_remove;
+      });
   TF_RET_CHECK(it->get() == to_remove);
   computations_.erase(it);
   return Status::OK();
@@ -171,17 +158,12 @@ void HloModule::ReplaceComputations(
           break;
         }
         case HloOpcode::kConditional: {
-          HloComputation* new_true_computation =
-              tensorflow::gtl::FindWithDefault(
-                  replacements, instruction->true_computation(), nullptr);
-          if (new_true_computation != nullptr) {
-            instruction->set_true_computation(new_true_computation);
-          }
-          HloComputation* new_false_computation =
-              tensorflow::gtl::FindWithDefault(
-                  replacements, instruction->false_computation(), nullptr);
-          if (new_false_computation != nullptr) {
-            instruction->set_false_computation(new_false_computation);
+          for (int b = 0; b < instruction->branch_count(); ++b) {
+            HloComputation* new_computation = tensorflow::gtl::FindWithDefault(
+                replacements, instruction->branch_computation(b), nullptr);
+            if (new_computation != nullptr) {
+              instruction->set_branch_computation(b, new_computation);
+            }
           }
           break;
         }
@@ -252,22 +234,52 @@ HloModuleProto HloModule::ToProto() const {
     *proto.mutable_schedule() = schedule().ToProto().ValueOrDie();
   }
   *proto.mutable_host_program_shape() =
-      entry_computation_layout().ComputeProgramShape();
+      entry_computation_layout().ComputeProgramShape().ToProto();
   *proto.mutable_input_output_alias() = input_output_alias_config().ToProto();
+  *proto.mutable_dynamic_parameter_binding() =
+      dynamic_parameter_binding().ToProto();
   return proto;
+}
+
+Status HloModule::CheckUniqueNamesAndIdsForComputationsAndInstructions() const {
+  absl::flat_hash_set<string> computation_names;
+  absl::flat_hash_set<int> computation_ids;
+  absl::flat_hash_set<string> instruction_names;
+  absl::flat_hash_set<int> instruction_ids;
+
+  for (const HloComputation* computation : computations()) {
+    TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
+        << "Computation name is not unique: " << computation->name();
+    computation_names.insert(computation->name());
+
+    TF_RET_CHECK(!ContainsKey(computation_ids, computation->unique_id()))
+        << "Computation id is not unique: " << computation->unique_id();
+    computation_ids.insert(computation->unique_id());
+
+    for (const HloInstruction* instruction : computation->instructions()) {
+      TF_RET_CHECK(!ContainsKey(instruction_names, instruction->name()))
+          << "Instruction name is not unique: " << instruction->name();
+      instruction_names.insert(instruction->name());
+
+      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
+          << "Instruction id is not unique: " << instruction->unique_id();
+      instruction_ids.insert(instruction->unique_id());
+    }
+  }
+  return Status::OK();
 }
 
 /* static */
 StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
     const HloModuleProto& proto, const HloModuleConfig& module_config) {
   VLOG(2) << "CreateFromProto()";
-  XLA_VLOG_LINES(2, proto.DebugString());
+  XLA_VLOG_LINES(3, proto.DebugString());
 
   // The ProgramShape in the passed in module config must match the shapes of
   // the entry parameters and root.
   TF_RET_CHECK(proto.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& expected_program_shape = proto.host_program_shape();
+  ProgramShape expected_program_shape(proto.host_program_shape());
   TF_RET_CHECK(expected_program_shape.parameters_size() ==
                module_config.entry_computation_layout().parameter_count());
   for (int i = 0; i < expected_program_shape.parameters_size(); ++i) {
@@ -314,11 +326,10 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
   auto module = absl::make_unique<HloModule>(proto.name(), module_config);
 
   // Sort the computations in the proto id's order.
-  std::sort(computations.begin(), computations.end(),
-            [&](const std::unique_ptr<HloComputation>& a,
-                const std::unique_ptr<HloComputation>& b) {
-              return to_proto_id[a.get()] < to_proto_id[b.get()];
-            });
+  absl::c_sort(computations, [&](const std::unique_ptr<HloComputation>& a,
+                                 const std::unique_ptr<HloComputation>& b) {
+    return to_proto_id[a.get()] < to_proto_id[b.get()];
+  });
 
   // Add sorted computations to the module.
   for (auto& computation : computations) {
@@ -337,28 +348,12 @@ StatusOr<std::unique_ptr<HloModule>> HloModule::CreateFromProto(
 
   // Because we didn't uniquify the names or the ids, double-check that the
   // instruction and computation names and ids are unique from the proto.
-  absl::flat_hash_set<string> computation_names;
-  absl::flat_hash_set<string> instruction_names;
-  absl::flat_hash_set<int> computation_ids;
-  absl::flat_hash_set<int> instruction_ids;
-  for (HloComputation* computation : module->computations()) {
-    TF_RET_CHECK(!ContainsKey(computation_names, computation->name()))
-        << "Computation name is not unique: " << computation->name();
-    computation_names.insert(computation->name());
+  TF_ASSIGN_OR_RETURN(module->dynamic_parameter_binding_,
+                      DynamicParameterBinding::CreateFromProto(
+                          proto.dynamic_parameter_binding()));
 
-    TF_RET_CHECK(!ContainsKey(computation_ids, computation->unique_id()))
-        << "Computation id is not unique: " << computation->unique_id();
-    computation_ids.insert(computation->unique_id());
-    for (HloInstruction* instruction : computation->instructions()) {
-      TF_RET_CHECK(!ContainsKey(instruction_names, instruction->name()))
-          << "Instruction name is not unique: " << instruction->name();
-      instruction_names.insert(instruction->name());
-
-      TF_RET_CHECK(!ContainsKey(instruction_ids, instruction->unique_id()))
-          << "Instruction id is not unique: " << instruction->unique_id();
-      instruction_ids.insert(instruction->unique_id());
-    }
-  }
+  TF_RETURN_IF_ERROR(
+      module->CheckUniqueNamesAndIdsForComputationsAndInstructions());
 
   if (proto.has_schedule()) {
     TF_ASSIGN_OR_RETURN(
@@ -375,9 +370,9 @@ StatusOr<HloModuleConfig> HloModule::CreateModuleConfigFromProto(
     const HloModuleProto& module, const DebugOptions& debug_options) {
   TF_RET_CHECK(module.has_host_program_shape())
       << "No program shape found in the proto";
-  const auto& program_shape = module.host_program_shape();
+  ProgramShape program_shape(module.host_program_shape());
 
-  HloModuleConfig module_config(program_shape);
+  HloModuleConfig module_config(ProgramShape{program_shape});
   module_config.set_debug_options(debug_options);
 
   // The module config is constructed with default layouts regardless of what is
@@ -398,15 +393,12 @@ namespace {
 // Returns whether `hlo` is used outside the given subcomputation.
 // `instructions_in_subcomputation` is the instruction set of the given
 // subcomputation.
-bool IsUsedOutsideSubcomputation(
-    const HloInstruction& hlo,
-    const std::unordered_set<HloInstruction*>& instructions_in_subcomputation) {
-  for (HloInstruction* user : hlo.users()) {
-    if (!instructions_in_subcomputation.count(user)) {
-      return true;
-    }
-  }
-  return false;
+bool IsUsedOutsideSubcomputation(const HloInstruction& hlo,
+                                 const absl::flat_hash_set<HloInstruction*>&
+                                     instructions_in_subcomputation) {
+  return absl::c_any_of(hlo.users(), [&](HloInstruction* user) {
+    return !instructions_in_subcomputation.contains(user);
+  });
 }
 }  // anonymous namespace
 
@@ -417,9 +409,9 @@ HloInstruction* HloModule::OutlineExpressionFromComputation(
 
   // A map from original instructions to their counterparts in the new outlined
   // function.
-  std::unordered_map<HloInstruction*, HloInstruction*> outlined_instructions;
+  absl::flat_hash_map<HloInstruction*, HloInstruction*> outlined_instructions;
   // A set that contains all instructions to be outlined.
-  std::unordered_set<HloInstruction*> instruction_set_to_outline(
+  absl::flat_hash_set<HloInstruction*> instruction_set_to_outline(
       instructions_to_outline.begin(), instructions_to_outline.end());
   std::vector<HloInstruction*> arguments;
   std::vector<HloInstruction*> outputs;
@@ -508,7 +500,7 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // First determine all root computations by building a set of nonroot
   // computations (computations which are called by an instruction in the
   // module).
-  std::set<HloComputation*> nonroot_computations;
+  absl::flat_hash_set<HloComputation*> nonroot_computations;
   for (auto& computation : computations_) {
     for (auto* instruction : computation->instructions()) {
       for (HloComputation* called_computation :
@@ -521,19 +513,19 @@ std::vector<HloComputation*> HloModule::MakeComputationPostOrder() const {
   // Keep track of computations which have already been added to the post
   // order. This prevents duplication as an embedded computation may be called
   // from two different root computations.
-  std::set<HloComputation*> added_computations;
+  absl::flat_hash_set<HloComputation*> added_computations;
   std::vector<HloComputation*> post_order;
   for (auto& computation : computations_) {
-    if (nonroot_computations.count(computation.get()) == 0) {
+    if (!nonroot_computations.contains(computation.get())) {
       for (HloComputation* embedded_computation :
            computation->MakeEmbeddedComputationsList()) {
-        if (added_computations.count(embedded_computation) == 0) {
+        if (!added_computations.contains(embedded_computation)) {
           post_order.push_back(embedded_computation);
           added_computations.insert(embedded_computation);
         }
       }
       // Root computations should only be encountered once.
-      CHECK_EQ(0, added_computations.count(computation.get()));
+      CHECK(!added_computations.contains(computation.get()));
       post_order.push_back(computation.get());
       added_computations.insert(computation.get());
     }
@@ -571,11 +563,28 @@ std::unique_ptr<HloModule> HloModule::Clone(const string& suffix) const {
 std::unique_ptr<HloModule> HloModule::Clone(const HloModuleConfig& config,
                                             const string& suffix) const {
   VLOG(1) << "Cloning module :" << name_ << " --> " << suffix << "\n";
-  auto module = absl::make_unique<HloModule>(name_ + "-" + suffix, config);
+  auto module = absl::make_unique<HloModule>(
+      absl::StrCat(name_, suffix.empty() ? "" : "-", suffix), config);
 
   HloCloneContext context(module.get(), suffix);
   auto cloned_computation = entry_computation_->Clone(suffix, &context);
   module->AddEntryComputation(std::move(cloned_computation));
+
+  if (has_schedule() && schedule().Verify().ok()) {
+    HloSchedule clone_schedule(module.get());
+    for (HloComputation* computation : computations()) {
+      if (schedule().is_computation_scheduled(computation)) {
+        HloInstructionSequence& clone_sequence =
+            clone_schedule.GetOrCreateSequence(
+                context.GetComputation(computation));
+        for (const HloInstruction* instruction :
+             schedule().sequence(computation).instructions()) {
+          clone_sequence.push_back(context.GetInstruction(instruction));
+        }
+      }
+    }
+    TF_CHECK_OK(module->set_schedule(std::move(clone_schedule)));
+  }
   return module;
 }
 

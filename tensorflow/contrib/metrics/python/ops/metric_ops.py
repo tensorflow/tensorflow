@@ -24,7 +24,6 @@ from __future__ import print_function
 
 import collections as collections_lib
 
-from tensorflow.python.compat import compat
 from tensorflow.python.eager import context
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -44,32 +43,6 @@ from tensorflow.python.util.deprecation import deprecated
 
 # Epsilon constant used to represent extremely small quantity.
 _EPSILON = 1e-7
-
-
-def _safe_div(numerator, denominator):
-  """Computes a safe divide which returns 0 if the denominator is zero.
-
-  Note that the function contains an additional conditional check that is
-  necessary for avoiding situations where the loss is zero causing NaNs to
-  creep into the gradient computation.
-
-  Args:
-    numerator: An arbitrary `Tensor`.
-    denominator: A `Tensor` whose shape matches `numerator` and whose values are
-      assumed to be non-negative.
-
-  Returns:
-    The element-wise value of the numerator divided by the denominator.
-  """
-  if compat.forward_compatible(2018, 11, 1):
-    return math_ops.div_no_nan(numerator, denominator)
-  return array_ops.where(
-      math_ops.greater(denominator, 0),
-      math_ops.div(numerator,
-                   array_ops.where(
-                       math_ops.equal(denominator, 0),
-                       array_ops.ones_like(denominator), denominator)),
-      array_ops.zeros_like(numerator))
 
 
 @deprecated(None, 'Please switch to tf.metrics.true_positives. Note that the '
@@ -1383,9 +1356,8 @@ def _compute_placement_auc(labels, predictions, weights, alpha,
           weights_0 * math_ops.square(1. - placement_values_0 - auc_0)) /
       (total_0 - 1. + _EPSILON))
   var_1 = (
-      math_ops.reduce_sum(
-          weights_1 * math_ops.square(placement_values_1 - auc_1)) /
-      (total_1 - 1. + _EPSILON))
+      math_ops.reduce_sum(weights_1 * math_ops.squared_difference(
+          placement_values_1, auc_1)) / (total_1 - 1. + _EPSILON))
   auc_std_err = math_ops.sqrt(
       (var_0 / (total_0 + _EPSILON)) + (var_1 / (total_1 + _EPSILON)))
 
@@ -3247,24 +3219,20 @@ def streaming_covariance(predictions,
 
     # We update the means by Delta=Error*BatchCount/(BatchCount+PrevCount)
     # batch_mean_prediction is E[x_B] in the update equation
-    batch_mean_prediction = _safe_div(
-        math_ops.reduce_sum(weighted_predictions),
-        batch_count)
-    delta_mean_prediction = _safe_div(
-        (batch_mean_prediction - mean_prediction) * batch_count,
-        update_count)
+    batch_mean_prediction = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_predictions), batch_count)
+    delta_mean_prediction = math_ops.div_no_nan(
+        (batch_mean_prediction - mean_prediction) * batch_count, update_count)
     update_mean_prediction = state_ops.assign_add(mean_prediction,
                                                   delta_mean_prediction)
     # prev_mean_prediction is E[x_A] in the update equation
     prev_mean_prediction = update_mean_prediction - delta_mean_prediction
 
     # batch_mean_label is E[y_B] in the update equation
-    batch_mean_label = _safe_div(
-        math_ops.reduce_sum(weighted_labels),
-        batch_count)
-    delta_mean_label = _safe_div(
-        (batch_mean_label - mean_label) * batch_count,
-        update_count)
+    batch_mean_label = math_ops.div_no_nan(
+        math_ops.reduce_sum(weighted_labels), batch_count)
+    delta_mean_label = math_ops.div_no_nan(
+        (batch_mean_label - mean_label) * batch_count, update_count)
     update_mean_label = state_ops.assign_add(mean_label, delta_mean_label)
     # prev_mean_label is E[y_A] in the update equation
     prev_mean_label = update_mean_label - delta_mean_label
@@ -3447,7 +3415,7 @@ def streaming_mean_cosine_distance(predictions,
   predictions.get_shape().assert_is_compatible_with(labels.get_shape())
   radial_diffs = math_ops.multiply(predictions, labels)
   radial_diffs = math_ops.reduce_sum(
-      radial_diffs, reduction_indices=[
+      radial_diffs, axis=[
           dim,
       ], keepdims=True)
   mean_distance, update_op = streaming_mean(radial_diffs, weights, None, None,
@@ -3926,9 +3894,8 @@ def cohen_kappa(labels,
       po_sum = math_ops.reduce_sum(po)
       total = math_ops.reduce_sum(pe_row)
       pe_sum = math_ops.reduce_sum(
-          _safe_div(
-              math_ops.to_double(pe_row * pe_col),
-              math_ops.to_double(total)))
+          math_ops.div_no_nan(
+              math_ops.to_double(pe_row * pe_col), math_ops.to_double(total)))
       po_sum, pe_sum, total = (math_ops.to_double(po_sum),
                                math_ops.to_double(pe_sum),
                                math_ops.to_double(total))

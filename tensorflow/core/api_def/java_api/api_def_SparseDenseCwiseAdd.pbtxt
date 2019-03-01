@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "SparseDenseCwiseAdd"
+  endpoint {
+    name: "sparse.SparseDenseCwiseAdd"
+  }
+}

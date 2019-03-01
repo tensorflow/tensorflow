@@ -12,19 +12,13 @@ package(default_visibility = ["//visibility:public"])
 cc_library(
     name = "tensorrt_headers",
     hdrs = [%{tensorrt_headers}],
-    includes = [
-        "include",
-    ],
     visibility = ["//visibility:public"],
 )
 
 cc_library(
-    name = "nv_infer",
-    srcs = [%{nv_infer}],
-    data = [%{nv_infer}],
-    includes = [
-        "include",
-    ],
+    name = "tensorrt",
+    srcs = %{tensorrt_libs},
+    data = %{tensorrt_libs},
     copts= cuda_default_copts(),
     deps = [
         "@local_config_cuda//cuda:cuda",
@@ -34,6 +28,5 @@ cc_library(
     visibility = ["//visibility:public"],
 )
 
-
-%{tensorrt_genrules}
+%{copy_rules}
 

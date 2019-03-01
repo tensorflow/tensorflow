@@ -30,6 +30,10 @@ limitations under the License.
 namespace xla {
 namespace status_macros {
 
+// This is a useful error message when encountering XLA Compiler errors that
+// could be handled with the non-strict AutoJit mode.
+extern const char kPossibleAutoJitAlternative[];
+
 // Stream object used to collect error messages in MAKE_ERROR macros
 // or append error messages with APPEND_ERROR.  It accepts any
 // arguments with operator<< to build an error string, and then has an

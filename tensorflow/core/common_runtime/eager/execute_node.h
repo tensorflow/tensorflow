@@ -64,7 +64,7 @@ class ExecuteNode : public EagerNode {
   }
 
   tensorflow::Status Run() override {
-    const Status status = EagerExecute(
+    const Status status = EagerKernelExecute(
         ctx_, op_device_, inputs_, kernel_, maybe_stats_.get(),
         maybe_step_stats_, graph_collector_, retvals_.begin(), retvals_.size());
     if (status.ok()) {

@@ -16,6 +16,10 @@
 
 _SINGLE_URL_WHITELIST = depset([
     "arm_compiler",
+    "LinaroArmGcc49",
+    "LinaroArmGcc72",
+    "LinaroAarch64Gcc49",
+    "LinaroAarch64Gcc72",
 ])
 
 def _is_windows(ctx):
@@ -84,7 +88,7 @@ def _apply_delete(ctx, paths):
 def _tf_http_archive(ctx):
     if ("mirror.bazel.build" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST)):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.bazel.build URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +
@@ -150,7 +154,7 @@ ensure best practices are followed.
 def _third_party_http_archive(ctx):
     if ("mirror.bazel.build" not in ctx.attr.urls[0] and
         (len(ctx.attr.urls) < 2 and
-         ctx.attr.name not in _SINGLE_URL_WHITELIST)):
+         ctx.attr.name not in _SINGLE_URL_WHITELIST.to_list())):
         fail("tf_http_archive(urls) must have redundant URLs. The " +
              "mirror.bazel.build URL must be present and it must come first. " +
              "Even if you don't have permission to mirror the file, please " +

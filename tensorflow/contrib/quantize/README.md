@@ -8,9 +8,9 @@ for both training and inference. There are two aspects to this:
 
 For efficient inference, TensorFlow combines batch normalization with the preceding
 convolutional and fully-connected layers prior to quantization by
-[folding batch norm layers](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/quantize/python/fold_batch_norms.py){:.external}. 
+[folding batch norm layers](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/quantize/python/fold_batch_norms.py){:.external}.
 
-The quantization error is modeled using [fake quantization](../api_guides/python/array_ops.md#Fake_quantization)
+The quantization error is modeled using [fake quantization](../../api_guides/python/array_ops.md#Fake_quantization)
 nodes to simulate the effect of quantization in the forward and backward passes. The
 forward-pass models quantization, while the backward-pass models quantization as a
 straight-through estimator. Both the forward- and backward-pass simulate the quantization
@@ -28,7 +28,7 @@ Since it's difficult to add these fake quantization operations to all the
 required locations in the model, there's a function available that rewrites the
 training graph. To create a fake quantized training graph:
 
-```
+```python
 # Build forward pass of model.
 loss = tf.losses.get_total_loss()
 
@@ -51,7 +51,7 @@ The rewritten *eval graph* is non-trivially different from the *training graph*
 since the quantization ops affect the batch normalization step. Because of this,
 we've added a separate rewrite for the *eval graph*:
 
-```
+```python
 # Build eval model
 logits = tf.nn.softmax_cross_entropy_with_logits_v2(...)
 
@@ -105,12 +105,12 @@ toco \
   --std_value=127.5 --mean_value=127.5
 ```
 
-See the documentation for `tf.contrib.quantize` and [TensorFlow Lite](../lite/).
+See the documentation for `tf.contrib.quantize` and [TensorFlow Lite](../../lite/).
 
 
 ## Quantized accuracy results
 
-The following are results of trainiing some popular CNN models (Mobilenet-v1,
+The following are results of training some popular CNN models (Mobilenet-v1,
 Mobilenet-v2, and Inception-v3) using this tool:
 
 <figure>
@@ -145,7 +145,7 @@ Mobilenet-v2, and Inception-v3) using this tool:
 </figure>
 
 Our pre-trained models are available in the
-<a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/contrib/lite/g3doc/models.md#image-classification-quantized-models" class="external">TensorFlow Lite model repository</a>. The code used to generate
+<a href="https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/models.md#image-classification-quantized-models" class="external">TensorFlow Lite model repository</a>. The code used to generate
 these models <a href="https://github.com/tensorflow/models/blob/master/research/slim/nets/mobilenet_v1_train.py" class="external">is available</a>.
 
 

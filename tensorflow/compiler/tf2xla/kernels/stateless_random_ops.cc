@@ -23,13 +23,11 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
-#include "tensorflow/compiler/xla/client/lib/numeric.h"
 #include "tensorflow/compiler/xla/client/lib/prng.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
-#include "tensorflow/core/lib/core/casts.h"
 #include "tensorflow/core/lib/math/math_util.h"
 
 namespace tensorflow {
@@ -220,8 +218,8 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
     auto uniform = xla::StatelessRngUniform(
         {seed0, seed1}, xla_shape,
-        xla::ConstantR0<float>(builder, std::numeric_limits<float>::min()),
-        xla::ConstantR0<float>(builder, 1.0));
+        xla::MinPositiveNormalValue(builder, xla_shape.element_type()),
+        xla::One(builder, xla_shape.element_type()));
     auto output = TruncatedNormal(uniform);
     output = MaybeConvertF32ToBF16(output, dtype_);
     ctx->SetOutput(0, output);

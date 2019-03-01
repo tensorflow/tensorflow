@@ -132,7 +132,7 @@ class Buffer : public ResourceBase {
     notify_inserters_if_bounded(&lock);
   }
 
-  string DebugString() override {
+  string DebugString() const override {
     std::unique_lock<std::mutex> lock(mu_);
     return strings::StrCat("Staging size: ", buf_.size());
   }
@@ -151,7 +151,7 @@ class Buffer : public ResourceBase {
   }
 
   // Are there a limit number of elements or a memory limit
-  // configued on this buffer?
+  // configured on this buffer?
   bool IsBounded() const { return capacity_ > 0 || memory_limit_ > 0; }
 
   bool IsCapacityFull() const { return buf_.size() >= capacity_; }
@@ -170,7 +170,7 @@ class Buffer : public ResourceBase {
   std::size_t capacity_;
   std::size_t memory_limit_;
   std::size_t current_bytes_;
-  std::mutex mu_;
+  mutable std::mutex mu_;
   std::condition_variable non_empty_cond_var_;
   std::condition_variable full_cond_var_;
   std::deque<Tuple> buf_;

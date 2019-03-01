@@ -14,6 +14,9 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/xla/client/lib/sorting.h"
+
+#include <limits>
+
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/test.h"
 #include "tensorflow/compiler/xla/tests/client_library_test_base.h"
@@ -41,6 +44,28 @@ XLA_TEST_F(SortingTest, TopK3From8Indices) {
   ComputeAndCompareR1<int>(&builder, {0, 1, 2}, {});
 }
 
+// TODO(b/119930279): enable this test.
+XLA_TEST_F(SortingTest, DISABLED_TopKFullSortMinInt) {
+  XlaBuilder builder(TestName());
+  auto x_rev = ConstantR1<int>(&builder, {std::numeric_limits<int>::min(),
+                                          std::numeric_limits<int>::min() + 1,
+                                          std::numeric_limits<int>::max()});
+  xla::GetTupleElement(xla::TopK(x_rev, 3), 1);
+  ComputeAndCompareR1<int>(&builder, {2, 1, 0}, {});
+}
+
+XLA_TEST_F(SortingTest, NOT_TopKFullSortMinInt) {
+  XlaBuilder builder(TestName());
+  auto x_rev = ConstantR1<int>(&builder, {std::numeric_limits<int>::min(),
+                                          std::numeric_limits<int>::min() + 1,
+                                          std::numeric_limits<int>::max()});
+  xla::GetTupleElement(xla::TopK(x_rev, 3), 1);
+  // TopK currently negates the keys, which doesn't work correctly for
+  // std::numeric_limits<int>::min(). Therefore, it will sort this key to the
+  // front instead of to the back.
+  ComputeAndCompareR1<int>(&builder, {0, 2, 1}, {});
+}
+
 XLA_TEST_F(SortingTest, TopKFullSort) {
   XlaBuilder builder(TestName());
   const int kSize = 16;
@@ -52,8 +77,16 @@ XLA_TEST_F(SortingTest, TopKFullSort) {
   auto x = ConstantR1<float>(&builder, inputs);
   xla::GetTupleElement(xla::TopK(x, kSize), 0);
 
-  std::sort(inputs.begin(), inputs.end(), std::greater<float>());
+  absl::c_sort(inputs, std::greater<float>());
   ComputeAndCompareR1<float>(&builder, inputs, {});
+}
+
+XLA_TEST_F(SortingTest, TopKFullSortWithDuplicates) {
+  XlaBuilder builder(TestName());
+  XlaOp a;
+  auto a_data = CreateR1Parameter<int>({1, 1, 2, 2, 1}, 0, "a", &builder, &a);
+  xla::GetTupleElement(xla::TopK(a, 5), 1);
+  ComputeAndCompareR1<int>(&builder, {2, 3, 0, 1, 4}, {a_data.get()});
 }
 
 }  // namespace

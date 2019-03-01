@@ -22,13 +22,13 @@ limitations under the License.
 #include "tensorflow/core/kernels/strided_slice_op.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/register_types_traits.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/variant.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/dense_update_functor.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -179,7 +179,7 @@ class HandleStridedSliceAssignCase<Device, T, 0> {
   }
 };
 
-// NODE(aselle): according to bsteiner, we need this because otherwise
+// NOTE(aselle): according to bsteiner, we need this because otherwise
 // nvcc instantiates templates that are invalid. strided_slice_op_gpu.cu
 // handles instantiates externally. It is important that this is done
 // before the HandleXXCase's are instantiated to avoid duplicate

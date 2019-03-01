@@ -2,16 +2,6 @@
 
 load("//tensorflow/python/tools/api/generator:api_init_files.bzl", "TENSORFLOW_API_INIT_FILES")
 
-# keep sorted
-ESTIMATOR_API_INIT_FILES = [
-    # BEGIN GENERATED ESTIMATOR FILES
-    "__init__.py",
-    "estimator/__init__.py",
-    "estimator/export/__init__.py",
-    "estimator/inputs/__init__.py",
-    # END GENERATED ESTIMATOR FILES
-]
-
 def get_compat_files(
         file_paths,
         compat_api_version):
@@ -27,10 +17,11 @@ def gen_api_init_files(
         api_version = 2,
         compat_api_versions = [],
         compat_init_templates = [],
-        packages = ["tensorflow.python"],
+        packages = ["tensorflow.python", "tensorflow.lite.python.lite"],
         package_deps = ["//tensorflow/python:no_contrib"],
         output_package = "tensorflow",
-        output_dir = ""):
+        output_dir = "",
+        root_file_name = "__init__.py"):
     """Creates API directory structure and __init__.py files.
 
     Creates a genrule that generates a directory structure with __init__.py
@@ -64,13 +55,14 @@ def gen_api_init_files(
       output_package: Package where generated API will be added to.
       output_dir: Subdirectory to output API to.
         If non-empty, must end with '/'.
+      root_file_name: Name of the root file with all the root imports.
     """
     root_init_template_flag = ""
     if root_init_template:
         root_init_template_flag = "--root_init_template=$(location " + root_init_template + ")"
 
     primary_package = packages[0]
-    api_gen_binary_target = ("create_" + primary_package + "_api_%d") % api_version
+    api_gen_binary_target = ("create_" + primary_package + "_api_%d_%s") % (api_version, name)
     native.py_binary(
         name = api_gen_binary_target,
         srcs = ["//tensorflow/python/tools/api/generator:create_python_api.py"],
@@ -83,6 +75,11 @@ def gen_api_init_files(
         ],
     )
 
+    # Replace name of root file with root_file_name.
+    output_files = [
+        root_file_name if f == "__init__.py" else f
+        for f in output_files
+    ]
     all_output_files = ["%s%s" % (output_dir, f) for f in output_files]
     compat_api_version_flags = ""
     for compat_api_version in compat_api_versions:

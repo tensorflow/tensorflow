@@ -1,0 +1,36 @@
+path: "tensorflow.autograph.experimental.Feature"
+tf_class {
+  is_instance: "<enum \'Feature\'>"
+  member {
+    name: "ALL"
+    mtype: "<enum \'Feature\'>"
+  }
+  member {
+    name: "ASSERT_STATEMENTS"
+    mtype: "<enum \'Feature\'>"
+  }
+  member {
+    name: "AUTO_CONTROL_DEPS"
+    mtype: "<enum \'Feature\'>"
+  }
+  member {
+    name: "BUILTIN_FUNCTIONS"
+    mtype: "<enum \'Feature\'>"
+  }
+  member {
+    name: "ERROR_REWRITING"
+    mtype: "<enum \'Feature\'>"
+  }
+  member {
+    name: "LISTS"
+    mtype: "<enum \'Feature\'>"
+  }
+  member {
+    name: "LOGICAL_EXPRESSIONS"
+    mtype: "<enum \'Feature\'>"
+  }
+  member {
+    name: "NAME_SCOPES"
+    mtype: "<enum \'Feature\'>"
+  }
+}

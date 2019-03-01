@@ -19,7 +19,6 @@ limitations under the License.
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/lib/core/casts.h"
 
 namespace tensorflow {
 
@@ -46,8 +45,7 @@ class BitcastOp : public OpKernel {
                 in_size_ >= out_size_ ||
                     (input_tensor.dims() > 0 &&
                      input_tensor.dim_size(input_tensor.dims() - 1) ==
-                         out_size_ / in_size_) ||
-                    input_tensor.dim_size(input_tensor.dims()) == -1,
+                         out_size_ / in_size_),
                 errors::InvalidArgument(
                     "Cannot bitcast from ", DataTypeString(input_data_type_),
                     " to ", DataTypeString(output_data_type_), ": shape ",
@@ -60,8 +58,9 @@ class BitcastOp : public OpKernel {
     }
     Tensor output_tensor;
 
-    output_tensor.UnsafeCopyFromInternal(input_tensor, output_data_type_,
-                                         adjusted_shape);
+    OP_REQUIRES_OK(context,
+                   output_tensor.BitcastFrom(input_tensor, output_data_type_,
+                                             adjusted_shape));
     context->set_output(0, output_tensor);
   }
 

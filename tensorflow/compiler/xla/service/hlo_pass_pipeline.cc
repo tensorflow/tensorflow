@@ -77,6 +77,11 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
   auto repeated_field = debug_options.xla_disable_hlo_passes();
   absl::flat_hash_set<string> disabled_pass_names(repeated_field.begin(),
                                                   repeated_field.end());
+  if (debug_options.xla_disable_all_hlo_passes()) {
+    VLOG(1) << "*All* passes disabled by --xla_disable_all_hlo_passes.";
+    return {};
+  }
+
   if (!disabled_pass_names.empty()) {
     VLOG(1) << "Passes disabled by --xla_disable_hlo_passes: "
             << absl::StrJoin(disabled_pass_names, ", ");
@@ -84,7 +89,7 @@ std::vector<HloPassInterface*> HloPassPipeline::GetEnabledPasses(
 
   std::vector<HloPassInterface*> enabled_passes;
   for (auto& pass : passes_) {
-    if (disabled_pass_names.count(string(pass->name())) == 0) {
+    if (!disabled_pass_names.contains(pass->name())) {
       enabled_passes.push_back(pass.get());
     }
   }
@@ -113,7 +118,7 @@ void HloPassPipeline::MaybeDumpHlo(const HloModule& module,
   }
 
   const string message =
-      StrCat("after ", after_pass_name, ", before ", before_pass_name);
+      absl::StrCat("after ", after_pass_name, ", before ", before_pass_name);
   hlo_graph_dumper::MaybeDumpHloModule(module, message);
   VLOG(3) << "HLO " << message << ":";
   VLOG(3) << module.entry_computation_layout().ToString();

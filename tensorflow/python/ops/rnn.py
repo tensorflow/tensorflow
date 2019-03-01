@@ -32,6 +32,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variable_scope as vs
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -116,7 +117,7 @@ def _infer_state_dtype(explicit_dtype, state):
     inferred_dtypes = [element.dtype for element in nest.flatten(state)]
     if not inferred_dtypes:
       raise ValueError("Unable to infer dtype from empty state.")
-    all_same = all([x == inferred_dtypes[0] for x in inferred_dtypes])
+    all_same = all(x == inferred_dtypes[0] for x in inferred_dtypes)
     if not all_same:
       raise ValueError(
           "State has tensors of different inferred_dtypes. Unable to infer a "
@@ -347,7 +348,10 @@ def _reverse_seq(input_seq, lengths):
   return results
 
 
-@tf_export("nn.bidirectional_dynamic_rnn")
+@deprecation.deprecated(None, "Please use `keras.layers.Bidirectional("
+                        "keras.layers.RNN(cell))`, which is equivalent to "
+                        "this API")
+@tf_export(v1=["nn.bidirectional_dynamic_rnn"])
 def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
                               initial_state_fw=None, initial_state_bw=None,
                               dtype=None, parallel_iterations=None,
@@ -480,7 +484,10 @@ def bidirectional_dynamic_rnn(cell_fw, cell_bw, inputs, sequence_length=None,
   return (outputs, output_states)
 
 
-@tf_export("nn.dynamic_rnn")
+@deprecation.deprecated(
+    None,
+    "Please use `keras.layers.RNN(cell)`, which is equivalent to this API")
+@tf_export(v1=["nn.dynamic_rnn"])
 def dynamic_rnn(cell, inputs, sequence_length=None, initial_state=None,
                 dtype=None, parallel_iterations=None, swap_memory=False,
                 time_major=False, scope=None):
@@ -891,7 +898,7 @@ def _dynamic_rnn_loop(cell,
   return (final_outputs, final_state)
 
 
-@tf_export("nn.raw_rnn")
+@tf_export(v1=["nn.raw_rnn"])
 def raw_rnn(cell, loop_fn,
             parallel_iterations=None, swap_memory=False, scope=None):
   """Creates an `RNN` specified by RNNCell `cell` and loop function `loop_fn`.
@@ -1210,7 +1217,10 @@ def raw_rnn(cell, loop_fn,
     return (emit_ta, final_state, final_loop_state)
 
 
-@tf_export("nn.static_rnn")
+@deprecation.deprecated(
+    None, "Please use `keras.layers.RNN(cell, unroll=True)`, "
+    "which is equivalent to this API")
+@tf_export(v1=["nn.static_rnn"])
 def static_rnn(cell,
                inputs,
                initial_state=None,
@@ -1483,7 +1493,10 @@ def static_state_saving_rnn(cell,
   return (outputs, state)
 
 
-@tf_export("nn.static_bidirectional_rnn")
+@deprecation.deprecated(None, "Please use `keras.layers.Bidirectional("
+                        "keras.layers.RNN(cell, unroll=True))`, which is "
+                        "equivalent to this API")
+@tf_export(v1=["nn.static_bidirectional_rnn"])
 def static_bidirectional_rnn(cell_fw,
                              cell_bw,
                              inputs,

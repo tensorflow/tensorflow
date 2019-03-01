@@ -26,10 +26,16 @@ TEST_F(CpuKeyValueSortTest, SortR1) {
   const string hlo_text = R"(
 HloModule KeyValueSort
 
+compare {
+  p.0.lhs = f32[] parameter(0)
+  p.0.rhs = f32[] parameter(1)
+  ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+}
+
 ENTRY main {
   a = f32[10] parameter(0)
 
-  ROOT result = f32[10] sort(f32[10] a), dimensions={0}
+  ROOT result = f32[10] sort(f32[10] a), dimensions={0}, to_apply=compare
 }
 )";
 

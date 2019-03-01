@@ -20,7 +20,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
+#include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/framework/kernel_def_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/types.h"
@@ -43,6 +45,9 @@ namespace {
         const std::vector<int64>& extend_dimensions) override {          \
       xla::XlaBuilder* b = ctx->builder();                               \
       (void)b;                                                           \
+      (void)lhs_shape;                                                   \
+      (void)rhs_shape;                                                   \
+      (void)extend_dimensions;                                           \
       return HLO;                                                        \
     }                                                                    \
   };                                                                     \
@@ -103,23 +108,23 @@ static xla::XlaOp FloorDivImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
 XLA_MAKE_BINARY(FloorDiv,
                 FloorDivImpl(b, input_type(0), lhs, rhs, broadcast_helper));
 
-static xla::XlaOp XlogyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
-                            xla::XlaOp y, const BCast& broadcast_helper) {
+xla::XlaOp XlogyImpl(xla::XlaOp x, xla::XlaOp y,
+                     const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  auto zero = XlaHelpers::Zero(b, dtype);
+  auto zero = xla::ZerosLike(x);
   auto is_zero = xla::Eq(x, zero);
   return xla::Select(is_zero, zero, xla::Mul(x, xla::Log(y)));
 }
-XLA_MAKE_BINARY(Xlogy, XlogyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+XLA_MAKE_BINARY(Xlogy, XlogyImpl(lhs, rhs, broadcast_helper));
 
-static xla::XlaOp XdivyImpl(xla::XlaBuilder* b, DataType dtype, xla::XlaOp x,
-                            xla::XlaOp y, const BCast& broadcast_helper) {
+xla::XlaOp XdivyImpl(xla::XlaOp x, xla::XlaOp y,
+                     const BCast& broadcast_helper) {
   std::tie(x, y) = XlaBinaryOp::Broadcast(x, y, broadcast_helper);
-  auto zero = XlaHelpers::Zero(b, dtype);
+  auto zero = xla::ZerosLike(x);
   auto is_zero = xla::Eq(x, zero);
   return xla::Select(is_zero, zero, xla::Div(x, y));
 }
-XLA_MAKE_BINARY(Xdivy, XdivyImpl(b, input_type(0), lhs, rhs, broadcast_helper));
+XLA_MAKE_BINARY(Xdivy, XdivyImpl(lhs, rhs, broadcast_helper));
 
 // Implementation of FloorMod. Pseudo-code:
 // T trunc_mod = std::fmod(x, y);
@@ -162,12 +167,8 @@ XLA_MAKE_BINARY(
     xla::Div(xla::Mul(rhs, XlaHelpers::FloatLiteral(b, input_type(0), 0.5)),
              lhs, extend_dimensions));
 
-static xla::XlaOp Square(xla::XlaBuilder* builder, const xla::XlaOp& x) {
-  return xla::Mul(x, x);
-}
-
 XLA_MAKE_BINARY(SquaredDifference,
-                Square(b, xla::Sub(lhs, rhs, extend_dimensions)));
+                xla::Square(xla::Sub(lhs, rhs, extend_dimensions)));
 
 XLA_MAKE_BINARY(TruncateDiv, xla::Div(lhs, rhs, extend_dimensions));
 XLA_MAKE_BINARY(TruncateMod, xla::Rem(lhs, rhs, extend_dimensions));
@@ -192,14 +193,16 @@ XLA_MAKE_BINARY(SoftplusGrad,
 // softsigngrad(gradients, features) = gradients / (1 + abs(features)) ** 2
 XLA_MAKE_BINARY(SoftsignGrad,
                 xla::Div(lhs,
-                         Square(b, xla::Add(XlaHelpers::One(b, input_type(0)),
-                                            xla::Abs(rhs)))));
+                         xla::Square(xla::Add(XlaHelpers::One(b, input_type(0)),
+                                              xla::Abs(rhs)))));
 
 XLA_MAKE_BINARY(TanhGrad,
                 xla::Mul(rhs, xla::Sub(XlaHelpers::One(b, input_type(0)),
                                        xla::Mul(lhs, lhs))));
 
 XLA_MAKE_BINARY(Pow, xla::Pow(lhs, rhs, extend_dimensions));
+
+XLA_MAKE_BINARY(NextAfter, xla::NextAfter(lhs, rhs));
 
 #undef XLA_MAKE_BINARY
 

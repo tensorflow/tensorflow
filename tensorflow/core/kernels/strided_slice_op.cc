@@ -27,10 +27,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/strided_slice_op_impl.h"
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 #include "tensorflow/core/kernels/variable_ops.h"
@@ -307,9 +307,9 @@ class StridedSliceAssignOp : public OpKernel {
       OP_REQUIRES_OK(context,
                      LookupResource(context, HandleFromInput(context, 0), &v));
       core::ScopedUnref scoped_unref(v);
-      mutex_lock ml(*v->mu());
       OP_REQUIRES_OK(context,
-                     PrepareToUpdateVariable<Device, T>(context, v->tensor()));
+                     EnsureSparseVariableAccess<Device, T>(context, v));
+      mutex_lock ml(*v->mu());
       old_lhs = v->tensor();
       OP_REQUIRES(context, old_lhs->dtype() == DataTypeToEnum<T>::value,
                   errors::InvalidArgument(

@@ -195,7 +195,7 @@ def generate_RSA(bits=2048, exponent=65537):
 
 def get_change_ssh_port(use_hostnet, port):
   if use_hostnet == 1:
-    return "sed -i '/Port 22/c\Port {}' /etc/ssh/sshd_config".format(port)
+    return r"sed -i '/Port 22/c\Port {}' /etc/ssh/sshd_config".format(port)
 
   return ''
 

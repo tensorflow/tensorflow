@@ -21,6 +21,7 @@ from __future__ import print_function
 
 from tensorflow.python.keras import layers as keras_layers
 from tensorflow.python.layers import base
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -57,6 +58,9 @@ class AveragePooling1D(keras_layers.AveragePooling1D, base.Layer):
         **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.average_pooling1d instead.')
 @tf_export(v1=['layers.average_pooling1d'])
 def average_pooling1d(inputs, pool_size, strides,
                       padding='valid', data_format='channels_last',
@@ -125,6 +129,9 @@ class MaxPooling1D(keras_layers.MaxPooling1D, base.Layer):
         **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.max_pooling1d instead.')
 @tf_export(v1=['layers.max_pooling1d'])
 def max_pooling1d(inputs, pool_size, strides,
                   padding='valid', data_format='channels_last',
@@ -193,6 +200,9 @@ class AveragePooling2D(keras_layers.AveragePooling2D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.average_pooling2d instead.')
 @tf_export(v1=['layers.average_pooling2d'])
 def average_pooling2d(inputs,
                       pool_size, strides,
@@ -264,6 +274,9 @@ class MaxPooling2D(keras_layers.MaxPooling2D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.max_pooling2d instead.')
 @tf_export(v1=['layers.max_pooling2d'])
 def max_pooling2d(inputs,
                   pool_size, strides,
@@ -337,6 +350,9 @@ class AveragePooling3D(keras_layers.AveragePooling3D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.average_pooling3d instead.')
 @tf_export(v1=['layers.average_pooling3d'])
 def average_pooling3d(inputs,
                       pool_size, strides,
@@ -412,6 +428,9 @@ class MaxPooling3D(keras_layers.MaxPooling3D, base.Layer):
         padding=padding, data_format=data_format, name=name, **kwargs)
 
 
+@deprecation.deprecated(
+    date=None,
+    instructions='Use keras.layers.max_pooling3d instead.')
 @tf_export(v1=['layers.max_pooling3d'])
 def max_pooling3d(inputs,
                   pool_size, strides,

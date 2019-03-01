@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DecodeCompressed"
+  endpoint {
+    name: "io.DecodeCompressed"
+  }
+}

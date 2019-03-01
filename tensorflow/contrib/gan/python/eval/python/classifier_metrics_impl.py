@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""Model evaluation tools for TFGAN.
+"""Model evaluation tools for TF-GAN.
 
 These methods come from https://arxiv.org/abs/1606.03498,
 https://arxiv.org/abs/1706.08500, and https://arxiv.org/abs/1801.01401.
@@ -41,9 +41,9 @@ from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
 from tensorflow.python.ops import image_ops
 from tensorflow.python.ops import linalg_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_impl
 from tensorflow.python.ops import nn_ops
@@ -346,7 +346,7 @@ def classifier_score(images, classifier_fn, num_batches=1):
       images, num_or_size_splits=num_batches)
 
   # Compute the classifier splits using the memory-efficient `map_fn`.
-  logits = functional_ops.map_fn(
+  logits = map_fn.map_fn(
       fn=classifier_fn,
       elems=array_ops.stack(generated_images_list),
       parallel_iterations=1,
@@ -387,7 +387,7 @@ def classifier_score_from_logits(logits):
   # Use maximum precision for best results.
   logits_dtype = logits.dtype
   if logits_dtype != dtypes.float64:
-    logits = math_ops.to_double(logits)
+    logits = math_ops.cast(logits, dtypes.float64)
 
   p = nn_ops.softmax(logits)
   q = math_ops.reduce_mean(p, axis=0)
@@ -505,12 +505,12 @@ def frechet_classifier_distance(real_images,
 
   # Compute the activations using the memory-efficient `map_fn`.
   def compute_activations(elems):
-    return functional_ops.map_fn(fn=classifier_fn,
-                                 elems=elems,
-                                 parallel_iterations=1,
-                                 back_prop=False,
-                                 swap_memory=True,
-                                 name='RunClassifier')
+    return map_fn.map_fn(fn=classifier_fn,
+                         elems=elems,
+                         parallel_iterations=1,
+                         back_prop=False,
+                         swap_memory=True,
+                         name='RunClassifier')
 
   real_a = compute_activations(real_imgs)
   gen_a = compute_activations(generated_imgs)
@@ -562,8 +562,8 @@ def mean_only_frechet_classifier_distance_from_activations(
 
   activations_dtype = real_activations.dtype
   if activations_dtype != dtypes.float64:
-    real_activations = math_ops.to_double(real_activations)
-    generated_activations = math_ops.to_double(generated_activations)
+    real_activations = math_ops.cast(real_activations, dtypes.float64)
+    generated_activations = math_ops.cast(generated_activations, dtypes.float64)
 
   # Compute means of activations.
   m = math_ops.reduce_mean(real_activations, 0)
@@ -623,8 +623,8 @@ def diagonal_only_frechet_classifier_distance_from_activations(
 
   activations_dtype = real_activations.dtype
   if activations_dtype != dtypes.float64:
-    real_activations = math_ops.to_double(real_activations)
-    generated_activations = math_ops.to_double(generated_activations)
+    real_activations = math_ops.cast(real_activations, dtypes.float64)
+    generated_activations = math_ops.cast(generated_activations, dtypes.float64)
 
   # Compute mean and covariance matrices of activations.
   m, var = nn_impl.moments(real_activations, axes=[0])
@@ -698,15 +698,16 @@ def frechet_classifier_distance_from_activations(real_activations,
 
   activations_dtype = real_activations.dtype
   if activations_dtype != dtypes.float64:
-    real_activations = math_ops.to_double(real_activations)
-    generated_activations = math_ops.to_double(generated_activations)
+    real_activations = math_ops.cast(real_activations, dtypes.float64)
+    generated_activations = math_ops.cast(generated_activations, dtypes.float64)
 
   # Compute mean and covariance matrices of activations.
   m = math_ops.reduce_mean(real_activations, 0)
   m_w = math_ops.reduce_mean(generated_activations, 0)
-  num_examples_real = math_ops.to_double(array_ops.shape(real_activations)[0])
-  num_examples_generated = math_ops.to_double(
-      array_ops.shape(generated_activations)[0])
+  num_examples_real = math_ops.cast(
+      array_ops.shape(real_activations)[0], dtypes.float64)
+  num_examples_generated = math_ops.cast(
+      array_ops.shape(generated_activations)[0], dtypes.float64)
 
   # sigma = (1 / (n - 1)) * (X - mu) (X - mu)^T
   real_centered = real_activations - m
@@ -794,9 +795,9 @@ def kernel_classifier_distance(real_images,
       on a classifier.
     num_classifier_batches: Number of batches to split images in to in order to
       efficiently run them through the classifier network.
-    max_estimator_block_size: integer, default 1024. The distance estimator
-      splits samples into blocks for computational efficiency. Larger values are
-      more computationally expensive but decrease the variance of the distance
+    max_block_size: integer, default 1024. The distance estimator splits samples
+      into blocks for computational efficiency. Larger values are more
+      computationally expensive but decrease the variance of the distance
       estimate.
     dtype: if not None, coerce activations to this dtype before computations.
 
@@ -871,9 +872,9 @@ def kernel_classifier_distance_and_std(real_images,
       on a classifier.
     num_classifier_batches: Number of batches to split images in to in order to
       efficiently run them through the classifier network.
-    max_estimator_block_size: integer, default 1024. The distance estimator
-      splits samples into blocks for computational efficiency. Larger values are
-      more computationally expensive but decrease the variance of the distance
+    max_block_size: integer, default 1024. The distance estimator splits samples
+      into blocks for computational efficiency. Larger values are more
+      computationally expensive but decrease the variance of the distance
       estimate. Having a smaller block size also gives a better estimate of the
       standard error.
     dtype: if not None, coerce activations to this dtype before computations.
@@ -894,7 +895,7 @@ def kernel_classifier_distance_and_std(real_images,
 
   # Compute the activations using the memory-efficient `map_fn`.
   def compute_activations(elems):
-    return functional_ops.map_fn(
+    return map_fn.map_fn(
         fn=classifier_fn,
         elems=elems,
         parallel_iterations=1,
@@ -910,7 +911,7 @@ def kernel_classifier_distance_and_std(real_images,
   gen_a = array_ops.concat(array_ops.unstack(gen_a), 0)
 
   return kernel_classifier_distance_and_std_from_activations(
-      real_a, gen_a, max_block_size=max_block_size)
+      real_a, gen_a, max_block_size, dtype)
 
 
 kernel_inception_distance_and_std = functools.partial(
@@ -967,14 +968,14 @@ def kernel_classifier_distance_from_activations(real_activations,
       into blocks for computational efficiency. Larger values are more
       computationally expensive but decrease the variance of the distance
       estimate.
-    dtype: if not None, coerce activations to this dtype before computations.
+    dtype: If not None, coerce activations to this dtype before computations.
 
   Returns:
    The Kernel Inception Distance. A floating-point scalar of the same type
    as the output of the activations.
   """
   return kernel_classifier_distance_and_std_from_activations(
-      real_activations, generated_activations, max_block_size=max_block_size)[0]
+      real_activations, generated_activations, max_block_size, dtype)[0]
 
 
 def kernel_classifier_distance_and_std_from_activations(real_activations,
@@ -1029,7 +1030,7 @@ def kernel_classifier_distance_and_std_from_activations(real_activations,
       computationally expensive but decrease the variance of the distance
       estimate. Having a smaller block size also gives a better estimate of the
       standard error.
-    dtype: if not None, coerce activations to this dtype before computations.
+    dtype: If not None, coerce activations to this dtype before computations.
 
   Returns:
    The Kernel Inception Distance. A floating-point scalar of the same type
@@ -1080,7 +1081,7 @@ def kernel_classifier_distance_and_std_from_activations(real_activations,
   dim = math_ops.cast(real_activations.shape[1], dtype)
 
   def compute_kid_block(i):
-    'Compute the ith block of the KID estimate.'
+    """Computes the ith block of the KID estimate."""
     r_s = inds_r[i]
     r_e = inds_r[i + 1]
     r = real_activations[r_s:r_e]
@@ -1098,7 +1099,7 @@ def kernel_classifier_distance_and_std_from_activations(real_activations,
             (math_ops.reduce_sum(k_rr) - math_ops.trace(k_rr)) / (m * (m - 1)) +
             (math_ops.reduce_sum(k_gg) - math_ops.trace(k_gg)) / (n * (n - 1)))
 
-  ests = functional_ops.map_fn(
+  ests = map_fn.map_fn(
       compute_kid_block, math_ops.range(n_blocks), dtype=dtype, back_prop=False)
 
   mn = math_ops.reduce_mean(ests)

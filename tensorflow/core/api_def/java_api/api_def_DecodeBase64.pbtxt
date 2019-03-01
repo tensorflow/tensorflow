@@ -1,0 +1,6 @@
+op {
+  graph_op_name: "DecodeBase64"
+  endpoint {
+    name: "io.DecodeBase64"
+  }
+}

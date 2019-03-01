@@ -565,9 +565,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
   //
   // There must be no non-control edges between Nodes in 'ops'.
   // Control edges among these nodes will be dropped.
-  Status Rewrite(ScopedAllocatorOptimizer* sa_opti, GraphDef* graph,
-                 const string& op_name, const std::vector<NodeDef*>& ops,
-                 bool* applied) override {
+  Status Rewrite(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
+                 GraphDef* graph, const string& op_name,
+                 const std::vector<NodeDef*>& ops, bool* applied) override {
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Rewrite";
       string op_names;
@@ -596,7 +596,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                                      &inputs, &sa_shape));
 
     int sa_id = sa_opti->NewScopedAllocatorId(input_shapes.size());
-    string sa_name = strings::StrCat("scoped_allocator_", sa_id);
+    string sa_name =
+        strings::StrCat("scoped_allocator_", sa_id, "_", invocation_count);
     TF_RETURN_IF_ERROR(ConstructScopedAllocatorNode(
         sa_opti, graph, node_map, ops, device_name, dtype, sa_id, sa_name,
         input_shapes, inputs, sa_shape));
@@ -622,7 +623,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     // Build a ScopedAllocatorConcat below all of the input nodes.
     std::vector<NodeDefBuilder::NodeOut> sac_inputs;
-    string sac_name = strings::StrCat("scoped_allocator_concat_", sa_id);
+    string sac_name = strings::StrCat("scoped_allocator_concat_", sa_id, "_",
+                                      invocation_count);
     TF_RETURN_IF_ERROR(BuildSAConcatNode(
         graph, node_map, ops, op_instance_names, device_name, dtype, sa_id,
         sa_name, sac_name, sa_shape, &sac_inputs));
@@ -635,7 +637,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                                           sa_op_name));
 
     // Build a ScopedAllocatorSplit split below the new Op.
-    string sas_name = strings::StrCat("scoped_allocator_split_", sa_id);
+    string sas_name = strings::StrCat("scoped_allocator_split_", sa_id, "_",
+                                      invocation_count);
     TF_RETURN_IF_ERROR(BuildSplitNode(graph, node_map, ops, input_shapes,
                                       sac_inputs, device_name, dtype, op_name,
                                       sa_id, sas_name, sa_name, sa_op_name));
@@ -790,20 +793,17 @@ Tree* ComputeScopeTree(const string& op_name,
   return root;
 }
 
-void PartitionByLoopStructure(const FrameMap& frame_map,
+void PartitionByLoopStructure(const FrameView& frame_view,
                               std::vector<NodeDef*> nodes,
                               std::vector<std::vector<NodeDef*>>* loop_groups) {
   // It is assumed that two nodes with identical loop containment have
-  // identical integer vectors.  Represent those by 64 bit hashes.
+  // identical integer vectors. Represent those by 64 bit hashes.
   std::unordered_map<uint64, std::vector<NodeDef*>> loop_sets;
   for (NodeDef* nd : nodes) {
     uint64 hash = 0;
-    const auto& it = frame_map.find(nd);
-    if (it != frame_map.end()) {
-      const std::vector<int>& loop_ids = it->second;
-      for (int id : loop_ids) {
-        hash = Hash64Combine(hash, static_cast<uint64>(id));
-      }
+    const std::vector<int>& loop_ids = frame_view.Frames(*nd);
+    for (int id : loop_ids) {
+      hash = Hash64Combine(hash, static_cast<uint64>(id));
     }
     loop_sets[hash].push_back(nd);
   }
@@ -816,15 +816,23 @@ void PartitionByLoopStructure(const FrameMap& frame_map,
 
 Status ScopedAllocatorOptimizer::ProcessGraphDef(
     GraphDef* graph, const GraphProperties& graph_properties) {
-  VLOG(1) << "ProcessGraphDef";
+  // Nodes created by this optimizer have the IsStateful() property
+  // which means their names must be globally unique within a process,
+  // so we include an optimizer invocation count in every generated
+  // name.
+  static std::atomic<int64> invocation_counter(1);
+  const int64 invocation_count =
+      invocation_counter.fetch_add(1, std::memory_order_seq_cst);
+  VLOG(1) << "ProcessGraphDef " << invocation_count;
   Status status;
   GraphOpOccurrences occ;
   FindOpOccurrences(graph, op_name_set_, &occ);
   if (!occ.empty()) {
-    FrameMap frame_map;
-    int num_frames;
-    LOG_WARNING_AND_RETURN_IF_ERROR(
-        IdentifyFramesWithNodeMap(*graph, *node_map_, &frame_map, &num_frames));
+    FrameView frame_view;
+    // TODO(ezhulenev): Pass a GraphView when this optimizer will be migrated
+    // from NodeMap.
+    LOG_WARNING_AND_RETURN_IF_ERROR(frame_view.InferFromGraph(*graph));
+
     for (auto& dt : occ) {
       VLOG(2) << "Processing device " << dt.first;
       const DevOpOccurrences& dev_occ = dt.second;
@@ -841,26 +849,27 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
         // Nodes with a common depth and root path are now grouped
         // in the same Tree struct.  Split those groups into subgroups that
         // share identical loop nesting.
-        status = ApplyToAll(
-            root.get(), [this, rewriter, graph, &frame_map, &op_name](Tree* t) {
-              VLOG(2) << "applied to tree node " << t->edge_ << " at depth "
-                      << t->depth_ << " of size " << t->nodes_.size();
-              if (t->nodes_.size() > 1) {
-                std::vector<std::vector<NodeDef*>> loop_groups;
-                PartitionByLoopStructure(frame_map, t->nodes_, &loop_groups);
-                for (auto& lg : loop_groups) {
-                  if (lg.size() > 1) {
-                    bool applied = false;
-                    Status s = OrderNodeSet(&lg);
-                    TF_RETURN_IF_ERROR(s);
-                    VLOG(1) << "Applying Rewriter for " << op_name;
-                    s = rewriter->Rewrite(this, graph, op_name, lg, &applied);
-                    LOG_WARNING_AND_RETURN_IF_ERROR(s);
-                  }
-                }
+        status = ApplyToAll(root.get(), [this, rewriter, graph, &frame_view,
+                                         &op_name, invocation_count](Tree* t) {
+          VLOG(2) << "applied to tree node " << t->edge_ << " at depth "
+                  << t->depth_ << " of size " << t->nodes_.size();
+          if (t->nodes_.size() > 1) {
+            std::vector<std::vector<NodeDef*>> loop_groups;
+            PartitionByLoopStructure(frame_view, t->nodes_, &loop_groups);
+            for (auto& lg : loop_groups) {
+              if (lg.size() > 1) {
+                bool applied = false;
+                Status s = OrderNodeSet(&lg);
+                TF_RETURN_IF_ERROR(s);
+                VLOG(1) << "Applying Rewriter for " << op_name;
+                s = rewriter->Rewrite(this, invocation_count, graph, op_name,
+                                      lg, &applied);
+                LOG_WARNING_AND_RETURN_IF_ERROR(s);
               }
-              return Status::OK();
-            });
+            }
+          }
+          return Status::OK();
+        });
         if (!status.ok()) {
           break;
         }

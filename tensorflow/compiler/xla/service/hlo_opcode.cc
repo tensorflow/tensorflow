@@ -53,8 +53,8 @@ StatusOr<HloOpcode> StringToHloOpcode(const string& opcode_name) {
 
 bool HloOpcodeIsComparison(HloOpcode opcode) {
   switch (opcode) {
-#define CASE_IS_COMPARISON(enum_name, ...) \
-  case HloOpcode::enum_name:               \
+#define CASE_IS_COMPARISON(enum_name, opcode_name, ...) \
+  case HloOpcode::enum_name:                            \
     return HAS_PROPERTY(kHloOpcodeIsComparison, __VA_ARGS__);
     HLO_OPCODE_LIST(CASE_IS_COMPARISON)
 #undef CASE_IS_COMPARISON
@@ -63,11 +63,22 @@ bool HloOpcodeIsComparison(HloOpcode opcode) {
 
 bool HloOpcodeIsVariadic(HloOpcode opcode) {
   switch (opcode) {
-#define CASE_IS_VARIADIC(enum_name, ...) \
-  case HloOpcode::enum_name:             \
-    return HAS_PROPERTY(kHloOpcodeIsVariadic, __VA_ARGS__);
+#define CASE_IS_VARIADIC(enum_name, opcode_name, arity, ...) \
+  case HloOpcode::enum_name:                                 \
+    return arity == kHloOpcodeIsVariadic;
     HLO_OPCODE_LIST(CASE_IS_VARIADIC)
 #undef CASE_IS_VARIADIC
+  }
+}
+
+absl::optional<int> HloOpcodeArity(HloOpcode opcode) {
+  switch (opcode) {
+#define CASE_ARITY(enum_name, opcode_name, arity, ...)   \
+  case HloOpcode::enum_name:                             \
+    return arity == kHloOpcodeIsVariadic ? absl::nullopt \
+                                         : absl::make_optional(arity);
+    HLO_OPCODE_LIST(CASE_ARITY)
+#undef CASE_ARITY
   }
 }
 

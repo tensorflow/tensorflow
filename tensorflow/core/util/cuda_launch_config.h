@@ -20,8 +20,8 @@ limitations under the License.
 
 #include <algorithm>
 
+#include "absl/base/casts.h"
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "cuda/include/cuda.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
@@ -128,12 +128,12 @@ inline CudaLaunchConfig GetCudaLaunchConfig(int work_element_count,
   CudaLaunchConfig config;
   const int virtual_thread_count = work_element_count;
   const int physical_thread_count = std::min(
-      d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor(),
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor(),
       virtual_thread_count);
-  const int thread_per_block = std::min(1024, d.maxCudaThreadsPerBlock());
+  const int thread_per_block = std::min(1024, d.maxGpuThreadsPerBlock());
   const int block_count =
       std::min(DivUp(physical_thread_count, thread_per_block),
-               d.getNumCudaMultiProcessors());
+               d.getNumGpuMultiProcessors());
 
   config.virtual_thread_count = virtual_thread_count;
   config.thread_per_block = thread_per_block;
@@ -184,7 +184,7 @@ inline CudaLaunchConfig GetCudaLaunchConfigFixedBlockSize(
   cudaError_t err = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
       &block_count, func, fixed_block_size, dynamic_shared_memory_size);
   CHECK_EQ(err, cudaSuccess);
-  block_count = std::min(block_count * d.getNumCudaMultiProcessors(),
+  block_count = std::min(block_count * d.getNumGpuMultiProcessors(),
                          DivUp(work_element_count, fixed_block_size));
 
   config.virtual_thread_count = work_element_count;
@@ -213,7 +213,7 @@ inline Cuda2DLaunchConfig GetCuda2DLaunchConfig(int xdim, int ydim,
   int block_rows = std::max(kThreadsPerBlock / block_cols, 1);
 
   const int physical_thread_count =
-      d.getNumCudaMultiProcessors() * d.maxCudaThreadsPerMultiProcessor();
+      d.getNumGpuMultiProcessors() * d.maxGpuThreadsPerMultiProcessor();
 
   const int max_blocks = std::max(physical_thread_count / kThreadsPerBlock, 1);
 
@@ -297,6 +297,52 @@ inline const cudaStream_t& GetCudaStream(OpKernelContext* context) {
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
   return *ptr;
+}
+
+namespace detail {
+template <typename... Ts, size_t... Is>
+std::array<void*, sizeof...(Ts)> GetArrayOfElementPointersImpl(
+    std::tuple<Ts...>* tuple, absl::index_sequence<Is...>) {
+  return {{&std::get<Is>(*tuple)...}};
+}
+// Returns an array of void pointers to the elements of the given tuple.
+template <typename... Ts>
+std::array<void*, sizeof...(Ts)> GetArrayOfElementPointers(
+    std::tuple<Ts...>* tuple) {
+  return GetArrayOfElementPointersImpl(tuple,
+                                       absl::index_sequence_for<Ts...>{});
+}
+
+template <bool...>
+struct BoolPack;
+template <bool... Bs>
+using NoneTrue = std::is_same<BoolPack<Bs..., false>, BoolPack<false, Bs...>>;
+// Returns whether none of the types in Ts is a reference.
+template <typename... Ts>
+constexpr bool NoneIsReference() {
+  return NoneTrue<(std::is_reference<Ts>::value)...>::value;
+}
+}  // namespace detail
+
+// Launches a CUDA kernel through cudaLaunchKernel with the given arguments.
+//
+// The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
+template <typename... Ts, typename... Args>
+Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
+                        size_t shared_memory_size_bytes, cudaStream_t stream,
+                        Args... arguments) {
+  static_assert(detail::NoneIsReference<Ts...>(),
+                "Kernels with reference arguments have undefined behaviour.");
+  // Cast arguments and forward them as an array of pointers.
+  auto args_tuple = std::tuple<Ts...>(arguments...);
+  auto arg_ptrs = detail::GetArrayOfElementPointers(&args_tuple);
+  auto func_ptr = absl::bit_cast<const void*>(function);
+  auto result = cudaLaunchKernel(func_ptr, grid_dim, block_dim, arg_ptrs.data(),
+                                 shared_memory_size_bytes, stream);
+  if (result != cudaSuccess) {
+    return errors::Internal(cudaGetErrorString(result));
+  }
+  return Status::OK();
 }
 
 }  // namespace tensorflow
