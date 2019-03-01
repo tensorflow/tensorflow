@@ -1,16 +1,16 @@
 path: "tensorflow.nn"
 tf_module {
   member {
-    name: "DropoutWrapper"
+    name: "RNNCellDeviceWrapper"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "ResidualWrapper"
+    name: "RNNCellDropoutWrapper"
     mtype: "<type \'type\'>"
   }
   member {
-    name: "rnn_cell"
-    mtype: "<type \'module\'>"
+    name: "RNNCellResidualWrapper"
+    mtype: "<type \'type\'>"
   }
   member {
     name: "swish"
@@ -146,11 +146,11 @@ tf_module {
   }
   member_method {
     name: "embedding_lookup"
-    argspec: "args=[\'params\', \'ids\', \'partition_strategy\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'ids\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
     name: "embedding_lookup_sparse"
-    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'partition_strategy\', \'combiner\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'mod\', \'None\', \'None\', \'None\'], "
+    argspec: "args=[\'params\', \'sp_ids\', \'sp_weights\', \'combiner\', \'max_norm\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
     name: "erosion2d"

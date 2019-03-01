@@ -307,24 +307,6 @@ TfLiteStatus SubgraphQuantizer::PropagateMinMaxForAvgAndMaxPool(
   return kTfLiteOk;
 }
 
-TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSingleInputOutputOp(
-    BuiltinOperator op_code, OperatorT* op) {
-  TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
-  TF_LITE_ENSURE_EQ(this->error_reporter_, op->outputs.size(), 1);
-
-  if (IsSubgraphInput(op->inputs[0])) {
-    TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->inputs[0]));
-  }
-
-  auto output_tensor = subgraph_->tensors[op->outputs[0]].get();
-  if (output_tensor->type != TensorType_FLOAT32) {
-    return kTfLiteOk;
-  }
-  auto quant_params = absl::make_unique<QuantizationParametersT>();
-  TF_LITE_ENSURE_STATUS(AsymmetricQuantizeTensor(op_code, op->outputs[0]));
-  return kTfLiteOk;
-}
-
 TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSoftmax(
     BuiltinOperator op_code, OperatorT* op) {
   TF_LITE_ENSURE_EQ(this->error_reporter_, op->inputs.size(), 1);
@@ -346,6 +328,29 @@ TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeSoftmax(
   return kTfLiteOk;
 }
 
+TfLiteStatus SubgraphQuantizer::AsymmetricQuantizeInputsAndOutputs(
+    BuiltinOperator op_code, OperatorT* op) {
+  TF_LITE_ENSURE(this->error_reporter_, !op->inputs.empty());
+  TF_LITE_ENSURE(this->error_reporter_, !op->outputs.empty());
+  for (size_t input_idx = 0; input_idx < op->inputs.size(); ++input_idx) {
+    auto input_tensor = subgraph_->tensors[op->inputs[input_idx]].get();
+    if (IsSubgraphInput(op->inputs[input_idx]) &&
+        input_tensor->type == TensorType_FLOAT32) {
+      TF_LITE_ENSURE_STATUS(
+          AsymmetricQuantizeTensor(op_code, op->inputs[input_idx]));
+    }
+  }
+
+  for (size_t output_idx = 0; output_idx < op->outputs.size(); ++output_idx) {
+    auto output_tensor = subgraph_->tensors[op->outputs[output_idx]].get();
+    if (output_tensor->type == TensorType_FLOAT32) {
+      TF_LITE_ENSURE_STATUS(
+          AsymmetricQuantizeTensor(op_code, op->outputs[output_idx]));
+    }
+  }
+  return kTfLiteOk;
+}
+
 bool SubgraphQuantizer::IsSubgraphInput(int32_t tensor_idx) const {
   return std::find(subgraph_->inputs.begin(), subgraph_->inputs.end(),
                    tensor_idx) != subgraph_->inputs.end();
@@ -363,7 +368,9 @@ TfLiteStatus SubgraphQuantizer::QuantizeOperator(int op_idx) {
     case BuiltinOperator_MAX_POOL_2D:
       return PropagateMinMaxForAvgAndMaxPool(op_code, op);
     case BuiltinOperator_SQUEEZE:
-      return AsymmetricQuantizeSingleInputOutputOp(op_code, op);
+    case BuiltinOperator_RESHAPE:
+    case BuiltinOperator_ADD:
+      return AsymmetricQuantizeInputsAndOutputs(op_code, op);
     case BuiltinOperator_SOFTMAX:
       return AsymmetricQuantizeSoftmax(op_code, op);
     default:

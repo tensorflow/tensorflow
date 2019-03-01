@@ -2373,6 +2373,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
             expected_dtype = dtypes.float32
           self.assertEqual(y.dtype, expected_dtype)
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   def testSumTensor(self):
     img_shape = [1, 6, 4, 1]
     # This test is also conducted with int8, so 127 is the maximum

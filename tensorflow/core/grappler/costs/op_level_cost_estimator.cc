@@ -233,7 +233,7 @@ OpLevelCostEstimator::OpLevelCostEstimator() {
        wrap(&OpLevelCostEstimator::PredictConv2DBackpropInput)},
       {kFusedConv2dBiasActivation,
        wrap(&OpLevelCostEstimator::PredictFusedConv2DBiasActivation)},
-      // reuse Conv2D for DepthwiseConv2dNative because the caculation is the
+      // reuse Conv2D for DepthwiseConv2dNative because the calculation is the
       // same although the actual meaning of the parameters are different. See
       // comments in PredictConv2D and related functions
       {kDepthwiseConv2dNative, wrap(&OpLevelCostEstimator::PredictConv2D)},
@@ -449,7 +449,7 @@ Costs OpLevelCostEstimator::PredictCwiseOp(const OpContext& op_context) const {
   // of any input. We use the count for the largest input here to be more robust
   // in case that the shape is unknown or partially known for other input.
   int64 op_count = CalculateLargestInputCount(op_info, &found_unknown_shapes);
-  // If output shape is available, try use the element count calcuated from
+  // If output shape is available, try use the element count calculated from
   // that.
   if (op_info.outputs_size() > 0) {
     op_count = std::max(

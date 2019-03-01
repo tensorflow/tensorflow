@@ -41,6 +41,15 @@ void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
   RecordMutation(graph, *op, "setting attribute");
 }
 
+void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+               TF_Status* status) {
+  AttrValue attr_val;
+
+  mutex_lock l(graph->mu);
+  op->node.ClearAttr(attr_name);
+  RecordMutation(graph, *op, "clearing attribute");
+}
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device) {
   mutex_lock l(graph->mu);
   op->node.set_requested_device(device);

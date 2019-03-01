@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import uuid
 
 import numpy as np
@@ -191,74 +192,6 @@ class StackedRNNCells(Layer):
           deserialize_layer(cell_config, custom_objects=custom_objects))
     return cls(cells, **config)
 
-  @property
-  def trainable_weights(self):
-    if not self.trainable:
-      return []
-    weights = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        weights += cell.trainable_weights
-    return weights
-
-  @property
-  def non_trainable_weights(self):
-    weights = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        weights += cell.non_trainable_weights
-    if not self.trainable:
-      trainable_weights = []
-      for cell in self.cells:
-        if isinstance(cell, Layer):
-          trainable_weights += cell.trainable_weights
-      return trainable_weights + weights
-    return weights
-
-  def get_weights(self):
-    """Retrieves the weights of the model.
-
-    Returns:
-      A flat list of Numpy arrays.
-    """
-    weights = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        weights += cell.weights
-    return K.batch_get_value(weights)
-
-  def set_weights(self, weights):
-    """Sets the weights of the model.
-
-    Arguments:
-      weights: A list of Numpy arrays with shapes and types matching
-        the output of `model.get_weights()`.
-    """
-    tuples = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        num_param = len(cell.weights)
-        weights = weights[:num_param]
-        for sw, w in zip(cell.weights, weights):
-          tuples.append((sw, w))
-        weights = weights[num_param:]
-    K.batch_set_value(tuples)
-
-  @property
-  def losses(self):
-    losses = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        losses += cell.losses
-    return losses + self._losses
-
-  @property
-  def updates(self):
-    updates = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        updates += cell.updates
-    return updates + self._updates
 
 
 @keras_export('keras.layers.RNN')
@@ -455,8 +388,6 @@ class RNN(Layer):
   ```
   """
 
-  _setattr_tracking = False
-
   def __init__(self,
                cell,
                return_sequences=False,
@@ -481,8 +412,6 @@ class RNN(Layer):
     self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
-    if isinstance(cell, trackable.Trackable):
-      self._track_trackable(self.cell, name='cell')
     self.return_sequences = return_sequences
     self.return_state = return_state
     self.go_backwards = go_backwards
@@ -508,6 +437,9 @@ class RNN(Layer):
     return self._states
 
   @states.setter
+  # Automatic tracking catches "self._states" which adds an extra weight and
+  # breaks HDF5 checkpoints.
+  @trackable.no_automatic_dependency_tracking
   def states(self, states):
     self._states = states
 
@@ -871,7 +803,8 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if isinstance(inputs, list):
+    if (isinstance(inputs, collections.Sequence)
+        and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
       if self._num_constants is None:
@@ -987,36 +920,6 @@ class RNN(Layer):
     layer = cls(cell, **config)
     layer._num_constants = num_constants
     return layer
-
-  @property
-  def trainable_weights(self):
-    if not self.trainable:
-      return []
-    if isinstance(self.cell, Layer):
-      return self.cell.trainable_weights
-    return []
-
-  @property
-  def non_trainable_weights(self):
-    if isinstance(self.cell, Layer):
-      if not self.trainable:
-        return self.cell.weights
-      return self.cell.non_trainable_weights
-    return []
-
-  @property
-  def losses(self):
-    layer_losses = super(RNN, self).losses
-    if isinstance(self.cell, Layer):
-      return self.cell.losses + layer_losses
-    return layer_losses
-
-  @property
-  def updates(self):
-    updates = []
-    if isinstance(self.cell, Layer):
-      updates += self.cell.updates
-    return updates + self._updates
 
 
 @keras_export('keras.layers.AbstractRNNCell')
@@ -2262,8 +2165,6 @@ class UnifiedGRU(DropoutRNNCellMixin, GRU):
       call of the cell.
   """
 
-  _setattr_tracking = False  # TODO(allenl): Figure out why this is needed.
-
   def __init__(self,
                units,
                activation='tanh',
@@ -2370,7 +2271,7 @@ class UnifiedGRU(DropoutRNNCellMixin, GRU):
       output = last_output
 
     if self.return_state:
-      return [output] + states
+      return [output] + list(states)
     elif self._return_runtime:
       return output, runtime
     else:
@@ -3404,7 +3305,7 @@ class UnifiedLSTM(DropoutRNNCellMixin, LSTM):
       output = last_output
 
     if self.return_state:
-      return [output] + states
+      return [output] + list(states)
     elif self.return_runtime:
       return output, runtime
     else:
@@ -3666,3 +3567,4 @@ def _runtime(runtime_name):
   with ops.device('/cpu:0'):
     return constant_op.constant(
         runtime_name, dtype=dtypes.string, name='runtime')
+

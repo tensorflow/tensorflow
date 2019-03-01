@@ -339,6 +339,10 @@ class HashTable(InitializableLookupTableBaseV1):
     return table_ref
 
   @property
+  def init(self):
+    return self.initializer
+
+  @property
   def name(self):
     return self._table_name
 

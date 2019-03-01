@@ -970,16 +970,13 @@ class Layer(trackable.Trackable):
 
     if inputs is None:
       # Requesting unconditional updates.
-      return [x for x in self.updates if x._unconditional_update]  # pylint: disable=protected-access
+      return [x for x in self._unfiltered_updates if x._unconditional_update]  # pylint: disable=protected-access
 
     # Requesting input-conditional updates.
     inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(inputs, self.updates)
-    updates = []
-    for update in self.updates:
-      if update in reachable:
-        updates.append(update)
-    return updates
+    reachable = tf_utils.get_reachable_from_inputs(inputs,
+                                                   self._unfiltered_updates)
+    return [u for u in self._unfiltered_updates if u in reachable]  # pylint: disable=protected-access
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -1776,7 +1773,9 @@ class Layer(trackable.Trackable):
 
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
-        getattr(self, '_is_graph_network', False)):
+        getattr(self, '_is_graph_network', False) or
+        # Exclude @property.setters from tracking
+        hasattr(self.__class__, name)):
       super(Layer, self).__setattr__(name, value)
       return
 

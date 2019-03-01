@@ -2477,6 +2477,7 @@ class TPUEstimator(estimator_lib.Estimator):
       if self._experimental_exported_model_uses_all_cores:
         tensors_on_cpu = tpu.rewrite(
             tpu_computation, device_assignment=device_assignment)
+        tpu.prune_unconnected_ops_from_xla(ops.get_default_graph())
       else:
         tensors_on_cpu = tpu.rewrite_for_inference(
             tpu_computation, device_assignment=device_assignment)

@@ -30,7 +30,6 @@ from tensorflow.python.keras.utils import generic_utils
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import keras_export
 
@@ -47,7 +46,6 @@ class Wrapper(Layer):
     layer: The layer to be wrapped.
   """
 
-  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, **kwargs):
     assert isinstance(layer, Layer)
     self.layer = layer
@@ -66,36 +64,6 @@ class Wrapper(Layer):
       return self.layer.activity_regularizer
     else:
       return None
-
-  @property
-  def trainable(self):
-    return self.layer.trainable
-
-  @trainable.setter
-  def trainable(self, value):
-    self.layer.trainable = value
-
-  @property
-  def trainable_weights(self):
-    return self.layer.trainable_weights
-
-  @property
-  def non_trainable_weights(self):
-    return self.layer.non_trainable_weights
-
-  @property
-  def updates(self):
-    return self.layer.updates + self._updates
-
-  @property
-  def losses(self):
-    return self.layer.losses + self._losses
-
-  def get_weights(self):
-    return self.layer.get_weights()
-
-  def set_weights(self, weights):
-    self.layer.set_weights(weights)
 
   def get_config(self):
     config = {
@@ -180,7 +148,6 @@ class TimeDistributed(Wrapper):
           '`Layer` instance. You passed: {input}'.format(input=layer))
     super(TimeDistributed, self).__init__(layer, **kwargs)
     self.supports_masking = True
-    self._track_trackable(layer, name='layer')
 
     # It is safe to use the fast, reshape-based approach with all of our
     # built-in Layers.
@@ -407,7 +374,6 @@ class Bidirectional(Wrapper):
   ```
   """
 
-  @trackable.no_automatic_dependency_tracking
   def __init__(self, layer, merge_mode='concat', weights=None, **kwargs):
     if not isinstance(layer, Layer):
       raise ValueError(
@@ -438,28 +404,12 @@ class Bidirectional(Wrapper):
     self.supports_masking = True
     self._trainable = True
     self._num_constants = None
+    # We don't want to track `layer` since we're already tracking the two copies
+    # of it we actually run.
+    self._setattr_tracking = False
     super(Bidirectional, self).__init__(layer, **kwargs)
+    self._setattr_tracking = True
     self.input_spec = layer.input_spec
-    self._track_trackable(self.forward_layer, name='forward_layer')
-    self._track_trackable(self.backward_layer, name='backward_layer')
-
-  @property
-  def trainable(self):
-    return self._trainable
-
-  @trainable.setter
-  def trainable(self, value):
-    self._trainable = value
-    self.forward_layer.trainable = value
-    self.backward_layer.trainable = value
-
-  def get_weights(self):
-    return self.forward_layer.get_weights() + self.backward_layer.get_weights()
-
-  def set_weights(self, weights):
-    nw = len(weights)
-    self.forward_layer.set_weights(weights[:nw // 2])
-    self.backward_layer.set_weights(weights[nw // 2:])
 
   @tf_utils.shape_type_conversion
   def compute_output_shape(self, input_shape):
@@ -652,32 +602,6 @@ class Bidirectional(Wrapper):
         return output_mask + state_mask * 2
       return [output_mask] + state_mask * 2
     return output_mask
-
-  @property
-  def trainable_weights(self):
-    if hasattr(self.forward_layer, 'trainable_weights'):
-      return (self.forward_layer.trainable_weights +
-              self.backward_layer.trainable_weights)
-    return []
-
-  @property
-  def non_trainable_weights(self):
-    if hasattr(self.forward_layer, 'non_trainable_weights'):
-      return (self.forward_layer.non_trainable_weights +
-              self.backward_layer.non_trainable_weights)
-    return []
-
-  @property
-  def updates(self):
-    if hasattr(self.forward_layer, 'updates'):
-      return self.forward_layer.updates + self.backward_layer.updates
-    return []
-
-  @property
-  def losses(self):
-    if hasattr(self.forward_layer, 'losses'):
-      return self.forward_layer.losses + self.backward_layer.losses
-    return []
 
   @property
   def constraints(self):

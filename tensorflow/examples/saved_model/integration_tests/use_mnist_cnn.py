@@ -28,7 +28,7 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 from tensorflow.examples.saved_model.integration_tests import util
@@ -118,5 +118,5 @@ def main(argv):
 
 
 if __name__ == '__main__':
-  # tf.enable_v2_behavior()
+  tf.enable_v2_behavior()
   app.run(main)

@@ -90,7 +90,8 @@ class TimeDistributedTest(test.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = set(trackable_util.list_objects(model))
+    checkpointed_objects = object_identity.ObjectIdentitySet(
+        trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
@@ -154,17 +155,6 @@ class TimeDistributedTest(test.TestCase):
       model.add(keras.layers.Activation('relu'))
       model.compile(optimizer='rmsprop', loss='mse')
       self.assertEqual(len(model.losses), 1)
-
-  def test_TimeDistributed_learning_phase(self):
-    with self.cached_session():
-      # test layers that need learning_phase to be set
-      np.random.seed(1234)
-      x = keras.layers.Input(shape=(3, 2))
-      y = keras.layers.TimeDistributed(keras.layers.Dropout(.999))(
-          x, training=True)
-      model = keras.models.Model(x, y)
-      y = model.predict(np.random.random((10, 3, 2)))
-      self.assertAllClose(np.mean(y), 0., atol=1e-1, rtol=1e-1)
 
   def test_TimeDistributed_batchnorm(self):
     with self.cached_session():

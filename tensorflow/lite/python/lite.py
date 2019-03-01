@@ -242,17 +242,18 @@ class TFLiteConverterV2(object):
         Input shape is not specified.
         None value for dimension in input_tensor.
     """
-    graph_def = _convert_to_constants.convert_variables_to_constants_v2(
+    frozen_func = _convert_to_constants.convert_variables_to_constants_v2(
         self._func)
     input_tensors = [
-        tensor for tensor in self._func.inputs
+        tensor for tensor in frozen_func.inputs
         if tensor.dtype != _dtypes.resource
     ]
-    output_tensors = self._func.outputs
+    output_tensors = frozen_func.outputs
 
     # Run a Grappler pass.
-    graph_def = _run_graph_optimizations(graph_def, input_tensors,
-                                         output_tensors, self._func.graph)
+    graph_def = _run_graph_optimizations(frozen_func.graph.as_graph_def(),
+                                         input_tensors, output_tensors,
+                                         frozen_func.graph)
 
     # Checks dimensions in input tensor.
     for tensor in input_tensors:
@@ -263,7 +264,10 @@ class TFLiteConverterV2(object):
             "None is only supported in the 1st dimension. Tensor '{0}' has "
             "invalid shape '{1}'.".format(_tensor_name(tensor), shape_list))
       elif shape_list and shape_list[0] is None:
-        self._set_batch_size(batch_size=1)
+        # Set the batch size to 1 if undefined.
+        shape = tensor.get_shape().as_list()
+        shape[0] = 1
+        tensor.set_shape(shape)
 
     if self.representative_dataset:
       if not isinstance(self.representative_dataset, RepresentativeDataset):

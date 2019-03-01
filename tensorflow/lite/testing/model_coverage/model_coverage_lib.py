@@ -243,7 +243,7 @@ def compare_models_v2(tflite_model, concrete_func, input_data=None,
 
   # Gets the TensorFlow results as a map from the output names to outputs.
   # Converts the map into a list that is equivalent to the TFLite list.
-  tf_results_map = concrete_func(input_1=input_data_func)
+  tf_results_map = concrete_func(input_data_func)
   tf_results = [tf_results_map[tf_results_map.keys()[0]]]
   tflite_results = _evaluate_tflite_model(tflite_model, input_data)
   for tf_result, tflite_result in zip(tf_results, tflite_results):
@@ -382,6 +382,7 @@ def test_saved_model(directory,
 # TODO(nupurgarg): Remove input_shape parameter after bug with shapes is fixed.
 def test_saved_model_v2(directory,
                         input_shape=None,
+                        tag_set=None,
                         signature_key=None,
                         input_data=None,
                         **kwargs):
@@ -393,11 +394,13 @@ def test_saved_model_v2(directory,
   Args:
     directory: SavedModel directory to convert.
     input_shape: Input shape for the single input array as a list of integers.
+    tag_set: Set of tags identifying the MetaGraphDef within the SavedModel to
+      analyze. All tags in the tag set must be present.
     signature_key: Key identifying SignatureDef containing inputs and outputs.
     input_data: np.ndarray to pass into models during inference. (default None)
     **kwargs: Additional arguments to be passed into the converter.
   """
-  model = _load.load(directory)
+  model = _load.load(directory, tags=tag_set)
   if not signature_key:
     signature_key = _signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY
   concrete_func = model.signatures[signature_key]

@@ -1484,6 +1484,9 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
       }
     }
     Node* clone = g->AddNode(ndef, &s);
+    if (override_device && !caller->assigned_device_name().empty()) {
+      clone->set_assigned_device_name(caller->assigned_device_name());
+    }
     TF_CHECK_OK(s);
     node_map[n->id()] = clone;
 
@@ -1600,7 +1603,8 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   return Status::OK();
 }
 
-bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
+bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
+                           bool override_device) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
 
   const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
@@ -1631,7 +1635,8 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
 
   bool inlined_any = false;
   for (const auto& p : candidates) {
-    Status inlined = InlineFunctionBody(*fld, graph, p.first, p.second);
+    Status inlined =
+        InlineFunctionBody(*fld, graph, p.first, p.second, override_device);
     if (inlined.ok()) {
       inlined_any = true;
     } else {

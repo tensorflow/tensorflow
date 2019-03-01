@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import sys
 
 from absl.testing import parameterized
@@ -29,12 +30,14 @@ from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -269,6 +272,28 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
+  def testFunctionInCallForEachReplicaNoMergeCall(self, distribution):
+    @def_function.function
+    def model_fn():
+      return 0.
+
+    with distribution.scope():
+      result = distribution.extended.call_for_each_replica(model_fn)
+      self.assertEqual((0., 0.), self.evaluate(result.values))
+
+  def testFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+    def merge_fn(_):
+      pass
+
+    @def_function.function
+    def model_fn():
+      ds_context.get_replica_context().merge_call(merge_fn)
+      return 0.
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
 
 @combinations.generate(combinations.combine(
     distribution=[
@@ -1511,6 +1536,25 @@ class MultiWorkerMirroredStrategyTestWithChief(
         mirrored_strategy.all_local_devices())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
+
+  def testMinimizeLossGraphCoreMirroredStrategyWithOneNode(self):
+    cluster_spec = {}
+    cluster_spec["chief"] = self._cluster_spec["chief"]
+    tf_config = {"cluster": cluster_spec}
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      strategy = mirrored_strategy.CoreMirroredStrategy()
+      self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+                            cross_device_ops_lib.NcclAllReduce)
+    self._test_minimize_loss_graph(strategy, learning_rate=0.05)
+
+  def testInitializeFromTFConfig(self):
+    tf_config = {"cluster": self._cluster_spec}
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      strategy = mirrored_strategy.CoreMirroredStrategy()
+      self.assertEqual(
+          max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
 
 
 def _replica_id():

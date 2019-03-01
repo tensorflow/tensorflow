@@ -26,6 +26,7 @@ from tensorflow.python.feature_column import feature_column_lib as fc_lib
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import lookup_ops
 from tensorflow.python.ops import parsing_ops
 from tensorflow.python.ops import variables as variables_lib
@@ -77,6 +78,7 @@ class EmbeddingColumnTest(test.TestCase):
         'aaa': parsing_ops.VarLenFeature(dtypes.int64)
     }, embedding_column._parse_example_spec)
 
+  @test_util.deprecated_graph_mode_only
   def test_get_dense_tensor(self):
     # Inputs.
     vocabulary_size = 3
@@ -140,6 +142,7 @@ class EmbeddingColumnTest(test.TestCase):
 
 class SharedEmbeddingColumnTest(test.TestCase):
 
+  @test_util.deprecated_graph_mode_only
   def test_defaults(self):
     categorical_column_a = fc_lib.categorical_column_with_identity(
         key='aaa', num_buckets=3)
@@ -176,6 +179,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         'bbb': parsing_ops.VarLenFeature(dtypes.int64)
     }, embedding_column_b._parse_example_spec)
 
+  @test_util.deprecated_graph_mode_only
   def test_all_constructor_args(self):
     categorical_column_a = fc_lib.categorical_column_with_identity(
         key='aaa', num_buckets=3)
@@ -213,6 +217,7 @@ class SharedEmbeddingColumnTest(test.TestCase):
         'bbb': parsing_ops.VarLenFeature(dtypes.int64)
     }, embedding_column_b._parse_example_spec)
 
+  @test_util.deprecated_graph_mode_only
   def test_get_dense_tensor(self):
     # Inputs.
     vocabulary_size = 3

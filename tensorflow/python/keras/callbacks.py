@@ -32,7 +32,6 @@ import six
 
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.eager import context
-from tensorflow.python.eager import profiler
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras.utils.data_utils import Sequence
@@ -1150,7 +1149,7 @@ class TensorBoard(Callback):
   # pylint: enable=line-too-long
 
   def __init__(self,
-               log_dir='./logs',
+               log_dir='logs',
                histogram_freq=0,
                write_graph=True,
                write_images=False,
@@ -1179,8 +1178,8 @@ class TensorBoard(Callback):
     self._train_writer = None  # set in `_initialize_writers`
     self._validation_writer = None  # set in `_initialize_writers`
     self._profile_batch = profile_batch
-    # One profiler session is running if it is True.
-    self._is_profiling = False
+    # True when a trace is running.
+    self._is_tracing = False
 
     # TensorBoard should only write summaries on the chief when in a
     # Multi-Worker setting.
@@ -1222,7 +1221,10 @@ class TensorBoard(Callback):
           with self._train_writer.as_default():
             with summary_ops_v2.always_record_summaries():
               summary_ops_v2.graph(K.get_graph())
-              if self.model._is_graph_network:  # pylint: disable=protected-access
+              summary_writable = (
+                  self.model._is_graph_network or  # pylint: disable=protected-access
+                  self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
+              if summary_writable:
                 summary_ops_v2.keras_model('keras', self.model, step=0)
 
   def _close_writers(self):
@@ -1246,7 +1248,7 @@ class TensorBoard(Callback):
 
     def create_writer(subdir):
       path = os.path.join(self.log_dir, subdir)
-      return summary_ops_v2.create_file_writer(path)
+      return summary_ops_v2.create_file_writer_v2(path)
 
     self._train_writer = create_writer('train')
     self._writers.append(self._train_writer)
@@ -1255,8 +1257,8 @@ class TensorBoard(Callback):
 
   def on_train_begin(self, logs=None):
     if self._profile_batch == 1:
-      profiler.start()
-      self._is_profiling = True
+      summary_ops_v2.trace_on(graph=True, profiler=True)
+      self._is_tracing = True
 
   def on_batch_end(self, batch, logs=None):
     """Writes scalar summaries for metrics on every training batch.
@@ -1271,13 +1273,17 @@ class TensorBoard(Callback):
       self._log_metrics(logs, prefix='batch_', step=self._total_batches_seen)
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
-    if self._is_profiling:
-      profiler.save(self.log_dir, profiler.stop())
-      self._is_profiling = False
-    elif (not self._is_profiling and
+    if self._is_tracing:
+      # TODO(b/126388999): Remove step info in the summary name.
+      summary_ops_v2.trace_export(
+          name='batch_%d' % self._total_batches_seen,
+          step=self._total_batches_seen,
+          profiler_outdir=self.log_dir)
+      self._is_tracing = False
+    elif (not self._is_tracing and
           self._total_batches_seen == self._profile_batch - 1):
-      profiler.start()
-      self._is_profiling = True
+      summary_ops_v2.trace_on(graph=True, profiler=True)
+      self._is_tracing = True
 
   def on_epoch_end(self, epoch, logs=None):
     """Runs metrics and histogram summaries at epoch end."""
@@ -1289,9 +1295,13 @@ class TensorBoard(Callback):
 
   def on_train_end(self, logs=None):
     self._close_writers()
-    if self._is_profiling:
-      profiler.save(self.log_dir, profiler.stop())
-      self._is_profiling = False
+    if self._is_tracing:
+      # TODO(b/126388999): Remove step info in the summary name.
+      summary_ops_v2.trace_export(
+          name='batch_%d' % self._total_batches_seen,
+          step=self._total_batches_seen,
+          profiler_outdir=self.log_dir)
+      self._is_tracing = False
 
   def _log_metrics(self, logs, prefix, step):
     """Writes metrics out as custom scalar summaries.
