@@ -1048,6 +1048,31 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
+  def test_TensorBoard_default_logdir(self):
+    """Regression test for cross-platform pathsep in default logdir."""
+    os.chdir(self.get_temp_dir())
+
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard()  # no logdir specified
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(logdir='.')
+    train_dir = os.path.join('.', 'logs', 'train')
+    validation_dir = os.path.join('.', 'logs', 'validation')
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=validation_dir, tag='epoch_loss'),
+        })
+
   def test_TensorBoard_basic(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))

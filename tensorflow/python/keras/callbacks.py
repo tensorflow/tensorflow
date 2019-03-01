@@ -1149,7 +1149,7 @@ class TensorBoard(Callback):
   # pylint: enable=line-too-long
 
   def __init__(self,
-               log_dir='./logs',
+               log_dir='logs',
                histogram_freq=0,
                write_graph=True,
                write_images=False,
