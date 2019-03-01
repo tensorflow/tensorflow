@@ -1489,7 +1489,8 @@ class TensorFlowTestCase(googletest.TestCase):
     if is_xla_enabled():
       os.putenv(
           "TF_XLA_FLAGS", "--tf_xla_auto_jit=2 --tf_xla_min_cluster_size=1 "
-          "--tf_xla_enable_lazy_compilation=false")
+          "--tf_xla_enable_lazy_compilation=false " +
+          os.getenv("TF_XLA_FLAGS", ""))
     self._threads = []
     self._tempdir = None
     self._cached_session = None
