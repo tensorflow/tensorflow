@@ -2630,6 +2630,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
+    shard_count = 10,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
