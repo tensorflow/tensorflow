@@ -14,6 +14,7 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/lite/interpreter.h"
+#include <gmock/gmock.h>
 #include <gtest/gtest.h>
 #include "tensorflow/lite/core/api/error_reporter.h"
 #include "tensorflow/lite/kernels/internal/compatibility.h"
@@ -47,6 +48,7 @@ namespace ops {
 namespace builtin {
 TfLiteRegistration* Register_PADV2();
 TfLiteRegistration* Register_NEG();
+TfLiteRegistration* Register_ADD();
 }  // namespace builtin
 }  // namespace ops
 namespace {
@@ -813,6 +815,86 @@ TEST(BasicInterpreter, DynamicTensorsResizeDescendants) {
   // resize from the latest pad operation.
   ASSERT_EQ(interpreter.tensor(2)->bytes, sizeof(float) * 10 * 14);
   ASSERT_EQ(interpreter.tensor(3)->bytes, sizeof(float) * 10 * 14);
+}
+
+TEST(BasicInterpreter, DecendantsDependOnDyanmicTensorAndEarlyIntermediate) {
+  // The difference between this test and DynamicTensorsResizeDescendants is,
+  // the final op depends on both dynamic tensor and an intermediate output
+  // produced earlier.
+  //
+  // tensor[0] -------\
+  // tensor[1] ---------> PAD ---> tensor[2] ---> ADD ---> tensor[3]
+  // tensor[4] ---> NEG ---> tensor[5] -------/
+
+  Interpreter interpreter;
+  interpreter.AddTensors(6);
+  interpreter.SetInputs({0, 1, 4});
+  interpreter.SetOutputs({3});
+  TfLiteQuantizationParams quant;
+  interpreter.SetTensorParametersReadWrite(0, kTfLiteFloat32, "", {2, 2, 1, 1},
+                                           quant);
+  interpreter.SetTensorParametersReadWrite(1, kTfLiteInt32, "", {4, 2}, quant);
+  interpreter.SetTensorParametersReadWrite(2, kTfLiteFloat32, "", {}, quant);
+  interpreter.SetTensorParametersReadWrite(3, kTfLiteFloat32, "", {}, quant);
+  interpreter.SetTensorParametersReadWrite(4, kTfLiteFloat32, "", {1}, quant);
+  interpreter.SetTensorParametersReadWrite(5, kTfLiteFloat32, "", {1}, quant);
+
+  TfLiteRegistration* pad_op = tflite::ops::builtin::Register_PADV2();
+  TfLiteRegistration* neg_op = tflite::ops::builtin::Register_NEG();
+  TfLiteRegistration* add_op = tflite::ops::builtin::Register_ADD();
+  TfLiteAddParams *params = (TfLiteAddParams*)malloc(sizeof(TfLiteAddParams));
+  params->activation = kTfLiteActNone;
+
+  // PAD is the second node to make sure tensor[5] is produced first.
+  interpreter.AddNodeWithParameters({4}, {5}, nullptr, 0, nullptr, neg_op);
+  interpreter.AddNodeWithParameters({0, 1}, {2}, nullptr, 0, nullptr, pad_op);
+  interpreter.AddNodeWithParameters({2, 5}, {3}, nullptr, 0, params, add_op);
+  ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
+
+  // Fill any float into the third input.
+  interpreter.typed_tensor<float>(4)[0] = 1.0f;
+
+  // Configure [[2,2],[2,2]] padding and execute the graph.
+  interpreter.typed_tensor<int>(1)[0] = 2;
+  interpreter.typed_tensor<int>(1)[1] = 2;
+  interpreter.typed_tensor<int>(1)[2] = 2;
+  interpreter.typed_tensor<int>(1)[3] = 2;
+  interpreter.typed_tensor<int>(1)[4] = 0;
+  interpreter.typed_tensor<int>(1)[5] = 0;
+  interpreter.typed_tensor<int>(1)[6] = 0;
+  interpreter.typed_tensor<int>(1)[7] = 0;
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  using ::testing::ElementsAreArray;
+
+  auto getShape = [](TfLiteTensor *tensor) {
+    std::vector<int> result;
+    for (int i = 0; i < tensor->dims->size; ++i) {
+      result.push_back(tensor->dims->data[i]);
+    }
+    return result;
+  };
+
+  // Both the output and intermediate tensor dims should reflect the output
+  // from the dynamic pad operation.
+  EXPECT_THAT(getShape(interpreter.tensor(2)), ElementsAreArray({6, 6, 1, 1}));
+  EXPECT_THAT(getShape(interpreter.tensor(3)), ElementsAreArray({6, 6, 1, 1}));
+
+  // Now configure [[4,4],[6,6]] padding and execute the graph.
+  interpreter.typed_tensor<int>(1)[0] = 4;
+  interpreter.typed_tensor<int>(1)[1] = 4;
+  interpreter.typed_tensor<int>(1)[2] = 6;
+  interpreter.typed_tensor<int>(1)[3] = 6;
+  interpreter.typed_tensor<int>(1)[4] = 0;
+  interpreter.typed_tensor<int>(1)[5] = 0;
+  interpreter.typed_tensor<int>(1)[6] = 0;
+  interpreter.typed_tensor<int>(1)[7] = 0;
+  ASSERT_EQ(interpreter.Invoke(), kTfLiteOk);
+
+  // Again, the output and intermediate tensor dims should reflect the *new*
+  // resize from the latest pad operation.
+  EXPECT_THAT(getShape(interpreter.tensor(2)), ElementsAreArray({10, 14, 1, 1}));
+  EXPECT_THAT(getShape(interpreter.tensor(3)), ElementsAreArray({10, 14, 1, 1}));
 }
 
 TEST(InterpreterTensorsCapacityTest, TestWithinHeadroom) {
