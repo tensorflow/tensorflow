@@ -80,6 +80,11 @@ upper_tabs:
         - title: Optimizing for mobile
           path: /lite/tfmobile/optimizing
 
+    - name: Examples
+      contents:
+      - title: Examples
+        path: /lite/examples
+
     - name: Models
       contents:
       - title: Overview
