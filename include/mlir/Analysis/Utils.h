@@ -62,6 +62,11 @@ void getLoopIVs(const Instruction &inst,
 /// surrounding this instruction.
 unsigned getNestingDepth(const Instruction &stmt);
 
+/// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
+/// at 'forOp'.
+void getSequentialLoops(OpPointer<AffineForOp> forOp,
+                        llvm::SmallDenseSet<Value *, 8> *sequentialLoops);
+
 /// ComputationSliceState aggregates loop IVs, loop bound AffineMaps and their
 /// associated operands for a set of loops within a loop nest (typically the
 /// set of loops surrounding a store operation). Loop bound AffineMaps which

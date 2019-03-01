@@ -768,7 +768,8 @@ void MemRefAccess::getAccessMap(AffineValueMap *accessMap) const {
 bool mlir::checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
-    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents) {
+    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents,
+    bool allowRAR) {
   LLVM_DEBUG(llvm::dbgs() << "Checking for dependence at depth: "
                           << Twine(loopDepth) << " between:\n";);
   LLVM_DEBUG(srcAccess.opInst->dump(););
@@ -778,7 +779,8 @@ bool mlir::checkMemrefAccessDependence(
   if (srcAccess.memref != dstAccess.memref)
     return false;
   // Return 'false' if one of these accesses is not a StoreOp.
-  if (!srcAccess.opInst->isa<StoreOp>() && !dstAccess.opInst->isa<StoreOp>())
+  if (!allowRAR && !srcAccess.opInst->isa<StoreOp>() &&
+      !dstAccess.opInst->isa<StoreOp>())
     return false;
 
   // Get composed access function for 'srcAccess'.
@@ -802,9 +804,11 @@ bool mlir::checkMemrefAccessDependence(
   // Return 'false' if loopDepth > numCommonLoops and if the ancestor operation
   // instruction of 'srcAccess' does not properly dominate the ancestor
   // operation instruction of 'dstAccess' in the same common instruction block.
+  // Note: this check is skipped if 'allowRAR' is true, because because RAR
+  // deps can exist irrespective of lexicographic ordering b/w src and dst.
   unsigned numCommonLoops = getNumCommonLoops(srcDomain, dstDomain);
   assert(loopDepth <= numCommonLoops + 1);
-  if (loopDepth > numCommonLoops &&
+  if (!allowRAR && loopDepth > numCommonLoops &&
       !srcAppearsBeforeDstInAncestralBlock(srcAccess, dstAccess, srcDomain,
                                            numCommonLoops)) {
     return false;

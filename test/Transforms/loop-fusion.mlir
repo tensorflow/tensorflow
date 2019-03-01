@@ -1228,13 +1228,13 @@ func @should_fuse_with_private_memrefs_with_diff_shapes() {
   // by loops %i1 and %i2.
   // CHECK-DAG:  %0 = alloc() : memref<1xf32>
   // CHECK-DAG:  %1 = alloc() : memref<1xf32>
-  // CHECK:      for %i0 = 0 to 82 {
+  // CHECK:      for %i0 = 0 to 17 {
   // CHECK-NEXT:   %2 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   store %cst, %1[%2] : memref<1xf32>
   // CHECK-NEXT:   %3 = affine.apply [[MAP0]](%i0, %i0)
   // CHECK-NEXT:   %4 = load %1[%3] : memref<1xf32>
   // CHECK-NEXT: }
-  // CHECK-NEXT: for %i1 = 0 to 17 {
+  // CHECK-NEXT: for %i1 = 0 to 82 {
   // CHECK-NEXT:   %5 = affine.apply [[MAP0]](%i1, %i1)
   // CHECK-NEXT:   store %cst, %0[%5] : memref<1xf32>
   // CHECK-NEXT:   %6 = affine.apply [[MAP0]](%i1, %i1)
@@ -1913,5 +1913,152 @@ func @test_add_slice_bounds() {
 // CHECK-NEXT:       }
 // CHECK-NEXT:     }
 // CHECK-NEXT:   }
+  return
+}
+
+// -----
+// CHECK-DAG: [[MAP0:#map[0-9]+]] = (d0, d1, d2, d3) -> (-d0 + d2)
+// CHECK-DAG: [[MAP1:#map[0-9]+]] = (d0, d1, d2, d3) -> (-d1 + d3)
+
+func @should_fuse_init_loops_siblings_then_shared_producer(%arg0: memref<10x10xf32>, %arg1: memref<10x10xf32>) {
+  %0 = alloc() : memref<10x10xf32>
+  %cst = constant 0.000000e+00 : f32
+  %cst_0 = constant 1.000000e+00 : f32
+  %cst_1 = constant 7.000000e+00 : f32
+  for %i0 = 0 to 10 {
+    for %i1 = 0 to 10 {
+      store %cst_1, %0[%i0, %i1] : memref<10x10xf32>
+    }
+  }
+  for %i2 = 0 to 3 {
+    for %i3 = 0 to 3 {
+      store %cst, %arg0[%i2, %i3] : memref<10x10xf32>
+    }
+  }
+  for %i4 = 0 to 3 {
+    for %i5 = 0 to 3 {
+      %1 = load %0[%i4, %i5] : memref<10x10xf32>
+      %2 = load %arg0[%i4, %i5] : memref<10x10xf32>
+      %3 = mulf %1, %2 : f32
+      store %3, %arg0[%i4, %i5] : memref<10x10xf32>
+    }
+  }
+  for %i6 = 0 to 3 {
+    for %i7 = 0 to 3 {
+      store %cst_0, %arg1[%i6, %i7] : memref<10x10xf32>
+    }
+  }
+  for %i8 = 0 to 3 {
+    for %i9 = 0 to 3 {
+      %4 = load %0[%i8, %i9] : memref<10x10xf32>
+      %5 = load %arg1[%i8, %i9] : memref<10x10xf32>
+      %6 = addf %4, %5 : f32
+      store %6, %arg1[%i8, %i9] : memref<10x10xf32>
+    }
+  }
+
+  // Pass 1: should fuse single-use producer loop nests into their unique user,
+  //         so '%i2' will fuse into '%i4' and '%i6' will fuse into '%i8'.
+  // Pass 2: should fuse sibling loop nests which share no dependence edges,
+  //         so should fuse '%i4' into '%i8'.
+  // Pass 3: should fuse single-use producer loop nest '%i0' into '%i8'. Note
+  //         that loop nest '%i0' now has a single user after Pass 2 fused its
+  //         two users together).
+
+// CHECK:        for %i0 = 0 to 3 {
+// CHECK-NEXT:     for %i1 = 0 to 3 {
+// CHECK-NEXT:       %1 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
+// CHECK-NEXT:       %2 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
+// CHECK-NEXT:       store %cst_1, %0[%1, %2] : memref<1x1xf32>
+// CHECK-NEXT:       store %cst, %arg0[%i0, %i1] : memref<10x10xf32>
+// CHECK-NEXT:       %3 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
+// CHECK-NEXT:       %4 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
+// CHECK-NEXT:       %5 = load %0[%3, %4] : memref<1x1xf32>
+// CHECK-NEXT:       %6 = load %arg0[%i0, %i1] : memref<10x10xf32>
+// CHECK-NEXT:       %7 = mulf %5, %6 : f32
+// CHECK-NEXT:       store %7, %arg0[%i0, %i1] : memref<10x10xf32>
+// CHECK-NEXT:       store %cst_0, %arg1[%i0, %i1] : memref<10x10xf32>
+// CHECK-NEXT:      %8 = affine.apply [[MAP0]](%i0, %i1, %i0, %i1)
+// CHECK-NEXT:       %9 = affine.apply [[MAP1]](%i0, %i1, %i0, %i1)
+// CHECK-NEXT:       %10 = load %0[%8, %9] : memref<1x1xf32>
+// CHECK-NEXT:       %11 = load %arg1[%i0, %i1] : memref<10x10xf32>
+// CHECK-NEXT:       %12 = addf %10, %11 : f32
+// CHECK-NEXT:       store %12, %arg1[%i0, %i1] : memref<10x10xf32>
+// CHECK-NEXT:     }
+// CHECK-NEXT:   }
+// CHECK-NEXT:   return
+
+  return
+}
+
+// -----
+// CHECK-DAG: [[MAP2:#map[0-9]+]] = (d0, d1, d2) -> (d1)
+// CHECK-DAG: [[MAP3:#map[0-9]+]] = (d0, d1, d2) -> (-d0 + d2)
+
+func @two_matrix_vector_products() {
+  %in_matrix = alloc() : memref<10x10xf32>
+  %in_vec0 = alloc() : memref<10xf32>
+  %in_vec1 = alloc() : memref<10xf32>
+  %out_vec0 = alloc() : memref<10xf32>
+  %out_vec1 = alloc() : memref<10xf32>
+  %cf7 = constant 7.0 : f32
+
+  // Populate input matrix.
+  for %i0 = 0 to 10 {
+    for %i1 = 0 to 10 {
+      store %cf7, %in_matrix[%i0, %i1] : memref<10x10xf32>
+    }
+  }
+  // out_vec0 = in_matrix x in_vec0
+  for %i2 = 0 to 10 {
+    for %i3 = 0 to 10 {
+      %v0 = load %in_matrix[%i2, %i3] : memref<10x10xf32>
+      %v1 = load %in_vec0[%i3] : memref<10xf32>
+      %v2 = mulf %v0, %v1 : f32
+      %v3 = load %out_vec0[%i3] : memref<10xf32>
+      %v4 = addf %v2, %v3 : f32
+      store %v4, %out_vec0[%i3] : memref<10xf32>
+    }
+  }
+  // out_vec1 = in_matrix x in_vec1
+  for %i4 = 0 to 10 {
+    for %i5 = 0 to 10 {
+      %v5 = load %in_matrix[%i4, %i5] : memref<10x10xf32>
+      %v6 = load %in_vec1[%i5] : memref<10xf32>
+      %v7 = mulf %v5, %v6 : f32
+      %v8 = load %out_vec1[%i5] : memref<10xf32>
+      %v9 = addf %v7, %v8 : f32
+      store %v9, %out_vec1[%i5] : memref<10xf32>
+    }
+  }
+
+// CHECK:        for %i0 = 0 to 10 {
+// CHECK-NEXT:     for %i1 = 0 to 10 {
+// CHECK-NEXT:       %5 = affine.apply [[MAP2]](%i0, %i1, %i0)
+// CHECK-NEXT:       %6 = affine.apply [[MAP3]](%i0, %i1, %i0)
+// CHECK-NEXT:       store %cst, %0[%5, %6] : memref<10x1xf32>
+// CHECK-NEXT:     }
+// CHECK-NEXT:     for %i2 = 0 to 10 {
+// CHECK-NEXT:       %7 = affine.apply [[MAP2]](%i0, %i2, %i0)
+// CHECK-NEXT:       %8 = affine.apply [[MAP3]](%i0, %i2, %i0)
+// CHECK-NEXT:       %9 = load %0[%7, %8] : memref<10x1xf32>
+// CHECK-NEXT:       %10 = load %1[%i0] : memref<10xf32>
+// CHECK-NEXT:       %11 = mulf %9, %10 : f32
+// CHECK-NEXT:       %12 = load %3[%i0] : memref<10xf32>
+// CHECK-NEXT:       %13 = addf %11, %12 : f32
+// CHECK-NEXT:       store %13, %3[%i0] : memref<10xf32>
+// CHECK-NEXT:     }
+// CHECK-NEXT:     for %i3 = 0 to 10 {
+// CHECK-NEXT:       %14 = affine.apply [[MAP2]](%i0, %i3, %i0)
+// CHECK-NEXT:       %15 = affine.apply [[MAP3]](%i0, %i3, %i0)
+// CHECK-NEXT:       %16 = load %0[%14, %15] : memref<10x1xf32>
+// CHECK-NEXT:       %17 = load %2[%i0] : memref<10xf32>
+// CHECK-NEXT:       %18 = mulf %16, %17 : f32
+// CHECK-NEXT:       %19 = load %4[%i0] : memref<10xf32>
+// CHECK-NEXT:       %20 = addf %18, %19 : f32
+// CHECK-NEXT:       store %20, %4[%i0] : memref<10xf32>
+// CHECK-NEXT:     }
+// CHECK-NEXT:   }
+// CHECK-NEXT:   return
   return
 }

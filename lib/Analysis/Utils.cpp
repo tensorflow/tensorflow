@@ -173,7 +173,6 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
       }
     }
   }
-
   // We'll first associate the dims and symbols of the access map to the dims
   // and symbols resp. of cst. This will change below once cst is
   // fully constructed out.
@@ -236,7 +235,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
   }
 
   // Set all identifiers appearing after the first 'rank' identifiers as
-  // symbolic identifiers - so that the ones correspoding to the memref
+  // symbolic identifiers - so that the ones corresponding to the memref
   // dimensions are the dimensional identifiers for the memref region.
   cst.setDimSymbolSeparation(cst.getNumDimAndSymbolIds() - rank);
 
@@ -442,10 +441,12 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
                                             const MemRefAccess &dstAccess,
                                             unsigned dstLoopDepth,
                                             ComputationSliceState *sliceState) {
+  bool readReadAccesses =
+      srcAccess.opInst->isa<LoadOp>() && dstAccess.opInst->isa<LoadOp>();
   FlatAffineConstraints dependenceConstraints;
-  if (!checkMemrefAccessDependence(srcAccess, dstAccess, /*loopDepth=*/1,
-                                   &dependenceConstraints,
-                                   /*dependenceComponents=*/nullptr)) {
+  if (!checkMemrefAccessDependence(
+          srcAccess, dstAccess, /*loopDepth=*/1, &dependenceConstraints,
+          /*dependenceComponents=*/nullptr, /*allowRAR=*/readReadAccesses)) {
     return false;
   }
   // Get loop nest surrounding src operation.
@@ -487,6 +488,25 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
   // canonicalization.
   sliceState->lbOperands.resize(numSrcLoopIVs, sliceBoundOperands);
   sliceState->ubOperands.resize(numSrcLoopIVs, sliceBoundOperands);
+
+  // For read-read access pairs, clear any slice bounds on sequential loops.
+  if (readReadAccesses) {
+    // Get sequential loops in loop nest rooted at 'srcLoopIVs[0]'.
+    llvm::SmallDenseSet<Value *, 8> sequentialLoops;
+    getSequentialLoops(srcLoopIVs[0], &sequentialLoops);
+
+    // Clear all sliced loop bounds beginning at the first sequential loop.
+    for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
+      Value *iv = srcLoopIVs[i]->getInductionVar();
+      if (sequentialLoops.count(iv) == 0)
+        continue;
+      for (unsigned j = i; j < numSrcLoopIVs; ++j) {
+        sliceState->lbs[j] = AffineMap();
+        sliceState->ubs[j] = AffineMap();
+      }
+      break;
+    }
+  }
   return true;
 }
 
@@ -674,4 +694,44 @@ mlir::getMemoryFootprintBytes(ConstOpPointer<AffineForOp> forOp,
   return ::getMemoryFootprintBytes(
       *forInst->getBlock(), Block::const_iterator(forInst),
       std::next(Block::const_iterator(forInst)), memorySpace);
+}
+
+/// Returns in 'sequentialLoops' all sequential loops in loop nest rooted
+/// at 'forOp'.
+void mlir::getSequentialLoops(
+    OpPointer<AffineForOp> forOp,
+    llvm::SmallDenseSet<Value *, 8> *sequentialLoops) {
+  // Collect all load and store ops in loop nest rooted at 'forOp'.
+  SmallVector<Instruction *, 4> loadAndStoreOpInsts;
+  forOp->getInstruction()->walk([&](Instruction *opInst) {
+    if (opInst->isa<LoadOp>() || opInst->isa<StoreOp>())
+      loadAndStoreOpInsts.push_back(opInst);
+  });
+
+  // Check dependences on all pairs of ops in 'loadAndStoreOpInsts' and record
+  // loops which carry dependences in 'sequentialLoops'.
+  for (unsigned i = 0, e = loadAndStoreOpInsts.size(); i < e; ++i) {
+    auto *srcOpInst = loadAndStoreOpInsts[i];
+    MemRefAccess srcAccess(srcOpInst);
+    SmallVector<OpPointer<AffineForOp>, 4> srcLoopIVs;
+    getLoopIVs(*srcOpInst, &srcLoopIVs);
+    for (auto *dstOpInst : loadAndStoreOpInsts) {
+      MemRefAccess dstAccess(dstOpInst);
+
+      unsigned numCommonLoops =
+          getNumCommonSurroundingLoops(*srcOpInst, *dstOpInst);
+      for (unsigned d = 1; d <= numCommonLoops; ++d) {
+        auto *iv = srcLoopIVs[d - 1]->getInductionVar();
+        if (sequentialLoops->count(iv) > 0)
+          continue;
+        FlatAffineConstraints dependenceConstraints;
+        if (checkMemrefAccessDependence(srcAccess, dstAccess, d,
+                                        &dependenceConstraints,
+                                        /*dependenceComponents=*/nullptr)) {
+          // Record loop with carried dependence between srcAccess/dstAccess.
+          sequentialLoops->insert(iv);
+        }
+      }
+    }
+  }
 }

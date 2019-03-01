@@ -1669,19 +1669,20 @@ bool FlatAffineConstraints::addSliceBounds(ArrayRef<Value *> values,
   };
 
   for (unsigned i = 0, e = lbMaps.size(); i < e; ++i) {
-    assert(lbMaps[i].getNumInputs() == operands.size());
-    assert(ubMaps[i].getNumInputs() == operands.size());
     unsigned pos;
     if (!findId(*values[i], &pos))
       continue;
 
-    if (AffineMap lbMap = lbMaps[i])
+    if (AffineMap lbMap = lbMaps[i]) {
+      assert(lbMaps[i].getNumInputs() == operands.size());
       if (!addLowerOrUpperBound(pos, lbMap, /*lower=*/true))
         return false;
-
-    if (AffineMap ubMap = ubMaps[i])
+    }
+    if (AffineMap ubMap = ubMaps[i]) {
+      assert(ubMaps[i].getNumInputs() == operands.size());
       if (!addLowerOrUpperBound(pos, ubMap, /*lower=*/false))
         return false;
+    }
   }
   return true;
 }

@@ -94,13 +94,16 @@ struct DependenceComponent {
 /// the operation instruction, indices and memref associated with the access.
 /// Returns 'false' if it can be determined conclusively that the accesses do
 /// not access the same memref element. Returns 'true' otherwise.
+/// If 'allowRAR' is true, will consider read-after-read dependences (typically
+/// used by applications trying to optimize input reuse).
 // TODO(andydavis) Wrap 'dependenceConstraints' and 'dependenceComponents' into
 // a single struct.
 // TODO(andydavis) Make 'dependenceConstraints' optional arg.
 bool checkMemrefAccessDependence(
     const MemRefAccess &srcAccess, const MemRefAccess &dstAccess,
     unsigned loopDepth, FlatAffineConstraints *dependenceConstraints,
-    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents);
+    llvm::SmallVector<DependenceComponent, 2> *dependenceComponents,
+    bool allowRAR = false);
 } // end namespace mlir
 
 #endif // MLIR_ANALYSIS_AFFINE_ANALYSIS_H
