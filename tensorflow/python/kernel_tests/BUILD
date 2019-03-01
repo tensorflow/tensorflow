@@ -2926,7 +2926,6 @@ cuda_py_test(
     srcs = ["rnn_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
