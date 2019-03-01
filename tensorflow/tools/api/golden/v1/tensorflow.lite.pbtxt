@@ -25,6 +25,10 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
+    name: "TargetSpec"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "TocoConverter"
     mtype: "<type \'type\'>"
   }

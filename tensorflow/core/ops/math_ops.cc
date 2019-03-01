@@ -406,10 +406,10 @@ REGISTER_OP("_MklAdd")
         "complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns x + y element-wise.
+Returns `x` + `y` element-wise.
 
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+*NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 )doc");
 
 REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(

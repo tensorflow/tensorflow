@@ -32,8 +32,6 @@ import tensorflow as tf
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 from tensorflow.examples.saved_model.integration_tests import util
-from tensorflow.python.saved_model import load as svmd_load
-tf.saved_model.load = svmd_load.load
 
 FLAGS = flags.FLAGS
 

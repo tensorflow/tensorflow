@@ -2327,7 +2327,8 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
                                   return library->LookUpOpDef(op, sig);
                                 },
                                 &fbody));
-    InlineFunctionBody(*library, pruned_graph->get(), node, fbody);
+    TF_RETURN_IF_ERROR(
+        InlineFunctionBody(*library, pruned_graph->get(), node, fbody));
     delete fbody;
   }
 

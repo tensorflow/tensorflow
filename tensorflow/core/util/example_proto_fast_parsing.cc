@@ -17,6 +17,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/base/casts.h"
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/core/example/example.pb.h"
 #include "tensorflow/core/example/feature.pb_text.h"
 #include "tensorflow/core/framework/numeric_op.h"
@@ -1763,9 +1764,13 @@ Status FastParseSequenceExample(
   DCHECK(context_result != nullptr);
   DCHECK(feature_list_result != nullptr);
   DCHECK(dense_feature_lengths != nullptr);
-  std::map<StringPiece, bool> context_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  size_t num_context_features =
+      context_config.sparse.size() + context_config.dense.size();
+  absl::flat_hash_map<StringPiece, bool> context_is_sparse;
+  context_is_sparse.reserve(num_context_features);
+  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
       context_feature_type_and_lengths;
+  context_feature_type_and_lengths.reserve(num_context_features);
   if (!example_names.empty() && example_names.size() != num_examples) {
     return errors::InvalidArgument(
         "example_names must be empty or have the correct number of elements");
@@ -1793,11 +1798,14 @@ Status FastParseSequenceExample(
                                        " but expected ", c.shape.DebugString());
       }
     }
-    context_is_sparse[c.feature_name] = false;
   }
-  std::map<StringPiece, bool> sequence_is_sparse;
-  std::map<StringPiece, std::pair<DataType, size_t>>
+  size_t num_sequence_features =
+      feature_list_config.sparse.size() + feature_list_config.dense.size();
+  absl::flat_hash_map<StringPiece, bool> sequence_is_sparse;
+  sequence_is_sparse.reserve(num_sequence_features);
+  absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>
       sequence_feature_type_and_lengths;
+  sequence_feature_type_and_lengths.reserve(num_sequence_features);
   for (auto& c : feature_list_config.sparse) {
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
     sequence_feature_type_and_lengths[c.feature_name] =
@@ -1812,13 +1820,12 @@ Status FastParseSequenceExample(
     TF_RETURN_IF_ERROR(CheckConfigDataType(c.dtype));
     sequence_feature_type_and_lengths[c.feature_name] =
         std::make_pair(c.dtype, 0);
-    sequence_is_sparse[c.feature_name] = false;
   }
 
-  std::vector<std::map<StringPiece, StringPiece>> all_context_features(
-      num_examples);
-  std::vector<std::map<StringPiece, StringPiece>> all_sequence_features(
-      num_examples);
+  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
+      all_context_features(num_examples);
+  std::vector<absl::flat_hash_map<StringPiece, StringPiece>>
+      all_sequence_features(num_examples);
   const string kUnknown = "<unknown>";
   for (int d = 0; d < num_examples; d++) {
     const string& example = serialized[d];
@@ -1834,9 +1841,9 @@ Status FastParseSequenceExample(
 
     // Extract pointers to all features within this serialized example.
     while (!stream.ExpectAtEnd()) {
-      std::map<StringPiece, StringPiece>* features = nullptr;
-      const std::map<StringPiece, std::pair<DataType, size_t>>* config =
-          nullptr;
+      absl::flat_hash_map<StringPiece, StringPiece>* features = nullptr;
+      const absl::flat_hash_map<StringPiece, std::pair<DataType, size_t>>*
+          config = nullptr;
       if (stream.ExpectTag(kDelimitedTag(1))) {
         // Context
         features = context_features;

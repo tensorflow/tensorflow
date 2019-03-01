@@ -133,6 +133,7 @@ py_library(
         "tpu_function.py",
         "tpu_optimizer.py",
         "tpu_sharding.py",
+        "tpu_strategy_util.py",
         "tpu_system_metadata.py",
         "training_loop.py",
         "xla.py",
@@ -296,6 +297,21 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python:variables",
         "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "tpu_strategy_util",
+    srcs = ["tpu_strategy_util.py"],
+    deps = [
+        ":tpu_lib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute/cluster_resolver:tpu_cluster_resolver_py",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:tape",
     ],
 )
 

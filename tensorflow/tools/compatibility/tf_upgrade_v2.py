@@ -599,7 +599,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.saved_model.save_keras_model":
             "tf.keras.experimental.export_saved_model",
         "tf.contrib.rnn.RNNCell":
-            "tf.nn.rnn_cell.RNNCell",
+            "tf.compat.v1.nn.rnn_cell.RNNCell",
         "tf.contrib.rnn.LSTMStateTuple":
             "tf.nn.rnn_cell.LSTMStateTuple",
         "tf.contrib.rnn.BasicLSTMCell":
@@ -781,7 +781,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.data.experimental.map_and_batch_with_legacy_function":
             "tf.compat.v1.data.experimental.map_and_batch_with_legacy_function",
         "tf.nn.conv2d_backprop_input":
-            "tf.nn.conv2d_transpose"
+            "tf.nn.conv2d_transpose",
+        "tf.test.compute_gradient":
+            "tf.compat.v1.test.compute_gradient",
     }
     # pylint: enable=line-too-long
 
@@ -895,6 +897,16 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.hessians",
         "tf.nn.max_pool",
         "tf.nn.avg_pool",
+        "tf.estimator.LinearClassifier",
+        "tf.estimator.LinearRegressor",
+        "tf.estimator.DNNLinearCombinedClassifier",
+        "tf.estimator.DNNLinearCombinedRegressor",
+        "tf.estimator.DNNRegressor",
+        "tf.estimator.DNNClassifier",
+        "tf.estimator.BaselineClassifier",
+        "tf.estimator.BaselineRegressor",
+        "tf.initializers.uniform_unit_scaling",
+        "tf.uniform_unit_scaling_initializer",
     }
 
     # Manual mapping of function names to be reordered to their list of argument
@@ -977,13 +989,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         ast_edits.WARNING,
         "`partition_strategy` has been removed from <function name>. "
         " The 'div' strategy will be used by default.")
-
-    # TODO(b/118888586): add default value change to update script.
-    default_loss_reduction_changed = (
-        ast_edits.WARNING,
-        "default value of loss_reduction has been changed to "
-        "SUM_OVER_BATCH_SIZE.\n"
-    )
 
     # make change instead
     uniform_unit_scaling_initializer_comment = (
@@ -1112,22 +1117,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             decay_function_comment,
         "tf.train.noisy_linear_cosine_decay":
             decay_function_comment,
-        "tf.estimator.LinearClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.LinearRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNLinearCombinedClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNLinearCombinedRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNRegressor":
-            default_loss_reduction_changed,
-        "tf.estimator.DNNClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.BaselineClassifier":
-            default_loss_reduction_changed,
-        "tf.estimator.BaselineRegressor":
-            default_loss_reduction_changed,
         "tf.nn.nce_loss":
             deprecate_partition_strategy_comment,
         "tf.nn.safe_embedding_lookup_sparse":
@@ -1202,10 +1191,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             initializers_no_dtype_comment,
         "tf.initializers.glorot_normal":
             initializers_no_dtype_comment,
-        "tf.initializers.uniform_unit_scaling":
-            uniform_unit_scaling_initializer_comment,
-        "tf.uniform_unit_scaling_initializer":
-            uniform_unit_scaling_initializer_comment,
         "tf.losses.absolute_difference":
             losses_comment,
         "tf.losses.add_loss":
@@ -1472,6 +1457,20 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.contrib.summary.histogram": _add_summary_step_transformer,
         "tf.contrib.summary.image": _add_summary_step_transformer,
         "tf.contrib.summary.scalar": _add_summary_step_transformer,
+        "tf.estimator.LinearClassifier": _add_loss_reduction_transformer,
+        "tf.estimator.LinearRegressor": _add_loss_reduction_transformer,
+        "tf.estimator.DNNLinearCombinedClassifier":
+            _add_loss_reduction_transformer,
+        "tf.estimator.DNNLinearCombinedRegressor":
+            _add_loss_reduction_transformer,
+        "tf.estimator.DNNRegressor": _add_loss_reduction_transformer,
+        "tf.estimator.DNNClassifier": _add_loss_reduction_transformer,
+        "tf.estimator.BaselineClassifier": _add_loss_reduction_transformer,
+        "tf.estimator.BaselineRegressor": _add_loss_reduction_transformer,
+        "tf.initializers.uniform_unit_scaling":
+            _add_uniform_scaling_initializer_transformer,
+        "tf.uniform_unit_scaling_initializer":
+            _add_uniform_scaling_initializer_transformer,
     }
 
     self.module_deprecations = {
@@ -1884,3 +1883,60 @@ def _add_summary_step_transformer(parent, node, full_name, name, logs):
       "Summary API writing function %s now requires a 'step' argument; "
       "inserting default of %s." % (full_name or name, default_value)))
   return node
+
+
+def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
+  """Adds a loss_reduction argument if not specified.
+
+  Default value for tf.estimator.*Classifier and tf.estimator.*Regressor
+  loss_reduction argument changed to SUM_OVER_BATCH_SIZE. So, we update
+  existing calls to use the old default value `tf.losses.Reduction.SUM`.
+
+  Note: to apply this transformation, symbol must be added
+  to reordered_function_names above.
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "loss_reduction":
+      return node
+  # TODO(annarev): this should be updated to tf.keras.losses.Reduction.SUM
+  # once b/125525822 is fixed.
+  default_value = "tf.compat.v1.losses.Reduction.SUM"
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(default_value)
+  node.keywords.append(ast.keyword(arg="loss_reduction", value=ast_value))
+  logs.append((
+      ast_edits.INFO, node.lineno, node.col_offset,
+      "%s: Default value of loss_reduction has been changed to "
+      "SUM_OVER_BATCH_SIZE; inserting old default value %s.\n"
+      % (full_name or name, default_value)))
+  return node
+
+def _add_uniform_scaling_initializer_transformer(
+    parent, node, full_name, name, logs):
+  """Updates references to uniform_unit_scaling_initializer.
+
+  Transforms:
+  tf.uniform_unit_scaling_initializer(factor, seed, dtype) to
+  tf.keras.initializers.VarianceScaling(
+      scale=factor, distribution="uniform", seed=seed)
+
+  Note: to apply this transformation, symbol must be added
+  to reordered_function_names above.
+  """
+  for keyword_arg in node.keywords:
+    if keyword_arg.arg == "factor":
+      keyword_arg.arg = "scale"
+
+  distribution_value = "\"uniform\""
+  # Parse with pasta instead of ast to avoid emitting a spurious trailing \n.
+  ast_value = pasta.parse(distribution_value)
+  node.keywords.append(ast.keyword(arg="distribution", value=ast_value))
+
+  lineno = node.func.value.lineno
+  col_offset = node.func.value.col_offset
+  node.func.value = ast_edits.full_name_node("tf.keras.initializers")
+  node.func.value.lineno = lineno
+  node.func.value.col_offset = col_offset
+  node.func.attr = "VarianceScaling"
+  return node
+

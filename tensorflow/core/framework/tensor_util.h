@@ -84,6 +84,9 @@ class TensorProtoFieldHelper : public std::false_type {};
     }                                                                         \
   }
 
+// The argument pairs in the following macro instantiations encode the
+// mapping from C++ type ($1) to repeated field name "$2_val" used for storing
+// values in TensorProto. See tensorflow/core/framework/tensor.proto.
 DEFINE_PROTO_FIELD_HELPER(float, float);
 DEFINE_PROTO_FIELD_HELPER(double, double);
 DEFINE_PROTO_FIELD_HELPER(int8, int);
@@ -100,11 +103,75 @@ DEFINE_PROTO_FIELD_HELPER(quint8, int);
 DEFINE_PROTO_FIELD_HELPER(qint16, int);
 DEFINE_PROTO_FIELD_HELPER(quint16, int);
 DEFINE_PROTO_FIELD_HELPER(qint32, int);
-// TODO(rmlarsen): Add support for complex and half float types.
-// DEFINE_PROTO_FIELD_HELPER(Eigen::hals, half);
-// DEFINE_PROTO_FIELD_HELPER(qint32, half);
+DEFINE_PROTO_FIELD_HELPER(Eigen::half, half);
+DEFINE_PROTO_FIELD_HELPER(bfloat16, half);
 
 #undef DEFINE_PROTO_HELPER
+
+template <typename SrcIter, typename DstIter>
+struct CopyHelper {
+  void operator()(SrcIter begin, SrcIter end, DstIter dst) {
+    using SrcType = typename std::iterator_traits<SrcIter>::value_type;
+    using DstType = typename std::iterator_traits<DstIter>::value_type;
+    std::transform(begin, end, dst, [](const SrcType& x) -> DstType {
+      return static_cast<DstType>(x);
+    });
+  }
+};
+
+template <typename SrcIter>
+struct CopyHelper<SrcIter, SrcIter> {
+  void operator()(SrcIter begin, SrcIter end, SrcIter dst) {
+    std::copy(begin, end, dst);
+  }
+};
+
+// Overloads for Eigen::half and bfloat16 that are stored in 32 bit fields and
+// need to go via a reinterpret cast to uint16.
+template <typename SrcIter>
+struct CopyHelper<SrcIter, Eigen::half*> {
+  void operator()(SrcIter begin, SrcIter end, Eigen::half* dst) {
+    using SrcType = typename std::iterator_traits<SrcIter>::value_type;
+    std::transform(begin, end, dst, [](SrcType x) -> Eigen::half {
+      Eigen::half h;
+      h.x = static_cast<uint16>(x);
+      return h;
+    });
+  }
+};
+
+template <typename DstIter>
+struct CopyHelper<const Eigen::half*, DstIter> {
+  void operator()(const Eigen::half* begin, const Eigen::half* end,
+                  DstIter dst) {
+    using DstType = typename std::iterator_traits<DstIter>::value_type;
+    std::transform(begin, end, dst, [](Eigen::half h) -> DstType {
+      return static_cast<DstType>(h.x);
+    });
+  }
+};
+
+template <typename SrcIter>
+struct CopyHelper<SrcIter, bfloat16*> {
+  void operator()(SrcIter begin, SrcIter end, bfloat16* dst) {
+    using SrcType = typename std::iterator_traits<SrcIter>::value_type;
+    std::transform(begin, end, dst, [](SrcType x) -> bfloat16 {
+      bfloat16 bf16;
+      bf16.value = static_cast<uint16>(x);
+      return bf16;
+    });
+  }
+};
+
+template <typename DstIter>
+struct CopyHelper<const bfloat16*, DstIter> {
+  void operator()(const bfloat16* begin, const bfloat16* end, DstIter dst) {
+    using DstType = typename std::iterator_traits<DstIter>::value_type;
+    std::transform(begin, end, dst, [](bfloat16 bf16) -> DstType {
+      return static_cast<DstType>(bf16.value);
+    });
+  }
+};
 
 template <typename T>
 class TensorProtoHelper : public std::true_type {
@@ -119,39 +186,30 @@ class TensorProtoHelper : public std::true_type {
   }
 
   static void AddValue(const T& value, TensorProto* proto) {
-    FieldHelper::GetMutableField(proto)->Add(static_cast<FieldType>(value));
+    const T* val_ptr = &value;
+    AddValues(val_ptr, val_ptr + 1, proto);
   }
 
   static T GetValue(size_t index, const TensorProto& proto) {
-    return static_cast<T>(FieldHelper::GetField(proto).Get(index));
+    T val;
+    CopyHelper<const FieldType*, T*>()(
+        FieldHelper::GetField(proto).begin() + index,
+        FieldHelper::GetField(proto).begin() + index + 1, &val);
+    return val;
   }
 
   template <typename IterType>
   static void AddValues(IterType begin, IterType end, TensorProto* proto) {
-    using SrcType = typename std::iterator_traits<IterType>::value_type;
     size_t n = std::distance(begin, end);
-    FieldType* dst_ptr = AppendUninitialized(n, proto);
-    if (std::is_same<SrcType, FieldType>::value) {
-      std::copy(begin, end, dst_ptr);
-    } else {
-      std::transform(begin, end, dst_ptr, [](const SrcType& x) -> FieldType {
-        return static_cast<FieldType>(x);
-      });
-    }
+    FieldType* dst = AppendUninitialized(n, proto);
+    CopyHelper<IterType, FieldType*>()(begin, end, dst);
   }
 
   template <typename IterType>
   static void CopyValues(IterType dst, const TensorProto& proto) {
-    using DstType = typename std::iterator_traits<IterType>::value_type;
-    auto begin = FieldHelper::GetField(proto).begin();
-    auto end = FieldHelper::GetField(proto).end();
-    if (std::is_same<DstType, FieldType>::value) {
-      std::copy(begin, end, dst);
-    } else {
-      std::transform(begin, end, dst, [](const FieldType& x) -> DstType {
-        return static_cast<DstType>(x);
-      });
-    }
+    CopyHelper<const FieldType*, IterType>()(
+        FieldHelper::GetField(proto).begin(),
+        FieldHelper::GetField(proto).end(), dst);
   }
 
   static void Truncate(size_t new_size, TensorProto* proto) {

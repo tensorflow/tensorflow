@@ -203,13 +203,15 @@ def while_loop(cond,
     _check_num_inputs_outputs(cond_graph, body_graph,
                               len(flattened_loop_vars))
 
-    outputs = gen_functional_ops._while(
-        flattened_loop_vars,
-        util.create_new_tf_function(cond_graph),
-        util.create_new_tf_function(body_graph),
-        output_shapes=[t.shape for t in body_graph.outputs],
-        parallel_iterations=parallel_iterations,
-        name=scope)
+    with ops.control_dependencies(
+        list(cond_graph.control_captures) + list(body_graph.control_captures)):
+      outputs = gen_functional_ops._while(
+          flattened_loop_vars,
+          util.create_new_tf_function(cond_graph),
+          util.create_new_tf_function(body_graph),
+          output_shapes=[t.shape for t in body_graph.outputs],
+          parallel_iterations=parallel_iterations,
+          name=scope)
 
     _copy_handle_data(body_graph.outputs, outputs)
     util.maybe_set_lowering_attr(outputs[0].op)

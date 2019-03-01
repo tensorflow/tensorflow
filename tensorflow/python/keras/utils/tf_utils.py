@@ -112,13 +112,21 @@ def get_reachable_from_inputs(inputs, targets=None):
 
   while queue:
     x = queue.pop()
+    if isinstance(x, tuple(_user_convertible_tensor_types)):
+      # Can't find consumers of user-specific types.
+      continue
+
     if isinstance(x, ops.Operation):
       outputs = x.outputs[:] or []
       outputs += x._control_outputs  # pylint: disable=protected-access
     elif isinstance(x, variables.Variable):
       outputs = [x.op]
     elif tensor_util.is_tensor(x):
-      outputs = x.consumers()
+      try:
+        outputs = x.consumers()
+      except AttributeError:
+        # `RaggedTensors` have no `.consumers()` method.
+        continue
     else:
       raise TypeError('Expected Operation, Variable, or Tensor, got ' + str(x))
 

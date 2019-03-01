@@ -436,6 +436,7 @@ cuda_py_test(
         ":test",
         "//third_party/py/numpy",
         "//tensorflow/python:array_ops",
+        "//tensorflow/python:config",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:dtypes",
         "//tensorflow/python:errors",
@@ -522,6 +523,18 @@ py_library(
     visibility = ["//tensorflow:internal"],
     deps = [
         ":context",
+        "//tensorflow/python:framework_ops",
+        "@six_archive//:six",
+    ],
+)
+
+tf_py_test(
+    name = "lift_to_graph_test",
+    size = "medium",
+    srcs = ["lift_to_graph_test.py"],
+    additional_deps = [
+        "lift_to_graph",
+        "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
     ],
 )

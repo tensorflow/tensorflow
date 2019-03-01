@@ -201,8 +201,12 @@ class _NameBasedRestoreCoordinator(object):
           # fails.
           saveable = saveable_factory()
         except TypeError:
-          self.unused_attributes.setdefault(trackable, []).append(
-              attribute_name)
+          # Even if we can't name this object, we should construct it and check
+          # whether it's optional to restore it. If it's optional we don't need
+          # to make assertions fail.
+          if not saveable_factory("").optional_restore:
+            self.unused_attributes.setdefault(trackable, []).append(
+                attribute_name)
           continue
       else:
         saveable = saveable_factory
@@ -237,7 +241,10 @@ class _NameBasedRestoreCoordinator(object):
         else:
           tensor_missing = True
 
-      if not tensor_missing:
+      if tensor_missing:
+        # Record that this variable didn't match so assertions will fail.
+        self.unused_attributes.setdefault(trackable, []).append(saveable.name)
+      else:
         # Ignores values missing from the checkpoint, as with object-based
         # restore. Status assertions can be used to check exact matches,
         # although it's unlikely to ever happen for name-based checkpoints.

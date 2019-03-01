@@ -68,10 +68,10 @@ struct UpperBoundFunctor<GPUDevice, T, OutType> {
     CudaLaunchConfig config =
         GetCudaLaunchConfig(values.size(), context->eigen_gpu_device());
 
-    CudaLaunchKernel(UpperBoundKernel<T, OutType>, config.block_count,
-                     config.thread_per_block, 0, stream, sorted_inputs.data(),
-                     batch_size, num_inputs, num_values, values.data(),
-                     output->data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        UpperBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, stream, sorted_inputs.data(), batch_size,
+        num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }
@@ -88,10 +88,10 @@ struct LowerBoundFunctor<GPUDevice, T, OutType> {
     CudaLaunchConfig config =
         GetCudaLaunchConfig(values.size(), context->eigen_gpu_device());
 
-    CudaLaunchKernel(LowerBoundKernel<T, OutType>, config.block_count,
-                     config.thread_per_block, 0, stream, sorted_inputs.data(),
-                     batch_size, num_inputs, num_values, values.data(),
-                     output->data());
+    TF_CHECK_OK(CudaLaunchKernel(
+        LowerBoundKernel<T, OutType>, config.block_count,
+        config.thread_per_block, 0, stream, sorted_inputs.data(), batch_size,
+        num_inputs, num_values, values.data(), output->data()));
 
     return Status::OK();
   }

@@ -38,15 +38,15 @@ class LeakyReLU(Layer):
   `f(x) = x for x >= 0`.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
   Arguments:
-      alpha: float >= 0. Negative slope coefficient.
+    alpha: Float >= 0. Negative slope coefficient.
 
   """
 
@@ -78,26 +78,25 @@ class PReLU(Layer):
   where `alpha` is a learned array with the same shape as x.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
   Arguments:
-      alpha_initializer: initializer function for the weights.
-      alpha_regularizer: regularizer for the weights.
-      alpha_constraint: constraint for the weights.
-      shared_axes: the axes along which to share learnable
-          parameters for the activation function.
-          For example, if the incoming feature maps
-          are from a 2D convolution
-          with output shape `(batch, height, width, channels)`,
-          and you wish to share parameters across space
-          so that each filter only has one set of parameters,
-          set `shared_axes=[1, 2]`.
-
+    alpha_initializer: Initializer function for the weights.
+    alpha_regularizer: Regularizer for the weights.
+    alpha_constraint: Constraint for the weights.
+    shared_axes: The axes along which to share learnable
+      parameters for the activation function.
+      For example, if the incoming feature maps
+      are from a 2D convolution
+      with output shape `(batch, height, width, channels)`,
+      and you wish to share parameters across space
+      so that each filter only has one set of parameters,
+      set `shared_axes=[1, 2]`.
   """
 
   def __init__(self,
@@ -139,7 +138,7 @@ class PReLU(Layer):
     self.input_spec = InputSpec(ndim=len(input_shape), axes=axes)
     self.built = True
 
-  def call(self, inputs, mask=None):
+  def call(self, inputs):
     pos = K.relu(inputs)
     neg = -self.alpha * K.relu(-inputs)
     return pos + neg
@@ -168,16 +167,15 @@ class ELU(Layer):
   `f(x) = x for x >= 0`.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
   Arguments:
-      alpha: scale for the negative factor.
-
+    alpha: Scale for the negative factor.
   """
 
   def __init__(self, alpha=1.0, **kwargs):
@@ -207,16 +205,15 @@ class ThresholdedReLU(Layer):
   `f(x) = 0 otherwise`.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
   Arguments:
-      theta: float >= 0. Threshold location of activation.
-
+    theta: Float >= 0. Threshold location of activation.
   """
 
   def __init__(self, theta=1.0, **kwargs):
@@ -224,7 +221,7 @@ class ThresholdedReLU(Layer):
     self.supports_masking = True
     self.theta = K.cast_to_floatx(theta)
 
-  def call(self, inputs, mask=None):
+  def call(self, inputs):
     return inputs * math_ops.cast(
         math_ops.greater(inputs, self.theta), K.floatx())
 
@@ -243,15 +240,15 @@ class Softmax(Layer):
   """Softmax activation function.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
   Arguments:
-      axis: Integer, axis along which the softmax normalization is applied.
+    axis: Integer, axis along which the softmax normalization is applied.
   """
 
   def __init__(self, axis=-1, **kwargs):
@@ -284,17 +281,17 @@ class ReLU(Layer):
   `f(x) = negative_slope * (x - threshold)` otherwise.
 
   Input shape:
-      Arbitrary. Use the keyword argument `input_shape`
-      (tuple of integers, does not include the samples axis)
-      when using this layer as the first layer in a model.
+    Arbitrary. Use the keyword argument `input_shape`
+    (tuple of integers, does not include the samples axis)
+    when using this layer as the first layer in a model.
 
   Output shape:
-      Same shape as the input.
+    Same shape as the input.
 
   Arguments:
-      max_value: float >= 0. Maximum activation value.
-      negative_slope: float >= 0. Negative slope coefficient.
-      threshold: float. Threshold value for thresholded activation.
+    max_value: Float >= 0. Maximum activation value.
+    negative_slope: Float >= 0. Negative slope coefficient.
+    threshold: Float. Threshold value for thresholded activation.
   """
 
   def __init__(self, max_value=None, negative_slope=0, threshold=0, **kwargs):

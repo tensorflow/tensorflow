@@ -4,8 +4,4 @@ tf_module {
     name: "DeviceWrapper"
     mtype: "<type \'type\'>"
   }
-  member {
-    name: "RNNCell"
-    mtype: "<type \'type\'>"
-  }
 }
