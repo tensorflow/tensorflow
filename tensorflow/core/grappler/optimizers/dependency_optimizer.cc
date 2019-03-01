@@ -80,7 +80,7 @@ bool DependencyOptimizer::SafeToRemoveIdentity(const NodeDef& node) const {
     // if it requires anchoring a control dependencies the Switch node, which
     // is not valid.
     if (str_util::StartsWith(node.name(), kConstantFoldingCtrl)) {
-      // TODO(rmlarsen): Try to remove this artificial contraint.
+      // TODO(rmlarsen): Try to remove this artificial constraint.
       return false;
     }
   }
