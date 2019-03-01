@@ -32,7 +32,7 @@
 #include "mlir/IR/Location.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/Value.h"
-#include "mlir/StandardOps/StandardOps.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Support/STLExtras.h"

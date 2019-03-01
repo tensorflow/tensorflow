@@ -1,4 +1,4 @@
-//===- standard_ops.td - Standard operation definitions ----*- tablegen -*-===//
+//===- Ops.td - Standard operation definitions -------------*- tablegen -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -25,7 +25,7 @@
 
 #ifdef OP_BASE
 #else
-include "mlir/IR/op_base.td"
+include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 def AnyType : Type<CPred<"true">, "any type">;

@@ -1,4 +1,4 @@
-//===-- op_base.td - Base op definition file ---------------*- tablegen -*-===//
+//===-- OpBase.td - Base op definition file ----------------*- tablegen -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //

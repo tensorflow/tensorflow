@@ -1,6 +1,6 @@
 // RUN: mlir-tblgen -gen-rewriters -I %S/../../include %s | FileCheck %s
 
-include "mlir/IR/op_base.td"
+include "mlir/IR/OpBase.td"
 
 // Create a Type and Attribute.
 def T : BuildableType<"buildT">;

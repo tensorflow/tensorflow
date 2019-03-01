@@ -1,6 +1,6 @@
 // RUN: mlir-tblgen -gen-op-definitions -I %S/../../include %s | FileCheck %s
 
-include "mlir/IR/op_base.td"
+include "mlir/IR/OpBase.td"
 
 def SameTypeOp : Op<"same_type_op", [SameValueType]> {
   let arguments = (ins I32:$x);

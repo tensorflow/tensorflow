@@ -26,7 +26,7 @@
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/Analysis/Utils.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/StandardOps.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/Transforms/Passes.h"
 #include "llvm/ADT/SmallPtrSet.h"
 #include <algorithm>

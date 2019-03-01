@@ -27,7 +27,7 @@
 #include "mlir/IR/PatternMatch.h"
 #include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/Pass/Pass.h"
-#include "mlir/StandardOps/StandardOps.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/Functional.h"
 #include "mlir/Transforms/DialectConversion.h"
 #include "mlir/Transforms/Passes.h"

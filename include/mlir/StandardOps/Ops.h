@@ -1,4 +1,4 @@
-//===- StandardOps.h - Standard MLIR Operations -----------------*- C++ -*-===//
+//===- Ops.h - Standard MLIR Operations -------------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -20,8 +20,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_STANDARDOPS_STANDARDOPS_H
-#define MLIR_STANDARDOPS_STANDARDOPS_H
+#ifndef MLIR_STANDARDOPS_OPS_H
+#define MLIR_STANDARDOPS_OPS_H
 
 #include "mlir/IR/Attributes.h"
 #include "mlir/IR/Dialect.h"
@@ -38,7 +38,7 @@ public:
 };
 
 #define GET_OP_CLASSES
-#include "mlir/StandardOps/standard_ops.inc"
+#include "mlir/StandardOps/Ops.inc"
 
 /// The "alloc" operation allocates a region of memory, as specified by its
 /// memref type. For example:
@@ -751,4 +751,4 @@ private:
 
 } // end namespace mlir
 
-#endif
+#endif // MLIR_STANDARDOPS_OPS_H

@@ -17,7 +17,7 @@
 
 #include "mlir/Analysis/NestedMatcher.h"
 #include "mlir/AffineOps/AffineOps.h"
-#include "mlir/StandardOps/StandardOps.h"
+#include "mlir/StandardOps/Ops.h"
 
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/STLExtras.h"

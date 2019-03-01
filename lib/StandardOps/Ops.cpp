@@ -1,4 +1,4 @@
-//===- StandardOps.cpp - Standard MLIR Operations -------------------------===//
+//===- Ops.cpp - Standard MLIR Operations ---------------------------------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -15,7 +15,7 @@
 // limitations under the License.
 // =============================================================================
 
-#include "mlir/StandardOps/StandardOps.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Builders.h"
@@ -41,7 +41,7 @@ StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
                 DmaStartOp, DmaWaitOp, ExtractElementOp, LoadOp, MemRefCastOp,
                 SelectOp, StoreOp, TensorCastOp,
 #define GET_OP_LIST
-#include "mlir/StandardOps/standard_ops.inc"
+#include "mlir/StandardOps/Ops.inc"
                 >();
 }
 

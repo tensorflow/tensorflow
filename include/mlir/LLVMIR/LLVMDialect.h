@@ -67,7 +67,7 @@ public:
 
 ///// Ops /////
 #define GET_OP_CLASSES
-#include "mlir/LLVMIR/llvm_ops.inc"
+#include "mlir/LLVMIR/LLVMOps.inc"
 
 namespace LLVM {
 class LLVMDialect : public Dialect {

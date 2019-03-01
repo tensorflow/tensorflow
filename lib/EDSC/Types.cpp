@@ -27,7 +27,7 @@
 #include "mlir/IR/Function.h"
 #include "mlir/IR/OperationSupport.h"
 #include "mlir/IR/StandardTypes.h"
-#include "mlir/StandardOps/StandardOps.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/SuperVectorOps/SuperVectorOps.h"
 #include "mlir/Support/STLExtras.h"
 

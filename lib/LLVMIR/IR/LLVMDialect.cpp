@@ -68,7 +68,7 @@ LLVMDialect::LLVMDialect(MLIRContext *context)
   addTypes<LLVMType>();
 #define GET_OP_LIST
   addOperations<
-#include "mlir/LLVMIR/llvm_ops.inc"
+#include "mlir/LLVMIR/LLVMOps.inc"
       >();
 }
 

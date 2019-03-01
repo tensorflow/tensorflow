@@ -29,7 +29,7 @@
 #include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
-#include "mlir/StandardOps/StandardOps.h"
+#include "mlir/StandardOps/Ops.h"
 #include "mlir/Support/MathExtras.h"
 #include "mlir/Support/STLExtras.h"
 #include "llvm/ADT/DenseMap.h"

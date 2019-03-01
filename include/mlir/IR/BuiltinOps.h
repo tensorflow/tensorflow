@@ -1,4 +1,4 @@
-//===- BuiltinOps.h - Builtin MLIR Operations -----------------*- C++ -*-===//
+//===- BuiltinOps.h - Builtin MLIR Operations -------------------*- C++ -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //

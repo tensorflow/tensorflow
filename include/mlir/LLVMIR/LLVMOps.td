@@ -1,4 +1,4 @@
-//===-- llvm_ops.td - LLVM IR dialect op definition file ---*- tablegen -*-===//
+//===-- LLVMOps.td - LLVM IR dialect op definition file ----*- tablegen -*-===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -25,7 +25,7 @@
 
 #ifdef OP_BASE
 #else
-include "mlir/IR/op_base.td"
+include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 // LLVM IR type wrapped in MLIR.

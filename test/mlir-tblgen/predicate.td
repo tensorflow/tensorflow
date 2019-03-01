@@ -1,6 +1,6 @@
 // RUN: mlir-tblgen -gen-op-definitions -I %S/../../include %s | FileCheck %s
 
-include "mlir/IR/op_base.td"
+include "mlir/IR/OpBase.td"
 
 def I32OrF32 : Type<CPred<"{0}.isInteger(32) || {0}.isF32()">,
                     "32-bit integer or floating-point type">;

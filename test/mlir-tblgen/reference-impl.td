@@ -2,7 +2,7 @@
 
 #ifdef OP_BASE
 #else
-include "mlir/IR/op_base.td"
+include "mlir/IR/OpBase.td"
 #endif // OP_BASE
 
 def X_AddOp : Op<"x.add">,
