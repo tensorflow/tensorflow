@@ -83,9 +83,8 @@ public:
   /// dictionary with their values.  elidedAttrs allows the client to ignore
   /// specific well known attributes, commonly used if the attribute value is
   /// printed some other way (like as a fixed operand).
-  virtual void
-  printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                        ArrayRef<const char *> elidedAttrs = {}) = 0;
+  virtual void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
+                                     ArrayRef<StringRef> elidedAttrs = {}) = 0;
 
   /// Print the entire operation with the default generic assembly form.
   virtual void printGenericOp(const Instruction *op) = 0;
@@ -235,19 +234,18 @@ public:
 
   /// Parse an arbitrary attribute and return it in result.  This also adds the
   /// attribute to the specified attribute list with the specified name.
-  virtual bool parseAttribute(Attribute &result, const char *attrName,
+  virtual bool parseAttribute(Attribute &result, StringRef attrName,
                               SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   /// Parse an arbitrary attribute of a given type and return it in result. This
   /// also adds the attribute to the specified attribute list with the specified
   /// name.
-  virtual bool parseAttribute(Attribute &result, Type type,
-                              const char *attrName,
+  virtual bool parseAttribute(Attribute &result, Type type, StringRef attrName,
                               SmallVectorImpl<NamedAttribute> &attrs) = 0;
 
   /// Parse an attribute of a specific kind and type.
   template <typename AttrType>
-  bool parseAttribute(AttrType &result, Type type, const char *attrName,
+  bool parseAttribute(AttrType &result, Type type, StringRef attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) {
     llvm::SMLoc loc;
     getCurrentLocation(&loc);

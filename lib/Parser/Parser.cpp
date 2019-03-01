@@ -3020,7 +3020,7 @@ public:
   /// Parse an arbitrary attribute of a given type and return it in result. This
   /// also adds the attribute to the specified attribute list with the specified
   /// name.
-  bool parseAttribute(Attribute &result, Type type, const char *attrName,
+  bool parseAttribute(Attribute &result, Type type, StringRef attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) override {
     result = parser.parseAttribute(type);
     if (!result)
@@ -3032,7 +3032,7 @@ public:
 
   /// Parse an arbitrary attribute and return it in result.  This also adds
   /// the attribute to the specified attribute list with the specified name.
-  bool parseAttribute(Attribute &result, const char *attrName,
+  bool parseAttribute(Attribute &result, StringRef attrName,
                       SmallVectorImpl<NamedAttribute> &attrs) override {
     return parseAttribute(result, Type(), attrName, attrs);
   }

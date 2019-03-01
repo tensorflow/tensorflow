@@ -158,7 +158,7 @@ void AffineApplyOp::print(OpAsmPrinter *p) const {
   auto map = getAffineMap();
   *p << "affine.apply " << map;
   printDimAndSymbolList(operand_begin(), operand_end(), map.getNumDims(), p);
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"map");
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
 }
 
 bool AffineApplyOp::verify() const {
@@ -648,7 +648,7 @@ static bool parseBound(bool isLower, OperationState *result, OpAsmParser *p) {
   p->getCurrentLocation(&attrLoc);
 
   Attribute boundAttr;
-  if (p->parseAttribute(boundAttr, builder.getIndexType(), boundAttrName.data(),
+  if (p->parseAttribute(boundAttr, builder.getIndexType(), boundAttrName,
                         result->attributes))
     return true;
 
@@ -736,6 +736,10 @@ bool AffineForOp::parse(OpAsmParser *parser, OperationState *result) {
   if (parser->parseBlockList())
     return true;
 
+  // Parse the optional attribute list.
+  if (parser->parseOptionalAttributeDict(result->attributes))
+    return true;
+
   // Set the operands list as resizable so that we can freely modify the bounds.
   result->setOperandListToResizable();
   return false;
@@ -792,6 +796,10 @@ void AffineForOp::print(OpAsmPrinter *p) const {
     *p << " step " << getStep();
   p->printBlockList(getInstruction()->getBlockList(0),
                     /*printEntryBlockArgs=*/false);
+  p->printOptionalAttrDict(getAttrs(),
+                           /*elidedAttrs=*/{getLowerBoundAttrName(),
+                                            getUpperBoundAttrName(),
+                                            getStepAttrName()});
 }
 
 namespace {
@@ -1079,7 +1087,7 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
   // Parse the condition attribute set.
   IntegerSetAttr conditionAttr;
   unsigned numDims;
-  if (parser->parseAttribute(conditionAttr, getConditionAttrName().data(),
+  if (parser->parseAttribute(conditionAttr, getConditionAttrName(),
                              result->attributes) ||
       parseDimAndSymbolList(parser, result->operands, numDims))
     return true;
@@ -1105,6 +1113,10 @@ bool AffineIfOp::parse(OpAsmParser *parser, OperationState *result) {
       return true;
   }
 
+  // Parse the optional attribute list.
+  if (parser->parseOptionalAttributeDict(result->attributes))
+    return true;
+
   // Reserve 2 block lists, one for the 'then' and one for the 'else' regions.
   result->reserveBlockLists(2);
   return false;
@@ -1123,6 +1135,10 @@ void AffineIfOp::print(OpAsmPrinter *p) const {
     *p << " else";
     p->printBlockList(elseBlockList);
   }
+
+  // Print the attribute list.
+  p->printOptionalAttrDict(getAttrs(),
+                           /*elidedAttrs=*/getConditionAttrName());
 }
 
 IntegerSet AffineIfOp::getIntegerSet() const {

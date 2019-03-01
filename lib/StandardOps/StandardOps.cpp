@@ -152,7 +152,7 @@ void AllocOp::print(OpAsmPrinter *p) const {
   // Print dynamic dimension operands.
   printDimAndSymbolList(operand_begin(), operand_end(),
                         type.getNumDynamicDims(), p);
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"map");
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"map"});
   *p << " : " << type;
 }
 
@@ -348,7 +348,7 @@ void CallOp::print(OpAsmPrinter *p) const {
   *p << '(';
   p->printOperands(getOperands());
   *p << ')';
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"callee");
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"callee"});
   *p << " : " << getCallee()->getType();
 }
 
@@ -447,7 +447,7 @@ void CallIndirectOp::print(OpAsmPrinter *p) const {
   auto operandRange = getOperands();
   p->printOperands(++operandRange.begin(), operandRange.end());
   *p << ')';
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"callee");
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"callee"});
   *p << " : " << getCallee()->getType();
 }
 
@@ -581,7 +581,7 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
   SmallVector<NamedAttribute, 4> attrs;
   Attribute predicateNameAttr;
   Type type;
-  if (parser->parseAttribute(predicateNameAttr, getPredicateAttrName().data(),
+  if (parser->parseAttribute(predicateNameAttr, getPredicateAttrName(),
                              attrs) ||
       parser->parseComma() || parser->parseOperandList(ops, 2) ||
       parser->parseOptionalAttributeDict(attrs) ||
@@ -632,7 +632,7 @@ void CmpIOp::print(OpAsmPrinter *p) const {
   *p << ", ";
   p->printOperand(getOperand(1));
   p->printOptionalAttrDict(getAttrs(),
-                           /*elidedAttrs=*/{getPredicateAttrName().data()});
+                           /*elidedAttrs=*/{getPredicateAttrName()});
   *p << " : " << getOperand(0)->getType();
 }
 
@@ -769,7 +769,7 @@ void DimOp::build(Builder *builder, OperationState *result,
 
 void DimOp::print(OpAsmPrinter *p) const {
   *p << "dim " << *getOperand() << ", " << getIndex();
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"index");
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"index"});
   *p << " : " << getOperand()->getType();
 }
 

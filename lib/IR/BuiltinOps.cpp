@@ -267,7 +267,7 @@ void ConstantOp::build(Builder *builder, OperationState *result,
 
 void ConstantOp::print(OpAsmPrinter *p) const {
   *p << "constant ";
-  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/"value");
+  p->printOptionalAttrDict(getAttrs(), /*elidedAttrs=*/{"value"});
 
   if (getAttrs().size() > 1)
     *p << ' ';

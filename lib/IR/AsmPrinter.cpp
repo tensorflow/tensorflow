@@ -322,7 +322,7 @@ protected:
   ModuleState &state;
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                             ArrayRef<const char *> elidedAttrs = {});
+                             ArrayRef<StringRef> elidedAttrs = {});
   void printAttributeOptionalType(Attribute attr, bool includeType);
   void printAffineMapId(int affineMapId) const;
   void printAffineMapReference(AffineMap affineMap);
@@ -1013,7 +1013,7 @@ void ModulePrinter::printIntegerSet(IntegerSet set) {
 //===----------------------------------------------------------------------===//
 
 void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                                          ArrayRef<const char *> elidedAttrs) {
+                                          ArrayRef<StringRef> elidedAttrs) {
   // If there are no attributes, then there is nothing to be done.
   if (attrs.empty())
     return;
@@ -1029,8 +1029,8 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
 
     // If the caller has requested that this attribute be ignored, then drop it.
     bool ignore = false;
-    for (const char *elide : elidedAttrs)
-      ignore |= attrName == StringRef(elide);
+    for (auto elide : elidedAttrs)
+      ignore |= attrName == elide;
 
     // Otherwise add it to our filteredAttrs list.
     if (!ignore) {
@@ -1094,7 +1094,7 @@ public:
   void printOperand(const Value *value) { printValueID(value); }
 
   void printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
-                             ArrayRef<const char *> elidedAttrs = {}) {
+                             ArrayRef<StringRef> elidedAttrs = {}) {
     return ModulePrinter::printOptionalAttrDict(attrs, elidedAttrs);
   };
 
