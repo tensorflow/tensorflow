@@ -189,7 +189,7 @@ class NcclManager {
   // the corresponding NCCL/CUDA error string.
   Status GetCommunicator(Collective* collective, Communicator** communicator);
 
-  // Adds a participant device to the local `Collective` instance correponding
+  // Adds a participant device to the local `Collective` instance corresponding
   // to `collective_key`.  Launches the `Collective` if it is ready, which it
   // checks by calling `CheckReady()`.  Also performs consistency and sanity
   // checks before launching.
