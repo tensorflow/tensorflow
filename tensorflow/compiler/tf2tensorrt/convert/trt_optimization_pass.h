@@ -40,7 +40,8 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
         is_dynamic_op_(false),
         max_cached_batches_(1),
         max_workspace_size_bytes_(256LL << 20),
-        use_calibration_(true) {
+        use_calibration_(true),
+        use_function_backup_(true) {
     VLOG(1) << "Constructing " << name_;
   }
 
@@ -69,6 +70,9 @@ class TRTOptimizationPass : public grappler::CustomGraphOptimizer {
   int max_cached_batches_;
   int64_t max_workspace_size_bytes_;
   bool use_calibration_;
+
+  // Whether to allow TF function fallback path in TRTEngineOp.
+  bool use_function_backup_;
 };
 
 }  // namespace convert

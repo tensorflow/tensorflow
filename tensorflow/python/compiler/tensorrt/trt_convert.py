@@ -469,7 +469,8 @@ class TrtGraphConverter(GraphConverter):
       is_dynamic_op=False,
       maximum_cached_engines=1,
       cached_engine_batches=None,
-      use_calibration=True):
+      use_calibration=True,
+      use_function_backup=True):
     """Returns a RewriterConfig proto for TRT transformation.
 
     Args:
@@ -503,6 +504,9 @@ class TrtGraphConverter(GraphConverter):
         an error will occur. Please note that accuracy may be negatively
         affected if there is a mismatch between which tensors TRT quantizes and
         which tensors were trained with fake quantization.
+      use_function_backup: if set to True, it will create a FunctionDef for each
+        subgraph that is converted to TRT op, and if TRT ops fail to execute at
+        runtime, it'll invoke that function as a fallback.
 
     Returns:
       A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -548,6 +552,7 @@ class TrtGraphConverter(GraphConverter):
       optimizer.parameter_map["cached_engine_batches"].list.i.extend(
           cached_engine_batches)
     optimizer.parameter_map["use_calibration"].b = use_calibration
+    optimizer.parameter_map["use_function_backup"].b = use_function_backup
     return rewriter_config_with_trt
 
   def __init__(self,
@@ -564,7 +569,8 @@ class TrtGraphConverter(GraphConverter):
                is_dynamic_op=False,
                maximum_cached_engines=1,
                cached_engine_batches=None,
-               use_calibration=True):
+               use_calibration=True,
+               use_function_backup=True):
     """Initialize the converter.
 
     Args:
@@ -609,6 +615,9 @@ class TrtGraphConverter(GraphConverter):
         an error will occur. Please note that accuracy may be negatively
         affected if there is a mismatch between which tensors TRT quantizes and
         which tensors were trained with fake quantization.
+      use_function_backup: if set to True, it will create a FunctionDef for each
+        subgraph that is converted to TRT op, and if TRT ops fail to execute at
+        runtime, it'll invoke that function as a fallback.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -621,6 +630,9 @@ class TrtGraphConverter(GraphConverter):
         input_graph_def=input_graph_def,
         nodes_blacklist=nodes_blacklist,
         session_config=session_config)
+
+    # TODO(laigd): move all the validations below to
+    # get_tensorrt_rewriter_config().
 
     # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
     # even if it cannot find TensorRT library.
@@ -671,6 +683,13 @@ class TrtGraphConverter(GraphConverter):
 
     self._need_calibration = (
         precision_mode == TrtPrecisionMode.INT8 and use_calibration)
+    self._use_function_backup = use_function_backup
+
+    # TODO(laigd): consider provide a mechanism to remove the fallback path
+    # after calibration is done.
+    if self._need_calibration and not use_function_backup:
+      raise ValueError(
+          "Calibration requires enabling fallback to TF function execution.")
 
     # TODO(laigd):
     # - Get rid of is_dynamic_op option, it should always be True, and it should
@@ -696,7 +715,8 @@ class TrtGraphConverter(GraphConverter):
         is_dynamic_op=self._is_dynamic_op,
         maximum_cached_engines=self._maximum_cached_engines,
         cached_engine_batches=self._cached_engine_batches,
-        use_calibration=self._need_calibration)
+        use_calibration=self._need_calibration,
+        use_function_backup=self._use_function_backup)
 
   def finalize_calibration(self):
     assert self._need_calibration

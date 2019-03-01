@@ -20,9 +20,6 @@ from __future__ import print_function
 
 import os
 
-from tensorflow.python.compiler.tensorrt.wrap_conversion import clear_test_values
-from tensorflow.python.compiler.tensorrt.wrap_conversion import enable_test_value
-from tensorflow.python.compiler.tensorrt.wrap_conversion import get_test_value
 from tensorflow.python.compiler.tensorrt.wrap_conversion import is_tensorrt_enabled
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
@@ -31,6 +28,7 @@ from tensorflow.python.compiler.tensorrt import trt_convert
 from tensorflow.python.eager import context
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import errors
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
@@ -175,7 +173,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                     max_batch_size=1,
                     minimum_segment_size=3,
                     is_dynamic_op=False,
-                    maximum_cached_engines=1):
+                    maximum_cached_engines=1,
+                    use_function_backup=False):
     """Helper method to convert a GraphDef or SavedModel using TF-TRT."""
     converter = trt_convert.TrtGraphConverter(
         input_saved_model_dir=input_saved_model_dir,
@@ -188,7 +187,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
                         else trt_convert.TrtPrecisionMode.FP32),
         minimum_segment_size=minimum_segment_size,
         is_dynamic_op=is_dynamic_op,
-        maximum_cached_engines=maximum_cached_engines)
+        maximum_cached_engines=maximum_cached_engines,
+        use_function_backup=use_function_backup)
     conversion_result = converter.convert()
 
     if context.executing_eagerly():
@@ -226,7 +226,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
         need_calibration=need_calibration,
-        is_dynamic_op=is_dynamic_op)
+        is_dynamic_op=is_dynamic_op,
+        use_function_backup=need_calibration)
     graph_defs_to_verify = [output_graph_def]
 
     if output_saved_model_dir:
@@ -335,16 +336,20 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         output_saved_model_dir=output_saved_model_dir,
         is_dynamic_op=True)
 
-  def _TestRun(self, sess, batch_size, expect_engine_is_run):
-    clear_test_values("")
-    result = sess.run("output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
-    self.assertAllEqual([[[4.0]]] * batch_size, result)
-    execute_engine_test_value = ("done" if expect_engine_is_run else "")
-    execute_native_segment_test_value = ("" if expect_engine_is_run else "done")
-    self.assertEqual(execute_engine_test_value,
-                     get_test_value("TRTEngineOp_0:ExecuteTrtEngine"))
-    self.assertEqual(execute_native_segment_test_value,
-                     get_test_value("TRTEngineOp_0:ExecuteNativeSegment"))
+  def _TestRun(self,
+               sess,
+               batch_size,
+               use_function_backup=False,
+               expect_engine_is_run=True):
+    try:
+      result = sess.run(
+          "output:0", feed_dict={"input:0": [[[1.0]]] * batch_size})
+      self.assertAllEqual([[[4.0]]] * batch_size, result)
+    except errors.OpError as e:
+      # This should happen only when fallback path is disabled and TRT engine
+      # fails to run.
+      self.assertTrue(not use_function_backup and not expect_engine_is_run)
+      self.assertIn("Fallback path is disabled, for TRTEngineOp_0", str(e))
 
   @test_util.deprecated_graph_mode_only
   def testTrtGraphConverter_MinimumSegmentSize(self):
@@ -365,7 +370,6 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   def testTrtGraphConverter_DynamicOp(self):
     if not is_tensorrt_enabled():
       return
-    enable_test_value()
 
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir2")
@@ -375,37 +379,36 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
         is_dynamic_op=True,
-        maximum_cached_engines=2)
+        maximum_cached_engines=2,
+        use_function_backup=False)  # Disallow fallback.
 
     # Test the output GraphDef.
     with ops.Graph().as_default():
       importer.import_graph_def(output_graph_def, name="")
       with self.session(config=self._GetConfigProto()) as sess:
         # Run with batch size 1, a new engine is created and cached.
-        self._TestRun(sess, 1, True)
+        self._TestRun(sess, 1)
         # Run with batch size 2, a new engine is created and cached.
-        self._TestRun(sess, 2, True)
+        self._TestRun(sess, 2)
         # Run with batch size 3, since the number of cached engines has reached
         # the max, it should evict an old engine and create a new one.
-        self._TestRun(sess, 3, True)
+        self._TestRun(sess, 3)
 
     # Test the output SavedModel
     with ops.Graph().as_default():
       with self.session(config=self._GetConfigProto()) as sess:
         loader.load(sess, [tag_constants.SERVING], output_saved_model_dir)
         # Run with batch size 1, a new engine is created and cached.
-        self._TestRun(sess, 1, True)
+        self._TestRun(sess, 1)
         # Run with batch size 2, a new engine is created and cached.
-        self._TestRun(sess, 2, True)
+        self._TestRun(sess, 2)
         # Run with batch size 3, since the number of cached engines has reached
         # the max, it should evict an old engine and create a new one.
-        self._TestRun(sess, 3, True)
+        self._TestRun(sess, 3)
 
-  @test_util.deprecated_graph_mode_only
-  def testTrtGraphConverter_StaticOp(self):
+  def _TestStaticOp(self, use_function_backup):
     if not is_tensorrt_enabled():
       return
-    enable_test_value()
 
     tmp_dir = self.get_temp_dir()
     input_saved_model_dir = os.path.join(tmp_dir, "in_dir3")
@@ -414,7 +417,8 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
     output_graph_def = self._ConvertGraph(
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
-        maximum_cached_engines=2)  # This is noop, added just for testing.
+        maximum_cached_engines=2,  # This is noop, added just for testing.
+        use_function_backup=use_function_backup)
 
     # Test the output GraphDef.
     with ops.Graph().as_default():
@@ -422,10 +426,18 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
       with self.session(config=self._GetConfigProto()) as sess:
         # Run with batch size 1, the default engine embedded in the graphdef
         # will be used.
-        self._TestRun(sess, 1, True)
-        # Run with batch size 2, which exceed the max_batch_size, it should fall
-        # back to TF function.
-        self._TestRun(sess, 2, False)
+        self._TestRun(
+            sess,
+            1,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=True)
+        # Run with batch size 2, which exceed the max_batch_size, it should try
+        # to fall back to TF function.
+        self._TestRun(
+            sess,
+            2,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=False)
 
     # Test the output SavedModel
     with ops.Graph().as_default():
@@ -433,10 +445,26 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         loader.load(sess, [tag_constants.SERVING], output_saved_model_dir)
         # Run with batch size 1, the default engine embedded in the graphdef
         # will be used.
-        self._TestRun(sess, 1, True)
-        # Run with batch size 2, which exceed the max_batch_size, it should fall
-        # back to TF function.
-        self._TestRun(sess, 2, False)
+        self._TestRun(
+            sess,
+            1,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=True)
+        # Run with batch size 2, which exceed the max_batch_size, it should try
+        # to fall back to TF function.
+        self._TestRun(
+            sess,
+            2,
+            use_function_backup=use_function_backup,
+            expect_engine_is_run=False)
+
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_StaticOp_NoFallback(self):
+    self._TestStaticOp(use_function_backup=False)
+
+  @test_util.deprecated_graph_mode_only
+  def testTrtGraphConverter_StaticOp_WithFallback(self):
+    self._TestStaticOp(use_function_backup=True)
 
 
 if __name__ == "__main__":

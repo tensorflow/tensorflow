@@ -72,6 +72,9 @@ Status TRTOptimizationPass::Init(
   if (params.count("use_calibration")) {
     use_calibration_ = params.at("use_calibration").b();
   }
+  if (params.count("use_function_backup")) {
+    use_function_backup_ = params.at("use_function_backup").b();
+  }
   return Status::OK();
 }
 
@@ -262,6 +265,7 @@ Status TRTOptimizationPass::Optimize(grappler::Cluster* cluster,
   cp.cached_engine_batches = batches_;
   cp.max_cached_engines = max_cached_batches_;
   cp.use_calibration = use_calibration_;
+  cp.use_function_backup = use_function_backup_;
   auto status = ConvertAfterShapes(cp);
   VLOG(1) << "Returning from " << name_;
   return status;
