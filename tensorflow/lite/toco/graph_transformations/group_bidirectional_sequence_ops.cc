@@ -70,7 +70,8 @@ bool MatchDynamicBidirectionalSequenceOutputs(Operator* op, const Model& model,
     return false;
   }
 
-  if (reverse_output->type != OperatorType::kReverseV2) {
+  if (reverse_output->type != OperatorType::kReverseV2 &&
+      reverse_output->type != OperatorType::kReverseSequence) {
     return false;
   }
 
@@ -117,7 +118,8 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
   if (is_dynamic_rnn) {
     // For dynamic bidirectional sequence ops, bw_sequence will have a reverse
     // op.
-    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2) {
+    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2 &&
+        first_bw_sequence_op_input->type != OperatorType::kReverseSequence) {
       return false;
     }
 
