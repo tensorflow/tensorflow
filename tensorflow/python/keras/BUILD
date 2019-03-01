@@ -325,6 +325,7 @@ py_library(
         "layers/convolutional_recurrent.py",
         "layers/core.py",
         "layers/cudnn_recurrent.py",
+        "layers/dense_attention.py",
         "layers/embeddings.py",
         "layers/kernelized.py",
         "layers/local.py",
@@ -642,6 +643,18 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 3,
+)
+
+tf_py_test(
+    name = "dense_attention_test",
+    size = "medium",
+    srcs = ["layers/dense_attention_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 cuda_py_test(
