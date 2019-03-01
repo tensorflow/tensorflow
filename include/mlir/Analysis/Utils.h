@@ -187,6 +187,7 @@ struct MemRefRegion {
   /// Returns the size of this MemRefRegion in bytes.
   Optional<int64_t> getRegionSize();
 
+  // Wrapper around FlatAffineConstraints::unionBoundingBox.
   bool unionBoundingBox(const MemRefRegion &other);
 
   /// Returns the rank of the memref that this region corresponds to.

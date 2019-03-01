@@ -508,7 +508,8 @@ public:
   /// contains the points of 'this' set and that of 'other', with the symbols
   /// being treated specially. For each of the dimensions, the min of the lower
   /// bounds (symbolic) and the max of the upper bounds (symbolic) is computed
-  /// to determine such a bounding box.
+  /// to determine such a bounding box. `other' is expected to have the same
+  /// dimensional identifiers as this constraint system (in the same order).
   ///
   /// Eg: if 'this' is {0 <= d0 <= 127}, 'other' is {16 <= d0 <= 192}, the
   ///      output is {0 <= d0 <= 192}.
@@ -532,6 +533,13 @@ public:
   inline ArrayRef<Optional<Value *>> getIds() const {
     return {ids.data(), ids.size()};
   }
+  inline MutableArrayRef<Optional<Value *>> getIds() {
+    return {ids.data(), ids.size()};
+  }
+
+  /// Returns the optional Value corresponding to the pos^th identifier.
+  inline Optional<Value *> getId(unsigned pos) const { return ids[pos]; }
+  inline Optional<Value *> &getId(unsigned pos) { return ids[pos]; }
 
   /// Returns the Value associated with the pos^th identifier. Asserts if
   /// no Value identifier was associated.
@@ -707,8 +715,8 @@ private:
 
   /// Values corresponding to the (column) identifiers of this constraint
   /// system appearing in the order the identifiers correspond to columns.
-  /// Temporary ones or those that aren't associated to any Value are to be
-  /// set to None.
+  /// Temporary ones or those that aren't associated to any Value are set to
+  /// None.
   SmallVector<Optional<Value *>, 8> ids;
 
   /// A parameter that controls detection of an unrealistic number of

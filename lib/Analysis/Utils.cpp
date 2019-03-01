@@ -164,11 +164,14 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
     operands[i] = accessValueMap.getOperand(i);
 
   if (sliceState != nullptr) {
+    operands.reserve(operands.size() + sliceState->lbOperands[0].size());
     // Append slice operands to 'operands' as symbols.
-    operands.append(sliceState->lbOperands[0].begin(),
-                    sliceState->lbOperands[0].end());
-    // Update 'numSymbols' by operands from 'sliceState'.
-    numSymbols += sliceState->lbOperands[0].size();
+    for (auto extraOperand : sliceState->lbOperands[0]) {
+      if (!llvm::is_contained(operands, extraOperand)) {
+        operands.push_back(extraOperand);
+        numSymbols++;
+      }
+    }
   }
 
   // We'll first associate the dims and symbols of the access map to the dims
@@ -208,7 +211,6 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
       if (!cst.findId(*operand, &loc)) {
         if (isValidSymbol(operand)) {
           cst.addSymbolId(cst.getNumSymbolIds(), const_cast<Value *>(operand));
-          loc = cst.getNumDimIds() + cst.getNumSymbolIds() - 1;
           // Check if the symbol is a constant.
           if (auto *opInst = operand->getDefiningInst()) {
             if (auto constOp = opInst->dyn_cast<ConstantIndexOp>()) {
@@ -217,7 +219,6 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
           }
         } else {
           cst.addDimId(cst.getNumDimIds(), const_cast<Value *>(operand));
-          loc = cst.getNumDimIds() - 1;
         }
       }
     }
