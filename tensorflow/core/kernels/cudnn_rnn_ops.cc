@@ -646,7 +646,6 @@ Status ExtractForwardInput(OpKernelContext* context,
                              input_c, params, model_shapes);
 }
 
-
 template <typename T>
 Status CreateForwardAndBackwardIODescriptors(
     OpKernelContext* context, const CudnnRnnModelShapes& model_shapes,
