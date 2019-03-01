@@ -3111,7 +3111,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    tags = ["notap"],  # http://b/31080670
+    tags = [
+        "no_pip",
+        "notap",  # http://b/31080670
+    ],
 )
 
 cuda_py_test(
