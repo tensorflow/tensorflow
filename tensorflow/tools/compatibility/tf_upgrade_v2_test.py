@@ -1133,9 +1133,10 @@ tf.print('abc')
   def testImageResizeExtraPositionalArgs(self):
     for method in ["bilinear", "area", "bicubic", "nearest_neighbor"]:
       text = "tf.image.resize_%s(i, s, a, p)" % method
-      expected_text = ["tf.image.resize(i, s, ", "align_corners=a, ",
-                       "preserve_aspect_ratio=p, ",
-                       "method=tf.image.ResizeMethod.%s)" % method.upper()]
+      expected_text = [
+          "tf.image.resize(i, s, ", "preserve_aspect_ratio=p, ",
+          "method=tf.image.ResizeMethod.%s)" % method.upper()
+      ]
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       for s in expected_text:
         self.assertIn(s, new_text)

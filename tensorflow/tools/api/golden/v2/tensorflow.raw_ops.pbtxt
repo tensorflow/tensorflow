@@ -3142,11 +3142,11 @@ tf_module {
   }
   member_method {
     name: "ScaleAndTranslate"
-    argspec: "args=[\'images\', \'size\', \'scale\', \'translation\', \'kernel_type\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'images\', \'size\', \'scale\', \'translation\', \'kernel_type\', \'antialias\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ScaleAndTranslateGrad"
-    argspec: "args=[\'grads\', \'original_image\', \'scale\', \'translation\', \'kernel_type\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'grads\', \'original_image\', \'scale\', \'translation\', \'kernel_type\', \'antialias\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ScatterAdd"
