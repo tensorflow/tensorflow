@@ -1684,7 +1684,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "global:": "global:\n     init_%s;\n     PyInit_*;" % (mod_name),
+                "global:": "global:\n     init_%s;\n     _init_%s;\n     PyInit_*;\n     _PyInit_*;" % (mod_name, mod_name),
             },
             is_executable = False,
         )
@@ -1693,7 +1693,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "*tensorflow*": "*tensorflow*\ninit_%s\nPyInit_*\n" % (mod_name),
+                "*tensorflow*": "*tensorflow*\ninit_%s\n_init_%s\nPyInit_*\n_PyInit_*\n" % (mod_name, mod_name),
             },
             is_executable = False,
         )
