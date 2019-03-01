@@ -141,24 +141,33 @@ def softsign(x):
 
 
 @keras_export('keras.activations.relu')
-def relu(x, alpha=0., max_value=None, threshold=0):
-  """Rectified Linear Unit.
+def relu(x, alpha=0., max_value=None, threshold=0.):
+  """Applies the ReLU activation function.
 
-  With default values, it returns element-wise `max(x, 0)`.
+  With default values, this returns the standard ReLU activation: the element-wise maximum of 0 and the input tensor. This activation is used in many graph architectures.
 
-  Otherwise, it follows:
-  `f(x) = max_value` for `x >= max_value`,
-  `f(x) = x` for `threshold <= x < max_value`,
-  `f(x) = alpha * (x - threshold)` otherwise.
+  Modifying default parameter values allows you to use thresholds other than zero, to set maximum values of the activation, and to use non-zero multiples of the input for values below the threshold.
+  
+  ```python
+  t = tf.constant([.55, -.25, 0, -1.25, .75, 1.333])
+
+  relu(t).eval() # ==> [0.55  0.    0.    0.    0.75  1.333]
+  relu(t, alpha=.05).eval() # ==> [0.55   -0.0125  0.     -0.0625  0.75    1.333]
+  relu(t, max_value=1.0).eval() # ==> [0.55 0.   0.   0.   0.75 1.]
+  relu(t, threshold=-.5).eval() # ==> [ 0.55  -0.25   0.    -0.     0.75   1.333]
+  ```
 
   Arguments:
-      x: A tensor or variable.
-      alpha: A scalar, slope of negative section (default=`0.`).
-      max_value: float. Saturation threshold.
-      threshold: float. Threshold value for thresholded activation.
+    `x`: A tensor or variable.
+    `alpha`: A scalar that governs the slope of the activation function for values lower than the threshold. By default, this is `0.`; small positive values correspond to 'leaky' ReLUs.
+    `max_value`: A float or `None` giving the saturation threshold (the largest value the function can take). The default is `None`, indicating that there is no such threshold.
+    `threshold`: A float giving the threshold value below which values will be damped or set to zero (`0.` by default).
 
   Returns:
-      A tensor.
+    A `Tensor` representing the input tensor transformed by the ReLU activation function.
+
+  Raises:
+    ValueError: if an element of the input is not a permissible `float` or `int` type.
   """
   return K.relu(x, alpha=alpha, max_value=max_value, threshold=threshold)
 
