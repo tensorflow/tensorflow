@@ -122,8 +122,8 @@ class RandomOpsTest(xla_test.XLATestCase):
         beta = (b - mu) / sigma
         z = normal_cdf(beta) - normal_cdf(alpha)
 
-        self.assertTrue((y >= a).sum() == count)
-        self.assertTrue((y <= b).sum() == count)
+        self.assertEqual((y >= a).sum(), count)
+        self.assertEqual((y <= b).sum(), count)
 
         # For more information on these calculations, see:
         # Burkardt, John. "The Truncated Normal Distribution".

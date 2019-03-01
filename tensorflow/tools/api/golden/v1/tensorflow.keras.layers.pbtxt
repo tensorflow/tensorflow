@@ -1,6 +1,10 @@
 path: "tensorflow.keras.layers"
 tf_module {
   member {
+    name: "AbstractRNNCell"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "Activation"
     mtype: "<type \'type\'>"
   }
@@ -122,6 +126,10 @@ tf_module {
   }
   member {
     name: "Dense"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DenseFeatures"
     mtype: "<type \'type\'>"
   }
   member {

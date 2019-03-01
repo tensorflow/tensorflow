@@ -169,10 +169,12 @@ class XlaDevice : public LocalDevice {
   // Instructs this XlaDevice to return 'sync_on_completion' for
   // AllowsSyncOnCompletion().
   void SetAllowsSyncOnCompletion(bool sync_on_completion) LOCKS_EXCLUDED(mu_);
-
   bool AllowsSyncOnCompletion() const override LOCKS_EXCLUDED(mu_);
 
-  Status CurrentStatus() override LOCKS_EXCLUDED(mu_);
+  // Installs an error handling callback when RefreshStatus sees !status.ok().
+  void SetHandleDeviceErrorCallback(std::function<Status()> callback);
+
+  Status RefreshStatus() override LOCKS_EXCLUDED(mu_);
 
  private:
   xla::LocalClient* client() const;
@@ -187,6 +189,9 @@ class XlaDevice : public LocalDevice {
 
   static Status GetMetadataFromDevice(DeviceBase* device,
                                       const XlaDevice::Metadata** metadata);
+
+  // Handles error when RefreshStatus sees !status.ok().
+  Status HandleDeviceError();
 
   mutable mutex mu_;
   // The metadata of this XlaDevice.
@@ -237,6 +242,9 @@ class XlaDevice : public LocalDevice {
   // True if the device allows XlaDevice::Sync to be called on completion
   // regardless of status.
   bool sync_on_completion_ GUARDED_BY(mu_) = true;
+
+  // A callback that will be invoked when RefreshStatus sees a status error.
+  std::function<Status()> device_error_callback_ GUARDED_BY(mu_);
 
   // Set of devices to use. This controls which of the devices on the given
   // platform will have resources allocated. For GPUs this will be

@@ -198,7 +198,7 @@ tf_module {
   }
   member_method {
     name: "get_session"
-    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'op_input_list\'], varargs=None, keywords=None, defaults=[\'()\'], "
   }
   member_method {
     name: "get_uid"

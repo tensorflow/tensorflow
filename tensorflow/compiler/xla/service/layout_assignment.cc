@@ -588,48 +588,40 @@ Status LayoutAssignment::AddMandatoryConstraints(
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           body_layout.result_shape(), instruction, 0));
     } else if (instruction->opcode() == HloOpcode::kConditional) {
-      // The layout of the true and false computations must match, and must
+      // The layout of the branch computations must match, and must
       // be the layout of the kConditional instruction.
-      TF_RET_CHECK(instruction->operand_count() == 3);
+      ComputationLayout& branch0_computation_layout =
+          FindOrDie(computation_layouts_, instruction->branch_computation(0));
+      for (int j = 0; j < instruction->branch_count(); ++j) {
+        TF_RET_CHECK(instruction->branch_computation(j)->num_parameters() == 1);
+        ComputationLayout& branch_computation_layout =
+            FindOrDie(computation_layouts_, instruction->branch_computation(j));
 
-      HloComputation* true_computation = instruction->true_computation();
-      HloComputation* false_computation = instruction->false_computation();
-      const HloInstruction* true_operand = instruction->operand(1);
-      const HloInstruction* false_operand = instruction->operand(2);
-
-      TF_RET_CHECK(true_computation->num_parameters() == 1);
-      TF_RET_CHECK(false_computation->num_parameters() == 1);
-      ComputationLayout& true_computation_layout =
-          FindOrDie(computation_layouts_, true_computation);
-      ComputationLayout& false_computation_layout =
-          FindOrDie(computation_layouts_, false_computation);
-
-      DCHECK(ShapeUtil::Compatible(true_operand->shape(),
-                                   true_computation_layout.parameter_shape(0)));
-      DCHECK(ShapeUtil::Compatible(
-          false_operand->shape(), false_computation_layout.parameter_shape(0)));
-      if (true_computation_layout.result_layout() !=
-          false_computation_layout.result_layout()) {
-        // We assign layouts in DFS fashion, so the true and false computations
-        // might have negotiated a different layout. But for the conditional
-        // instruction POV the layout must match, so we run again on the false
-        // computation, this time with proper computation layout.
-        VLOG(2) << "Reset %conditional false computation result layout: "
-                   "false_computation="
-                << false_computation->name()
-                << " conditional=" << instruction->name() << " shape="
-                << true_computation_layout.result_layout().ToString();
-        *false_computation_layout.mutable_result_layout() =
-            true_computation_layout.result_layout();
+        DCHECK(ShapeUtil::Compatible(
+            instruction->operand(j + 1)->shape(),
+            branch_computation_layout.parameter_shape(0)));
+        if (branch0_computation_layout.result_layout() !=
+            branch_computation_layout.result_layout()) {
+          // We assign layouts in DFS fashion, so the br_0 and br_j
+          // computations might have negotiated a different layout. But for the
+          // case instruction POV the layout must match, so we run again
+          // on the br_j computation, this time with proper computation layout.
+          VLOG(2) << "Reset %conditional branch " << j
+                  << " computation result layout: branch_computation="
+                  << instruction->branch_computation(j)->name()
+                  << " case=" << instruction->name() << " shape="
+                  << branch0_computation_layout.result_layout().ToString();
+          *branch_computation_layout.mutable_result_layout() =
+              branch0_computation_layout.result_layout();
+        }
+        if (j == 0) {
+          TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
+              branch0_computation_layout.result_shape(), instruction));
+        }
+        TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
+            branch_computation_layout.parameter_shape(0), instruction, j + 1,
+            /*mandatory=*/true));
       }
-      TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
-          true_computation_layout.result_shape(), instruction));
-      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-          true_computation_layout.parameter_shape(0), instruction, 1,
-          /*mandatory=*/true));
-      TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
-          false_computation_layout.parameter_shape(0), instruction, 2,
-          /*mandatory=*/true));
     }
   }
   // Finally set the result layout to match ComputationLayout, if there is one.
@@ -699,28 +691,21 @@ Status CheckWhileLayout(HloInstruction* while_inst,
 
 Status CheckConditionalLayout(
     HloInstruction* instruction,
-    const ComputationLayout& true_computation_layout,
-    const ComputationLayout& false_computation_layout) {
-  HloComputation* true_computation = instruction->true_computation();
-  HloComputation* false_computation = instruction->false_computation();
-  const HloInstruction* true_operand = instruction->operand(1);
-  const HloInstruction* false_operand = instruction->operand(2);
-
-  TF_RET_CHECK(true_computation_layout.result_layout() ==
-               false_computation_layout.result_layout());
-  TF_RET_CHECK(true_computation_layout.result_layout().MatchesLayoutInShape(
-      instruction->shape()));
-  TF_RET_CHECK(true_computation_layout.result_layout().MatchesLayoutInShape(
-      true_computation->root_instruction()->shape()));
-  TF_RET_CHECK(false_computation_layout.result_layout().MatchesLayoutInShape(
-      instruction->shape()));
-  TF_RET_CHECK(false_computation_layout.result_layout().MatchesLayoutInShape(
-      false_computation->root_instruction()->shape()));
-  TF_RET_CHECK(true_computation_layout.parameter_layout(0).MatchesLayoutInShape(
-      true_operand->shape()));
-  TF_RET_CHECK(
-      false_computation_layout.parameter_layout(0).MatchesLayoutInShape(
-          false_operand->shape()));
+    absl::Span<const ComputationLayout> branch_computation_layouts) {
+  for (int j = 0; j < instruction->branch_count(); ++j) {
+    const HloInstruction* branch_operand = instruction->operand(j + 1);
+    TF_RET_CHECK(branch_computation_layouts[0].result_layout() ==
+                 branch_computation_layouts[j].result_layout());
+    TF_RET_CHECK(
+        branch_computation_layouts[j].result_layout().MatchesLayoutInShape(
+            instruction->shape()));
+    TF_RET_CHECK(
+        branch_computation_layouts[j].result_layout().MatchesLayoutInShape(
+            instruction->branch_computation(j)->root_instruction()->shape()));
+    TF_RET_CHECK(
+        branch_computation_layouts[j].parameter_layout(0).MatchesLayoutInShape(
+            branch_operand->shape()));
+  }
   return Status::OK();
 }
 
@@ -937,13 +922,16 @@ Status LayoutAssignment::CheckLayouts(HloModule* module) {
               FindOrDie(computation_layouts_, instruction->while_condition()),
               FindOrDie(computation_layouts_, instruction->while_body())));
           break;
-        case HloOpcode::kConditional:
+        case HloOpcode::kConditional: {
+          std::vector<ComputationLayout> branch_computation_layouts;
+          for (auto branch_computation : instruction->branch_computations()) {
+            branch_computation_layouts.emplace_back(
+                FindOrDie(computation_layouts_, branch_computation));
+          }
           TF_RETURN_IF_ERROR(CheckConditionalLayout(
-              instruction,
-              FindOrDie(computation_layouts_, instruction->true_computation()),
-              FindOrDie(computation_layouts_,
-                        instruction->false_computation())));
+              instruction, absl::MakeSpan(branch_computation_layouts)));
           break;
+        }
         default:
           break;
       }
@@ -1019,16 +1007,6 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(operand_shape);
-    if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
-      return absl::make_unique<Layout>(operand_shape.layout());
-    }
-    if (operand_shape.rank() == output_shape.rank()) {
-      *operand_shape.mutable_layout() = output_layout;
-      if (ShapeUtil::ReshapeIsBitcast(operand_shape,
-                                      output_shape_with_layout)) {
-        return absl::make_unique<Layout>(output_layout);
-      }
-    }
     auto aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
     if (aligned_operand_shape) {
@@ -1090,16 +1068,6 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     Shape output_shape = user->shape();
     *output_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(output_shape);
-    if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
-      return absl::make_unique<Layout>(output_shape.layout());
-    }
-    if (operand->shape().rank() == output_shape.rank()) {
-      *output_shape.mutable_layout() = operand_layout;
-      if (ShapeUtil::ReshapeIsBitcast(output_shape,
-                                      operand_shape_with_layout)) {
-        return absl::make_unique<Layout>(operand_layout);
-      }
-    }
     auto aligned_user_shape =
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
     if (aligned_user_shape) {
@@ -2058,6 +2026,7 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kRemainder:
     case HloOpcode::kReverse:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kScatter:
     case HloOpcode::kSelect:
     case HloOpcode::kSelectAndScatter:
@@ -2068,8 +2037,11 @@ bool LayoutAssignment::InstructionCanChangeLayout(
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
+    case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
     case HloOpcode::kTupleSelect:
     case HloOpcode::kWhile:
       return false;

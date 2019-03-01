@@ -29,6 +29,7 @@ from tensorflow.python.keras.optimizer_v2 import adadelta as adadelta_v2
 from tensorflow.python.keras.optimizer_v2 import adagrad as adagrad_v2
 from tensorflow.python.keras.optimizer_v2 import adam as adam_v2
 from tensorflow.python.keras.optimizer_v2 import adamax as adamax_v2
+from tensorflow.python.keras.optimizer_v2 import ftrl
 from tensorflow.python.keras.optimizer_v2 import gradient_descent as gradient_descent_v2
 from tensorflow.python.keras.optimizer_v2 import nadam as nadam_v2
 from tensorflow.python.keras.optimizer_v2 import optimizer_v2
@@ -40,7 +41,7 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import state_ops
 from tensorflow.python.training import optimizer as tf_optimizer_module
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util.tf_export import keras_export
 
 
@@ -710,19 +711,19 @@ class Nadam(Optimizer):
     return dict(list(base_config.items()) + list(config.items()))
 
 
-class TFOptimizer(Optimizer, checkpointable.Checkpointable):
+class TFOptimizer(Optimizer, trackable.Trackable):
   """Wrapper class for native TensorFlow optimizers.
   """
 
   def __init__(self, optimizer, iterations=None):  # pylint: disable=super-init-not-called
     self.optimizer = optimizer
-    self._track_checkpointable(optimizer, name='optimizer')
+    self._track_trackable(optimizer, name='optimizer')
     if iterations is None:
       with K.name_scope(self.__class__.__name__):
         self.iterations = K.variable(0, dtype='int64', name='iterations')
     else:
       self.iterations = iterations
-    self._track_checkpointable(self.iterations, name='global_step')
+    self._track_trackable(self.iterations, name='global_step')
 
   def apply_gradients(self, grads):
     self.optimizer.apply_gradients(grads, global_step=self.iterations)
@@ -806,7 +807,8 @@ def deserialize(config, custom_objects=None):
       'adamax': adamax_v2.Adamax,
       'nadam': nadam_v2.Nadam,
       'rmsprop': rmsprop_v2.RMSprop,
-      'sgd': gradient_descent_v2.SGD
+      'sgd': gradient_descent_v2.SGD,
+      'ftrl': ftrl.Ftrl
   }
 
   # Make deserialization case-insensitive for built-in optimizers.

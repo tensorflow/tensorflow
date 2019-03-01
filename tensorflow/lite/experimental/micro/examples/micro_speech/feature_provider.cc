@@ -16,8 +16,8 @@ limitations under the License.
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/feature_provider.h"
 
 #include "tensorflow/lite/experimental/micro/examples/micro_speech/audio_provider.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/model_settings.h"
-#include "tensorflow/lite/experimental/micro/examples/micro_speech/preprocessor.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_features_generator.h"
+#include "tensorflow/lite/experimental/micro/examples/micro_speech/micro_features/micro_model_settings.h"
 
 FeatureProvider::FeatureProvider(int feature_size, uint8_t* feature_data)
     : feature_size_(feature_size),
@@ -48,6 +48,10 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
   int slices_needed = current_step - last_step;
   // If this is the first call, make sure we don't use any cached information.
   if (is_first_run_) {
+    TfLiteStatus init_status = InitializeMicroFeatures(error_reporter);
+    if (init_status != kTfLiteOk) {
+      return init_status;
+    }
     is_first_run_ = false;
     slices_needed = kFeatureSliceCount;
   }
@@ -94,16 +98,17 @@ TfLiteStatus FeatureProvider::PopulateFeatureData(
       GetAudioSamples(error_reporter, slice_start_ms, kFeatureSliceDurationMs,
                       &audio_samples_size, &audio_samples);
       if (audio_samples_size < kMaxAudioSampleSize) {
-        error_reporter->Report("Audio data size %d  too small, want %d",
+        error_reporter->Report("Audio data size %d too small, want %d",
                                audio_samples_size, kMaxAudioSampleSize);
         return kTfLiteError;
       }
       uint8_t* new_slice_data = feature_data_ + (new_slice * kFeatureSliceSize);
-      TfLiteStatus preprocess_status =
-          Preprocess(error_reporter, audio_samples, audio_samples_size,
-                     kFeatureSliceSize, new_slice_data);
-      if (preprocess_status != kTfLiteOk) {
-        return preprocess_status;
+      size_t num_samples_read;
+      TfLiteStatus generate_status = GenerateMicroFeatures(
+          error_reporter, audio_samples, audio_samples_size, kFeatureSliceSize,
+          new_slice_data, &num_samples_read);
+      if (generate_status != kTfLiteOk) {
+        return generate_status;
       }
     }
   }

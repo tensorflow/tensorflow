@@ -56,6 +56,15 @@ class PrettyPrinter(gast.NodeVisitor):
     self.result += '\n'
 
   def generic_visit(self, node, name=None):
+    # In very rare instances, a list can contain something other than a Node.
+    # e.g. Global contains a list of strings.
+    if isinstance(node, str):
+      if name:
+        self._print('%s%s="%s"' % (self._indent(), name, node))
+      else:
+        self._print('%s"%s"' % (self._indent(), node))
+      return
+
     if node._fields:
       cont = ':'
     else:

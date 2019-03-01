@@ -19,6 +19,7 @@ from __future__ import print_function
 
 
 from tensorflow.python.eager import backprop
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import wrap_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -206,7 +207,7 @@ class WrapFunctionTest(test.TestCase):
         fetches=(f_wrapped.graph.get_operation_by_name('increment'),
                  f_wrapped.graph.get_tensor_by_name('other:0')))
     first_output, second_output = increments(constant_op.constant(2))
-    self.assertEqual(['Placeholder:0', 'Placeholder_1:0'],
+    self.assertEqual(['step:0', 'increment/resource:0'],
                      [t.name for t in increments.inputs])
     self.assertIs(None, first_output)
     self.assertEqual(1, second_output.numpy())
@@ -241,6 +242,19 @@ class WrapFunctionTest(test.TestCase):
     self.assertEqual(2, f_wrapped_with_name().numpy())
     self.assertEqual(0, v0.numpy())
     self.assertEqual(0, v1.numpy())
+
+  def test_function_from_graph_def(self):
+    @def_function.function
+    def make_graph_def(x):
+      return x + 1.
+
+    original_func_graph = make_graph_def.get_concrete_function(
+        tensor_spec.TensorSpec([None, 2], dtypes.float32)).graph
+    graph_def = original_func_graph.as_graph_def()
+    revived_function = wrap_function.function_from_graph_def(
+        graph_def, inputs=original_func_graph.inputs[0].name,
+        outputs=original_func_graph.outputs[0].name)
+    self.assertEqual(2., revived_function(constant_op.constant(1.)).numpy())
 
 
 if __name__ == '__main__':

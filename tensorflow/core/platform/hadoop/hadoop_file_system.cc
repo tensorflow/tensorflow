@@ -154,7 +154,8 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     StringPiece defaultScheme, defaultCluster, defaultPath;
     io::ParseURI(defaultFS, &defaultScheme, &defaultCluster, &defaultPath);
 
-    if (scheme != defaultScheme || namenode != defaultCluster) {
+    if (scheme != defaultScheme ||
+        (namenode != "" && namenode != defaultCluster)) {
       return errors::Unimplemented(
           "viewfs is only supported as a fs.defaultFS.");
     }
@@ -163,7 +164,7 @@ Status HadoopFileSystem::Connect(StringPiece fname, hdfsFS* fs) {
     // https://github.com/tensorflow/tensorflow/blob/v1.0.0/third_party/hadoop/hdfs.h#L259
     hdfs_->hdfsBuilderSetNameNode(builder, "default");
   } else {
-    hdfs_->hdfsBuilderSetNameNode(builder, nn.c_str());
+    hdfs_->hdfsBuilderSetNameNode(builder, nn == "" ? "default" : nn.c_str());
   }
   *fs = hdfs_->hdfsBuilderConnect(builder);
   if (*fs == nullptr) {
@@ -209,8 +210,12 @@ class HDFSRandomAccessFile : public RandomAccessFile {
       // We lock inside the loop rather than outside so we don't block other
       // concurrent readers.
       mutex_lock lock(mu_);
+      // Max read length is INT_MAX-2, for hdfsPread function take a parameter
+      // of int32. -2 offset can avoid JVM OutOfMemoryError.
+      size_t read_n =
+          std::min(n, static_cast<size_t>(std::numeric_limits<int>::max() - 2));
       tSize r = hdfs_->hdfsPread(fs_, file_, static_cast<tOffset>(offset), dst,
-                                 static_cast<tSize>(n));
+                                 static_cast<tSize>(read_n));
       if (r > 0) {
         dst += r;
         n -= r;

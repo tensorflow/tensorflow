@@ -35,7 +35,7 @@ Status RenameOp(const GraphDef& input_graph_def,
       !context.params.count("new_op_name") ||
       (context.params.at("new_op_name").size() != 1)) {
     return errors::InvalidArgument(
-        "remove_nodes expects exactly one 'old_op_name' and 'new_op_name' "
+        "rename_op expects exactly one 'old_op_name' and 'new_op_name' "
         "argument, e.g. rename_op(old_op_name=Mul, new_op_name=Multiply)");
   }
 

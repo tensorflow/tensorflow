@@ -26,13 +26,23 @@ limitations under the License.
 namespace xla {
 namespace hlo_graph_dumper {
 
+// Converts a HLO module to a DOT (graphviz) graph. Returns the dot graph as
+// a string.
+struct DotGraphOptions {
+  absl::string_view label;
+  const DebugOptions* debug_options = nullptr;
+  const HloExecutionProfile* profile = nullptr;
+  bool show_backend_config = false;
+};
+string HloComputationToDotGraph(const HloComputation& computation,
+                                const DotGraphOptions& options);
+
 // Abstract interface for classes that render HLO graphs (e.g. DOT graph,
-// tensorflow GraphDef).
+// tensorflow GraphDef) to files or services.
 class GraphRendererInterface {
  public:
   enum GraphKind {
     DOT_GRAPH,
-    TF_GRAPHDEF,
   };
 
   virtual ~GraphRendererInterface() = default;
@@ -63,8 +73,12 @@ string DumpGraph(const HloComputation& computation, const string& label,
 // The number of nodes dumped is controlled by the radius parameter, which
 // (roughly) corresponds to the max distance a node may be from the primary node
 // before it's omitted from the graph.
-string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_backend_config = false);
+//
+// The optional boundary specifies a set of boundary nodes, beyond which nodes
+// will be omitted even if they are within the radius.
+string DumpNeighborhoodAround(
+    const HloInstruction& node, int radius, bool show_backend_config = false,
+    const absl::flat_hash_set<const HloInstruction*>& boundary = {});
 
 // Dumps nodes on any of the paths from `from` to `to`.  If there are more than
 // max_nodes on all paths, restricts to the max_nodes nodes on the shortest

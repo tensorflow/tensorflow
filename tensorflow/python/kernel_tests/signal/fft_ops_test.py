@@ -110,13 +110,13 @@ class FFTOpsTest(BaseFFTOpsTest):
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True):
-      return self._tfFFTForRank(rank)(x).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(self._tfFFTForRank(rank)(x), feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
     # fft_length unused for complex FFTs.
-    with self.cached_session(use_gpu=True):
-      return self._tfIFFTForRank(rank)(x).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(self._tfIFFTForRank(rank)(x), feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):
     if rank == 1:
@@ -159,7 +159,6 @@ class FFTOpsTest(BaseFFTOpsTest):
       raise ValueError("invalid rank")
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testEmpty(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type in (np.complex64, np.complex128):
@@ -170,7 +169,6 @@ class FFTOpsTest(BaseFFTOpsTest):
             self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testBasic(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 1e-8)):
@@ -180,7 +178,6 @@ class FFTOpsTest(BaseFFTOpsTest):
                 np.mod(np.arange(np.power(4, dims)), 10).reshape(
                     (4,) * dims).astype(np_type), rank, rtol=tol, atol=tol)
 
-  @test_util.disable_xla("This test never passed for XLA")
   def testLargeBatch(self):
     if test.is_gpu_available(cuda_only=True):
       rank = 1
@@ -212,7 +209,6 @@ class FFTOpsTest(BaseFFTOpsTest):
                 rank, use_placeholder=True, rtol=tol, atol=tol)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testRandom(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type, tol in ((np.complex64, 1e-4), (np.complex128, 5e-6)):
@@ -228,7 +224,6 @@ class FFTOpsTest(BaseFFTOpsTest):
                           rtol=tol, atol=tol)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testRandom1D(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for np_type in (np.complex64, np.complex128):
@@ -297,12 +292,14 @@ class RFFTOpsTest(BaseFFTOpsTest):
                                               use_placeholder)
 
   def _tfFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True):
-      return self._tfFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(
+          self._tfFFTForRank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _tfIFFT(self, x, rank, fft_length=None, feed_dict=None):
-    with self.cached_session(use_gpu=True):
-      return self._tfIFFTForRank(rank)(x, fft_length).eval(feed_dict=feed_dict)
+    with self.cached_session(use_gpu=True) as sess:
+      return sess.run(
+          self._tfIFFTForRank(rank)(x, fft_length), feed_dict=feed_dict)
 
   def _npFFT(self, x, rank, fft_length=None):
     if rank == 1:
@@ -345,7 +342,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
       raise ValueError("invalid rank")
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testEmpty(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -356,7 +352,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
           self.assertEqual(x.shape, self._tfIFFT(x, rank).shape)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testBasic(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -371,7 +366,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
             self._compareBackward(
                 c2r.astype(np.complex64), rank, (size,) * rank)
 
-  @test_util.disable_xla("This test never passed for XLA")
   def testLargeBatch(self):
     if test.is_gpu_available(cuda_only=True):
       rank = 1
@@ -405,7 +399,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 rank, (size,) * rank,
                 use_placeholder=True)
 
-  @test_util.disable_xla("This test never passed for XLA")
   def testFftLength(self):
     if test.is_gpu_available(cuda_only=True):
       with spectral_ops_test_util.fft_kernel_label_map():
@@ -449,7 +442,6 @@ class RFFTOpsTest(BaseFFTOpsTest):
                   use_placeholder=True)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
   def testRandom(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       def gen_real(shape):
@@ -475,7 +467,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 gen_complex(complex_dims), rank, (size,) * rank)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")
+  @test_util.disable_xla("b/123738986")  # More assertions needed.
   def testError(self):
     with spectral_ops_test_util.fft_kernel_label_map():
       for rank in VALID_FFT_RANKS:
@@ -522,7 +514,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           x = np.zeros((5,) * rank).astype(np.float32)
           fft_length = [6] * rank
           with self.cached_session():
-            rfft_fn(x, fft_length).eval()
+            self.evaluate(rfft_fn(x, fft_length))
 
         with self.assertRaisesWithPredicateMatch(
             errors.InvalidArgumentError,
@@ -530,7 +522,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
           x = np.zeros((3,) * rank).astype(np.complex64)
           fft_length = [6] * rank
           with self.cached_session():
-            irfft_fn(x, fft_length).eval()
+            self.evaluate(irfft_fn(x, fft_length))
 
   @test_util.run_deprecated_v1
   def testGrad_Simple(self):

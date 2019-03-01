@@ -52,6 +52,12 @@ bool IsAnyMax(const NodeDef& node) {
   return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
 }
 
+bool IsAnyMaxPool(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
+         op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
+}
+
 bool IsAnyMin(const NodeDef& node) {
   const auto& op = node.op();
   return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
@@ -178,18 +184,13 @@ bool IsDiv(const NodeDef& node) { return node.op() == "Div"; }
 bool IsElementWiseMonotonic(const NodeDef& node, bool* is_non_decreasing) {
   static const gtl::FlatSet<string>* const kMonotonicNonDecreasingOps =
       CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Asinh", "Atanh",   "Ceil",  "Elu",  "Erf",  "Exp",   "Expm1",
-          "Floor", "Log",     "Log1p", "Relu", "Relu", "Relu6", "Rint",
-          "Selu",  "Sigmoid", "Sign",  "Sinh", "Sqrt", "Tanh",
+          "Acosh", "Asin", "Asinh",    "Atan",     "Atanh", "Ceil",
+          "Elu",   "Erf",  "Exp",      "Expm1",    "Floor", "Log",
+          "Log1p", "Relu", "Relu6",    "Rint",     "Selu",  "Sigmoid",
+          "Sign",  "Sinh", "Softsign", "Softplus", "Sqrt",  "Tanh",
       }));
   static const gtl::FlatSet<string>* const kMonotonicNonIncreasingOps =
-      CHECK_NOTNULL((new gtl::FlatSet<string>{
-          "Inv",
-          "Reciprocal",
-          "Erfc",
-          "Rsqrt",
-          "Neg",
-      }));
+      CHECK_NOTNULL((new gtl::FlatSet<string>{"Acos", "Erfc", "Neg", "Rsqrt"}));
   if (kMonotonicNonDecreasingOps->count(node.op()) > 0) {
     if (is_non_decreasing) {
       *is_non_decreasing = true;
@@ -242,6 +243,8 @@ bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
 
+bool IsHostConstant(const NodeDef& node) { return node.op() == "HostConst"; }
+
 bool IsHistogramSummary(const NodeDef& node) {
   return node.op() == "HistogramSummary";
 }
@@ -292,8 +295,8 @@ bool IsLogicalOr(const NodeDef& node) { return node.op() == "LogicalOr"; }
 
 bool IsMatMul(const NodeDef& node) {
   const auto& op = node.op();
-  return op == "MatMul" || op == "BatchMatMul" || op == "QuantizedMatMul" ||
-         op == "SparseMatMul";
+  return op == "MatMul" || op == "BatchMatMul" || op == "SparseMatMul" ||
+         IsQuantizedMatMul(node);
 }
 
 bool IsMax(const NodeDef& node) { return node.op() == "Max"; }
@@ -334,6 +337,8 @@ bool IsNextIteration(const NodeDef& node) {
   return op == "NextIteration" || op == "RefNextIteration";
 }
 
+bool IsOnesLike(const NodeDef& node) { return node.op() == "OnesLike"; }
+
 bool IsPack(const NodeDef& node) { return node.op() == "Pack"; }
 
 bool IsPad(const NodeDef& node) {
@@ -355,9 +360,15 @@ bool IsPolygamma(const NodeDef& node) { return node.op() == "Polygamma"; }
 
 bool IsPow(const NodeDef& node) { return node.op() == "Pow"; }
 
-bool IsPrint(const NodeDef& node) { return node.op() == "Print"; }
+bool IsPrint(const NodeDef& node) {
+  return node.op() == "Print" || node.op() == "PrintV2";
+}
 
 bool IsProd(const NodeDef& node) { return node.op() == "Prod"; }
+
+bool IsQuantizedMatMul(const NodeDef& node) {
+  return node.op() == "QuantizedMatMul" || node.op() == "QuantizedMatMulV2";
+}
 
 bool IsQueue(const NodeDef& node) {
   return str_util::EndsWith(node.op(), "QueueV2");
@@ -552,6 +563,8 @@ bool IsWhile(const NodeDef& node) {
   return op == "While" || op == "StatelessWhile";
 }
 
+bool IsZerosLike(const NodeDef& node) { return node.op() == "ZerosLike"; }
+
 bool IsZeta(const NodeDef& node) { return node.op() == "Zeta"; }
 
 namespace {
@@ -561,7 +574,7 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }  // namespace
 
 bool IsPersistent(const NodeDef& node) {
-  return IsConstant(node) || IsVariable(node);
+  return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
 bool MaybeHasRefInput(const NodeDef& node) {

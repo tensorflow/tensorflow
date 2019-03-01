@@ -63,6 +63,23 @@ size_t AncestorNode::Hash::operator()(const AncestorNode& ancestor) const {
   return Hash64Combine(h, std::hash<int>()(static_cast<int>(ancestor.type)));
 }
 
+typedef std::tuple<StateMap::CondId, StateMap::AncestorId, OutputTensor>
+    ClusterTuple;
+
+struct ClusterTupleLessThan {
+  bool operator()(const ClusterTuple& a, const ClusterTuple& b) const {
+    if (std::tie(std::get<0>(a), std::get<1>(a)) <
+        std::tie(std::get<0>(b), std::get<1>(b))) {
+      return true;
+    } else if (std::tie(std::get<0>(a), std::get<1>(a)) ==
+               std::tie(std::get<0>(b), std::get<1>(b))) {
+      return StateMap::OutputTensorLess()(std::get<2>(a), std::get<2>(b));
+    } else {
+      return false;
+    }
+  }
+};
+
 // TODO(jpienaar): Move to OutputTensor.
 string DebugString(const OutputTensor& tensor) {
   return absl::StrCat(tensor.node->name(), ":", tensor.index);
@@ -744,9 +761,9 @@ Status Conditional::BuildIfNode(Graph* graph,
   }
   builder.Device(predicate_.node->assigned_device_name());
   // Conditional should be the first input ...
-  builder.Input(NodeDefBuilder::NodeOut(predicate_.node->name(),
-                                        predicate_.index,
-                                        predicate_.node->output_type(0)));
+  builder.Input(
+      NodeDefBuilder::NodeOut(predicate_.node->name(), predicate_.index,
+                              predicate_.node->output_type(predicate_.index)));
   // ... followed by the other inputs.
   builder.Input(inputs);
 
@@ -1393,16 +1410,30 @@ Status FunctionalizeCond::FunctionalizeInternal() {
   // Sort the merge nodes from innermost outwards.
   SortMergeNodes(&merge_order);
 
-  // Cluster merge nodes by CondId and AncestorId in order of nesting.
-  using ClusterPair = std::pair<StateMap::CondId, StateMap::AncestorId>;
+  // Cluster merge nodes by (CondId, AncestorId, predicate) in order of
+  // nesting. (CondId, AncestorId) is not enough, e.g.
+  //   pred1 = array_ops.placeholder(dtypes.bool, name='pred1')
+  //   pred2 = array_ops.placeholder(dtypes.bool, name='pred2')
+  //   cond1 = control_flow_ops.cond(pred1, ...)
+  //   cond2 = control_flow_ops.cond(pred2, ...)
+  //   cond3 = control_flow_ops.cond(pred1, use cond1 and cond2)
+  //   cond4 = control_flow_ops.cond(pred2, use cond1 and cond2)
+  // cond3 and cond4 have the same (CondId, AncestorId), but they should not
+  // be merged into one "If" node (because they have different predicates).
   std::deque<std::vector<Node*>> merge_clusters;
-  std::map<ClusterPair, int> merge_cluster_index;
+  std::map<ClusterTuple, int, ClusterTupleLessThan> merge_cluster_index;
   for (Node* merge : merge_order) {
     auto cond_id = state_map_.LookupCondId(merge);
     if (state_map_.IsDead(cond_id)) continue;
 
-    ClusterPair key =
-        std::make_pair(cond_id, state_map_.LookupAncestorId(merge));
+    auto predicate = merge_to_predicate_.find(merge);
+    if (predicate == merge_to_predicate_.end()) {
+      return errors::Internal("Cannot find predicate for Merge node ",
+                              merge->name());
+    }
+
+    ClusterTuple key = std::make_tuple(
+        cond_id, state_map_.LookupAncestorId(merge), predicate->second);
     auto idx = merge_cluster_index.find(key);
     if (idx == merge_cluster_index.end()) {
       merge_cluster_index[key] = merge_clusters.size();
@@ -1422,7 +1453,7 @@ Status FunctionalizeCond::FunctionalizeInternal() {
                      &state_map_);
     for (Node* merge : cluster) TF_RETURN_IF_ERROR(cond.AddMerge(merge));
     TF_RETURN_IF_ERROR(
-        cond.BuildAndReplace(graph_, library_, &merge_to_predicate_));
+        cond.BuildAndReplace(graph_, library_, &merge_to_replacement_));
 
     if (VLOG_IS_ON(4)) DumpGraphWithCondState("after_extract");
   }

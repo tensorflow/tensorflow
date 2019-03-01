@@ -303,7 +303,6 @@ class PoolingTest(test.TestCase):
     self.assertLess(err, err_tolerance)
 
   @test_util.run_deprecated_v1
-  @test_util.disable_xla("This test never passed for XLA")  # Much larger error
   def testGradient1D(self):
     with self.session(use_gpu=test.is_gpu_available()):
       for padding in ["SAME", "VALID"]:

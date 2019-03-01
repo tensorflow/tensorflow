@@ -108,6 +108,10 @@ int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph);
 // Gets the 0th input to a node in the graph.
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
 
+// Gets the ith input to a node in the graph.
+NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
+                      int64 i);
+
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.
 std::vector<int> FindAllGraphNodesWithOp(const string& op,

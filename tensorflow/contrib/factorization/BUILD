@@ -203,10 +203,7 @@ py_test(
     srcs = ["python/ops/kmeans_test.py"],
     shard_count = 4,
     srcs_version = "PY2AND3",
-    tags = [
-        "nomac",  # b/73741358
-        "notsan",  # b/67512932
-    ],
+    tags = ["notsan"],
     deps = [
         ":factorization_py",
         ":factorization_py_CYCLIC_DEPENDENCIES_THAT_NEED_TO_GO",

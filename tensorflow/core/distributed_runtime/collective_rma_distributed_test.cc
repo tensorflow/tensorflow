@@ -147,7 +147,6 @@ class FakeCache : public TestWorkerCache {
     WorkerInterface* wi = it->second;
     GetStatusRequest req;
     GetStatusResponse resp;
-    Notification note;
     Status status = wi->GetStatus(&req, &resp);
     if (!status.ok()) {
       done(status);
@@ -271,7 +270,6 @@ TEST_F(CollRMADistTest, ProdFirstOK) {
         producer_status.Update(s);
         producer_note.Notify();
       });
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -300,7 +298,6 @@ TEST_F(CollRMADistTest, ConsFirstOK) {
   Status producer_status;
   FakeWorker* wi = workers_[1];
   const string kBufKey = "fake_buf_key";
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));
@@ -333,7 +330,6 @@ TEST_F(CollRMADistTest, ConsFirstAbort) {
   Notification consumer_note;
   Status consumer_status;
   const string kBufKey = "fake_buf_key";
-  Status status;
   Device* dst_device = nullptr;
   string dev_name = "CPU:0";
   TF_EXPECT_OK(device_mgrs_[0]->LookupDevice(dev_name, &dst_device));

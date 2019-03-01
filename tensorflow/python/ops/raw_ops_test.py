@@ -30,7 +30,7 @@ class RawOpsTest(test.TestCase):
 
   def testSimple(self):
 
-    with self.assertRaises(TypeError):
+    with self.assertRaisesRegexp(TypeError, "only takes keyword args"):
       _ = gen_math_ops.Add(1., 1.)
 
     x = constant_op.constant(1)
