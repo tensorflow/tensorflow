@@ -87,6 +87,8 @@ class PoplarPlatform : public se::Platform {
 
   void AboutToFreeEngine(poplar::Engine* engine);
 
+  void ResetXfeedManagers();
+
  private:
   // This platform's name.
   std::string name_;

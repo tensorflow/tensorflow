@@ -28,6 +28,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_annotations.h"
 #include "tensorflow/compiler/plugin/poplar/driver/tools/input_output_aliasing_map.h"
 #include "tensorflow/compiler/plugin/poplar/driver/trace.pb.h"
+#include "tensorflow/compiler/plugin/poplar/driver/transfer_manager.h"
 
 #include "tensorflow/compiler/xla/literal.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -45,8 +46,6 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/array_slice.h"
 #include "tensorflow/core/lib/io/path.h"
 #include "tensorflow/core/protobuf/config.pb.h"
-
-#include "tensorflow/compiler/xla/service/cpu/xfeed_manager.h"
 
 #include <list>
 #include <mutex>
@@ -80,7 +79,9 @@ std::string GetOutfeedCopyHandle(const std::string& name, int64 shape_index);
 std::string GetInputCopyHandle(int64 parameter, int64 index);
 std::string GetOutputCopyHandle(int64 output_index, int64 flat_tensor_index);
 
-cpu::runtime::XfeedManager* GetXfeedManager(int device_ordinal);
+xla::poplarplugin::PoplarXfeedManager* GetXfeedManager(int device_ordinal);
+
+void ResetXfeedManager(int device_ordinal);
 
 typedef std::vector<char> (*ConversionFn)(const void*, int64, int64);
 

@@ -142,6 +142,12 @@ void PoplarPlatform::AboutToFreeEngine(poplar::Engine* engine) {
   }
 }
 
+void PoplarPlatform::ResetXfeedManagers() {
+  for (int ordinal = 0; ordinal < VisibleDeviceCount(); ordinal++) {
+    ResetXfeedManager(ordinal);
+  }
+}
+
 static void InitializePoplarPlatform() {
   std::unique_ptr<se::Platform> platform(new PoplarPlatform);
   SE_CHECK_OK(se::MultiPlatformManager::RegisterPlatform(std::move(platform)));
