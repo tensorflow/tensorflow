@@ -125,12 +125,12 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
 
   // Examine the resulting graph def.
   NodeMap node_map(&optimized_graph);
-  NodeDef* nd = node_map.GetNode("scoped_allocator_1");
+  NodeDef* nd = node_map.GetNode("scoped_allocator_1_1");
   ASSERT_TRUE(nd);
   {
     auto& nd_set = node_map.GetOutputs(nd->name());
     ASSERT_EQ(3, nd_set.size());
-    std::unordered_set<string> expected = {"scoped_allocator_concat_1", "s1",
+    std::unordered_set<string> expected = {"scoped_allocator_concat_1_1", "s1",
                                            "s2"};
     for (auto it : nd_set) {
       ASSERT_NE(expected.find(it->name()), expected.end())
@@ -138,21 +138,21 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryRewriteOnly) {
     }
   }
   {
-    auto& nd_set = node_map.GetOutputs("scoped_allocator_concat_1");
+    auto& nd_set = node_map.GetOutputs("scoped_allocator_concat_1_1");
     ASSERT_EQ(1, nd_set.size());
     for (auto it : nd_set) {
-      ASSERT_EQ("scoped_allocator_1_Abs", it->name());
+      ASSERT_EQ("scoped_allocator_1_1_Abs", it->name());
     }
   }
   {
-    auto& nd_set = node_map.GetOutputs("scoped_allocator_1_Abs");
+    auto& nd_set = node_map.GetOutputs("scoped_allocator_1_1_Abs");
     ASSERT_EQ(1, nd_set.size());
     for (auto it : nd_set) {
-      ASSERT_EQ("scoped_allocator_split_1", it->name());
+      ASSERT_EQ("scoped_allocator_split_1_1", it->name());
     }
   }
   {
-    auto& nd_set = node_map.GetOutputs("scoped_allocator_split_1");
+    auto& nd_set = node_map.GetOutputs("scoped_allocator_split_1_1");
     ASSERT_EQ(2, nd_set.size());
     std::unordered_set<string> name_set;
     for (auto it : nd_set) {
@@ -188,7 +188,7 @@ TEST_F(ScopedAllocatorOptimizerTest, UnaryExecute) {
 
   // Request two targets: one fetch output and one non-fetched output.
   std::vector<string> output_names = {"r1:0", "r2:0",
-                                      "scoped_allocator_1_Abs:0"};
+                                      "scoped_allocator_1_2_Abs:0"};
   std::vector<string> target_nodes = {};
   std::vector<Tensor> outputs;
   Status s = session->Run(inputs, output_names, target_nodes, &outputs);

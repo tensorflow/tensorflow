@@ -565,9 +565,9 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
   //
   // There must be no non-control edges between Nodes in 'ops'.
   // Control edges among these nodes will be dropped.
-  Status Rewrite(ScopedAllocatorOptimizer* sa_opti, GraphDef* graph,
-                 const string& op_name, const std::vector<NodeDef*>& ops,
-                 bool* applied) override {
+  Status Rewrite(ScopedAllocatorOptimizer* sa_opti, int64 invocation_count,
+                 GraphDef* graph, const string& op_name,
+                 const std::vector<NodeDef*>& ops, bool* applied) override {
     if (VLOG_IS_ON(1)) {
       VLOG(1) << "Rewrite";
       string op_names;
@@ -596,7 +596,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                                      &inputs, &sa_shape));
 
     int sa_id = sa_opti->NewScopedAllocatorId(input_shapes.size());
-    string sa_name = strings::StrCat("scoped_allocator_", sa_id);
+    string sa_name =
+        strings::StrCat("scoped_allocator_", sa_id, "_", invocation_count);
     TF_RETURN_IF_ERROR(ConstructScopedAllocatorNode(
         sa_opti, graph, node_map, ops, device_name, dtype, sa_id, sa_name,
         input_shapes, inputs, sa_shape));
@@ -622,7 +623,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
 
     // Build a ScopedAllocatorConcat below all of the input nodes.
     std::vector<NodeDefBuilder::NodeOut> sac_inputs;
-    string sac_name = strings::StrCat("scoped_allocator_concat_", sa_id);
+    string sac_name = strings::StrCat("scoped_allocator_concat_", sa_id, "_",
+                                      invocation_count);
     TF_RETURN_IF_ERROR(BuildSAConcatNode(
         graph, node_map, ops, op_instance_names, device_name, dtype, sa_id,
         sa_name, sac_name, sa_shape, &sac_inputs));
@@ -635,7 +637,8 @@ class UnaryElementwiseRewriter : public ScopedAllocatorOptimizer::Rewriter {
                                           sa_op_name));
 
     // Build a ScopedAllocatorSplit split below the new Op.
-    string sas_name = strings::StrCat("scoped_allocator_split_", sa_id);
+    string sas_name = strings::StrCat("scoped_allocator_split_", sa_id, "_",
+                                      invocation_count);
     TF_RETURN_IF_ERROR(BuildSplitNode(graph, node_map, ops, input_shapes,
                                       sac_inputs, device_name, dtype, op_name,
                                       sa_id, sas_name, sa_name, sa_op_name));
@@ -813,7 +816,14 @@ void PartitionByLoopStructure(const FrameView& frame_view,
 
 Status ScopedAllocatorOptimizer::ProcessGraphDef(
     GraphDef* graph, const GraphProperties& graph_properties) {
-  VLOG(1) << "ProcessGraphDef";
+  // Nodes created by this optimizer have the IsStateful() property
+  // which means their names must be globally unique within a process,
+  // so we include an optimizer invocation count in every generated
+  // name.
+  static std::atomic<int64> invocation_counter(1);
+  const int64 invocation_count =
+      invocation_counter.fetch_add(1, std::memory_order_seq_cst);
+  VLOG(1) << "ProcessGraphDef " << invocation_count;
   Status status;
   GraphOpOccurrences occ;
   FindOpOccurrences(graph, op_name_set_, &occ);
@@ -840,7 +850,7 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
         // in the same Tree struct.  Split those groups into subgroups that
         // share identical loop nesting.
         status = ApplyToAll(root.get(), [this, rewriter, graph, &frame_view,
-                                         &op_name](Tree* t) {
+                                         &op_name, invocation_count](Tree* t) {
           VLOG(2) << "applied to tree node " << t->edge_ << " at depth "
                   << t->depth_ << " of size " << t->nodes_.size();
           if (t->nodes_.size() > 1) {
@@ -852,7 +862,8 @@ Status ScopedAllocatorOptimizer::ProcessGraphDef(
                 Status s = OrderNodeSet(&lg);
                 TF_RETURN_IF_ERROR(s);
                 VLOG(1) << "Applying Rewriter for " << op_name;
-                s = rewriter->Rewrite(this, graph, op_name, lg, &applied);
+                s = rewriter->Rewrite(this, invocation_count, graph, op_name,
+                                      lg, &applied);
                 LOG_WARNING_AND_RETURN_IF_ERROR(s);
               }
             }
