@@ -12,10 +12,6 @@ upper_tabs:
   lower_tabs:
     # Subsite tabs
     other:
-    - name: "Tutorials"
-      contents:
-      - title: "Tutorials"
-        path: /lite/tutorials/
     - name: Guide
       contents:
       - title: Overview
