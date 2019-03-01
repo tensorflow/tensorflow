@@ -73,8 +73,8 @@ class MklAddNOp : public OpKernel {
             "Inputs to operation ", this->name(), " of type ",
             this->type_string(),
             " must have the same size and shape.  Input 0: ",
-            src1_shape.DebugString(),
-            " != input 1: ", src2_shape.DebugString()));
+            src1_shape.DebugString(), " != input 1: ",
+            src2_shape.DebugString()));
       }
 
       if (!input1_in_mkl_format && src1_dims_size == 0) {
@@ -101,7 +101,7 @@ class MklAddNOp : public OpKernel {
         }
       }
 
-      std::vector<double> coeff(2, 1.0);
+      const std::vector<float> coeff(2, 1.0f);
       MklDnnData<T> src1(&cpu_engine);
       MklDnnData<T> src2(&cpu_engine);
       MklDnnData<T> dst(&cpu_engine);
@@ -242,9 +242,9 @@ class MklAddNOp : public OpKernel {
       net.push_back(sum(sum_pd, inputs, dst.GetOpMem()));
       stream(stream::kind::eager).submit(net).wait();
     } catch (mkldnn::error& e) {
-      string error_msg = "Status: " + std::to_string(e.status) +
-                         ", message: " + string(e.message) + ", in file " +
-                         string(__FILE__) + ":" + std::to_string(__LINE__);
+      string error_msg = "Status: " + std::to_string(e.status) + ", message: " +
+                         string(e.message) + ", in file " + string(__FILE__) +
+                         ":" + std::to_string(__LINE__);
       OP_REQUIRES_OK(
           ctx, errors::Aborted("Operation received an exception:", error_msg));
     }
