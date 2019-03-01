@@ -227,9 +227,8 @@ Status StartTracing(const tensorflow::string& service_addr,
               << std::endl
               << "Tip: increase number of attempts with --num_tracing_attempts."
               << std::endl;
-    return status;
   }
-  return Status::OK();
+  return status;
 }
 
 MonitorRequest PopulateMonitorRequest(int duration_ms, int monitoring_level) {
