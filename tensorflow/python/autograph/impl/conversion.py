@@ -46,6 +46,7 @@ from tensorflow.python.autograph.core import config
 from tensorflow.python.autograph.core import converter
 from tensorflow.python.autograph.core import errors as ag_errors
 from tensorflow.python.autograph.core import function_wrapping
+from tensorflow.python.autograph.core import unsupported_features_checker
 from tensorflow.python.autograph.lang import special_functions
 from tensorflow.python.autograph.pyct import ast_util
 from tensorflow.python.autograph.pyct import compiler
@@ -53,6 +54,7 @@ from tensorflow.python.autograph.pyct import errors
 from tensorflow.python.autograph.pyct import inspect_utils
 from tensorflow.python.autograph.pyct import origin_info
 from tensorflow.python.autograph.pyct import parser
+from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import qual_names
 from tensorflow.python.autograph.pyct import templates
 from tensorflow.python.autograph.pyct import transformer
@@ -197,7 +199,7 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
         'conversion. For example, instead of converting the method '
         'of a class, try converting the entire class instead. '
         'See https://github.com/tensorflow/tensorflow/blob/master/tensorflow/'
-        'contrib/autograph/README.md#using-the-functional-api '
+        'python/autograph/README.md#using-the-functional-api '
         'for more information.')
   else:
     raise ValueError(
@@ -219,7 +221,8 @@ def entity_to_graph(o, program_ctx, arg_values, arg_types):
                 compiler.ast_to_source(node))
   if logging.has_verbosity(4):
     for n in node:
-      logging.log(4, 'Compiled AST of %s:\n\n%s\n', o, gast.dump(n))
+      logging.log(4, 'Compiled AST of %s:\n\n%s\n\n', o,
+                  pretty_printer.fmt(n, color=False))
 
   if program_ctx.options.recursive:
     while True:
@@ -354,7 +357,7 @@ def function_to_graph(f,
   """Specialization of `entity_to_graph` for callable functions."""
 
   node, source = parser.parse_entity(f)
-  logging.log(3, 'Source code of %s:\n%s', f, source)
+  logging.log(3, 'Source code of %s:\n\n%s\n', f, source)
   node = node.body[0]
 
   # In general, the output of inspect.getsource is inexact for lambdas because
@@ -428,6 +431,7 @@ def node_to_graph(node, context):
             dependencies that this node has.
   """
   # TODO(mdan): Insert list_comprehensions somewhere.
+  unsupported_features_checker.verify(node)
 
   node = converter.standard_analysis(node, context, is_initial=True)
   # Past this point, line numbers are no longer accurate so we ignore the

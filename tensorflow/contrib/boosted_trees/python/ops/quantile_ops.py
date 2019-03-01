@@ -33,7 +33,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import resources
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import tracking
+from tensorflow.python.training.tracking import tracking
 
 # Pattern to remove all non alpha numeric from a string.
 _PATTERN = re.compile(r"[\W_]+")
@@ -120,8 +120,8 @@ class QuantileAccumulator(tracking.TrackableResource):
     name = _PATTERN.sub("", name)
     with ops.name_scope(name, "QuantileAccumulator") as name:
       self._name = name
-      self._resource_handle = self.create_resource()
-      self._init_op = self.initialize()
+      self._resource_handle = self._create_resource()
+      self._init_op = self._initialize()
       is_initialized_op = self.is_initialized()
     resources.register_resource(self.resource_handle, self._init_op,
                                 is_initialized_op)
@@ -129,11 +129,11 @@ class QuantileAccumulator(tracking.TrackableResource):
                                                  self._init_op, name)
     ops.add_to_collection(ops.GraphKeys.SAVEABLE_OBJECTS, self._saveable)
 
-  def create_resource(self):
+  def _create_resource(self):
     return gen_quantile_ops.quantile_stream_resource_handle_op(
         container=self._container, shared_name=self._name, name=self._name)
 
-  def initialize(self):
+  def _initialize(self):
     return gen_quantile_ops.create_quantile_accumulator(
         self.resource_handle,
         self._init_stamp_token,
@@ -145,7 +145,7 @@ class QuantileAccumulator(tracking.TrackableResource):
   @property
   def initializer(self):
     if self._init_op is None:
-      self._init_op = self.initialize()
+      self._init_op = self._initialize()
     return self._init_op
 
   def is_initialized(self):

@@ -27,7 +27,7 @@ from tensorflow.python import keras
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import test_util
-from tensorflow.python.ops.losses import losses_impl
+from tensorflow.python.keras.utils import losses_utils
 from tensorflow.python.platform import test
 
 try:
@@ -45,7 +45,7 @@ ALL_LOSSES = [keras.losses.mean_squared_error,
               keras.losses.binary_crossentropy,
               keras.losses.kullback_leibler_divergence,
               keras.losses.poisson,
-              keras.losses.cosine_proximity,
+              keras.losses.cosine_similarity,
               keras.losses.logcosh,
               keras.losses.categorical_hinge]
 
@@ -186,7 +186,7 @@ class KerasLossesTest(test.TestCase):
 
     self.assertEqual(mse_obj.name, 'mean_squared_error')
     self.assertEqual(mse_obj.reduction,
-                     losses_impl.ReductionV2.SUM_OVER_BATCH_SIZE)
+                     losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE)
 
     y_true = constant_op.constant([[1., 9.], [2., 5.]])
     y_pred = constant_op.constant([[4., 8.], [12., 3.]])
@@ -205,9 +205,9 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_config(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=losses_impl.ReductionV2.SUM, name='mse_1')
+        reduction=losses_utils.ReductionV2.SUM, name='mse_1')
     self.assertEqual(mse_obj.name, 'mse_1')
-    self.assertEqual(mse_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(mse_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     mse_obj = keras.losses.MeanSquaredError()
@@ -273,7 +273,7 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_no_reduction(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=losses_impl.ReductionV2.NONE)
+        reduction=losses_utils.ReductionV2.NONE)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -284,7 +284,7 @@ class MeanSquaredErrorTest(test.TestCase):
 
   def test_sum_reduction(self):
     mse_obj = keras.losses.MeanSquaredError(
-        reduction=losses_impl.ReductionV2.SUM)
+        reduction=losses_utils.ReductionV2.SUM)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -298,9 +298,9 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_config(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=losses_impl.ReductionV2.SUM, name='mae_1')
+        reduction=losses_utils.ReductionV2.SUM, name='mae_1')
     self.assertEqual(mae_obj.name, 'mae_1')
-    self.assertEqual(mae_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(mae_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     mae_obj = keras.losses.MeanAbsoluteError()
@@ -366,7 +366,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_no_reduction(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=losses_impl.ReductionV2.NONE)
+        reduction=losses_utils.ReductionV2.NONE)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -377,7 +377,7 @@ class MeanAbsoluteErrorTest(test.TestCase):
 
   def test_sum_reduction(self):
     mae_obj = keras.losses.MeanAbsoluteError(
-        reduction=losses_impl.ReductionV2.SUM)
+        reduction=losses_utils.ReductionV2.SUM)
     y_true = constant_op.constant([1, 9, 2, -5, -2, 6], shape=(2, 3))
     y_pred = constant_op.constant([4, 8, 12, 8, 1, 3],
                                   shape=(2, 3),
@@ -391,9 +391,9 @@ class MeanAbsolutePercentageErrorTest(test.TestCase):
 
   def test_config(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError(
-        reduction=losses_impl.ReductionV2.SUM, name='mape_1')
+        reduction=losses_utils.ReductionV2.SUM, name='mape_1')
     self.assertEqual(mape_obj.name, 'mape_1')
-    self.assertEqual(mape_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(mape_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     mape_obj = keras.losses.MeanAbsolutePercentageError()
@@ -448,9 +448,9 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
 
   def test_config(self):
     msle_obj = keras.losses.MeanSquaredLogarithmicError(
-        reduction=losses_impl.ReductionV2.SUM, name='mape_1')
+        reduction=losses_utils.ReductionV2.SUM, name='mape_1')
     self.assertEqual(msle_obj.name, 'mape_1')
-    self.assertEqual(msle_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(msle_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     msle_obj = keras.losses.MeanSquaredLogarithmicError()
@@ -501,7 +501,7 @@ class MeanSquaredLogarithmicErrorTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class CosineProximityTest(test.TestCase):
+class CosineSimilarityTest(test.TestCase):
 
   def l2_norm(self, x, axis):
     epsilon = 1e-12
@@ -515,28 +515,27 @@ class CosineProximityTest(test.TestCase):
 
     y_true = self.l2_norm(self.np_y_true, axis)
     y_pred = self.l2_norm(self.np_y_pred, axis)
-    self.expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(axis,))
+    self.expected_loss = np.sum(np.multiply(y_true, y_pred), axis=(axis,))
 
     self.y_true = constant_op.constant(self.np_y_true)
     self.y_pred = constant_op.constant(self.np_y_pred)
 
   def test_config(self):
-    cosine_obj = keras.losses.CosineProximity(
-        axis=2, reduction=losses_impl.ReductionV2.SUM, name='cosine_loss')
+    cosine_obj = keras.losses.CosineSimilarity(
+        axis=2, reduction=losses_utils.ReductionV2.SUM, name='cosine_loss')
     self.assertEqual(cosine_obj.name, 'cosine_loss')
-    self.assertEqual(cosine_obj.reduction, losses_impl.ReductionV2.SUM)
-    self.assertEqual(cosine_obj.axis, 2)
+    self.assertEqual(cosine_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
 
   def test_scalar_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     sample_weight = 2.3
     loss = cosine_obj(self.y_true, self.y_pred, sample_weight=sample_weight)
     expected_loss = np.mean(self.expected_loss * sample_weight)
@@ -544,7 +543,7 @@ class CosineProximityTest(test.TestCase):
 
   def test_sample_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     sample_weight = np.asarray([1.2, 3.4])
     loss = cosine_obj(
         self.y_true,
@@ -555,14 +554,14 @@ class CosineProximityTest(test.TestCase):
 
   def test_timestep_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     np_y_true = self.np_y_true.reshape((2, 3, 1))
     np_y_pred = self.np_y_pred.reshape((2, 3, 1))
     sample_weight = np.asarray([3, 6, 5, 0, 4, 2]).reshape((2, 3))
 
     y_true = self.l2_norm(np_y_true, 2)
     y_pred = self.l2_norm(np_y_pred, 2)
-    expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(2,))
+    expected_loss = np.sum(np.multiply(y_true, y_pred), axis=(2,))
 
     y_true = constant_op.constant(np_y_true)
     y_pred = constant_op.constant(np_y_pred)
@@ -574,13 +573,13 @@ class CosineProximityTest(test.TestCase):
 
   def test_zero_weighted(self):
     self.setup()
-    cosine_obj = keras.losses.CosineProximity()
+    cosine_obj = keras.losses.CosineSimilarity()
     loss = cosine_obj(self.y_true, self.y_pred, sample_weight=0)
     self.assertAlmostEqual(self.evaluate(loss), 0., 3)
 
   def test_axis(self):
     self.setup(axis=1)
-    cosine_obj = keras.losses.CosineProximity(axis=1)
+    cosine_obj = keras.losses.CosineSimilarity(axis=1)
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
     self.assertAlmostEqual(self.evaluate(loss), expected_loss, 3)
@@ -591,9 +590,9 @@ class BinaryCrossentropyTest(test.TestCase):
 
   def test_config(self):
     bce_obj = keras.losses.BinaryCrossentropy(
-        reduction=losses_impl.ReductionV2.SUM, name='bce_1')
+        reduction=losses_utils.ReductionV2.SUM, name='bce_1')
     self.assertEqual(bce_obj.name, 'bce_1')
-    self.assertEqual(bce_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(bce_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]],
@@ -722,7 +721,7 @@ class BinaryCrossentropyTest(test.TestCase):
     logits = constant_op.constant([[100.0, -100.0, 100.0],
                                    [100.0, 100.0, -100.0]])
     bce_obj = keras.losses.BinaryCrossentropy(
-        from_logits=True, reduction=losses_impl.ReductionV2.NONE)
+        from_logits=True, reduction=losses_utils.ReductionV2.NONE)
     loss = bce_obj(y_true, logits)
 
     # Loss = max(x, 0) - x * z + log(1 + exp(-abs(x)))
@@ -757,9 +756,9 @@ class CategoricalCrossentropyTest(test.TestCase):
 
   def test_config(self):
     cce_obj = keras.losses.CategoricalCrossentropy(
-        reduction=losses_impl.ReductionV2.SUM, name='bce_1')
+        reduction=losses_utils.ReductionV2.SUM, name='bce_1')
     self.assertEqual(cce_obj.name, 'bce_1')
-    self.assertEqual(cce_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(cce_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct_unweighted(self):
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]],
@@ -823,7 +822,7 @@ class CategoricalCrossentropyTest(test.TestCase):
     y_true = constant_op.constant([[1, 0, 0], [0, 1, 0], [0, 0, 1]])
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     cce_obj = keras.losses.CategoricalCrossentropy(
-        from_logits=True, reduction=losses_impl.ReductionV2.NONE)
+        from_logits=True, reduction=losses_utils.ReductionV2.NONE)
     loss = cce_obj(y_true, logits)
     self.assertAllClose((0.001822, 0.000459, 0.169846), self.evaluate(loss), 3)
 
@@ -914,7 +913,7 @@ class SparseCategoricalCrossentropyTest(test.TestCase):
     y_true = constant_op.constant([[0], [1], [2]])
     logits = constant_op.constant([[8., 1., 1.], [0., 9., 1.], [2., 3., 5.]])
     cce_obj = keras.losses.SparseCategoricalCrossentropy(
-        from_logits=True, reduction=losses_impl.ReductionV2.NONE)
+        from_logits=True, reduction=losses_utils.ReductionV2.NONE)
     loss = cce_obj(y_true, logits)
     self.assertAllClose((0.001822, 0.000459, 0.169846), self.evaluate(loss), 3)
 
@@ -924,9 +923,9 @@ class HingeTest(test.TestCase):
 
   def test_config(self):
     hinge_obj = keras.losses.Hinge(
-        reduction=losses_impl.ReductionV2.SUM, name='hinge_loss')
+        reduction=losses_utils.ReductionV2.SUM, name='hinge_loss')
     self.assertEqual(hinge_obj.name, 'hinge_loss')
-    self.assertEqual(hinge_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(hinge_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     hinge_obj = keras.losses.Hinge()
@@ -1024,9 +1023,9 @@ class SquaredHingeTest(test.TestCase):
 
   def test_config(self):
     sq_hinge_obj = keras.losses.SquaredHinge(
-        reduction=losses_impl.ReductionV2.SUM, name='sq_hinge_loss')
+        reduction=losses_utils.ReductionV2.SUM, name='sq_hinge_loss')
     self.assertEqual(sq_hinge_obj.name, 'sq_hinge_loss')
-    self.assertEqual(sq_hinge_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(sq_hinge_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     sq_hinge_obj = keras.losses.SquaredHinge()
@@ -1133,9 +1132,9 @@ class CategoricalHingeTest(test.TestCase):
 
   def test_config(self):
     cat_hinge_obj = keras.losses.CategoricalHinge(
-        reduction=losses_impl.ReductionV2.SUM, name='cat_hinge_loss')
+        reduction=losses_utils.ReductionV2.SUM, name='cat_hinge_loss')
     self.assertEqual(cat_hinge_obj.name, 'cat_hinge_loss')
-    self.assertEqual(cat_hinge_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(cat_hinge_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     cat_hinge_obj = keras.losses.CategoricalHinge()
@@ -1214,9 +1213,9 @@ class LogLossTest(test.TestCase):
 
   def test_config(self):
     log_loss_obj = keras.losses.LogLoss(
-        reduction=losses_impl.ReductionV2.SUM, name='log')
+        reduction=losses_utils.ReductionV2.SUM, name='log')
     self.assertEqual(log_loss_obj.name, 'log')
-    self.assertEqual(log_loss_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(log_loss_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct(self):
     self.setup()
@@ -1301,9 +1300,9 @@ class LogCoshTest(test.TestCase):
 
   def test_config(self):
     logcosh_obj = keras.losses.LogCosh(
-        reduction=losses_impl.ReductionV2.SUM, name='logcosh_loss')
+        reduction=losses_utils.ReductionV2.SUM, name='logcosh_loss')
     self.assertEqual(logcosh_obj.name, 'logcosh_loss')
-    self.assertEqual(logcosh_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(logcosh_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     self.setup()
@@ -1382,9 +1381,9 @@ class PoissonTest(test.TestCase):
 
   def test_config(self):
     poisson_obj = keras.losses.Poisson(
-        reduction=losses_impl.ReductionV2.SUM, name='poisson')
+        reduction=losses_utils.ReductionV2.SUM, name='poisson')
     self.assertEqual(poisson_obj.name, 'poisson')
-    self.assertEqual(poisson_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(poisson_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     self.setup()
@@ -1463,9 +1462,9 @@ class KLDivergenceTest(test.TestCase):
 
   def test_config(self):
     k_obj = keras.losses.KLDivergence(
-        reduction=losses_impl.ReductionV2.SUM, name='kld')
+        reduction=losses_utils.ReductionV2.SUM, name='kld')
     self.assertEqual(k_obj.name, 'kld')
-    self.assertEqual(k_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(k_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_unweighted(self):
     self.setup()
@@ -1553,9 +1552,9 @@ class HuberLossTest(test.TestCase):
 
   def test_config(self):
     h_obj = keras.losses.Huber(
-        reduction=losses_impl.ReductionV2.SUM, name='huber')
+        reduction=losses_utils.ReductionV2.SUM, name='huber')
     self.assertEqual(h_obj.name, 'huber')
-    self.assertEqual(h_obj.reduction, losses_impl.ReductionV2.SUM)
+    self.assertEqual(h_obj.reduction, losses_utils.ReductionV2.SUM)
 
   def test_all_correct(self):
     self.setup()

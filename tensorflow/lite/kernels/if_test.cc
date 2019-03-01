@@ -24,25 +24,21 @@ limitations under the License.
 
 namespace tflite {
 
-using subgraph_test_util::BuildAddSubgraph;
-using subgraph_test_util::BuildIfSubgraph;
-using subgraph_test_util::BuildMulSubgraph;
-using subgraph_test_util::BuildPadSubgraph;
 using subgraph_test_util::CheckIntTensor;
+using subgraph_test_util::ControlFlowOpTest;
 using subgraph_test_util::FillIntTensor;
 
 namespace {
 
 // A simple test that performs `ADD` if condition is true, and `MUL` otherwise.
 // The computation is: `cond ? a + b : a * b`.
-class SimpleIfTest : public ::testing::Test {
+class SimpleIfTest : public ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
     interpreter_->AddSubgraphs(2);
-    BuildAddSubgraph(interpreter_->subgraph(1));
-    BuildMulSubgraph(interpreter_->subgraph(2));
-    BuildIfSubgraph(&interpreter_->primary_subgraph());
+    builder_->BuildAddSubgraph(interpreter_->subgraph(1));
+    builder_->BuildMulSubgraph(interpreter_->subgraph(2));
+    builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());
 
     interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
     interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2});
@@ -52,7 +48,6 @@ class SimpleIfTest : public ::testing::Test {
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {5, 7});
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {1, 2});
   }
-  std::unique_ptr<Interpreter> interpreter_;
 };
 
 TEST_F(SimpleIfTest, TestIfTrue) {
@@ -71,14 +66,13 @@ TEST_F(SimpleIfTest, TestIfFalse) {
 
 // Test IF op using subgraphs with dynamically sized outputs.
 // The computation is: `cond ? a + b : pad(a, b)`.
-class DynamicSubgraphIfTest : public ::testing::Test {
+class DynamicSubgraphIfTest : public ControlFlowOpTest {
  protected:
   void SetUp() override {
-    interpreter_.reset(new Interpreter);
     interpreter_->AddSubgraphs(2);
-    BuildAddSubgraph(interpreter_->subgraph(1));
-    BuildPadSubgraph(interpreter_->subgraph(2));
-    BuildIfSubgraph(&interpreter_->primary_subgraph());
+    builder_->BuildAddSubgraph(interpreter_->subgraph(1));
+    builder_->BuildPadSubgraph(interpreter_->subgraph(2));
+    builder_->BuildIfSubgraph(&interpreter_->primary_subgraph());
 
     interpreter_->ResizeInputTensor(interpreter_->inputs()[0], {1});
     interpreter_->ResizeInputTensor(interpreter_->inputs()[1], {2});
@@ -88,7 +82,6 @@ class DynamicSubgraphIfTest : public ::testing::Test {
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[1]), {5, 7});
     FillIntTensor(interpreter_->tensor(interpreter_->inputs()[2]), {1, 2});
   }
-  std::unique_ptr<Interpreter> interpreter_;
 };
 
 TEST_F(DynamicSubgraphIfTest, TestIfTrue) {

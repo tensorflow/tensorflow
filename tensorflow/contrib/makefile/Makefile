@@ -439,7 +439,6 @@ $(MARCH_OPTION) \
 -Itensorflow/core/kernels \
 -I$(MAKEFILE_DIR)/downloads/cub \
 -I$(MAKEFILE_DIR)/downloads/cub/cub_archive/cub/device \
--Ithird_party/toolchains/gpus/cuda \
 -I$(JETPACK)/cuda/include \
 -I$(JETPACK) \
 -I$(JETPACK)/cuDNN/aarch64 \

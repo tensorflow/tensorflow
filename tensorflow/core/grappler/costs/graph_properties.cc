@@ -481,6 +481,7 @@ bool IsNumericType(const DataType dtype) {
           DT_QINT8,
           DT_QUINT8,
           DT_QINT16,
+          DT_QUINT16,
           DT_QINT32,
           // Bool.
           DT_BOOL,

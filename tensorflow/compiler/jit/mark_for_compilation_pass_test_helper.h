@@ -23,17 +23,14 @@ class MarkForCompilationPassTestHelper {
  public:
   // Runs the MarkForCompilation pass on `graph` after assigning all nodes in
   // `graph` to the CPU device.  To make testing easier, ignores device
-  // registration, _XlaCompile attributes, input deadness and global jit level.
+  // registration, _XlaCompile attributes and input deadness.
   static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
                                    FunctionLibraryDefinition* flib_def,
-                                   SessionOptions* session_options);
-
-  // Like `MarkForCompilation` but creates a default SessionOptions.
-  static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
-                                   FunctionLibraryDefinition* flib_def);
+                                   bool enable_global_jit = true);
 
   // Like `MarkForCompilation` but creates `flib_def` from the op registry.
-  static Status MarkForCompilation(std::unique_ptr<Graph>* graph);
+  static Status MarkForCompilation(std::unique_ptr<Graph>* graph,
+                                   bool enable_global_jit = true);
 };
 }  // namespace tensorflow
 

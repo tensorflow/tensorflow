@@ -28,6 +28,7 @@ from enum import Enum
 
 # pylint:disable=g-bad-import-order
 import numpy as np
+import six
 # pylint:enable=g-bad-import-order
 
 
@@ -90,7 +91,7 @@ def convert(
               verbose=verbose,
               force_conversion=True,
               optional_features=optional_features,
-          ), *args, **kwargs)
+          ), args, kwargs)
 
     wrapper = tf_decorator.make_decorator(f, wrapper)
 
@@ -114,6 +115,12 @@ class RunMode(Enum):
   """
   GRAPH = 1
   PY_FUNC = 2
+
+
+def do_not_convert_internal(f):
+  """Decorator that marks internal functions which do not need conversion."""
+  setattr(f, '__ag_compiled', True)
+  return f
 
 
 def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
@@ -154,15 +161,61 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
     else:
       raise ValueError('unknown value for run_as: %s' % run_as)
 
-    # Sometimes the decorator is just desugared, making it impossible to detect.
-    # This attribute makes detection easier.
     setattr(wrapper, '__ag_compiled', True)
     return wrapper
 
   return decorator
 
 
-def converted_call(f, owner, options, *args, **kwargs):
+def _call_unconverted(f, args, kwargs):
+  """Calls the original function without converting with AutoGraph.
+
+  Args typically include `self`, as required by the conversion process.
+  When conversion is skipped, `self` is not necessary, because the
+  original bound method is being executed. This code removes it.
+
+  Args:
+    f: the original function for which conversion was requested.
+    args: positional arguments for f May or may not include self.
+    kwargs: keyword arguments for f
+
+  Returns:
+    The return value of f(*args, **kwargs).
+  """
+  if inspect_utils.istfmethodtarget(f):
+    return f.__self__.call(args, kwargs)
+
+  return f(*args, **kwargs)
+
+
+def _is_known_loaded_type(f, module_name, entity_name):
+  """Tests whether the function or method is an instance of a known type."""
+  if (module_name not in sys.modules or
+      not hasattr(sys.modules[module_name], entity_name)):
+    return False
+  type_entity = getattr(sys.modules[module_name], entity_name)
+  if isinstance(f, type_entity):
+    # The method if of this type. Example:
+    #
+    # o = ClassType()
+    # function(o.method)()
+    return True
+  if tf_inspect.ismethod(f):
+    f = six.get_unbound_function(f)
+    # The the unbound method if of this type. Example:
+    #
+    # class ClassType:
+    #   @function
+    #   def method(self):
+    #     ...
+    # o = ClassType()
+    # o.method()
+    if isinstance(f, type_entity):
+      return True
+  return False
+
+
+def converted_call(f, owner, options, args, kwargs):
   """Compiles a function call inline. For internal use only."""
   logging.log(1,
               'Converted call: %s; owner: %s\n    args: %s\n    kwargs: %s\n',
@@ -186,48 +239,39 @@ def converted_call(f, owner, options, *args, **kwargs):
     return py_builtins.overload_of(f)(*args, **kwargs)
 
   # TODO(b/122265385): Remove this bypass.
-  if ('wrapt' in sys.modules and
-      hasattr(sys.modules['wrapt'], 'FunctionWrapper') and
-      isinstance(f, sys.modules['wrapt'].FunctionWrapper)):
+  if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
+      _is_known_loaded_type(f, 'wrapt', 'BoundFunctionWrapper')):
     logging.warn(
         'Entity {} appears to be decorated by wrapt, which is not yet supported'
         ' by AutoGraph. The function will be called without transformation.'
-        ' You may however apply AutoGraph before the decorator.'.format(f), 1)
+        ' You may however apply AutoGraph before the decorator.'.format(f))
     logging.log(2, 'Permanently whitelisted: %s: wrapt decorated', f)
-    return f(*args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
+
+  # Constructors are permanently whitelisted.
+  # TODO(mdan): Toggle as experimental feature instead.
+  # TODO(b/124016764): Remove this limitation.
+  if tf_inspect.isclass(f):
+    logging.log(2, 'Permanently whitelisted: %s: constructor', f)
+    return _call_unconverted(f, args, kwargs)
 
   # Other built-in modules are permanently whitelisted.
   # TODO(mdan): Figure out how to do this consistently for all stdlib modules.
-  if (f in collections.__dict__.values() or f in pdb.__dict__.values() or
-      f in copy.__dict__.values()):
+  # Note: TF linter disallows importing inspect.
+  if any(f in m.__dict__.values()
+         for m in (collections, pdb, copy, tf_inspect._inspect)):  # pylint:disable=protected-access
     logging.log(2, 'Permanently whitelisted: %s: part of builtin module', f)
-    return f(*args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
-  # TODO(mdan): This needs cleanup.
   if not options.force_conversion and conversion.is_whitelisted_for_graph(f):
-
-    # TODO(mdan): This may be inconsistent in certain situations.
-    # If the function had already been annotated with @tf.function, it
-    # may be bound to the incorrect object. It's unclear if those situations
-    # are possible, but if they happen, we need to check if f is bound
-    # to a shim like WeakrefSelf and unpack it.
-
-    # Args typically include `self`, as required by the conversion process.
-    # When conversion is skipped, `self` is not necessary, because the
-    # original bound method is being executed. This code removes it.
-    if tf_inspect.ismethod(f) and args:
-      f_self = inspect_utils.getmethodself(f)
-      if args[0] is f_self:
-        args = args[1:]
-
-    return f(*args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   # internal_convert_user_code is for example turned off when issuing a dynamic
   # call conversion from generated code while in nonrecursive mode. In that
   # case we evidently don't want to recurse, but we still have to convert
   # things like builtins.
   if not options.internal_convert_user_code:
-    return f(*args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   # TODO(mdan): Move this entire block inside to_graph.
   try:  # Begin of transformation error guards
@@ -276,6 +320,9 @@ def converted_call(f, owner, options, *args, **kwargs):
 
     elif tf_inspect.isclass(f):
       # Constructors
+      # Note: Until we support class constructurs, and enable whole-class
+      # conversion with an experimental flag, this branch is dead code.
+      # TODO(mdan): Consider removing unless there is a compelling use case.
       target_entity = f
       arg_map_target = f.__init__
       effective_args = args
@@ -337,10 +384,10 @@ def converted_call(f, owner, options, *args, **kwargs):
     logging.warn(
         'Entity %s could not be transformed and will be staged without change.'
         ' Error details can be found in the logs when running with the env'
-        ' variable AUTOGRAPH_VERBOSITY=5. Please report this to the AutoGraph'
-        ' team. Cause: %s', target_entity, e)
+        ' variable AUTOGRAPH_VERBOSITY >= 1. Please report this to the'
+        ' AutoGraph team. Cause: %s', target_entity, e)
 
-    return f(*args, **kwargs)
+    return _call_unconverted(f, args, kwargs)
 
   result = converted_f(*effective_args, **kwargs)
 

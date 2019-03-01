@@ -21,7 +21,7 @@ import functools
 
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 
 
 class _CallbackSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
@@ -43,7 +43,7 @@ class _CallbackSaveable(saver_lib.BaseSaverBuilder.SaveableObject):
     return self._restore_callback(tensor)
 
 
-class _SplitDependency(checkpointable.Checkpointable):
+class _SplitDependency(trackable.Trackable):
   """Looks like a regular variable while synchronizing save/restores."""
 
   def __init__(self, save_buffer, restore_buffer, name, dtype, num_components,
@@ -81,9 +81,9 @@ class _SplitDependency(checkpointable.Checkpointable):
       return control_flow_ops.no_op()
 
   def _gather_saveables_for_checkpoint(self):
-    """Looks to Checkpointable like a regular variable."""
+    """Looks to Trackable like a regular variable."""
     return {
-        checkpointable.VARIABLE_VALUE_KEY:
+        trackable.VARIABLE_VALUE_KEY:
         functools.partial(_CallbackSaveable,
                           dtype=self._dtype,
                           save_callback=self._save,
@@ -117,7 +117,7 @@ def split_dependency(component_names, component_dtypes,
       may return `None`).
 
   Returns:
-    A dictionary mapping from names to Checkpointable objects. If one is
+    A dictionary mapping from names to Trackable objects. If one is
     reachable from an object as a dependency, the others should be too; adding
     dependencies on some but not all of the objects will result in errors.
   """

@@ -240,7 +240,7 @@ TEST_F(GoogleAuthProviderTest, NothingAvailable) {
 }
 
 TEST_F(GoogleAuthProviderTest, NoGceCheckEnvironmentVariable) {
-  setenv("NO_GCE_CHECK", "", 1);
+  setenv("NO_GCE_CHECK", "True", 1);
   auto oauth_client = new FakeOAuthClient;
 
   FakeEnv env;
@@ -250,6 +250,11 @@ TEST_F(GoogleAuthProviderTest, NoGceCheckEnvironmentVariable) {
                               nullptr, &env);
 
   string token;
+  TF_EXPECT_OK(provider.GetToken(&token));
+  EXPECT_EQ("", token);
+
+  // We confirm that our env var is case insensitive.
+  setenv("NO_GCE_CHECK", "true", 1);
   TF_EXPECT_OK(provider.GetToken(&token));
   EXPECT_EQ("", token);
 

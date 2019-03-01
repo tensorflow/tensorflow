@@ -273,6 +273,16 @@ class PlacerTest : public ::testing::Test {
                              const DeviceType& expected_device_type);
 };
 
+// Fixture that add a parameter for allow_soft_placement.
+// Test cases that want to test behavior with and without soft placement
+// can use this fixture instead of PlacerTest.
+class SoftPlacementPlacerTest : public PlacerTest,
+                                public ::testing::WithParamInterface<bool> {};
+
+INSTANTIATE_TEST_SUITE_P(, SoftPlacementPlacerTest,
+                         ::testing::Values(false, true),
+                         ::testing::PrintToStringParamName());
+
 #define EXPECT_COLOCATED(g, name_a, name_b)                         \
   do {                                                              \
     Graph& g_ = (g);                                                \
@@ -1038,7 +1048,7 @@ TEST_F(PlacerTest, TestColocationGroup) {
         b.opts().WithName("colocated_1").WithAttr("_class", {"loc:@in"}));
 
     // This will not be colocated with the input because TestInput is
-    // only availbale on CPU and TestRelu will default to GPU.
+    // only available on CPU and TestRelu will default to GPU.
     Node* not_colocated_with_input =
         ops::UnaryOp("TestRelu", input, b.opts().WithName("foo"));
     CHECK(colocated_with_input);
@@ -1073,7 +1083,7 @@ TEST_F(PlacerTest, TestMultipleColocationGroups) {
   EXPECT_COLOCATED(g, "in", "foo");
 }
 
-TEST_F(PlacerTest, TestInvalidMultipleColocationGroups) {
+TEST_P(SoftPlacementPlacerTest, TestInvalidMultipleColocationGroups) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1090,12 +1100,24 @@ TEST_F(PlacerTest, TestInvalidMultipleColocationGroups) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  Status s = Place(&g);
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "Cannot colocate nodes {{colocation_node foo}} and "
-      "{{colocation_node in}} because no device type supports both of those "
-      "nodes and the other nodes colocated with them"));
+  bool allow_soft_placement = GetParam();
+  SessionOptions options;
+  options.config.set_allow_soft_placement(allow_soft_placement);
+  options.config.set_log_device_placement(true);
+  Status s = Place(&g, &options);
+  if (allow_soft_placement) {
+    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+    EXPECT_DEVICE_TYPE(g, "in", "FakeCPU");
+    EXPECT_DEVICE_TYPE(g, "colocated_1", "FakeCPU");
+    EXPECT_DEVICE_TYPE(g, "foo", "FakeGPU");
+  } else {
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(),
+        "Cannot colocate nodes {{colocation_node foo}} and "
+        "{{colocation_node in}} because no device type supports both of those "
+        "nodes and the other nodes colocated with them"))
+        << s.ToString();
+  }
 }
 
 TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
@@ -1125,7 +1147,8 @@ TEST_F(PlacerTest, TestColocationGroupWithReferenceConnections) {
   EXPECT_COLOCATED(g, "var2", "assign1");
 }
 
-TEST_F(PlacerTest, TestColocationGroupWithUnsatisfiableReferenceConnections) {
+TEST_P(SoftPlacementPlacerTest,
+       TestColocationGroupWithUnsatisfiableReferenceConnections) {
   Graph g(OpRegistry::Global());
   {  // Scope for temporary variables used to construct g.
     GraphDefBuilder b(GraphDefBuilder::kFailImmediately);
@@ -1155,12 +1178,22 @@ TEST_F(PlacerTest, TestColocationGroupWithUnsatisfiableReferenceConnections) {
     TF_EXPECT_OK(BuildGraph(b, &g));
   }
 
-  Status s = Place(&g);
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "Cannot colocate nodes {{colocation_node var3}} and {{colocation_node "
-      "assign3}} because no device type supports both of those nodes and the "
-      "other nodes colocated with them."));
+  bool allow_soft_placement = GetParam();
+  SessionOptions options;
+  options.config.set_allow_soft_placement(allow_soft_placement);
+  options.config.set_log_device_placement(true);
+  Status s = Place(&g, &options);
+  if (allow_soft_placement) {
+    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+  } else {
+    EXPECT_EQ(error::INVALID_ARGUMENT, s.code()) << s.ToString();
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(),
+        "Cannot colocate nodes {{colocation_node assign3}} and "
+        "{{colocation_node var2}} because no device type supports both of "
+        "those nodes and the other nodes colocated with them."))
+        << s.ToString();
+  }
 }
 
 TEST_F(PlacerTest, TestColocationAndReferenceConnections) {
@@ -1669,7 +1702,8 @@ REGISTER_KERNEL_BUILDER(Name("Mul").Device("FakeGPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeCPU"), DummyOp);
 REGISTER_KERNEL_BUILDER(Name("Add").Device("FakeGPU"), DummyOp);
 
-TEST_F(PlacerTest, RequestedDeviceOnResourceGeneratorIsTreatedAsAssigned) {
+TEST_P(SoftPlacementPlacerTest,
+       RequestedDeviceOnResourceGeneratorIsTreatedAsAssigned) {
   /*
    *    a:RES:GPU  b:RES:CPU
    *       |         |
@@ -1693,12 +1727,27 @@ TEST_F(PlacerTest, RequestedDeviceOnResourceGeneratorIsTreatedAsAssigned) {
 
   Graph g(OpRegistry::Global());
   TF_ASSERT_OK(BuildGraph(graph, &g));
-  Status s = Place(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "Cannot place the graph because a reference or resource edge connects "
-      "colocation groups with incompatible assigned devices:"));
+
+  bool allow_soft_placement = GetParam();
+  SessionOptions options;
+  options.config.set_allow_soft_placement(allow_soft_placement);
+  options.config.set_log_device_placement(true);
+  Status s = Place(&g, &options);
+  if (allow_soft_placement) {
+    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+    EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
+    EXPECT_DEVICE_TYPE(g, "id1", "FakeGPU");
+    EXPECT_DEVICE_TYPE(g, "b", "FakeCPU");
+    EXPECT_DEVICE_TYPE(g, "id2", "FakeCPU");
+  } else {
+    EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(),
+        "Cannot colocate nodes {{colocation_node id2}} and {{colocation_node "
+        "id1}}: Cannot merge devices with incompatible types: "
+        "'/device:fakecpu:0' and '/device:fakegpu:0'"))
+        << s.ToString();
+  }
 }
 
 TEST_F(PlacerTest, RequestedDeviceCanBeOverridden) {
@@ -1738,7 +1787,8 @@ TEST_F(PlacerTest, RequestedDeviceCanBeOverridden) {
   EXPECT_COLOCATED(g, "a", "id1");
 }
 
-TEST_F(PlacerTest, AssignedDevicesAreNotOverriddenDueToResourcesAndColocation) {
+TEST_P(SoftPlacementPlacerTest,
+       AssignedDevicesAreNotOverriddenDueToResourcesAndColocation) {
   /*
    *     a:RES      b:RES
    *       |         |
@@ -1768,14 +1818,30 @@ TEST_F(PlacerTest, AssignedDevicesAreNotOverriddenDueToResourcesAndColocation) {
   std::unordered_map<string, Node*> nodes = g.BuildNodeNameIndex();
   GetNodeByName(g, "id_a")->set_assigned_device_name(kFullGPU);
   GetNodeByName(g, "id_b")->set_assigned_device_name(kFullCPU);
-  Status s = Place(&g);
-  EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
-  EXPECT_TRUE(str_util::StrContains(
-      s.error_message(),
-      "Cannot place the graph because a reference or resource edge connects "
-      "colocation groups with incompatible assigned devices: "
-      "/job:a/replica:0/task:0/device:fakecpu:0 vs "
-      "/job:a/replica:0/task:0/device:fakegpu:0"));
+
+  bool allow_soft_placement = GetParam();
+
+  SessionOptions options;
+  options.config.set_allow_soft_placement(allow_soft_placement);
+  Status s = Place(&g, &options);
+  if (allow_soft_placement) {
+    EXPECT_EQ(error::OK, s.code()) << s.ToString();
+    EXPECT_DEVICE_TYPE(g, "a", "FakeGPU");
+    EXPECT_DEVICE_TYPE(g, "id_a", "FakeGPU");
+    EXPECT_DEVICE_TYPE(g, "id1", "FakeGPU");
+    EXPECT_DEVICE_TYPE(g, "b", "FakeCPU");
+    EXPECT_DEVICE_TYPE(g, "id_b", "FakeCPU");
+    EXPECT_DEVICE_TYPE(g, "id2", "FakeCPU");
+  } else {
+    EXPECT_EQ(error::INVALID_ARGUMENT, s.code());
+    EXPECT_TRUE(str_util::StrContains(
+        s.error_message(),
+        "Cannot colocate nodes {{colocation_node id2}} and {{colocation_node "
+        "id1}}: Cannot merge devices with incompatible types: "
+        "'/job:a/replica:0/task:0/device:fakecpu:0' and "
+        "'/job:a/replica:0/task:0/device:fakegpu:0'"))
+        << s.ToString();
+  }
 }
 
 }  // namespace

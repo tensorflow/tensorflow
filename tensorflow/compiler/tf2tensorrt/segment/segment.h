@@ -24,8 +24,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
-namespace tensorflow {
+#if GOOGLE_CUDA
+#if GOOGLE_TENSORRT
 
+namespace tensorflow {
 namespace tensorrt {
 namespace segment {
 
@@ -42,22 +44,25 @@ struct SegmentOptions {
 
 // Get the subgraphs of a graph that can be handled by TensorRT.
 //
-// @param graph tensorflow::Graph of the network
+// @param graph Graph of the network
 // @param candidate_fn A function that returns OK for a Node* if
 // that node can be handled by TensorRT.
 // @param segments Returns the TensorRT segments/subgraphs. Each entry
 // in the vector describes a subgraph by giving a set of the names of
 // all the NodeDefs in that subgraph.
 // @return the status.
-tensorflow::Status SegmentGraph(
-    const tensorflow::Graph* tf_graph,
-    const std::function<Status(const tensorflow::Node*)>& candidate_fn,
-    const std::function<bool(const tensorflow::Edge*)>& input_candidate_fn,
-    const std::function<bool(const tensorflow::Edge*)>& output_candidate_fn,
-    const SegmentOptions& options, SegmentNodesVector* segments);
+Status SegmentGraph(const Graph* tf_graph,
+                    const std::function<Status(const Node*)>& candidate_fn,
+                    const std::function<bool(const Edge*)>& input_candidate_fn,
+                    const std::function<bool(const Edge*)>& output_candidate_fn,
+                    const SegmentOptions& options,
+                    SegmentNodesVector* segments);
 
 }  // namespace segment
 }  // namespace tensorrt
 }  // namespace tensorflow
+
+#endif  // GOOGLE_TENSORRT
+#endif  // GOOGLE_CUDA
 
 #endif  // TENSORFLOW_COMPILER_TF2TENSORRT_SEGMENT_SEGMENT_H_

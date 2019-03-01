@@ -24,6 +24,10 @@ ARG UBUNTU_VERSION=16.04
 ARG ARCH=
 ARG CUDA=10.0
 FROM nvidia/cuda${ARCH:+-$ARCH}:${CUDA}-base-ubuntu${UBUNTU_VERSION} as base
+# ARCH and CUDA are specified again because the FROM directive resets ARGs
+# (but their default value is retained if set previously)
+ARG ARCH
+ARG CUDA
 ARG CUDNN=7.4.1.5-1
 
 # Needed for string substitution 
@@ -108,6 +112,8 @@ COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
 
 RUN ${PIP} install jupyter matplotlib
+RUN ${PIP} install jupyter_http_over_ws
+RUN jupyter serverextension enable --py jupyter_http_over_ws
 
 RUN mkdir -p /tf/tensorflow-tutorials && chmod -R a+rwx /tf/
 RUN mkdir /.local && chmod a+rwx /.local

@@ -15,8 +15,7 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/pcan_gain_control_util.h"
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace {
 
@@ -25,9 +24,9 @@ const int kSmoothingBits = 10;
 const int kCorrectionBits = -1;
 
 // Test pcan auto gain control using default config values.
-class PcanGainControlTest : public ::testing::Test {
- protected:
-  PcanGainControlTest() {
+class PcanGainControlTestConfig {
+ public:
+  PcanGainControlTestConfig() {
     config_.enable_pcan = 1;
     config_.strength = 0.95;
     config_.offset = 80.0;
@@ -37,24 +36,30 @@ class PcanGainControlTest : public ::testing::Test {
   struct PcanGainControlConfig config_;
 };
 
-TEST_F(PcanGainControlTest, TestPcanGainControl) {
+}  // namespace
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(PcanGainControlTest_TestPcanGainControl) {
   uint32_t estimate[] = {6321887, 31248341};
+  PcanGainControlTestConfig config;
   struct PcanGainControlState state;
-  ASSERT_TRUE(PcanGainControlPopulateState(&config_, &state, estimate,
-                                           kNumChannels, kSmoothingBits,
-                                           kCorrectionBits));
+  TF_LITE_MICRO_EXPECT(PcanGainControlPopulateState(
+      &config.config_, &state, estimate, kNumChannels, kSmoothingBits,
+      kCorrectionBits));
 
   uint32_t signal[] = {241137, 478104};
   PcanGainControlApply(&state, signal);
 
   const uint32_t expected[] = {3578, 1533};
-  ASSERT_EQ(state.num_channels, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(state.num_channels,
+                          sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < state.num_channels; ++i) {
-    EXPECT_EQ(signal[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(signal[i], expected[i]);
   }
 
   PcanGainControlFreeStateContents(&state);
 }
 
-}  // namespace
+TF_LITE_MICRO_TESTS_END

@@ -57,6 +57,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "mixed_precision"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "models"
     mtype: "<type \'module\'>"
   }

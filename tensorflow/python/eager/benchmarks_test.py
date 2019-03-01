@@ -38,6 +38,7 @@ from tensorflow.python.eager import backprop  # pylint: disable=unused-import
 from tensorflow.python.eager import context
 from tensorflow.python.eager import core
 from tensorflow.python.eager import function
+from tensorflow.python.eager import profiler
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -145,7 +146,7 @@ class MicroBenchmarks(test.Benchmark):
   def _run(self, func, num_iters, execution_mode=None):
     # call func to maybe warm up the GPU
     ctx = context.context()
-    with ctx.execution_mode(execution_mode):
+    with context.execution_mode(execution_mode):
       func()
       if execution_mode == context.ASYNC:
         ctx.async_wait()
@@ -815,9 +816,25 @@ class MicroBenchmarks(test.Benchmark):
       model = make_keras_model(initializer="glorot_uniform")
       self._benchmark_keras_model_fit(model)
 
+  def benchmark_keras_model_functional_fit_graph_mode_with_profiler(self):
+    profiler.start()
+    with context.graph_mode():
+      model = make_keras_model(initializer="glorot_uniform")
+      self._benchmark_keras_model_fit(model)
+    result = profiler.stop()
+    assert result is not None
+
   def benchmark_keras_model_functional_fit_run_model_eagerly(self):
     model = make_keras_model(initializer="glorot_uniform")
     self._benchmark_keras_model_fit(model, run_eagerly=True)
+
+  def benchmark_keras_model_functional_fit_run_model_eagerly_with_profiler(
+      self):
+    profiler.start()
+    model = make_keras_model(initializer="glorot_uniform")
+    self._benchmark_keras_model_fit(model, run_eagerly=True)
+    result = profiler.stop()
+    assert result is not None
 
   def benchmark_keras_model_sequential_fit(self):
     model = make_sequential_keras_model(initializer="glorot_uniform")

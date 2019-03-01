@@ -1726,7 +1726,7 @@ TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
   GrapplerItem item;
   TF_CHECK_OK(scope.ToGraphDef(&item.graph));
 
-  // Without aggresive shape inference, it cannot infer output value of
+  // Without aggressive shape inference, it cannot infer output value of
   // StridedSlice with ShrinkAxisMask.
   {
     GraphProperties properties(item);
@@ -1736,7 +1736,7 @@ TEST_F(GraphPropertiesTest, StridedSliceOfShapeWithShrinkAxisMask) {
     EXPECT_FALSE(properties.GetOutputProperties("slice").at(0).has_value());
   }
 
-  // InferStatically with aggresive shape inference can infer output value of
+  // InferStatically with aggressive shape inference can infer output value of
   // StridedSlice with ShrinkAxisMask.
   {
     GraphProperties properties(item);

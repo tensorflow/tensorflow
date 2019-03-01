@@ -160,8 +160,7 @@ Allocator* GPUProcessState::GetGPUAllocator(const GPUOptions& options,
 #endif  // GOOGLE_CUDA
 }
 
-std::unique_ptr<SharedCounter> GPUProcessState::ReleaseGPUAllocatorCounter(
-    TfGpuId tf_gpu_id) {
+SharedCounter* GPUProcessState::GPUAllocatorCounter(TfGpuId tf_gpu_id) {
   DCHECK(process_state_);
 #if GOOGLE_CUDA
   GpuIdUtil::CheckValidTfGpuId(tf_gpu_id);
@@ -171,7 +170,7 @@ std::unique_ptr<SharedCounter> GPUProcessState::ReleaseGPUAllocatorCounter(
   }
 
   AllocatorParts& allocator_parts = gpu_allocators_[tf_gpu_id.value()];
-  return std::move(allocator_parts.counter);
+  return allocator_parts.counter.get();
 #else
   return nullptr;
 #endif

@@ -476,6 +476,7 @@ class OptimizerTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def testOptimizerWithCallbacks(self):
+    np.random.seed(1331)
     input_np = np.random.random((10, 3))
     output_np = np.random.random((10, 4))
     a = input_layer.Input(shape=(3,), name='input_a')
@@ -496,7 +497,7 @@ class OptimizerTest(test.TestCase):
         batch_size=10,
         validation_data=(input_np, output_np),
         callbacks=cbks,
-        epochs=5,
+        epochs=2,
         verbose=0)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -516,7 +517,7 @@ class OptimizerTest(test.TestCase):
         batch_size=10,
         validation_data=(input_np, output_np),
         callbacks=cbks,
-        epochs=5,
+        epochs=2,
         verbose=2)
     self.assertAllClose(
         float(backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)

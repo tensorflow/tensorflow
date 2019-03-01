@@ -34,7 +34,12 @@ namespace tensorrt {
 // TRTs pull model for calibration. When TRT implements a means for
 // a push calibration This class should be updated accordingly
 
+// IInt8EntropyCalibrator2 is prefferred for TRT 5.1+.
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator2 {
+#else
 struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
+#endif
  public:
   // Construct a calibrator for future calibration.
   TRTInt8Calibrator(
@@ -73,10 +78,10 @@ struct TRTInt8Calibrator : public nvinfer1::IInt8EntropyCalibrator {
   const int batch_size_;
 
   // mutex for condition_variable
-  tensorflow::mutex cond_mtx_;
+  mutex cond_mtx_;
 
   // condition variable to implement producer-consumer queue for calibration
-  tensorflow::condition_variable cond_;
+  condition_variable cond_;
 
   // Is calibration finished?
   bool done_;

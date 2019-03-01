@@ -144,10 +144,10 @@ class WholeTreeAnalyzer(transformer.Base):
     self.current_analyzer = parent_analyzer
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
 

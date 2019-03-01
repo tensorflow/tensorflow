@@ -220,8 +220,7 @@ class SlurmClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     # Unused, since this is set in __init__ manually.
-    del task_type, task_id, accelerator_type, config_proto
-    return self._gpus_per_node
+    del task_type, task_id, config_proto
+    return {'GPU': self._gpus_per_node}

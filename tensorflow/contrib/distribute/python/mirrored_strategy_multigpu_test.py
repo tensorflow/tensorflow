@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import sys
 
 from absl.testing import parameterized
@@ -29,12 +30,14 @@ from tensorflow.contrib.distribute.python import multi_worker_test_base
 from tensorflow.contrib.distribute.python import strategy_test_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.distribute import cross_device_ops as cross_device_ops_lib
 from tensorflow.python.distribute import device_util
 from tensorflow.python.distribute import distribution_strategy_context as ds_context
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import values
 from tensorflow.python.eager import backprop
 from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
@@ -116,7 +119,8 @@ class MirroredTwoDeviceDistributionTest(
     self._test_input_fn_iterator(iterator, distribution.extended.worker_devices,
                                  expected_values)
 
-  def testMakeInputFnIteratorWithCallable(self, distribution):
+  # TODO(b/124344198): Re-enable after fixing this flaky test.
+  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
     def fn():
       dataset = dataset_ops.Dataset.range(2).interleave(
           (lambda _: dataset_ops.Dataset.range(10)), cycle_length=2)
@@ -268,6 +272,28 @@ class MirroredStrategyCallForEachReplicaTest(test.TestCase):
       self.assertEqual(in_scope, unwrapped[0])
       self.assertEqual(in_scope, originally)
 
+  def testFunctionInCallForEachReplicaNoMergeCall(self, distribution):
+    @def_function.function
+    def model_fn():
+      return 0.
+
+    with distribution.scope():
+      result = distribution.extended.call_for_each_replica(model_fn)
+      self.assertEqual((0., 0.), self.evaluate(result.values))
+
+  def testFunctionInCallForEachReplicaWithMergeCall(self, distribution):
+    def merge_fn(_):
+      pass
+
+    @def_function.function
+    def model_fn():
+      ds_context.get_replica_context().merge_call(merge_fn)
+      return 0.
+
+    with distribution.scope():
+      with self.assertRaisesRegexp(
+          RuntimeError, "`merge_call` called while defining a new graph."):
+        distribution.extended.call_for_each_replica(model_fn)
 
 @combinations.generate(combinations.combine(
     distribution=[
@@ -429,7 +455,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       self.assertEqual("var0:0", v0.name)
       self.assertIsInstance(v1, values.MirroredVariable)
       self.assertEqual("common/var1:0", v1.name)
-      self.assertIsInstance(v2, values.ReplicaLocalVariable)
+      self.assertIsInstance(v2, values.SyncOnReadVariable)
       self.assertEqual("common/var2:0", v2.name)
       self.assertEqual(variable_scope.VariableAggregation.SUM, v2.aggregation)
       self.assertIsInstance(v3, values.MirroredVariable)
@@ -466,7 +492,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         self.assertEqual("main/var0:0", v0.name)
         self.assertIsInstance(v1, values.MirroredVariable)
         self.assertEqual("main/common/var1:0", v1.name)
-        self.assertIsInstance(v2, values.ReplicaLocalVariable)
+        self.assertIsInstance(v2, values.SyncOnReadVariable)
         self.assertEqual("main/common/var2:0", v2.name)
         self.assertEqual(variable_scope.VariableAggregation.SUM,
                          v2.aggregation)
@@ -618,7 +644,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       with self.assertRaises(RuntimeError):
         _ = distribution.extended.call_for_each_replica(model_fn, args=(names,))
 
-  def testReplicaLocalVariable(self, distribution):
+  def testSyncOnReadVariable(self, distribution):
     all_v_sum = {}
     all_v_mean = {}
     components_sum = {}
@@ -634,8 +660,8 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
           4.0,
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           aggregation=variable_scope.VariableAggregation.MEAN)
-      self.assertTrue(isinstance(v_sum, values.ReplicaLocalVariable))
-      self.assertTrue(isinstance(v_mean, values.ReplicaLocalVariable))
+      self.assertIsInstance(v_sum, values.SyncOnReadVariable)
+      self.assertIsInstance(v_mean, values.SyncOnReadVariable)
       updates = [v_sum.assign_add(2.0 + replica_id),
                  v_mean.assign(6.0 * replica_id)]
       all_v_sum[replica_id] = v_sum
@@ -649,7 +675,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       return updates, v_sum, v_mean, c_sum, c_mean
 
     with distribution.scope():
-      # Create "sum" and "mean" versions of ReplicaLocalVariables.
+      # Create "sum" and "mean" versions of SyncOnReadVariables.
       ret_ops, ret_v_sum, ret_v_mean, regrouped_sum, regrouped_mean = (
           distribution.extended.call_for_each_replica(model_fn))
       # Should see the same wrapping instance in all replicas.
@@ -715,13 +741,13 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
         _, v1 = distribution.unwrap(v)
         self.assertStartsWith(v1._op.name, "replica_1/")
 
-  def testReplicaLocalVariableUpdate(self, distribution):
+  def testSyncOnReadVariableUpdate(self, distribution):
     def model_fn():
       v_sum = variable_scope.variable(
           1.0,
           synchronization=variable_scope.VariableSynchronization.ON_READ,
           aggregation=variable_scope.VariableAggregation.SUM)
-      self.assertTrue(isinstance(v_sum, values.ReplicaLocalVariable))
+      self.assertIsInstance(v_sum, values.SyncOnReadVariable)
       return v_sum
 
     def update(var, value):
@@ -732,7 +758,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
 
       # Initialize variables.
       self.evaluate(variables.global_variables_initializer())
-      # Assert that the aggregated value of the replica local vars is the sum
+      # Assert that the aggregated value of the sync on read var is the sum
       # of the individual values before running the update ops.
       self.assertEqual(1.0, self.evaluate(ret_v_sum.get(
           distribution.extended.worker_devices[0]).read_value()))
@@ -742,7 +768,7 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
       update_ops = distribution.extended.update(
           ret_v_sum, update, args=(5.0,), group=False)
       self.evaluate(update_ops)
-      # Assert that the aggregated value of the replica local vars is the sum
+      # Assert that the aggregated value of the sync on read vars is the sum
       # of the individual values after running the update ops.
       self.assertEqual(5.0, self.evaluate(ret_v_sum.get(
           distribution.extended.worker_devices[0]).read_value()))
@@ -751,11 +777,11 @@ class MirroredStrategyVariableCreationTest(test.TestCase):
   def testVarDistributeStrategy(self, distribution):
     with distribution.scope():
       mirrored = variable_scope.variable(1.0)
-      replica_local = variable_scope.variable(
+      sync_on_read = variable_scope.variable(
           1.0,
           synchronization=variable_scope.VariableSynchronization.ON_READ)
       self.assertIs(distribution, mirrored.distribute_strategy)
-      self.assertIs(distribution, replica_local.distribute_strategy)
+      self.assertIs(distribution, sync_on_read.distribute_strategy)
 
 
 @combinations.generate(combinations.combine(
@@ -1122,7 +1148,7 @@ class MirroredVariableUpdateTest(test.TestCase):
         combinations.mirrored_strategy_with_gpu_and_cpu,
         combinations.core_mirrored_strategy_with_gpu_and_cpu],
     mode=["graph", "eager"]))
-class MirroredAndReplicaLocalVariableInitializerTest(test.TestCase):
+class MirroredAndSyncOnReadVariableInitializerTest(test.TestCase):
 
   def testAssignMirroredVarInitializer(self, distribution):
     # This test is not eager compatible since in eager variables are initialized
@@ -1148,17 +1174,16 @@ class MirroredAndReplicaLocalVariableInitializerTest(test.TestCase):
             1.0,
             synchronization=variable_scope.VariableSynchronization.ON_READ,
             aggregation=variable_scope.VariableAggregation.SUM)
-        self.assertTrue(isinstance(v_sum, values.ReplicaLocalVariable))
+        self.assertIsInstance(v_sum, values.SyncOnReadVariable)
         return v_sum
 
       with distribution.scope():
-        replica_local_var = distribution.extended.call_for_each_replica(
+        sync_on_read_var = distribution.extended.call_for_each_replica(
             model_fn)
-        self.assertTrue(isinstance(replica_local_var,
-                                   values.ReplicaLocalVariable))
-        self.assertFalse(self.evaluate(replica_local_var.is_initialized()))
-        self.evaluate(replica_local_var.initializer)
-        self.assertTrue(self.evaluate(replica_local_var.is_initialized()))
+        self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
+        self.assertFalse(self.evaluate(sync_on_read_var.is_initialized()))
+        self.evaluate(sync_on_read_var.initializer)
+        self.assertTrue(self.evaluate(sync_on_read_var.is_initialized()))
 
 
 @combinations.generate(combinations.combine(
@@ -1166,7 +1191,7 @@ class MirroredAndReplicaLocalVariableInitializerTest(test.TestCase):
         combinations.mirrored_strategy_with_gpu_and_cpu,
         combinations.core_mirrored_strategy_with_gpu_and_cpu],
     mode=["graph", "eager"]))
-class ReplicaLocalVariableAssignTest(test.TestCase):
+class SyncOnReadVariableAssignTest(test.TestCase):
 
   def testAssignReplicaLocalVarSumAggregation(self, distribution):
     def model_fn():
@@ -1177,24 +1202,23 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       return v_sum
 
     with distribution.scope():
-      replica_local_var = distribution.extended.call_for_each_replica(model_fn)
-      self.assertTrue(isinstance(replica_local_var,
-                                 values.ReplicaLocalVariable))
+      sync_on_read_var = distribution.extended.call_for_each_replica(model_fn)
+      self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
       self.evaluate(variables.global_variables_initializer())
       # Each replica has a value of 1.0 assigned to it in replica context.
       # When we read the value using `read_var` we should see the SUM of each of
       # values on each of the replicas.
       self.assertEqual(2.0, self.evaluate(
-          distribution.extended.read_var(replica_local_var)))
+          distribution.extended.read_var(sync_on_read_var)))
       # Assigning 6.0 in cross replica context will assign a value of
       # 6.0/num_replicas to each replica.
-      tlv_ops = replica_local_var.assign(6.0)
+      tlv_ops = sync_on_read_var.assign(6.0)
       self.evaluate(tlv_ops)
-      # On reading the replica local var we should get the assigned value back.
+      # On reading the sync on read var we should get the assigned value back.
       # The value on all the replicas are added before being returned by
       # `read_var`.
       self.assertEqual(6.0, self.evaluate(
-          distribution.extended.read_var(replica_local_var)))
+          distribution.extended.read_var(sync_on_read_var)))
 
   def testAssignReplicaLocalVarMeanAggregation(self, distribution):
     def model_fn():
@@ -1205,21 +1229,20 @@ class ReplicaLocalVariableAssignTest(test.TestCase):
       return v_sum
 
     with distribution.scope():
-      replica_local_var = distribution.extended.call_for_each_replica(model_fn)
-      self.assertTrue(isinstance(replica_local_var,
-                                 values.ReplicaLocalVariable))
+      sync_on_read_var = distribution.extended.call_for_each_replica(model_fn)
+      self.assertIsInstance(sync_on_read_var, values.SyncOnReadVariable)
       self.evaluate(variables.global_variables_initializer())
       # Each replica has a value of 1.0 assigned to it in replica context.
       # When we read the value using `read_var` we should see the MEAN of values
       # on all replicas which is the value assigned in replica context.
       self.assertEqual(1.0, self.evaluate(
-          distribution.extended.read_var(replica_local_var)))
-      tlv_ops = replica_local_var.assign(6.0)
+          distribution.extended.read_var(sync_on_read_var)))
+      tlv_ops = sync_on_read_var.assign(6.0)
       self.evaluate(tlv_ops)
-      # On reading the replica local var we should get the MEAN of all values
+      # On reading the sync on read var we should get the MEAN of all values
       # which is equal to the value assigned.
       self.assertEqual(6.0, self.evaluate(
-          distribution.extended.read_var(replica_local_var)))
+          distribution.extended.read_var(sync_on_read_var)))
 
 
 class MockModel(object):
@@ -1455,7 +1478,7 @@ class MultiWorkerMirroredStrategyTest(
       self._test_input_fn_iterator(
           iterator, distribution.extended.worker_devices, expected_values, sess)
 
-  def testMakeInputFnIteratorWithCallable(self, distribution):
+  def DISABLED_testMakeInputFnIteratorWithCallable(self, distribution):
     self._configure_distribution_strategy(distribution)
     def fn():
       dataset = dataset_ops.Dataset.range(100)
@@ -1513,6 +1536,25 @@ class MultiWorkerMirroredStrategyTestWithChief(
         mirrored_strategy.all_local_devices())
     strategy.configure(cluster_spec=self._cluster_spec)
     self._test_minimize_loss_graph(strategy, learning_rate=0.05)
+
+  def testMinimizeLossGraphCoreMirroredStrategyWithOneNode(self):
+    cluster_spec = {}
+    cluster_spec["chief"] = self._cluster_spec["chief"]
+    tf_config = {"cluster": cluster_spec}
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      strategy = mirrored_strategy.CoreMirroredStrategy()
+      self.assertIsInstance(strategy.extended._inferred_cross_device_ops,
+                            cross_device_ops_lib.NcclAllReduce)
+    self._test_minimize_loss_graph(strategy, learning_rate=0.05)
+
+  def testInitializeFromTFConfig(self):
+    tf_config = {"cluster": self._cluster_spec}
+    with test.mock.patch.dict("os.environ",
+                              {"TF_CONFIG": json.dumps(tf_config)}):
+      strategy = mirrored_strategy.CoreMirroredStrategy()
+      self.assertEqual(
+          max(context.num_gpus(), 1) * 3, strategy.num_replicas_in_sync)
 
 
 def _replica_id():

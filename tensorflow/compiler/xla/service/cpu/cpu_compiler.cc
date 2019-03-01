@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
@@ -95,6 +96,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/scatter_expander.h"
 #include "tensorflow/compiler/xla/service/sort_simplifier.h"
 #include "tensorflow/compiler/xla/service/transpose_folding.h"
+#include "tensorflow/compiler/xla/service/triangular_solve_expander.h"
 #include "tensorflow/compiler/xla/service/tuple_simplifier.h"
 #include "tensorflow/compiler/xla/service/while_loop_constant_sinking.h"
 #include "tensorflow/compiler/xla/service/while_loop_invariant_code_motion.h"
@@ -105,6 +107,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 
 namespace xla {
 namespace cpu {
@@ -254,6 +257,9 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       ReducePrecisionInsertion::PassTiming::BEFORE_OPTIMIZATION);
 
   pipeline.AddPass<MapInliner>();
+
+  pipeline.AddPass<CholeskyExpander>();
+  pipeline.AddPass<TriangularSolveExpander>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
   // pass.
@@ -633,7 +639,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
-                       &target_machine_features);
+                       &target_machine_features,
+#ifdef MEMORY_SANITIZER
+                       /*emit_code_for_msan=*/true
+#else
+                       /*emit_code_for_msan=*/false
+#endif
+  );
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
@@ -670,9 +682,9 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   if (embed_ir_in_executable) {
     ir_module_string = llvm_ir::DumpModuleToString(*llvm_module);
   }
-  TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
   XLA_VLOG_LINES(2, "LLVM IR:\n" + llvm_ir::DumpModuleToString(*llvm_module));
+  TF_RETURN_IF_ERROR(VerifyLlvmModule(*llvm_module));
 
   // JIT compile the LLVM IR module to in-memory machine code.
   jit->AddModule(std::move(llvm_module));
@@ -831,7 +843,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
-                         &target_machine_features);
+                         &target_machine_features,
+                         // TODO(b/66051036): Run full msan for AOT.
+                         /*emit_code_for_msan=*/false);
 
     TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 

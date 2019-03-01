@@ -19,8 +19,10 @@ from __future__ import division
 from __future__ import print_function
 
 import logging
+import sys
 
 import numpy as np
+import six
 
 from tensorflow.python import keras
 from tensorflow.python.data.experimental.ops import cardinality
@@ -395,8 +397,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_known_cardinality_no_steps_arg(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = 'rmsprop'
-    model.compile(optimizer, 'mse',
+    model.compile('rmsprop', 'mse',
                   run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
@@ -407,7 +408,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     batch_counter = BatchCounterCallback()
     history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
 
-    self.assertEqual(len(history.history['loss']), 2)
+    self.assertLen(history.history['loss'], 2)
     self.assertEqual(batch_counter.batch_count, 20)
     model.evaluate(dataset)
     out = model.predict(dataset)
@@ -417,8 +418,7 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
   @keras_parameterized.run_all_keras_modes
   def test_finite_dataset_unknown_cardinality_no_steps_arg(self):
     model = testing_utils.get_small_mlp(1, 4, input_dim=3)
-    optimizer = 'rmsprop'
-    model.compile(optimizer, 'mse',
+    model.compile('rmsprop', 'mse',
                   run_eagerly=testing_utils.should_run_eagerly())
 
     inputs = np.zeros((100, 3), dtype=np.float32)
@@ -431,8 +431,94 @@ class TestTrainingWithDataset(keras_parameterized.TestCase):
     batch_counter = BatchCounterCallback()
     history = model.fit(dataset, epochs=2, verbose=1, callbacks=[batch_counter])
 
-    self.assertEqual(len(history.history['loss']), 2)
+    self.assertLen(history.history['loss'], 2)
     self.assertEqual(batch_counter.batch_count, 20)
+    model.evaluate(dataset)
+    out = model.predict(dataset)
+    self.assertEqual(out.shape[0], 100)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_finite_dataset_unknown_cardinality_no_step_with_train_and_val(self):
+
+    class CaptureStdout(object):
+
+      def __enter__(self):
+        self._stdout = sys.stdout
+        string_io = six.StringIO()
+        sys.stdout = string_io
+        self._stringio = string_io
+        return self
+
+      def __exit__(self, *args):
+        self.output = self._stringio.getvalue()
+        sys.stdout = self._stdout
+
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile(
+        'rmsprop', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+
+    inputs = np.zeros((100, 3), dtype=np.float32)
+    targets = np.random.randint(0, 4, size=100, dtype=np.int32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.filter(lambda x, y: True).batch(10)
+    self.assertEqual(
+        keras.backend.get_value(cardinality.cardinality(dataset)),
+        cardinality.UNKNOWN)
+
+    batch_counter = BatchCounterCallback()
+    with CaptureStdout() as capture:
+      history = model.fit(
+          dataset,
+          epochs=2,
+          callbacks=[batch_counter],
+          validation_data=dataset.take(3))
+
+    lines = capture.output.splitlines()
+
+    self.assertIn('1/Unknown', lines[2])
+    self.assertIn('10/10', lines[-1])
+
+    self.assertLen(history.history['loss'], 2)
+    self.assertEqual(batch_counter.batch_count, 20)
+    model.evaluate(dataset)
+    out = model.predict(dataset)
+    self.assertEqual(out.shape[0], 100)
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_finite_dataset_unknown_cardinality_out_of_data(self):
+    model = testing_utils.get_small_mlp(1, 4, input_dim=3)
+    model.compile('rmsprop', 'mse',
+                  run_eagerly=testing_utils.should_run_eagerly())
+
+    inputs = np.zeros((100, 3), dtype=np.float32)
+    targets = np.random.randint(0, 4, size=100, dtype=np.int32)
+    dataset = dataset_ops.Dataset.from_tensor_slices((inputs, targets))
+    dataset = dataset.filter(lambda x, y: True).batch(10)
+    self.assertEqual(
+        keras.backend.get_value(cardinality.cardinality(dataset)),
+        cardinality.UNKNOWN)
+
+    batch_counter = BatchCounterCallback()
+    with test.mock.patch.object(logging, 'warning') as mock_log:
+      # steps_per_epoch (200) is greater than the dataset size (100). As this is
+      # unexpected, training will stop and not make it to the second epoch.
+      history = model.fit(
+          dataset,
+          epochs=2,
+          verbose=1,
+          callbacks=[batch_counter],
+          steps_per_epoch=200)
+      self.assertIn(
+          'Your dataset ran out of data; interrupting training. '
+          'Make sure that your dataset can generate at least '
+          '`steps_per_epoch * epochs` batches (in this case, 400 batches). '
+          'You may need to use the repeat() function when '
+          'building your dataset.', str(mock_log.call_args))
+
+    self.assertLen(history.history['loss'], 1)
+    self.assertEqual(batch_counter.batch_count, 10)
     model.evaluate(dataset)
     out = model.predict(dataset)
     self.assertEqual(out.shape[0], 100)

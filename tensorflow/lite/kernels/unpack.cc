@@ -52,9 +52,11 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input = GetInput(context, node, kInputTensor);
   TF_LITE_ENSURE(context, NumDimensions(input) <= 4);
   TF_LITE_ENSURE(context, NumDimensions(input) > 1);
-  TF_LITE_ENSURE(context, NumDimensions(input) > data->axis);
-  // TODO(renjieliu): Support negative axis.
-  TF_LITE_ENSURE(context, data->axis >= 0);
+  int axis = data->axis;
+  if (axis < 0) {
+    axis += NumDimensions(input);
+  }
+  TF_LITE_ENSURE(context, 0 <= axis && axis < NumDimensions(input));
   if (input->type != kTfLiteInt32 && input->type != kTfLiteFloat32) {
     context->ReportError(context,
                          "Currently pack only supports int32 and float32.");
@@ -67,12 +69,12 @@ TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   TfLiteIntArray* output_shape = TfLiteIntArrayCreate(NumDimensions(input) - 1);
   int o = 0;
   for (int index = 0; index < NumDimensions(input); ++index) {
-    if (index != data->axis) {
+    if (index != axis) {
       output_shape->data[o++] = input_shape->data[index];
     }
   }
 
-  TF_LITE_ENSURE_EQ(context, data->num, input_shape->data[data->axis]);
+  TF_LITE_ENSURE_EQ(context, data->num, input_shape->data[axis]);
   for (int i = 0; i < data->num; ++i) {
     TfLiteIntArray* copied_output_shape = TfLiteIntArrayCopy(output_shape);
     TfLiteTensor* output = GetOutput(context, node, i);

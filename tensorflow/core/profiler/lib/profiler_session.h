@@ -22,6 +22,10 @@ limitations under the License.
 
 namespace tensorflow {
 
+struct ProfilerContext {
+  EagerContext* eager_context = nullptr;
+};
+
 // A profiler which will start profiling when creating the object and will stop
 // when either the object is destroyed or SerializedToString is called. It will
 // profile all operations run under the given EagerContext.
@@ -32,7 +36,8 @@ namespace tensorflow {
 class ProfilerSession {
  public:
   // Creates and ProfilerSession and starts profiling.
-  static std::unique_ptr<ProfilerSession> Create(EagerContext* const context);
+  static std::unique_ptr<ProfilerSession> Create(
+      ProfilerContext* const context);
 
   // Deletes an exsiting Profiler and enables starting a new one.
   ~ProfilerSession();
@@ -43,7 +48,7 @@ class ProfilerSession {
 
  private:
   // Constructs an instance of the class and starts profiling
-  explicit ProfilerSession(EagerContext* const context);
+  explicit ProfilerSession(ProfilerContext* const context);
 
   // Profiler is neither copyable or movable.
   ProfilerSession(const ProfilerSession&) = delete;
@@ -51,6 +56,9 @@ class ProfilerSession {
 
   std::vector<std::unique_ptr<tensorflow::profiler::ProfilerInterface>>
       profilers_ GUARDED_BY(mutex_);
+
+  // True if the session is active.
+  bool active_ GUARDED_BY(mutex_);
 
   tensorflow::Status status_ GUARDED_BY(mutex_);
   const uint64 start_time_micros_;

@@ -262,6 +262,8 @@ StatusOr<Shape> InferWindowOutputShape(const Shape& base_shape,
     case HloOpcode::kExpm1:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
+    case HloOpcode::kRsqrt:
+    case HloOpcode::kSqrt:
     case HloOpcode::kTanh:
       if (!ShapeUtil::ElementIsFloating(shape) &&
           !ShapeUtil::ElementIsComplex(shape)) {
@@ -836,7 +838,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
           ShapeUtil::HumanString(larger_shape));
     }
     if (small_is_dynamic != large_is_dynamic) {
-      if ((small_dimension_size == 1 && !small_is_dynamic) ||
+      if (small_dimension_size == large_dimension_size ||
+          (small_dimension_size == 1 && !small_is_dynamic) ||
           (large_dimension_size == 1 && !large_is_dynamic)) {
         // Do nothing. It's OK when the size-1 dimension is not static.
       } else {
@@ -1288,16 +1291,12 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
   TF_RETURN_IF_ERROR(
       ExpectArray(scale_shape, "scale input of batch norm inference"));
 
-  TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape) ==
-               Status::OK());
-  TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape) ==
-               Status::OK());
-  TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape) ==
-               Status::OK());
-  TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape) ==
-               Status::OK());
-  TF_RET_CHECK(ShapeUtil::ValidateShapeWithOptionalLayout(variance_shape) ==
-               Status::OK());
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(operand_shape));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(offset_shape));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(scale_shape));
+  TF_RETURN_IF_ERROR(ShapeUtil::ValidateShapeWithOptionalLayout(mean_shape));
+  TF_RETURN_IF_ERROR(
+      ShapeUtil::ValidateShapeWithOptionalLayout(variance_shape));
 
   if (feature_index >= operand_shape.rank()) {
     return InvalidArgument(
@@ -1906,6 +1905,78 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 #undef RET_CHECK_RANK
 }
 
+/* static */ StatusOr<Shape> ShapeInference::InferTriangularSolveShape(
+    const Shape& a, const Shape& b, const TriangularSolveOptions& options) {
+  if ((!ShapeUtil::ElementIsFloating(a) && !ShapeUtil::ElementIsComplex(a)) ||
+      a.element_type() != b.element_type()) {
+    return InvalidArgument(
+        "Expected element types in shape to be floating or complex and "
+        "identical for TriangularSolve; got %s and %s.",
+        PrimitiveType_Name(a.element_type()),
+        PrimitiveType_Name(b.element_type()));
+  }
+  if (a.rank() < 2) {
+    return InvalidArgument(
+        "The 'a' argument to TriangularSolve must have rank >= 2, got shape %s",
+        a.ToString());
+  }
+  if (b.rank() != a.rank()) {
+    return InvalidArgument(
+        "Arguments to triangular solve must have equal rank; got %s and %s.",
+        b.ToString(), a.ToString());
+  }
+  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+    return InvalidArgument(
+        "The two minor dimensions of 'a' must have equal size, got %s.",
+        a.ToString());
+  }
+  if (a.dimensions(a.rank() - 1) !=
+      b.dimensions(b.rank() - (options.left_side() ? 2 : 1))) {
+    return InvalidArgument(
+        "The shared dimension of 'a' and 'b' does not match, got shapes %s and "
+        "%s",
+        a.ToString(), b.ToString());
+  }
+  absl::Span<const int64> a_batch_dims(a.dimensions());
+  absl::Span<const int64> b_batch_dims(b.dimensions());
+  a_batch_dims.remove_suffix(2);
+  b_batch_dims.remove_suffix(2);
+  if (a_batch_dims != b_batch_dims) {
+    return InvalidArgument(
+        "The leading batch dimensions of the arguments to triangular solve "
+        "must be equal; got %s and %s.",
+        b.ToString(), a.ToString());
+  }
+  if (!TriangularSolveOptions_Transpose_IsValid(options.transpose_a()) ||
+      options.transpose_a() == TriangularSolveOptions::TRANSPOSE_INVALID) {
+    return InvalidArgument(
+        "Invalid transpose option value for triangular solve (%d).\n",
+        options.transpose_a());
+  }
+  return b;
+}
+
+/* static */ StatusOr<Shape> ShapeInference::InferCholeskyShape(
+    const Shape& a) {
+  if (!ShapeUtil::ElementIsFloating(a) && !ShapeUtil::ElementIsComplex(a)) {
+    return InvalidArgument(
+        "Expected element type in shape to be floating or complex for "
+        "Cholesky; got %s.",
+        PrimitiveType_Name(a.element_type()));
+  }
+  if (a.rank() < 2) {
+    return InvalidArgument(
+        "The 'a' argument to Cholesky must have rank >= 2, got shape %s",
+        a.ToString());
+  }
+  if (a.dimensions(a.rank() - 2) != a.dimensions(a.rank() - 1)) {
+    return InvalidArgument(
+        "The two minor dimensions of 'a' must have equal size, got %s.",
+        a.ToString());
+  }
+  return a;
+}
+
 /* static */ StatusOr<Shape> ShapeInference::InferAllReduceShape(
     absl::Span<const Shape* const> operand_shapes) {
   for (const Shape* operand_shape : operand_shapes) {
@@ -2352,8 +2423,8 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 
     if (operand_shape.rank() != number_of_indices) {
       return InvalidArgument(
-          "Dynamic update slice start number of dimensions %d must match rank "
-          "%d of slice input (%s).",
+          "Dynamic update slice start number of dimensions %d must match "
+          "rank %d of slice input (%s).",
           number_of_indices, operand_shape.rank(),
           ShapeUtil::HumanString(operand_shape));
     }
@@ -2487,59 +2558,55 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferConditionalShape(
-    const Shape& predicate, const Shape& true_operand,
-    const Shape& false_operand, const ProgramShape& true_computation,
-    const ProgramShape& false_computation) {
-  if (!ShapeUtil::Equal(predicate, ShapeUtil::MakeShape(PRED, {}))) {
-    return InvalidArgument("Predicate must be a boolean; got %s.",
-                           ShapeUtil::HumanString(predicate));
+    const Shape& branch_index,
+    absl::Span<const ProgramShape> branch_computations,
+    absl::Span<const Shape> branch_operands) {
+  if (!ShapeUtil::Equal(branch_index, ShapeUtil::MakeShape(PRED, {})) &&
+      !ShapeUtil::Equal(branch_index, ShapeUtil::MakeShape(S32, {}))) {
+    return InvalidArgument("branch_index must be bool or int32; got %s.",
+                           ShapeUtil::HumanString(branch_index));
   }
+  if (branch_index.element_type() == PRED) {
+    TF_RET_CHECK(2 == branch_computations.size());
+  } else {
+    TF_RET_CHECK(!branch_computations.empty());
+  }
+  TF_RET_CHECK(branch_computations.size() == branch_operands.size());
 
-  if (true_computation.parameters_size() != 1) {
-    return InvalidArgument("true_computation must take 1 argument; got %d.",
-                           true_computation.parameters_size());
-  }
-  if (!ShapeUtil::Compatible(true_computation.parameters(0), true_operand)) {
-    auto true_shape_string = [&]() {
-      return StrFormat("true_operand: %s; true_computation: %s",
-                       ShapeUtil::HumanString(true_operand),
-                       ShapeUtil::HumanString(true_computation));
-    };
-    return InvalidArgument(
-        "true_operand must match the shape of the only parameter of "
-        "true_computation: got %s.",
-        true_shape_string());
-  }
+  for (int j = 0; j < branch_computations.size(); ++j) {
+    if (branch_computations[j].parameters_size() != 1) {
+      return InvalidArgument(
+          "branch computation %d must take 1 argument; got %d.", j,
+          branch_computations[j].parameters_size());
+    }
+    if (!ShapeUtil::Compatible(branch_computations[j].parameters(0),
+                               branch_operands[j])) {
+      auto shape_string = [&]() {
+        return StrFormat("operand: %s; computation: %s",
+                         ShapeUtil::HumanString(branch_operands[j]),
+                         ShapeUtil::HumanString(branch_computations[j]));
+      };
+      return InvalidArgument(
+          "branch operand %d must match the shape of the only parameter of "
+          "branch computation %d: got %s.",
+          j, j, shape_string());
+    }
 
-  if (false_computation.parameters_size() != 1) {
-    return InvalidArgument("false_computation must take 1 argument; got %d.",
-                           false_computation.parameters_size());
+    if (!ShapeUtil::Compatible(branch_computations[0].result(),
+                               branch_computations[j].result())) {
+      auto shape_string = [&]() {
+        return StrFormat(
+            "branch 0 computation result: %s; branch %d computation result: %s",
+            ShapeUtil::HumanString(branch_computations[0].result()), j,
+            ShapeUtil::HumanString(branch_computations[j].result()));
+      };
+      return InvalidArgument(
+          "the result of branch 0 computation and branch %d computation must "
+          "have the same shape: got %s.",
+          j, shape_string());
+    }
   }
-  if (!ShapeUtil::Compatible(false_computation.parameters(0), false_operand)) {
-    auto false_shape_string = [&]() {
-      return StrFormat("false_operand: %s; false_computation: %s",
-                       ShapeUtil::HumanString(false_operand),
-                       ShapeUtil::HumanString(false_computation));
-    };
-    return InvalidArgument(
-        "false_operand must match the shape of the only parameter of "
-        "false_computation: got %s.",
-        false_shape_string());
-  }
-  if (!ShapeUtil::Compatible(true_computation.result(),
-                             false_computation.result())) {
-    auto shape_string = [&]() {
-      return StrFormat(
-          "true_computation result: %s; false_computation result: %s.",
-          ShapeUtil::HumanString(true_computation.result()),
-          ShapeUtil::HumanString(false_computation.result()));
-    };
-    return InvalidArgument(
-        "the result of true_computation and false_computation must have the "
-        "same shape: got %s.",
-        shape_string());
-  }
-  return true_computation.result();
+  return branch_computations[0].result();
 }
 
 /* static */ StatusOr<Shape> ShapeInference::InferBroadcastShape(
@@ -2589,7 +2656,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         operand_shape.dimensions(i) != 1) {
       return InvalidArgument(
           "Input dimension should be either 1 or equal to the output dimension "
-          "it's broadcasting into; the %lldth operand dimension is %lld, the "
+          "it is broadcasting into; the %lldth operand dimension is %lld, the "
           "%lldth output dimension is %lld.",
           i, operand_shape.dimensions(i), broadcast_dimensions[i],
           output_shape.dimensions(broadcast_dimensions[i]));
@@ -2657,11 +2724,7 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
     const Shape& operand, absl::Span<const int64> dimensions) {
   TF_RETURN_IF_ERROR(ExpectArray(operand, "transpose"));
 
-  std::vector<int64> indices(operand.rank());
-  std::iota(indices.begin(), indices.end(), 0);
-  if (dimensions.size() != operand.rank() ||
-      !std::is_permutation(dimensions.begin(), dimensions.end(),
-                           indices.begin())) {
+  if (!IsPermutation(dimensions, operand.rank())) {
     return InvalidArgument(
         "Transpose dimensions [%s] are not a permutation of the operand "
         "dimensions (operand shape is %s).",

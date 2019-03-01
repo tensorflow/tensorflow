@@ -32,8 +32,6 @@ py_library(
     deps = [
         ":tf_trt_integration_test_base",
         ":trt_convert_py",
-        ":trt_ops_py",
-        "//tensorflow/python:errors",
     ],
 )
 
@@ -51,12 +49,20 @@ py_library(
     srcs = ["trt_convert.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":trt_ops_py",
         ":wrap_conversion",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:session",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
         "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
     ],
 )
@@ -83,7 +89,6 @@ py_library(
     srcs = ["test/tf_trt_integration_test_base.py"],
     deps = [
         ":trt_convert_py",
-        ":trt_ops_py",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_test_lib",
     ],
@@ -112,6 +117,7 @@ cuda_py_test(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_tests(
@@ -149,6 +155,7 @@ cuda_py_tests(
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -168,9 +175,11 @@ cuda_py_test(
     ],
     tags = [
         "no_cuda_on_cpu_tap",
+        "no_oss",  # TODO(b/125290478): allow running in at least some OSS configurations.
         "no_pip",
         "no_tap",  # It is not able to download the mnist data.
         "no_windows",
         "nomac",
     ],
+    xla_enable_strict_auto_jit = True,
 )
