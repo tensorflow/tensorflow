@@ -1581,7 +1581,7 @@ inline TensorShape MklDnnDimsToTFShape(const memory::dims& dims) {
 
 /// Function to calculate strides given tensor shape in Tensorflow order
 /// E.g., if dims_tf_order is {1, 2, 3, 4}, then as per Tensorflow convention,
-/// dimesion with size 1 is outermost dimension; while dimension with size 4 is
+/// dimension with size 1 is outermost dimension; while dimension with size 4 is
 /// innermost dimension. So strides for this tensor would be {4 * 3 * 2,
 /// 4 * 3, 4, 1}, i.e., {24, 12, 4, 1}.
 ///
