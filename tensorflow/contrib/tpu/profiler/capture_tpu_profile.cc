@@ -107,7 +107,7 @@ int main(int argc, char** argv) {
     status = tensorflow::profiler::client::StartTracing(
         FLAGS_service_addr, FLAGS_logdir, FLAGS_workers_list,
         FLAGS_include_dataset_ops, duration_ms, num_tracing_attempts);
-    if (!status.ok()) {
+    if (!status.ok() && status.code() != tensorflow::error::Code::UNAVAILABLE) {
       std::cout << status.error_message() << std::endl;
       std::cout << usage.c_str() << std::endl;
       return 2;
