@@ -1671,6 +1671,7 @@ filegroup(
         ":protos_all_proto_text_srcs",
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
+        "//tensorflow/c:srcs",
     ] + glob(
         [
             "client/**/*.cc",
