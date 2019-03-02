@@ -238,6 +238,14 @@ class BatchNormalizationV2(Layer):
     except ValueError:
       return False
 
+  @property
+  def _param_dtype(self):
+    # Raise parameters of fp16 batch norm to fp32
+    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
+      return dtypes.float32
+    else:
+      return self.dtype or dtypes.float32
+
   def build(self, input_shape):
     input_shape = tensor_shape.TensorShape(input_shape)
     if not input_shape.ndims:
@@ -300,12 +308,6 @@ class BatchNormalizationV2(Layer):
         raise ValueError('Unsupported axis, fused batch norm only supports '
                          'axis == [1] or axis == [3]')
 
-    # Raise parameters of fp16 batch norm to fp32
-    if self.dtype == dtypes.float16 or self.dtype == dtypes.bfloat16:
-      param_dtype = dtypes.float32
-    else:
-      param_dtype = self.dtype or dtypes.float32
-
     axis_to_dim = {x: input_shape.dims[x].value for x in self.axis}
     for x in axis_to_dim:
       if axis_to_dim[x] is None:
@@ -330,7 +332,7 @@ class BatchNormalizationV2(Layer):
       self.gamma = self.add_weight(
           name='gamma',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.gamma_initializer,
           regularizer=self.gamma_regularizer,
           constraint=self.gamma_constraint,
@@ -340,13 +342,13 @@ class BatchNormalizationV2(Layer):
       self.gamma = None
       if self.fused:
         self._gamma_const = K.constant(
-            1.0, dtype=param_dtype, shape=param_shape)
+            1.0, dtype=self._param_dtype, shape=param_shape)
 
     if self.center:
       self.beta = self.add_weight(
           name='beta',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.beta_initializer,
           regularizer=self.beta_regularizer,
           constraint=self.beta_constraint,
@@ -356,7 +358,7 @@ class BatchNormalizationV2(Layer):
       self.beta = None
       if self.fused:
         self._beta_const = K.constant(
-            0.0, dtype=param_dtype, shape=param_shape)
+            0.0, dtype=self._param_dtype, shape=param_shape)
 
     try:
       # Disable variable partitioning when creating the moving mean and variance
@@ -368,7 +370,7 @@ class BatchNormalizationV2(Layer):
       self.moving_mean = self.add_weight(
           name='moving_mean',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.moving_mean_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
@@ -378,7 +380,7 @@ class BatchNormalizationV2(Layer):
       self.moving_variance = self.add_weight(
           name='moving_variance',
           shape=param_shape,
-          dtype=param_dtype,
+          dtype=self._param_dtype,
           initializer=self.moving_variance_initializer,
           synchronization=tf_variables.VariableSynchronization.ON_READ,
           trainable=False,
@@ -398,7 +400,7 @@ class BatchNormalizationV2(Layer):
           var = self.add_weight(
               name=name,
               shape=shape,
-              dtype=param_dtype,
+              dtype=self._param_dtype,
               initializer=init_ops.zeros_initializer(),
               synchronization=tf_variables.VariableSynchronization.ON_READ,
               trainable=False,
@@ -637,7 +639,9 @@ class BatchNormalizationV2(Layer):
       # but not a constant. However, this makes the code simpler.
       keep_dims = self.virtual_batch_size is not None or len(self.axis) > 1
       mean, variance = self._moments(
-          inputs, reduction_axes, keep_dims=keep_dims)
+          math_ops.cast(inputs, self._param_dtype),
+          reduction_axes,
+          keep_dims=keep_dims)
 
       moving_mean = self.moving_mean
       moving_variance = self.moving_variance
@@ -716,6 +720,10 @@ class BatchNormalizationV2(Layer):
     variance = math_ops.cast(variance, inputs.dtype)
     if offset is not None:
       offset = math_ops.cast(offset, inputs.dtype)
+    if scale is not None:
+      scale = math_ops.cast(scale, inputs.dtype)
+    # TODO(reedwm): Maybe do math in float32 if given float16 inputs, if doing
+    # math in float16 hurts validation accuracy of popular models like resnet.
     outputs = nn.batch_normalization(inputs,
                                      _broadcast(mean),
                                      _broadcast(variance),

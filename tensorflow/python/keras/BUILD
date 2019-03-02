@@ -224,7 +224,6 @@ py_library(
         ":backend",
         ":engine_utils",
         ":mode_keys",
-        "//tensorflow/python/eager:profiler",
     ],
 )
 
@@ -326,6 +325,7 @@ py_library(
         "layers/convolutional_recurrent.py",
         "layers/core.py",
         "layers/cudnn_recurrent.py",
+        "layers/dense_attention.py",
         "layers/embeddings.py",
         "layers/kernelized.py",
         "layers/local.py",
@@ -645,6 +645,18 @@ tf_py_test(
     shard_count = 3,
 )
 
+tf_py_test(
+    name = "dense_attention_test",
+    size = "medium",
+    srcs = ["layers/dense_attention_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 cuda_py_test(
     name = "embeddings_test",
     size = "medium",
@@ -762,7 +774,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 4,
+    shard_count = 10,
 )
 
 cuda_py_test(
@@ -853,6 +865,21 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 4,
+    tags = [
+        "noasan",  # http://b/78599823
+        "notsan",
+    ],
+)
+
+tf_py_test(
+    name = "time_distributed_learning_phase_test",
+    size = "small",
+    srcs = ["layers/time_distributed_learning_phase_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
     tags = [
         "noasan",  # http://b/78599823
         "notsan",
@@ -1144,7 +1171,6 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
-        "notap",  #TODO(b/123544294): Re-enable this test.
         "notsan",
     ],
 )

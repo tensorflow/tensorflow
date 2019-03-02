@@ -335,6 +335,21 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_return_states_GRU(self):
+    layer_class = keras.layers.UnifiedGRU
+    x = np.random.random((2, 3, 4))
+    y = np.abs(np.random.random((2, 5)))
+    s = np.abs(np.random.random((2, 5)))
+    inputs = keras.layers.Input(
+        shape=[3, 4], dtype=dtypes.float32)
+    masked = keras.layers.Masking()(inputs)
+    outputs, states = layer_class(units=5, return_state=True)(masked)
+
+    model = keras.models.Model(inputs, [outputs, states])
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=gradient_descent.GradientDescentOptimizer(0.001))
+    model.fit(x, [y, s], epochs=1, batch_size=2, verbose=1)
+
   def test_dropout_GRU(self):
     num_samples = 2
     timesteps = 3

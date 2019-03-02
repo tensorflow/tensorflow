@@ -389,6 +389,8 @@ Status EagerLocalExecute(EagerOperation* op,
       if (!status.ok()) return status;
     }
     if (ctx->LogDevicePlacement()) {
+      printf("Executing op %s in device %s\n", ndef.op().c_str(),
+             device->name().c_str());
       LOG(INFO) << "Executing op " << ndef.op() << " in device "
                 << device->name();
     }

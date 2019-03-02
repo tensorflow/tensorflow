@@ -130,6 +130,29 @@ tf_cc_test(
 )
 
 cc_library(
+    name = "unbounded_thread_pool",
+    srcs = ["unbounded_thread_pool.cc"],
+    hdrs = ["unbounded_thread_pool.h"],
+    deps = [
+        "//tensorflow/core:core_cpu_internal",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "@com_google_absl//absl/memory",
+    ],
+)
+
+tf_cc_test(
+    name = "unbounded_thread_pool_test",
+    srcs = ["unbounded_thread_pool_test.cc"],
+    deps = [
+        ":unbounded_thread_pool",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+    ],
+)
+
+cc_library(
     name = "window_dataset",
     srcs = ["window_dataset.cc"],
     hdrs = ["window_dataset.h"],
@@ -595,6 +618,7 @@ tf_kernel_library(
     deps = [
         ":dataset_utils",
         ":optional_ops",
+        ":unbounded_thread_pool",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:dataset_ops_op_lib",
         "//tensorflow/core:framework",
@@ -612,6 +636,7 @@ tf_kernel_library(
     srcs = ["multi_device_iterator_ops.cc"],
     deps = [
         ":dataset_utils",
+        ":unbounded_thread_pool",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",

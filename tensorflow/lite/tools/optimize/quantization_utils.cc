@@ -13,8 +13,10 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 #include "tensorflow/lite/tools/optimize/quantization_utils.h"
+#include "absl/memory/memory.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/kernels/internal/round.h"
+#include "tensorflow/lite/kernels/internal/tensor_utils.h"
 #include "tensorflow/lite/kernels/internal/types.h"
 
 #include <cmath>
@@ -156,6 +158,43 @@ void SymmetricPerChannelQuantizeValues(const float* const input,
       }
     }
   }
+}
+
+TfLiteStatus SymmetricQuantizeTensor(ModelT* model, TensorT* tensor) {
+  if (model == nullptr || tensor == nullptr) {
+    return kTfLiteError;
+  }
+
+  BufferT* buffer = model->buffers[tensor->buffer].get();
+  if (buffer == nullptr) {
+    return kTfLiteError;
+  }
+  float* float_data = reinterpret_cast<float*>(buffer->data.data());
+  uint64_t num_elements;
+  TF_LITE_ENSURE_STATUS(utils::NumElements(*tensor, &num_elements));
+
+  std::vector<int8_t> quantized_buffer;
+  quantized_buffer.resize(num_elements);
+
+  float min_value, max_value, scaling_factor;
+  tensor_utils::SymmetricQuantizeFloats(float_data, num_elements,
+                                        quantized_buffer.data(), &min_value,
+                                        &max_value, &scaling_factor);
+
+  if (tensor->quantization == nullptr) {
+    tensor->quantization = absl::make_unique<QuantizationParametersT>();
+  }
+  tensor->quantization->scale = std::vector<float>(1, scaling_factor);
+  tensor->quantization->zero_point = std::vector<int64_t>(1, 0);
+
+  uint8_t* uint8_buffer = reinterpret_cast<uint8_t*>(quantized_buffer.data());
+  model->buffers[tensor->buffer]->data.assign(uint8_buffer,
+                                              uint8_buffer + num_elements);
+
+  // Update the tensor type.
+  tensor->type = TensorType_INT8;
+
+  return kTfLiteOk;
 }
 
 }  // namespace utils

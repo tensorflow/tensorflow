@@ -15,7 +15,7 @@
     "//tensorflow/lite/experimental/objc:TensorFlowLite",
     "//tensorflow/lite/experimental/objc:TensorFlowLiteTests",
   ],
-  "projectName" : "TensorFlowLiteObjC",
+  "projectName" : "TensorFlowLite",
   "optionSet" : {
     "LaunchActionPreActionScript" : {
       "p" : "$(inherited)"

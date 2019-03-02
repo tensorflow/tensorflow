@@ -24,8 +24,10 @@ limitations under the License.
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -35,48 +37,6 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 
 namespace xla {
-namespace {
-
-// We have this pattern in dynamaic update slice fusion, which should be
-// supported:
-//
-// Parameters: p0, p1
-// Fusion
-//   ds = DynamicSlice(p0, p1)
-//   ROOT DynamicUpdateslice(p0, ds, p1)
-//
-// In this case, we should be able to reuse p0 and output, although p0 has
-// multiple uses.
-bool MultiDynamicSliceUseShareSameIndices(absl::Span<const HloUse> uses) {
-  if (uses.empty()) {
-    return false;
-  }
-  const HloInstruction* indices = nullptr;
-  for (HloUse use : uses) {
-    auto user = use.instruction;
-    if (user->opcode() == HloOpcode::kDynamicUpdateSlice) {
-      if (indices == nullptr) {
-        indices = user->operand(2);
-      } else if (indices != user->operand(2)) {
-        return false;
-      }
-      if (use.operand_number != 0) {
-        return false;
-      }
-    } else if (user->opcode() == HloOpcode::kDynamicSlice) {
-      if (indices == nullptr) {
-        indices = user->operand(1);
-      } else if (indices != user->operand(1)) {
-        return false;
-      }
-    } else {
-      return false;
-    }
-  }
-  return true;
-}
-
-}  // namespace
 
 using absl::StrAppend;
 using absl::StrCat;
@@ -984,6 +944,79 @@ bool HloDataflowAnalysis::DoesNotUseOperandBuffer(
   return true;
 }
 
+// Given a fusion whose root is a dynamic-update-slice op, determines whether
+// the fusion's output buffer can be shared with the buffer of fusion_param,
+// which must be a fused parameter of the fusion.
+//
+// Preconditions:
+//
+//  - fusion's root is a dynamic-update-slice op.
+//  - fusion_param is a parameter within the fusion.
+//
+// fusion_param may point to a subelement of the actual parameter instruction if
+// the param is a tuple; i.e. fusion_param->index() need not be the empty list.
+//
+// Returns true if:
+//
+//  * fusion is a loop or input fusion, AND
+//  * fusion_param is used by the root of dynamic-update-slice as the "base" of
+//    the update, i.e. the thing being updated, AND
+//  * all other uses of fusion_param are dynamic-slices that slice the same
+//    indices as are overwritten in the dynamic-update-slice.
+//
+// In the case that there are no other uses of fusion_param (last bullet point
+// is vacuously true) it's easy to see why an in-place DUS is safe; this is just
+// the "natural" implementation of DUS.  If there are other users, in-place DUS
+// is safe on the assumption that the thread which writes element i of the
+// output will be the only one to read element i of fusion_param (via the
+// dynamic-slice ops).
+static bool CanDoInPlaceDynamicUpdateSlice(HloInstruction* fusion,
+                                           const HloValue& fusion_param_value) {
+  auto* root =
+      Cast<HloDynamicUpdateSliceInstruction>(fusion->fused_expression_root());
+  auto* fusion_param = fusion_param_value.instruction();
+  CHECK_EQ(fusion_param->opcode(), HloOpcode::kParameter);
+  CHECK_EQ(fusion_param->parent(), fusion->fused_instructions_computation());
+
+  // fusion must be a loop or input fusion.
+  auto kind = fusion->fusion_kind();
+  if (kind != HloInstruction::FusionKind::kLoop &&
+      kind != HloInstruction::FusionKind::kInput) {
+    return false;
+  }
+
+  // fusion_param must be used by the root as the "base" of the
+  // dynamic-update-slice.  The natural way to check this would be
+  //
+  //   `if (root->operand(0) != fusion_param)`
+  //
+  // but we also have to handle the case where the fusion parameter is
+  // tuple-shaped and we're considering just one element of that tuple, i.e.
+  // fusion_param.index() != {}.
+  if (absl::c_count_if(fusion_param_value.uses(), [&](const HloUse& use) {
+        return use.instruction == root;
+      }) != 1) {
+    return false;
+  }
+
+  // All other uses of fusion_param must be dynamic-slices that slice the same
+  // indices as are overwritten by the dynamic-update-slice.
+  for (const HloUse& use : fusion_param_value.uses()) {
+    auto* user = use.instruction;
+    if (user == root) {
+      continue;
+    }
+
+    // Check that `user` is a dynamic-slice op and has the same slice indices as
+    // `root`.
+    auto* ds = DynCast<HloDynamicSliceInstruction>(user);
+    if (!ds || ds->index_operands() != root->index_operands()) {
+      return false;
+    }
+  }
+  return true;
+}
+
 bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* operand, const ShapeIndex& operand_index,
     HloInstruction* user, const ShapeIndex& user_index) const {
@@ -1007,28 +1040,19 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
     HloInstruction* fusion_param =
         user->fused_parameter(user->operand_index(operand));
 
-    const HloValue& value = GetValueDefinedAt(fusion_param, operand_index);
-    if (MultiDynamicSliceUseShareSameIndices(value.uses())) {
-      return true;
+    const HloValue& fusion_param_value =
+        GetValueDefinedAt(fusion_param, operand_index);
+
+    if (user->fused_expression_root()->opcode() ==
+        HloOpcode::kDynamicUpdateSlice) {
+      return CanDoInPlaceDynamicUpdateSlice(user, fusion_param_value);
     }
+
     if (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
         user->fusion_kind() == HloInstruction::FusionKind::kInput) {
-      if (user->fused_expression_root()->opcode() ==
-          HloOpcode::kDynamicUpdateSlice) {
-        // Loop fusion with kDynamicUpdateSlice fused root.
-        //
-        // Returns true iff there is exactly one use of 'operand' at shape index
-        // 'operand_index', and this singleton use is the fused root at operand
-        // index 0.
-        if (value.uses().size() == 1) {
-          const HloUse& use = value.uses()[0];
-          return use.instruction == user->fused_expression_root() &&
-                 use.operand_number == 0;
-        }
-        return false;
-      }
       return AreTransitiveUsesElementwiseOrTuple(fusion_param);
     }
+
     if (user->fusion_kind() == HloInstruction::FusionKind::kOutput &&
         user->fused_expression_root()->opcode() == HloOpcode::kAdd) {
       // Output fusion with kAdd fused root.
@@ -1050,8 +1074,8 @@ bool HloDataflowAnalysis::CanShareOperandBufferWithUser(
       // Returns true iff there is exactly one use of 'operand' at shape index
       // 'operand_index', and this singleton use is the fused root (at operand
       // index 'other_add_operand_index').
-      if (value.uses().size() == 1) {
-        const HloUse& use = value.uses()[0];
+      if (fusion_param_value.uses().size() == 1) {
+        const HloUse& use = fusion_param_value.uses()[0];
         return use.instruction == user->fused_expression_root() &&
                use.operand_number == other_add_operand_index;
       }
