@@ -229,6 +229,20 @@ bool AreAllOutputsParameters(
       root->shape(),
       root->GetModule()->entry_computation_layout().result_shape());
 }
+
+void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
+                                 const OutfeedInfos& outfeed_infos,
+                                 int device_ordinal) {
+  auto* xfeed_manager = GetXfeedManager(device_ordinal);
+  for (const auto& outfeed_info : outfeed_infos) {
+    if (outfeed_info->outfeed_config() == "get_last") {
+      xfeed_manager->outfeed()->set_size(1);
+    } else if (outfeed_info->outfeed_config() == "all") {
+      xfeed_manager->outfeed()->set_size(
+          PoplarXfeedQueueManager::DEFAULT_QUEUE_SIZE);
+    }
+  }
+}
 }  // namespace
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
@@ -514,6 +528,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     poplarExecutor->AddCompileEndEventRecord(module->name(), stream.str(),
                                              map_json, duration);
   }
+
+  ConfigurePoplarXFeedManager(resources.annotations.infeed_infos,
+                              resources.annotations.outfeed_infos,
+                              stream_exec->device_ordinal());
 
   std::unique_ptr<Executable> executable;
   PoplarExecutable* poplar_executable = new PoplarExecutable(

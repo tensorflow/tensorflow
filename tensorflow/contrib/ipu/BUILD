@@ -14,6 +14,7 @@ py_library(
       "__init__.py",
       "python/autoshard.py",
       "python/autoshard_cnn.py",
+      "python/ipu_compiler.py",
       "python/ipu_infeed_queue.py",
       "python/loops.py",
       "python/ops.py",

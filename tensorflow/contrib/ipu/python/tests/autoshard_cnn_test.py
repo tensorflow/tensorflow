@@ -7,8 +7,8 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.compiler import xla
 from tensorflow.contrib.ipu.python import autoshard
+from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.contrib.ipu.python import sharded_optimizer as so
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
@@ -31,7 +31,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
           inp = array_ops.placeholder(np.float32, [], name="a")
 
         with ops.device("/device:IPU:0"):
-            out = xla.compile(my_model, inputs=[inp])
+            out = ipu_compiler.compile(my_model, inputs=[inp])
 
         autoshard.automatic_sharding(2, inp, out[0])
 
@@ -63,7 +63,7 @@ class AutoshardTest(test_util.TensorFlowTestCase):
         lab = array_ops.placeholder(np.float32, [1, 8], name="labl")
 
       with ops.device("/device:IPU:0"):
-        out = xla.compile(my_model, inputs=[inp, lab])
+        out = ipu_compiler.compile(my_model, inputs=[inp, lab])
 
       autoshard.automatic_sharding(2, inp, out[0])
 

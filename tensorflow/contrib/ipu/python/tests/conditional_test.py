@@ -7,7 +7,7 @@ from __future__ import print_function
 
 import numpy as np
 
-from tensorflow.contrib.compiler import xla
+from tensorflow.contrib.ipu.python import ipu_compiler
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import ops
@@ -38,7 +38,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
           pc = array_ops.placeholder(np.float32, [], name="c")
 
         with ops.device("/device:IPU:0"):
-            r = xla.compile(my_model, inputs=[pcond, pa, pb, pc])
+            r = ipu_compiler.compile(my_model, inputs=[pcond, pa, pb, pc])
 
         with session_lib.Session() as sess:
 
@@ -65,7 +65,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
         pc = array_ops.placeholder(np.float32, [], name="c")
 
       with ops.device("/device:IPU:0"):
-        r = xla.compile(my_model, inputs=[pcond, pa, pb, pc])
+        r = ipu_compiler.compile(my_model, inputs=[pcond, pa, pb, pc])
 
       with session_lib.Session() as sess:
 
@@ -92,7 +92,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
         pcond = array_ops.placeholder(np.bool, [], name="pred")
 
       with ops.device("/device:IPU:0"):
-        r = xla.compile(my_model, inputs=[pcond])
+        r = ipu_compiler.compile(my_model, inputs=[pcond])
 
       with session_lib.Session() as sess:
 
@@ -123,7 +123,7 @@ class ConditionalTest(test_util.TensorFlowTestCase):
         pcond = array_ops.placeholder(np.bool, [], name="pred")
 
       with ops.device("/device:IPU:0"):
-        r = xla.compile(my_model, inputs=[pcond])
+        r = ipu_compiler.compile(my_model, inputs=[pcond])
 
       with session_lib.Session() as sess:
 

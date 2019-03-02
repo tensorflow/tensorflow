@@ -1230,6 +1230,26 @@ py_test(
     srcs_version = "PY2AND3",
 )
 
+
+py_test(
+    name = "pop_datastream_test",
+    size = "small",
+    srcs = ["tests/pop_datastream_test.py"],
+    deps = [
+        ":test_utils_py",
+        ":ipu_ops_py",
+        ":pop_datastream_ops_py",
+        "//tensorflow/compiler/tests:xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform",
+    ],
+    srcs_version = "PY2AND3",
+)
+
+
+
 test_suite(
     name = "all_tests",
     tests = [
@@ -1274,6 +1294,7 @@ test_suite(
         "not_supported_gather_expander_test",
         "not_supported_scatter_expander_test",
         "popops_custom_ops_test",
+        "pop_datastream_test",
         "reduce_test",
         "root_token_replacer_test",
         "scheduler_test",
