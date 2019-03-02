@@ -39,6 +39,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/dfs_hlo_visitor.h"
 #include "tensorflow/compiler/xla/service/gpu/buffer_allocations.h"
+#include "tensorflow/compiler/xla/service/gpu/cholesky_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/conditional_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/copy_thunk.h"
@@ -477,6 +478,51 @@ Status IrEmitterUnnested::HandleCustomCall(HloInstruction* custom_call) {
     AddThunkToThunkSequence(absl::make_unique<ConvolutionThunk>(
         Cast<HloCustomCallInstruction>(custom_call), std::move(operand_slices),
         conv_result_slice, scratch_slice, tuple_result_slice));
+    return Status::OK();
+  }
+
+  if (custom_call->custom_call_target() == kCusolverCholeskyCallTarget) {
+    TF_ASSIGN_OR_RETURN(CholeskyOptions options,
+                        custom_call->backend_config<CholeskyOptions>());
+
+    const Shape& shape = custom_call->operand(0)->shape();
+    int ndim = shape.dimensions_size();
+    CHECK_GE(ndim, 2);
+    int64 n = shape.dimensions(ndim - 1);
+
+    const auto& dims = shape.dimensions();
+    int64 batch_size = std::accumulate(dims.begin(), dims.end() - 2, int64{1},
+                                       [](int64 a, int64 b) { return a * b; });
+
+    auto operand_buffer = GetAllocationSlice(*custom_call->operand(0));
+
+    const auto& assn = ir_emitter_context_->buffer_assignment();
+    auto a_buffer = assn.GetUniqueSlice(custom_call, {0}).ValueOrDie();
+    auto workspace_buffer = assn.GetUniqueSlice(custom_call, {1}).ValueOrDie();
+    auto info_buffer = assn.GetUniqueSlice(custom_call, {2}).ValueOrDie();
+
+    std::vector<std::unique_ptr<Thunk>> thunks;
+
+    if (operand_buffer != a_buffer) {
+      thunks.push_back(absl::make_unique<DeviceToDeviceCopyThunk>(
+          /*source_address=*/operand_buffer,
+          /*destination_buffer=*/a_buffer,
+          /*mem_size=*/ShapeUtil::ByteSizeOf(shape), custom_call));
+    }
+
+    thunks.push_back(absl::make_unique<CholeskyThunk>(
+        options, a_buffer, workspace_buffer, info_buffer,
+        custom_call->operand(0)->shape().element_type(), batch_size, n,
+        custom_call));
+
+    // Elide the sequential thunk if there's no copy.
+    if (thunks.size() == 1) {
+      AddThunkToThunkSequence(std::move(thunks[0]));
+    } else {
+      AddThunkToThunkSequence(
+          absl::make_unique<SequentialThunk>(std::move(thunks), custom_call));
+    }
+
     return Status::OK();
   }
 

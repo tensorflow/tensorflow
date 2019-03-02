@@ -1,12 +1,9 @@
-path: "tensorflow.nn.DropoutWrapper"
+path: "tensorflow.nn.RNNCellResidualWrapper"
 tf_class {
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DropoutWrapperV2\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.DropoutWrapper\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.ResidualWrapperV2\'>"
+  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.ResidualWrapperBase\'>"
   is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV2\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.AbstractRNNCell\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl._RNNCellWrapperV1\'>"
-  is_instance: "<class \'tensorflow.python.ops.rnn_cell_impl.RNNCell\'>"
-  is_instance: "<class \'tensorflow.python.layers.base.Layer\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
   is_instance: "<class \'tensorflow.python.training.tracking.base.Trackable\'>"
   is_instance: "<type \'object\'>"
@@ -20,10 +17,6 @@ tf_class {
   }
   member {
     name: "dynamic"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "graph"
     mtype: "<type \'property\'>"
   }
   member {
@@ -79,10 +72,6 @@ tf_class {
     mtype: "<type \'property\'>"
   }
   member {
-    name: "scope_name"
-    mtype: "<type \'property\'>"
-  }
-  member {
     name: "state_size"
     mtype: "<type \'property\'>"
   }
@@ -104,10 +93,6 @@ tf_class {
   }
   member {
     name: "weights"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "wrapped_cell"
     mtype: "<type \'property\'>"
   }
   member_method {
@@ -132,7 +117,7 @@ tf_class {
   }
   member_method {
     name: "add_weight"
-    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'use_resource\', \'synchronization\', \'aggregation\', \'partitioner\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\', \'None\'], "
+    argspec: "args=[\'self\', \'name\', \'shape\', \'dtype\', \'initializer\', \'regularizer\', \'trainable\', \'constraint\', \'partitioner\', \'use_resource\', \'synchronization\', \'aggregation\'], varargs=None, keywords=kwargs, defaults=[\'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'None\', \'VariableSynchronization.AUTO\', \'VariableAggregation.NONE\'], "
   }
   member_method {
     name: "apply"

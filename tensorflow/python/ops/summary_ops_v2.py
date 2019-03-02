@@ -1053,15 +1053,30 @@ _current_trace_context = None
 
 @tf_export("summary.trace_on", v1=[])
 def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-name
-  """Enables execution trace.
+  """Starts a trace to record computation graphs and profiling information.
+
+  Must be invoked in eager mode.
+
+  When enabled, TensorFlow runtime will collection information that can later be
+  exported and consumed by TensorBoard. The trace is activated across the entire
+  TensorFlow runtime and affects all threads of execution.
+
+  To stop the trace and export the collected information, use
+  `tf.summary.trace_export`. To stop the trace without exporting, use
+  `tf.summary.trace_off`.
 
   Args:
-    graph: whether to collect graphs used in execution
-    profiler: whether to enable profiler.
+    graph: If True, enables collection of executed graphs. It includes ones from
+        tf.function invocation and ones from the legacy graph mode. The default
+        is True.
+    profiler: If True, enables the advanced profiler. Enabling profiler
+        implicitly enables the graph collection. The profiler may incur a high
+        memory overhead. The default is False.
 
-  Returns:
-    None
   """
+  if ops.inside_function():
+    logging.warn("Cannot enable trace inside a tf.function.")
+    return
   if not context.context().executing_eagerly():
     logging.warn("Must enable trace in eager mode.")
     return
@@ -1083,7 +1098,10 @@ def trace_on(graph=True, profiler=False):  # pylint: disable=redefined-outer-nam
 
 @tf_export("summary.trace_export", v1=[])
 def trace_export(name, step=None, profiler_outdir=None):
-  """Exports trace as a Summary and/or profile file.
+  """Stops and exports the active trace as a Summary and/or profile file.
+
+  Stops the trace and exports all metadata collected during the trace to the
+  default SummaryWriter, if one has been set.
 
   Args:
     name: A name for the summary to be written.
@@ -1093,9 +1111,6 @@ def trace_export(name, step=None, profiler_outdir=None):
     profiler_outdir: Output directory for profiler. It is required when profiler
       is enabled when trace was started. Otherwise, it is ignored.
 
-  Returns:
-    None
-
   Raises:
     ValueError: if a default writer exists, but no step was provided and
       `tf.summary.experimental.get_step()` is None.
@@ -1104,6 +1119,9 @@ def trace_export(name, step=None, profiler_outdir=None):
   # the SummaryWriter's logdir.
   global _current_trace_context
 
+  if ops.inside_function():
+    logging.warn("Cannot export trace inside a tf.function.")
+    return
   if not context.context().executing_eagerly():
     logging.warn("Can only export trace while executing eagerly.")
     return
@@ -1130,7 +1148,7 @@ def trace_export(name, step=None, profiler_outdir=None):
 
 @tf_export("summary.trace_off", v1=[])
 def trace_off():
-  """Disables and resets the trace state."""
+  """Stops the current trace and discards any collected information."""
   global _current_trace_context
   with _current_trace_context_lock:
     _current_trace_context = None

@@ -20,6 +20,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import tf2
 from tensorflow.python.keras.engine.base_layer import TensorFlowOpLayer
 from tensorflow.python.keras.engine.input_layer import Input
 from tensorflow.python.keras.engine.input_layer import InputLayer
@@ -40,18 +41,28 @@ from tensorflow.python.keras.utils.generic_utils import deserialize_keras_object
 from tensorflow.python.util.tf_export import keras_export
 
 # TODO(b/124791387): replace mapping with layer attribute.
-_V2_CONVERSION_TABLE = {
-    # BatchNormalization Layer
+# Name conversion between class name and API symbol in config.
+_SERIALIZATION_TABLE = {
     'BatchNormalizationV1': 'BatchNormalization',
     'BatchNormalizationV2': 'BatchNormalization',
+    'UnifiedLSTM': 'LSTM',
+    'UnifiedGRU': 'GRU',
+}
+
+# Name conversion between API symbol in config and class name.
+# Note that the class names is a list where the first item is v1 class name and
+# the second item is the v2 class name.
+_DESERIALIZATION_TABLE = {
+    'LSTM': {'v1': 'LSTM', 'v2': 'UnifiedLSTM'},
+    'GRU': {'v1': 'GRU', 'v2': 'UnifiedGRU'},
 }
 
 
 @keras_export('keras.layers.serialize')
 def serialize(layer):
   layer_class_name = layer.__class__.__name__
-  if layer_class_name in _V2_CONVERSION_TABLE:
-    layer_class_name = _V2_CONVERSION_TABLE[layer_class_name]
+  if layer_class_name in _SERIALIZATION_TABLE:
+    layer_class_name = _SERIALIZATION_TABLE[layer_class_name]
   return {'class_name': layer_class_name, 'config': layer.get_config()}
 
 
@@ -72,6 +83,11 @@ def deserialize(config, custom_objects=None):
   globs['Network'] = models.Network
   globs['Model'] = models.Model
   globs['Sequential'] = models.Sequential
+  layer_class_name = config['class_name']
+  if layer_class_name in _DESERIALIZATION_TABLE:
+    version = 'v2' if tf2.enabled() else 'v1'
+    config['class_name'] = _DESERIALIZATION_TABLE[layer_class_name][version]
+
   return deserialize_keras_object(
       config,
       module_objects=globs,
