@@ -233,7 +233,6 @@ CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/trackable_object_graph.proto",
-    "protobuf/autotuning.proto",
     "protobuf/control_flow.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",
