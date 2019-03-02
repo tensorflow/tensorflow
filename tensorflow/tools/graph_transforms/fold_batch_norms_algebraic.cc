@@ -104,24 +104,25 @@ Status FoldBatchNormsAlgebraic(const GraphDef& input_graph_def,
         CHECK_EQ("Const", beta_node.op())
             << "You Should Apply remove_nodes(op=Identity) first!";
 
-        NodeDef batch_norms_node;
-        batch_norms_node.set_op("BatchNorm");
-        batch_norms_node.set_name(add_node.name() + "__BatchNorm");
-        SetNodeAttr("T", DT_FLOAT, &batch_norms_node);
-        CopyNodeAttr(epsilon_node, "value", "epsilon", &batch_norms_node);
-        AddNodeInput(gamma_node.name(), &batch_norms_node);
-        AddNodeInput(beta_node.name(), &batch_norms_node);
-        AddNodeInput(mul2_node.input(0), &batch_norms_node);
-        AddNodeInput(add_epsilon_node.input(0), &batch_norms_node);
+        NodeDef instance_norms_node;
+        instance_norms_node.set_op("InstanceNorm");
+        instance_norms_node.set_name(add_node.name() + "__InstanceNorm");
+        SetNodeAttr("T", DT_FLOAT, &instance_norms_node);
+        CopyNodeAttr(epsilon_node, "value", "epsilon", &instance_norms_node);
+        AddNodeInput(mul1_input0_node.name(), &instance_norms_node);
+        AddNodeInput(gamma_node.name(), &instance_norms_node);
+        AddNodeInput(beta_node.name(), &instance_norms_node);
+        AddNodeInput(mul2_node.input(0), &instance_norms_node);
+        AddNodeInput(add_epsilon_node.input(0), &instance_norms_node);
 
-        new_nodes->push_back(batch_norms_node);
+        new_nodes->push_back(instance_norms_node);
         new_nodes->push_back(gamma_node);
         new_nodes->push_back(beta_node);
         new_nodes->push_back(mean_node);
         new_nodes->push_back(variance_node);
         new_nodes->push_back(mul1_input0_node);
 
-        inputs_to_rename[add_node.name()] = batch_norms_node.name();
+        inputs_to_rename[add_node.name()] = instance_norms_node.name();
         return Status::OK();
       },
       {true}, &replaced_graph_def));

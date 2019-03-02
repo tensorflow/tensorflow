@@ -99,14 +99,15 @@ class FoldBatchNormsAlgebraicTest : public ::testing::Test {
 
     std::map<string, const NodeDef*> node_map;
     MapNamesToNodes(fused_graph_def, &node_map);
-    EXPECT_EQ(1, node_map.count("add_output_op__BatchNorm"));
+    EXPECT_EQ(1, node_map.count("add_output_op__InstanceNorm"));
     EXPECT_EQ(1, node_map.count("gamma_op"));
     EXPECT_EQ(1, node_map.count("beta_op"));
     EXPECT_EQ(1, node_map.count("conv_op"));
     EXPECT_EQ(1, node_map.count("relu_op"));
-    auto batch_norms_node = node_map.at("add_output_op__BatchNorm");
-    EXPECT_EQ("BatchNorm", batch_norms_node->op());
-    EXPECT_EQ(DT_FLOAT, batch_norms_node->attr().at("T").type());
+    auto instance_norms_node = node_map.at("add_output_op__InstanceNorm");
+    EXPECT_EQ("InstanceNorm", instance_norms_node->op());
+    EXPECT_EQ(5, instance_norms_node->input_size());
+    EXPECT_EQ(DT_FLOAT, instance_norms_node->attr().at("T").type());
   }
 
   void TestFoldBatchNormsAlgebraicAndFoldMoments() {
@@ -183,14 +184,14 @@ class FoldBatchNormsAlgebraicTest : public ::testing::Test {
 
     std::map<string, const NodeDef*> node_map;
     MapNamesToNodes(fused_moments_graph_def, &node_map);
-    EXPECT_EQ(1, node_map.count("add_output_op__BatchNorm"));
+    EXPECT_EQ(1, node_map.count("add_output_op__InstanceNorm"));
     EXPECT_EQ(1, node_map.count("gamma_op"));
     EXPECT_EQ(1, node_map.count("beta_op"));
     EXPECT_EQ(1, node_map.count("conv_op"));
     EXPECT_EQ(1, node_map.count("relu_op"));
-    auto batch_norms_node = node_map.at("add_output_op__BatchNorm");
-    EXPECT_EQ("BatchNorm", batch_norms_node->op());
-    EXPECT_EQ(DT_FLOAT, batch_norms_node->attr().at("T").type());
+    auto instance_norms_node = node_map.at("add_output_op__InstanceNorm");
+    EXPECT_EQ("InstanceNorm", instance_norms_node->op());
+    EXPECT_EQ(DT_FLOAT, instance_norms_node->attr().at("T").type());
 
     EXPECT_EQ(1, node_map.count("mean_op__moments"));
     EXPECT_EQ(1, node_map.count("mean_op_axes"));
@@ -201,8 +202,12 @@ class FoldBatchNormsAlgebraicTest : public ::testing::Test {
     EXPECT_EQ(2, moments_node->input_size());
     EXPECT_EQ("conv_op", moments_node->input(0));
     EXPECT_EQ("mean_op_axes", moments_node->input(1));
-    EXPECT_EQ("mean_op__moments:0", batch_norms_node->input(2));
-    EXPECT_EQ("mean_op__moments:1", batch_norms_node->input(3));
+    EXPECT_EQ(5, instance_norms_node->input_size());
+    EXPECT_EQ("conv_op", instance_norms_node->input(0));
+    EXPECT_EQ("gamma_op", instance_norms_node->input(1));
+    EXPECT_EQ("beta_op", instance_norms_node->input(2));
+    EXPECT_EQ("mean_op__moments:0", instance_norms_node->input(3));
+    EXPECT_EQ("mean_op__moments:1", instance_norms_node->input(4));
   }
 };
 
