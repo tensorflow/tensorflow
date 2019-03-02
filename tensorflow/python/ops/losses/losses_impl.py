@@ -716,7 +716,7 @@ def sigmoid_cross_entropy(
 
 
 @tf_export("losses.softmax_cross_entropy", v1=[])
-def softmax_cross_entropy(
+def softmax_cross_entropy_v2(
     onehot_labels, logits, axis=-1, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
@@ -762,13 +762,13 @@ def softmax_cross_entropy(
   holding on to the return value or collecting losses via a `tf.keras.Model`.
   @end_compatibility
   """
-  return softmax_cross_entropy_helper(
+  return softmax_cross_entropy(
     onehot_labels, logits, weights=weights, label_smoothing=label_smoothing,
     scope=scope, loss_collection=loss_collection, reduction=reduction, axis=axis)
 
 
 @tf_export(v1=["losses.softmax_cross_entropy"])
-def softmax_cross_entropy_helper(
+def softmax_cross_entropy(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS, axis=-1):
