@@ -211,10 +211,6 @@ def deserialize_keras_object(identifier,
         raise ValueError('Unknown ' + printable_module_name + ':' +
                          function_name)
     return fn
-  elif isinstance(identifier, list):
-    return [deserialize_keras_object(sub_identifier, module_objects,
-                                     custom_objects, printable_module_name)
-            for sub_identifier in identifier]
   else:
     raise ValueError('Could not interpret serialized ' + printable_module_name +
                      ': ' + identifier)

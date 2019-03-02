@@ -206,14 +206,19 @@ def load_model(filepath, custom_objects=None, compile=True):  # pylint: disable=
       optimizer = optimizers.deserialize(
           optimizer_config, custom_objects=custom_objects)
 
+      def deserialize_many(deserialize_fn, config):
+        if isinstance(config, list):
+          return [deserialize_many(deserialize_fn, sub_config)
+                  for sub_config in config]
+        else:
+          return deserialize_fn(config, custom_objects=custom_objects)
+
       # Recover loss functions and metrics.
-      loss = losses.deserialize(
-          training_config['loss'], custom_objects=custom_objects)
-      metrics = metrics_lib.deserialize(
-          training_config['metrics'], custom_objects=custom_objects)
-      weighted_metrics = metrics_lib.deserialize(
-          training_config.get('weighted_metrics', None),
-          custom_objects=custom_objects)
+      loss = deserialize_many(losses.deserialize, training_config['loss'])
+      metrics = deserialize_many(metrics_lib.deserialize,
+                                 training_config['metrics'])
+      weighted_metrics = deserialize_many(metrics_lib.deserialize,
+                                          training_config['weighted_metrics'])
       sample_weight_mode = training_config['sample_weight_mode']
       loss_weights = training_config['loss_weights']
 
