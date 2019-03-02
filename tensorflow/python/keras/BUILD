@@ -1171,7 +1171,6 @@ tf_py_test(
     shard_count = 6,
     tags = [
         "no_oss",
-        "notap",  #TODO(b/123544294): Re-enable this test.
         "notsan",
     ],
 )
