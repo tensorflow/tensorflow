@@ -131,6 +131,24 @@ class SVDTest : public ClientLibraryTestBase {
   Array3D<float> batch_3d_4x5_;
 };
 
+XLA_TEST_F(SVDTest, Simple2D) {
+  XlaBuilder builder(TestName());
+
+  Array2D<float> simple_2d_4x4_ = Array2D<float>{
+      {4, 6, 8, 10},
+      {6, 45, 54, 63},
+      {8, 54, 146, 166},
+      {10, 63, 166, 310},
+  };
+  XlaOp a;
+  auto a_data = CreateR2Parameter<float>(simple_2d_4x4_, 0, "a", &builder, &a);
+  auto result = SVD(a, 100, 1e-6);
+  ComputeMatmulUDVT(result, &builder);
+
+  ComputeAndCompareR2<float>(&builder, simple_2d_4x4_, {a_data.get()},
+                             ErrorSpec(1e-3, 1e-3));
+}
+
 XLA_TEST_F(SVDTest, Test_VWVt_EQ_A_2x4x5) {
   XlaBuilder builder(TestName());
 
