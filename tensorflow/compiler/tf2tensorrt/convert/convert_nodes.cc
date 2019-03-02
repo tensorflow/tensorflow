@@ -1432,29 +1432,29 @@ Status CheckInputsWeights(
   return Status::OK();
 }
 
-tensorflow::Status AllowDataTypes(
+Status AllowDataTypes(
     const OpConverterParams& params,
-    const std::set<tensorflow::DataType>& allowed_dtypes) {
+    const std::set<DataType>& allowed_dtypes) {
   const auto& node_def = params.node_def;
   TFAttrs attrs(params.node_def);
   if (attrs.count("T")) {
-    auto op_dtype = attrs.get<tensorflow::DataType>("T");
+    const auto op_dtype = attrs.get<DataType>("T");
     if (!allowed_dtypes.count(op_dtype)) {
       // Build string list of allowed types.
       std::ostringstream ss;
       for (auto it = allowed_dtypes.begin(); it != allowed_dtypes.end(); ++it) {
         if (it != allowed_dtypes.begin()) ss << ", ";
-        ss << tensorflow::DataTypeString(*it);
+        ss << DataTypeString(*it);
       }
-      return tensorflow::errors::Unimplemented(
-          "Data type ", tensorflow::DataTypeString(op_dtype),
+      return errors::Unimplemented(
+          "Data type ", DataTypeString(op_dtype),
           " is not supported for ", node_def.op(), ", must be one of [",
           ss.str(), "], at ", node_def.name());
     }
   }
   // If there is no T attribute, we can't determine the type of the op. We will
   // allow it to convert for now.
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 TRT_ShapedWeights ConvertFP32ToFP16(TrtWeightStore* store,
@@ -1759,8 +1759,8 @@ Status ConvertConv2DHelper(OpConverterParams* params, int group,
         CheckInputsWeights(*params, {{"input", false}, {"filter", true}}));
     tensor = inputs.at(0).tensor();
   }
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   TRT_ShapedWeights weights_rsck = inputs.at(1).weights();
   if (weights_rsck.shape_.nbDims != 4) {
     return errors::InvalidArgument("Conv2D expects kernel of dimension 4, at " +
@@ -2024,8 +2024,8 @@ Status ConvertTranspose(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"x", false}, {"perm", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   // Get the permutation from weights.
   TRT_ShapedWeights weights = inputs.at(1).weights();
   const int* weights_ptr =
@@ -2061,8 +2061,8 @@ Status ConvertReshape(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"tensor", false}, {"shape", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   TRT_ShapedWeights weights = inputs.at(1).weights();
   if (weights.count() == 0) {
@@ -2161,8 +2161,8 @@ Status ConvertExpandDims(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"input", false}, {"axis", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   // Get input shape as vector.
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
@@ -2214,8 +2214,8 @@ Status ConvertSqueeze(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   // Get input shape.
   TRT_TensorOrWeights input_tensor = inputs.at(0);
   const nvinfer1::Dims dims = input_tensor.GetTrtDims();
@@ -2479,8 +2479,8 @@ Status ConvertSlice(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"input", false}, {"begin", true}, {"size", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   std::vector<int> begin = inputs.at(1).weights().ToVector<int>();
   std::vector<int> size = inputs.at(2).weights().ToVector<int>();
   // Get input dims.
@@ -2526,8 +2526,8 @@ Status ConvertStridedSlice(OpConverterParams* params) {
       *params,
       {{"input", false}, {"begin", true}, {"end", true}, {"strides", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   // Get input dims.
   nvinfer1::Dims dims = inputs.at(0).GetTrtDims();
   std::vector<int> input_dims(dims.d, dims.d + dims.nbDims);
@@ -2623,8 +2623,8 @@ Status ConvertPool(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   nvinfer1::PoolingType type;
   if (node_def.op() == "MaxPool") {
     type = nvinfer1::PoolingType::kMAX;
@@ -2717,8 +2717,8 @@ Status ConvertLeakyRelu(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
 
   TFAttrs attrs(node_def);
   const float alpha = attrs.get<float>("alpha");
@@ -2761,8 +2761,8 @@ Status ConvertActivation(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   static const std::unordered_map<string, nvinfer1::ActivationType> ops{
       {"Relu", nvinfer1::ActivationType::kRELU},
       {"Sigmoid", nvinfer1::ActivationType::kSIGMOID},
@@ -2859,8 +2859,8 @@ Status ConvertRelu6(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"input", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
   // ***************************************************************************
   // TensorRT does not implement Relu6 natively. This function converts Relu6 op
@@ -2910,8 +2910,8 @@ Status ConvertBiasAdd(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"value", false}, {"bias", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
 
   nvinfer1::ITensor* tensor =
@@ -3134,8 +3134,8 @@ Status ConvertBinary(OpConverterParams* params) {
                                    " inputs but expected 2, at ",
                                    node_def.name());
   }
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
 
   // Constant folding should have been done by TensorFlow
   if (inputs.at(0).is_weights() && inputs.at(1).is_weights()) {
@@ -3177,8 +3177,8 @@ Status ConvertRsqrt(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
 
   // TODO(tmorris): params->converter is null during validation. Allow
@@ -3245,8 +3245,8 @@ Status ConvertUnary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   auto op_pair = UnaryOperationMap()->find(node_def.op());
   if (op_pair == UnaryOperationMap()->end()) {
     return errors::Unimplemented("Unary op: ", node_def.op(),
@@ -3284,8 +3284,8 @@ Status ConvertSquare(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   if (params->validation_only) return Status::OK();
 
   // Constant 2 with same rank as input
@@ -3311,8 +3311,8 @@ Status ConvertReduce(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"input", false}, {"axis", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
 
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   TRT_ShapedWeights index_list = inputs.at(1).weights();
@@ -3374,8 +3374,8 @@ Status ConvertPad(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"tensor", false}, {"paddings", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
 
   // Implement tensor binaryOp weight [channel wise] for now;
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
@@ -3480,8 +3480,8 @@ Status ConvertConcat(OpConverterParams* params) {
   const auto& node_def = params->node_def;
   // TODO(tmorris): There is a bug with Concat and INT32 in TRT - it is supposed
   // to be supported.
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   // not including the last input (axis) here
   int input_size = static_cast<int>(inputs.size()) - 1;
 
@@ -3564,8 +3564,8 @@ Status ConvertFusedBatchNorm(OpConverterParams* params) {
                                                   {"offset", true},
                                                   {"mean", true},
                                                   {"variance", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   TFAttrs attrs(node_def);
   float epsilon = attrs.get<float>("epsilon");
   auto data_format = attrs.get<string>("data_format");
@@ -3698,8 +3698,8 @@ Status ConvertGather(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(CheckInputsWeights(
       *params, {{"params", false}, {"indices", false}, {"axis", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   absl::Span<const int> axis = inputs.at(2).weights().GetSpan<int>();
   if (axis.size() != 1) {
     return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
@@ -3769,8 +3769,8 @@ Status ConvertMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"a", false}, {"b", true}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
 
   TFAttrs attrs(node_def);
   bool transpose_a = attrs.get<bool>("transpose_a");
@@ -3793,8 +3793,8 @@ Status ConvertBatchMatMul(OpConverterParams* params) {
   // TODO(tmorris): Enable once false is updated to mean either tensor or weight
   // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
   // false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   if (inputs.size() != 2) {
     return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
                                    " inputs but expected 2, at ",
@@ -3860,8 +3860,8 @@ Status ConvertSoftmax(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"logits", false}}));
-  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {tensorflow::DataType::DT_FLOAT,
-                                              tensorflow::DataType::DT_HALF}));
+  TF_RETURN_IF_ERROR(AllowDataTypes(*params, {DataType::DT_FLOAT,
+                                              DataType::DT_HALF}));
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
 
   int nbDims = tensor->getDimensions().nbDims;
@@ -3891,8 +3891,8 @@ Status ConvertTopK(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"input", false}, {"k", true}}));
   TF_RETURN_IF_ERROR(AllowDataTypes(
-      *params, {tensorflow::DataType::DT_FLOAT, tensorflow::DataType::DT_HALF,
-                tensorflow::DataType::DT_INT32}));
+      *params, {DataType::DT_FLOAT, DataType::DT_HALF,
+                DataType::DT_INT32}));
   const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
   const int num_dims = tensor->getDimensions().nbDims;
   if (num_dims == 0) {
