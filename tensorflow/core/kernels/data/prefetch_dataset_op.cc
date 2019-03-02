@@ -269,9 +269,8 @@ class PrefetchDatasetOp::Dataset : public DatasetBase {
       if (!prefetch_thread_) {
         std::shared_ptr<IteratorContext> new_ctx =
             std::make_shared<IteratorContext>(*ctx);
-        prefetch_thread_ = absl::WrapUnique<Thread>(ctx->env()->StartThread(
-            {}, "tf_data_prefetch",
-            [this, new_ctx]() { PrefetchThread(new_ctx); }));
+        prefetch_thread_ = ctx->StartThread(
+            "tf_data_prefetch", [this, new_ctx]() { PrefetchThread(new_ctx); });
       }
       return Status::OK();
     }
