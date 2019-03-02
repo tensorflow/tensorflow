@@ -382,7 +382,13 @@ class api_export(object):  # pylint: disable=invalid-name
 
 def kwarg_only(f):
   """A wrapper that throws away all non-kwarg arguments."""
-  def wrapper(**kwargs):
+
+  def wrapper(*args, **kwargs):
+    if args:
+      raise TypeError(
+          '{} only takes keyword args. The following args were provided: {}. '
+          'Please pass these args as kwargs instead.'
+          .format(f.__name__, args))
     return f(**kwargs)
 
   return tf_decorator.make_decorator(

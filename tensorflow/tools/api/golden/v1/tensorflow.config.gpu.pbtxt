@@ -1,0 +1,19 @@
+path: "tensorflow.config.gpu"
+tf_module {
+  member_method {
+    name: "get_per_process_memory_fraction"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_per_process_memory_growth"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_per_process_memory_fraction"
+    argspec: "args=[\'fraction\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "set_per_process_memory_growth"
+    argspec: "args=[\'enabled\'], varargs=None, keywords=None, defaults=None"
+  }
+}

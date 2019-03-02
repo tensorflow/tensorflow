@@ -1117,6 +1117,10 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             decay_function_comment,
         "tf.train.noisy_linear_cosine_decay":
             decay_function_comment,
+        "tf.nn.embedding_lookup":
+            deprecate_partition_strategy_comment,
+        "tf.nn.embedding_lookup_sparse":
+            deprecate_partition_strategy_comment,
         "tf.nn.nce_loss":
             deprecate_partition_strategy_comment,
         "tf.nn.safe_embedding_lookup_sparse":

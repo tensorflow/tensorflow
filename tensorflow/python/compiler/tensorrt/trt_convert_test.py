@@ -28,12 +28,16 @@ from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.compiler.tensorrt import trt_convert
+from tensorflow.python.eager import context
+from tensorflow.python.eager import def_function
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import graph_util
 from tensorflow.python.framework import importer
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_nn_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 from tensorflow.python.saved_model import builder
@@ -43,6 +47,9 @@ from tensorflow.python.saved_model import signature_def_utils
 from tensorflow.python.saved_model import tag_constants
 from tensorflow.python.saved_model import utils
 from tensorflow.python.tools import saved_model_utils
+from tensorflow.python.saved_model import load
+from tensorflow.python.saved_model import save
+from tensorflow.python.training.tracking import tracking
 
 
 class TrtConvertTest(test_util.TensorFlowTestCase):
@@ -182,23 +189,28 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
         minimum_segment_size=minimum_segment_size,
         is_dynamic_op=is_dynamic_op,
         maximum_cached_engines=maximum_cached_engines)
-    output_graph_def = converter.convert()
+    conversion_result = converter.convert()
 
-    if need_calibration:
+    if context.executing_eagerly():
+      output_graph_def = conversion_result.graph.as_graph_def()
+    else:
+      output_graph_def = conversion_result
 
-      class CalibrationData(object):
+      if need_calibration:
 
-        def __init__(self):
-          self._data = 0
+        class CalibrationData(object):
 
-        def next(self):
-          self._data += 1
-          return {"input:0": [[[self._data]]]}
+          def __init__(self):
+            self._data = 0
 
-      output_graph_def = converter.calibrate(
-          fetch_names=["output:0"],
-          num_runs=10,
-          feed_dict_fn=CalibrationData().next)
+          def next(self):
+            self._data += 1
+            return {"input:0": [[[self._data]]]}
+
+        output_graph_def = converter.calibrate(
+            fetch_names=["output:0"],
+            num_runs=10,
+            feed_dict_fn=CalibrationData().next)
 
     if output_saved_model_dir is not None:
       converter.save(output_saved_model_dir=output_saved_model_dir)
@@ -207,27 +219,42 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
   def _TestTrtGraphConverter(self,
                              input_saved_model_dir=None,
                              output_saved_model_dir=None,
-                             need_calibration=False):
+                             need_calibration=False,
+                             is_dynamic_op=False):
     """General method to test trt_convert.TrtGraphConverter()."""
     output_graph_def = self._ConvertGraph(
         input_saved_model_dir=input_saved_model_dir,
         output_saved_model_dir=output_saved_model_dir,
-        need_calibration=need_calibration)
+        need_calibration=need_calibration,
+        is_dynamic_op=is_dynamic_op)
     graph_defs_to_verify = [output_graph_def]
 
     if output_saved_model_dir:
-      saved_model_graph_def = saved_model_utils.get_meta_graph_def(
-          output_saved_model_dir, tag_constants.SERVING).graph_def
+      if context.executing_eagerly():
+        root = load.load(output_saved_model_dir)
+        saved_model_graph_def = root.signatures[
+            signature_constants
+            .DEFAULT_SERVING_SIGNATURE_DEF_KEY].graph.as_graph_def()
+      else:
+        saved_model_graph_def = saved_model_utils.get_meta_graph_def(
+            output_saved_model_dir, tag_constants.SERVING).graph_def
       self.assertTrue(isinstance(saved_model_graph_def, graph_pb2.GraphDef))
       graph_defs_to_verify.append(saved_model_graph_def)
 
     for graph_def in graph_defs_to_verify:
       node_name_to_op = {node.name: node.op for node in graph_def.node}
-      self.assertEqual({
-          "input": "Placeholder",
-          "TRTEngineOp_0": "TRTEngineOp",
-          "output": "Identity"
-      }, node_name_to_op)
+      if context.executing_eagerly():
+        # In V2 the actual graph could be inside a function.
+        for func in graph_def.library.function:
+          node_name_to_op.update({node.name: node.op for node in func.node_def})
+        self.assertIn("TRTEngineOp_0", node_name_to_op)
+        self.assertEqual("TRTEngineOp", node_name_to_op["TRTEngineOp_0"])
+      else:
+        self.assertEqual({
+            "input": "Placeholder",
+            "TRTEngineOp_0": "TRTEngineOp",
+            "output": "Identity"
+        }, node_name_to_op)
 
       if need_calibration:
         trt_engine_nodes = [
@@ -268,6 +295,45 @@ class TrtConvertTest(test_util.TensorFlowTestCase):
           input_saved_model_dir=input_saved_model_dir,
           output_saved_model_dir=output_saved_model_dir,
           need_calibration=need_calibration)
+
+  @test_util.run_v2_only
+  def testTrtGraphConverter_BasicConversion_v2(self):
+    """Test case for trt_convert.TrtGraphConverter()."""
+    if not is_tensorrt_enabled():
+      return
+
+    # TODO(laigd): we need to use ops like conv2d so Grappler can infer the
+    # shapes (at least rank) of the tensors, so we're able to build an TRT
+    # engine in dynamic mode. Currently shape information is not propagate from
+    # ConcreteFunction to GraphDef, need to investigate and fix it.
+    class SimpleModel(tracking.AutoTrackable):
+
+      def __init__(self):
+        self.v = None
+
+      @def_function.function(input_signature=[
+          tensor_spec.TensorSpec(shape=[None, 24, 24, 2], dtype=dtypes.float32)
+      ])
+      def run(self, inp):
+        if self.v is None:
+          self.v = variables.Variable([[[[1., 0.5, 4., 6., 0.5, 1.],
+                                         [1., 0.5, 1., 1., 0.5, 1.]]]])
+        conv = gen_nn_ops.conv2d(
+            input=inp, filter=self.v, strides=[1, 2, 2, 1], padding="SAME")
+        identity = array_ops.identity(conv)
+        return identity
+
+    tmp_dir = self.get_temp_dir()
+    input_saved_model_dir = os.path.join(tmp_dir, "in_dir1_v2")
+    root = SimpleModel()
+    save.save(root, input_saved_model_dir)
+
+    # Convert the SavedModel and verify the result.
+    output_saved_model_dir = os.path.join(tmp_dir, "out_dir1_v2")
+    self._TestTrtGraphConverter(
+        input_saved_model_dir=input_saved_model_dir,
+        output_saved_model_dir=output_saved_model_dir,
+        is_dynamic_op=True)
 
   def _TestRun(self, sess, batch_size, expect_engine_is_run):
     clear_test_values("")

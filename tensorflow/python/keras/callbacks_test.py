@@ -1068,6 +1068,31 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
         })
 
+  def test_TensorBoard_across_invocations(self):
+    """Regression test for summary writer resource use-after-free.
+
+    See: <https://github.com/tensorflow/tensorflow/issues/25707>
+    """
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    for _ in (1, 2):
+      model.fit(
+          x,
+          y,
+          batch_size=2,
+          epochs=2,
+          validation_data=(x, y),
+          callbacks=[tb_cbk])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        })
+
   def test_TensorBoard_batch_metrics(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))

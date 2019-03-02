@@ -20,6 +20,8 @@ namespace gpu {
 
 std::ostream& operator<<(std::ostream& os, Thunk::Kind kind) {
   switch (kind) {
+    case Thunk::kCholesky:
+      return os << "kCholesky";
     case Thunk::kConditional:
       return os << "kConditional";
     case Thunk::kConvolution:

@@ -28,12 +28,11 @@ Currently, this requires training a model with
 Convert the graph:
 
 ```
-with tf.Session() as sess:
-  converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
-  converter.inference_type = tf.lite.constants.QUANTIZED_UINT8
-  input_arrays = converter.get_input_arrays()
-  converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean, std_dev
-  tflite_model = converter.convert()
+converter = tf.lite.TFLiteConverter.from_saved_model(saved_model_dir)
+converter.inference_type = tf.lite.constants.QUANTIZED_UINT8
+input_arrays = converter.get_input_arrays()
+converter.quantized_input_stats = {input_arrays[0] : (0., 1.)}  # mean, std_dev
+tflite_model = converter.convert()
 ```
 
 For fully integer models, the inputs are uint8. The `mean` and `std_dev values`

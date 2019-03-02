@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/gpu/buffer_comparator.h"
 #include "tensorflow/compiler/xla/service/gpu/convolution_thunk.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/gpu/scratch_allocator.h"
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/core/lib/strings/numbers.h"
 #include "tensorflow/core/platform/logger.h"
@@ -36,47 +37,6 @@ namespace {
 using absl::optional;
 using se::DeviceMemoryBase;
 using se::dnn::AlgorithmDesc;
-
-class ScratchAllocator : public se::ScratchAllocator {
- public:
-  ScratchAllocator(int device_ordinal, DeviceMemoryAllocator* memory_allocator)
-      : device_ordinal_(device_ordinal), memory_allocator_(memory_allocator) {}
-
-  int64 GetMemoryLimitInBytes(se::Stream* stream) override {
-    return 1LL << 32;  // 4GB.  TODO(jlebar): Tune this?
-  }
-  int64 TotalAllocatedBytes() { return total_allocated_bytes_; }
-
-  StatusOr<se::DeviceMemory<uint8>> AllocateBytes(se::Stream* stream,
-                                                  int64 byte_size) override;
-
- private:
-  const int device_ordinal_;
-  DeviceMemoryAllocator* memory_allocator_;
-  std::vector<OwningDeviceMemory> allocated_buffers_;
-  int64 total_allocated_bytes_ = 0;
-};
-
-StatusOr<se::DeviceMemory<uint8>> ScratchAllocator::AllocateBytes(
-    se::Stream* stream, int64 byte_size) {
-  CHECK_GE(byte_size, 0) << "byte_size must be positive.";
-  if (byte_size > GetMemoryLimitInBytes(stream)) {
-    return se::port::Status(
-        se::port::error::RESOURCE_EXHAUSTED,
-        absl::StrFormat(
-            "Allocating %d bytes exceeds the memory limit of %d bytes.",
-            byte_size, GetMemoryLimitInBytes(stream)));
-  }
-
-  TF_ASSIGN_OR_RETURN(OwningDeviceMemory allocated_buffer,
-                      memory_allocator_->Allocate(device_ordinal_, byte_size,
-                                                  /*retry_on_failure=*/false));
-  total_allocated_bytes_ += byte_size;
-
-  se::DeviceMemoryBase buffer_addr = allocated_buffer.AsDeviceMemoryBase();
-  allocated_buffers_.push_back(std::move(allocated_buffer));
-  return se::DeviceMemory<uint8>(buffer_addr);
-}
 
 std::vector<AlgorithmDesc> GetAlgorithms(CudnnConvKind kind,
                                          se::StreamExecutor* stream_exec) {

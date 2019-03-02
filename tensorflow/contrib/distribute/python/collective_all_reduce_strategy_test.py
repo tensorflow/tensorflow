@@ -481,6 +481,24 @@ class DistributedCollectiveAllReduceStrategyTest(
     self.assertEqual(['CollectiveReduce'],
                      new_rewrite_options.scoped_allocator_opts.enable_op)
 
+  @combinations.generate(combinations.combine(mode=['eager']))
+  def testEnableCollectiveOps(self):
+    mock_called = [False]
+
+    # pylint: disable=dangerous-default-value
+    def mock_enable_collective_ops(server_def, mock_called=mock_called):
+      self.assertEqual('worker', server_def.job_name)
+      self.assertEqual(1, server_def.task_index)
+      self.assertEqual('grpc', server_def.protocol)
+      mock_called[0] = True
+
+    with test.mock.patch.object(context.context(), 'enable_collective_ops',
+                                mock_enable_collective_ops):
+      strategy, _, _ = self._get_test_object(
+          task_type='worker', task_id=1, num_gpus=2, use_core_strategy=True)
+    self.assertTrue(strategy.extended._std_server_started)
+    self.assertTrue(mock_called[0])
+
 
 class DistributedCollectiveAllReduceStrategyTestWithChief(
     CollectiveAllReduceStrategyTestBase, parameterized.TestCase):
