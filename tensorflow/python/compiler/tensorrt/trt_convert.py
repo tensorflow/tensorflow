@@ -113,8 +113,8 @@ class GraphConverter(object):
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
-      input_saved_model_signature_key: the key in the signature def map for a TF
-        2.0 SavedModel.
+      input_saved_model_signature_key: the key of the signature to optimize the
+        graph for.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -132,9 +132,6 @@ class GraphConverter(object):
         raise ValueError(
             "TF 2.0 only supports conversion of SavedModel, please specify "
             "input_saved_model_dir as input.")
-      self._input_saved_model_signature_key = (
-          input_saved_model_signature_key or
-          signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
     else:
       if input_graph_def and input_saved_model_dir:
         raise ValueError(
@@ -152,6 +149,9 @@ class GraphConverter(object):
 
     self._input_saved_model_tags = (
         input_saved_model_tags or [tag_constants.SERVING])
+    self._input_saved_model_signature_key = (
+        input_saved_model_signature_key or
+        signature_constants.DEFAULT_SERVING_SIGNATURE_DEF_KEY)
     self._session_config = session_config or config_pb2.ConfigProto()
 
     # For calibration usage.
@@ -221,17 +221,16 @@ class GraphConverter(object):
     with session.Session(graph=graph, config=self._session_config) as sess:
       input_meta_graph_def = loader.load(sess, self._input_saved_model_tags,
                                          self._input_saved_model_dir)
+      input_signature_def = input_meta_graph_def.signature_def[
+          self._input_saved_model_signature_key]
 
       def _gather_names(tensor_info):
         """Get the node names from a TensorInfo."""
         return set([tensor_info[key].name.split(":")[0] for key in tensor_info])
 
       # Get input and outputs from all SignatureDef.
-      output_node_names = set()
-      for key in input_meta_graph_def.signature_def:
-        signature_def = input_meta_graph_def.signature_def[key]
-        output_node_names.update(_gather_names(signature_def.inputs))
-        output_node_names.update(_gather_names(signature_def.outputs))
+      output_node_names = _gather_names(input_signature_def.inputs).union(
+          _gather_names(input_signature_def.outputs))
 
       # Freeze the variables in the SavedModel graph and copy the frozen
       # graph over.
@@ -257,9 +256,8 @@ class GraphConverter(object):
       # Copy other information.
       self._grappler_meta_graph_def.meta_info_def.CopyFrom(
           input_meta_graph_def.meta_info_def)
-      for key in input_meta_graph_def.signature_def:
-        self._grappler_meta_graph_def.signature_def[key].CopyFrom(
-            input_meta_graph_def.signature_def[key])
+      self._grappler_meta_graph_def.signature_def[
+          self._input_saved_model_signature_key].CopyFrom(input_signature_def)
       # TODO(laigd): maybe add back AssetFileDef.
 
     self._run_conversion()
@@ -469,7 +467,8 @@ class TrtGraphConverter(GraphConverter):
       is_dynamic_op=False,
       maximum_cached_engines=1,
       cached_engine_batches=None,
-      use_calibration=True):
+      use_calibration=True,
+      use_function_backup=True):
     """Returns a RewriterConfig proto for TRT transformation.
 
     Args:
@@ -503,6 +502,9 @@ class TrtGraphConverter(GraphConverter):
         an error will occur. Please note that accuracy may be negatively
         affected if there is a mismatch between which tensors TRT quantizes and
         which tensors were trained with fake quantization.
+      use_function_backup: if set to True, it will create a FunctionDef for each
+        subgraph that is converted to TRT op, and if TRT ops fail to execute at
+        runtime, it'll invoke that function as a fallback.
 
     Returns:
       A RewriterConfig proto which sets a TensorRTOptimizer to run Grappler.
@@ -548,6 +550,7 @@ class TrtGraphConverter(GraphConverter):
       optimizer.parameter_map["cached_engine_batches"].list.i.extend(
           cached_engine_batches)
     optimizer.parameter_map["use_calibration"].b = use_calibration
+    optimizer.parameter_map["use_function_backup"].b = use_function_backup
     return rewriter_config_with_trt
 
   def __init__(self,
@@ -564,15 +567,16 @@ class TrtGraphConverter(GraphConverter):
                is_dynamic_op=False,
                maximum_cached_engines=1,
                cached_engine_batches=None,
-               use_calibration=True):
+               use_calibration=True,
+               use_function_backup=True):
     """Initialize the converter.
 
     Args:
       input_saved_model_dir: the directory to load the SavedModel which contains
         the input graph to transforms. Used only when input_graph_def is None.
       input_saved_model_tags: list of tags to load the SavedModel.
-      input_saved_model_signature_key: the key in the signature def map for a TF
-        2.0 SavedModel.
+      input_saved_model_signature_key: the key of the signature to optimize the
+        graph for.
       input_graph_def: a GraphDef object containing a model to be transformed.
         If set to None, the graph will be read from the SavedModel loaded from
         input_saved_model_dir.
@@ -609,6 +613,9 @@ class TrtGraphConverter(GraphConverter):
         an error will occur. Please note that accuracy may be negatively
         affected if there is a mismatch between which tensors TRT quantizes and
         which tensors were trained with fake quantization.
+      use_function_backup: if set to True, it will create a FunctionDef for each
+        subgraph that is converted to TRT op, and if TRT ops fail to execute at
+        runtime, it'll invoke that function as a fallback.
 
     Raises:
       ValueError: if the combination of the parameters is invalid.
@@ -621,6 +628,9 @@ class TrtGraphConverter(GraphConverter):
         input_graph_def=input_graph_def,
         nodes_blacklist=nodes_blacklist,
         session_config=session_config)
+
+    # TODO(laigd): move all the validations below to
+    # get_tensorrt_rewriter_config().
 
     # Lazily load the TF-TRT C bindings, so `import tensorflow` doesn't complain
     # even if it cannot find TensorRT library.
@@ -671,6 +681,13 @@ class TrtGraphConverter(GraphConverter):
 
     self._need_calibration = (
         precision_mode == TrtPrecisionMode.INT8 and use_calibration)
+    self._use_function_backup = use_function_backup
+
+    # TODO(laigd): consider provide a mechanism to remove the fallback path
+    # after calibration is done.
+    if self._need_calibration and not use_function_backup:
+      raise ValueError(
+          "Calibration requires enabling fallback to TF function execution.")
 
     # TODO(laigd):
     # - Get rid of is_dynamic_op option, it should always be True, and it should
@@ -696,7 +713,8 @@ class TrtGraphConverter(GraphConverter):
         is_dynamic_op=self._is_dynamic_op,
         maximum_cached_engines=self._maximum_cached_engines,
         cached_engine_batches=self._cached_engine_batches,
-        use_calibration=self._need_calibration)
+        use_calibration=self._need_calibration,
+        use_function_backup=self._use_function_backup)
 
   def finalize_calibration(self):
     assert self._need_calibration
@@ -812,8 +830,8 @@ def create_inference_graph(
     input_saved_model_dir: the directory to load the SavedModel which contains
       the input graph to transforms. Used only when input_graph_def is None.
     input_saved_model_tags: list of tags to load the SavedModel.
-    input_saved_model_signature_key: the key in the signature def map for a TF
-      2.0 SavedModel.
+    input_saved_model_signature_key: the key of the signature to optimize the
+      graph for.
     output_saved_model_dir: if not None, construct a SavedModel using the
       returned GraphDef and save it to the specified directory. This option only
       works when the input graph is loaded from a SavedModel, i.e. when

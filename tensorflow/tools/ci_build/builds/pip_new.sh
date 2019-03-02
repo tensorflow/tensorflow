@@ -208,7 +208,7 @@ if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "Error: PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
 # Get python version for configuring pip later in installation.
-PYTHON_VER_CFG=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f-2)
+PYTHON_VER_CFG=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $2}' | cut -d. -f-2)
 echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH} (version: ${PYTHON_VER_CFG})"
 
 # Default values for optional global variables in case they are not user
@@ -239,7 +239,7 @@ PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
 # Determine the major.minor versions of python being used (e.g., 2.7).
 # Useful for determining the directory of the local pip installation.
-PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f-2)
+PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $2}' | cut -d. -f-2)
 if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
   die "ERROR: Unable to determine the major.minor version of Python."
 fi
@@ -660,6 +660,8 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
+      auditwheel --version
+      pip show auditwheel
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 
       if [[ -f ${AUDITED_WHL_NAME} ]]; then

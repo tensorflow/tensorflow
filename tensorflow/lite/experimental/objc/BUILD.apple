@@ -1,4 +1,4 @@
-# TensorFlow Lite Objective-C API.
+# TensorFlow Lite for Objective-C
 
 package(default_visibility = ["//visibility:private"])
 
@@ -83,11 +83,13 @@ ios_unit_test(
         "notsan",
         "nomsan",
     ],
-    deps = [":TensorFlowLiteTestsLib"],
+    deps = [
+        ":TestsLib",
+    ],
 )
 
 objc_library(
-    name = "TensorFlowLiteTestsLib",
+    name = "TestsLib",
     testonly = 1,
     srcs = glob([
         "tests/*.m",

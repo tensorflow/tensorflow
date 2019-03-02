@@ -15,7 +15,7 @@ tf_cuda_library(
     deps = [
         ":dump_tpu_profile",
         "//tensorflow:grpc++",
-        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:framework",
         "//tensorflow/core:grpc_services",
         "//tensorflow/core:lib",
         "//tensorflow/core/distributed_runtime/rpc:grpc_util",

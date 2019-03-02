@@ -125,7 +125,11 @@ bool RemoveListArrayConverter(Graph* g);
 //
 // Function calls that can't be safely inlined into the graph (ValidateInlining
 // returns error), are ignored.
-bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph);
+//
+// If `override_device` is true then the inlined operations are placed on the
+// device the call node is placed on.
+bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
+                           bool override_device = false);
 
 // Dump the contents of the "graph" to log files if the logging level is
 // sufficiently high.

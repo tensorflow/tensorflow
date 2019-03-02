@@ -78,8 +78,11 @@ Status FusedIrEmitter::HandleConstant(HloInstruction* constant) {
         llvm_ir::ConvertLiteralToIrConstant(literal, module_);
     llvm::GlobalVariable* global = new llvm::GlobalVariable(
         *b_->GetInsertBlock()->getModule(), initializer->getType(),
-        /*isConstant=*/true, llvm::GlobalValue::ExternalLinkage, initializer,
+        /*isConstant=*/true,
+        /*Linkage=*/llvm::GlobalValue::PrivateLinkage,
+        /*Initializer=*/initializer,
         /*Name=*/"");
+    global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
     llvm::Constant* shape_constant = llvm::ConstantExpr::getBitCast(
         global,
         llvm_ir::ShapeToIrType(literal.shape(), module_)->getPointerTo());

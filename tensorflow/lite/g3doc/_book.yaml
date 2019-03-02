@@ -12,10 +12,6 @@ upper_tabs:
   lower_tabs:
     # Subsite tabs
     other:
-    - name: "Tutorials"
-      contents:
-      - title: "Tutorials"
-        path: /lite/tutorials/
     - name: Guide
       contents:
       - title: Overview
@@ -27,7 +23,7 @@ upper_tabs:
       - title: iOS demo app
         path: /lite/demo_ios
       - break: true
-      - title: TensorFlow Lite Inference
+      - title: TensorFlow Lite inference
         path: /lite/inference
       - title: Custom operators
         path: /lite/custom_operators
@@ -75,7 +71,7 @@ upper_tabs:
           path: /lite/tfmobile/
         - title: Building TensorFlow on Android
           path: /lite/tfmobile/android_build
-        - title: Building TensorFlow on IOS
+        - title: Building TensorFlow on iOS
           path: /lite/tfmobile/ios_build
         - title: Integrating TensorFlow libraries
           path: /lite/tfmobile/linking_libs
@@ -83,6 +79,11 @@ upper_tabs:
           path: /lite/tfmobile/prepare_models
         - title: Optimizing for mobile
           path: /lite/tfmobile/optimizing
+
+    - name: Examples
+      contents:
+      - title: Examples
+        path: /lite/examples
 
     - name: Models
       contents:
