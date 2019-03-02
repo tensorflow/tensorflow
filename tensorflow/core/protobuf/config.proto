@@ -445,8 +445,23 @@ message ConfigProto {
     // experimental.
     bool collective_nccl = 7;
     
-    // If true, any resources such as Variables used in the session will be
-    // shared with other sessions even if ClusterSpec Propagation is enabled.
+    // In the following words, session state means the value of a variable,
+    // elements in a hash table, or any other resource, accessible by worker
+    // sessions held by a TF server.
+    //
+    // When clusterspec propagation is used, the value of isolate_session_state
+    // is ignored when deciding whether to share session states in a TF server.
+    // - If share_session_state_in_clusterspec_propagation is true, session
+    // states are shared.
+    // - If share_session_state_in_clusterspec_propagation is false, session
+    // states are isolated.
+    //
+    // When clusterspec propagation is not used, the value of
+    // share_session_state_in_clusterspec_propagation is ignored when deciding
+    // whether to share session states in a TF server.
+    // - If isolate_session_state is true, session states are isolated.
+    // - If isolate_session_state is false, session states are shared.
+    //
     // TODO(mrry): This field is a patch for isolate_session_state and an
     // uniform API with flexibility in distributed runtime is needed.
     bool share_session_state_in_clusterspec_propagation = 8;
