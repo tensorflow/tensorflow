@@ -62,7 +62,7 @@ class ConvMklToTF : public OpsTestBase {
 
     output = *GetOutput(0);
   }
-  void TestBody(){}
+  void TestBody() {}
 };
 
 class QuantizedConv2DPerchannelTest : public OpsTestBase {};
@@ -126,7 +126,7 @@ TEST_F(QuantizedConv2DPerchannelTest, Small) {
   const int filter_count = 2;
 
   // Filter is of datatype int8
-  const float filter_min = -127.0f; //(-128.0f changed for symmetry)
+  const float filter_min = -127.0f;  //(-128.0f changed for symmetry)
   const float filter_max = 127.0f;
 
   // The filter matrix (for each output channel count) is:
