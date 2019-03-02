@@ -105,7 +105,9 @@ class TRTEngineOp : public AsyncOpKernel {
   // serialized protobuf segment or trt engine depending on static_engine_ flag.
   string serialized_segment_;
 
-  // Name of the function for TF native execution of the segment.
+  // Name of the function for TF native execution of the segment. If empty, it
+  // means TF native execution is not allowed, and if TRT engine fails to run
+  // an error will be returned.
   string funcdef_name_;
 
   // GraphDef representation of the segment.
@@ -240,6 +242,12 @@ TRTEngineOp::TRTEngineOp(OpKernelConstruction* context)
 
 void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
                                        AsyncHelper* helper) {
+  if (funcdef_name_.empty()) {
+    const string err_msg = StrCat("Fallback path is disabled, for ", name());
+    LOG(WARNING) << err_msg;
+    ctx->SetStatus(errors::Internal(err_msg));
+    return;
+  }
   std::vector<Tensor> inputs;
   std::vector<Tensor>* outputs = new std::vector<Tensor>();
   if (native_func_ == kInvalidHandle) {

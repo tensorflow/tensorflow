@@ -151,7 +151,6 @@ void BenchmarkModel::Run() {
   ValidateParams();
   LogParams();
 
-  listeners_.OnBenchmarkStart(params_);
   int64_t initialization_start_us = profiling::time::NowMicros();
   Init();
   int64_t initialization_end_us = profiling::time::NowMicros();
@@ -160,6 +159,7 @@ void BenchmarkModel::Run() {
                    << "ms";
 
   uint64_t input_bytes = ComputeInputBytes();
+  listeners_.OnBenchmarkStart(params_);
   Stat<int64_t> warmup_time_us =
       Run(params_.Get<int32_t>("warmup_runs"),
           params_.Get<float>("warmup_min_secs"), WARMUP);

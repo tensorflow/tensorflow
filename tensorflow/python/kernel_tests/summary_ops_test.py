@@ -963,7 +963,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
          Activation('relu', name='my_relu')])
     event = self.keras_model(name='my_name', data=model, step=1)
     first_val = event.summary.value[0]
-    self.assertEqual(model.to_json(), first_val.tensor.string_val[0])
+    self.assertEqual(model.to_json(), first_val.tensor.string_val[0].decode())
 
   @test_util.run_v2_only
   def testKerasModel_usesDefaultStep(self):
