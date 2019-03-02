@@ -782,7 +782,7 @@ def softmax_cross_entropy(
     onehot_labels = array_ops.stop_gradient(
         onehot_labels, name="labels_stop_gradient")
     losses = nn.softmax_cross_entropy_with_logits_v2(
-        labels=onehot_labels, logits=logits, name="xentropy", dim=axis)
+        labels=onehot_labels, logits=logits, name="xentropy", axis=axis)
 
     return compute_weighted_loss(
         losses, weights, scope, loss_collection, reduction=reduction)
