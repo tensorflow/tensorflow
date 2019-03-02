@@ -114,8 +114,11 @@ def tf_workspace(path_prefix = "", tf_repo_name = ""):
         print("path_prefix was specified to tf_workspace but is no longer used " +
               "and will be removed in the future.")
 
-    # Important: If you are upgrading MKL DNN, then update the version numbers
-    # in third_party/mkl_dnn/mkldnn.BUILD.
+    # Important: If you are upgrading MKL-DNN, then update the version numbers
+    # in third_party/mkl_dnn/mkldnn.BUILD. In addition, the new version of
+    # MKL-DNN might require upgrading MKL ML libraries also. If they need to be
+    # upgraded then update the version numbers on all three versions above
+    # (Linux, Mac, Windows).
     tf_http_archive(
         name = "mkl_dnn",
         build_file = clean_dep("//third_party/mkl_dnn:mkldnn.BUILD"),
