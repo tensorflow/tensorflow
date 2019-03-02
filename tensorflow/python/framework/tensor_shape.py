@@ -359,7 +359,6 @@ class Dimension(object):
     tf.Dimension(None) + tf.Dimension(n)     # equiv. to tf.Dimension(None)
     tf.Dimension(None) + tf.Dimension(None)  # equiv. to tf.Dimension(None)
     ```
-
     Args:
       other: Another Dimension, or a value accepted by `as_dimension`.
 
