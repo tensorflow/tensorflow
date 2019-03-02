@@ -717,9 +717,9 @@ def sigmoid_cross_entropy(
 
 @tf_export(v1=["losses.softmax_cross_entropy"])
 def softmax_cross_entropy(
-    onehot_labels, logits, axis=-1, weights=1.0, label_smoothing=0, scope=None,
+    onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
-    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS, axis=-1):
   """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits_v2.
 
   `weights` acts as a coefficient for the loss. If a scalar is provided,
@@ -740,12 +740,13 @@ def softmax_cross_entropy(
   Args:
     onehot_labels: One-hot-encoded labels.
     logits: Logits outputs of the network.
-    axis: Axis for `num_classes`. Defaulted to -1, i.e Last dimension.
     weights: Optional `Tensor` that is broadcastable to loss.
     label_smoothing: If greater than 0 then smooth the labels.
     scope: the scope for the operations performed in computing the loss.
     loss_collection: collection to which the loss will be added.
     reduction: Type of reduction to apply to loss.
+    axis: Axis for `num_classes`. Defaults to -1, i.e Last dimension.
+
 
   Returns:
     Weighted loss `Tensor` of the same type as `logits`. If `reduction` is
