@@ -925,6 +925,7 @@ tf_cuda_library(
         "framework/tensor_slice.h",
         "framework/tensor_types.h",
         "framework/tensor_util.h",
+        "framework/thread_factory.h",
         "framework/tracking_allocator.h",
         "framework/type_index.h",
         "framework/type_traits.h",

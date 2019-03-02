@@ -292,10 +292,10 @@ class ChooseFastestDatasetOp : public DatasetOpKernel {
         for (size_t i = 0, num_inputs = dataset()->inputs_.size();
              i < num_inputs; ++i) {
           threads[i].result = absl::make_unique<InvocationResult>();
-          threads[i].thread.reset(ctx->env()->StartThread(
-              {}, strings::StrCat("tf_data_merge_", i),
+          threads[i].thread = ctx->StartThread(
+              strings::StrCat("tf_data_merge_", i),
               std::bind(&ChooseFastestIterator::RunnerThread, this, ctx,
-                        threads[i].result.get(), i)));
+                        threads[i].result.get(), i));
         }
         return threads;
       }
