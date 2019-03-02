@@ -9,7 +9,7 @@
       },
     }
   },
-  "projectName" : "TensorFlowLiteObjC",
+  "projectName" : "TensorFlowLite",
   "packages" : [
     "tensorflow/lite/experimental/objc"
   ],
