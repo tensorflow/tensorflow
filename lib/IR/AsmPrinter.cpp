@@ -23,11 +23,12 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
+#include "mlir/IR/Matchers.h"
 #include "mlir/IR/Module.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/StandardTypes.h"
@@ -1205,20 +1206,23 @@ void FunctionPrinter::numberValueID(const Value *value) {
 
   // Give constant integers special names.
   if (auto *op = value->getDefiningInst()) {
-    if (auto intOp = op->dyn_cast<ConstantIntOp>()) {
-      // i1 constants get special names.
-      if (intOp->getType().isInteger(1)) {
-        specialName << (intOp->getValue() ? "true" : "false");
-      } else {
-        specialName << 'c' << intOp->getValue() << '_' << intOp->getType();
-      }
-    } else if (auto intOp = op->dyn_cast<ConstantIndexOp>()) {
-      specialName << 'c' << intOp->getValue();
-    } else if (auto constant = op->dyn_cast<ConstantOp>()) {
-      if (constant->getValue().isa<FunctionAttr>())
+    Attribute cst;
+    if (m_Constant(&cst).match(const_cast<Instruction *>(op))) {
+      Type type = op->getResult(0)->getType();
+      if (auto intCst = cst.dyn_cast<IntegerAttr>()) {
+        if (type.isIndex()) {
+          specialName << 'c' << intCst;
+        } else if (type.cast<IntegerType>().isInteger(1)) {
+          // i1 constants get special names.
+          specialName << (intCst.getInt() ? "true" : "false");
+        } else {
+          specialName << 'c' << intCst << '_' << type;
+        }
+      } else if (cst.isa<FunctionAttr>()) {
         specialName << 'f';
-      else
+      } else {
         specialName << "cst";
+      }
     }
   }
 

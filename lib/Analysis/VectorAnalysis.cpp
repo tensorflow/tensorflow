@@ -19,7 +19,6 @@
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/Analysis/AffineAnalysis.h"
 #include "mlir/Analysis/LoopAnalysis.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/StandardOps/Ops.h"

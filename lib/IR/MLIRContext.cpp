@@ -25,7 +25,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Identifier.h"
 #include "mlir/IR/IntegerSet.h"
@@ -45,6 +45,15 @@ using namespace mlir::detail;
 using namespace llvm;
 
 namespace {
+/// A builtin dialect to define types/etc that are necessary for the
+/// validity of the IR.
+struct BuiltinDialect : public Dialect {
+  BuiltinDialect(MLIRContext *context) : Dialect(/*namePrefix=*/"", context) {
+    addTypes<FunctionType, UnknownType, FloatType, IndexType, IntegerType,
+             VectorType, RankedTensorType, UnrankedTensorType, MemRefType>();
+  }
+};
+
 struct AffineMapKeyInfo : DenseMapInfo<AffineMap> {
   // Affine maps are uniqued based on their dim/symbol counts and affine
   // expressions.

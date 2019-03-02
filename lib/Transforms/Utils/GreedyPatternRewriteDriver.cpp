@@ -20,9 +20,9 @@
 //===----------------------------------------------------------------------===//
 
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Matchers.h"
 #include "mlir/IR/PatternMatch.h"
+#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/DenseMap.h"
 using namespace mlir;
 

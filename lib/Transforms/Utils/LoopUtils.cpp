@@ -29,7 +29,6 @@
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/DenseMap.h"

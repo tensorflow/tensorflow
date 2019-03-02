@@ -25,7 +25,7 @@
 #define MLIR_MATCHERS_H
 
 #include "mlir/IR/Attributes.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Instruction.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/IR/Value.h"
 #include <type_traits>
@@ -132,11 +132,6 @@ inline bool matchPattern(Value *value, const Pattern &pattern) {
   if (auto *op = value->getDefiningInst())
     return const_cast<Pattern &>(pattern).match(op);
   return false;
-}
-
-/// Matches a ConstantIndexOp.
-inline detail::op_matcher<ConstantIndexOp> m_ConstantIndex() {
-  return detail::op_matcher<ConstantIndexOp>();
 }
 
 /// Matches a constant holding a scalar/vector/tensor integer (splat) and

@@ -9,7 +9,6 @@
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/MLIREmitter.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/Types.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/ExecutionEngine/ExecutionEngine.h"
-#include "third_party/llvm/llvm/projects/google_mlir/include/mlir/IR/BuiltinOps.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/IR/Module.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/Pass/Pass.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/Target/LLVMIR.h"

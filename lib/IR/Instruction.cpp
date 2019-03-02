@@ -19,7 +19,7 @@
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/IR/AffineMap.h"
 #include "mlir/IR/BlockAndValueMapping.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/IntegerSet.h"
 #include "mlir/IR/MLIRContext.h"
@@ -480,8 +480,6 @@ bool Instruction::use_empty() const {
       return false;
   return true;
 }
-
-bool Instruction::isReturn() const { return isa<ReturnOp>(); }
 
 void Instruction::setSuccessor(Block *block, unsigned index) {
   assert(index < getNumSuccessors());

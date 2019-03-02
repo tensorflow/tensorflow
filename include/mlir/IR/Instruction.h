@@ -268,9 +268,6 @@ public:
   /// take O(N) where N is the number of instructions within the parent block.
   bool isBeforeInBlock(const Instruction *other) const;
 
-  /// Check if this instruction is a return instruction.
-  bool isReturn() const;
-
   void print(raw_ostream &os) const;
   void dump() const;
 

@@ -26,7 +26,7 @@
 #define MLIR_TRANSFORMS_UTILS_H
 
 #include "mlir/IR/AffineMap.h"
-#include "mlir/IR/BuiltinOps.h"
+#include "mlir/StandardOps/Ops.h"
 #include "llvm/ADT/ArrayRef.h"
 #include "llvm/ADT/DenseMap.h"
 

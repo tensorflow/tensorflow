@@ -25,7 +25,6 @@
 #include "mlir/Analysis/SliceAnalysis.h"
 #include "mlir/Analysis/VectorAnalysis.h"
 #include "mlir/IR/Builders.h"
-#include "mlir/IR/BuiltinOps.h"
 #include "mlir/IR/StandardTypes.h"
 #include "mlir/Pass/Pass.h"
 #include "mlir/Support/Functional.h"
