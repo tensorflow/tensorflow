@@ -131,5 +131,16 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                              get_loop_shape(instr_2));
 }
 
+bool IsMultiOutputFusible(const HloInstruction& instr) {
+  // We can fuse reduces and loop fusions. Elementwise instructions can be fused
+  // with any other instruction.
+  // TODO(b/112957171): This should use the same isFusible logic as
+  // instruction_fusion.
+  return instr.IsFusible() &&
+         (IsInputFusibleReduction(instr) ||
+          (instr.opcode() == HloOpcode::kFusion &&
+           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+          instr.IsElementwise());
+}
 }  // namespace gpu
 }  // namespace xla

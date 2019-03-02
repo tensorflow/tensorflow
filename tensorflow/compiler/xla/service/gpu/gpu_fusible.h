@@ -56,6 +56,9 @@ bool IsInputFusibleReduction(const HloInstruction& instr);
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2);
 
+// Whether `instr` is multi-output fusible
+bool IsMultiOutputFusible(const HloInstruction& instr);
+
 }  // namespace gpu
 }  // namespace xla
 
