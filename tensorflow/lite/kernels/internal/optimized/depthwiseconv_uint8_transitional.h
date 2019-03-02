@@ -418,7 +418,7 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
     int copy_block_height = block_height;
     if (leading_height_padding) {
       memset(scratch_block_data, -input_offset_difference,
-             workspace_height_stride);
+             workspace_height_stride + kWorkspaceExtension);
       scratch_block_data += workspace_height_stride;
       input_block_data += input_height_stride;
       copy_block_height -= 1;
@@ -467,12 +467,13 @@ struct PackMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
 
       // Handle trailing padding, and fill in remainder of micro block.
       memset(&scratch_data[start_width + copy_size], -input_offset_difference,
-             4 - adjusted_residual_width);
+             4 - adjusted_residual_width + kWorkspaceExtension);
     }
 
     if (trailing_height_padding) {
       memset(scratch_block_data + copy_block_height * workspace_height_stride,
-             -input_offset_difference, workspace_height_stride);
+             -input_offset_difference,
+             workspace_height_stride + kWorkspaceExtension);
     }
   }
 };
@@ -1154,8 +1155,9 @@ inline void DepthwiseConvDotProduct3x3(
   // difficult to test for (to trigger) erroneous reads (past end of array) in
   // the depth multplication case.
   int workspace_width_micro_repeats =
-      (has_depth_multiplication ? kDepthwiseConvScratchWorkspaceSize - 16
-                                : kDepthwiseConvScratchWorkspaceSize) /
+      (has_depth_multiplication
+           ? kDepthwiseConvScratchWorkspaceSize - kWorkspaceExtension
+           : kDepthwiseConvScratchWorkspaceSize) /
       (4 * largest_macro_depth * height_block_size);
   // When there is no depth multiplication, the workspace depth is a multiple of
   // 8, which ensures that workspace rows are 16-byte aligned. (Actually 32,

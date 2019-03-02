@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
@@ -102,6 +103,18 @@ uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
   }
 }
 
+Status CompressConstants(GraphDef* graph) {
+  for (int i = 0; i < graph->node_size(); ++i) {
+    NodeDef* node = graph->mutable_node(i);
+    if ((IsConstant(*node) || IsHostConstant(*node)) &&
+        HasNodeAttr(*node, "value")) {
+      AttrValue& attr_val = (*node->mutable_attr())["value"];
+      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
@@ -168,7 +181,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
-  if (cfg_.pin_to_host_optimization() != RewriterConfig::OFF) {
+  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -432,6 +445,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     RUN_OPTIMIZER_OR_RETURN_IF_ERROR(sa_optimizer);
   }
 
+  // Compress the constants in the final graph.
+  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
+
   // Record graph optimization result.
   optimization_results_.push_back(optimization_result);
 
@@ -677,7 +693,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         rewrite_cfg.pin_to_host_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }
@@ -696,9 +712,10 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 }
 
 Status OptimizeGraph(
-    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
-    const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto, const string& grappler_item_id,
+    std::vector<string> ret_node_names, std::vector<string> keep_node_names,
+    FunctionLibraryDefinition* flib, const DeviceSet& device_set,
+    Device* cpu_device, const ConfigProto& config_proto,
+    const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
@@ -717,6 +734,9 @@ Status OptimizeGraph(
 
   // Add fetches so that the graph can be pruned.
   item.fetch.swap(ret_node_names);
+
+  // Add noes that can't be removed from the graph.
+  item.keep_ops = std::move(keep_node_names);
 
   (*g)->ToGraphDef(&item.graph);
 

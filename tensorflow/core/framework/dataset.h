@@ -524,16 +524,20 @@ class IteratorBase {
 class DatasetContext {
  public:
   struct Params {
-    string name;
+    string type_string;  // op type name of this dataset.
+    string node_name;    // graph node name of this dataset op, uniquely
+                         // identifying the dataset in the graph.
   };
 
   explicit DatasetContext(Params params) : params_(std::move(params)) {}
 
   explicit DatasetContext(OpKernelContext* ctx) {
-    params_.name = ctx->op_kernel().type_string();
+    params_.type_string = ctx->op_kernel().type_string();
+    params_.node_name = ctx->op_kernel().name();
   }
 
-  const string& name() const { return params_.name; }
+  const string& type_string() const { return params_.type_string; }
+  const string& node_name() const { return params_.node_name; }
 
  private:
   Params params_;
@@ -569,9 +573,15 @@ class DatasetBase : public core::RefCounted {
   // format.
   TF_EXPORT static const char kDatasetGraphOutputNodeKey[];
 
-  explicit DatasetBase(DatasetContext&& ctx) : name_(ctx.name()) {}
+  explicit DatasetBase(DatasetContext&& ctx)
+      : type_string_(ctx.type_string()), node_name_(ctx.node_name()) {}
 
-  const string& name() const { return name_; }
+  // Op type name of this dataset.
+  const string& type_string() const { return type_string_; }
+
+  // Graph node name of this dataset op, uniquely identifying the dataset in
+  // the graph.
+  const string& node_name() const { return node_name_; }
 
   // Returns a new iterator for iterating over the range of elements in
   // this dataset.
@@ -650,7 +660,8 @@ class DatasetBase : public core::RefCounted {
     };
   }
 
-  const string name_;
+  const string type_string_;
+  const string node_name_;
 };
 
 // Represents an iterator that is associated with a particular dataset.

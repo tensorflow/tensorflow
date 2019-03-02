@@ -145,10 +145,14 @@ class KerasActivationsTest(test.TestCase):
   def test_relu(self):
     x = keras.backend.placeholder(ndim=2)
     f = keras.backend.function([x], [keras.activations.relu(x)])
-    test_values = np.random.random((2, 5))
-    result = f([test_values])[0]
-    # No negative values in test values...
-    self.assertAllClose(result, test_values, rtol=1e-05)
+    positive_values = np.random.random((2, 5))
+    result = f([positive_values])[0]
+    self.assertAllClose(result, positive_values, rtol=1e-05)
+
+    negative_values = np.random.uniform(-1, 0, (2, 5))
+    result = f([negative_values])[0]
+    expected = np.zeros((2, 5))
+    self.assertAllClose(result, expected, rtol=1e-05)
 
   def test_elu(self):
     x = keras.backend.placeholder(ndim=2)

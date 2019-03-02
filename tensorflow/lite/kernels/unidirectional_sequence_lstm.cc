@@ -246,7 +246,7 @@ TfLiteStatus CheckInputTensorDimensions(TfLiteContext* context,
 }
 
 // Resize the output and  state tensors based on the sizes of the input tensors.
-// Allocate a temprory scratch tensor. Also check that the sizes of the input
+// Allocate a temporary scratch tensor. Also check that the sizes of the input
 // tensors match each other.
 TfLiteStatus Prepare(TfLiteContext* context, TfLiteNode* node) {
   int* scratch_tensor_index = reinterpret_cast<int*>(node->user_data);

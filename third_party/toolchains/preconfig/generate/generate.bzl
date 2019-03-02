@@ -38,7 +38,7 @@ def _tensorflow_rbe_config(name, compiler, python_version, cuda_version = None, 
         env.update({
             "TF_NEED_CUDA": "1",
             "TF_CUDA_CLANG": "1" if compiler == "clang" else "0",
-            "TF_CUDA_COMPUTE_CAPABILITIES": "3.0",
+            "TF_CUDA_COMPUTE_CAPABILITIES": "3.0,6.0",
             "TF_ENABLE_XLA": "1",
             "TF_CUDNN_VERSION": cudnn_version,
             "TF_CUDA_VERSION": cuda_version,

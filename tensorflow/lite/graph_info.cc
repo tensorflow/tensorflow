@@ -95,6 +95,10 @@ class PartitionGraphIntoIndependentNodeSubsetsImpl {
     // been identified.
     for (int output_index : info_->outputs()) {
       int output_epoch = tensor_epochs_[output_index];
+      if (output_epoch == kEpochAlwaysReady) {
+        // This happens when an input of subgraph is also an output of subgraph.
+        continue;
+      }
       NodeSubset& output_subset = (*node_subsets_)[output_epoch];
       output_subset.output_tensors.push_back(output_index);
     }

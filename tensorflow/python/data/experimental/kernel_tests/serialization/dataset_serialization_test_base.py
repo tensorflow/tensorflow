@@ -668,15 +668,15 @@ class DatasetSerializationTestBase(test.TestCase):
 
   def _get_output_types(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_types
+      return dataset_ops.get_legacy_output_types(ds_fn())
 
   def _get_output_shapes(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_shapes
+      return dataset_ops.get_legacy_output_shapes(ds_fn())
 
   def _get_output_classes(self, ds_fn):
     with ops.Graph().as_default():
-      return ds_fn().output_classes
+      return dataset_ops.get_legacy_output_classes(ds_fn())
 
   def _ckpt_path(self):
     return os.path.join(self.get_temp_dir(), "iterator")

@@ -453,9 +453,10 @@ def no_automatic_dependency_tracking(method):
     previous_value = getattr(self, "_setattr_tracking", True)
     self._setattr_tracking = False  # pylint: disable=protected-access
     try:
-      method(self, *args, **kwargs)
+      result = method(self, *args, **kwargs)
     finally:
       self._setattr_tracking = previous_value  # pylint: disable=protected-access
+    return result
 
   return tf_decorator.make_decorator(
       target=method, decorator_func=_method_wrapper)
@@ -850,10 +851,14 @@ class Trackable(object):
       """Serializes `self.get_config()` for saving."""
       dereferenced_self = weak_self()
       if dereferenced_self:
-        return json.dumps(
-            dereferenced_self,
-            default=serialization.get_json_type,
-            sort_keys=True).encode("utf8")
+        try:
+          return json.dumps(
+              dereferenced_self,
+              default=serialization.get_json_type,
+              sort_keys=True).encode("utf8")
+        except TypeError:
+          # Even if get_config worked objects may have produced garbage.
+          return ""
       else:
         return ""
     return {OBJECT_CONFIG_JSON_KEY: functools.partial(

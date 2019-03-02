@@ -347,7 +347,7 @@ class PrivateThreadPoolDatasetOp : public UnaryDatasetOpKernel {
 
   void MakeDataset(OpKernelContext* ctx, DatasetBase* input,
                    DatasetBase** output) override {
-    int64 num_threads;
+    int64 num_threads = 0;
     OP_REQUIRES_OK(
         ctx, ParseScalarArgument<int64>(ctx, "num_threads", &num_threads));
     OP_REQUIRES(ctx, num_threads >= 1,

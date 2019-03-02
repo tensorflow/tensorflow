@@ -188,13 +188,8 @@ Status Visitor::HandleBatchNormGrad(HloInstruction* batch_norm) {
           computation_->AddInstruction(HloInstruction::CreateBroadcast(
               batch_norm->operand(3)->shape(), epsilon, {}))));
   HloInstruction* inverse_stddev =
-      computation_->AddInstruction(HloInstruction::CreateBinary(
-          var_plus_epsilon->shape(), HloOpcode::kPower, var_plus_epsilon,
-          computation_->AddInstruction(HloInstruction::CreateBroadcast(
-              var_plus_epsilon->shape(),
-              computation_->AddInstruction(HloInstruction::CreateConstant(
-                  LiteralUtil::CreateR0<float>(-.5))),
-              {}))));
+      computation_->AddInstruction(HloInstruction::CreateUnary(
+          var_plus_epsilon->shape(), HloOpcode::kRsqrt, var_plus_epsilon));
 
   std::vector<HloInstruction*> operands(batch_norm->operands().begin(),
                                         batch_norm->operands().end());

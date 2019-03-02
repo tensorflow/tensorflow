@@ -939,11 +939,35 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(6., imported_function(x=two)["output_0"].numpy())
     imported.v.assign(4.)
     self.assertEqual(8., imported_function(x=two)["output_0"].numpy())
-    with self.assertRaisesRegexp(TypeError, "positional"):
-      imported_function(two)
+    self.assertEqual(8., imported_function(two)["output_0"].numpy())
     with self.assertRaises(TypeError):
       # The signatures mapping is immutable
       imported.signatures["random_key"] = 3
+
+  def test_multiple_argument_signatures_no_positional(self, cycles):
+
+    class Exported(tracking.AutoTrackable):
+
+      @def_function.function
+      def do(self, x, y):
+        return x + y
+
+    exported = Exported()
+    imported = self.cycle(
+        exported, signatures=exported.do.get_concrete_function(
+            tensor_spec.TensorSpec(None, dtypes.float32),
+            tensor_spec.TensorSpec(None, dtypes.float32)))
+    for _ in range(cycles - 1):
+      imported = self.cycle(imported, signatures=imported.signatures)
+    with self.assertRaises(TypeError):
+      imported.signatures["serving_default"](
+          constant_op.constant(1.),
+          y=constant_op.constant(2.))
+    self.assertEqual(
+        {"output_0": 3.},
+        self.evaluate(imported.signatures["serving_default"](
+            x=constant_op.constant(1.),
+            y=constant_op.constant(2.))))
 
   def _make_model_with_tables(self):
     default_val = -1

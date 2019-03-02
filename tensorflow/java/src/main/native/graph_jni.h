@@ -51,8 +51,9 @@ JNIEXPORT jlong JNICALL Java_org_tensorflow_Graph_operation(JNIEnv *, jclass,
  * Signature: (JI)[J
  */
 JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_nextOperation(JNIEnv *,
-								     jclass, jlong,
-								     jint);
+                                                                     jclass,
+                                                                     jlong,
+                                                                     jint);
 
 /*
  * Class:     org_tensorflow_Graph
@@ -81,6 +82,15 @@ JNIEXPORT jbyteArray JNICALL Java_org_tensorflow_Graph_toGraphDef(JNIEnv *,
 JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_addGradients(
     JNIEnv *, jclass, jlong, jstring, jlongArray, jintArray, jlongArray,
     jintArray, jlongArray, jintArray);
+
+/*
+ * Class:     org_tensorflow_Graph
+ * Method:    whileLoop
+ * Signature:
+ * (J[J[IILjava/lang/String;Lorg/tensorflow/Graph/WhileSubgraphBuilder;Lorg/tensorflow/Graph/WhileSubgraphBuilder;)[J
+ */
+JNIEXPORT jlongArray JNICALL Java_org_tensorflow_Graph_whileLoop(
+    JNIEnv *, jclass, jlong, jlongArray, jintArray, jstring, jobject, jobject);
 
 #ifdef __cplusplus
 }  // extern "C"

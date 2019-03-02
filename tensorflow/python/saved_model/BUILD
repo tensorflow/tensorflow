@@ -291,7 +291,6 @@ py_library(
         ":function_serialization",
         ":nested_structure_coder",
         ":revived_types",
-        ":saved_object_graph_py",
         ":signature_constants",
         ":signature_def_utils",
         ":signature_serialization",
@@ -346,8 +345,8 @@ py_library(
         ":loader",
         ":nested_structure_coder",
         ":revived_types",
-        ":saved_object_graph_py",
         ":utils",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:constant_op",
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:init_ops",
@@ -394,6 +393,7 @@ tf_py_test(
         "//tensorflow/python/eager:test",
         "//tensorflow/python/training/tracking:tracking",
     ],
+    tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
 )
 
 tf_py_test(
@@ -429,7 +429,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":saved_object_graph_py",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -438,7 +438,7 @@ tf_py_test(
     srcs = ["revived_types_test.py"],
     additional_deps = [
         ":revived_types",
-        ":saved_object_graph_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -451,7 +451,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":nested_structure_coder",
-        ":saved_object_graph_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
     ],
@@ -469,27 +469,11 @@ py_library(
     ],
 )
 
-tf_proto_library(
-    name = "struct",
-    srcs = ["struct.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//tensorflow:internal"],
-)
-
-tf_proto_library(
-    name = "saved_object_graph",
-    srcs = ["saved_object_graph.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos() + [":struct"],
-    visibility = ["//tensorflow:internal"],
-)
-
 py_library(
     name = "nested_structure_coder",
     srcs = ["nested_structure_coder.py"],
     deps = [
-        ":struct_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "@six_archive//:six",
     ],
@@ -500,7 +484,7 @@ tf_py_test(
     srcs = ["nested_structure_coder_test.py"],
     additional_deps = [
         ":nested_structure_coder",
-        ":struct_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
     ],

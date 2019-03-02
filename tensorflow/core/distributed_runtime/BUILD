@@ -644,7 +644,7 @@ tf_cuda_cc_test(
         "manual",  # TODO(b/27683709): Re-enable when not flaky.
         "notap",  # TODO(b/27683709): Re-enable when not flaky.
         "noguitar",  # TODO(b/27683709): Re-enable when not flaky.
-        "nooss",  # TODO(b/27683709): Re-enable when not flaky.
+        "no_oss",  # TODO(b/27683709): Re-enable when not flaky.
     ],
     deps = [
         ":master",

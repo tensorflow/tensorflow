@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -122,9 +123,23 @@ class FunctionDefHelper {
     NodeDef ToNodeDef() const;
   };
 
-  // The Create() function uses the new NodeDef field.  `ret_def`
-  // holds a mapping from the function output names from `out_def` to
-  // the node outputs from `node_def`.
+  // Creates a FunctionDef from the given parameters. Node inputs must use
+  // function encoding (node_name:output_name[:output_index]).
+  // - `ret_def` holds a mapping from the function output names from `out_def`
+  //   to the node outputs from `node_def`.
+  // - `control_ret_def` holds a mapping from the function control
+  //   output names to the nodes from `node_def`.
+  static FunctionDef Create(
+      const string& function_name, gtl::ArraySlice<string> in_def,
+      gtl::ArraySlice<string> out_def, gtl::ArraySlice<string> attr_def,
+      gtl::ArraySlice<Node> node_def,
+      gtl::ArraySlice<std::pair<string, string>> ret_def,
+      gtl::ArraySlice<std::pair<string, string>> control_ret_def);
+
+  // Creates a FunctionDef from the given parameters. Node inputs must use
+  // function encoding (node_name:output_name[:output_index]).
+  // - `ret_def` holds a mapping from the function output names from `out_def`
+  //   to the node outputs from `node_def`.
   static FunctionDef Create(const string& function_name,
                             gtl::ArraySlice<string> in_def,
                             gtl::ArraySlice<string> out_def,
@@ -132,7 +147,6 @@ class FunctionDefHelper {
                             gtl::ArraySlice<Node> node_def,
                             gtl::ArraySlice<std::pair<string, string>> ret_def);
 
-  // The two Define() functions use the old FunctionDef::Node field.
   // TODO(josh11b): Get rid of these and transition to the one above.
   static FunctionDef Define(const string& function_name,
                             gtl::ArraySlice<string> arg_def,
@@ -551,9 +565,15 @@ class FunctionLibraryRuntime {
     // surface errors earlier.
     bool create_kernels_eagerly = false;
 
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function with the provided config_proto.
+    ConfigProto config_proto;
+
     // If provided, this optimization function will be invoked before
     // the placer for multi-device functions.
     std::function<Status(std::vector<string> /*ret_node_names*/,
+                         std::vector<string> /*keep_node_names*/,
                          FunctionLibraryDefinition*, const DeviceSet&,
                          Device* /*cpu_device*/, std::unique_ptr<Graph>*)>
         optimize_graph_fn;

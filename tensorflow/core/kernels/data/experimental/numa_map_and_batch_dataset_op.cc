@@ -807,7 +807,7 @@ class NumaMapAndBatchDatasetOp : public UnaryDatasetOpKernel {
         // inputs. When the runner thread makes new inputs available, it
         // notifies this condition variable.
         condition_variable worker_cond_var_ GUARDED_BY(mu_);
-        // The client threads wait on this condition variable for avaiable
+        // The client threads wait on this condition variable for available
         // batched outputs. When worker threads complete a batch, they notify
         // this condition variable.
         condition_variable client_cond_var_ GUARDED_BY(mu_);

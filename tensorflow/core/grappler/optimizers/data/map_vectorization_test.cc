@@ -39,6 +39,7 @@ constexpr char kExperimentalMapAndBatchOp[] = "ExperimentalMapAndBatchDataset";
 constexpr char kMapOp[] = "MapDataset";
 constexpr char kParallelMapOp[] = "ParallelMapDataset";
 constexpr char kChooseFastestOp[] = "ExperimentalChooseFastestDataset";
+constexpr char kPrefetchOp[] = "PrefetchDataset";
 constexpr char kAttrNameF[] = "f";
 constexpr char kAttrNameTarguments[] = "Targuments";
 constexpr char kAttrNameOutputTypes[] = "output_types";
@@ -97,6 +98,19 @@ NodeDef* AddMapNode(MutableGraphView* graph, const string& input_dataset,
   }
 
   graph_utils::SetUniqueGraphNodeName(result.name(), graph->graph(), &result);
+  return graph->AddNode(std::move(result));
+}
+
+NodeDef* AddPrefetchNode(MutableGraphView* graph, const string& input_dataset,
+                         int64 buffer_size) {
+  auto buffer_size_node = graph_utils::AddScalarConstNode(buffer_size, graph);
+  NodeDef result =
+      NDef(/*name=*/"prefetch", /*op=*/kPrefetchOp,
+           /*inputs=*/{input_dataset, buffer_size_node->name()},
+           /*attrs=*/
+           {{kAttrNameOutputTypes, gtl::ArraySlice<DataType>({DT_INT64})},
+            {kAttrNameOutputShapes, gtl::ArraySlice<TensorShape>({{}})}});
+
   return graph->AddNode(std::move(result));
 }
 
@@ -178,7 +192,7 @@ void CheckBranch(const GraphDef& graph, string input_name,
 //
 void CheckVectorized(const GraphDef& output, const string& map_op,
                      const string& batch_op, const string& map_input_name,
-                     bool fused = false) {
+                     bool fused = false, bool prefetch = false) {
   ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(map_op, output).size(), 2);
   ASSERT_EQ(graph_utils::FindAllGraphNodesWithOp(batch_op, output).size(), 2);
   ASSERT_EQ(
@@ -187,19 +201,32 @@ void CheckVectorized(const GraphDef& output, const string& map_op,
       output.node(graph_utils::FindGraphNodeWithOp(kChooseFastestOp, output));
 
   // Branch 0: vectorized
-  CheckBranch(output, choose_fastest_node.input(0), {batch_op, map_op},
+  std::vector<string> vectorized_ops({batch_op, map_op});
+  std::vector<string> unvectorized_ops({map_op, batch_op});
+  if (prefetch) {
+    vectorized_ops.push_back(kPrefetchOp);
+    unvectorized_ops.insert(unvectorized_ops.begin() + 1, kPrefetchOp);
+  }
+  CheckBranch(output, choose_fastest_node.input(0), vectorized_ops,
               map_input_name);
 
   // Branch 1: original
-  CheckBranch(output, choose_fastest_node.input(1), {map_op, batch_op},
+  CheckBranch(output, choose_fastest_node.input(1), unvectorized_ops,
               map_input_name);
 
-  const NodeDef& vectorized_map_node = output.node(
+  const NodeDef* vectorized_map_node = nullptr;
+  auto tmp_node = &output.node(
       graph_utils::FindGraphNodeWithName(choose_fastest_node.input(0), output));
+  if (prefetch) {
+    vectorized_map_node = &output.node(
+        graph_utils::FindGraphNodeWithName(tmp_node->input(0), output));
+  } else {
+    vectorized_map_node = tmp_node;
+  }
   // Check that the function is actually vectorized.
   // The vectorization of the identity function is itself.
   string function_name =
-      vectorized_map_node.attr().at(kAttrNameF).func().name();
+      vectorized_map_node->attr().at(kAttrNameF).func().name();
   int found =
       graph_utils::FindGraphFunctionWithName(function_name, output.library());
   ASSERT_NE(found, -1);
@@ -251,27 +278,35 @@ void CheckVectorizedFused(const GraphDef& output,
 }
 
 class MapThenBatchTest
-    : public ::testing::TestWithParam<std::tuple<int, bool>> {};
+    : public ::testing::TestWithParam<std::tuple<int, bool, int>> {};
 
 TEST_P(MapThenBatchTest, IsVectorized) {
   int num_parallel_calls = std::get<0>(GetParam());
   bool use_batch_v2 = std::get<1>(GetParam());
+  int prefetch = std::get<2>(GetParam());
   GrapplerItem item;
   MutableGraphView graph(&item.graph);
-  auto range_node = AddRangeNode(&graph);
+  auto range_dataset = AddRangeNode(&graph);
   auto map_fn = AddMapFn(&graph);
-  auto map_node = AddMapNode(&graph, range_node->name(),
-                             map_fn->signature().name(), num_parallel_calls);
-  auto batch_node = AddBatchNode(&graph, map_node->name(), use_batch_v2);
+  auto dataset = AddMapNode(&graph, range_dataset->name(),
+                            map_fn->signature().name(), num_parallel_calls);
+
+  if (prefetch) {
+    dataset = AddPrefetchNode(&graph, dataset->name(), prefetch);
+  }
+  dataset = AddBatchNode(&graph, dataset->name(), use_batch_v2);
   MapVectorization optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  CheckVectorized(output, map_node->op(), batch_node->op(), range_node->name());
+  CheckVectorized(output, num_parallel_calls > 0 ? kParallelMapOp : kMapOp,
+                  use_batch_v2 ? kBatchV2Op : kBatchOp, range_dataset->name(),
+                  /*fused=*/false, prefetch);
 }
 
 INSTANTIATE_TEST_SUITE_P(MapThenBatchTest, MapThenBatchTest,
                          ::testing::Combine(::testing::Values(0, 12),
-                                            ::testing::Bool()));
+                                            ::testing::Bool(),
+                                            ::testing::Values(0, 20)));
 
 NodeDef* AddMapAndBatchNode(MutableGraphView* graph,
                             const string& input_dataset, const string& map_fn,
@@ -321,76 +356,6 @@ void EvaluateNodes(const GraphDef& graph,
   TF_CHECK_OK(session->Create(graph));
   TF_CHECK_OK(session->Run({}, output_tensor_names, {}, output_tensors));
 }
-
-void CheckNumParallelCalls(const GraphDef& output,
-                           int expected_num_parallel_calls) {
-  // Run the graph to see that the new num_parallel_calls is computed correctly.
-  const NodeDef& choose_fastest_node =
-      output.node(graph_utils::FindGraphNodeWithOp(kChooseFastestOp, output));
-  const NodeDef& vectorized_map_node = output.node(
-      graph_utils::FindGraphNodeWithName(choose_fastest_node.input(0), output));
-  const string& num_parallel_calls = vectorized_map_node.input(1);
-  std::vector<Tensor> output_tensors;
-  EvaluateNodes(output, {num_parallel_calls}, &output_tensors);
-
-  test::ExpectTensorEqual<int>(
-      output_tensors.at(0),
-      Tensor(static_cast<int32>(expected_num_parallel_calls)));
-}
-
-struct TestStruct {
-  int original_num_parallel_calls;
-  int batch_size;
-  int expected_num_parallel_calls;
-};
-
-class NumParallelCallsTest : public ::testing::TestWithParam<TestStruct> {};
-
-TEST_P(NumParallelCallsTest, TestCorrectNumParallelCalls) {
-  auto params = GetParam();
-
-  GrapplerItem item;
-  MutableGraphView graph(&item.graph);
-  auto range_node = AddRangeNode(&graph);
-  auto map_fn = AddMapFn(&graph);
-  auto map_node =
-      AddMapNode(&graph, range_node->name(), map_fn->signature().name(),
-                 params.original_num_parallel_calls);
-  auto batch_node = AddBatchNode(&graph, map_node->name(), /*v2=*/true,
-                                 /*batch_size=*/params.batch_size);
-  MapVectorization optimizer;
-  GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  CheckVectorized(output, map_node->op(), batch_node->op(), range_node->name());
-
-  CheckNumParallelCalls(output, params.expected_num_parallel_calls);
-}
-
-TEST_P(NumParallelCallsTest, TestCorrectNumParallelCallsFused) {
-  auto params = GetParam();
-
-  GrapplerItem item;
-  MutableGraphView graph(&item.graph);
-  auto range_node = AddRangeNode(&graph);
-  auto map_fn = AddMapFn(&graph);
-  auto map_and_batch_node =
-      AddMapAndBatchNode(&graph, range_node->name(), map_fn->signature().name(),
-                         params.batch_size, params.original_num_parallel_calls);
-  ASSERT_NE(map_and_batch_node, nullptr);
-
-  MapVectorization optimizer;
-  GraphDef output;
-  TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  CheckVectorizedFused(output, range_node->name());
-
-  CheckNumParallelCalls(output, params.expected_num_parallel_calls);
-}
-
-INSTANTIATE_TEST_SUITE_P(
-    NumParallelCalls, NumParallelCallsTest,
-    ::testing::Values(TestStruct({1, 1, 1}), TestStruct({2, 10, 1}),
-                      TestStruct({4, 3, 2}), TestStruct({10, 1, 10}),
-                      TestStruct({-1, 1, -1}), TestStruct({-1, 10, -1})));
 
 class ChainedMapAndBatchTest
     : public ::testing::TestWithParam<std::tuple<bool, bool>> {};

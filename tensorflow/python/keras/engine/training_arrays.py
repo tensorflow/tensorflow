@@ -176,6 +176,16 @@ def model_iteration(model,
   # to properly reinitialize and reuse in multiple validation passes.
   val_iterator = None
   if isinstance(val_inputs, (dataset_ops.DatasetV1, dataset_ops.DatasetV2)):
+    if validation_steps is None:
+      # Because we pass an iterator feed instead of a Dataset to the eval
+      # model_iteration() call, it will not trigger the dataset-input path
+      # that determines the number of steps required. To avoid this issue,
+      # set validation_steps here if validation_steps is None.
+      validation_steps = training_utils.infer_steps_for_dataset(
+          val_inputs,
+          validation_steps,
+          epochs=epochs,
+          steps_name='validation_steps')
     val_iterator = _get_iterator(val_inputs, model._distribution_strategy)
     val_inputs = _prepare_feed_values(
         model, val_iterator, val_targets, val_sample_weights, ModeKeys.TEST)
@@ -269,8 +279,9 @@ def model_iteration(model,
             elif step > 0:
               steps_per_epoch = step
               aggregator.num_samples_or_steps = steps_per_epoch
-              progbar.params['steps'] = steps_per_epoch
-              progbar.progbar.target = steps_per_epoch
+              if mode == ModeKeys.TRAIN:
+                progbar.params['steps'] = steps_per_epoch
+                progbar.progbar.target = steps_per_epoch
           else:
             # We ran out of batches while the user passed an iterator (legacy).
             callbacks.model.stop_training = True

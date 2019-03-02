@@ -217,10 +217,10 @@ class TreeAnnotator(transformer.Base):
 
     return node
 
-  def visit_nonlocal(self, node):
+  def visit_Nonlocal(self, node):
     raise NotImplementedError()
 
-  def visit_global(self, node):
+  def visit_Global(self, node):
     raise NotImplementedError()
 
   def visit_ExceptHandler(self, node):

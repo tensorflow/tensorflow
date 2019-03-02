@@ -29,7 +29,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CosineProximity"
+    name: "CosineSimilarity"
     mtype: "<type \'type\'>"
   }
   member {

@@ -704,7 +704,7 @@ def saturate_cast(value, dtype, name=None):
                                        name="max"))
     return cast(value, dtype, name=name)
 
-@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_float"])
 def to_float(x, name="ToFloat"):
   """Casts a tensor to type `float32`.
@@ -723,7 +723,7 @@ def to_float(x, name="ToFloat"):
   return cast(x, dtypes.float32, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_double"])
 def to_double(x, name="ToDouble"):
   """Casts a tensor to type `float64`.
@@ -742,7 +742,7 @@ def to_double(x, name="ToDouble"):
   return cast(x, dtypes.float64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int32"])
 def to_int32(x, name="ToInt32"):
   """Casts a tensor to type `int32`.
@@ -761,7 +761,7 @@ def to_int32(x, name="ToInt32"):
   return cast(x, dtypes.int32, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_int64"])
 def to_int64(x, name="ToInt64"):
   """Casts a tensor to type `int64`.
@@ -780,7 +780,7 @@ def to_int64(x, name="ToInt64"):
   return cast(x, dtypes.int64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_bfloat16"])
 def to_bfloat16(x, name="ToBFloat16"):
   """Casts a tensor to type `bfloat16`.
@@ -799,7 +799,7 @@ def to_bfloat16(x, name="ToBFloat16"):
   return cast(x, dtypes.bfloat16, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex64"])
 def to_complex64(x, name="ToComplex64"):
   """Casts a tensor to type `complex64`.
@@ -818,7 +818,7 @@ def to_complex64(x, name="ToComplex64"):
   return cast(x, dtypes.complex64, name=name)
 
 
-@deprecation.deprecated(date=None, instructions="Use tf.cast instead.")
+@deprecation.deprecated(date=None, instructions="Use `tf.cast` instead.")
 @tf_export(v1=["to_complex128"])
 def to_complex128(x, name="ToComplex128"):
   """Casts a tensor to type `complex128`.
@@ -1055,7 +1055,8 @@ def div(x, y, name=None):
   return _div_python2(x, y, name)
 
 
-@tf_export("div_no_nan")
+@tf_export("math.divide_no_nan", v1=["math.divide_no_nan", "div_no_nan"])
+@deprecation.deprecated_endpoints("div_no_nan")
 @dispatch.add_dispatch_support
 def div_no_nan(x, y, name=None):
   """Computes an unsafe divide which returns 0 if the y is zero.
@@ -1077,6 +1078,31 @@ def div_no_nan(x, y, name=None):
       raise TypeError("x and y must have the same dtype, got %r != %r" %
                       (x_dtype, y_dtype))
     return gen_math_ops.div_no_nan(x, y, name=name)
+
+
+@tf_export("math.multiply_no_nan")
+@dispatch.add_dispatch_support
+def multiply_no_nan(x, y, name=None):
+  """Computes the product of x and y and returns 0 if the y is zero, even if x is NaN or infinite.
+
+  Args:
+    x: A `Tensor`. Must be one of the following types: `float32`, `float64`.
+    y: A `Tensor` whose dtype is compatible with `x`.
+    name: A name for the operation (optional).
+
+  Returns:
+    The element-wise value of the x times y.
+  """
+
+  with ops.name_scope(name, "multiply_no_nan", [x, y]) as name:
+    x = ops.convert_to_tensor(x, name="x")
+    y = ops.convert_to_tensor(y, name="y", dtype=x.dtype.base_dtype)
+    x_dtype = x.dtype.base_dtype
+    y_dtype = y.dtype.base_dtype
+    if x_dtype != y_dtype:
+      raise TypeError(
+          "x and y must have the same dtype, got %r != %r" % (x_dtype, y_dtype))
+    return gen_math_ops.mul_no_nan(x, y, name=name)
 
 
 # TODO(aselle): This should be removed
