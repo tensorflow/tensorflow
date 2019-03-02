@@ -241,7 +241,7 @@ StatusOr<poplar::program::Program> CreateCallOp(CompilerResources& res,
     for (int64 o = 0; o < op_count; o++) {
       auto& inputs = subcomp_visitor->inputs()[o];
       if (inputs.size() != args[o].size()) {
-        return xla::FailedPrecondition("Mismatched number of inputs");
+        return xla::FailedPrecondition("Mismatched number of inputs.");
       }
       for (int64 i = 0; i < inputs.size(); i++) {
         if (subcomp_visitor->InputIsUsed(o, i)) {
@@ -411,10 +411,10 @@ StatusOr<poplar::program::Program> CreateRepeatOp(CompilerResources& res,
   const ArgVector& body_outputs = body->outputs();
 
   if (body_inputs.size() != param_count) {
-    return xla::FailedPrecondition("Invalid number of body inputs");
+    return xla::FailedPrecondition("Invalid number of body inputs.");
   }
   if (body_outputs.size() != param_count) {
-    return xla::FailedPrecondition("Invalid number of body outputs");
+    return xla::FailedPrecondition("Invalid number of body outputs.");
   }
 
   // Even though repeat loop is inplace, some of the repeat loop inputs might
@@ -453,6 +453,10 @@ StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
 
   poplar::program::Sequence seq;
 
+  if (inst->operand(0)->shape().element_type() != PRED) {
+    return xla::FailedPrecondition("Only predicates are supported.");
+  }
+
   TF_ASSIGN_OR_RETURN(ArgVectors inputs,
                       GetInplaceOutputTensors(tensor_map, res, inst, seq));
   CHECK_EQ(inputs.size(), inst->operand_count());
@@ -477,7 +481,7 @@ StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
       popops::allTrue(graph, pred, seq, GetDebugName(inst));
 
   if (true_body->inputs().size() != 1 || false_body->inputs().size() != 1) {
-    return xla::FailedPrecondition("Invalid input count");
+    return xla::FailedPrecondition("Invalid input count.");
   }
 
   poplar::program::Sequence true_seq;
@@ -500,7 +504,7 @@ StatusOr<poplar::program::Program> CreateIfOp(CompilerResources& res,
 
   unsigned int output_count = true_body->outputs().size();
   if (output_count != false_body->outputs().size()) {
-    return xla::FailedPrecondition("Mismatched output size");
+    return xla::FailedPrecondition("Mismatched output size.");
   }
 
   for (unsigned int i = 0; i < output_count; i++) {

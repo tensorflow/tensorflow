@@ -297,3 +297,5 @@ DotOperationTextTest.GpuIntegerDotCodegen POPLAR // GPU codegen
 
 FmaxSimpleTest.FmaxEdgeCases POPLAR // Tests NaN behaviour on CPU model
 FmaxSimpleTest.FminEdgeCases POPLAR
+
+CaseOpTest POPLAR // Case form of the conditional op
