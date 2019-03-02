@@ -715,8 +715,60 @@ def sigmoid_cross_entropy(
         losses, weights, scope, loss_collection, reduction=reduction)
 
 
-@tf_export(v1=["losses.softmax_cross_entropy"])
+@tf_export("losses.softmax_cross_entropy", v1=[])
 def softmax_cross_entropy(
+    onehot_labels, logits, axis=-1, weights=1.0, label_smoothing=0, scope=None,
+    loss_collection=ops.GraphKeys.LOSSES,
+    reduction=Reduction.SUM_BY_NONZERO_WEIGHTS):
+  """Creates a cross-entropy loss using tf.nn.softmax_cross_entropy_with_logits_v2.
+
+  `weights` acts as a coefficient for the loss. If a scalar is provided,
+  then the loss is simply scaled by the given value. If `weights` is a
+  tensor of shape `[batch_size]`, then the loss weights apply to each
+  corresponding sample.
+
+  If `label_smoothing` is nonzero, smooth the labels towards 1/num_classes:
+      new_onehot_labels = onehot_labels * (1 - label_smoothing)
+                          + label_smoothing / num_classes
+
+  Note that `onehot_labels` and `logits` must have the same shape,
+  e.g. `[batch_size, num_classes]`. The shape of `weights` must be
+  broadcastable to loss, whose shape is decided by the shape of `logits`.
+  In case the shape of `logits` is `[batch_size, num_classes]`, loss is
+  a `Tensor` of shape `[batch_size]`.
+
+  Args:
+    onehot_labels: One-hot-encoded labels.
+    logits: Logits outputs of the network.
+    axis: Axis for `num_classes`. Defaults to -1, i.e Last dimension.
+    weights: Optional `Tensor` that is broadcastable to loss.
+    label_smoothing: If greater than 0 then smooth the labels.
+    scope: the scope for the operations performed in computing the loss.
+    loss_collection: collection to which the loss will be added.
+    reduction: Type of reduction to apply to loss.
+
+
+  Returns:
+    Weighted loss `Tensor` of the same type as `logits`. If `reduction` is
+    `NONE`, this has shape `[batch_size]`; otherwise, it is scalar.
+
+  Raises:
+    ValueError: If the shape of `logits` doesn't match that of `onehot_labels`
+      or if the shape of `weights` is invalid or if `weights` is None.  Also if
+      `onehot_labels` or `logits` is None.
+
+  @compatibility(eager)
+  The `loss_collection` argument is ignored when executing eagerly. Consider
+  holding on to the return value or collecting losses via a `tf.keras.Model`.
+  @end_compatibility
+  """
+  return softmax_cross_entropy_helper(
+    onehot_labels, logits, weights=weights, label_smoothing=label_smoothing,
+    scope=scope, loss_collection=loss_collection, reduction=reduction, axis=axis)
+
+
+@tf_export(v1=["losses.softmax_cross_entropy"])
+def softmax_cross_entropy_helper(
     onehot_labels, logits, weights=1.0, label_smoothing=0, scope=None,
     loss_collection=ops.GraphKeys.LOSSES,
     reduction=Reduction.SUM_BY_NONZERO_WEIGHTS, axis=-1):
