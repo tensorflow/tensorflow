@@ -375,7 +375,6 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
 
     // Generate keys for post-ops
     for (auto const& post_op_param : convFwdDims.post_op_params) {
-
       if (post_op_param.name == "relu") {
         DCHECK_EQ(post_op_param.param.size(), 3);
       } else if (post_op_param.name == "sum") {
@@ -384,9 +383,9 @@ class MklConvFwdPrimitiveFactory : public MklPrimitiveFactory<T> {
         return string("not_a_key");
       }
       key_creator.AddAsKey(post_op_param.name);
-      for (auto &param : post_op_param.param) {
+      for (auto& param : post_op_param.param) {
         key_creator.AddAsKey(param);
-      }      
+      }
     }
 
     return key_creator.GetKey();
@@ -1755,7 +1754,7 @@ class MklQuantizedConv2DSumReluOp
       float scale_summand = std::max(std::abs(min_freezed_summand),
                                      std::abs(max_freezed_summand));
       // if summand_type is also DT_QUINT8 as the scale_output,
-      // the scaling factor of 255.0f cancels each other and thus is avoided.  
+      // the scaling factor of 255.0f cancels each other and thus is avoided.
       // If it is not then  it is DT_INT8 and is scaled appropriately.
       if (summand_type == DT_QUINT8)
         params.post_op_params.push_back(
@@ -1830,8 +1829,8 @@ class MklQuantizedConv2DSumReluOp
     size_t depth = min_filter_vector.NumElements();
     std::vector<float> scales(depth);
     for (size_t i = 0; i < depth; ++i) {
-      //TODO Nammbash: scale factors for UINT8(inputs) & INT8(weights) are done
-      // regularly. A Cleaner design to address all mapping in one function 
+      // TODO (nammbash): scale factors for UINT8(inputs) & INT8(weights) are
+      // done regularly.A Cleaner design to address all mapping in one function
       // needs to be implemented in future which also supports other quantized
       // type mapping in future.
       scales[i] = 255.0 * 127.0 /
