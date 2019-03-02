@@ -50,26 +50,26 @@ static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
 /// Disables fusion profitability check and fuses if valid.
 static llvm::cl::opt<bool>
-    clMaximalLoopFusion("fusion-maximal", llvm::cl::Hidden,
+    clMaximalLoopFusion("fusion-maximal",
                         llvm::cl::desc("Enables maximal loop fusion"),
                         llvm::cl::cat(clOptionsCategory));
 
 /// A threshold in percent of additional computation allowed when fusing.
 static llvm::cl::opt<double> clFusionAddlComputeTolerance(
-    "fusion-compute-tolerance", llvm::cl::Hidden,
+    "fusion-compute-tolerance",
     llvm::cl::desc("Fractional increase in additional "
                    "computation tolerated while fusing"),
     llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<unsigned> clFusionFastMemorySpace(
-    "fusion-fast-mem-space", llvm::cl::Hidden,
+    "fusion-fast-mem-space",
     llvm::cl::desc("Faster memory space number to promote fusion buffers to"),
     llvm::cl::cat(clOptionsCategory));
 
 // A local buffer of size less than or equal to this size is promoted to fast
 // memory.
 static llvm::cl::opt<unsigned long long> clFusionLocalBufThreshold(
-    "fusion-local-buf-threshold", llvm::cl::Hidden,
+    "fusion-local-buf-threshold",
     llvm::cl::desc("Threshold size (KiB) for promoting local buffers to fast "
                    "memory space"),
     llvm::cl::cat(clOptionsCategory));
