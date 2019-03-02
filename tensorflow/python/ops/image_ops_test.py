@@ -1355,24 +1355,24 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
   def testPartialShapes(self):
     p_unknown_rank = array_ops.placeholder(dtypes.uint8)
     p_unknown_dims_3 = array_ops.placeholder(
-      dtypes.uint8, shape=[None, None, None])
+        dtypes.uint8, shape=[None, None, None])
     p_unknown_dims_4 = array_ops.placeholder(
-      dtypes.uint8, shape=[None, None, None, None])
+        dtypes.uint8, shape=[None, None, None, None])
     p_unknown_dims_5 = array_ops.placeholder(
-      dtypes.uint8, shape=[None, None, None, None, None])
+        dtypes.uint8, shape=[None, None, None, None, None])
     p_unknown_width = array_ops.placeholder(dtypes.uint8, shape=[64, None, 3])
     p_unknown_batch = array_ops.placeholder(
-      dtypes.uint8, shape=[None, 64, 64, 3])
+        dtypes.uint8, shape=[None, 64, 64, 3])
     p_unknown_batch_5 = array_ops.placeholder(
-      dtypes.uint8, shape=[None, 32, 32, 3, 4])
+        dtypes.uint8, shape=[None, 32, 32, 3, 4])
     p_wrong_rank = array_ops.placeholder(dtypes.uint8, shape=[None, None])
     p_zero_dim = array_ops.placeholder(dtypes.uint8, shape=[64, 0, 3])
 
     # Ops that support 3D input
     for op in [
-      image_ops.flip_left_right, image_ops.flip_up_down,
-      image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-      image_ops.transpose_image, image_ops.rot90
+        image_ops.flip_left_right, image_ops.flip_up_down,
+        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
+        image_ops.transpose_image, image_ops.rot90
     ]:
       transformed_unknown_rank = op(p_unknown_rank)
       self.assertEqual(3, transformed_unknown_rank.get_shape().ndims)
@@ -1386,9 +1386,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     # Ops that support 4D input
     for op in [
-      image_ops.flip_left_right, image_ops.flip_up_down,
-      image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-      image_ops.transpose_image, image_ops.rot90
+        image_ops.flip_left_right, image_ops.flip_up_down,
+        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
+        image_ops.transpose_image, image_ops.rot90
     ]:
       transformed_unknown_dims_4 = op(p_unknown_dims_4)
       self.assertEqual(4, transformed_unknown_dims_4.get_shape().ndims)
@@ -1400,9 +1400,9 @@ class FlipTransposeRotateTest(test_util.TensorFlowTestCase):
 
     # Ops that support 5D input
     for op in [
-      image_ops.flip_left_right, image_ops.flip_up_down,
-      image_ops.random_flip_left_right, image_ops.random_flip_up_down,
-      image_ops.rot90
+        image_ops.flip_left_right, image_ops.flip_up_down,
+        image_ops.random_flip_left_right, image_ops.random_flip_up_down,
+        image_ops.rot90
     ]:
       transformed_unknown_dims_5 = op(p_unknown_dims_5)
       self.assertEqual(5, transformed_unknown_dims_5.get_shape().ndims)
