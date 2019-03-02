@@ -66,6 +66,8 @@ Optional<int64_t> MemRefRegion::getConstantBoundingSizeAndShape(
   if (shape)
     shape->reserve(rank);
 
+  assert(rank == cst.getNumDimIds() && "inconsistent memref region");
+
   // Find a constant upper bound on the extent of this memref region along each
   // dimension.
   int64_t numElements = 1;
@@ -221,9 +223,10 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
       }
     }
     // Add upper/lower bounds from 'sliceState' to 'cst'.
-    if (!cst.addSliceBounds(sliceState->ivs, sliceState->lbs, sliceState->ubs,
-                            sliceState->lbOperands[0]))
-      return false;
+    bool ret = cst.addSliceBounds(sliceState->ivs, sliceState->lbs,
+                                  sliceState->ubs, sliceState->lbOperands[0]);
+    assert(ret && "should not fail as we never have semi-affine slice maps");
+    (void)ret;
   }
 
   // Add access function equalities to connect loop IVs to data dimensions.
