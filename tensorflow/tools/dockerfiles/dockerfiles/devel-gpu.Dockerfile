@@ -82,7 +82,7 @@ ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}
 ARG CACHE_STOP=1
 # Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
 ARG CHECKOUT_TF_SRC=0
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/tensorflow/tensorflow.git /tensorflow_src || true
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/isaacnoble/tensorflow.git /tensorflow_src || true
 
 ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
@@ -134,6 +134,18 @@ RUN mkdir /bazel && \
     chmod +x /bazel/installer.sh && \
     /bazel/installer.sh && \
     rm -f /bazel/installer.sh
+
+RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+    LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH} \
+    tensorflow/tools/ci_build/builds/configured GPU \
+    bazel build -c opt --copt=-mavx --config=cuda \
+	--cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" \
+        tensorflow/tools/pip_package:build_pip_package && \
+    rm /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
+    bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
+    pip --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl && \
+    rm -rf /tmp/pip && \
+    rm -rf /root/.cache
 
 COPY bashrc /etc/bash.bashrc
 RUN chmod a+rwx /etc/bash.bashrc
