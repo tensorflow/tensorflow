@@ -81,8 +81,8 @@ ENV TF_CUDNN_VERSION=${CUDNN_MAJOR_VERSION}
 # CACHE_STOP is used to rerun future commands, otherwise cloning tensorflow will be cached and will not pull the most recent version
 ARG CACHE_STOP=1
 # Check out TensorFlow source code if --build-arg CHECKOUT_TF_SRC=1
-ARG CHECKOUT_TF_SRC=0
-RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/isaacnoble/tensorflow.git /tensorflow_src || true
+ARG CHECKOUT_TF_SRC=1
+RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/isaacnoble/tensorflow.git /tensorflow || true
 
 ARG USE_PYTHON_3_NOT_2
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
@@ -135,6 +135,7 @@ RUN mkdir /bazel && \
     /bazel/installer.sh && \
     rm -f /bazel/installer.sh
 
+WORKDIR /tensorflow
 RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
     LD_LIBRARY_PATH=/usr/local/cuda/lib64/stubs:${LD_LIBRARY_PATH} \
     tensorflow/tools/ci_build/builds/configured GPU \
