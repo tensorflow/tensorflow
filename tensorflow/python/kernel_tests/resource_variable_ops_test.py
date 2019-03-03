@@ -1023,7 +1023,7 @@ class ResourceVariableOpsTest(test_util.TensorFlowTestCase):
   def testAssignIncompatibleShape(self):
     v = resource_variable_ops.ResourceVariable([0, 1, 2, 3])
     self.evaluate(v.initializer)
-    with self.assertRaisesRegexp(Exception, r"hapes must be equal"):
+    with self.assertRaisesRegexp(Exception, r"shapes must be equal"):
       self.assertAllEqual(self.evaluate(v.assign_add(1)), [1, 2, 3, 4])
 
   @test_util.run_in_graph_and_eager_modes
