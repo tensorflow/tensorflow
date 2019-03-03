@@ -1029,6 +1029,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ExperimentalAutoShardDataset"
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ExperimentalBytesProducedStatsDataset"
     argspec: "args=[\'input_dataset\', \'tag\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
