@@ -102,7 +102,7 @@ class ResourceConstructionOp : public OpKernel {
 
     // Create other alias resources.
     Status status;
-    char dummy[sizeof...(AliasesToRegister)] = {
+    int dummy[sizeof...(AliasesToRegister)] = {
         (status.Update(RegisterAlias<AliasesToRegister>(resource)), 0)...};
     (void)dummy;
     OP_REQUIRES_OK(ctx, status);
@@ -119,7 +119,7 @@ class ResourceConstructionOp : public OpKernel {
       }
       // Attempt to delete other resource aliases.
       Status dummy_status;
-      char dummy[sizeof...(AliasesToRegister)] = {
+      int dummy[sizeof...(AliasesToRegister)] = {
           (dummy_status.Update(DeleteAlias<AliasesToRegister>()), 0)...};
       (void)dummy;
     }
@@ -237,7 +237,7 @@ class TableWithFallbackConstructionOp : public OpKernel {
 
     // Create other alias resources.
     Status status;
-    char dummy[sizeof...(AliasesToRegister)] = {
+    int dummy[sizeof...(AliasesToRegister)] = {
         (status.Update(RegisterAlias<AliasesToRegister>(table)), 0)...};
     (void)dummy;
     OP_REQUIRES_OK(ctx, status);
@@ -254,7 +254,7 @@ class TableWithFallbackConstructionOp : public OpKernel {
       }
       // Attempt to delete other resource aliases.
       Status dummy_status;
-      char dummy[sizeof...(AliasesToRegister)] = {
+      int dummy[sizeof...(AliasesToRegister)] = {
           (dummy_status.Update(DeleteAlias<AliasesToRegister>()), 0)...};
       (void)dummy;
     }

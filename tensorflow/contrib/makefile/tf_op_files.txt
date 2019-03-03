@@ -43,7 +43,9 @@ tensorflow/core/kernels/conv_grad_input_ops.cc
 tensorflow/core/kernels/conv_grad_ops.cc
 tensorflow/core/kernels/conv_ops.cc
 tensorflow/core/kernels/conv_ops_3d.cc
-tensorflow/core/kernels/conv_ops_fused.cc
+tensorflow/core/kernels/conv_ops_fused_double.cc
+tensorflow/core/kernels/conv_ops_fused_float.cc
+tensorflow/core/kernels/conv_ops_fused_half.cc
 tensorflow/core/kernels/conv_ops_using_gemm.cc
 tensorflow/core/kernels/crop_and_resize_op.cc
 tensorflow/core/kernels/ctc_decoder_ops.cc

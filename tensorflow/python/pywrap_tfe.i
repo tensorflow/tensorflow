@@ -43,6 +43,7 @@ limitations under the License.
 %rename("%s") TFE_ProfilerContextSetEagerContext;
 %rename("%s") TFE_DeleteProfilerContext;
 %rename("%s") TFE_StartProfilerServer;
+%rename("%s") TFE_ProfilerClientStartTracing;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
@@ -153,6 +154,27 @@ limitations under the License.
 // See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
 // Hence the 'const_cast'.
 %typemap(in) const char* name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* service_addr {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* logdir {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* worker_list {
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 

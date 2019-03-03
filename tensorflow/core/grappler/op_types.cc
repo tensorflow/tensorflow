@@ -47,15 +47,29 @@ bool IsAnyDiv(const NodeDef& node) {
          node.op() == "FloorDiv" || node.op() == "TruncateDiv";
 }
 
+bool IsAnyMax(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Max" || op == "SegmentMax" || op == "UnsortedSegmentMax";
+}
+
 bool IsAnyMaxPool(const NodeDef& node) {
   const auto& op = node.op();
   return op == "MaxPool" || op == "MaxPoolV2" || op == "MaxPool3D" ||
          op == "MaxPoolWithArgmax" || op == "FractionalMaxPool";
 }
 
+bool IsAnyMin(const NodeDef& node) {
+  const auto& op = node.op();
+  return op == "Min" || op == "SegmentMin" || op == "UnsortedSegmentMin";
+}
+
 bool IsApproximateEqual(const NodeDef& node) {
   return node.op() == "ApproximateEqual";
 }
+
+bool IsArgMax(const NodeDef& node) { return node.op() == "ArgMax"; }
+
+bool IsArgMin(const NodeDef& node) { return node.op() == "ArgMin"; }
 
 bool IsAvgPoolGrad(const NodeDef& node) { return node.op() == "AvgPoolGrad"; }
 
@@ -228,6 +242,8 @@ bool IsFusedBatchNormGrad(const NodeDef& node) {
 bool IsGreater(const NodeDef& node) { return node.op() == "Greater"; }
 
 bool IsGreaterEqual(const NodeDef& node) { return node.op() == "GreaterEqual"; }
+
+bool IsHostConstant(const NodeDef& node) { return node.op() == "HostConst"; }
 
 bool IsHistogramSummary(const NodeDef& node) {
   return node.op() == "HistogramSummary";
@@ -558,7 +574,7 @@ bool GetBoolAttr(const NodeDef& node, const string& name) {
 }  // namespace
 
 bool IsPersistent(const NodeDef& node) {
-  return IsConstant(node) || IsVariable(node);
+  return IsConstant(node) || IsVariable(node) || IsHostConstant(node);
 }
 
 bool MaybeHasRefInput(const NodeDef& node) {

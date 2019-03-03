@@ -406,7 +406,7 @@ cc_test(
 tflite_cc_shared_object(
     name = "libtensorflowlite.so",
     linkopts = select({
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflowlite.so",
         ],

@@ -57,7 +57,7 @@ class HasList(training.Model):
             [core.Dense(10)]))
     self.layer_list.extend(
         data_structures.List(
-            list(sequence=[core.Dense(11)]) + [core.Dense(12)]))
+            list([core.Dense(11)]) + [core.Dense(12)]))
     self.layers_with_updates = data_structures.List(
         sequence=(normalization.BatchNormalization(),))
 
@@ -699,6 +699,18 @@ class MappingTests(test.TestCase):
     result = data_structures._DictWrapper([(1, 2), (3, 4)])
     self.assertIsInstance(result, dict)
     self.assertEqual({1: 2, 3: 4}, result)
+
+  def testListAddOrder(self):
+    self.assertEqual([1., 2.],
+                     data_structures._ListWrapper([1.])
+                     + data_structures._ListWrapper([2.]))
+    self.assertEqual([1., 2.],
+                     data_structures._ListWrapper([1.])
+                     + [2.])
+    self.assertEqual([1., 2.],
+                     [1.]
+                     + data_structures._ListWrapper([2.]))
+
 
 if __name__ == "__main__":
   test.main()

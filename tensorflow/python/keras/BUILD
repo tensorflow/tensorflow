@@ -63,6 +63,8 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
@@ -170,6 +172,8 @@ py_library(
         "//tensorflow/python/distribute:distribute_lib",
         "//tensorflow/python/distribute:input_lib",
         "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
+        "//tensorflow/python/keras/mixed_precision/experimental:policy",
         "//tensorflow/python/training/tracking:data_structures",
         "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
@@ -232,6 +236,7 @@ py_library(
     deps = [
         ":backend",
         ":engine_utils",
+        "//tensorflow/python/eager:profiler",
     ],
 )
 
@@ -320,6 +325,7 @@ py_library(
         "layers/convolutional_recurrent.py",
         "layers/core.py",
         "layers/cudnn_recurrent.py",
+        "layers/dense_attention.py",
         "layers/embeddings.py",
         "layers/kernelized.py",
         "layers/local.py",
@@ -560,7 +566,7 @@ tf_py_test(
 
 tf_py_test(
     name = "convolutional_recurrent_test",
-    size = "large",
+    size = "medium",
     srcs = ["layers/convolutional_recurrent_test.py"],
     additional_deps = [
         ":keras",
@@ -568,7 +574,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 2,
+    shard_count = 4,
 )
 
 cuda_py_test(
@@ -582,10 +588,6 @@ cuda_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 8,
-    tags = [
-        "manual",  # b/124471597
-        "notap",  # b/124471597
-    ],
     xla_enable_strict_auto_jit = True,
 )
 
@@ -641,6 +643,18 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
     ],
     shard_count = 3,
+)
+
+tf_py_test(
+    name = "dense_attention_test",
+    size = "medium",
+    srcs = ["layers/dense_attention_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
 )
 
 cuda_py_test(
@@ -760,7 +774,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 4,
+    shard_count = 10,
 )
 
 cuda_py_test(
@@ -858,6 +872,21 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "time_distributed_learning_phase_test",
+    size = "small",
+    srcs = ["layers/time_distributed_learning_phase_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "//tensorflow/python:client_testlib",
+    ],
+    tags = [
+        "noasan",  # http://b/78599823
+        "notsan",
+    ],
+)
+
+tf_py_test(
     name = "scikit_learn_test",
     size = "small",
     srcs = ["wrappers/scikit_learn_test.py"],
@@ -908,6 +937,27 @@ tf_py_test(
     additional_deps = [
         ":keras",
         "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
+    name = "composite_tensor_support_test",
+    size = "medium",
+    srcs = ["utils/composite_tensor_support_test.py"],
+    additional_deps = [
+        ":engine",
+        ":layers",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python/ops/ragged:ragged_tensor",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:framework_test_lib",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:sparse_ops",
+        "//tensorflow/python:sparse_tensor",
     ],
 )
 
@@ -1095,6 +1145,20 @@ tf_py_test(
 )
 
 tf_py_test(
+    name = "training_arrays_test",
+    size = "small",
+    srcs = ["engine/training_arrays_test.py"],
+    additional_deps = [
+        ":keras",
+        ":layers",
+        "@absl_py//absl/testing:parameterized",
+        "//third_party/py/numpy",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
+tf_py_test(
     name = "training_generator_test",
     size = "medium",
     srcs = ["engine/training_generator_test.py"],
@@ -1183,7 +1247,7 @@ tf_py_test(
 
 tf_py_test(
     name = "base_layer_test",
-    size = "small",
+    size = "medium",
     srcs = ["engine/base_layer_test.py"],
     additional_deps = [
         ":keras",
@@ -1191,6 +1255,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
+    shard_count = 8,
     tags = ["no_rocm"],
 )
 

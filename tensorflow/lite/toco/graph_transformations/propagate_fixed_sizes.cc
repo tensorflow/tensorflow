@@ -1707,11 +1707,16 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
   const std::vector<int>& input_dims = input_array.shape().dims();
   std::vector<int> output_dims;
 
-  for (int i = 0; i < input_dims.size(); ++i) {
+  std::vector<int> squeeze_dims;
+  const int input_num_dims = input_dims.size();
+  for (int i : op->squeeze_dims) {
+    squeeze_dims.push_back(i < 0 ? i + input_num_dims : i);
+  }
+  for (int i = 0; i < input_num_dims; ++i) {
     if (input_dims[i] != 1 ||
-        (!op->squeeze_dims.empty() &&
-         std::find(op->squeeze_dims.begin(), op->squeeze_dims.end(), i) ==
-             op->squeeze_dims.end())) {
+        (!squeeze_dims.empty() &&
+         std::find(squeeze_dims.begin(), squeeze_dims.end(), i) ==
+             squeeze_dims.end())) {
       output_dims.push_back(input_dims[i]);
     }
   }
@@ -2065,6 +2070,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kBatchNormalization:
     case OperatorType::kL2Normalization:
     case OperatorType::kDequantize:
+    case OperatorType::kElu:
     case OperatorType::kRelu:
     case OperatorType::kRelu1:
     case OperatorType::kRelu6:
@@ -2095,6 +2101,7 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
     case OperatorType::kLogicalOr:
     case OperatorType::kZerosLike:
     case OperatorType::kReverseV2:
+    case OperatorType::kReverseSequence:
       ProcessSimpleOperator(model, op, 0);
       break;
     case OperatorType::kGather:
@@ -2340,6 +2347,11 @@ void ProcessUniqueOperator(Model* model, UniqueOperator* op) {
       break;
     case OperatorType::kUnique:
       ProcessUniqueOperator(model, static_cast<UniqueOperator*>(op));
+      break;
+    case OperatorType::kWhere:
+      // The size of the output can only be known after evaluating the cond
+      // tensor. Ignore shape propagation here and defer that to the
+      // interpreter.
       break;
     default:
       // Unimplemented, another graph transformation should drop it.

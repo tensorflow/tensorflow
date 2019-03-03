@@ -126,17 +126,11 @@ class AttrBuilder {
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
-    // Copied from NodeDefBuilder::Attr
-    const AttrValue* found = AttrSlice(m).Find(attr_name);
-    AttrValue attr_value;
-    if (found == nullptr) {
+    // If attribute is set more than once, its first value prevails
+    if (AttrSlice(m).Find(attr_name) == nullptr) {
+      AttrValue attr_value;
       SetAttrValue(value, &attr_value);
       m->insert(AttrValueMap::value_type(attr_name, attr_value));
-    } else {
-      // TODO(ashankar): Do what is done in
-      // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
-      SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[attr_name] = attr_value;
     }
   }
 

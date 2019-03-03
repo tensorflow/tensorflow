@@ -514,7 +514,8 @@ class Function(object):
     """Make and call a `ConcreteFunction` which initializes variables."""
 
     # Note: using defun here avoids an infinite recursion.
-    @function_lib.defun
+    # Note: there is no reason not to autograph once the overhead is negligible.
+    @function_lib.defun(autograph=False)  # tf.function internal, pure graph
     def initialize_variables():
       for v, init in initializer_map.items():
         with ops.init_scope():
@@ -578,9 +579,11 @@ class Function(object):
     concrete_functions = []
     # pylint: disable=protected-access
     if self._stateful_fn:
-      concrete_functions.extend(self._stateful_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateful_fn._function_cache.all_values())
     if self._stateless_fn:
-      concrete_functions.extend(self._stateless_fn._function_cache.values())
+      concrete_functions.extend(
+          self._stateless_fn._function_cache.all_values())
     # pylint: enable=protected-access
     deduplicated_concrete_functions = list()
     seen_signatures = list()

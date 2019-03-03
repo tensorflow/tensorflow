@@ -1,0 +1,13 @@
+diff --git a/absl/base/config.h b/absl/base/config.h
+index db4c453..83a3133 100644
+--- a/absl/base/config.h
++++ b/absl/base/config.h
+@@ -127,7 +127,7 @@
+     (!defined(__clang__) && defined(__GNUC__) &&                 \
+      (__GNUC__ > 5 || (__GNUC__ == 5 && __GNUC_MINOR__ >= 1)) && \
+      (defined(_LIBCPP_VERSION) || defined(__GLIBCXX__))) ||      \
+-    defined(_MSC_VER)
++    (defined(_MSC_VER) && !defined(__NVCC__))
+ #define ABSL_HAVE_STD_IS_TRIVIALLY_CONSTRUCTIBLE 1
+ #define ABSL_HAVE_STD_IS_TRIVIALLY_ASSIGNABLE 1
+ #endif

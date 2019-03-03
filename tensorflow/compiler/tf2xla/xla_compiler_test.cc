@@ -175,9 +175,9 @@ TEST_F(XlaCompilerTest, EmptyReturnValues) {
 
   std::unique_ptr<Graph> graph(new Graph(OpRegistry::Global()));
   XlaCompiler::CompilationResult result;
-  TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph),
-                                     /*args=*/{}, &result));
+  TF_ASSERT_OK(compiler.CompileGraph(
+      XlaCompiler::CompileOptions(), "add", std::move(graph),
+      /*args=*/{}, /*user_aliases=*/{}, &result));
 
   TF_ASSERT_OK(client_->Execute(*result.computation, {}).status());
 }
@@ -207,7 +207,8 @@ TEST_F(XlaCompilerTest, Simple) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 
   // Tests that the generated computation works.
   xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
@@ -258,7 +259,7 @@ TEST_F(XlaCompilerTest, OutOfOrderGraph) {
   compile_options.always_return_tuple = false;
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
-                                     args, &result));
+                                     args, /*user_aliases=*/{}, &result));
 
   // Tests that the generated computation works.
   xla::Literal param0_literal = xla::LiteralUtil::CreateR1<int32>({7, 42});
@@ -319,7 +320,8 @@ TEST_F(XlaCompilerTest, HonorShapeRepresentationFnForRetVal) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
   xla::Shape transposed =
       xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
   // Check that the return shapes are correctly tranposed.
@@ -360,7 +362,8 @@ TEST_F(XlaCompilerTest, TransposeVariables) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "transpose",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
   xla::Shape transposed =
       xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {1, 0});
   // Check that the return shapes are correctly tranposed.
@@ -410,7 +413,7 @@ TEST_F(XlaCompilerTest, MixedOrderArguments) {
     compile_options.always_return_tuple = false;
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
-                                       args, &result));
+                                       args, /*user_aliases=*/{}, &result));
 
     EXPECT_THAT(result.input_mapping, ::testing::ElementsAre(0, 1));
   }
@@ -440,9 +443,9 @@ TEST_F(XlaCompilerTest, HasSaneErrorOnNonCompileTimeConstantInputToReshape) {
   XlaCompiler compiler(DefaultOptions());
 
   XlaCompiler::CompilationResult result;
-  Status status =
-      compiler.CompileGraph(XlaCompiler::CompileOptions(), "reshape",
-                            std::move(graph), args, &result);
+  Status status = compiler.CompileGraph(XlaCompiler::CompileOptions(),
+                                        "reshape", std::move(graph), args,
+                                        /*user_aliases=*/{}, &result);
   EXPECT_FALSE(status.ok());
   EXPECT_TRUE(
       absl::StrContains(status.error_message(), "depends on a parameter"))
@@ -486,7 +489,8 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     compile_options.resolve_compile_time_constants = true;
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
-                                       std::move(graph_copy), args, &result));
+                                       std::move(graph_copy), args,
+                                       /*user_aliases=*/{}, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_TRUE(result.outputs[0].is_constant);
@@ -519,7 +523,8 @@ TEST_F(XlaCompilerTest, ConstantOutputs) {
     compile_options.resolve_compile_time_constants = false;
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
-                                       std::move(graph_copy), args, &result));
+                                       std::move(graph_copy), args,
+                                       /*user_aliases=*/{}, &result));
 
     ASSERT_EQ(2, result.outputs.size());
     EXPECT_FALSE(result.outputs[0].is_constant);
@@ -605,7 +610,8 @@ TEST_F(XlaCompilerTest, ConstantOutputsOfFunctionalNode) {
   compile_options.resolve_compile_time_constants = true;
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "constants",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 
   ASSERT_EQ(2, result.outputs.size());
   EXPECT_TRUE(result.outputs[0].is_constant);
@@ -647,7 +653,8 @@ TEST_F(XlaCompilerTest, ResourceManager) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "dummy",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 
   EXPECT_EQ(1, resource->Get());
 
@@ -683,7 +690,8 @@ TEST_F(XlaCompilerTest, DeterministicCompilation) {
     XlaCompiler compiler(options);
 
     TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "dummy",
-                                       std::move(graph), args, &results[i]));
+                                       std::move(graph), args,
+                                       /*user_aliases=*/{}, &results[i]));
   }
 
   for (int64 i = 1; i < test_count; ++i) {
@@ -749,7 +757,8 @@ TEST_F(XlaCompilerTest, CanPassTensorArraysToAndFromComputation) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 
   ASSERT_EQ(1, result.resource_updates.size());
   const XlaCompiler::ResourceUpdate& update = result.resource_updates[0];
@@ -808,7 +817,8 @@ TEST_F(XlaCompilerTest, UnwrittenTensorArrayGradientsAreNotComputationOutputs) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 
   EXPECT_EQ(0, result.resource_updates.size());
 }
@@ -840,7 +850,8 @@ TEST_F(XlaCompilerTest, NewTensorArrayGradientsAreComputationOutputs) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 
   EXPECT_EQ(1, result.resource_updates.size());
 }
@@ -915,7 +926,8 @@ TEST_F(XlaCompilerTest, FunctionCallWithConstants) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 }
 
 // Tests CompileFunction with a local function lookup failing, fails with
@@ -998,7 +1010,8 @@ TEST_F(XlaCompilerTest, Variables) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
   RunAndCheckVariablesComputation(client_, result);
 }
 
@@ -1033,7 +1046,7 @@ TEST_F(XlaCompilerTest, ResultLayoutSingle) {
   auto compile_options = XlaCompiler::CompileOptions();
   compile_options.always_return_tuple = false;
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "id", std::move(graph),
-                                     args, &result));
+                                     args, /*user_aliases=*/{}, &result));
   EXPECT_TRUE(xla::ShapeUtil::Equal(
       result.xla_output_shape,
       xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1})));
@@ -1069,7 +1082,8 @@ TEST_F(XlaCompilerTest, ResultLayoutMultiple) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "id",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
   xla::Shape result_shape =
       xla::ShapeUtil::MakeShapeWithLayout(xla::S32, {2, 3}, {0, 1});
 
@@ -1099,7 +1113,8 @@ TEST_F(XlaCompilerTest, ReturnResourceHandleOnly) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
 
   // Tests that the generated computation works.
   xla::Literal param1_literal = xla::LiteralUtil::CreateR1<int32>({-3, 101});
@@ -1149,7 +1164,8 @@ TEST_F(XlaCompilerTest, ReturnResourceHandle) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "add",
-                                     std::move(graph), args, &result));
+                                     std::move(graph), args,
+                                     /*user_aliases=*/{}, &result));
   RunAndCheckVariablesComputation(client_, result);
 }
 
@@ -1200,7 +1216,7 @@ TEST_F(XlaCompilerTest, VariableRepresentationShapeFunction) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
-                                     args, &result));
+                                     args, /*user_aliases=*/{}, &result));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::ProgramShape> program_shape,
                           client_->GetComputationShape(*result.computation));
@@ -1270,7 +1286,7 @@ TEST_F(XlaCompilerTest, ArgRetvalShapeRepresentationFunction) {
 
   XlaCompiler::CompilationResult result;
   TF_ASSERT_OK(compiler.CompileGraph(compile_options, "add", std::move(graph),
-                                     args, &result));
+                                     args, /*user_aliases=*/{}, &result));
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<xla::ProgramShape> program_shape,
                           client_->GetComputationShape(*result.computation));
@@ -1351,7 +1367,8 @@ TEST_F(XlaCompilerTest, FunctionWithInvalidOp) {
   std::vector<XlaCompiler::Argument> args;
   XlaCompiler::CompilationResult result;
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "fill",
-                                 std::move(graph), args, &result);
+                                 std::move(graph), args, /*user_aliases=*/{},
+                                 &result);
   ASSERT_FALSE(status.ok());
   EXPECT_TRUE(absl::StrContains(status.error_message(), "InvalidOp"))
       << status.error_message();
@@ -1376,7 +1393,8 @@ TEST_F(XlaCompilerTest, NodeWithInvalidDataType) {
   XlaCompiler::CompilationResult result;
   XlaCompiler compiler(DefaultOptions());
   status = compiler.CompileGraph(XlaCompiler::CompileOptions(), "invalid_type",
-                                 std::move(graph), args, &result);
+                                 std::move(graph), args, /*user_aliases=*/{},
+                                 &result);
   ASSERT_FALSE(status.ok());
   EXPECT_TRUE(absl::StrContains(status.error_message(),
                                 "is not in the list of allowed values"))
@@ -1402,7 +1420,8 @@ TEST_F(XlaCompilerTest, SingleOpWithoutInputs) {
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(XlaCompiler::CompileOptions(), "NoOp",
-                                       std::move(graph_copy), args, &result));
+                                       std::move(graph_copy), args,
+                                       /*user_aliases=*/{}, &result));
   }
 }
 
@@ -1451,7 +1470,7 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
-                                       args, &result));
+                                       args, /*user_aliases=*/{}, &result));
     EXPECT_EQ(result.xla_input_shapes.size(), 1);
     EXPECT_TRUE(result.xla_output_shape.IsTuple());
     EXPECT_EQ(xla::ShapeUtil::TupleElementCount(result.xla_output_shape), 1);
@@ -1469,7 +1488,7 @@ TEST_F(XlaCompilerTest, TokenInputAndOutput) {
     CopyGraph(*graph, graph_copy.get());
     XlaCompiler::CompilationResult result;
     TF_ASSERT_OK(compiler.CompileGraph(options, "NoOp", std::move(graph_copy),
-                                       args, &result));
+                                       args, /*user_aliases=*/{}, &result));
     EXPECT_EQ(result.xla_input_shapes.size(), 2);
     EXPECT_TRUE(result.xla_input_shapes[1].IsToken());
     EXPECT_TRUE(result.xla_output_shape.IsTuple());

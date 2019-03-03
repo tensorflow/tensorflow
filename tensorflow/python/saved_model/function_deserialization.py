@@ -24,6 +24,7 @@ import re
 from tensorflow.core.framework import function_pb2
 from tensorflow.python.eager import def_function
 from tensorflow.python.eager import function as function_lib
+from tensorflow.python.framework import func_graph as func_graph_lib
 from tensorflow.python.framework import function_def_to_graph as function_def_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_spec
@@ -40,27 +41,67 @@ def _is_tensor(t):
   return isinstance(t, (ops.Tensor, resource_variable_ops.ResourceVariable))
 
 
-def _inputs_compatible(args, stored_inputs):
-  """Checks whether function arguments are compatible with parameters."""
-  if len(args) != len(stored_inputs):
+def _call_concrete_function(function, inputs):
+  """Calls a restored Function with structured inputs.
+
+  This differs from `function.__call__` in that inputs and outputs are
+  structured and that it casts inputs to tensors if needed.
+
+  Note: this does not checks that non-tensor inputs match. That should be
+  done before via `_concrete_function_callable_with`.
+
+  Args:
+    function: ConcreteFunction to call.
+    inputs: Structured inputs compatible with
+        `function.graph.structured_input_signature`.
+
+  Returns:
+    The structured function output.
+  """
+  expected_structure = function.graph.structured_input_signature
+  flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
+  tensor_inputs = []
+  for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
+    if isinstance(expected, tensor_spec.TensorSpec):
+      tensor_inputs.append(
+          ops.convert_to_tensor(arg, dtype_hint=expected.dtype))
+  result = function._call_flat(tensor_inputs)  # pylint: disable=protected-access
+  if isinstance(result, ops.Operation):
+    return None
+  return result
+
+
+def _try_convert_to_tensor_spec(arg, dtype_hint):
+  """Returns None or TensorSpec obtained if `arg` is converted to tensor."""
+  try:
+    # Note: try conversion in a FuncGraph to avoid poluting current context.
+    with func_graph_lib.FuncGraph(name="guess_conversion").as_default():
+      result = ops.convert_to_tensor(arg, dtype_hint=dtype_hint)
+      return tensor_spec.TensorSpec(shape=result.shape, dtype=result.dtype)
+  except (TypeError, ValueError):
+    return None
+
+
+def _concrete_function_callable_with(function, inputs, allow_conversion):
+  """Returns whether concrete `function` can be called with `inputs`."""
+  expected_structure = function.graph.structured_input_signature
+  try:
+    flatten_inputs = nest.flatten_up_to(expected_structure, inputs)
+  except (TypeError, ValueError):
     return False
-
-  for arg, stored_input in zip(args, stored_inputs):
-    if not function_lib.is_same_structure(arg, stored_input):
-      return False
-
-    flattened_arg = nest.flatten(arg)
-    flattened_stored_input = nest.flatten(stored_input)
-
-    for a, b in zip(flattened_arg, flattened_stored_input):
-      if _is_tensor(a):
-        if not isinstance(b, tensor_spec.TensorSpec):
-          return False
-        if a.dtype != b.dtype or not b.shape.is_compatible_with(a.shape):
-          return False
-      else:
-        if a != b:
-          return False
+  for arg, expected in zip(flatten_inputs, nest.flatten(expected_structure)):
+    if isinstance(expected, tensor_spec.TensorSpec):
+      if allow_conversion:
+        arg = _try_convert_to_tensor_spec(arg, dtype_hint=expected.dtype)
+      if not _is_tensor(arg) and not isinstance(arg, tensor_spec.TensorSpec):
+        return False
+      if arg.dtype != expected.dtype:
+        return False
+      if not expected.shape.is_compatible_with(arg.shape):
+        return False
+    else:
+      if arg != expected:
+        return False
   return True
 
 
@@ -156,27 +197,25 @@ def recreate_function(saved_function, concrete_functions):
           "Cannot canonicalize input args %r and kwargs %r. Error: %r." %
           (args, kwargs, e))
 
-    debug_considered_signatures = []
-    for concrete_function_name in saved_function.concrete_functions:
-      function_obj = concrete_functions[concrete_function_name]
-      canonicalized_original_inputs = (
-          function_obj.graph.structured_input_signature)
-      debug_considered_signatures.append(canonicalized_original_inputs)
+    # First try to find a concrete function that can be called without input
+    # conversions. This allows one to pick a more specific trace in case there
+    # was also a more expensive one that supported tensors.
+    for allow_conversion in [False, True]:
+      for function_name in saved_function.concrete_functions:
+        function = concrete_functions[function_name]
+        if _concrete_function_callable_with(function,
+                                            canonicalized_inputs,
+                                            allow_conversion):
+          return _call_concrete_function(function, canonicalized_inputs)
 
-      if _inputs_compatible(canonicalized_inputs,
-                            canonicalized_original_inputs):
-        flattened_inputs = nest.flatten(canonicalized_inputs)
-        filtered_inputs = [t for t in flattened_inputs if _is_tensor(t)]
-
-        result = function_obj._call_flat(filtered_inputs)  # pylint: disable=protected-access
-        if isinstance(result, ops.Operation):
-          return None
-        return result
-
-    raise AssertionError(
+    available_signatures = [
+        concrete_functions[function_name].graph.structured_input_signature
+        for function_name in saved_function.concrete_functions
+    ]
+    raise ValueError(
         "Could not find matching function to call for canonicalized inputs %r. "
         "Only existing signatures are %r."
-        % (canonicalized_inputs, debug_considered_signatures))
+        % (canonicalized_inputs, available_signatures))
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:

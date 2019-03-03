@@ -10421,22 +10421,61 @@ op {
   name: "EnqueueTPUEmbeddingSparseBatch"
   input_arg {
     name: "sample_indices"
-    type: DT_INT32
+    type_attr: "T1"
     number_attr: "N"
   }
   input_arg {
     name: "embedding_indices"
-    type: DT_INT32
+    type_attr: "T2"
     number_attr: "N"
   }
   input_arg {
     name: "aggregation_weights"
-    type: DT_FLOAT
+    type_attr: "T3"
     number_attr: "N"
   }
   input_arg {
     name: "mode_override"
     type: DT_STRING
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T3"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
   attr {
     name: "N"
@@ -10465,22 +10504,61 @@ op {
   name: "EnqueueTPUEmbeddingSparseTensorBatch"
   input_arg {
     name: "sample_indices"
-    type: DT_INT32
+    type_attr: "T1"
     number_attr: "N"
   }
   input_arg {
     name: "embedding_indices"
-    type: DT_INT32
+    type_attr: "T2"
     number_attr: "N"
   }
   input_arg {
     name: "aggregation_weights"
-    type: DT_FLOAT
+    type_attr: "T3"
     number_attr: "N"
   }
   input_arg {
     name: "mode_override"
     type: DT_STRING
+  }
+  attr {
+    name: "T1"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T2"
+    type: "type"
+    default_value {
+      type: DT_INT32
+    }
+    allowed_values {
+      list {
+        type: DT_INT32
+        type: DT_INT64
+      }
+    }
+  }
+  attr {
+    name: "T3"
+    type: "type"
+    default_value {
+      type: DT_FLOAT
+    }
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
   }
   attr {
     name: "N"
@@ -19769,6 +19847,32 @@ op {
   is_commutative: true
 }
 op {
+  name: "MulNoNan"
+  input_arg {
+    name: "x"
+    type_attr: "T"
+  }
+  input_arg {
+    name: "y"
+    type_attr: "T"
+  }
+  output_arg {
+    name: "z"
+    type_attr: "T"
+  }
+  attr {
+    name: "T"
+    type: "type"
+    allowed_values {
+      list {
+        type: DT_FLOAT
+        type: DT_DOUBLE
+      }
+    }
+  }
+  is_commutative: true
+}
+op {
   name: "MultiDeviceIterator"
   output_arg {
     name: "handle"
@@ -23886,6 +23990,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DAndReluAndRequantize"
@@ -23998,6 +24110,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -24116,6 +24236,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBias"
@@ -24227,6 +24355,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBiasAndRelu"
@@ -24335,6 +24471,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -24467,6 +24611,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBiasAndRequantize"
@@ -24593,6 +24745,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -24750,6 +24910,14 @@ op {
       }
     }
   }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
+      }
+    }
+  }
 }
 op {
   name: "QuantizedConv2DWithBiasSumAndRelu"
@@ -24862,6 +25030,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -25016,6 +25192,14 @@ op {
         i: 1
         i: 1
         i: 1
+      }
+    }
+  }
+  attr {
+    name: "padding_list"
+    type: "list(int)"
+    default_value {
+      list {
       }
     }
   }
@@ -25609,6 +25793,13 @@ op {
   }
   attr {
     name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
     type: "bool"
     default_value {
       b: false
@@ -28055,6 +28246,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ResizeBicubicGrad"
@@ -28082,6 +28280,13 @@ op {
   }
   attr {
     name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
     type: "bool"
     default_value {
       b: false
@@ -28127,6 +28332,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ResizeBilinearGrad"
@@ -28156,6 +28368,13 @@ op {
   }
   attr {
     name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
     type: "bool"
     default_value {
       b: false
@@ -28200,6 +28419,13 @@ op {
       b: false
     }
   }
+  attr {
+    name: "half_pixel_centers"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
 }
 op {
   name: "ResizeNearestNeighborGrad"
@@ -28231,6 +28457,13 @@ op {
   }
   attr {
     name: "align_corners"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
+    name: "half_pixel_centers"
     type: "bool"
     default_value {
       b: false
@@ -32265,6 +32498,13 @@ op {
       s: "lanczos3"
     }
   }
+  attr {
+    name: "antialias"
+    type: "bool"
+    default_value {
+      b: true
+    }
+  }
 }
 op {
   name: "ScaleAndTranslateGrad"
@@ -32302,6 +32542,13 @@ op {
     type: "string"
     default_value {
       s: "lanczos3"
+    }
+  }
+  attr {
+    name: "antialias"
+    type: "bool"
+    default_value {
+      b: true
     }
   }
 }

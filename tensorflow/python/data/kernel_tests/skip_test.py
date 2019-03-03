@@ -33,8 +33,9 @@ class SkipTest(test_base.DatasetTestBase):
 
     def do_test(count):
       dataset = dataset_ops.Dataset.from_tensor_slices(components).skip(count)
-      self.assertEqual([c.shape[1:] for c in components],
-                       [shape for shape in dataset.output_shapes])
+      self.assertEqual(
+          [c.shape[1:] for c in components],
+          [shape for shape in dataset_ops.get_legacy_output_shapes(dataset)])
       start_range = min(count, 10) if count != -1 else 10
       self.assertDatasetProduces(
           dataset,

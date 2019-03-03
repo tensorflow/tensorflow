@@ -329,10 +329,10 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
   template <
       typename NativeT,
       typename std::enable_if<!is_complex_t<NativeT>::value>::type* = nullptr>
-  Status HandleLog1p(HloInstruction* expm1) {
+  Status HandleLog1p(HloInstruction* log1p) {
     TF_ASSIGN_OR_RETURN(
-        parent_->evaluated_[expm1],
-        ElementWiseUnaryOp(expm1, [](ElementwiseT elem_operand) {
+        parent_->evaluated_[log1p],
+        ElementWiseUnaryOp(log1p, [](ElementwiseT elem_operand) {
           return std::log1p(elem_operand);
         }));
     return Status::OK();
@@ -661,6 +661,23 @@ class HloEvaluatorTypedVisitor : public DfsHloVisitorWithDefault {
                          ? static_cast<ElementwiseT>(1)
                          : std::pow(lhs_el, rhs_el);
             }));
+    return Status::OK();
+  }
+
+  Status HandleSqrt(HloInstruction* sqrt) override {
+    TF_ASSIGN_OR_RETURN(parent_->evaluated_[sqrt],
+                        ElementWiseUnaryOp(sqrt, [](ElementwiseT elem_operand) {
+                          return std::sqrt(elem_operand);
+                        }));
+    return Status::OK();
+  }
+
+  Status HandleRsqrt(HloInstruction* rsqrt) override {
+    TF_ASSIGN_OR_RETURN(
+        parent_->evaluated_[rsqrt],
+        ElementWiseUnaryOp(rsqrt, [](ElementwiseT elem_operand) {
+          return static_cast<ElementwiseT>(1) / std::sqrt(elem_operand);
+        }));
     return Status::OK();
   }
 

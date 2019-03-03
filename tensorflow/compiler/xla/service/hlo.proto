@@ -29,12 +29,13 @@ limitations under the License.
 syntax = "proto3";
 
 package xla;
+
 import "tensorflow/compiler/xla/xla_data.proto";
 
 option cc_enable_arenas = true;
 
 // Serialization of HloInstruction.
-// Next ID: 62
+// Next ID: 63
 message HloInstructionProto {
   reserved 10;
   reserved "parameter_name";
@@ -199,6 +200,9 @@ message HloInstructionProto {
 
   // Options for TriangularSolve
   xla.TriangularSolveOptions triangular_solve_options = 59;
+
+  // Options for Cholesky
+  xla.CholeskyOptions cholesky_options = 62;
 
   // Describes how parameters behave with regards to replicas.
   xla.ParameterReplication parameter_replication = 61;

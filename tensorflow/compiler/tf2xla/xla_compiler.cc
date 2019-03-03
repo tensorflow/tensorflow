@@ -603,7 +603,7 @@ Status XlaCompiler::CompileFunction(
 
   VLOG(1) << "====================================================";
   TF_RETURN_IF_ERROR(
-      CompileGraph(options, function_id, std::move(graph), args, result));
+      CompileGraph(options, function_id, std::move(graph), args, {}, result));
   VLOG(1) << "====================================================";
 
   cache_[{function_id, arg_vector}] = *result;
@@ -936,7 +936,8 @@ Status XlaCompiler::CompileSingleOp(
   }
   FixupSourceAndSinkEdges(graph.get());
 
-  return CompileGraph(options, node_def.name(), std::move(graph), args, result);
+  return CompileGraph(options, node_def.name(), std::move(graph), args, {},
+                      result);
 }
 
 namespace {
@@ -1019,11 +1020,11 @@ void ConvertConstantsToExpressions(xla::XlaBuilder* builder,
 
 }  // namespace
 
-Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
-                                 string const& name,
-                                 std::unique_ptr<Graph> graph,
-                                 absl::Span<const XlaCompiler::Argument> args,
-                                 CompilationResult* result) {
+Status XlaCompiler::CompileGraph(
+    const XlaCompiler::CompileOptions& options, string const& name,
+    std::unique_ptr<Graph> graph, absl::Span<const XlaCompiler::Argument> args,
+    absl::Span<const xla::XlaBuilder::InputOutputAlias> user_aliases,
+    CompilationResult* result) {
   VLOG(1) << "Executing graph symbolically to populate XlaBuilder.";
 
   TF_RETURN_IF_ERROR(PropagateConstIntoFunctionalNodes(
@@ -1070,6 +1071,12 @@ Status XlaCompiler::CompileGraph(const XlaCompiler::CompileOptions& options,
       &arg_expressions, &result->input_mapping, &result->xla_input_shapes,
       options.is_entry_computation));
   context->set_args(std::move(arg_expressions));
+
+  // Propagate any aliases given to us by the user.
+  for (const xla::XlaBuilder::InputOutputAlias& alias : user_aliases) {
+    builder.SetUpAlias(alias.output_index, alias.param_number,
+                       alias.param_index);
+  }
 
   PushNodeTokenMapping();
   // Use std::set instead of std::unordered_set to ensure determinism.

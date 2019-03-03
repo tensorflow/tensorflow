@@ -1,6 +1,7 @@
 path: "tensorflow.keras.layers.LSTM"
 tf_class {
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.UnifiedLSTM\'>"
+  is_instance: "<class \'tensorflow.python.keras.layers.recurrent.DropoutRNNCellMixin\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.LSTM\'>"
   is_instance: "<class \'tensorflow.python.keras.layers.recurrent.RNN\'>"
   is_instance: "<class \'tensorflow.python.keras.engine.base_layer.Layer\'>"
@@ -215,6 +216,10 @@ tf_class {
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_dropout_mask_for_cell"
+    argspec: "args=[\'self\', \'inputs\', \'training\', \'count\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
     name: "get_initial_state"
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
@@ -247,11 +252,23 @@ tf_class {
     argspec: "args=[\'self\', \'node_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "get_recurrent_dropout_mask_for_cell"
+    argspec: "args=[\'self\', \'inputs\', \'training\', \'count\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
     name: "get_updates_for"
     argspec: "args=[\'self\', \'inputs\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "get_weights"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_dropout_mask"
+    argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "reset_recurrent_dropout_mask"
     argspec: "args=[\'self\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {

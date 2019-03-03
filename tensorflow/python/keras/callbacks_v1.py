@@ -24,6 +24,7 @@ import os
 import numpy as np
 
 from tensorflow.python.eager import context
+from tensorflow.python.eager import profiler
 from tensorflow.python.framework import dtypes
 from tensorflow.python.keras import backend as K
 from tensorflow.python.keras import callbacks
@@ -40,20 +41,21 @@ from tensorflow.python.util.tf_export import keras_export
 @keras_export(v1=['keras.callbacks.TensorBoard'])
 class TensorBoard(callbacks.Callback):
   # pylint: disable=line-too-long
-  """TensorBoard basic visualizations.
-
-  This callback writes a log for TensorBoard, which allows
-  you to visualize dynamic graphs of your training and test
-  metrics, as well as activation histograms for the different
-  layers in your model.
+  """Enable visualizations for TensorBoard.
 
   TensorBoard is a visualization tool provided with TensorFlow.
+
+  This callback logs events for TensorBoard, including:
+  * Metrics summary plots
+  * Training graph visualization
+  * Activation histograms
+  * Sampled profiling
 
   If you have installed TensorFlow with pip, you should be able
   to launch TensorBoard from the command line:
 
   ```sh
-  tensorboard --logdir=/full_path_to_your_logs
+  tensorboard --logdir=path_to_your_logs
   ```
 
   You can find more information about TensorBoard
@@ -96,6 +98,9 @@ class TensorBoard(callbacks.Callback):
         callback will write the metrics and losses to TensorBoard every 1000
         samples. Note that writing too frequently to TensorBoard can slow down
         your training.
+      profile_batch: Profile the batch to sample compute characteristics. By
+        default, it will profile the second batch. Set profile_batch=0 to
+        disable profiling.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -120,7 +125,8 @@ class TensorBoard(callbacks.Callback):
                embeddings_layer_names=None,
                embeddings_metadata=None,
                embeddings_data=None,
-               update_freq='epoch'):
+               update_freq='epoch',
+               profile_batch=2):
     super(TensorBoard, self).__init__()
     self.log_dir = log_dir
     self.histogram_freq = histogram_freq
@@ -147,6 +153,10 @@ class TensorBoard(callbacks.Callback):
       self.update_freq = update_freq
     self._samples_seen = 0
     self._samples_seen_at_last_write = 0
+    # TODO(fishx): Add a link to the full profiler tutorial.
+    self._profile_batch = profile_batch
+    # One profiler session is running if it is True.
+    self._is_profiling = False
 
   def _init_writer(self, model):
     """Sets file writer."""
@@ -329,7 +339,10 @@ class TensorBoard(callbacks.Callback):
     self.writer.flush()
 
   def on_batch_end(self, batch, logs=None):
-    """Writes scalar summaries for metrics on every training batch."""
+    """Writes scalar summaries for metrics on every training batch.
+
+    Performs profiling if current batch is in profiler_batches.
+    """
     # Don't output batch_size and batch number as TensorBoard summaries
     logs = logs or {}
     self._samples_seen += logs.get('size', 1)
@@ -341,6 +354,18 @@ class TensorBoard(callbacks.Callback):
       self._write_custom_summaries(self._total_batches_seen, batch_logs)
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
+    if self._is_profiling:
+      profiler.save(self.log_dir, profiler.stop())
+      self._is_profiling = False
+    elif (not self._is_profiling and
+          self._total_batches_seen == self._profile_batch - 1):
+      profiler.start()
+      self._is_profiling = True
+
+  def on_train_begin(self, logs=None):
+    if self._profile_batch == 1:
+      profiler.start()
+      self._is_profiling = True
 
   def on_epoch_begin(self, epoch, logs=None):
     """Add histogram op to Model eval_function callbacks, reset batch count."""
@@ -421,4 +446,7 @@ class TensorBoard(callbacks.Callback):
           i += self.batch_size
 
   def on_train_end(self, logs=None):
+    if self._is_profiling:
+      profiler.save(self.log_dir, profiler.stop())
+      self._is_profiling = False
     self.writer.close()

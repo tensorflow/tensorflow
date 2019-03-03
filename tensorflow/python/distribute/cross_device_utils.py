@@ -350,7 +350,7 @@ def build_collective_reduce(input_tensors,
   """
   group_size = len(input_tensors) * num_workers
   if group_size < 2:
-    raise ValueError('num_workers * len(input_tensors) must be 2 or greater')
+    return input_tensors
   devices = [t.device for t in input_tensors]
   num_devices = len(devices)
   group_key = collective_keys.get_group_key(devices)

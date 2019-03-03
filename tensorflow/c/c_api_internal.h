@@ -24,10 +24,12 @@ limitations under the License.
 #include <unordered_map>
 #include <vector>
 
-#ifndef __ANDROID__
-#include "tensorflow/core/distributed_runtime/server_lib.h"
+// Required for IS_MOBILE_PLATFORM
+#include "tensorflow/core/platform/platform.h"  // NO_LINT
+
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/framework/op_gen_lib.h"
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 #include "tensorflow/core/common_runtime/shape_refiner.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_shape.h"
@@ -42,6 +44,7 @@ limitations under the License.
 namespace tensorflow {
 class Device;
 class DeviceMgr;
+class ServerInterface;
 }  // namespace tensorflow
 
 // Internal structures used by the C API. These are likely to change and should
@@ -167,27 +170,27 @@ struct TF_Function {
 struct TF_ApiDefMap {
   explicit TF_ApiDefMap(const tensorflow::OpList& op_list)
       :
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
         api_def_map(op_list),
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
         update_docs_called(false) {
   }
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
   tensorflow::ApiDefMap api_def_map GUARDED_BY(lock);
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
   bool update_docs_called GUARDED_BY(lock);
   tensorflow::mutex lock;
 };
 
-#ifndef __ANDROID__
+#if !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 struct TF_Server {
   TF_Server(std::unique_ptr<tensorflow::ServerInterface> server);
 
   const tensorflow::string target;
   std::unique_ptr<tensorflow::ServerInterface> server;
 };
-#endif
+#endif  // !defined(IS_MOBILE_PLATFORM) && !defined(IS_SLIM_BUILD)
 
 namespace tensorflow {
 

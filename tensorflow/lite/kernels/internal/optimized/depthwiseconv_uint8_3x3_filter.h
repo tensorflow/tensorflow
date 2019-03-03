@@ -27,6 +27,10 @@ namespace depthwise_conv {
 
 constexpr int kDepthwiseConvScratchWorkspaceSize = 10 * 10 * 64;
 constexpr int kDepthwiseConvAdjustedBiasLimit = 256;
+// In cases such as depth multiplication, we want to be able to load data from
+// the workspace that is beyond the valid range. Macro-block sizes are adjusted
+// to allow for this.
+constexpr int kWorkspaceExtension = 16;
 
 // See CategorizeDotProductKernel for definitive taxonomy.
 enum class DotProduct3x3KernelType {

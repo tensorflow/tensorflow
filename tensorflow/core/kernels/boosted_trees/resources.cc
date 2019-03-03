@@ -21,10 +21,6 @@ limitations under the License.
 
 namespace tensorflow {
 
-namespace {
-constexpr float kLayerByLayerTreeWeight = 1.0;
-}  // namespace
-
 // Constructor.
 BoostedTreesEnsembleResource::BoostedTreesEnsembleResource()
     : tree_ensemble_(

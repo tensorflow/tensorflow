@@ -21,9 +21,11 @@ from __future__ import print_function
 import os
 import numpy as np
 
+from tensorflow.python.eager import context
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_array_ops
@@ -743,7 +745,7 @@ class PoolingTest(test.TestCase):
     if test.is_gpu_available():
       with self.session(use_gpu=True):
         t = variables.Variable(np.ones([1, 2, 2, 4]))
-        variables.global_variables_initializer().run()
+        self.evaluate(variables.global_variables_initializer())
         with self.assertRaisesOpError("for CPU devices"):
           nn_ops.max_pool(
               t, ksize=[1, 1, 1, 2], strides=[1, 1, 1, 2],
@@ -800,7 +802,12 @@ class PoolingTest(test.TestCase):
       # Generate numbers in a narrow range, so that there are many duplicates
       # in the input.
       tensor_input = np.random.random_integers(0, 3, input_shape).astype(dtype)
-      with self.cached_session(use_gpu=True):
+      def get_device_scope():
+        if context.executing_eagerly():
+          return ops.device("GPU:0")
+        else:
+          return self.cached_session(use_gpu=True)
+      with get_device_scope():
         t = constant_op.constant(tensor_input, shape=input_shape)
         _, argmax_op = nn_ops.max_pool_with_argmax(t, ksize, strides, padding)
         argmax = self.evaluate(argmax_op)
@@ -1219,7 +1226,7 @@ class PoolingTest(test.TestCase):
     with self.cached_session(use_gpu=use_gpu):
       input_tensor = variables.Variable(
           np.array(input_data, dtype=np.float32).reshape(input_sizes))
-      variables.global_variables_initializer().run()
+      self.evaluate(variables.global_variables_initializer())
       output_tensor = pool_func(input_tensor, [1, window_rows, window_cols, 1],
                                 [1, row_stride, col_stride, 1], padding)
       output_backprop_tensor = constant_op.constant(

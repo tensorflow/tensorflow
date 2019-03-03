@@ -170,6 +170,17 @@ class TfDecoratorTest(test.TestCase):
     self.assertEqual('Return parameters.',
                      TestDecoratedClass().return_params.__doc__)
 
+  def testTarget__get__IsProxied(self):
+    class Descr(object):
+
+      def __get__(self, instance, owner):
+        return self
+
+    class Foo(object):
+      foo = tf_decorator.TFDecorator('Descr', Descr())
+
+    self.assertIsInstance(Foo.foo, Descr)
+
 
 def test_wrapper(*args, **kwargs):
   return test_function(*args, **kwargs)

@@ -206,8 +206,8 @@ Status CondBuilder::AddOutputs() {
   return Status::OK();
 }
 
-Status InlineCallInGraph(Node* n, const FunctionLibraryDefinition& flib,
-                         Graph* g) {
+Status InlineCallInGraph(const absl::string_view branch_name, Node* n,
+                         const FunctionLibraryDefinition& flib, Graph* g) {
   const FunctionDef* fdef = flib.Find(n->type_string());
   CHECK(fdef != nullptr);
   FunctionBody* fbody;
@@ -219,7 +219,14 @@ Status InlineCallInGraph(Node* n, const FunctionLibraryDefinition& flib,
                               &fbody));
   // TODO(jpienaar): Improve this interface to make the need to delete it
   // explicit.
-  InlineFunctionBody(g->flib_def(), g, n, fbody, false);
+  Status can_inline_function_call = ValidateInlining(n, fbody);
+  if (can_inline_function_call.ok()) {
+    TF_RETURN_IF_ERROR(InlineFunctionBody(g->flib_def(), g, n, fbody, false));
+  } else {
+    VLOG(4) << "Do not inline '" << branch_name << "' branch function call: "
+            << can_inline_function_call.error_message();
+  }
+
   delete fbody;
   return Status::OK();
 }
@@ -232,8 +239,8 @@ Status CondBuilder::BuildLoweredIfOutput() {
 }
 
 Status CondBuilder::InlineCallNodes() {
-  TF_RETURN_IF_ERROR(InlineCallInGraph(then_call_node_, flib_, graph_));
-  TF_RETURN_IF_ERROR(InlineCallInGraph(else_call_node_, flib_, graph_));
+  TF_RETURN_IF_ERROR(InlineCallInGraph("then", then_call_node_, flib_, graph_));
+  TF_RETURN_IF_ERROR(InlineCallInGraph("else", else_call_node_, flib_, graph_));
   return Status::OK();
 }
 

@@ -33,7 +33,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     five = constant_op.constant(5)
     product = three * five
     self.assertAllEqual(15, product)
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(profiler.ProfilerAlreadyRunningError):
       profiler.start()
 
     profile_result = profiler.stop()
@@ -41,7 +41,7 @@ class ProfilerTest(test_util.TensorFlowTestCase):
     profile_pb.ParseFromString(profile_result)
     profile_pb_str = '%s' % profile_pb
     self.assertTrue('Mul' in profile_pb_str)
-    with self.assertRaises(AssertionError):
+    with self.assertRaises(profiler.ProfilerNotRunningError):
       profiler.stop()
 
 

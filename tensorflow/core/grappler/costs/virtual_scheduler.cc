@@ -36,12 +36,6 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 
-// Optional attribute name for Switch op as a vector of int that tells
-// which branch the Switch output is taken on every round of execution.
-// We use this side information, if provided, for scheduling ops after Switch
-// correctly (e.g., While loop).
-constexpr char kOutputSlots[] = "_output_slot_vector";
-
 Costs CombineCosts(const Costs& left, const Costs& right) {
   CHECK_NE(left.max_memory, kMemoryUnknown);
   CHECK_NE(left.max_per_op_buffers, kMemoryUnknown);

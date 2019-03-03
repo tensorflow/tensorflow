@@ -26,6 +26,7 @@ from tensorflow.python.framework import test_util as tf_test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.layers import normalization
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.platform import test
 from tensorflow.python.training import gradient_descent
 
@@ -143,6 +144,19 @@ class BatchNormalizationTest(keras_parameterized.TestCase):
     _run_batchnorm_correctness_test(
         normalization.BatchNormalization, dtype='float16', fused=False)
 
+  @tf_test_util.run_in_graph_and_eager_modes
+  def test_batchnorm_policy(self):
+    norm = keras.layers.BatchNormalization(
+        axis=-1,
+        input_shape=(4, 4, 3),
+        momentum=0.8,
+        dtype=policy.Policy('infer_float32_vars'))
+    x = np.random.normal(size=(10, 4, 4, 3)).astype('float16')
+    y = norm(x)
+    self.assertEqual(y.dtype, 'float16')
+    self.assertEqual(norm.beta.dtype.base_dtype, 'float32')
+    self.assertEqual(norm.gamma.dtype.base_dtype, 'float32')
+
 
 class BatchNormalizationV1Test(test.TestCase):
 
@@ -236,8 +250,12 @@ class BatchNormalizationV2Test(keras_parameterized.TestCase):
 
 def _run_batchnorm_correctness_test(layer, dtype='float32', fused=False):
   model = keras.models.Sequential()
-  norm = layer(input_shape=(2, 2, 2), momentum=0.8, fused=fused)
+  model.add(keras.Input(shape=(2, 2, 2), dtype=dtype))
+  norm = layer(momentum=0.8, fused=fused)
   model.add(norm)
+  if dtype == 'float16':
+    # Keras models require float32 losses.
+    model.add(keras.layers.Lambda(lambda x: keras.backend.cast(x, 'float32')))
   model.compile(loss='mse',
                 optimizer=gradient_descent.GradientDescentOptimizer(0.01),
                 run_eagerly=testing_utils.should_run_eagerly())
@@ -276,7 +294,6 @@ class NormalizationLayersGraphModeOnlyTest(test.TestCase):
 
       self.assertEqual(len(bn.updates), 4)
       self.assertEqual(len(model.updates), 2)
-      self.assertEqual(len(model.get_updates_for(x1)), 0)
       self.assertEqual(len(model.get_updates_for(x2)), 2)
 
       # Test model-level reuse

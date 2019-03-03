@@ -20,6 +20,8 @@ package(
     ],
 )
 
+# NB! Removing the cc_header_only_library import breaks the OSS build since
+# copybara injects some build rules that use it.
 load("//tensorflow:tensorflow.bzl", "cc_header_only_library")
 load("//tensorflow:tensorflow.bzl", "tf_cc_test")
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda")
@@ -264,11 +266,11 @@ cc_library(
         "//tensorflow/compiler/xla/service:device_memory_allocator",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
         "//tensorflow/core:gpu_runtime",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/base:core_headers",
         "@com_google_absl//absl/memory",
@@ -292,7 +294,6 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:variable_ops",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
@@ -519,6 +520,7 @@ cc_library(
         ":union_find",
         ":xla_cluster_util",
         "//tensorflow/cc:cc_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/cc:scope_internal",
         "//tensorflow/compiler/jit/graphcycles",
@@ -535,11 +537,11 @@ cc_library(
         "//tensorflow/core:core_cpu",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core:graph",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:bounds_check",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -557,10 +559,14 @@ cc_library(
     deps = [
         ":resource_operation_safety_analysis",
         "//tensorflow/compiler/jit/graphcycles",
+        "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:framework",
+        "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core:graph",
         "//tensorflow/core:protos_all_cc",
-        "//tensorflow/core/kernels:bounds_check",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:optional",
     ],
@@ -601,11 +607,25 @@ tf_cc_test(
     ],
 )
 
+cc_library(
+    name = "compilation_passes_test_main",
+    testonly = True,
+    srcs = ["compilation_passes_test_main.cc"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":flags",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "@com_google_absl//absl/strings",
+    ],
+)
+
 tf_cc_test(
     name = "compilation_passes_test",
     size = "small",
     srcs = [
         "build_xla_ops_pass_test.cc",
+        "compilation_passes_test_main.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",
         "extract_outside_compilation_pass_test.cc",
@@ -616,7 +636,9 @@ tf_cc_test(
     deps = [
         ":common",
         ":compilation_passes",
+        ":compilation_passes_test_main",
         ":encapsulate_util",
+        ":flags",
         ":node_matchers",
         ":xla_cluster_util",
         ":xla_cpu_device",
@@ -645,7 +667,6 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:session_options",
         "//tensorflow/core:test",
-        "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/memory",
@@ -676,6 +697,8 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core:testlib",
+        "@com_google_absl//absl/algorithm:container",
+        "@com_google_absl//absl/strings",
     ],
 )
 

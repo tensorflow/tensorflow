@@ -398,7 +398,7 @@ def is_tpu_strategy(strategy):
 
 def is_dataset_shape_fully_defined(dataset):
   """Returns whether a dataset contains a final partial batch."""
-  shapes = nest.flatten(dataset.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(dataset))
   unknown_shapes = [s for s in shapes if not s.is_fully_defined()]
   return not unknown_shapes
 
@@ -454,10 +454,13 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
       global_batch_size = batch_size
       if use_per_replica_batch:
         global_batch_size *= distribution_strategy.num_replicas_in_sync
-    if not allow_partial_batch and num_samples % global_batch_size:
-      raise ValueError('The number of samples %s is not divisible by '
-                       'batch size %s.' % (num_samples, global_batch_size))
-    steps = num_samples // global_batch_size
+    if allow_partial_batch:
+      steps = np.ceil(num_samples / global_batch_size).astype(int)
+    else:
+      if num_samples % global_batch_size:
+        raise ValueError('The number of samples %s is not divisible by '
+                         'batch size %s.' % (num_samples, global_batch_size))
+      steps = num_samples // global_batch_size
   else:
     if batch_size is None:
       # We calculate the batch size based on the number of steps specified
@@ -498,7 +501,7 @@ def get_input_params(distribution_strategy, first_x_value, steps, batch_size,
 
 
 def get_batch_dimension(iterator):
-  shapes = nest.flatten(iterator.output_shapes)
+  shapes = nest.flatten(dataset_ops.get_legacy_output_shapes(iterator))
   # Take the batch size from the first element, as it should be the same for
   # all.
   dims = shapes[0].dims
@@ -905,7 +908,7 @@ def distributed_scope(strategy, learning_phase):
     yield
 
 
-def filter_callbacks(callbacks_list):
+def filter_distributed_callbacks(callbacks_list):
   """Filter Callbacks based on the worker context when running multi-worker.
 
   Arguments:
@@ -914,7 +917,23 @@ def filter_callbacks(callbacks_list):
   Returns:
     The list of `Callback` instances that should be run on this worker.
   """
+
+  if not K.in_multi_worker_mode():
+    raise ValueError(
+        'filter_distributed_callbacks() should only be called when Keras '
+        'is in multi worker mode.')
+
   worker_context = dc_context.get_current_worker_context()
+  callbacks_list = callbacks_list or []
+  if not [
+      c for c in callbacks_list if isinstance(c, callbacks.ModelCheckpoint)
+  ]:
+    # TODO(rchao): Consider providing a ModelCheckpoint here if the user
+    # fails to.
+    logging.warning('ModelCheckpoint callback is not provided. '
+                    'Workers will need to restart training if any fails.')
+  # TODO(rchao): Add similar warning for restoring callback (to be designed).
+
   if callbacks_list is None or worker_context.is_chief:
     return callbacks_list
 

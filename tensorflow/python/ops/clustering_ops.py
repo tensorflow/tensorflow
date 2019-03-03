@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import random_seed as random_seed_ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
@@ -143,7 +144,7 @@ class KMeans(object):
     self._distance_metric = distance_metric
     self._use_mini_batch = use_mini_batch
     self._mini_batch_steps_per_iteration = int(mini_batch_steps_per_iteration)
-    self._random_seed = random_seed
+    self._seed = random_seed_ops.get_seed(random_seed)[0]
     self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
     self._kmc2_chain_length = kmc2_chain_length
 
@@ -287,29 +288,34 @@ class KMeans(object):
     """
     init_value = array_ops.constant([], dtype=dtypes.float32)
     cluster_centers = variable_scope.variable(
-        init_value, name=CLUSTERS_VAR_NAME, validate_shape=False)
+        init_value, name=CLUSTERS_VAR_NAME, validate_shape=False,
+        use_resource=False)
     cluster_centers_initialized = variable_scope.variable(
-        False, dtype=dtypes.bool, name='initialized')
+        False, dtype=dtypes.bool, name='initialized', use_resource=False)
 
     if self._use_mini_batch and self._mini_batch_steps_per_iteration > 1:
       # Copy of cluster centers actively updated each step according to
       # mini-batch update rule.
       cluster_centers_updated = variable_scope.variable(
-          init_value, name='clusters_updated', validate_shape=False)
+          init_value, name='clusters_updated', validate_shape=False,
+          use_resource=False)
       # How many steps till we copy the updated clusters to cluster_centers.
       update_in_steps = variable_scope.variable(
           self._mini_batch_steps_per_iteration,
           dtype=dtypes.int64,
-          name='update_in_steps')
+          name='update_in_steps',
+          use_resource=False)
       # Count of points assigned to cluster_centers_updated.
       cluster_counts = variable_scope.variable(
-          array_ops.zeros([num_clusters], dtype=dtypes.int64))
+          array_ops.zeros([num_clusters], dtype=dtypes.int64),
+          use_resource=False)
     else:
       cluster_centers_updated = cluster_centers
       update_in_steps = None
       cluster_counts = (
-          variable_scope.variable(
-              array_ops.ones([num_clusters], dtype=dtypes.int64))
+          variable_scope.variable(  # pylint:disable=g-long-ternary
+              array_ops.ones([num_clusters], dtype=dtypes.int64),
+              use_resource=False)
           if self._use_mini_batch else None)
     return (cluster_centers, cluster_centers_initialized, cluster_counts,
             cluster_centers_updated, update_in_steps)
@@ -364,8 +370,8 @@ class KMeans(object):
      update_in_steps) = self._create_variables(num_clusters)
     init_op = _InitializeClustersOpFactory(
         self._inputs, num_clusters, initial_clusters, self._distance_metric,
-        self._random_seed, self._kmeans_plus_plus_num_retries,
-        self._kmc2_chain_length, cluster_centers_var, cluster_centers_updated,
+        self._seed, self._kmeans_plus_plus_num_retries, self._kmc2_chain_length,
+        cluster_centers_var, cluster_centers_updated,
         cluster_centers_initialized).op()
     cluster_centers = cluster_centers_var
 
@@ -584,7 +590,7 @@ class _InitializeClustersOpFactory(object):
     self._num_clusters = num_clusters
     self._initial_clusters = initial_clusters
     self._distance_metric = distance_metric
-    self._random_seed = random_seed
+    self._seed = random_seed
     self._kmeans_plus_plus_num_retries = kmeans_plus_plus_num_retries
     self._kmc2_chain_length = kmc2_chain_length
     self._cluster_centers = cluster_centers
@@ -601,7 +607,7 @@ class _InitializeClustersOpFactory(object):
         array_ops.reshape(self._num_remaining, [-1]),
         minval=0,
         maxval=math_ops.cast(self._num_data, dtypes.int64),
-        seed=self._random_seed,
+        seed=self._seed,
         dtype=dtypes.int64)
     return embedding_lookup(self._inputs, indices, partition_strategy='div')
 
@@ -612,8 +618,7 @@ class _InitializeClustersOpFactory(object):
     if self._distance_metric == COSINE_DISTANCE:
       inp = nn_impl.l2_normalize(inp, dim=1)
     return gen_clustering_ops.kmeans_plus_plus_initialization(
-        inp,
-        math_ops.to_int64(self._num_remaining), self._random_seed,
+        inp, math_ops.to_int64(self._num_remaining), self._seed,
         self._kmeans_plus_plus_num_retries)
 
   def _kmc2_multiple_centers(self):
@@ -670,7 +675,7 @@ class _InitializeClustersOpFactory(object):
             subset, self._cluster_centers, 1)
         # Sample index of new center using k-MC2 Markov chain.
         new_center_index = gen_clustering_ops.kmc2_chain_initialization(
-            array_ops.squeeze(distances), self._random_seed)
+            array_ops.squeeze(distances), self._seed)
         # Extract actual new center.
         newly_sampled_center = array_ops.reshape(subset[new_center_index],
                                                  [1, -1])

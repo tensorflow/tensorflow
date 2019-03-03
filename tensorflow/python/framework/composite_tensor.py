@@ -23,6 +23,7 @@ import abc
 import six
 
 from tensorflow.python import pywrap_tensorflow
+from tensorflow.python.util import nest
 
 
 @six.add_metaclass(abc.ABCMeta)
@@ -90,6 +91,22 @@ class CompositeTensor(object):
   def _is_graph_tensor(self):
     """Returns True if this tensor's components belong to a TF graph."""
     raise NotImplementedError("CompositeTensor._is_symbolic_tensor")
+
+  def consumers(self):
+    """Returns a list of `Operation`s that consume this `CompositeTensor`.
+
+    Returns:
+      A list of `Operation`s.
+
+    Raises:
+      RuntimeError: If this method is called while executing eagerly.
+    """
+    consumers = nest.flatten([
+        component.consumers()
+        for component in self._to_components()
+        if getattr(component, "graph", None) is not None
+    ])
+    return list(set(consumers))
 
 
 pywrap_tensorflow.RegisterType("CompositeTensor", CompositeTensor)

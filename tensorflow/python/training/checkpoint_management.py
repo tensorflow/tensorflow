@@ -124,8 +124,8 @@ def generate_checkpoint_state_proto(save_dir,
 
 @deprecation.deprecated(
     date=None,
-    instructions=("Use tf.train.CheckpointManager to manage checkpoints rather "
-                  "than manually editing the Checkpoint proto."))
+    instructions=("Use `tf.train.CheckpointManager` to manage checkpoints "
+                  "rather than manually editing the Checkpoint proto."))
 @tf_export(v1=["train.update_checkpoint_state"])
 def update_checkpoint_state(save_dir,
                             model_checkpoint_path,

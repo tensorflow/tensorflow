@@ -42,9 +42,10 @@ bool CanBeLoopFused(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kTranspose;
 }
 
-bool IsMatrixVectorDot(const HloInstruction* hlo) {
+bool IsNonComplexMatrixVectorDot(const HloInstruction* hlo) {
   const Shape& hlo_shape = hlo->shape();
-  return hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
+  return !ShapeUtil::ElementIsComplex(hlo_shape) &&
+         hlo->opcode() == HloOpcode::kDot && hlo_shape.dimensions_size() == 2 &&
          (hlo_shape.dimensions(0) == 1 || hlo_shape.dimensions(1) == 1);
 }
 
@@ -55,7 +56,8 @@ bool HasExactlyOneUse(const HloInstruction& hlo_instr) {
 
 bool CanBeOutputFused(const HloInstruction* producer,
                       const HloInstruction* consumer) {
-  return consumer->opcode() == HloOpcode::kAdd && IsMatrixVectorDot(producer) &&
+  return consumer->opcode() == HloOpcode::kAdd &&
+         IsNonComplexMatrixVectorDot(producer) &&
          HasExactlyOneUse(*producer) == 1;
 }
 
@@ -96,12 +98,16 @@ bool CpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // TODO(b/28644064): see if the "producer->operand_count() == 0" check is
-  // necessary.
-  if (producer->operand_count() == 0 ||
-      !InstructionFusion::ShouldFuse(consumer, operand_index)) {
-    VLOG(2)
-        << "Not fusing: producer has no operands, or !ShouldFuse(consumer).";
+  if (!InstructionFusion::ShouldFuse(consumer, operand_index)) {
+    VLOG(2) << "Not fusing: !ShouldFuse(consumer).";
+    return false;
+  }
+
+  // Fuse constants in general but avoid creating 2-instruction fusions with
+  // just a constant and another node.
+  if (producer->opcode() == HloOpcode::kConstant &&
+      consumer->opcode() != HloOpcode::kFusion) {
+    VLOG(2) << "Not fusing: insufficient non-constant nodes.";
     return false;
   }
 
