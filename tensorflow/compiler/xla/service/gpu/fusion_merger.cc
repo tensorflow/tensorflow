@@ -173,6 +173,7 @@ class FusionInstructionMerger {
   int num_fail_expensive_fused_instruction_ = 0;
   int num_fail_flops_to_byte_ratio_ = 0;
   int num_fail_net_bytes_transferred_ratio_ = 0;
+  double merged_to_current_bytes_ratio = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FusionInstructionMerger);
 };
@@ -276,7 +277,7 @@ bool FusionInstructionMerger::IsProfitableToFuse(HloInstruction* fusion) {
   // overhead from a GPU kernel launch).
   const double current_bytes_transferred = GetCurrentBytesTransferred(fusion);
   const double merged_bytes_transferred = GetMergedBytesTransferred(fusion);
-  const double merged_to_current_bytes_ratio =
+  merged_to_current_bytes_ratio =
       merged_bytes_transferred / std::max(1.0, current_bytes_transferred);
   if (merged_to_current_bytes_ratio > 1.10) {
     VLOG(3) << "Not merging " << fusion->name()
