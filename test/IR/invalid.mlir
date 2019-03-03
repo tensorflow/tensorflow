@@ -928,3 +928,8 @@ func @invalid_unknown_type_dialect_name() -> !invalid.dialect<"">
 
 // expected-error @+1 {{@ identifier expected to start with letter or '_'}}
 func @$invalid_function_name()
+
+// -----
+
+// expected-error @+1 {{function arguments may only have dialect attributes}}
+func @invalid_func_arg_attr(i1 {non_dialect_attr: 10})

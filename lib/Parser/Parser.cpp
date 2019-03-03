@@ -1432,7 +1432,7 @@ ParseResult Parser::parseLocationInstance(llvm::Optional<Location> *loc) {
 ///
 ///   attribute-dict ::= `{` `}`
 ///                    | `{` attribute-entry (`,` attribute-entry)* `}`
-///   attribute-entry ::= `:`? bare-id `:` attribute-value
+///   attribute-entry ::= bare-id `:` attribute-value
 ///
 ParseResult
 Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
@@ -1440,17 +1440,11 @@ Parser::parseAttributeDict(SmallVectorImpl<NamedAttribute> &attributes) {
     return ParseFailure;
 
   auto parseElt = [&]() -> ParseResult {
-    // Check for an internal attribute.
-    bool isInternalAttr = consumeIf(Token::colon);
-
     // We allow keywords as attribute names.
     if (getToken().isNot(Token::bare_identifier, Token::inttype) &&
         !getToken().isKeyword())
       return emitError("expected attribute name");
-    Identifier nameId =
-        isInternalAttr
-            ? builder.getIdentifier(Twine(":" + getTokenSpelling()).str())
-            : builder.getIdentifier(getTokenSpelling());
+    Identifier nameId = builder.getIdentifier(getTokenSpelling());
     consumeToken();
 
     if (parseToken(Token::colon, "expected ':' in attribute list"))

@@ -1,4 +1,4 @@
-// RUN: mlir-opt -mlir-print-internal-attributes %s | FileCheck %s
+// RUN: mlir-opt %s | FileCheck %s
 
 // CHECK-DAG: #map{{[0-9]+}} = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d4, d3)
 #map0 = (d0, d1, d2, d3, d4)[s0] -> (d0, d1, d2, d4, d3)
@@ -517,8 +517,8 @@ func @floatAttrs() -> () {
 
 // CHECK-LABEL: func @externalfuncattr
 func @externalfuncattr() -> ()
-  // CHECK: attributes {a: "a\22quoted\22string", b: 4.000000e+00, c: tensor<*xf32>}
-  attributes {a: "a\"quoted\"string", b: 4.0, c: tensor<*xf32>}
+  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00, dialect.c: tensor<*xf32>}
+  attributes {dialect.a: "a\"quoted\"string", dialect.b: 4.0, dialect.c: tensor<*xf32>}
 
 // CHECK-LABEL: func @funcattrempty
 func @funcattrempty() -> ()
@@ -527,8 +527,8 @@ func @funcattrempty() -> ()
 
 // CHECK-LABEL: func @funcattr
 func @funcattr() -> ()
-  // CHECK: attributes {a: "a\22quoted\22string", b: 4.000000e+00, c: tensor<*xf32>}
-  attributes {a: "a\"quoted\"string", b: 4.0, c: tensor<*xf32>} {
+  // CHECK: attributes {dialect.a: "a\22quoted\22string", dialect.b: 4.000000e+00, dialect.c: tensor<*xf32>}
+  attributes {dialect.a: "a\"quoted\"string", dialect.b: 4.0, dialect.c: tensor<*xf32>} {
 ^bb0:
   return
 }
@@ -803,20 +803,20 @@ func @unregistered_term(%arg0 : i1) -> i1 {
   return %arg1 : i1
 }
 
-// CHECK-LABEL: func @internal_attrs
-func @internal_attrs()
-    // CHECK-NEXT: attributes  {:internal.attr: 10
-    attributes {:internal.attr: 10} {
+// CHECK-LABEL: func @dialect_attrs
+func @dialect_attrs()
+    // CHECK-NEXT: attributes  {dialect.attr: 10
+    attributes {dialect.attr: 10} {
   return
 }
 
 // CHECK-LABEL: func @_valid.function$name
 func @_valid.function$name()
 
-// CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {arg.attr: 10}, i32)
-func @external_func_arg_attrs(i32, i1 {arg.attr: 10}, i32)
+// CHECK-LABEL: func @external_func_arg_attrs(i32, i1 {dialect.attr: 10}, i32)
+func @external_func_arg_attrs(i32, i1 {dialect.attr: 10}, i32)
 
-// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {arg.attr: 10})
-func @func_arg_attrs(%arg0: i1 {arg.attr: 10}) {
+// CHECK-LABEL: func @func_arg_attrs(%arg0: i1 {dialect.attr: 10})
+func @func_arg_attrs(%arg0: i1 {dialect.attr: 10}) {
   return
 }

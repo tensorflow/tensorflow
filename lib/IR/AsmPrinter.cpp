@@ -77,12 +77,6 @@ static llvm::cl::opt<bool>
                        llvm::cl::desc("Print the generic op form"),
                        llvm::cl::init(false), llvm::cl::Hidden);
 
-static llvm::cl::opt<bool> printInternalAttributes(
-    "mlir-print-internal-attributes",
-    llvm::cl::desc(
-        "Print internal function and instruction attributes (':' prefix)."),
-    llvm::cl::init(false));
-
 namespace {
 class ModuleState {
 public:
@@ -1022,21 +1016,13 @@ void ModulePrinter::printOptionalAttrDict(ArrayRef<NamedAttribute> attrs,
   // Filter out any attributes that shouldn't be included.
   SmallVector<NamedAttribute, 8> filteredAttrs;
   for (auto attr : attrs) {
-    auto attrName = attr.first.strref();
-    // By default, never print attributes that start with a colon.  These are
-    // attributes represent location or other internal metadata.
-    if (!printInternalAttributes && attrName.startswith(":"))
-      return;
-
     // If the caller has requested that this attribute be ignored, then drop it.
-    bool ignore = false;
-    for (auto elide : elidedAttrs)
-      ignore |= attrName == elide;
+    if (llvm::any_of(elidedAttrs,
+                     [&](StringRef elided) { return attr.first.is(elided); }))
+      continue;
 
     // Otherwise add it to our filteredAttrs list.
-    if (!ignore) {
-      filteredAttrs.push_back(attr);
-    }
+    filteredAttrs.push_back(attr);
   }
 
   // If there are no attributes left to print after filtering, then we're done.

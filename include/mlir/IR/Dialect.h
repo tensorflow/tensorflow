@@ -101,6 +101,26 @@ public:
   virtual void
   getTypeAliases(SmallVectorImpl<std::pair<StringRef, Type>> &aliases) {}
 
+  /// Verify an attribute from this dialect on the given function. Returns true
+  /// if the verification failed, false otherwise.
+  virtual bool verifyFunctionAttribute(const Function *, Attribute) {
+    return false;
+  }
+
+  /// Verify an attribute from this dialect on the argument at 'argIndex' for
+  /// the given function. Returns true if the verification failed, false
+  /// otherwise.
+  virtual bool verifyFunctionArgAttribute(const Function *, unsigned argIndex,
+                                          Attribute) {
+    return false;
+  }
+
+  /// Verify an attribute from this dialect on the given instruction. Returns
+  /// true if the verification failed, false otherwise.
+  virtual bool verifyInstructionAttribute(const Instruction *, Attribute) {
+    return false;
+  }
+
   virtual ~Dialect();
 
   /// Utility function that returns if the given string is a valid dialect

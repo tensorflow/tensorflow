@@ -867,14 +867,48 @@ Syntax:
 ``` {.ebnf}
 attribute-dict ::= `{` `}`
                  | `{` attribute-entry (`,` attribute-entry)* `}`
-attribute-entry ::= `:`? bare-id `:` attribute-value
+attribute-entry ::= dialect-attribute-entry | dependent-attribute-entry
+dialect-attribute-entry ::= dialect-namespace `.` bare-id `:` attribute-value
+dependent-attribute-entry ::= dependent-attribute-name `:` attribute-value
+dependent-attribute-name ::= (letter|[_]) (letter|digit|[_$])*
 ```
 
 Attributes are the mechanism for specifying constant data in MLIR in places
 where a variable is never allowed - e.g. the index of a
-[`dim` operation](#'dim'-operation), or the stride of a convolution.
+[`dim` operation](#'dim'-operation), or the stride of a convolution. They
+consist of a name and a [concrete attribute value](#attribute-values). It is
+possible to attach attributes to operations, functions, and function arguments.
+The set of expected attributes, their structure, and their interpretation are
+all contextually dependent on what they are attached to.
 
-Attributes have a name, and their values are represented by the following forms:
+There are two main classes of attributes; dependent and dialect. Dependent
+attributes derive their structure and meaning from what they are attached to,
+e.g the meaning of the `index` attribute on a `dim` operation is defined by the
+`dim` operation. Dialect attributes, on the other hand, derive their context and
+meaning from a specific dialect. An example of a dialect attribute may be a
+`swift.self` function argument attribute that indicates an argument is the
+self/context parameter. The context of this attribute is defined by the `swift`
+dialect and not the function argument.
+
+### Function and Argument Attributes
+
+Functions and function arguments in MLIR may have optional attributes attached
+to them. The sole constraint for these attributes is that they must be dialect
+specific attributes. This is because functions, and function arguments, are a
+generic entities and thus cannot apply any meaningful context necessary for
+dependent attributes. This has the added benefit of avoiding collisions between
+common attribute names, such as `noalias`.
+
+### Operation Attributes
+
+Operations, unlike functions and function arguments, may include both dialect
+specific and dependent attributes. This is because an operation represents a
+distinct semantic context, and can thus provide a single source of meaning to
+dependent attributes.
+
+### Attribute Values {#attribute-values}
+
+Attributes values are represented by the following forms:
 
 ``` {.ebnf}
 attribute-value ::= affine-map-attribute
@@ -889,11 +923,7 @@ attribute-value ::= affine-map-attribute
                   | type-attribute
 ```
 
-It is possible to attach attributes to instructions and functions, and the set
-of expected attributes, their structure, and the definition of that meaning is
-contextually dependent on the operation they are attached to.
-
-### AffineMap Attribute {#affine-map-attribute}
+#### AffineMap Attribute {#affine-map-attribute}
 
 Syntax:
 
@@ -903,7 +933,7 @@ affine-map-attribute ::= affine-map
 
 An affine-map attribute is an attribute that represents a affine-map object.
 
-### Array Attribute {#array-attribute}
+#### Array Attribute {#array-attribute}
 
 Syntax:
 
@@ -914,7 +944,7 @@ array-attribute ::= `[` (attribute-value (`,` attribute-value)*)? `]`
 An array attribute is an attribute that represents a collection of attribute
 values.
 
-### Boolean Attribute {#bool-attribute}
+#### Boolean Attribute {#bool-attribute}
 
 Syntax:
 
@@ -925,7 +955,7 @@ bool-attribute ::= bool-literal
 A boolean attribute is a literal attribute that represents a one-bit boolean
 value, true or false.
 
-### Elements Attributes {#elements-attributes}
+#### Elements Attributes {#elements-attributes}
 
 Syntax:
 
@@ -939,7 +969,7 @@ elements-attribute ::= dense-elements-attribute
 An elements attribute is a literal attribute that represents a constant
 [vector](#vector-type) or [tensor](#tensor-type) value.
 
-#### Dense Elements Attribute {#dense-elements-attribute}
+##### Dense Elements Attribute {#dense-elements-attribute}
 
 Syntax:
 
@@ -953,7 +983,7 @@ constant vector or tensor value has been packed to the element bitwidth. The
 element type of the vector or tensor constant must be of integer, index, or
 floating point type.
 
-#### Opaque Elements Attribute {#opaque-elements-attribute}
+##### Opaque Elements Attribute {#opaque-elements-attribute}
 
 Syntax:
 
@@ -970,7 +1000,7 @@ it.
 
 Note: The parsed string literal must be in hexadecimal form.
 
-#### Sparse Elements Attribute {#sparse-elements-attribute}
+##### Sparse Elements Attribute {#sparse-elements-attribute}
 
 Syntax:
 
@@ -1000,7 +1030,7 @@ Example:
 ///   [0, 0, 0, 0]]
 ```
 
-#### Splat Elements Attribute {#splat-elements-attribute}
+##### Splat Elements Attribute {#splat-elements-attribute}
 
 Syntax:
 
@@ -1012,7 +1042,7 @@ splat-elements-attribute ::= `splat` `<` ( tensor-type | vector-type ) `,`
 A splat elements attribute is an elements attribute that represents a tensor or
 vector constant where all elements have the same value.
 
-### Integer Attribute {#integer-attribute}
+#### Integer Attribute {#integer-attribute}
 
 Syntax:
 
@@ -1024,7 +1054,7 @@ An integer attribute is a literal attribute that represents an integral value of
 the specified integer or index type. The default type for this attribute, if one
 is not specified, is a 64-bit integer.
 
-### Integer Set Attribute {#integer-set-attribute}
+#### Integer Set Attribute {#integer-set-attribute}
 
 Syntax:
 
@@ -1034,7 +1064,7 @@ integer-set-attribute ::= affine-map
 
 An integer-set attribute is an attribute that represents a integer-set object.
 
-### Float Attribute {#float-attribute}
+#### Float Attribute {#float-attribute}
 
 Syntax:
 
@@ -1045,7 +1075,7 @@ float-attribute ::= float-literal (`:` float-type)?
 A float attribute is a literal attribute that represents a floating point value
 of the specified [float type](#floating-point-types).
 
-### Function Attribute {#function-attribute}
+#### Function Attribute {#function-attribute}
 
 Syntax:
 
@@ -1056,7 +1086,7 @@ function-attribute ::= function-id `:` function-type
 A function attribute is a literal attribute that represents a reference to the
 given function object.
 
-### String Attribute {#string-attribute}
+#### String Attribute {#string-attribute}
 
 Syntax:
 
@@ -1066,7 +1096,7 @@ string-attribute ::= string-literal
 
 A string attribute is an attribute that represents a string literal value.
 
-### Type Attribute {#type-attribute}
+#### Type Attribute {#type-attribute}
 
 Syntax:
 

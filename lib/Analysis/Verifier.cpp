@@ -35,6 +35,7 @@
 
 #include "mlir/Analysis/Dominance.h"
 #include "mlir/IR/Attributes.h"
+#include "mlir/IR/Dialect.h"
 #include "mlir/IR/Function.h"
 #include "mlir/IR/Instruction.h"
 #include "mlir/IR/Module.h"
@@ -66,6 +67,15 @@ public:
 
     // Worst case, fall back to using the function's location.
     return failure(message, fn);
+  }
+
+  /// Returns the registered dialect for a dialect-specific attribute.
+  template <typename ErrorContext>
+  Dialect *getDialectForAttribute(const NamedAttribute &attr,
+                                  const ErrorContext &ctx) {
+    assert(attr.first.strref().contains('.') && "expected dialect attribute");
+    auto dialectNamePair = attr.first.strref().split('.');
+    return fn.getContext()->getRegisteredDialect(dialectNamePair.first);
   }
 
   template <typename ErrorContext>
@@ -103,7 +113,7 @@ public:
   bool verifyInstDominance(const Instruction &inst);
 
   explicit FuncVerifier(const Function &fn)
-      : fn(fn), attrNameRegex("^:?[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
+      : fn(fn), identifierRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$") {}
 
 private:
   /// The function being checked.
@@ -113,7 +123,7 @@ private:
   DominanceInfo *domInfo = nullptr;
 
   /// Regex checker for attribute names.
-  llvm::Regex attrNameRegex;
+  llvm::Regex identifierRegex;
 };
 } // end anonymous namespace
 
@@ -122,29 +132,53 @@ bool FuncVerifier::verify() {
                                    fn.getName().c_str());
 
   // Check that the function name is valid.
-  llvm::Regex funcNameRegex("^[a-zA-Z_][a-zA-Z_0-9\\.\\$]*$");
-  if (!funcNameRegex.match(fn.getName().strref()))
+  if (!identifierRegex.match(fn.getName().strref()))
     return failure("invalid function name '" + fn.getName().strref() + "'", fn);
 
   /// Verify that all of the attributes are okay.
   for (auto attr : fn.getAttrs()) {
-    if (!attrNameRegex.match(attr.first))
+    if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      fn);
     if (verifyAttribute(attr.second, fn))
       return true;
+
+    /// Check that the attribute is a dialect attribute, i.e. contains a '.' for
+    /// the namespace.
+    if (!attr.first.strref().contains('.')) {
+      // TODO: Remove the remaining usages of non dialect attributes on
+      // functions and then enable this check.
+      // return failure("functions may only have dialect attributes", fn);
+      continue;
+    }
+
+    // Verify this attribute with the defining dialect.
+    if (auto *dialect = getDialectForAttribute(attr, fn))
+      if (dialect->verifyFunctionAttribute(&fn, attr.second))
+        return true;
   }
 
   /// Verify that all of the argument attributes are okay.
   for (unsigned i = 0, e = fn.getNumArguments(); i != e; ++i) {
     for (auto attr : fn.getArgAttrs(i)) {
-      if (!attrNameRegex.match(attr.first))
+      if (!identifierRegex.match(attr.first))
         return failure(
             llvm::formatv("invalid attribute name '{0}' on argument {1}",
                           attr.first.strref(), i),
             fn);
       if (verifyAttribute(attr.second, fn))
         return true;
+
+      /// Check that the attribute is a dialect attribute, i.e. contains a '.'
+      /// for the namespace.
+      if (!attr.first.strref().contains('.'))
+        return failure("function arguments may only have dialect attributes",
+                       fn);
+
+      // Verify this attribute with the defining dialect.
+      if (auto *dialect = getDialectForAttribute(attr, fn))
+        if (dialect->verifyFunctionArgAttribute(&fn, i, attr.second))
+          return true;
     }
   }
 
@@ -257,11 +291,18 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
 
   /// Verify that all of the attributes are okay.
   for (auto attr : op.getAttrs()) {
-    if (!attrNameRegex.match(attr.first))
+    if (!identifierRegex.match(attr.first))
       return failure("invalid attribute name '" + attr.first.strref() + "'",
                      op);
     if (verifyAttribute(attr.second, op))
       return true;
+
+    // Check for any optional dialect specific attributes.
+    if (!attr.first.strref().contains('.'))
+      continue;
+    if (auto *dialect = getDialectForAttribute(attr, op))
+      if (dialect->verifyInstructionAttribute(&op, attr.second))
+        return true;
   }
 
   // If we can get operation info for this, check the custom hook.
