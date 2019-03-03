@@ -18,14 +18,11 @@
 #ifndef MLIR_PASS_PASS_H
 #define MLIR_PASS_PASS_H
 
-#include "mlir/IR/Module.h"
+#include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Pass/PassRegistry.h"
 #include "llvm/ADT/PointerIntPair.h"
 
 namespace mlir {
-class Function;
-class Module;
-
 /// The abstract base pass class. This class contains information describing the
 /// derived pass object, e.g its kind and abstract PassInfo.
 class Pass {
@@ -67,11 +64,20 @@ class ModulePassExecutor;
 
 /// The state for a single execution of a pass. This provides a unified
 /// interface for accessing and initializing necessary state for pass execution.
-template <typename IRUnitT> struct PassExecutionState {
-  explicit PassExecutionState(IRUnitT *ir) : irAndPassFailed(ir, false) {}
+template <typename IRUnitT, typename AnalysisManagerT>
+struct PassExecutionState {
+  PassExecutionState(IRUnitT *ir, AnalysisManagerT &analysisManager)
+      : irAndPassFailed(ir, false), analysisManager(analysisManager) {}
 
-  /// The current IR unit being transformed.
+  /// The current IR unit being transformed and a bool for if the pass signaled
+  /// a failure.
   llvm::PointerIntPair<IRUnitT *, 1, bool> irAndPassFailed;
+
+  /// The analysis manager for the IR unit.
+  AnalysisManagerT &analysisManager;
+
+  /// The set of preserved analyses for the current execution.
+  detail::PreservedAnalyses preservedAnalyses;
 };
 } // namespace detail
 
@@ -79,6 +85,9 @@ template <typename IRUnitT> struct PassExecutionState {
 /// not inherit from this class directly, and instead should use the CRTP
 /// FunctionPass class.
 class FunctionPassBase : public Pass {
+  using PassStateT =
+      detail::PassExecutionState<Function, FunctionAnalysisManager>;
+
 public:
   static bool classof(const Pass *pass) {
     return pass->getKind() == Kind::FunctionPass;
@@ -96,19 +105,24 @@ protected:
   }
 
   /// Returns the current pass state.
-  detail::PassExecutionState<Function> &getPassState() {
+  PassStateT &getPassState() {
     assert(passState && "pass state was never initialized");
     return *passState;
+  }
+
+  /// Returns the current analysis manager.
+  FunctionAnalysisManager &getAnalysisManager() {
+    return getPassState().analysisManager;
   }
 
 private:
   /// Forwarding function to execute this pass. Returns false if the pass
   /// execution failed, true otherwise.
   LLVM_NODISCARD
-  bool run(Function *fn);
+  bool run(Function *fn, FunctionAnalysisManager &fam);
 
   /// The current execution state for the pass.
-  llvm::Optional<detail::PassExecutionState<Function>> passState;
+  llvm::Optional<PassStateT> passState;
 
   /// Allow access to 'run'.
   friend detail::FunctionPassExecutor;
@@ -117,6 +131,8 @@ private:
 /// Pass to transform a module. Derived passes should not inherit from this
 /// class directly, and instead should use the CRTP ModulePass class.
 class ModulePassBase : public Pass {
+  using PassStateT = detail::PassExecutionState<Module, ModuleAnalysisManager>;
+
 public:
   static bool classof(const Pass *pass) {
     return pass->getKind() == Kind::ModulePass;
@@ -132,19 +148,24 @@ protected:
   Module &getModule() { return *getPassState().irAndPassFailed.getPointer(); }
 
   /// Returns the current pass state.
-  detail::PassExecutionState<Module> &getPassState() {
+  PassStateT &getPassState() {
     assert(passState && "pass state was never initialized");
     return *passState;
+  }
+
+  /// Returns the current analysis manager.
+  ModuleAnalysisManager &getAnalysisManager() {
+    return getPassState().analysisManager;
   }
 
 private:
   /// Forwarding function to execute this pass. Returns false if the pass
   /// execution failed, true otherwise.
   LLVM_NODISCARD
-  bool run(Module *module);
+  bool run(Module *module, ModuleAnalysisManager &mam);
 
   /// The current execution state for the pass.
-  llvm::Optional<detail::PassExecutionState<Module>> passState;
+  llvm::Optional<PassStateT> passState;
 
   /// Allow access to 'run'.
   friend detail::ModulePassExecutor;
@@ -162,12 +183,29 @@ protected:
   PassModel() : BasePassT(PassID::getID<PassT>()) {}
 
   /// TODO(riverriddle) Provide additional utilities for cloning, getting the
-  /// derived class name, etc..
+  /// derived class name, etc.
 
   /// Signal that some invariant was broken when running. The IR is allowed to
   /// be in an invalid state.
   void signalPassFailure() {
     this->getPassState().irAndPassFailed.setInt(true);
+  }
+
+  /// Query the result of an analysis for the current ir unit.
+  template <typename AnalysisT> AnalysisT &getAnalysisResult() {
+    return this->getAnalysisManager().template getResult<AnalysisT>();
+  }
+
+  /// Query the cached result of an analysis for the current ir unit if one
+  /// exists.
+  template <typename AnalysisT>
+  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysisResult() {
+    return this->getAnalysisManager().template getCachedResult<AnalysisT>();
+  }
+
+  /// Mark all analyses as preserved.
+  void markAllAnalysesPreserved() {
+    this->getPassState().preservedAnalyses.preserveAll();
   }
 };
 } // end namespace detail
@@ -183,14 +221,28 @@ protected:
 /// Derived function passes are expected to provide the following:
 ///   - A 'void runOnFunction()' method.
 template <typename T>
-using FunctionPass = detail::PassModel<Function, T, FunctionPassBase>;
+struct FunctionPass : public detail::PassModel<Function, T, FunctionPassBase> {
+  /// Returns the analysis result for the parent module if it exists.
+  template <typename AnalysisT>
+  llvm::Optional<std::reference_wrapper<AnalysisT>>
+  getCachedModuleAnalysisResult() {
+    return this->getAnalysisManager()
+        .template getCachedModuleResult<AnalysisT>();
+  }
+};
 
 /// A model for providing module pass specific utilities.
 ///
 /// Derived module passes are expected to provide the following:
 ///   - A 'void runOnModule()' method.
 template <typename T>
-using ModulePass = detail::PassModel<Module, T, ModulePassBase>;
+struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
+  /// Returns the analysis result for a child function.
+  template <typename AnalysisT>
+  AnalysisT &getFunctionAnalysisResult(Function *f) {
+    return this->getAnalysisManager().template getFunctionResult<AnalysisT>(f);
+  }
+};
 } // end namespace mlir
 
 #endif // MLIR_PASS_PASS_H

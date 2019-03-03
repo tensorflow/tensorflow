@@ -34,13 +34,17 @@ using namespace mlir::detail;
 /// single .o file.
 void Pass::anchor() {}
 
-/// Forwarding function to execute this pass.
-bool FunctionPassBase::run(Function *fn) {
-  /// Initialize the pass state.
-  passState.emplace(fn);
+/// Forwarding function to execute this pass. Returns false if the pass
+/// execution failed, true otherwise.
+bool FunctionPassBase::run(Function *fn, FunctionAnalysisManager &fam) {
+  // Initialize the pass state.
+  passState.emplace(fn, fam);
 
-  /// Invoke the virtual runOnFunction function.
+  // Invoke the virtual runOnFunction function.
   runOnFunction();
+
+  // Invalidate any non preserved analyses.
+  fam.invalidate(passState->preservedAnalyses);
 
   // Return false if the pass signaled a failure.
   return !passState->irAndPassFailed.getInt();
@@ -48,12 +52,15 @@ bool FunctionPassBase::run(Function *fn) {
 
 /// Forwarding function to execute this pass. Returns false if the pass
 /// execution failed, true otherwise.
-bool ModulePassBase::run(Module *module) {
-  /// Initialize the pass state.
-  passState.emplace(module);
+bool ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
+  // Initialize the pass state.
+  passState.emplace(module, mam);
 
-  /// Invoke the virtual runOnModule function.
+  // Invoke the virtual runOnModule function.
   runOnModule();
+
+  // Invalidate any non preserved analyses.
+  mam.invalidate(passState->preservedAnalyses);
 
   // Return false if the pass signaled a failure.
   return !passState->irAndPassFailed.getInt();
@@ -91,8 +98,7 @@ public:
 
   /// Run the executor on the given function. Returns false if the pass
   /// execution failed, true otherwise.
-  LLVM_NODISCARD
-  bool run(Function *function);
+  bool run(Function *function, FunctionAnalysisManager &fam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
@@ -118,8 +124,7 @@ public:
 
   /// Run the executor on the given module. Returns false if the pass
   /// execution failed, true otherwise.
-  LLVM_NODISCARD
-  bool run(Module *module);
+  bool run(Module *module, ModuleAnalysisManager &mam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
@@ -137,10 +142,11 @@ private:
 } // end namespace mlir
 
 /// Run all of the passes in this manager over the current function.
-bool detail::FunctionPassExecutor::run(Function *function) {
+bool detail::FunctionPassExecutor::run(Function *function,
+                                       FunctionAnalysisManager &fam) {
   for (auto &pass : passes) {
     /// Create an execution state for this pass.
-    if (!pass->run(function))
+    if (!pass->run(function, fam))
       return false;
     // TODO: This should be opt-out and handled separately.
     if (function->verify())
@@ -150,9 +156,10 @@ bool detail::FunctionPassExecutor::run(Function *function) {
 }
 
 /// Run all of the passes in this manager over the current module.
-bool detail::ModulePassExecutor::run(Module *module) {
+bool detail::ModulePassExecutor::run(Module *module,
+                                     ModuleAnalysisManager &mam) {
   for (auto &pass : passes) {
-    if (!pass->run(module))
+    if (!pass->run(module, mam))
       return false;
     // TODO: This should be opt-out and handled separately.
     if (module->verify())
@@ -194,14 +201,22 @@ private:
 /// Execute the held function pass over all non-external functions within the
 /// module.
 void ModuleToFunctionPassAdaptor::runOnModule() {
+  ModuleAnalysisManager &mam = getAnalysisManager();
   for (auto &func : getModule()) {
     // Skip external functions.
     if (func.isExternal())
       continue;
 
     // Run the held function pipeline over the current function.
-    if (!fpe.run(&func))
+    auto fam = mam.slice(&func);
+    if (!fpe.run(&func, fam))
       return signalPassFailure();
+
+    // Clear out any computed function analyses. These analyses won't be used
+    // any more in this pipeline, and this helps reduce the current working set
+    // of memory. If preserving these analyses becomes important in the future
+    // we can re-evalutate this.
+    fam.clear();
   }
 }
 
@@ -253,4 +268,29 @@ void PassManager::addPass(FunctionPassBase *pass) {
 }
 
 /// Run the passes within this manager on the provided module.
-bool PassManager::run(Module *module) { return mpe->run(module); }
+bool PassManager::run(Module *module) {
+  ModuleAnalysisManager mam(module);
+  return mpe->run(module, mam);
+}
+
+//===----------------------------------------------------------------------===//
+// AnalysisManager
+//===----------------------------------------------------------------------===//
+
+/// Create an analysis slice for the given child function.
+FunctionAnalysisManager ModuleAnalysisManager::slice(Function *function) {
+  assert(function->getModule() == moduleAnalyses.getIRUnit() &&
+         "function has a different parent module");
+  auto it = functionAnalyses.try_emplace(function, function);
+  return {&moduleAnalyses, &it.first->second};
+}
+
+/// Invalidate any non preserved analyses.
+void ModuleAnalysisManager::invalidate(const detail::PreservedAnalyses &pa) {
+  if (pa.isAll())
+    return;
+
+  // TODO: Fine grain invalidation of analyses.
+  moduleAnalyses.clear();
+  functionAnalyses.clear();
+}

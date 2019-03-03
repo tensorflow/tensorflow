@@ -217,8 +217,14 @@ void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
 }
 
 void CSE::runOnFunction() {
-  DominanceInfo domInfo(&getFunction());
-  simplifyBlockList(domInfo, getFunction().getBlockList());
+  simplifyBlockList(getAnalysisResult<DominanceInfo>(),
+                    getFunction().getBlockList());
+
+  // If no operations were erased, then we mark all analyses as preserved.
+  if (opsToErase.empty()) {
+    markAllAnalysesPreserved();
+    return;
+  }
 
   /// Erase any operations that were marked as dead during simplification.
   for (auto *op : opsToErase)

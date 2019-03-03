@@ -212,13 +212,13 @@ void MemRefDataFlowOpt::forwardStoreToLoad(OpPointer<LoadOp> loadOp) {
 void MemRefDataFlowOpt::runOnFunction() {
   // Only supports single block functions at the moment.
   Function &f = getFunction();
-  if (f.getBlocks().size() != 1)
+  if (f.getBlocks().size() != 1) {
+    markAllAnalysesPreserved();
     return;
+  }
 
-  DominanceInfo theDomInfo(&f);
-  domInfo = &theDomInfo;
-  PostDominanceInfo thePostDomInfo(&f);
-  postDomInfo = &thePostDomInfo;
+  domInfo = &getAnalysisResult<DominanceInfo>();
+  postDomInfo = &getAnalysisResult<PostDominanceInfo>();
 
   loadOpsToErase.clear();
   memrefsToErase.clear();
