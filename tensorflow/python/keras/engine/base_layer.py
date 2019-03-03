@@ -310,7 +310,8 @@ class Layer(trackable.Trackable):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
-    shape = shape or ()
+    if shape is None:
+      shape = ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections', 'experimental_autocast']:

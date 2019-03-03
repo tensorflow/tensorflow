@@ -1140,7 +1140,7 @@ class TensorBoard(Callback):
         your training.
       profile_batch: Profile the batch to sample compute characteristics. By
         default, it will profile the second batch. Set profile_batch=0 to
-        disable profiling.
+        disable profiling. Must run in TensorFlow eager mode.
 
   Raises:
       ValueError: If histogram_freq is set and no validation data is provided.
@@ -1274,16 +1274,10 @@ class TensorBoard(Callback):
       self._samples_seen_at_last_write = self._samples_seen
     self._total_batches_seen += 1
     if self._is_tracing:
-      # TODO(b/126388999): Remove step info in the summary name.
-      summary_ops_v2.trace_export(
-          name='batch_%d' % self._total_batches_seen,
-          step=self._total_batches_seen,
-          profiler_outdir=self.log_dir)
-      self._is_tracing = False
+      self._log_trace()
     elif (not self._is_tracing and
           self._total_batches_seen == self._profile_batch - 1):
-      summary_ops_v2.trace_on(graph=True, profiler=True)
-      self._is_tracing = True
+      self._enable_trace()
 
   def on_epoch_end(self, epoch, logs=None):
     """Runs metrics and histogram summaries at epoch end."""
@@ -1294,13 +1288,24 @@ class TensorBoard(Callback):
       self._log_weights(epoch)
 
   def on_train_end(self, logs=None):
-    self._close_writers()
     if self._is_tracing:
-      # TODO(b/126388999): Remove step info in the summary name.
-      summary_ops_v2.trace_export(
-          name='batch_%d' % self._total_batches_seen,
-          step=self._total_batches_seen,
-          profiler_outdir=self.log_dir)
+      self._log_trace()
+    self._close_writers()
+
+  def _enable_trace(self):
+    if context.executing_eagerly():
+      summary_ops_v2.trace_on(graph=True, profiler=True)
+      self._is_tracing = True
+
+  def _log_trace(self):
+    if context.executing_eagerly():
+      with self._train_writer.as_default(), \
+          summary_ops_v2.always_record_summaries():
+        # TODO(b/126388999): Remove step info in the summary name.
+        summary_ops_v2.trace_export(
+            name='batch_%d' % self._total_batches_seen,
+            step=self._total_batches_seen,
+            profiler_outdir=self.log_dir)
       self._is_tracing = False
 
   def _log_metrics(self, logs, prefix, step):

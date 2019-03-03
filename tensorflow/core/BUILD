@@ -233,7 +233,6 @@ CORE_PROTO_SRCS = COMMON_PROTO_SRCS + ERROR_CODES_PROTO_SRCS
 ADDITIONAL_CORE_PROTO_SRCS = [
     "example/example_parser_configuration.proto",
     "protobuf/trackable_object_graph.proto",
-    "protobuf/autotuning.proto",
     "protobuf/control_flow.proto",
     # TODO(ebrevdo): Re-enable once CriticalSection is in core.
     # "protobuf/critical_section.proto",
@@ -926,6 +925,7 @@ tf_cuda_library(
         "framework/tensor_slice.h",
         "framework/tensor_types.h",
         "framework/tensor_util.h",
+        "framework/thread_factory.h",
         "framework/tracking_allocator.h",
         "framework/type_index.h",
         "framework/type_traits.h",
@@ -1671,6 +1671,7 @@ filegroup(
         ":protos_all_proto_text_srcs",
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
+        "//tensorflow/c:srcs",
     ] + glob(
         [
             "client/**/*.cc",
