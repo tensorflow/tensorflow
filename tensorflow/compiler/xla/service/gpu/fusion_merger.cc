@@ -157,6 +157,8 @@ class FusionInstructionMerger {
   bool changed() const { return changed_; }
 
  private:
+  bool IsFusible(HloInstruction* fusion);
+  bool IsProfitableToFuse(HloInstruction* fusion);
   Status HandleFusion(HloInstruction* fusion);
 
   HloComputation* computation_;
@@ -196,15 +198,13 @@ Status FusionInstructionMerger::Run() {
   return Status::OK();
 }
 
-Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
-  VLOG(3) << "FusionInstructionMerger ENTRY fusion: " << fusion->name()
-          << " flops_to_bytes_ratio: " << CalculateFlopsToBytesRatio(fusion);
-  ++total_visited_;
+bool FusionInstructionMerger::IsFusible(HloInstruction* fusion) {
+
   // Skip 'fusion' instruction if there are no users into which we can merge.
   if (fusion->users().empty()) {
     VLOG(3) << "Not merging " << fusion->name() << ": Has no users.";
     ++num_fail_no_users_;
-    return Status::OK();
+    return false;
   }
 
   // Skip 'fusion' instruction if it is not a loop fusion. Library fusion
@@ -214,15 +214,19 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   if (fusion->fusion_kind() != HloInstruction::FusionKind::kLoop) {
     VLOG(3) << "Not merging " << fusion->name() << ": Is not loop fusion.";
     ++num_fail_not_loop_fusion_;
-    return Status::OK();
+    return false;
   }
 
   // Skip multiple output fusion. It's not yet supported.
   if (fusion->IsMultiOutputFusion()) {
     VLOG(3) << "Not merging " << fusion->name() << ": Is multi-output fusion.";
     ++num_fail_not_loop_fusion_;
-    return Status::OK();
+    return false;
   }
+}
+
+bool FusionInstructionMerger::IsProfitableToFuse(HloInstruction* fusion) {
+
   // Skip 'fusion' instruction if we cannot merge into all of its users.
   // Merging into all users enables the removal of 'fusion' from the
   // computation.
@@ -235,7 +239,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Some of its users are not loop/input fusion kernels.";
     ++num_fail_merge_all_users_;
-    return Status::OK();
+    return false;
   }
 
   // Skip 'fusion' instruction if any of its fused instructions are expensive.
@@ -253,7 +257,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": Contains one or more expensive instructions.";
     ++num_fail_expensive_fused_instruction_;
-    return Status::OK();
+    return false;
   }
 
   // Skip 'fusion' instruction if its flops to bytes transferred ratio
@@ -263,8 +267,9 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     VLOG(3) << "Not merging " << fusion->name()
             << ": flops-to-bytes ratio is not favorable.";
     ++num_fail_flops_to_byte_ratio_;
-    return Status::OK();
+    return false;
   }
+
   // Skip 'fusion' instruction if merging it into all users would result in a
   // net increase in bytes transferred (currently allowing the net bytes
   // transferred to be exceeded up to ~10% in exhange for eliminating the
@@ -278,8 +283,19 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
             << ": merged-to-current-bytes-ratio of "
             << merged_to_current_bytes_ratio << " is not favorable.";
     ++num_fail_net_bytes_transferred_ratio_;
+    return false;
+  }
+}
+
+Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
+  VLOG(3) << "FusionInstructionMerger ENTRY fusion: " << fusion->name()
+          << " flops_to_bytes_ratio: " << CalculateFlopsToBytesRatio(fusion);
+  ++total_visited_;
+
+  if (!IsFusible(fusion) || !IsProfitableToFuse(fusion)) {
     return Status::OK();
   }
+
   // Merge fused instructions from 'fusion' into each user.
   std::vector<HloInstruction*> users = fusion->users();
   for (HloInstruction* user : users) {
