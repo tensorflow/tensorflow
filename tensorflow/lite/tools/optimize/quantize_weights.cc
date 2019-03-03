@@ -52,14 +52,15 @@ std::vector<ConsumerOpInfo> GetTensorConsumers(const ModelT* model,
   // TODO(suharshs): If this proves to be too slow, avoid calling it per tensor,
   // instead doing one sweep for the entire model.
   std::vector<ConsumerOpInfo> consumer_ops;
-  for (int op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
+  for (size_t op_idx = 0; op_idx < subgraph->operators.size(); ++op_idx) {
     OperatorT* op = subgraph->operators[op_idx].get();
     if (op == nullptr) {
       continue;
     }
-    for (int i = 0; i < op->inputs.size(); ++i) {
+    for (size_t i = 0; i < op->inputs.size(); ++i) {
       if (op->inputs[i] == tensor_idx) {
-        consumer_ops.push_back({op, op_idx, i});
+        consumer_ops.push_back(
+            {op, static_cast<int>(op_idx), static_cast<int>(i)});
       }
     }
   }
@@ -193,7 +194,7 @@ TfLiteStatus InsertQuantizableInputTensorsFromOperator(
 // Returns the index of the Dequantize op_code.
 // If a Dequantize op_code doesn't exist, adds it and returns its index.
 int32_t GetOrInsertDequantizeOpCodeIndex(ModelT* model) {
-  for (int i = 0; i < model->operator_codes.size(); ++i) {
+  for (size_t i = 0; i < model->operator_codes.size(); ++i) {
     if (model->operator_codes[i]->builtin_code == BuiltinOperator_DEQUANTIZE) {
       return i;
     }
@@ -231,7 +232,7 @@ void MakeTensor(const string& name, const std::vector<int32_t>& shape,
 
 // Updates operator code versions for the operators with INT8 inputs.
 void UpdateInt8OperatorVersions(ModelT* model) {
-  for (int i = 0; i < model->operator_codes.size(); ++i) {
+  for (size_t i = 0; i < model->operator_codes.size(); ++i) {
     const BuiltinOperator& op_code = model->operator_codes[i]->builtin_code;
     if (op_code == BuiltinOperator_CONV_2D || op_code == BuiltinOperator_SVDF ||
         op_code == BuiltinOperator_EMBEDDING_LOOKUP ||
@@ -267,7 +268,7 @@ TfLiteStatus QuantizeWeightsInternal(flatbuffers::FlatBufferBuilder* builder,
 
   std::vector<std::unique_ptr<OperatorT>> new_operators;
   std::unordered_map<int32_t, TensorT*> tensor_map;
-  for (int i = 0; i < subgraph->operators.size(); ++i) {
+  for (size_t i = 0; i < subgraph->operators.size(); ++i) {
     OperatorT* op = subgraph->operators[i].get();
     TF_LITE_ENSURE_STATUS(InsertQuantizableInputTensorsFromOperator(
         model.get(), op, weights_min_num_elements, &tensor_map));
