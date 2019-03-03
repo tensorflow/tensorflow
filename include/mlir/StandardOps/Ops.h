@@ -32,6 +32,12 @@ namespace mlir {
 class AffineMap;
 class Builder;
 
+namespace detail {
+/// A custom binary operation printer that omits the "std." prefix from the
+/// operation names.
+void printStandardBinaryOp(const Instruction *op, OpAsmPrinter *p);
+} // namespace detail
+
 class StandardOpsDialect : public Dialect {
 public:
   StandardOpsDialect(MLIRContext *context);
@@ -67,7 +73,7 @@ public:
     return getResult()->getType().cast<MemRefType>();
   }
 
-  static StringRef getOperationName() { return "alloc"; }
+  static StringRef getOperationName() { return "std.alloc"; }
 
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result,
@@ -96,7 +102,7 @@ private:
 class BranchOp : public Op<BranchOp, OpTrait::VariadicOperands,
                            OpTrait::ZeroResult, OpTrait::IsTerminator> {
 public:
-  static StringRef getOperationName() { return "br"; }
+  static StringRef getOperationName() { return "std.br"; }
 
   static void build(Builder *builder, OperationState *result, Block *dest,
                     ArrayRef<Value *> operands = {});
@@ -129,7 +135,7 @@ private:
 class CallOp
     : public Op<CallOp, OpTrait::VariadicOperands, OpTrait::VariadicResults> {
 public:
-  static StringRef getOperationName() { return "call"; }
+  static StringRef getOperationName() { return "std.call"; }
 
   static void build(Builder *builder, OperationState *result, Function *callee,
                     ArrayRef<Value *> operands);
@@ -173,7 +179,7 @@ protected:
 class CallIndirectOp : public Op<CallIndirectOp, OpTrait::VariadicOperands,
                                  OpTrait::VariadicResults> {
 public:
-  static StringRef getOperationName() { return "call_indirect"; }
+  static StringRef getOperationName() { return "std.call_indirect"; }
 
   static void build(Builder *builder, OperationState *result, Value *callee,
                     ArrayRef<Value *> operands);
@@ -245,7 +251,7 @@ enum class CmpIPredicate {
 ///
 ///   %r1 = cmpi "eq" %0, %1 : i32
 ///   %r2 = cmpi "slt" %0, %1 : tensor<42x42xi64>
-///   %r3 = "cmpi"(%0, %1){predicate: 0} : (i8, i8) -> i1
+///   %r3 = "std.cmpi"(%0, %1){predicate: 0} : (i8, i8) -> i1
 class CmpIOp
     : public Op<CmpIOp, OpTrait::OperandsAreIntegerLike,
                 OpTrait::SameTypeOperands, OpTrait::NOperands<2>::Impl,
@@ -257,7 +263,7 @@ public:
         .getInt();
   }
 
-  static StringRef getOperationName() { return "cmpi"; }
+  static StringRef getOperationName() { return "std.cmpi"; }
   static StringRef getPredicateAttrName() { return "predicate"; }
   static CmpIPredicate getPredicateByName(StringRef name);
 
@@ -296,7 +302,7 @@ class CondBranchOp : public Op<CondBranchOp, OpTrait::AtLeastNOperands<1>::Impl,
   /// follows:
   /// { condition, [true_operands], [false_operands] }
 public:
-  static StringRef getOperationName() { return "cond_br"; }
+  static StringRef getOperationName() { return "std.cond_br"; }
 
   static void build(Builder *builder, OperationState *result, Value *condition,
                     Block *trueDest, ArrayRef<Value *> trueOperands,
@@ -416,8 +422,8 @@ private:
 /// The "constant" operation requires a single attribute named "value".
 /// It returns its value as an SSA value.  For example:
 ///
-///   %1 = "constant"(){value: 42} : i32
-///   %2 = "constant"(){value: @foo} : (f32)->f32
+///   %1 = "std.constant"(){value: 42} : i32
+///   %2 = "std.constant"(){value: @foo} : (f32)->f32
 ///
 class ConstantOp : public Op<ConstantOp, OpTrait::ZeroOperands,
                              OpTrait::OneResult, OpTrait::HasNoSideEffect> {
@@ -432,7 +438,7 @@ public:
 
   Attribute getValue() const { return getAttr("value"); }
 
-  static StringRef getOperationName() { return "constant"; }
+  static StringRef getOperationName() { return "std.constant"; }
 
   // Hooks to customize behavior of this op.
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -449,7 +455,7 @@ protected:
 /// This is a refinement of the "constant" op for the case where it is
 /// returning a float value of FloatType.
 ///
-///   %1 = "constant"(){value: 42.0} : bf16
+///   %1 = "std.constant"(){value: 42.0} : bf16
 ///
 class ConstantFloatOp : public ConstantOp {
 public:
@@ -471,7 +477,7 @@ private:
 /// This is a refinement of the "constant" op for the case where it is
 /// returning an integer value of IntegerType.
 ///
-///   %1 = "constant"(){value: 42} : i32
+///   %1 = "std.constant"(){value: 42} : i32
 ///
 class ConstantIntOp : public ConstantOp {
 public:
@@ -498,7 +504,7 @@ private:
 /// This is a refinement of the "constant" op for the case where it is
 /// returning an integer value of Index type.
 ///
-///   %1 = "constant"(){value: 99} : () -> index
+///   %1 = "std.constant"(){value: 99} : () -> index
 ///
 class ConstantIndexOp : public ConstantOp {
 public:
@@ -533,7 +539,7 @@ public:
   const Value *getMemRef() const { return getOperand(); }
   void setMemRef(Value *value) { setOperand(value); }
 
-  static StringRef getOperationName() { return "dealloc"; }
+  static StringRef getOperationName() { return "std.dealloc"; }
 
   // Hooks to customize behavior of this op.
   static void build(Builder *builder, OperationState *result, Value *memref);
@@ -568,7 +574,7 @@ public:
     return getAttrOfType<IntegerAttr>("index").getValue().getZExtValue();
   }
 
-  static StringRef getOperationName() { return "dim"; }
+  static StringRef getOperationName() { return "std.dim"; }
 
   // Hooks to customize behavior of this op.
   bool verify() const;
@@ -706,7 +712,7 @@ public:
     return isSrcMemorySpaceFaster() ? 0 : getSrcMemRefRank() + 1;
   }
 
-  static StringRef getOperationName() { return "dma_start"; }
+  static StringRef getOperationName() { return "std.dma_start"; }
   static bool parse(OpAsmParser *parser, OperationState *result);
   void print(OpAsmPrinter *p) const;
   bool verify() const;
@@ -761,7 +767,7 @@ public:
   static void build(Builder *builder, OperationState *result, Value *tagMemRef,
                     ArrayRef<Value *> tagIndices, Value *numElements);
 
-  static StringRef getOperationName() { return "dma_wait"; }
+  static StringRef getOperationName() { return "std.dma_wait"; }
 
   // Returns the Tag MemRef associated with the DMA operation being waited on.
   const Value *getTagMemRef() const { return getOperand(0); }
@@ -825,7 +831,7 @@ public:
             getInstruction()->operand_end()};
   }
 
-  static StringRef getOperationName() { return "extract_element"; }
+  static StringRef getOperationName() { return "std.extract_element"; }
 
   // Hooks to customize behavior of this op.
   bool verify() const;
@@ -871,7 +877,7 @@ public:
             getInstruction()->operand_end()};
   }
 
-  static StringRef getOperationName() { return "load"; }
+  static StringRef getOperationName() { return "std.load"; }
 
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -901,12 +907,14 @@ private:
 ///
 class MemRefCastOp : public CastOp<MemRefCastOp> {
 public:
-  static StringRef getOperationName() { return "memref_cast"; }
+  static StringRef getOperationName() { return "std.memref_cast"; }
 
   /// The result of a memref_cast is always a memref.
   MemRefType getType() const {
     return getResult()->getType().cast<MemRefType>();
   }
+
+  void print(OpAsmPrinter *p) const;
 
   bool verify() const;
 
@@ -920,14 +928,14 @@ private:
 /// The operand number and types must match the signature of the function
 /// that contains the operation. For example:
 ///
-///   mlfunc @foo() : (i32, f8) {
+///   func @foo() : (i32, f8) {
 ///   ...
 ///   return %0, %1 : i32, f8
 ///
 class ReturnOp : public Op<ReturnOp, OpTrait::VariadicOperands,
                            OpTrait::ZeroResult, OpTrait::IsTerminator> {
 public:
-  static StringRef getOperationName() { return "return"; }
+  static StringRef getOperationName() { return "std.return"; }
 
   static void build(Builder *builder, OperationState *result,
                     ArrayRef<Value *> results = {});
@@ -956,7 +964,7 @@ private:
 class SelectOp : public Op<SelectOp, OpTrait::NOperands<3>::Impl,
                            OpTrait::OneResult, OpTrait::HasNoSideEffect> {
 public:
-  static StringRef getOperationName() { return "select"; }
+  static StringRef getOperationName() { return "std.select"; }
   static void build(Builder *builder, OperationState *result, Value *condition,
                     Value *trueValue, Value *falseValue);
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -1015,7 +1023,7 @@ public:
             getInstruction()->operand_end()};
   }
 
-  static StringRef getOperationName() { return "store"; }
+  static StringRef getOperationName() { return "std.store"; }
 
   bool verify() const;
   static bool parse(OpAsmParser *parser, OperationState *result);
@@ -1041,12 +1049,14 @@ private:
 ///
 class TensorCastOp : public CastOp<TensorCastOp> {
 public:
-  static StringRef getOperationName() { return "tensor_cast"; }
+  static StringRef getOperationName() { return "std.tensor_cast"; }
 
   /// The result of a tensor_cast is always a tensor.
   TensorType getType() const {
     return getResult()->getType().cast<TensorType>();
   }
+
+  void print(OpAsmPrinter *p) const;
 
   bool verify() const;
 

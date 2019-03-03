@@ -34,8 +34,31 @@ using namespace mlir;
 // StandardOpsDialect
 //===----------------------------------------------------------------------===//
 
+/// A custom binary operation printer that omits the "std." prefix from the
+/// operation names.
+void detail::printStandardBinaryOp(const Instruction *op, OpAsmPrinter *p) {
+  assert(op->getNumOperands() == 2 && "binary op should have two operands");
+  assert(op->getNumResults() == 1 && "binary op should have one result");
+
+  // If not all the operand and result types are the same, just use the
+  // generic assembly form to avoid omitting information in printing.
+  auto resultType = op->getResult(0)->getType();
+  if (op->getOperand(0)->getType() != resultType ||
+      op->getOperand(1)->getType() != resultType) {
+    p->printGenericOp(op);
+    return;
+  }
+
+  *p << op->getName().getStringRef().drop_front(strlen("std.")) << ' '
+     << *op->getOperand(0) << ", " << *op->getOperand(1);
+  p->printOptionalAttrDict(op->getAttrs());
+
+  // Now we can output only one type for all operands and the result.
+  *p << " : " << op->getResult(0)->getType();
+}
+
 StandardOpsDialect::StandardOpsDialect(MLIRContext *context)
-    : Dialect(/*namePrefix=*/"", context) {
+    : Dialect(/*namePrefix=*/"std", context) {
   addOperations<AllocOp, BranchOp, CallOp, CallIndirectOp, CmpIOp, CondBranchOp,
                 ConstantOp, DeallocOp, DimOp, DmaStartOp, DmaWaitOp,
                 ExtractElementOp, LoadOp, MemRefCastOp, ReturnOp, SelectOp,
@@ -690,7 +713,7 @@ bool CmpIOp::parse(OpAsmParser *parser, OperationState *result) {
 }
 
 void CmpIOp::print(OpAsmPrinter *p) const {
-  *p << getOperationName() << " ";
+  *p << "cmpi ";
 
   auto predicateValue =
       getAttrOfType<IntegerAttr>(getPredicateAttrName()).getInt();
@@ -1269,7 +1292,7 @@ void DmaStartOp::build(Builder *builder, OperationState *result,
 }
 
 void DmaStartOp::print(OpAsmPrinter *p) const {
-  *p << getOperationName() << ' ' << *getSrcMemRef() << '[';
+  *p << "dma_start " << *getSrcMemRef() << '[';
   p->printOperands(getSrcIndices());
   *p << "], " << *getDstMemRef() << '[';
   p->printOperands(getDstIndices());
@@ -1417,7 +1440,7 @@ void DmaWaitOp::build(Builder *builder, OperationState *result,
 }
 
 void DmaWaitOp::print(OpAsmPrinter *p) const {
-  *p << getOperationName() << ' ';
+  *p << "dma_wait ";
   // Print operands.
   p->printOperand(getTagMemRef());
   *p << '[';
@@ -1627,6 +1650,11 @@ void LoadOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // MemRefCastOp
 //===----------------------------------------------------------------------===//
 
+void MemRefCastOp::print(OpAsmPrinter *p) const {
+  *p << "memref_cast " << *getOperand() << " : " << getOperand()->getType()
+     << " to " << getType();
+}
+
 bool MemRefCastOp::verify() const {
   auto opType = getOperand()->getType().dyn_cast<MemRefType>();
   auto resType = getType().dyn_cast<MemRefType>();
@@ -1830,7 +1858,7 @@ bool SelectOp::parse(OpAsmParser *parser, OperationState *result) {
 }
 
 void SelectOp::print(OpAsmPrinter *p) const {
-  *p << getOperationName() << ' ';
+  *p << "select ";
   p->printOperands(getInstruction()->getOperands());
   *p << " : " << getTrueValue()->getType();
   p->printOptionalAttrDict(getAttrs());
@@ -1992,6 +2020,11 @@ void SubIOp::getCanonicalizationPatterns(OwningRewritePatternList &results,
 // TensorCastOp
 //===----------------------------------------------------------------------===//
 
+void TensorCastOp::print(OpAsmPrinter *p) const {
+  *p << "tensor_cast " << *getOperand() << " : " << getOperand()->getType()
+     << " to " << getType();
+}
+
 bool TensorCastOp::verify() const {
   auto opType = getOperand()->getType().dyn_cast<TensorType>();
   auto resType = getType().dyn_cast<TensorType>();
@@ -2024,4 +2057,3 @@ bool TensorCastOp::verify() const {
 
   return false;
 }
-

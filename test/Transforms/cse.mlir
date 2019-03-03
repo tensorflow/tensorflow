@@ -97,7 +97,7 @@ func @different_attributes_cfg(index, index) -> (i1, i1, i1) {
   // CHECK-NEXT: %1 = cmpi "ne", %arg0, %arg1 : index
   /// Predicate 1 means inequality comparison.
   %1 = cmpi "ne", %a, %b : index
-  %2 = "cmpi"(%a, %b) {predicate: 1} : (index, index) -> i1
+  %2 = "std.cmpi"(%a, %b) {predicate: 1} : (index, index) -> i1
 
   // CHECK-NEXT: return %0, %1, %1 : i1, i1, i1
   return %0, %1, %2 : i1, i1, i1

@@ -3240,6 +3240,15 @@ Instruction *FunctionParser::parseCustomOperation() {
   CustomOpAsmParser opAsmParser(opLoc, opName, *this);
 
   auto *opDefinition = AbstractOperation::lookup(opName, getContext());
+  if (!opDefinition && !opName.contains('.')) {
+    // If the operation name has no namespace prefix we treat it as a standard
+    // operation and prefix it with "std".
+    // TODO: Would it be better to just build a mapping of the registered
+    // operations in the standard dialect?
+    opDefinition =
+        AbstractOperation::lookup(Twine("std." + opName).str(), getContext());
+  }
+
   if (!opDefinition) {
     opAsmParser.emitError(opLoc, "is unknown");
     return nullptr;
@@ -3257,7 +3266,7 @@ Instruction *FunctionParser::parseCustomOperation() {
   auto srcLocation = getEncodedSourceLocation(opLoc);
 
   // Have the op implementation take a crack and parsing this.
-  OperationState opState(builder.getContext(), srcLocation, opName);
+  OperationState opState(builder.getContext(), srcLocation, opDefinition->name);
   if (opAsmParser.parseOperation(opDefinition, &opState))
     return nullptr;
 

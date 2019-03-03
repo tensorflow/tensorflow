@@ -2,7 +2,7 @@
 
 func @dim(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "dim"(%0){index: "xyz"} : (tensor<1xf32>)->i32 // expected-error {{'dim' op requires an integer attribute named 'index'}}
+  "std.dim"(%0){index: "xyz"} : (tensor<1xf32>)->i32 // expected-error {{'std.dim' op requires an integer attribute named 'index'}}
   return
 }
 
@@ -10,7 +10,7 @@ func @dim(tensor<1xf32>) {
 
 func @dim2(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "dim"(){index: "xyz"} : ()->i32 // expected-error {{'dim' op requires a single operand}}
+  "std.dim"(){index: "xyz"} : ()->i32 // expected-error {{'std.dim' op requires a single operand}}
   return
 }
 
@@ -18,7 +18,7 @@ func @dim2(tensor<1xf32>) {
 
 func @dim3(tensor<1xf32>) {
 ^bb(%0: tensor<1xf32>):
-  "dim"(%0){index: 1} : (tensor<1xf32>)->i32 // expected-error {{'dim' op index is out of range}}
+  "std.dim"(%0){index: 1} : (tensor<1xf32>)->i32 // expected-error {{'std.dim' op index is out of range}}
   return
 }
 
@@ -26,7 +26,7 @@ func @dim3(tensor<1xf32>) {
 
 func @constant() {
 ^bb:
-  %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
+  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{'std.constant' op requires 'value' to be an integer for an integer result type}}
   return
 }
 
@@ -34,7 +34,7 @@ func @constant() {
 
 func @constant_out_of_range() {
 ^bb:
-  %x = "constant"(){value: 100} : () -> i1 // expected-error {{'constant' op requires 'value' to be an integer within the range of the integer result type}}
+  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{'std.constant' op requires 'value' to be an integer within the range of the integer result type}}
   return
 }
 
@@ -42,7 +42,7 @@ func @constant_out_of_range() {
 
 func @affine_apply_no_map() {
 ^bb0:
-  %i = "constant"() {value: 0} : () -> index
+  %i = "std.constant"() {value: 0} : () -> index
   %x = "affine.apply" (%i) { } : (index) -> (index) //  expected-error {{'affine.apply' op requires an affine map}}
   return
 }
@@ -51,7 +51,7 @@ func @affine_apply_no_map() {
 
 func @affine_apply_wrong_operand_count() {
 ^bb0:
-  %i = "constant"() {value: 0} : () -> index
+  %i = "std.constant"() {value: 0} : () -> index
   %x = "affine.apply" (%i) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index) -> (index) //  expected-error {{'affine.apply' op operand count and affine map dimension and symbol count must match}}
   return
 }
@@ -60,8 +60,8 @@ func @affine_apply_wrong_operand_count() {
 
 func @affine_apply_wrong_result_count() {
 ^bb0:
-  %i = "constant"() {value: 0} : () -> index
-  %j = "constant"() {value: 1} : () -> index
+  %i = "std.constant"() {value: 0} : () -> index
+  %j = "std.constant"() {value: 1} : () -> index
   %x = "affine.apply" (%i, %j) {map: (d0, d1) -> ((d0 + 1), (d1 + 2))} : (index,index) -> (index) //  expected-error {{'affine.apply' op mapping must produce one value}}
   return
 }
@@ -78,7 +78,7 @@ func @unknown_custom_op() {
 
 func @bad_alloc_wrong_dynamic_dim_count() {
 ^bb0:
-  %0 = "constant"() {value: 7} : () -> index
+  %0 = "std.constant"() {value: 7} : () -> index
   // Test alloc with wrong number of dynamic dimensions.
   %1 = alloc(%0)[%1] : memref<2x4xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{custom op 'alloc' dimension operand count does not equal memref dynamic dimension count}}
   return
@@ -88,7 +88,7 @@ func @bad_alloc_wrong_dynamic_dim_count() {
 
 func @bad_alloc_wrong_symbol_count() {
 ^bb0:
-  %0 = "constant"() {value: 7} : () -> index
+  %0 = "std.constant"() {value: 7} : () -> index
   // Test alloc with wrong number of symbols
   %1 = alloc(%0) : memref<2x?xf32, (d0, d1)[s0] -> ((d0 + s0), d1), 1> // expected-error {{operand count does not equal dimension plus symbol operand count}}
   return
@@ -99,8 +99,8 @@ func @bad_alloc_wrong_symbol_count() {
 func @test_store_zero_results() {
 ^bb0:
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
-  %1 = "constant"() {value: 0} : () -> index
-  %2 = "constant"() {value: 1} : () -> index
+  %1 = "std.constant"() {value: 0} : () -> index
+  %2 = "std.constant"() {value: 1} : () -> index
   %3 = load %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
   // Test that store returns zero results.
   %4 = store %3, %0[%1, %2] : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1> // expected-error {{cannot name an operation with no results}}
@@ -110,7 +110,7 @@ func @test_store_zero_results() {
 // -----
 
 func @test_store_zero_results2(%x: i32, %p: memref<i32>) {
-  "store"(%x,%p) : (i32, memref<i32>) -> i32  // expected-error {{'store' op requires zero results}}
+  "std.store"(%x,%p) : (i32, memref<i32>) -> i32  // expected-error {{'std.store' op requires zero results}}
   return
 }
 
@@ -126,22 +126,22 @@ func @test_alloc_memref_map_rank_mismatch() {
 
 func @intlimit2() {
 ^bb:
-  %0 = "constant"() {value: 0} : () -> i4096
-  %1 = "constant"() {value: 1} : () -> i4097 // expected-error {{integer bitwidth is limited to 4096 bits}}
+  %0 = "std.constant"() {value: 0} : () -> i4096
+  %1 = "std.constant"() {value: 1} : () -> i4097 // expected-error {{integer bitwidth is limited to 4096 bits}}
   return
 }
 
 // -----
 
 func @func_constant() {
-  %x = "constant"(){value: "xyz"} : () -> i32 // expected-error {{'constant' op requires 'value' to be an integer for an integer result type}}
+  %x = "std.constant"(){value: "xyz"} : () -> i32 // expected-error {{'std.constant' op requires 'value' to be an integer for an integer result type}}
   return
 }
 
 // -----
 
 func @func_constant_out_of_range() {
-  %x = "constant"(){value: 100} : () -> i1 // expected-error {{'constant' op requires 'value' to be an integer within the range of the integer result type}}
+  %x = "std.constant"(){value: 100} : () -> i1 // expected-error {{'std.constant' op requires 'value' to be an integer within the range of the integer result type}}
   return
 }
 
@@ -177,7 +177,7 @@ func @func_with_ops(f32) {
 
 func @func_with_ops(f32) {
 ^bb0(%a : f32):
-  // expected-error@+1 {{'addi' op operand #0 must be integer-like}}
+  // expected-error@+1 {{'std.addi' op operand #0 must be integer-like}}
   %sf = addi %a, %a : f32
 }
 
@@ -185,7 +185,7 @@ func @func_with_ops(f32) {
 
 func @func_with_ops(i32) {
 ^bb0(%a : i32):
-  %sf = addf %a, %a : i32  // expected-error {{'addf' op operand #0 must be floating-point-like}}
+  %sf = addf %a, %a : i32  // expected-error {{'std.addf' op operand #0 must be floating-point-like}}
 }
 
 // -----
@@ -193,7 +193,7 @@ func @func_with_ops(i32) {
 func @func_with_ops(i32) {
 ^bb0(%a : i32):
   // expected-error@+1 {{'predicate' attribute value out of range}}
-  %r = "cmpi"(%a, %a) {predicate: 42} : (i32, i32) -> i1
+  %r = "std.cmpi"(%a, %a) {predicate: 42} : (i32, i32) -> i1
 }
 
 // -----
@@ -225,7 +225,7 @@ func @func_with_ops(f32, f32) {
 // Result type must be boolean like.
 func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
-  %r = "cmpi"(%a, %b) {predicate: 0} : (i32, i32) -> i32 // expected-error {{op requires a bool result type}}
+  %r = "std.cmpi"(%a, %b) {predicate: 0} : (i32, i32) -> i32 // expected-error {{op requires a bool result type}}
 }
 
 // -----
@@ -233,7 +233,7 @@ func @func_with_ops(i32, i32) {
 func @func_with_ops(i32, i32) {
 ^bb0(%a : i32, %b : i32):
   // expected-error@+1 {{requires an integer attribute named 'predicate'}}
-  %r = "cmpi"(%a, %b) {foo: 1} : (i32, i32) -> i1
+  %r = "std.cmpi"(%a, %b) {foo: 1} : (i32, i32) -> i1
 }
 
 // -----
@@ -242,7 +242,7 @@ func @func_with_ops() {
 ^bb0:
   %c = constant splat<vector<42 x i32>, 0> : vector<42 x i32>
   // expected-error@+1 {{op requires the same shape for all operands and results}}
-  %r = "cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<41 x i1>
+  %r = "std.cmpi"(%c, %c) {predicate: 0} : (vector<42 x i32>, vector<42 x i32>) -> vector<41 x i1>
 }
 
 // -----
@@ -259,7 +259,7 @@ func @func_with_ops(i32, i32, i32) {
 func @func_with_ops(i32, i32, i32) {
 ^bb0(%cond : i32, %t : i32, %f : i32):
   // expected-error@+1 {{elemental type i1}}
-  %r = "select"(%cond, %t, %f) : (i32, i32, i32) -> i32
+  %r = "std.select"(%cond, %t, %f) : (i32, i32, i32) -> i32
 }
 
 // -----
@@ -267,7 +267,7 @@ func @func_with_ops(i32, i32, i32) {
 func @func_with_ops(i1, i32, i64) {
 ^bb0(%cond : i1, %t : i32, %f : i64):
   // expected-error@+1 {{'true' and 'false' arguments to be of the same type}}
-  %r = "select"(%cond, %t, %f) : (i1, i32, i64) -> i32
+  %r = "std.select"(%cond, %t, %f) : (i1, i32, i64) -> i32
 }
 
 // -----
@@ -275,7 +275,7 @@ func @func_with_ops(i1, i32, i64) {
 func @func_with_ops(i1, vector<42xi32>, vector<42xi32>) {
 ^bb0(%cond : i1, %t : vector<42xi32>, %f : vector<42xi32>):
   // expected-error@+1 {{requires the condition to have the same shape as arguments}}
-  %r = "select"(%cond, %t, %f) : (i1, vector<42xi32>, vector<42xi32>) -> vector<42xi32>
+  %r = "std.select"(%cond, %t, %f) : (i1, vector<42xi32>, vector<42xi32>) -> vector<42xi32>
 }
 
 // -----
@@ -283,7 +283,7 @@ func @func_with_ops(i1, vector<42xi32>, vector<42xi32>) {
 func @func_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
 ^bb0(%cond : i1, %t : tensor<42xi32>, %f : tensor<?xi32>):
   // expected-error@+1 {{'true' and 'false' arguments to be of the same type}}
-  %r = "select"(%cond, %t, %f) : (i1, tensor<42xi32>, tensor<?xi32>) -> tensor<42xi32>
+  %r = "std.select"(%cond, %t, %f) : (i1, tensor<42xi32>, tensor<?xi32>) -> tensor<42xi32>
 }
 
 // -----
@@ -291,7 +291,7 @@ func @func_with_ops(i1, tensor<42xi32>, tensor<?xi32>) {
 func @func_with_ops(tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) {
 ^bb0(%cond : tensor<?xi1>, %t : tensor<42xi32>, %f : tensor<42xi32>):
   // expected-error@+1 {{requires the condition to have the same shape as arguments}}
-  %r = "select"(%cond, %t, %f) : (tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) -> tensor<42xi32>
+  %r = "std.select"(%cond, %t, %f) : (tensor<?xi1>, tensor<42xi32>, tensor<42xi32>) -> tensor<42xi32>
 }
 
 // -----

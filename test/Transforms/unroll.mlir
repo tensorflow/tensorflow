@@ -225,7 +225,7 @@ func @loop_nest_seq_multiple() {
   }
 
   // CHECK: %c99 = constant 99 : index
-  %k = "constant"(){value: 99} : () -> index
+  %k = constant 99 : index
   // CHECK: for %i0 = 0 to 100 step 2 {
   for %m = 0 to 100 step 2 {
     // CHECK: %7 = affine.apply [[MAP0]](%c0)

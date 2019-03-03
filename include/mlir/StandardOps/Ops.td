@@ -44,7 +44,7 @@ class ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
   }];
 
   let printer = [{
-    return impl::printBinaryOp(this->getInstruction(), p);
+    return detail::printStandardBinaryOp(this->getInstruction(), p);
   }];
 }
 
@@ -71,62 +71,62 @@ class FloatArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
     ArithmeticOp<mnemonic, traits>,
     Arguments<(ins FloatLike:$lhs, FloatLike:$rhs)>;
 
-def AddFOp : FloatArithmeticOp<"addf"> {
+def AddFOp : FloatArithmeticOp<"std.addf"> {
   let summary = "floating point addition operation";
   let hasConstantFolder = 0b1;
 }
 
-def AddIOp : IntArithmeticOp<"addi", [Commutative]> {
+def AddIOp : IntArithmeticOp<"std.addi", [Commutative]> {
   let summary = "integer addition operation";
   let hasFolder = 1;
   let hasConstantFolder = 0b1;
 }
 
-def DivFOp : FloatArithmeticOp<"divf"> {
+def DivFOp : FloatArithmeticOp<"std.divf"> {
   let summary = "floating point division operation";
 }
 
-def DivISOp : IntArithmeticOp<"divis"> {
+def DivISOp : IntArithmeticOp<"std.divis"> {
   let summary = "signed integer division operation";
   let hasConstantFolder = 0b1;
 }
 
-def DivIUOp : IntArithmeticOp<"diviu"> {
+def DivIUOp : IntArithmeticOp<"std.diviu"> {
   let summary = "unsigned integer division operation";
   let hasConstantFolder = 0b1;
 }
 
-def MulFOp : FloatArithmeticOp<"mulf"> {
+def MulFOp : FloatArithmeticOp<"std.mulf"> {
   let summary = "foating point multiplication operation";
   let hasConstantFolder = 0b1;
 }
 
-def MulIOp : IntArithmeticOp<"muli", [Commutative]> {
+def MulIOp : IntArithmeticOp<"std.muli", [Commutative]> {
   let summary = "integer multiplication operation";
   let hasConstantFolder = 0b1;
   let hasFolder = 1;
 }
 
-def RemFOp : FloatArithmeticOp<"remf"> {
+def RemFOp : FloatArithmeticOp<"std.remf"> {
   let summary = "floating point division remainder operation";
 }
 
-def RemISOp : IntArithmeticOp<"remis"> {
+def RemISOp : IntArithmeticOp<"std.remis"> {
   let summary = "signed integer division remainder operation";
   let hasConstantFolder = 0b1;
 }
 
-def RemIUOp : IntArithmeticOp<"remiu"> {
+def RemIUOp : IntArithmeticOp<"std.remiu"> {
   let summary = "unsigned integer division remainder operation";
   let hasConstantFolder = 0b1;
 }
 
-def SubFOp : FloatArithmeticOp<"subf"> {
+def SubFOp : FloatArithmeticOp<"std.subf"> {
   let summary = "floating point subtraction operation";
   let hasConstantFolder = 0b1;
 }
 
-def SubIOp : IntArithmeticOp<"subi"> {
+def SubIOp : IntArithmeticOp<"std.subi"> {
   let summary = "integer subtraction operation";
   let hasConstantFolder = 0b1;
   let hasCanonicalizer = 0b1;

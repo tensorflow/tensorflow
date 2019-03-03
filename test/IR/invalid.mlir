@@ -343,13 +343,13 @@ func @malformed_type(%a : intt) { // expected-error {{expected non-function type
 
 func @resulterror() -> i32 {
 ^bb42:
-  return    // expected-error {{'return' op has 0 operands, but enclosing function returns 1}}
+  return    // expected-error {{'std.return' op has 0 operands, but enclosing function returns 1}}
 }
 
 // -----
 
 func @func_resulterror() -> i32 {
-  return // expected-error {{'return' op has 0 operands, but enclosing function returns 1}}
+  return // expected-error {{'std.return' op has 0 operands, but enclosing function returns 1}}
 }
 
 // -----
@@ -417,7 +417,7 @@ func @condbr_a_bb_is_not_a_type() {
 // -----
 
 func @successors_in_non_terminator(%a : i32, %b : i32) {
-  %c = "addi"(%a, %b)[^bb1] : () -> () // expected-error {{successors in non-terminator}}
+  %c = "std.addi"(%a, %b)[^bb1] : () -> () // expected-error {{successors in non-terminator}}
 ^bb1:
   return
 }

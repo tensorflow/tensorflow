@@ -18,10 +18,10 @@ func @func_with_ops(f32) {
   %t = "getTensor"() : () -> tensor<4x4x?xf32>
 
   // CHECK: %1 = dim %0, 2 : tensor<4x4x?xf32>
-  %t2 = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
+  %t2 = "std.dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
 
   // CHECK: %2 = addf %arg0, %arg0 : f32
-  %x = "addf"(%a, %a) : (f32,f32) -> (f32)
+  %x = "std.addf"(%a, %a) : (f32,f32) -> (f32)
 
   // CHECK:   return
   return
@@ -31,19 +31,19 @@ func @func_with_ops(f32) {
 func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 ^bb42(%t: tensor<4x4x?xf32>, %f: f32, %i: i32, %idx : index):
   // CHECK: %0 = dim %arg0, 2 : tensor<4x4x?xf32>
-  %a = "dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
+  %a = "std.dim"(%t){index: 2} : (tensor<4x4x?xf32>) -> index
 
   // CHECK: %1 = dim %arg0, 2 : tensor<4x4x?xf32>
   %a2 = dim %t, 2 : tensor<4x4x?xf32>
 
   // CHECK: %2 = addf %arg1, %arg1 : f32
-  %f2 = "addf"(%f, %f) : (f32,f32) -> f32
+  %f2 = "std.addf"(%f, %f) : (f32,f32) -> f32
 
   // CHECK: %3 = addf %2, %2 : f32
   %f3 = addf %f2, %f2 : f32
 
   // CHECK: %4 = addi %arg2, %arg2 : i32
-  %i2 = "addi"(%i, %i) : (i32,i32) -> i32
+  %i2 = "std.addi"(%i, %i) : (i32,i32) -> i32
 
   // CHECK: %5 = addi %4, %4 : i32
   %i3 = addi %i2, %i2 : i32
@@ -52,16 +52,16 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %idx1 = addi %idx, %idx : index
 
   // CHECK: %{{[0-9]+}} = addi %arg3, %{{[0-9]+}} : index
-  %idx2 = "addi"(%idx, %idx1) : (index, index) -> index
+  %idx2 = "std.addi"(%idx, %idx1) : (index, index) -> index
 
   // CHECK: %8 = subf %arg1, %arg1 : f32
-  %f4 = "subf"(%f, %f) : (f32,f32) -> f32
+  %f4 = "std.subf"(%f, %f) : (f32,f32) -> f32
 
   // CHECK: %9 = subf %8, %8 : f32
   %f5 = subf %f4, %f4 : f32
 
   // CHECK: %10 = subi %arg2, %arg2 : i32
-  %i4 = "subi"(%i, %i) : (i32,i32) -> i32
+  %i4 = "std.subi"(%i, %i) : (i32,i32) -> i32
 
   // CHECK: %11 = subi %10, %10 : i32
   %i5 = subi %i4, %i4 : i32
@@ -73,13 +73,13 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %i6 = muli %i2, %i2 : i32
 
   // CHECK: %c42_i32 = constant 42 : i32
-  %x = "constant"(){value: 42 : i32} : () -> i32
+  %x = "std.constant"(){value: 42 : i32} : () -> i32
 
   // CHECK: %c42_i32_0 = constant 42 : i32
   %7 = constant 42 : i32
 
-  // CHECK: %c43 = constant {crazy: "foo"} 43 : index
-  %8 = constant {crazy: "foo"} 43: index
+  // CHECK: %c43 = constant {crazy: "std.foo"} 43 : index
+  %8 = constant {crazy: "std.foo"} 43: index
 
   // CHECK: %cst = constant 4.300000e+01 : bf16
   %9 = constant 43.0 : bf16
@@ -107,13 +107,13 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 
   // Predicate 1 means inequality comparison.
   // CHECK: %{{[0-9]+}} = cmpi "ne", %{{[0-9]+}}, %{{[0-9]+}} : i32
-  %15 = "cmpi"(%i3, %i4) {predicate: 1} : (i32, i32) -> i1
+  %15 = "std.cmpi"(%i3, %i4) {predicate: 1} : (i32, i32) -> i1
 
   // CHECK: %{{[0-9]+}} = cmpi "slt", %cst_3, %cst_3 : vector<4xi32>
   %16 = cmpi "slt", %13, %13 : vector<4 x i32>
 
   // CHECK: %{{[0-9]+}} = cmpi "ne", %cst_3, %cst_3 : vector<4xi32>
-  %17 = "cmpi"(%13, %13) {predicate: 1} : (vector<4 x i32>, vector<4 x i32>) -> vector<4 x i1>
+  %17 = "std.cmpi"(%13, %13) {predicate: 1} : (vector<4 x i32>, vector<4 x i32>) -> vector<4 x i1>
 
   // CHECK: %{{[0-9]+}} = cmpi "slt", %arg3, %arg3 : index
   %18 = cmpi "slt", %idx, %idx : index
@@ -134,10 +134,10 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %23 = select %20, %vci32, %vci32 : vector<42 x i32>
 
   // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %arg3, %arg3 : index
-  %24 = "select"(%18, %idx, %idx) : (i1, index, index) -> index
+  %24 = "std.select"(%18, %idx, %idx) : (i1, index, index) -> index
 
   // CHECK: %{{[0-9]+}} = select %{{[0-9]+}}, %cst_4, %cst_4 : tensor<42xi32>
-  %25 = "select"(%19, %tci32, %tci32) : (tensor<42 x i1>, tensor<42 x i32>, tensor<42 x i32>) -> tensor<42 x i32>
+  %25 = "std.select"(%19, %tci32, %tci32) : (tensor<42 x i1>, tensor<42 x i32>, tensor<42 x i32>) -> tensor<42 x i32>
 
   // CHECK: %{{[0-9]+}} = divis %arg2, %arg2 : i32
   %26 = divis %i, %i : i32
@@ -152,7 +152,7 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %29 = divis %tci32, %tci32 : tensor<42 x i32>
 
   // CHECK: %{{[0-9]+}} = divis %arg2, %arg2 : i32
-  %30 = "divis"(%i, %i) : (i32, i32) -> i32
+  %30 = "std.divis"(%i, %i) : (i32, i32) -> i32
 
   // CHECK: %{{[0-9]+}} = diviu %arg2, %arg2 : i32
   %31 = diviu %i, %i : i32
@@ -167,7 +167,7 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %34 = diviu %tci32, %tci32 : tensor<42 x i32>
 
   // CHECK: %{{[0-9]+}} = diviu %arg2, %arg2 : i32
-  %35 = "diviu"(%i, %i) : (i32, i32) -> i32
+  %35 = "std.diviu"(%i, %i) : (i32, i32) -> i32
 
   // CHECK: %{{[0-9]+}} = remis %arg2, %arg2 : i32
   %36 = remis %i, %i : i32
@@ -182,7 +182,7 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %39 = remis %tci32, %tci32 : tensor<42 x i32>
 
   // CHECK: %{{[0-9]+}} = remis %arg2, %arg2 : i32
-  %40 = "remis"(%i, %i) : (i32, i32) -> i32
+  %40 = "std.remis"(%i, %i) : (i32, i32) -> i32
 
   // CHECK: %{{[0-9]+}} = remiu %arg2, %arg2 : i32
   %41 = remiu %i, %i : i32
@@ -197,10 +197,10 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %44 = remiu %tci32, %tci32 : tensor<42 x i32>
 
   // CHECK: %{{[0-9]+}} = remiu %arg2, %arg2 : i32
-  %45 = "remiu"(%i, %i) : (i32, i32) -> i32
+  %45 = "std.remiu"(%i, %i) : (i32, i32) -> i32
 
   // CHECK: %{{[0-9]+}} = divf %arg1, %arg1 : f32
-  %46 = "divf"(%f, %f) : (f32,f32) -> f32
+  %46 = "std.divf"(%f, %f) : (f32,f32) -> f32
 
   // CHECK: %{{[0-9]+}} = divf %arg1, %arg1 : f32
   %47 = divf %f, %f : f32
@@ -209,7 +209,7 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
   %48 = divf %t, %t : tensor<4x4x?xf32>
 
   // CHECK: %{{[0-9]+}} = remf %arg1, %arg1 : f32
-  %49 = "remf"(%f, %f) : (f32,f32) -> f32
+  %49 = "std.remf"(%f, %f) : (f32,f32) -> f32
 
   // CHECK: %{{[0-9]+}} = remf %arg1, %arg1 : f32
   %50 = remf %f, %f : f32
@@ -222,8 +222,8 @@ func @standard_instrs(tensor<4x4x?xf32>, f32, i32, index) {
 
 // CHECK-LABEL: func @affine_apply() {
 func @affine_apply() {
-  %i = "constant"() {value: 0: index} : () -> index
-  %j = "constant"() {value: 1: index} : () -> index
+  %i = "std.constant"() {value: 0: index} : () -> index
+  %j = "std.constant"() {value: 1: index} : () -> index
 
   // CHECK: affine.apply #map0(%c0)
   %a = "affine.apply" (%i) { map: (d0) -> (d0 + 1) } :
@@ -239,7 +239,7 @@ func @affine_apply() {
 func @load_store(memref<4x4xi32>, index) {
 ^bb0(%0: memref<4x4xi32>, %1: index):
   // CHECK: %0 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
-  %2 = "load"(%0, %1, %1) : (memref<4x4xi32>, index, index)->i32
+  %2 = "std.load"(%0, %1, %1) : (memref<4x4xi32>, index, index)->i32
 
   // CHECK: %1 = load %arg0[%arg1, %arg1] : memref<4x4xi32>
   %3 = load %0[%1, %1] : memref<4x4xi32>
@@ -250,7 +250,7 @@ func @load_store(memref<4x4xi32>, index) {
 // CHECK-LABEL: func @return_op(%arg0: i32) -> i32 {
 func @return_op(%a : i32) -> i32 {
   // CHECK: return %arg0 : i32
-  "return" (%a) : (i32)->()
+  "std.return" (%a) : (i32)->()
 }
 
 // CHECK-LABEL: func @calls(%arg0: i32) {
@@ -260,7 +260,7 @@ func @calls(%arg0: i32) {
   // CHECK: %1 = call @return_op(%0) : (i32) -> i32
   %y = call @return_op(%x) : (i32) -> i32
   // CHECK: %2 = call @return_op(%0) : (i32) -> i32
-  %z = "call"(%x) {callee: @return_op : (i32) -> i32} : (i32) -> i32
+  %z = "std.call"(%x) {callee: @return_op : (i32) -> i32} : (i32) -> i32
 
   // CHECK: %f = constant @affine_apply : () -> ()
   %f = constant @affine_apply : () -> ()
@@ -275,14 +275,14 @@ func @calls(%arg0: i32) {
   %2 = call_indirect %f_0(%arg0) : (i32) -> i32
 
   // CHECK: %4 = call_indirect %f_0(%arg0) : (i32) -> i32
-  %3 = "call_indirect"(%f_0, %arg0) : ((i32) -> i32, i32) -> i32
+  %3 = "std.call_indirect"(%f_0, %arg0) : ((i32) -> i32, i32) -> i32
 
   return
 }
 
 // CHECK-LABEL: func @extract_element(%arg0: tensor<*xi32>, %arg1: tensor<4x4xf32>) -> i32 {
 func @extract_element(%arg0: tensor<*xi32>, %arg1 : tensor<4x4xf32>) -> i32 {
-  %c0 = "constant"() {value: 0: index} : () -> index
+  %c0 = "std.constant"() {value: 0: index} : () -> index
 
   // CHECK: %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>
   %0 = extract_element %arg0[%c0, %c0, %c0, %c0] : tensor<*xi32>

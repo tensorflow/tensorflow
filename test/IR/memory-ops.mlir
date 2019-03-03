@@ -9,8 +9,8 @@ func @alloc() {
   // CHECK: %0 = alloc() : memref<1024x64xf32, 1>
   %0 = alloc() : memref<1024x64xf32, (d0, d1) -> (d0, d1), 1>
 
-  %c0 = "constant"() {value: 0} : () -> index
-  %c1 = "constant"() {value: 1} : () -> index
+  %c0 = "std.constant"() {value: 0} : () -> index
+  %c1 = "std.constant"() {value: 1} : () -> index
 
   // Test alloc with dynamic dimensions.
   // CHECK: %1 = alloc(%c0, %c1) : memref<?x?xf32, 1>

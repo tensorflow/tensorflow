@@ -1391,8 +1391,8 @@ Examples:
 %y = dim %A, 1 : tensor<4 x ? x f32>
 
 // Equivalent generic form:
-%x = "dim"(%A){index: 0} : (tensor<4 x ? x f32>) -> index
-%y = "dim"(%A){index: 1} : (tensor<4 x ? x f32>) -> index
+%x = "std.dim"(%A){index: 0} : (tensor<4 x ? x f32>) -> index
+%y = "std.dim"(%A){index: 1} : (tensor<4 x ? x f32>) -> index
 ```
 
 #### 'reshape' operation {#'reshape'-operation}
@@ -1461,7 +1461,7 @@ Example:
 // sized base memref with the slice size being half the base memref's
 // dynamic size and with an offset of %0
 #map_c = (i, j)[s0, s1]->(i + s0, j) size(4, s1)
-%s1 = "divi"(%n1, 2) : (i32, i32) -> i32
+%s1 = "std.divi"(%n1, 2) : (i32, i32) -> i32
 %C = view memref<16x?xf32, #map_a, hbm> -> memref<4x?xf32, #map_c, hbm>
           (%s1) [%0, %n1] %A : memref<16x?xf32, #map_a, hbm>
 ```
@@ -1807,13 +1807,13 @@ Examples:
 %x = cmpi "slt", %lhs, %rhs : i32
 
 // Generic form of the same operation.
-%x = "cmpi"(%lhs, %rhs){predicate: 2} : (i32, i32) -> i1
+%x = "std.cmpi"(%lhs, %rhs){predicate: 2} : (i32, i32) -> i1
 
 // Custom form of vector equality comparison.
 %x = cmpi "eq", %lhs, %rhs : vector<4xi64>
 
 // Generic form of the same operation.
-%x = "cmpi"(%lhs, %rhs){predicate: 0}
+%x = "std.cmpi"(%lhs, %rhs){predicate: 0}
     : (vector<4xi64>, vector<4xi64> -> vector<4xi1>
 ```
 
@@ -1885,8 +1885,8 @@ Examples:
 %3 = constant @myfn : (tensor<16xf32>, f32) -> tensor<16xf32>
 
 // Equivalent generic forms
-%1 = "constant"(){value: 42} : i32
-%3 = "constant"(){value: @myfn}
+%1 = "std.constant"(){value: 42} : i32
+%3 = "std.constant"(){value: @myfn}
    : () -> (tensor<16xf32>, f32) -> tensor<16xf32>
 
 ```
@@ -2089,10 +2089,10 @@ Examples:
 %x = select %cond, %true, %false : i32
 
 // Generic form of the same operation.
-%x = "select"(%cond, %true, %false) : (i1, i32, i32) -> i32
+%x = "std.select"(%cond, %true, %false) : (i1, i32, i32) -> i32
 
 // Vector selection is element-wise
-%vx = "select"(%vcond, %vtrue, %vfalse)
+%vx = "std.select"(%vcond, %vtrue, %vfalse)
     : (vector<42xi1>, vector<42xf32>, vector<42xf32>) -> vector<42xf32>
 ```
 
@@ -2120,15 +2120,15 @@ Examples:
 
 ```mlir {.mlir}
 // Convert from unknown rank to rank 2 with unknown dimension sizes.
-%2 = "tensor_cast"(%1) : (tensor<*xf32>) -> tensor<?x?xf32>
+%2 = "std.tensor_cast"(%1) : (tensor<*xf32>) -> tensor<?x?xf32>
 %2 = tensor_cast %1 : tensor<*xf32> to tensor<?x?xf32>
 
 // Convert to a type with more known dimensions.
-%3 = "tensor_cast"(%2) : (tensor<?x?xf32>) -> tensor<4x?xf32>
+%3 = "std.tensor_cast"(%2) : (tensor<?x?xf32>) -> tensor<4x?xf32>
 
 // Discard static dimension and rank information.
-%4 = "tensor_cast"(%3) : (tensor<4x?xf32>) -> tensor<?x?xf32>
-%5 = "tensor_cast"(%4) : (tensor<?x?xf32>) -> tensor<*xf32>
+%4 = "std.tensor_cast"(%3) : (tensor<4x?xf32>) -> tensor<?x?xf32>
+%5 = "std.tensor_cast"(%4) : (tensor<?x?xf32>) -> tensor<*xf32>
 ```
 
 Convert a tensor from one type to an equivalent type without changing any data

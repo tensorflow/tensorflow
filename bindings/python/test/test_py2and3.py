@@ -34,10 +34,10 @@ class EdscTest(unittest.TestCase):
     with E.ContextManager():
       a, b = (E.Expr(E.Bindable(self.i32Type)) for _ in range(2))
       c1 = self.module.op(
-          "constant",
+          "std.constant",
           self.i32Type, [],
           value=self.module.integerAttr(self.i32Type, 42))
-      expr = self.module.op("addi", self.i32Type, [c1, b])
+      expr = self.module.op("std.addi", self.i32Type, [c1, b])
       str = expr.__str__()
       self.assertIn("addi(42, $2)", str)
 
@@ -99,7 +99,7 @@ class EdscTest(unittest.TestCase):
       A, B, C = list(map(E.Indexed, [E.Bindable(memrefType) for _ in range(3)]))
       stmt = C.store([i, j], A.load([i, k]) * B.load([k, j]))
       str = stmt.__str__()
-      self.assertIn(" = store(", str)
+      self.assertIn(" = std.store(", str)
 
   def testMatmul(self):
     with E.ContextManager():
@@ -118,7 +118,7 @@ class EdscTest(unittest.TestCase):
       self.assertIn("for($1 = $4 to $7 step $10) {", str)
       self.assertIn("for($2 = $5 to $8 step $11) {", str)
       self.assertIn("for($3 = $6 to $9 step $12) {", str)
-      self.assertIn(" = store", str)
+      self.assertIn(" = std.store", str)
 
   def testArithmetic(self):
     with E.ContextManager():
@@ -353,10 +353,10 @@ class EdscTest(unittest.TestCase):
       emitter = E.MLIRFunctionEmitter(f)
       funcArg, = emitter.bind_function_arguments()
       c1 = self.module.op(
-          "constant",
+          "std.constant",
           self.i32Type, [],
           value=self.module.integerAttr(self.i32Type, 42))
-      expr = self.module.op("addi", self.i32Type, [c1, funcArg])
+      expr = self.module.op("std.addi", self.i32Type, [c1, funcArg])
       block = E.Block([E.Stmt(expr), E.Return()])
       emitter.emit_inplace(block)
       self.module.compile()

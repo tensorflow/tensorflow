@@ -392,7 +392,7 @@ Expr mlir::edsc::op::operator!(Expr expr) {
   auto attr = IntegerAttr::get(thisType, 1);
   auto attrId = Identifier::get("value", context);
   auto namedAttr = NamedAttribute{attrId, attr};
-  auto cstOne = VariadicExpr("constant", {}, thisType, {namedAttr});
+  auto cstOne = VariadicExpr("std.constant", {}, thisType, {namedAttr});
 
   // Emulate negation as (1 - x) : i1
   return cstOne - expr;

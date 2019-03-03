@@ -17,10 +17,10 @@ func @test() {
       %idx1 = affine.apply (d0, d1) -> (d1)(%i, %j)
       // Out of bound access.
       %x  = load %A[%idx0, %idx1] : memref<9 x 9 x i32>  
-      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
-      // expected-error@-2 {{'load' op memref out of lower bound access along dimension #1}}
-      // expected-error@-3 {{'load' op memref out of upper bound access along dimension #2}}
-      // expected-error@-4 {{'load' op memref out of lower bound access along dimension #2}}
+      // expected-error@-1 {{'std.load' op memref out of upper bound access along dimension #1}}
+      // expected-error@-2 {{'std.load' op memref out of lower bound access along dimension #1}}
+      // expected-error@-3 {{'std.load' op memref out of upper bound access along dimension #2}}
+      // expected-error@-4 {{'std.load' op memref out of lower bound access along dimension #2}}
       // This will access 0 to 110 - hence an overflow.
       %idy = affine.apply (d0, d1) -> (10*d0 - d1 + 19)(%i, %j)
       %y = load %B[%idy] : memref<111 x i32>
@@ -31,9 +31,9 @@ func @test() {
       // In bound.
       %u = load %B[%zero] : memref<111 x i32>
       // Out of bounds.
-      %v = load %B[%sym] : memref<111 x i32> // expected-error {{'load' op memref out of upper bound access along dimension #1}}
+      %v = load %B[%sym] : memref<111 x i32> // expected-error {{'std.load' op memref out of upper bound access along dimension #1}}
       // Out of bounds.
-      store %v, %B[%minusone] : memref<111 x i32>  // expected-error {{'store' op memref out of lower bound access along dimension #1}}
+      store %v, %B[%minusone] : memref<111 x i32>  // expected-error {{'std.store' op memref out of lower bound access along dimension #1}}
   }
   return
 }
@@ -49,13 +49,13 @@ func @test_mod_floordiv_ceildiv() {
       %idx1 = affine.apply (d0, d1, d2) -> (d1 floordiv 4 + 1)(%i, %j, %j)
       %idx2 = affine.apply (d0, d1, d2) -> (d2 ceildiv 4)(%i, %j, %j)
       %x  = load %A[%idx0, %idx1, %idx2] : memref<128 x 64 x 64 x i32>
-      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
-      // expected-error@-2 {{'load' op memref out of upper bound access along dimension #2}}
-      // expected-error@-3 {{'load' op memref out of upper bound access along dimension #3}}
+      // expected-error@-1 {{'std.load' op memref out of upper bound access along dimension #1}}
+      // expected-error@-2 {{'std.load' op memref out of upper bound access along dimension #2}}
+      // expected-error@-3 {{'std.load' op memref out of upper bound access along dimension #3}}
       %idy0 = affine.apply (d0, d1, d2) -> (d0 mod 128)(%i, %j, %j)
       %idy1 = affine.apply (d0, d1, d2) -> (d1 floordiv 4)(%i, %j, %j)
       %idy2 = affine.apply (d0, d1, d2) -> (d2 ceildiv 4 - 1)(%i, %j, %j)
-      store %x, %A[%idy0, %idy1, %idy2] : memref<128 x 64 x 64 x i32> // expected-error {{'store' op memref out of lower bound access along dimension #3}}
+      store %x, %A[%idy0, %idy1, %idy2] : memref<128 x 64 x 64 x i32> // expected-error {{'std.store' op memref out of lower bound access along dimension #3}}
       // CHECK-EMPTY
     } // CHECK }
   } // CHECK }
@@ -99,13 +99,13 @@ func @mod_div() {
       %idx1 = affine.apply (d0, d1, d2) -> (d1 floordiv 4 + 1)(%i, %j, %j)
       %idx2 = affine.apply (d0, d1, d2) -> (d2 ceildiv 4)(%i, %j, %j)
       %x  = load %A[%idx0, %idx1, %idx2] : memref<128 x 64 x 64 x i32>
-      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
-      // expected-error@-2 {{'load' op memref out of upper bound access along dimension #2}}
-      // expected-error@-3 {{'load' op memref out of upper bound access along dimension #3}}
+      // expected-error@-1 {{'std.load' op memref out of upper bound access along dimension #1}}
+      // expected-error@-2 {{'std.load' op memref out of upper bound access along dimension #2}}
+      // expected-error@-3 {{'std.load' op memref out of upper bound access along dimension #3}}
       %idy0 = affine.apply (d0, d1, d2) -> (d0 mod 128)(%i, %j, %j)
       %idy1 = affine.apply (d0, d1, d2) -> (d1 floordiv 4)(%i, %j, %j)
       %idy2 = affine.apply (d0, d1, d2) -> (d2 ceildiv 4 - 1)(%i, %j, %j)
-      store %x, %A[%idy0, %idy1, %idy2] : memref<128 x 64 x 64 x i32> // expected-error {{'store' op memref out of lower bound access along dimension #3}}
+      store %x, %A[%idy0, %idy1, %idy2] : memref<128 x 64 x 64 x i32> // expected-error {{'std.store' op memref out of lower bound access along dimension #3}}
     }
   }
   return
@@ -119,7 +119,7 @@ func @mod_floordiv_nested() {
     for %j = 0 to 256 {
       %idx0 = affine.apply (d0, d1) -> ((d0 mod 1024) floordiv 4)(%i, %j)
       %idx1 = affine.apply (d0, d1) -> ((((d1 mod 128) mod 32) ceildiv 4) * 32)(%i, %j)
-      load %A[%idx0, %idx1] : memref<256 x 256 x i32> // expected-error {{'load' op memref out of upper bound access along dimension #2}}
+      load %A[%idx0, %idx1] : memref<256 x 256 x i32> // expected-error {{'std.load' op memref out of upper bound access along dimension #2}}
     }
   }
   return
@@ -192,7 +192,7 @@ func @out_of_bounds() {
 
   for %i0 = 10 to 11 {
     %idy = affine.apply (d0) ->  (100 * d0 floordiv 1000) (%i0)
-    store %c9, %in[%idy] : memref<1xi32> // expected-error {{'store' op memref out of upper bound access along dimension #1}}
+    store %c9, %in[%idy] : memref<1xi32> // expected-error {{'std.store' op memref out of upper bound access along dimension #1}}
   }
   return
 }
@@ -235,7 +235,7 @@ func @test_mod_bound() {
     for %i1 = #map0(%i0) to #map1(%i0) {
       load %0[%i1] : memref<7 x f32>
       load %1[%i1] : memref<6 x f32>
-      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
+      // expected-error@-1 {{'std.load' op memref out of upper bound access along dimension #1}}
     }
   }
   return
@@ -257,7 +257,7 @@ func @test_floordiv_bound() {
     for %i1 = #map0(%i0) to #map1(%i0) {
       load %0[%i1] : memref<1027 x f32>
       load %1[%i1] : memref<1026 x f32>
-      // expected-error@-1 {{'load' op memref out of upper bound access along dimension #1}}
+      // expected-error@-1 {{'std.load' op memref out of upper bound access along dimension #1}}
     }
     for %i2 = 0 to #map2(%N) {
       // Within bounds.
