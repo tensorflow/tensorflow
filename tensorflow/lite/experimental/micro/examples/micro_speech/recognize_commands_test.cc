@@ -118,7 +118,9 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestFindCommands) {
     }
   }
   TF_LITE_MICRO_EXPECT(has_found_new_command);
-  TF_LITE_MICRO_EXPECT_EQ(0, tflite::testing::TestStrcmp("yes", new_command));
+  if (has_found_new_command) {
+    TF_LITE_MICRO_EXPECT_EQ(0, tflite::testing::TestStrcmp("yes", new_command));
+  }
 
   TfLiteTensor no_results = tflite::testing::CreateQuantizedTensor(
       {0, 0, 0, 255}, tflite::testing::IntArrayFromInitializer({2, 1, 4}),
@@ -141,8 +143,10 @@ TF_LITE_MICRO_TEST(RecognizeCommandsTestFindCommands) {
     }
   }
   TF_LITE_MICRO_EXPECT(has_found_new_command);
-  TF_LITE_MICRO_EXPECT_EQ(231, score);
-  TF_LITE_MICRO_EXPECT_EQ(0, tflite::testing::TestStrcmp("no", new_command));
+  if (has_found_new_command) {
+    TF_LITE_MICRO_EXPECT_EQ(231, score);
+    TF_LITE_MICRO_EXPECT_EQ(0, tflite::testing::TestStrcmp("no", new_command));
+  }
 }
 
 TF_LITE_MICRO_TEST(RecognizeCommandsTestBadInputLength) {

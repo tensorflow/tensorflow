@@ -1360,7 +1360,8 @@ class Checkpoint(tracking.AutoTrackable):
     checkpoint_management.update_checkpoint_state_internal(
         save_dir=os.path.dirname(file_prefix),
         model_checkpoint_path=file_path,
-        all_model_checkpoint_paths=[file_path])
+        all_model_checkpoint_paths=[file_path],
+        save_relative_paths=True)
     return file_path
 
   def restore(self, save_path):

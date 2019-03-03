@@ -73,6 +73,7 @@ bool IsFusedBatchNormGrad(const NodeDef& node);
 bool IsGreater(const NodeDef& node);
 bool IsGreaterEqual(const NodeDef& node);
 bool IsHistogramSummary(const NodeDef& node);
+bool IsHostConstant(const NodeDef& node);
 bool IsIdentity(const NodeDef& node);
 bool IsIdentityN(const NodeDef& node);
 bool IsIdentityNSingleInput(const NodeDef& node);

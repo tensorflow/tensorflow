@@ -114,6 +114,7 @@ __global__ void CompareAndBitpackKernel<double>(const int size,
   }
 }
 
+<<<<<<< HEAD
 #define DEFINE_GPU_SPECS(T)                                               \
   template <>                                                             \
   void CompareAndBitpack<GPUDevice, T>::operator()(                       \
@@ -127,6 +128,22 @@ __global__ void CompareAndBitpackKernel<double>(const int size,
     GPU_LAUNCH_KERNEL(CompareAndBitpackKernel<T>,                         \
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(), \
             total_count, threshold.data(), input.data(), output.data());  \
+=======
+#define DEFINE_GPU_SPECS(T)                                                    \
+  template <>                                                                  \
+  void CompareAndBitpack<GPUDevice, T>::operator()(                            \
+      OpKernelContext* c, typename TTypes<T>::ConstMatrix input,               \
+      typename TTypes<T>::ConstScalar threshold,                               \
+      TTypes<uint8>::Matrix output) {                                          \
+    const GPUDevice& d = c->eigen_device<GPUDevice>();                         \
+    int64 total_count = output.size();                                         \
+    CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);             \
+                                                                               \
+    TF_CHECK_OK(CudaLaunchKernel(CompareAndBitpackKernel<T>,                   \
+                                 config.block_count, config.thread_per_block,  \
+                                 0, d.stream(), total_count, threshold.data(), \
+                                 input.data(), output.data()));                \
+>>>>>>> upstream/master
   }
 
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_SPECS)

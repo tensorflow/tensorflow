@@ -308,8 +308,9 @@ class DeviceFunctionsTest(test.TestCase):
       new_node.input.extend([input_name])
     return new_node
 
-  def create_constant_node_def(self, name, value, dtype, shape=None):
-    node = self.create_node_def("Const", name, [])
+  def create_constant_node_def(self, name, value, dtype,
+                               shape=None, inputs=None):
+    node = self.create_node_def("Const", name, inputs or [])
     self.set_attr_dtype(node, "dtype", dtype)
     self.set_attr_tensor(node, "value", value, dtype, shape)
     return node
@@ -391,6 +392,18 @@ class DeviceFunctionsTest(test.TestCase):
     ])
 
     self.assertProtoEquals(expected_graph_def,
+                           graph_util.remove_training_nodes(graph_def))
+
+  def testRemoveIdentityUsedAsControlInputInConst(self):
+    """Check that Identity nodes used as control inputs are not removed."""
+    graph_def = graph_pb2.GraphDef()
+    graph_def.node.extend([
+        self.create_constant_node_def("C", 1, dtypes.float32, inputs=["^I"]),
+        self.create_node_def("Identity", "I", ["Base"]),
+        self.create_node_def("BaseOp", "Base", [])
+    ])
+
+    self.assertProtoEquals(graph_def,
                            graph_util.remove_training_nodes(graph_def))
 
 

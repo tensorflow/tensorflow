@@ -94,7 +94,7 @@ void* TRTDeviceAllocator::allocate(uint64_t size, uint64_t alignment,
   return mem;
 }
 
-TRTDeviceAllocator::TRTDeviceAllocator(tensorflow::Allocator* allocator)
+TRTDeviceAllocator::TRTDeviceAllocator(Allocator* allocator)
     : allocator_(allocator) {
   VLOG(1) << "Using " << allocator->Name() << " allocator from TensorFlow";
 }

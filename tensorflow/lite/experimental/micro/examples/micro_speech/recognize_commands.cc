@@ -29,7 +29,7 @@ RecognizeCommands::RecognizeCommands(tflite::ErrorReporter* error_reporter,
       minimum_count_(minimum_count),
       previous_results_(error_reporter) {
   previous_top_label_ = "silence";
-  previous_top_label_time_ = 0;
+  previous_top_label_time_ = std::numeric_limits<int32_t>::min();
 }
 
 TfLiteStatus RecognizeCommands::ProcessLatestResults(

@@ -19,6 +19,8 @@ namespace tensorflow {
 
 REGISTER6(BinaryOp, CPU, "Mul", functor::mul, float, Eigen::half, double, uint8,
           int32, bfloat16);
+REGISTER2(BinaryOp, CPU, "MulNoNan", functor::mul_no_nan, float, double);
+
 #if defined(__ANDROID_TYPES_SLIM__)
 // We only register the first type when we have multi-argument calls in the
 // case where we're trying to reduce executable size, but it turns out that the
@@ -39,6 +41,7 @@ REGISTER_KERNEL_BUILDER(Name("Mul")
                             .HostMemory("z")
                             .TypeConstraint<int32>("T"),
                         BinaryOp<CPUDevice, functor::mul<int32>>);
+REGISTER2(BinaryOp, GPU, "MulNoNan", functor::mul_no_nan, float, double);
 #endif
 
 #ifdef TENSORFLOW_USE_SYCL

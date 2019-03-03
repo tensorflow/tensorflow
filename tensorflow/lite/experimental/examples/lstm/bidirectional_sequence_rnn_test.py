@@ -22,7 +22,7 @@ import tensorflow as tf
 from tensorflow import flags
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.rnn_cell import TfLiteRNNCell
+from tensorflow.lite.experimental.examples.lstm.rnn import bidirectional_dynamic_rnn
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.lite.python.op_hint import find_all_hinted_output_nodes
 from tensorflow.python.framework import test_util
@@ -63,11 +63,11 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
 
   def buildRnnLayer(self):
     return tf.nn.rnn_cell.MultiRNNCell([
-        TfLiteRNNCell(self.num_units, name="rnn1"),
-        TfLiteRNNCell(self.num_units, name="rnn2")
+        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
+        tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
     ])
 
-  def buildModel(self, fw_rnn_layer, bw_rnn_layer):
+  def buildModel(self, fw_rnn_layer, bw_rnn_layer, is_dynamic_rnn):
     # Weights and biases for output softmax layer.
     out_weights = tf.Variable(
         tf.random_normal([self.num_units * 2, self.n_classes]))
@@ -77,14 +77,28 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     x = tf.placeholder(
         "float", [None, self.time_steps, self.n_input], name="INPUT_IMAGE")
 
-    rnn_input = tf.unstack(x, self.time_steps, 1)
-    outputs, _, _ = tf.nn.static_bidirectional_rnn(
-        fw_rnn_layer, bw_rnn_layer, rnn_input, dtype="float32")
+    if is_dynamic_rnn:
+      rnn_inputs = tf.transpose(x, [1, 0, 2])
+      outputs, _ = bidirectional_dynamic_rnn(
+          fw_rnn_layer,
+          bw_rnn_layer,
+          rnn_inputs,
+          dtype="float32",
+          time_major=True)
+      fw_outputs, bw_outputs = outputs
+      output = tf.concat([fw_outputs, bw_outputs], 2)
+      output = tf.unstack(output, axis=0)
+      output = output[-1]
+    else:
+      rnn_inputs = tf.unstack(x, self.time_steps, 1)
+      outputs, _, _ = tf.nn.static_bidirectional_rnn(
+          fw_rnn_layer, bw_rnn_layer, rnn_inputs, dtype="float32")
+      output = outputs[-1]
 
-    # Compute logits by multiplying outputs[-1] of shape [batch_size,num_units]
-    # by the softmax layer's out_weight of shape [num_units,n_classes]
+    # Compute logits by multiplying output of shape [batch_size,num_units*2]
+    # by the softmax layer's out_weight of shape [num_units*2,n_classes]
     # plus out_bias
-    prediction = tf.matmul(outputs[-1], out_weights) + out_bias
+    prediction = tf.matmul(output, out_weights) + out_bias
     output_class = tf.nn.softmax(prediction, name="OUTPUT_CLASS")
 
     return x, prediction, output_class
@@ -110,13 +124,15 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
                                  self.n_input))
       sess.run(opt, feed_dict={x: batch_x, y: batch_y})
 
-  def saveAndRestoreModel(self, fw_rnn_layer, bw_rnn_layer, sess, saver):
+  def saveAndRestoreModel(self, fw_rnn_layer, bw_rnn_layer, sess, saver,
+                          is_dynamic_rnn):
     model_dir = tempfile.mkdtemp(dir=FLAGS.test_tmpdir)
     saver.save(sess, model_dir)
 
     # Reset the graph.
     tf.reset_default_graph()
-    x, prediction, output_class = self.buildModel(fw_rnn_layer, bw_rnn_layer)
+    x, prediction, output_class = self.buildModel(fw_rnn_layer, bw_rnn_layer,
+                                                  is_dynamic_rnn)
 
     new_sess = tf.Session(config=CONFIG)
     saver = tf.train.Saver()
@@ -169,12 +185,34 @@ class BidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     sess = tf.Session(config=CONFIG)
 
     x, prediction, output_class = self.buildModel(self.buildRnnLayer(),
-                                                  self.buildRnnLayer())
+                                                  self.buildRnnLayer(), False)
     self.trainModel(x, prediction, output_class, sess)
 
     saver = tf.train.Saver()
     x, prediction, output_class, new_sess = self.saveAndRestoreModel(
-        self.buildRnnLayer(), self.buildRnnLayer(), sess, saver)
+        self.buildRnnLayer(), self.buildRnnLayer(), sess, saver, False)
+
+    test_inputs, expected_output, frozen_graph = self.getInferenceResult(
+        x, output_class, new_sess)
+
+    result = self.tfliteInvoke(frozen_graph, test_inputs, output_class)
+    self.assertTrue(np.allclose(expected_output, result, rtol=1e-6, atol=1e-2))
+
+  @test_util.enable_control_flow_v2
+  def testDynamicRnnMultiRnnCell(self):
+    sess = tf.Session(config=CONFIG)
+
+    x, prediction, output_class = self.buildModel(self.buildRnnLayer(),
+                                                  self.buildRnnLayer(), True)
+    self.trainModel(x, prediction, output_class, sess)
+
+    saver = tf.train.Saver()
+    x, prediction, output_class, new_sess = self.saveAndRestoreModel(
+        self.buildRnnLayer(),
+        self.buildRnnLayer(),
+        sess,
+        saver,
+        is_dynamic_rnn=True)
 
     test_inputs, expected_output, frozen_graph = self.getInferenceResult(
         x, output_class, new_sess)

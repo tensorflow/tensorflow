@@ -280,6 +280,31 @@ class DivNoNanGradientTest(test.TestCase):
       self.assertAllClose(dy.eval(), np.zeros(y.shape.as_list()))
 
 
+class MulNoNanGradientTest(test.TestCase):
+
+  @test_util.run_deprecated_v1
+  def testBasicGradient(self):
+    inputs = constant_op.constant(np.arange(-3, 3), dtype=dtypes.float32)
+    outputs = math_ops.mul_no_nan(inputs, 1 + math_ops.abs(inputs))
+    with self.cached_session():
+      error = gradient_checker.compute_gradient_error(
+          inputs,
+          inputs.get_shape().as_list(), outputs,
+          outputs.get_shape().as_list())
+      self.assertLess(error, 1e-4)
+
+  @test_util.run_deprecated_v1
+  def testGradientWithRhsIsZero(self):
+    x_vals = [0, 1.0, np.nan, np.inf, np.NINF]
+    x = constant_op.constant(x_vals, dtype=dtypes.float32)
+    y = array_ops.zeros_like(x, dtype=dtypes.float32)
+    outputs = math_ops.mul_no_nan(x, y)
+    with self.cached_session():
+      dx, dy = gradients.gradients(outputs, [x, y])
+      self.assertAllClose(dx.eval(), np.zeros(x.shape.as_list()))
+      self.assertAllClose(dy.eval(), x_vals)
+
+
 class XlogyTest(test.TestCase):
 
   def _xlogy_gradients(self, x, y):

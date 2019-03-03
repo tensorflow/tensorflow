@@ -192,6 +192,15 @@ Status ValidateTensorProperties(const string& producer_node_type,
   *trt_dims = TensorShapeToTrtDims(shape, /*ignore_first_dim=*/true);
   *batch_size = shape.dim_size(0);
 
+  // Don't convert empty tensors (dim value of 0).
+  for (int d = 1; d < shape.dims(); ++d) {
+    if (shape.dim_size(d) == 0) {
+      return errors::Unimplemented(
+          "Input tensor with shape ", shape.DebugString(),
+          " is an empty tensor, which is not supported by TRT");
+    }
+  }
+
   if (validation_only) return Status::OK();
   // Following are validations at runtime.
 
@@ -563,6 +572,16 @@ class TRT_TensorOrWeights::SimpleITensor : public nvinfer1::ITensor {
   float getDynamicRange() const override { return 0; }
 #endif
 
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  bool dynamicRangeIsSet() const override { return true; }
+
+  void resetDynamicRange() override {}
+
+  float getDynamicRangeMin() const override { return 0.f; }
+
+  float getDynamicRangeMax() const override { return 0.f; }
+#endif
+
  private:
   nvinfer1::DataType trt_dtype_;
   nvinfer1::Dims trt_dims_;
@@ -835,6 +854,13 @@ TRT_ShapedWeights TrtWeightStore::GetTempWeights(tensorflow::DataType type,
   return weights;
 }
 
+const std::set<string>* TrtNodeValidator::quantize_ops = new std::set<string>{
+    "QuantizeAndDequantizeV2",
+    "QuantizeAndDequantizeV3",
+    "FakeQuantWithMinMaxVars",
+    "FakeQuantWithMinMaxArgs",
+};
+
 TrtNodeValidator::TrtNodeValidator() { RegisterOpValidators(); }
 
 Status TrtNodeValidator::ConvertToTensorOrWeights(
@@ -880,9 +906,27 @@ Status TrtNodeValidator::ConvertToTensorOrWeights(
 }
 
 Status TrtNodeValidator::ValidateNode(
-    const tensorflow::NodeDef& node_def,
+    const NodeDef& node_def,
     const std::vector<std::pair<const NodeDef*, int>>& input_node_and_ports,
+    const TrtPrecisionMode precision_mode,
     const grappler::GraphProperties& graph_properties) {
+  const string& op = node_def.op();
+  // It doesn't support validation of plugins.
+  if (PluginFactoryTensorRT::GetInstance()->IsPlugin(op)) return Status::OK();
+
+  // In INT8 mode, we will always apply the quantization ranges provided by
+  // these ops to the relevant tensors. This happens regardless of the value of
+  // use_calibration.
+  bool is_supported_op = false;
+  if (quantize_ops->count(op)) {
+    is_supported_op = (precision_mode == TrtPrecisionMode::INT8);
+  } else {
+    is_supported_op = op_validators_.count(node_def.op());
+  }
+  if (!is_supported_op) {
+    return errors::Unimplemented("Op type ", op, " is not supported.");
+  }
+
   // Convert input NodeDef and corresponding output ports to
   // TRT_TensorOrWeights.
   std::vector<TRT_TensorOrWeights> inputs;
@@ -899,14 +943,7 @@ Status TrtNodeValidator::ValidateNode(
     inputs.push_back(tensor_or_weights);
   }
 
-  // Validate the node.
-  const auto iter = op_validators_.find(node_def.op());
-  if (iter == op_validators_.end()) {
-    // If validator is not registered, it means no validation is needed.
-    return Status::OK();
-  }
-
-  OpConverter validator = iter->second;
+  OpConverter validator = op_validators_[node_def.op()];
   OpConverterParams params(
       /*arg_converter=*/nullptr, node_def, inputs, /*arg_outputs=*/nullptr,
       /*arg_validation_only=*/true, &weight_store_);
@@ -945,7 +982,7 @@ Status Converter::ConvertNode(const NodeDef& node_def) {
     TF_RETURN_IF_ERROR(plugin_converter_(&params));
   } else {
     if (!op_registry_.count(op)) {
-      return errors::Unimplemented("No converter registered for op: " + op);
+      return errors::Unimplemented("No converter registered for op: ", op);
     }
     OpConverter op_converter = op_registry_.at(op);
     TF_RETURN_IF_ERROR(op_converter(&params));
@@ -3031,8 +3068,9 @@ tensorflow::Status ConvertIdentity(OpConverterParams* params) {
   // TODO(tmorris): TRT's Identity layer does not get optimized away as of TRT
   // 5.0, however once we know that it does it would be nice to use that
   // instead.
+  if (params->validation_only) return Status::OK();
   params->outputs->push_back(params->inputs.at(0));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ConvertBinary(OpConverterParams* params) {
@@ -3077,64 +3115,110 @@ Status ConvertBinary(OpConverterParams* params) {
   // If both input are tensors, or one of them is weights but the conversion
   // above failed, try the conversion using BinaryTensorOpTensor.
   if ((inputs.at(0).is_tensor() && inputs.at(1).is_tensor()) || !status.ok()) {
-    if (!status.ok()) VLOG(1) << status;
+    if (!status.ok()) VLOG(2) << status;
     status = BinaryTensorOpTensor(params, inputs.at(0), inputs.at(1));
   }
   return status;
 }
 
+tensorflow::Status ConvertRsqrt(OpConverterParams* params) {
+  const auto& inputs = params->inputs;
+  const auto& node_def = params->node_def;
+  TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
+  if (params->validation_only) return tensorflow::Status::OK();
+
+  // TODO(tmorris): params->converter is null during validation. Allow
+  // precision_mode and use_calibration to be accessed during validation and
+  // include this check in validation.
+  // We will need a quantization range for intermediate tensor if not using
+  // calibration.
+  //
+  //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
+  //                     ^
+  //               need range here
+  if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
+      !params->converter->use_calibration()) {
+    return errors::Unimplemented(
+        "Intermediate quantization range cannot be determined without"
+        " calibration for Rsqrt, consider replacing with "
+        "Sqrt -> FakeQuant -> Reciprocal ops, at ",
+        node_def.name());
+  }
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  // Sqrt
+  nvinfer1::IUnaryLayer* sqrt_layer = params->converter->network()->addUnary(
+      *const_cast<nvinfer1::ITensor*>(tensor), nvinfer1::UnaryOperation::kSQRT);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(sqrt_layer, node_def.name());
+  // Recip
+  nvinfer1::IUnaryLayer* recip_layer = params->converter->network()->addUnary(
+      *sqrt_layer->getOutput(0), nvinfer1::UnaryOperation::kRECIP);
+  TFTRT_RETURN_ERROR_IF_NULLPTR(recip_layer, node_def.name());
+  params->outputs->push_back(TRT_TensorOrWeights(recip_layer->getOutput(0)));
+  return tensorflow::Status::OK();
+}
+
+const std::unordered_map<string, nvinfer1::UnaryOperation>*
+UnaryOperationMap() {
+  static auto* const m =
+      new std::unordered_map<string, nvinfer1::UnaryOperation>({
+        {"Neg", nvinfer1::UnaryOperation::kNEG},
+            {"Exp", nvinfer1::UnaryOperation::kEXP},
+            {"Log", nvinfer1::UnaryOperation::kLOG},
+            {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
+            {"Abs", nvinfer1::UnaryOperation::kABS},
+            {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+            {"Sin", nvinfer1::UnaryOperation::kSIN},
+            {"Cos", nvinfer1::UnaryOperation::kCOS},
+            {"Tan", nvinfer1::UnaryOperation::kTAN},
+            {"Sinh", nvinfer1::UnaryOperation::kSINH},
+            {"Cosh", nvinfer1::UnaryOperation::kCOSH},
+            {"Asin", nvinfer1::UnaryOperation::kASIN},
+            {"Acos", nvinfer1::UnaryOperation::kACOS},
+            {"Atan", nvinfer1::UnaryOperation::kATAN},
+            {"Asinh", nvinfer1::UnaryOperation::kASINH},
+            {"Acosh", nvinfer1::UnaryOperation::kACOSH},
+            {"Atanh", nvinfer1::UnaryOperation::kATANH},
+            {"Ceil", nvinfer1::UnaryOperation::kCEIL},
+            {"Floor", nvinfer1::UnaryOperation::kFLOOR},
+#endif
+      });
+  return m;
+}
+
 tensorflow::Status ConvertUnary(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-  static const std::unordered_map<string, nvinfer1::UnaryOperation> ops{
-      {"Neg", nvinfer1::UnaryOperation::kNEG},
-      {"Exp", nvinfer1::UnaryOperation::kEXP},
-      {"Log", nvinfer1::UnaryOperation::kLOG},
-      {"Sqrt", nvinfer1::UnaryOperation::kSQRT},
-      {"Abs", nvinfer1::UnaryOperation::kABS},
-      {"Reciprocal", nvinfer1::UnaryOperation::kRECIP},
-  };
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}}));
-
-  // TODO(jie): check type
-  const nvinfer1::ITensor* tensor = nullptr;
-  TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
-      inputs.at(0), inputs.at(0).GetTrtDims(), &tensor));
-
-  nvinfer1::IUnaryLayer* layer;
-  if (node_def.op() == "Rsqrt") {
-    // We will need a quantization range for intermediate tensor if not using
-    // calibration.
-    //
-    //   x -> [Sqrt] -> sqrt(x) -> [Recip] -> 1/sqrt(x)
-    //                     ^
-    //               need range here
-    if (params->converter->precision_mode() == TrtPrecisionMode::INT8 &&
-        !params->converter->use_calibration()) {
-      return errors::Unimplemented(
-          "Intermediate quantization range cannot be determined without"
-          " calibration for Rsqrt, consider replacing with "
-          "Sqrt -> FakeQuant -> Reciprocal ops, at ",
-          node_def.name());
-    }
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::UnaryOperation::kSQRT);
-    TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
-    tensor = layer->getOutput(0);
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor),
-        nvinfer1::UnaryOperation::kRECIP);
-  } else if (ops.count(node_def.op()) != 0) {
-    layer = params->converter->network()->addUnary(
-        *const_cast<nvinfer1::ITensor*>(tensor), ops.at(node_def.op()));
-  } else {
-    return tensorflow::errors::InvalidArgument(
-        "Binary op: ", node_def.op(), " not supported, at ", node_def.name());
+  auto op_pair = UnaryOperationMap()->find(node_def.op());
+  if (op_pair == UnaryOperationMap()->end()) {
+    return tensorflow::errors::Unimplemented(
+        "Unary op: ", node_def.op(), " not supported at: ", node_def.name());
   }
+  if (params->validation_only) return tensorflow::Status::OK();
 
+  // Start conversion.
+  const nvinfer1::ITensor* tensor = inputs.at(0).tensor();
+  nvinfer1::IUnaryLayer* layer = params->converter->network()->addUnary(
+      *const_cast<nvinfer1::ITensor*>(tensor), op_pair->second);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
+
+  // Set quantization ranges.
+  if (node_def.op() == "Sin" || node_def.op() == "Cos") {
+    params->converter->ProvideQuantizationRange(output_tensor, -1.0f, 1.0f);
+  } else if (node_def.op() == "Asin" || node_def.op() == "Atan") {
+    params->converter->ProvideQuantizationRange(output_tensor, -M_PI_2, M_PI_2);
+  } else if (node_def.op() == "Acos") {
+    params->converter->ProvideQuantizationRange(output_tensor, 0.0f, M_PI);
+  } else if (node_def.op() == "Neg" || node_def.op() == "Abs") {
+    // Neg and Abs will have same range as input since TRT uses symmetric
+    // quantization.
+    // TODO(tmorris): Should we infer ranges for Ceil and Floor as well?
+    params->converter->MarkQuantizationRangesAsInferrable(
+        const_cast<nvinfer1::ITensor*>(tensor), output_tensor);
+  }
   params->outputs->push_back(
       TRT_TensorOrWeights(const_cast<nvinfer1::ITensor*>(output_tensor)));
   return tensorflow::Status::OK();
@@ -3172,7 +3256,7 @@ tensorflow::Status ConvertSquare(OpConverterParams* params) {
   return tensorflow::Status::OK();
 }
 
-tensorflow::Status ConvertReduce(OpConverterParams* params) {
+Status ConvertReduce(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(
@@ -3182,16 +3266,14 @@ tensorflow::Status ConvertReduce(OpConverterParams* params) {
   TRT_ShapedWeights index_list = inputs.at(1).weights();
 
   TFAttrs attrs(node_def);
-  auto index_type = attrs.get<tensorflow::DataType>("Tidx");
-
   // Only expect to handle INT32 as attributes for now
-  if (index_type != tensorflow::DataType::DT_INT32) {
-    return tensorflow::errors::Unimplemented("Tidx supports only DT_INT32");
+  if (attrs.get<DataType>("Tidx") != DataType::DT_INT32) {
+    return errors::Unimplemented("Tidx supports only DT_INT32");
   }
 
   int axes = 0;
   if (index_list.count() == 0) {
-    return tensorflow::errors::InvalidArgument(
+    return errors::InvalidArgument(
         "TRT cannot support reduce on all (batch) dimensions, at",
         node_def.name());
   } else {
@@ -3201,7 +3283,7 @@ tensorflow::Status ConvertReduce(OpConverterParams* params) {
       int axis = index_list_data[i];
       if (axis < 0) axis += tensor->getDimensions().nbDims + 1;
       if (axis == 0) {
-        return tensorflow::errors::InvalidArgument(
+        return errors::InvalidArgument(
             "TRT cannot reduce at batch dimension, at", node_def.name());
       }
       axes |= (1 << (axis - 1));
@@ -3220,9 +3302,10 @@ tensorflow::Status ConvertReduce(OpConverterParams* params) {
   } else if (node_def.op() == "Mean") {
     reduce_operation = nvinfer1::ReduceOperation::kAVG;
   } else {
-    return tensorflow::errors::Unimplemented("Op not supported ", node_def.op(),
-                                             " , at ", node_def.name());
+    return errors::Unimplemented("Op not supported ", node_def.op(), ", at ",
+                                 node_def.name());
   }
+  if (params->validation_only) return Status::OK();
 
   const auto keep_dims = attrs.get<bool>("keep_dims");
   nvinfer1::ILayer* layer = params->converter->network()->addReduce(
@@ -3231,7 +3314,7 @@ tensorflow::Status ConvertReduce(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 tensorflow::Status ConvertPad(OpConverterParams* params) {
@@ -3646,49 +3729,48 @@ tensorflow::Status ConvertMatMul(OpConverterParams* params) {
                              transpose_b, node_def.name());
 }
 
-tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
+Status ConvertBatchMatMul(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   // TODO(tmorris): Enable once false is updated to mean either tensor or weight
   // TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"x", false}, {"y",
   // false}}));
   if (inputs.size() != 2) {
-    return tensorflow::errors::InvalidArgument(
-        node_def.op(), " got ", inputs.size(), " inputs but expected 2, at ",
-        node_def.name());
+    return errors::InvalidArgument(node_def.op(), " got ", inputs.size(),
+                                   " inputs but expected 2, at ",
+                                   node_def.name());
   }
   TFAttrs attrs(node_def);
 
-  tensorflow::DataType tf_dtype = attrs.get<tensorflow::DataType>("T");
-  if (tf_dtype != tensorflow::DataType::DT_FLOAT &&
-      tf_dtype != tensorflow::DataType::DT_HALF) {
-    return tensorflow::errors::Unimplemented(
-        "data type is not supported, for node " + node_def.name() + " got " +
-        tensorflow::DataTypeString(tf_dtype));
+  const DataType tf_dtype = attrs.get<DataType>("T");
+  if (tf_dtype != DataType::DT_FLOAT && tf_dtype != DataType::DT_HALF) {
+    return errors::Unimplemented("data type is not supported, for node ",
+                                 node_def.name(),
+                                 " got " + DataTypeString(tf_dtype));
   }
 
-  bool transpose_a = attrs.get<bool>("adj_x");
-  bool transpose_b = attrs.get<bool>("adj_y");
-
-  auto dims = inputs.at(0).GetTrtDims();
+  const bool transpose_a = attrs.get<bool>("adj_x");
+  const bool transpose_b = attrs.get<bool>("adj_y");
+  const auto dims = inputs.at(0).GetTrtDims();
   if (dims.nbDims == 1) {  // NC * CK is only supported through fully connected
     if (transpose_a == false && inputs.at(0).is_tensor() &&
         inputs.at(1).is_weights()) {
       return ConvertMatMulHelper(params, inputs.at(0), inputs.at(1).weights(),
                                  transpose_b, node_def.name());
     } else {
-      return tensorflow::errors::InvalidArgument(
-          "Invalid configuration for MatMul, at: " + node_def.name());
+      return errors::InvalidArgument("Invalid configuration for MatMul, at: ",
+                                     node_def.name());
     }
   }
+  if (params->validation_only) return Status::OK();
 
-  const nvinfer1::ITensor* tensor_l;
-  const nvinfer1::ITensor* tensor_r;
+  // TODO(laigd): avoid duplicating code, and add tests.
+  // TODO(laigd): should we add the following chesks to validator as well?
   auto dims_l = inputs.at(0).GetTrtDims();
   auto dims_r = inputs.at(1).GetTrtDims();
   if (inputs.at(0).is_weights()) {
     if (inputs.at(0).GetTrtDims().d[0] != 1) {
-      return tensorflow::errors::InvalidArgument(
+      return errors::InvalidArgument(
           "Input 0 as weight assumes broadcast across batch for MatMul, at: " +
           node_def.name());
     } else {
@@ -3700,7 +3782,7 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   }
   if (inputs.at(1).is_weights()) {
     if (inputs.at(1).GetTrtDims().d[0] != 1) {
-      return tensorflow::errors::InvalidArgument(
+      return errors::InvalidArgument(
           "Input 1 as weight assumes broadcast across batch for MatMul, at: " +
           node_def.name());
     } else {
@@ -3710,6 +3792,9 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
       dims_r.nbDims--;
     }
   }
+
+  const nvinfer1::ITensor* tensor_l;
+  const nvinfer1::ITensor* tensor_r;
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
       inputs.at(0), dims_l, &tensor_l));
   TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
@@ -3722,10 +3807,10 @@ tensorflow::Status ConvertBatchMatMul(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   nvinfer1::ITensor* output_tensor = layer->getOutput(0);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
-tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
+Status ConvertSoftmax(OpConverterParams* params) {
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
   TF_RETURN_IF_ERROR(CheckInputsWeights(*params, {{"logits", false}}));
@@ -3733,8 +3818,8 @@ tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
 
   int nbDims = tensor->getDimensions().nbDims;
   if (nbDims == 0) {
-    return tensorflow::errors::InvalidArgument(
-        "TensorRT Softmax cannot apply on batch dimension, at" +
+    return errors::InvalidArgument(
+        "TensorRT Softmax cannot apply on batch dimension, at",
         node_def.name());
   }
   if (params->validation_only) return Status::OK();
@@ -3749,7 +3834,7 @@ tensorflow::Status ConvertSoftmax(OpConverterParams* params) {
   // Quantization range for SoftMax is always (0, 1)
   params->converter->ProvideQuantizationRange(output_tensor, 0.0f, 1.0f);
   params->outputs->push_back(TRT_TensorOrWeights(output_tensor));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 tensorflow::Status ConvertTopK(OpConverterParams* params) {
@@ -3795,7 +3880,6 @@ tensorflow::Status ConvertTopK(OpConverterParams* params) {
 
 static void RegisterValidatableOpConverters(
     std::unordered_map<string, OpConverter>* registration) {
-  // TODO(laigd): support all op types.
   (*registration)["BiasAdd"] = ConvertBiasAdd;
   (*registration)["ConcatV2"] = ConvertConcat;
   (*registration)["Const"] = ConvertConst;
@@ -3809,12 +3893,25 @@ static void RegisterValidatableOpConverters(
   (*registration)["Pad"] = ConvertPad;
   (*registration)["Relu6"] = ConvertRelu6;
   (*registration)["Reshape"] = ConvertReshape;
+  (*registration)["Rsqrt"] = ConvertRsqrt;
   (*registration)["Slice"] = ConvertSlice;
   (*registration)["Square"] = ConvertSquare;
   (*registration)["Squeeze"] = ConvertSqueeze;
   (*registration)["StridedSlice"] = ConvertStridedSlice;
   (*registration)["Transpose"] = ConvertTranspose;
   (*registration)["TopKV2"] = ConvertTopK;
+
+  // TODO(ben,jie): this is a temp hack.
+  (*registration)["Identity"] = ConvertIdentity;  // Identity should be removed
+  (*registration)["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
+
+  (*registration)["Sum"] = ConvertReduce;
+  (*registration)["Prod"] = ConvertReduce;
+  (*registration)["Max"] = ConvertReduce;
+  (*registration)["Min"] = ConvertReduce;
+  (*registration)["Mean"] = ConvertReduce;
+  (*registration)["Softmax"] = ConvertSoftmax;
+  (*registration)["BatchMatMul"] = ConvertBatchMatMul;
 
   for (auto quantization_op_type :
        {"QuantizeAndDequantizeV2", "QuantizeAndDequantizeV3",
@@ -3834,6 +3931,9 @@ static void RegisterValidatableOpConverters(
   for (auto normalization_op_type : {"FusedBatchNorm", "FusedBatchNormV2"}) {
     (*registration)[normalization_op_type] = ConvertFusedBatchNorm;
   }
+  for (auto unary_op_pair : *UnaryOperationMap()) {
+    (*registration)[unary_op_pair.first] = ConvertUnary;
+  }
 }
 
 void TrtNodeValidator::RegisterOpValidators() {
@@ -3842,26 +3942,6 @@ void TrtNodeValidator::RegisterOpValidators() {
 
 void Converter::RegisterOpConverters() {
   RegisterValidatableOpConverters(&op_registry_);
-  // TODO(ben,jie): this is a temp hack.
-  op_registry_["Identity"] = ConvertIdentity;  // Identity should be removed
-  op_registry_["Snapshot"] = ConvertIdentity;  // Snapshot should be removed
-
-  op_registry_["Rsqrt"] = ConvertUnary;
-  op_registry_["Reciprocal"] = ConvertUnary;
-  op_registry_["Exp"] = ConvertUnary;
-  op_registry_["Log"] = ConvertUnary;
-  op_registry_["Sqrt"] = ConvertUnary;
-  op_registry_["Abs"] = ConvertUnary;
-  op_registry_["Neg"] = ConvertUnary;
-
-  op_registry_["Sum"] = ConvertReduce;
-  op_registry_["Prod"] = ConvertReduce;
-  op_registry_["Max"] = ConvertReduce;
-  op_registry_["Min"] = ConvertReduce;
-  op_registry_["Mean"] = ConvertReduce;
-  op_registry_["Softmax"] = ConvertSoftmax;
-  op_registry_["BatchMatMul"] = ConvertBatchMatMul;
-
   plugin_converter_ = ConvertPlugin;
 }
 

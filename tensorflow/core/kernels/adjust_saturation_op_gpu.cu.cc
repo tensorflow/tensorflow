@@ -36,9 +36,9 @@ void AdjustSaturationGPU<T>::operator()(GPUDevice* device,
   const int threads_per_block = config.thread_per_block;
   const int block_count =
       (number_of_elements + threads_per_block - 1) / threads_per_block;
-  GPU_LAUNCH_KERNEL((internal::adjust_hsv_nhwc<false, true, false, T>),
+  Tf_check_ok(GPU_LAUNCH_KERNEL((internal::adjust_hsv_nhwc<false, true, false, T>),
       dim3(block_count), dim3(threads_per_block), 0, stream,
-          number_of_elements, input, output, nullptr, scale, nullptr);
+          number_of_elements, input, output, nullptr, scale, nullptr));
 }
 
 template struct AdjustSaturationGPU<float>;

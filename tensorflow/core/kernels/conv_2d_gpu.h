@@ -443,9 +443,9 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     CHECK(dst_filter_format == FORMAT_OIHW)
         << "Unsupported output layout: " << ToString(dst_filter_format);
 
-    GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0>),
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, in.data(), combined_dims, out.data());
+            config.virtual_thread_count, in.data(), combined_dims, out.data()));
   }
 };
 
@@ -464,9 +464,9 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
       combined_dims[2] *= in.dimension(i);
     }
     GpuLaunchConfig config = GetGpuLaunchConfig(out.size(), d);
-    GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0>),
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, in.data(), combined_dims, out.data());
+            config.virtual_thread_count, in.data(), combined_dims, out.data()));
   }
 };
 
@@ -494,15 +494,15 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
     const Dimension<NDIMS - 2> padding_left_dim(padding_left);
 
     if (format == FORMAT_NHWC) {
-      GPU_LAUNCH_KERNEL((PadInputCustomKernelNHWC<T, NDIMS>),
+      TF_CHECK_OK(GPU_LAUNCH_KERNEL((PadInputCustomKernelNHWC<T, NDIMS>),
           dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
               config.virtual_thread_count, in.data(), input_dims, out.data(),
-              output_dims, padding_left_dim);
+              output_dims, padding_left_dim));
     } else if (format == FORMAT_NCHW) {
-      GPU_LAUNCH_KERNEL((PadInputCustomKernelNCHW<T, NDIMS>),
+      TF_CHECK_OK(GPU_LAUNCH_KERNEL((PadInputCustomKernelNCHW<T, NDIMS>),
           dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
               config.virtual_thread_count, in.data(), input_dims, out.data(),
-              output_dims, padding_left_dim);
+              output_dims, padding_left_dim));
     } else {
       LOG(FATAL) << "Invalid data format: " << format;
     }
@@ -611,15 +611,15 @@ void LaunchBatchNarrowMatrixTransposeKernel(
     const T* input, const Dimension<3>& input_dims, T* output) {
   constexpr int NumThreads = TileLongSide;
   if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
-    GPU_LAUNCH_KERNEL((SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL((SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
                                           TileLongSide, TileShortSide>),
         dim3(total_tiles_count), dim3(NumThreads), 0, d.stream(),
-        input, input_dims, output);
+        input, input_dims, output));
   } else {
-    GPU_LAUNCH_KERNEL((SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL((SwapDimension1And2InTensor3UsingTiles<T, NumThreads,
                                           TileShortSide, TileLongSide>),
         dim3(total_tiles_count), dim3(NumThreads), 0, d.stream(),
-        input, input_dims, output);
+        input, input_dims, output));
   }
 }
 
@@ -920,10 +920,10 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
 
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
-    GPU_LAUNCH_KERNEL((SwapDimension1And2InTensor3UsingTiles<T, kNumThreads,
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL((SwapDimension1And2InTensor3UsingTiles<T, kNumThreads,
                                           kTileSize, kTileSize, conjugate>),
         dim3(total_tiles_count), dim3(kNumThreads), 0, d.stream(),
-        input, input_dims, output);
+        input, input_dims, output));
 
   } else if (narrow_matrix) {
     SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(
@@ -931,9 +931,9 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     GpuLaunchConfig config = GetGpuLaunchConfig(total_element_count, d);
-    GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>),
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, input, input_dims, output);
+            config.virtual_thread_count, input, input_dims, output));
   }
 }
 
@@ -963,9 +963,9 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
                                static_cast<int>(combined_dims[2])};
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
     GpuLaunchConfig config = GetGpuLaunchConfig(total_size, d);
-    GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>),
+    TF_CHECK_OK(GPU_LAUNCH_KERNEL((ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>),
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
-            config.virtual_thread_count, in, input_dims, out);
+            config.virtual_thread_count, in, input_dims, out));
   }
 };
 

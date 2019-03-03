@@ -2366,7 +2366,6 @@ void MklLayoutRewritePass::CopyAttrsQuantizedPooling(const Node* orig_node,
                                                      NodeBuilder* nb,
                                                      bool change_format) {
   DataType T;
-  string data_format;
   string padding;
   std::vector<int32> ksize, strides;
 

@@ -78,7 +78,6 @@ class StackedRNNCells(Layer):
   ```
   """
 
-  @trackable.no_automatic_dependency_tracking
   def __init__(self, cells, **kwargs):
     for cell in cells:
       if not hasattr(cell, 'call'):
@@ -443,7 +442,8 @@ class RNN(Layer):
   ```
   """
 
-  @trackable.no_automatic_dependency_tracking
+  _setattr_tracking = False
+
   def __init__(self,
                cell,
                return_sequences=False,
@@ -781,9 +781,9 @@ class RNN(Layer):
     else:
       input_shape = K.int_shape(inputs)
     timesteps = input_shape[0] if self.time_major else input_shape[1]
-    if self.unroll and timesteps in [None, 1]:
+    if self.unroll and timesteps is None:
       raise ValueError('Cannot unroll a RNN if the '
-                       'time dimension is undefined or equal to 1. \n'
+                       'time dimension is undefined. \n'
                        '- If using a Sequential model, '
                        'specify the time dimension by passing '
                        'an `input_shape` or `batch_input_shape` '
@@ -2019,6 +2019,8 @@ class UnifiedGRU(GRU):
           before matrix multiplication). False = "before",
           True = "after" (default and CuDNN compatible).
   """
+
+  _setattr_tracking = False  # TODO(allenl): Figure out why this is needed.
 
   def __init__(self,
                units,

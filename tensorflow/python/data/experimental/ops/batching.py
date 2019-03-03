@@ -52,14 +52,15 @@ def batch_window(dataset):
   Returns:
     A `Tensor` representing the batch of the entire input dataset.
   """
-  if isinstance(dataset.output_classes, tuple):
+  dataset_output_classes = dataset_ops.get_legacy_output_classes(dataset)
+  if isinstance(dataset_output_classes, tuple):
     raise TypeError("Input dataset expected to have a single component")
-  if dataset.output_classes is ops.Tensor:
+  if dataset_output_classes is ops.Tensor:
     return _batch_dense_window(dataset)
-  elif dataset.output_classes is sparse_tensor.SparseTensor:
+  elif dataset_output_classes is sparse_tensor.SparseTensor:
     return _batch_sparse_window(dataset)
   else:
-    raise TypeError("Unsupported dataset type: %s" % dataset.output_classes)
+    raise TypeError("Unsupported dataset type: %s" % dataset_output_classes)
 
 
 def _batch_dense_window(dataset):
@@ -78,8 +79,9 @@ def _batch_dense_window(dataset):
   def finalize_fn(state):
     return state
 
-  if dataset.output_shapes.is_fully_defined():
-    shape = dataset.output_shapes
+  dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+  if dataset_output_shapes.is_fully_defined():
+    shape = dataset_output_shapes
   else:
     first_element = get_single_element.get_single_element(dataset.take(1))
     shape_reducer = grouping.Reducer(shape_init_fn, shape_reduce_fn,
@@ -115,8 +117,9 @@ def _batch_sparse_window(dataset):
   def finalize_fn(state):
     return state
 
-  if dataset.output_shapes.is_fully_defined():
-    shape = dataset.output_shapes
+  dataset_output_shapes = dataset_ops.get_legacy_output_shapes(dataset)
+  if dataset_output_shapes.is_fully_defined():
+    shape = dataset_output_shapes
   else:
     first_element = get_single_element.get_single_element(dataset.take(1))
     shape_reducer = grouping.Reducer(shape_init_fn, shape_reduce_fn,
@@ -219,17 +222,18 @@ def padded_batch_window(dataset, padded_shape, padding_value=None):
   Raises:
     ValueError: if invalid arguments are provided.
   """
-  if not issubclass(dataset.output_classes,
+  dataset_output_classes = dataset_ops.get_legacy_output_classes(dataset)
+  if not issubclass(dataset_output_classes,
                     (ops.Tensor, sparse_tensor.SparseTensor)):
     raise TypeError("Input dataset expected to have a single tensor component")
-  if issubclass(dataset.output_classes, (ops.Tensor)):
+  if issubclass(dataset_output_classes, (ops.Tensor)):
     return _padded_batch_dense_window(dataset, padded_shape, padding_value)
-  elif issubclass(dataset.output_classes, (sparse_tensor.SparseTensor)):
+  elif issubclass(dataset_output_classes, (sparse_tensor.SparseTensor)):
     if padding_value is not None:
       raise ValueError("Padding value not allowed for sparse tensors")
     return _padded_batch_sparse_window(dataset, padded_shape)
   else:
-    raise TypeError("Unsupported dataset type: %s" % dataset.output_classes)
+    raise TypeError("Unsupported dataset type: %s" % dataset_output_classes)
 
 
 def _padded_batch_dense_window(dataset, padded_shape, padding_value=None):
@@ -265,12 +269,13 @@ def _padded_batch_dense_window(dataset, padded_shape, padding_value=None):
   padded_shape = get_single_element.get_single_element(
       dataset.apply(grouping.group_by_reducer(key_fn, max_reducer)))
 
+  dataset_output_types = dataset_ops.get_legacy_output_types(dataset)
   if padding_value is None:
-    if dataset.output_types == dtypes.string:
+    if dataset_output_types == dtypes.string:
       padding_value = ""
-    elif dataset.output_types == dtypes.bool:
+    elif dataset_output_types == dtypes.bool:
       padding_value = False
-    elif dataset.output_types == dtypes.variant:
+    elif dataset_output_types == dtypes.variant:
       raise TypeError("Unable to create padding for field of type 'variant'")
     else:
       padding_value = 0
@@ -278,7 +283,7 @@ def _padded_batch_dense_window(dataset, padded_shape, padding_value=None):
   def batch_init_fn(_):
     batch_shape = array_ops.concat(
         [np.array([0], dtype=np.int32), padded_shape], 0)
-    return gen_array_ops.empty(batch_shape, dtype=dataset.output_types)
+    return gen_array_ops.empty(batch_shape, dtype=dataset_output_types)
 
   def batch_reduce_fn(state, value):
     return array_ops.concat([state, [value]], 0)
@@ -354,7 +359,8 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
 
   def __init__(self, input_dataset):
     """See `unbatch()` for more details."""
-    flat_shapes = nest.flatten(input_dataset.output_shapes)
+    input_shapes = dataset_ops.get_legacy_output_shapes(input_dataset)
+    flat_shapes = nest.flatten(input_shapes)
     if any(s.ndims == 0 for s in flat_shapes):
       raise ValueError("Cannot unbatch an input with scalar components.")
     known_batch_dim = tensor_shape.Dimension(None)
@@ -367,9 +373,9 @@ class _UnbatchDataset(dataset_ops.UnaryDataset):
     self._input_dataset = input_dataset
 
     self._structure = structure.convert_legacy_structure(
-        input_dataset.output_types,
-        nest.map_structure(lambda s: s[1:], input_dataset.output_shapes),
-        input_dataset.output_classes)
+        dataset_ops.get_legacy_output_types(input_dataset),
+        nest.map_structure(lambda s: s[1:], input_shapes),
+        dataset_ops.get_legacy_output_classes(input_dataset))
 
     variant_tensor = ged_ops.experimental_unbatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
@@ -427,9 +433,9 @@ def unbatch():
     # original dataset.
     restructured_dataset = _RestructuredDataset(
         normalized_dataset,
-        dataset.output_types,
-        dataset.output_shapes,
-        dataset.output_classes,
+        dataset_ops.get_legacy_output_types(dataset),
+        dataset_ops.get_legacy_output_shapes(dataset),
+        dataset_ops.get_legacy_output_classes(dataset),
         allow_unsafe_cast=True)
     return _UnbatchDataset(restructured_dataset)
 
@@ -502,25 +508,27 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
     """
     self._input_dataset = dataset
 
+    input_types = dataset_ops.get_legacy_output_types(dataset)
     if not allow_unsafe_cast:
       # Validate that the types are compatible.
       output_types = nest.map_structure(dtypes.as_dtype, output_types)
-      flat_original_types = nest.flatten(dataset.output_types)
+      flat_original_types = nest.flatten(input_types)
       flat_new_types = nest.flatten(output_types)
       if flat_original_types != flat_new_types:
         raise ValueError(
             "Dataset with output types %r cannot be restructured to have "
             "output types %r" % (dataset.output_types, output_types))
 
+    input_shapes = dataset_ops.get_legacy_output_shapes(dataset)
     if output_shapes is None:
       # Inherit shapes from the original `dataset`.
       output_shapes = nest.pack_sequence_as(
-          output_types, nest.flatten(dataset.output_shapes))
+          output_types, nest.flatten(input_shapes))
     else:
       if not allow_unsafe_cast:
         # Validate that the shapes are compatible.
         nest.assert_same_structure(output_types, output_shapes)
-        flat_original_shapes = nest.flatten(dataset.output_shapes)
+        flat_original_shapes = nest.flatten(input_shapes)
         flat_new_shapes = nest.flatten_up_to(output_types, output_shapes)
 
         for original_shape, new_shape in zip(flat_original_shapes,
@@ -528,14 +536,16 @@ class _RestructuredDataset(dataset_ops.UnaryDataset):
           if not original_shape.is_compatible_with(new_shape):
             raise ValueError(
                 "Dataset with output shapes %r cannot be restructured to have "
-                "incompatible output shapes %r" % (dataset.output_shapes,
+                "incompatible output shapes %r" % (input_shapes,
                                                    output_shapes))
       output_shapes = nest.map_structure_up_to(
           output_types, tensor_shape.as_shape, output_shapes)
+
+    input_classes = dataset_ops.get_legacy_output_classes(dataset)
     if output_classes is None:
       # Inherit class types from the original `dataset`.
       output_classes = nest.pack_sequence_as(
-          output_types, nest.flatten(dataset.output_classes))
+          output_types, nest.flatten(input_classes))
 
     self._structure = structure.convert_legacy_structure(
         output_types, output_shapes, output_classes)
@@ -728,12 +738,13 @@ class _RebatchDataset(dataset_ops.UnaryDataset):
       output_dims[0] = output_dims[0] // num_workers
       return tensor_shape.TensorShape(output_dims)
 
-    output_shapes = nest.map_structure(recalculate_output_shapes,
-                                       input_dataset.output_shapes)
+    input_types = dataset_ops.get_legacy_output_types(self._input_dataset)
+    input_shapes = dataset_ops.get_legacy_output_shapes(self._input_dataset)
+    input_classes = dataset_ops.get_legacy_output_classes(self._input_dataset)
+    output_shapes = nest.map_structure(recalculate_output_shapes, input_shapes)
 
     self._structure = structure.convert_legacy_structure(
-        self._input_dataset.output_types, output_shapes,
-        self._input_dataset.output_classes)
+        input_types, output_shapes, input_classes)
     variant_tensor = ged_ops.experimental_rebatch_dataset(
         self._input_dataset._variant_tensor,  # pylint: disable=protected-access
         num_workers=num_workers,

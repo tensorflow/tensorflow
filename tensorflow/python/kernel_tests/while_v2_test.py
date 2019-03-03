@@ -83,6 +83,20 @@ class WhileV2Test(test.TestCase, parameterized.TestCase):
 
       self.assertAllEqual(fnWithLoop(), 4.0)
 
+  def testExternalControlDependencies(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.)
+      v.initializer.run()
+      op = v.assign_add(1.)
+
+      def body_fn(i):  # pylint: disable=invalid-name
+        with ops.control_dependencies([op]):
+          return i + 1
+
+      loop = while_loop_v2(lambda i: i < 1, body_fn, [0])
+      loop[0].op.run()
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
   @test_util.run_deprecated_v1
   def testMultipleLoopVarsBasic(self):
     x = constant_op.constant(5.)

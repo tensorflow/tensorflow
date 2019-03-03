@@ -99,9 +99,8 @@ def canonicalize_signatures(signatures):
            "got {}. Only `tf.functions` with an input signature or "
            "concrete functions can be used as a signature.").format(function))
 
-    # Re-wrap the function so that it only takes keyword arguments and it
-    # returns a dictionary of Tensors. This matches the format of 1.x-style
-    # signatures.
+    # Re-wrap the function so that it returns a dictionary of Tensors. This
+    # matches the format of 1.x-style signatures.
     # pylint: disable=cell-var-from-loop
     @def_function.function
     def signature_wrapper(**kwargs):
@@ -117,8 +116,19 @@ def canonicalize_signatures(signatures):
       keyword = compat.as_str(keyword)
       tensor_spec_signature[keyword] = tensor_spec.TensorSpec.from_tensor(
           tensor, name=keyword)
-    concrete_signatures[signature_key] = (
-        signature_wrapper.get_concrete_function(**tensor_spec_signature))
+    final_concrete = signature_wrapper.get_concrete_function(
+        **tensor_spec_signature)
+    # pylint: disable=protected-access
+    if len(final_concrete._arg_keywords) == 1:
+      # If there is only one input to the signature, a very common case, then
+      # ordering is unambiguous and we can let people pass a positional
+      # argument. Since SignatureDefs are unordered (protobuf "map") multiple
+      # arguments means we need to be keyword-only.
+      final_concrete._num_positional_args = 1
+    else:
+      final_concrete._num_positional_args = 0
+    # pylint: enable=protected-access
+    concrete_signatures[signature_key] = final_concrete
     # pylint: enable=cell-var-from-loop
   return concrete_signatures
 
@@ -225,8 +235,13 @@ def create_signature_map(signatures):
     # assertions.
     assert isinstance(func, defun.ConcreteFunction)
     assert isinstance(func.structured_outputs, collections.Mapping)
-    assert 0 == func._num_positional_args  # pylint: disable=protected-access
-    signature_map._add_signature(name, func)  # pylint: disable=protected-access
+    # pylint: disable=protected-access
+    if len(func._arg_keywords) == 1:
+      assert 1 == func._num_positional_args
+    else:
+      assert 0 == func._num_positional_args
+    signature_map._add_signature(name, func)
+    # pylint: enable=protected-access
   return signature_map
 
 

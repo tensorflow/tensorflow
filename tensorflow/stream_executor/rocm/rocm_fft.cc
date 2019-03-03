@@ -17,18 +17,19 @@ limitations under the License.
 
 #include <complex>
 
+#include "tensorflow/stream_executor/device_memory.h"
+#include "tensorflow/stream_executor/lib/env.h"
+#include "tensorflow/stream_executor/lib/initialize.h"
+#include "tensorflow/stream_executor/lib/status.h"
+#include "tensorflow/stream_executor/platform/dso_loader.h"
+#include "tensorflow/stream_executor/platform/logging.h"
+#include "tensorflow/stream_executor/platform/port.h"
+#include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/rocm/rocm_activation.h"
 #include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
 #include "tensorflow/stream_executor/rocm/rocm_helpers.h"
 #include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
 #include "tensorflow/stream_executor/rocm/rocm_stream.h"
-#include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/lib/env.h"
-#include "tensorflow/stream_executor/lib/initialize.h"
-#include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/logging.h"
-#include "tensorflow/stream_executor/platform/port.h"
-#include "tensorflow/stream_executor/plugin_registry.h"
 #include "tensorflow/stream_executor/stream_executor_internal.h"
 
 namespace stream_executor {
@@ -38,6 +39,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocFftPlugin);
 
 namespace wrap {
 
+#ifdef PLATFORM_GOOGLE
 // This macro wraps a global identifier, given by __name, in a callable
 // structure that loads the DLL symbol out of the DSO handle in a thread-safe
 // manner on first use. This dynamic loading technique is used to avoid DSO
@@ -46,36 +48,59 @@ namespace wrap {
 #define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                      \
   struct WrapperShim__##__name {                                 \
     template <typename... Args>                                  \
-    hipfftResult operator()(GpuExecutor* parent, Args... args) { \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) { \
       gpu::ScopedActivateExecutorContext sac{parent};            \
       return ::__name(args...);                                  \
     }                                                            \
   } __name;
 
-#define ROCFFT_ROUTINE_EACH(__macro) \
-  __macro(hipfftDestroy)             \
-  __macro(hipfftSetStream)           \
-  __macro(hipfftPlan1d)              \
-  __macro(hipfftPlan2d)              \
-  __macro(hipfftPlan3d)              \
-  __macro(hipfftPlanMany)            \
-  __macro(hipfftCreate)              \
-  __macro(hipfftSetAutoAllocation)   \
-  __macro(hipfftSetWorkArea)         \
-  __macro(hipfftGetSize1d)           \
-  __macro(hipfftMakePlan1d)          \
-  __macro(hipfftGetSize2d)           \
-  __macro(hipfftMakePlan2d)          \
-  __macro(hipfftGetSize3d)           \
-  __macro(hipfftMakePlan3d)          \
-  __macro(hipfftGetSizeMany)         \
-  __macro(hipfftMakePlanMany)        \
-  __macro(hipfftExecD2Z)             \
-  __macro(hipfftExecZ2D)             \
-  __macro(hipfftExecC2C)             \
-  __macro(hipfftExecC2R)             \
-  __macro(hipfftExecZ2Z)             \
-  __macro(hipfftExecR2C)             \
+#else
+
+#define STREAM_EXECUTOR_ROCFFT_WRAP(__name)                               \
+  struct DynLoadShim__##__name {                                          \
+    static const char *kName;                                             \
+    using FuncPtrT = std::add_pointer<decltype(::__name)>::type;          \
+    static void *GetDsoHandle() {                                         \
+      auto s = internal::CachedDsoLoader::GetRocfftDsoHandle();           \
+      return s.ValueOrDie();                                              \
+    }                                                                     \
+    static FuncPtrT LoadOrDie() {                                         \
+      void *f;                                                            \
+      auto s = port::Env::Default()->GetSymbolFromLibrary(GetDsoHandle(), \
+                                                          kName, &f);     \
+      CHECK(s.ok()) << "could not find " << kName                         \
+                    << " in rocfft DSO; dlerror: " << s.error_message();  \
+      return reinterpret_cast<FuncPtrT>(f);                               \
+    }                                                                     \
+    static FuncPtrT DynLoad() {                                           \
+      static FuncPtrT f = LoadOrDie();                                    \
+      return f;                                                           \
+    }                                                                     \
+    template <typename... Args>                                           \
+    hipfftResult operator()(GpuExecutor *parent, Args... args) {          \
+      gpu::ScopedActivateExecutorContext sac{parent};                     \
+      return DynLoad()(args...);                                          \
+    }                                                                     \
+  } __name;                                                               \
+  const char *DynLoadShim__##__name::kName = #__name;
+
+#endif
+
+#define ROCFFT_ROUTINE_EACH(__macro)                                           \
+  __macro(hipfftDestroy) __macro(hipfftSetStream) __macro(hipfftPlan1d)        \
+      __macro(hipfftPlan2d) __macro(hipfftPlan3d) __macro(hipfftPlanMany)      \
+          __macro(hipfftCreate) __macro(hipfftSetAutoAllocation)               \
+              __macro(hipfftSetWorkArea) __macro(hipfftGetSize1d)              \
+                  __macro(hipfftMakePlan1d) __macro(hipfftGetSize2d)           \
+                      __macro(hipfftMakePlan2d) __macro(hipfftGetSize3d)       \
+                          __macro(hipfftMakePlan3d) __macro(hipfftGetSizeMany) \
+                              __macro(hipfftMakePlanMany)                      \
+                                  __macro(hipfftExecD2Z)                       \
+                                      __macro(hipfftExecZ2D)                   \
+                                          __macro(hipfftExecC2C)               \
+                                              __macro(hipfftExecC2R)           \
+                                                  __macro(hipfftExecZ2Z)       \
+                                                      __macro(hipfftExecR2C)
 
 ROCFFT_ROUTINE_EACH(STREAM_EXECUTOR_ROCFFT_WRAP)
 
@@ -145,7 +170,7 @@ port::Status ROCMFftPlan::Initialize(
         case 1:
           // hipfftPlan1d
           ret = wrap::hipfftPlan1d(parent, &plan_, elem_count_[0],
-                                  ROCMFftType(type), 1 /* = batch */);
+                                   ROCMFftType(type), 1 /* = batch */);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 1d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -155,7 +180,7 @@ port::Status ROCMFftPlan::Initialize(
         case 2:
           // hipfftPlan2d
           ret = wrap::hipfftPlan2d(parent, &plan_, elem_count_[0],
-                                  elem_count_[1], ROCMFftType(type));
+                                   elem_count_[1], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 2d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -166,7 +191,7 @@ port::Status ROCMFftPlan::Initialize(
           // hipfftPlan3d
           ret =
               wrap::hipfftPlan3d(parent, &plan_, elem_count_[0], elem_count_[1],
-                                elem_count_[2], ROCMFftType(type));
+                                 elem_count_[2], ROCMFftType(type));
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to create rocFFT 3d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -197,8 +222,8 @@ port::Status ROCMFftPlan::Initialize(
       switch (rank) {
         case 1:
           ret = wrap::hipfftMakePlan1d(parent, plan_, elem_count_[0],
-                                      ROCMFftType(type), /*batch=*/1,
-                                      &size_in_bytes);
+                                       ROCMFftType(type), /*batch=*/1,
+                                       &size_in_bytes);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 1d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -207,8 +232,8 @@ port::Status ROCMFftPlan::Initialize(
           break;
         case 2:
           ret = wrap::hipfftMakePlan2d(parent, plan_, elem_count_[0],
-                                      elem_count_[1], ROCMFftType(type),
-                                      &size_in_bytes);
+                                       elem_count_[1], ROCMFftType(type),
+                                       &size_in_bytes);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 2d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -217,8 +242,8 @@ port::Status ROCMFftPlan::Initialize(
           break;
         case 3:
           ret = wrap::hipfftMakePlan3d(parent, plan_, elem_count_[0],
-                                      elem_count_[1], elem_count_[2],
-                                      ROCMFftType(type), &size_in_bytes);
+                                       elem_count_[1], elem_count_[2],
+                                       ROCMFftType(type), &size_in_bytes);
           if (ret != HIPFFT_SUCCESS) {
             LOG(ERROR) << "failed to make rocFFT 3d plan:" << ret;
             return port::Status{port::error::INTERNAL,
@@ -463,9 +488,9 @@ std::unique_ptr<fft::Plan> ROCMFft::CreateBatchedPlanWithScratchAllocator(
       input_distance, output_embed, output_stride, output_distance, type,
       batch_count, scratch_allocator);
   if (!status.ok()) {
-    LOG(FATAL)
-        << "failed to initialize batched hipfft plan with customized allocator: "
-        << status.error_message();
+    LOG(FATAL) << "failed to initialize batched hipfft plan with customized "
+                  "allocator: "
+               << status.error_message();
   }
   return std::move(fft_plan_ptr);
 }
@@ -490,7 +515,7 @@ bool ROCMFft::DoFftInternal(Stream *stream, fft::Plan *plan, FuncT hipfftExec,
   }
 
   auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(),
-                        GpuComplex(const_cast<InputT*>(GpuMemory(input))),
+                        GpuComplex(const_cast<InputT *>(GpuMemory(input))),
                         GpuComplex(GpuMemoryMutable(output)));
 
   if (ret != HIPFFT_SUCCESS) {
@@ -517,7 +542,7 @@ bool ROCMFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   }
 
   auto ret = hipfftExec(parent_, rocm_fft_plan->GetPlan(),
-                        GpuComplex(const_cast<InputT*>(GpuMemory(input))),
+                        GpuComplex(const_cast<InputT *>(GpuMemory(input))),
                         GpuComplex(GpuMemoryMutable(output)),
                         rocm_fft_plan->GetFftDirection());
 
@@ -529,13 +554,13 @@ bool ROCMFft::DoFftWithDirectionInternal(Stream *stream, fft::Plan *plan,
   return true;
 }
 
-#define STREAM_EXECUTOR_ROCM_DEFINE_FFT(__type, __fft_type1, __fft_type2, \
-                                           __fft_type3)                      \
+#define STREAM_EXECUTOR_ROCM_DEFINE_FFT(__type, __fft_type1, __fft_type2,    \
+                                        __fft_type3)                         \
   bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
                       const DeviceMemory<std::complex<__type>> &input,       \
                       DeviceMemory<std::complex<__type>> *output) {          \
     return DoFftWithDirectionInternal(                                       \
-         stream, plan, wrap::hipfftExec##__fft_type1, input, output);        \
+        stream, plan, wrap::hipfftExec##__fft_type1, input, output);         \
   }                                                                          \
   bool ROCMFft::DoFft(Stream *stream, fft::Plan *plan,                       \
                       const DeviceMemory<__type> &input,                     \
@@ -558,14 +583,16 @@ STREAM_EXECUTOR_ROCM_DEFINE_FFT(double, Z2Z, D2Z, Z2D)
 }  // namespace gpu
 
 void initialize_rocfft() {
-  if (!PluginRegistry::Instance()->HasFactory(
-          rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin)) {
+  auto rocFftAlreadyRegistered = PluginRegistry::Instance()->HasFactory(
+      rocm::kROCmPlatformId, PluginKind::kFft, gpu::kRocFftPlugin);
+
+  if (!rocFftAlreadyRegistered) {
     port::Status status =
         PluginRegistry::Instance()->RegisterFactory<PluginRegistry::FftFactory>(
             rocm::kROCmPlatformId, gpu::kRocFftPlugin, "rocFFT",
-            [](internal::StreamExecutorInterface* parent) -> fft::FftSupport* {
-              gpu::GpuExecutor* rocm_executor =
-                  dynamic_cast<gpu::GpuExecutor*>(parent);
+            [](internal::StreamExecutorInterface *parent) -> fft::FftSupport * {
+              gpu::GpuExecutor *rocm_executor =
+                  dynamic_cast<gpu::GpuExecutor *>(parent);
               if (rocm_executor == nullptr) {
                 LOG(ERROR)
                     << "Attempting to initialize an instance of the rocFFT "

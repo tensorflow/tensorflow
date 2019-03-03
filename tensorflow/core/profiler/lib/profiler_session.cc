@@ -15,7 +15,6 @@ limitations under the License.
 
 #include "tensorflow/core/profiler/lib/profiler_session.h"
 #include <string>
-#include "tensorflow/contrib/tpu/profiler/trace_events.pb.h"
 #include "tensorflow/core/common_runtime/eager/context.h"
 #include "tensorflow/core/lib/core/error_codes.pb.h"
 #include "tensorflow/core/platform/env.h"
@@ -23,6 +22,7 @@ limitations under the License.
 #include "tensorflow/core/platform/types.h"
 #include "tensorflow/core/profiler/internal/gpu/tracer.h"
 #include "tensorflow/core/profiler/internal/runtime/eager_profiler.h"
+#include "tensorflow/core/profiler/trace_events.pb.h"
 #include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
@@ -36,7 +36,7 @@ namespace {
 std::atomic<bool> session_active = ATOMIC_VAR_INIT(false);
 
 void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
-                                    tpu::Trace* trace,
+                                    profiler::Trace* trace,
                                     const uint64 profile_start_time_micros) {
   auto trace_devices = trace->mutable_devices();
   // TODO(fishx): use a lighter representation instead of GraphDef to insert
@@ -47,15 +47,15 @@ void ConvertRunMetadataToTraceEvent(RunMetadata* run_metadata,
     // Create device
     auto* device_stats =
         run_metadata->mutable_step_stats()->mutable_dev_stats(device_id);
-    tensorflow::tpu::Device device;
+    profiler::Device device;
     device.set_name(device_stats->device());
     device.set_device_id(device_id);
-    tensorflow::tpu::Resource resource;
+    profiler::Resource resource;
     resource.set_name("0");
     resource.set_resource_id(0);
     (*device.mutable_resources())[0] = resource;
     for (const auto& thread_name : device_stats->thread_names()) {
-      tensorflow::tpu::Resource resource;
+      profiler::Resource resource;
       resource.set_resource_id(thread_name.first);
       resource.set_name(thread_name.second);
       (*device.mutable_resources())[thread_name.first] = resource;
@@ -118,7 +118,7 @@ Status ProfilerSession::SerializeToString(string* content) {
     active_ = false;
   }
 
-  tpu::Trace trace;
+  profiler::Trace trace;
 
   ConvertRunMetadataToTraceEvent(&run_metadata, &trace, start_time_micros_);
 

@@ -60,6 +60,7 @@ namespace convert {
 using absl::StrCat;
 using ::testing::ElementsAre;
 using ::testing::ElementsAreArray;
+using ::testing::NanSensitiveFloatNear;
 
 // TODO(laigd): put this into some test utils file.
 void ExpectStatus(Status status, error::Code code = error::OK,
@@ -122,7 +123,7 @@ template <typename T>
 NodeDef MakeConstNodeDef(const string& name, const std::vector<T>& vals,
                          const TensorShape& shape) {
   Scope s = Scope::NewRootScope();
-  Tensor t = ::tensorflow::test::AsTensor<T>(vals, shape);
+  Tensor t = test::AsTensor<T>(vals, shape);
   auto const_op = ops::Const(s.WithOpName(name), t);
   return const_op.node()->def();
 }
@@ -239,6 +240,16 @@ class FakeITensor : public nvinfer1::ITensor {
   }
 
   float getDynamicRange() const override { return dynamic_range_; }
+#endif
+
+#if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
+  bool dynamicRangeIsSet() const override { return true; }
+
+  void resetDynamicRange() override {}
+
+  float getDynamicRangeMin() const override { return 0.f; }
+
+  float getDynamicRangeMax() const override { return 0.f; }
 #endif
 
  private:
@@ -378,8 +389,8 @@ TEST(TRT_TensorOrWeights_Test, Basic) {
 
 class ValidatorTest : public ::testing::Test {
  public:
-  void AddOpValidator(const string& op_name, OpConverter op_validator) {
-    validator_.op_validators_[op_name] = op_validator;
+  std::unordered_map<string, OpConverter>& op_validators() {
+    return validator_.op_validators_;
   }
 
   Status ConvertToTensorOrWeights(
@@ -390,9 +401,17 @@ class ValidatorTest : public ::testing::Test {
         node_def, output_port, graph_properties, tensor_or_weights);
   }
 
+  const std::set<string>* GetQuantizeOps() { return validator_.quantize_ops; }
+
  protected:
   TrtNodeValidator validator_;
 };
+
+TEST_F(ValidatorTest, QuantizeOpsAreRegistered) {
+  for (const string& quantize_op : *GetQuantizeOps()) {
+    QCHECK(op_validators().count(quantize_op));
+  }
+}
 
 TEST_F(ValidatorTest, ConvertToTensorOrWeights) {
   // Convert Const.
@@ -466,18 +485,30 @@ TEST_F(ValidatorTest, ValidateNode) {
   };
   NodeDef node_def = MakeNodeDef("my_op", "MyOp", {});
 
-  // Validator not registered, validation should pass.
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  // Validator not registered.
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED, "Op type MyOp is not supported.");
 
   // Register validator.
-  AddOpValidator("MyOp", op_converter);
-  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, graph_properties));
+  op_validators()["MyOp"] = op_converter;
+  TF_EXPECT_OK(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties));
   EXPECT_EQ(false, start_conversion);
 
   // Let the converter return error.
   should_fail = true;
-  ExpectStatus(validator_.ValidateNode(node_def, {}, graph_properties),
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
                error::INVALID_ARGUMENT);
+
+  // Test quantization ops, they're only supported in INT8 mode. The success
+  // case is tested in OpConverterTest.ConvertQuantize.
+  node_def = MakeNodeDef("my_op", "FakeQuantWithMinMaxArgs", {});
+  ExpectStatus(validator_.ValidateNode(node_def, {}, TrtPrecisionMode::FP32,
+                                       graph_properties),
+               error::UNIMPLEMENTED,
+               "Op type FakeQuantWithMinMaxArgs is not supported.");
 }
 
 class ConverterTest : public ::testing::Test {
@@ -937,7 +968,7 @@ class ConvertGraphDefToEngineTest : public ::testing::Test {
   Status RunConvertGraphDefToEngine(Scope* s) {
     GraphDef gdef;
     TF_EXPECT_OK(s->ToGraphDef(&gdef));
-    std::vector<tensorflow::PartialTensorShape> input_shapes;
+    std::vector<PartialTensorShape> input_shapes;
     int batch_size = -1;
     for (const NodeDef& node : gdef.node()) {
       absl::string_view node_name(node.name());
@@ -1038,7 +1069,7 @@ class OpConverterTest : public ::testing::Test {
 
     // Reset the validator and converter.
     validator_.reset(new TrtNodeValidator);
-    converter_.reset(new Converter(network_.get(), TrtPrecisionMode::FP32,
+    converter_.reset(new Converter(network_.get(), precision_mode_to_test_,
                                    /*use_calibration=*/false));
 
     // Reset other related artifacts.
@@ -1171,9 +1202,10 @@ class OpConverterTest : public ::testing::Test {
     grappler::GraphProperties graph_properties(item);
     TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-    ExpectStatus(validator_->ValidateNode(node_def, input_node_and_ports,
-                                          graph_properties),
-                 expected_code, expected_msg_substr);
+    ExpectStatus(
+        validator_->ValidateNode(node_def, input_node_and_ports,
+                                 precision_mode_to_test_, graph_properties),
+        expected_code, expected_msg_substr);
   }
 
   void RunConversion(const NodeDef& node_def,
@@ -1202,6 +1234,10 @@ class OpConverterTest : public ::testing::Test {
 
   std::unique_ptr<Converter> converter_;
   std::unique_ptr<TrtNodeValidator> validator_;
+
+ protected:
+  // TODO(laigd): parameterize the test and make the precision mode a parameter.
+  TrtPrecisionMode precision_mode_to_test_ = TrtPrecisionMode::FP32;
 
  private:
   Logger logger_;
@@ -1287,34 +1323,34 @@ void TestConvertConst(OpConverterTest* test) {
     reset_and_test(t, false, {}, {});
   }
   {
-    Tensor t = ::tensorflow::test::AsScalar<InputCType>(12);
+    Tensor t = test::AsScalar<InputCType>(12);
     reset_and_test(t, false, {1}, {12});
     reset_and_test(t, true, {1}, {12});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2});
+    Tensor t = test::AsTensor<InputCType>({1, 2});
     reset_and_test(t, false, {2}, {1, 2});
     reset_and_test(t, true, {2}, {1, 2});
   }
   {
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 2, 3, 4, 5, 6}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 2, 3, 4, 5, 6});
     reset_and_test(t, true, {2, 3}, {1, 2, 3, 4, 5, 6});
   }
   {
     // Set all tensor elements to the same value. Such tensors are encoded
     // using a single element list in tensor proto.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({1, 1, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {1, 1, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {1, 1, 1, 1, 1, 1});
   }
   {
     // Set trailing tensor elements to the same value. Such tensors are
     // encoded by truncating all equal elements except the first one.
-    Tensor t = ::tensorflow::test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1},
-                                                        TensorShape({2, 3}));
+    Tensor t =
+        test::AsTensor<InputCType>({2, 2, 1, 1, 1, 1}, TensorShape({2, 3}));
     reset_and_test(t, false, {2, 3}, {2, 2, 1, 1, 1, 1});
     reset_and_test(t, true, {2, 3}, {2, 2, 1, 1, 1, 1});
   }
@@ -1995,6 +2031,7 @@ TEST_F(OpConverterTest, ConvertBinary) {
 }
 
 TEST_F(OpConverterTest, ConvertQuantize) {
+  precision_mode_to_test_ = TrtPrecisionMode::INT8;
   const std::pair<string, int> op_with_num_inputs[4] = {
       {"FakeQuantWithMinMaxArgs", 1},
       {"FakeQuantWithMinMaxVars", 3},
@@ -2122,48 +2159,6 @@ TEST_F(OpConverterTest, ConvertQuantize) {
   }
 }
 
-TEST_F(OpConverterTest, ConvertRelu6) {
-  {
-    // Input list is empty, should fail.
-    NodeDef node_def = MakeNodeDef("my_relu6", "Relu6", {});
-    RunValidationAndConversion(
-        node_def, error::INVALID_ARGUMENT,
-        "Relu6 got 0 inputs but expected 1, at my_relu6");
-  }
-
-  // Get the NodeDef for Relu6.
-  Scope s = Scope::NewRootScope();
-  auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-  auto relu6 = ops::Relu6(s.WithOpName("my_relu6"), input);
-  const NodeDef node_def = relu6.operation.node()->def();
-  {
-    // Input is weights, should fail.
-    Reset();
-    AddTestWeights<float>("input", {1}, {1.0f});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "The input \"input\" for Relu6 must be a tensor, at my_relu6");
-  }
-  {
-    // Clip tensor values and set quantization ranges, ok.
-    Reset();
-    AddTestTensor("input", {1, 2, 3});
-    RunValidationAndConversion(node_def);
-    TRT_TensorOrWeights output;
-    TF_EXPECT_OK(GetTensorOrWeights("my_relu6", &output));
-    EXPECT_TRUE(output.is_tensor());
-    auto ranges = quantization_ranges();
-    EXPECT_EQ(ranges[output.tensor()], 6.0f);
-
-    const DataVec input_data{
-        {"input", test::AsTensor<float>({-100, -1, 0, 3, 5, 9})}};
-    DataVec output_data{{"my_relu6", ConstructTensor<float>(6)}};
-    BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(GetSpanForData<float>(output_data[0]),
-                ElementsAre(0, 0, 0, 3, 5, 6));
-  }
-}
-
 template <DataType dtype>
 void TestConvertSquare(OpConverterTest* test) {
   test->Reset();
@@ -2244,12 +2239,22 @@ TEST_F(OpConverterTest, ConvertActivation) {
         "The input \"input\" for Relu must be a tensor, at my_act");
   }
 
+  constexpr float kAlpha = 0.2f;
+
   // Get nodedef for activation layer.
   auto get_act_nodedef = [](string op_name) -> NodeDef {
     Scope s = Scope::NewRootScope();
     auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
-    if (op_name == "Relu") {
+    if (op_name == "LeakyRelu") {
+      // LeakyRelu does not have a C++ API
+      NodeDef node_def = MakeNodeDef("my_act", "LeakyRelu", {"input"});
+      (*node_def.mutable_attr())["alpha"].set_f(kAlpha);
+      return node_def;
+    } else if (op_name == "Relu") {
       auto act = ops::Relu(s.WithOpName("my_act"), input);
+      return act.operation.node()->def();
+    } else if (op_name == "Relu6") {
+      auto act = ops::Relu6(s.WithOpName("my_act"), input);
       return act.operation.node()->def();
     } else if (op_name == "Sigmoid") {
       auto act = ops::Sigmoid(s.WithOpName("my_act"), input);
@@ -2263,8 +2268,12 @@ TEST_F(OpConverterTest, ConvertActivation) {
   };
   // Get expected output for activation layer.
   auto get_act_output = [](string op_name, float input) -> float {
-    if (op_name == "Relu") {
+    if (op_name == "LeakyRelu") {
+      return (input > 0.0f) ? input : input * kAlpha;
+    } else if (op_name == "Relu") {
       return (input > 0.0f) ? input : 0.0f;
+    } else if (op_name == "Relu6") {
+      return std::min(std::max(input, 0.0f), 6.0f);
     } else if (op_name == "Sigmoid") {
       return 1.0f / (1.0f + std::exp(-input));
     } else if (op_name == "Tanh") {
@@ -2275,7 +2284,8 @@ TEST_F(OpConverterTest, ConvertActivation) {
   };
 
   // Ok.
-  for (string op_name : {"Relu", "Sigmoid", "Tanh"}) {
+  for (const string& op_name :
+       {"LeakyRelu", "Relu", "Relu6", "Sigmoid", "Tanh"}) {
     Reset();
     NodeDef node_def = get_act_nodedef(op_name);
     AddTestTensor("input", {1, 2, 3});
@@ -2284,6 +2294,11 @@ TEST_F(OpConverterTest, ConvertActivation) {
     TF_EXPECT_OK(GetTensorOrWeights("my_act", &output));
     EXPECT_TRUE(output.is_tensor());
     ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+    if (op_name == "Relu6") {
+      // Relu6 should set quantization range automatically.
+      auto ranges = quantization_ranges();
+      EXPECT_EQ(ranges[output.tensor()], 6.0f);
+    }
 
     const std::vector<float> input = {-100, -2, -1, 0, 1, 100};
     const DataVec input_data{{"input", test::AsTensor<float>(input)}};
@@ -3462,6 +3477,174 @@ TEST_F(OpConverterTest, ConvertGather) {
   TestConvertGather<DT_FLOAT>(this);
   TestConvertGather<DT_HALF>(this);
   TestConvertGather<DT_INT32>(this);
+}
+
+TEST_F(OpConverterTest, ConvertUnary) {
+  {
+    // Input list is empty, should fail.
+    NodeDef node_def = MakeNodeDef("my_unary", "Neg", {});
+    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
+                               "Neg got 0 inputs but expected 1, at my_unary");
+  }
+  {
+    // Input is weights, should fail.
+    Reset();
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    auto neg = ops::Neg(s.WithOpName("my_unary"), input);
+    const NodeDef& node_def = neg.operation.node()->def();
+    AddTestWeights<float>("input", {1, 2, 3}, {-3, -2, -1, 0, 1, 2});
+    RunValidationAndConversion(
+        node_def, error::UNIMPLEMENTED,
+        "The input \"x\" for Neg must be a tensor, at my_unary");
+  }
+
+  // Get nodedef for unary layer.
+  auto get_unary_nodedef = [](string op_name) -> NodeDef {
+    Scope s = Scope::NewRootScope();
+    auto input = ops::Placeholder(s.WithOpName("input"), DT_FLOAT);
+    if (op_name == "Abs") {
+      auto unary = ops::Abs(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Acos") {
+      auto unary = ops::Acos(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Acosh") {
+      auto unary = ops::Acosh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Asin") {
+      auto unary = ops::Asin(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Asinh") {
+      auto unary = ops::Asinh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Atan") {
+      auto unary = ops::Atan(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Atanh") {
+      auto unary = ops::Atanh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Ceil") {
+      auto unary = ops::Ceil(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Cos") {
+      auto unary = ops::Cos(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Cosh") {
+      auto unary = ops::Cosh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Exp") {
+      auto unary = ops::Exp(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Floor") {
+      auto unary = ops::Floor(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Log") {
+      auto unary = ops::Log(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Neg") {
+      auto unary = ops::Neg(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Reciprocal") {
+      auto unary = ops::Reciprocal(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Rsqrt") {
+      auto unary = ops::Rsqrt(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Sin") {
+      auto unary = ops::Sin(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Sinh") {
+      auto unary = ops::Sinh(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Sqrt") {
+      auto unary = ops::Sqrt(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    } else if (op_name == "Tan") {
+      auto unary = ops::Tan(s.WithOpName("my_unary"), input);
+      return unary.operation.node()->def();
+    }
+    EXPECT_TRUE(false);
+    return NodeDef();
+  };
+  // Get expected output for unary layer.
+  auto get_unary_output = [](string op_name, float input) -> float {
+    if (op_name == "Abs") {
+      return std::abs(input);
+    } else if (op_name == "Acos") {
+      return std::acos(input);
+    } else if (op_name == "Acosh") {
+      return std::acosh(input);
+    } else if (op_name == "Asin") {
+      return std::asin(input);
+    } else if (op_name == "Asinh") {
+      return std::asinh(input);
+    } else if (op_name == "Atan") {
+      return std::atan(input);
+    } else if (op_name == "Atanh") {
+      return std::atanh(input);
+    } else if (op_name == "Ceil") {
+      return std::ceil(input);
+    } else if (op_name == "Cos") {
+      return std::cos(input);
+    } else if (op_name == "Cosh") {
+      return std::cosh(input);
+    } else if (op_name == "Exp") {
+      return std::exp(input);
+    } else if (op_name == "Floor") {
+      return std::floor(input);
+    } else if (op_name == "Log") {
+      return std::log(input);
+    } else if (op_name == "Neg") {
+      return -input;
+    } else if (op_name == "Reciprocal") {
+      return 1.0 / input;
+    } else if (op_name == "Rsqrt") {
+      return 1.0 / std::sqrt(input);
+    } else if (op_name == "Sin") {
+      return std::sin(input);
+    } else if (op_name == "Sinh") {
+      return std::sinh(input);
+    } else if (op_name == "Sqrt") {
+      return std::sqrt(input);
+    } else if (op_name == "Tan") {
+      return std::tan(input);
+    }
+    EXPECT_TRUE(false);
+    return 0;
+  };
+
+  // Get list of ops to test.
+  std::vector<string> ops_to_test;
+  // Add all ops supported by ConvertUnary.
+  auto* map = UnaryOperationMap();
+  ops_to_test.reserve(map->size());
+  for (auto& pair : *map) {
+    ops_to_test.push_back(pair.first);
+  }
+  // Add other unary ops to test.
+  ops_to_test.push_back("Rsqrt");
+  // Ok.
+  for (string op_name : ops_to_test) {
+    Reset();
+    NodeDef node_def = get_unary_nodedef(op_name);
+    AddTestTensor("input", {1, 2, 3});
+    RunValidationAndConversion(node_def);
+    TRT_TensorOrWeights output;
+    TF_EXPECT_OK(GetTensorOrWeights("my_unary", &output));
+    EXPECT_TRUE(output.is_tensor());
+    ExpectTrtDimsEqualsArray({1, 2, 3}, output.tensor()->getDimensions());
+
+    const std::vector<float> input = {-0.9f, 0.6f, 0.0f, -3.5f, 100.0f, 2.9f};
+    const DataVec input_data{{"input", test::AsTensor<float>(input)}};
+    DataVec output_data{{"my_unary", ConstructTensor<float>(6)}};
+    BuildAndRun(input_data, &output_data);
+    for (int i = 0; i < input.size(); ++i) {
+      const float expected_output = get_unary_output(op_name, input[i]);
+      EXPECT_THAT(GetSpanForData<float>(output_data[0])[i],
+                  NanSensitiveFloatNear(expected_output, 0.0001));
+    }
+  }
 }
 
 }  // namespace convert

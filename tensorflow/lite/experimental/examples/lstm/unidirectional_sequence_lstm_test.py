@@ -20,8 +20,6 @@ import numpy as np
 import tensorflow as tf
 
 from tensorflow.examples.tutorials.mnist import input_data
-from tensorflow.lite.experimental.examples.lstm.rnn import dynamic_rnn
-from tensorflow.lite.experimental.examples.lstm.rnn_cell import TFLiteLSTMCell
 from tensorflow.lite.python.op_hint import convert_op_hints_to_stubs
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
@@ -57,16 +55,18 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
 
   def buildLstmLayer(self):
     return tf.nn.rnn_cell.MultiRNNCell([
-        TFLiteLSTMCell(
+        tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units, use_peepholes=True, forget_bias=0, name="rnn1"),
-        TFLiteLSTMCell(self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
-        TFLiteLSTMCell(
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, num_proj=8, forget_bias=0, name="rnn2"),
+        tf.lite.experimental.nn.TFLiteLSTMCell(
             self.num_units // 2,
             use_peepholes=True,
             num_proj=8,
             forget_bias=0,
             name="rnn3"),
-        TFLiteLSTMCell(self.num_units, forget_bias=0, name="rnn4")
+        tf.lite.experimental.nn.TFLiteLSTMCell(
+            self.num_units, forget_bias=0, name="rnn4")
     ])
 
   def buildModel(self, lstm_layer, is_dynamic_rnn):
@@ -82,7 +82,8 @@ class UnidirectionalSequenceLstmTest(test_util.TensorFlowTestCase):
     # x is shaped [batch_size,time_steps,num_inputs]
     if is_dynamic_rnn:
       lstm_input = tf.transpose(x, perm=[1, 0, 2])
-      outputs, _ = dynamic_rnn(lstm_layer, lstm_input, dtype="float32")
+      outputs, _ = tf.lite.experimental.nn.dynamic_rnn(
+          lstm_layer, lstm_input, dtype="float32")
       outputs = tf.unstack(outputs, axis=0)
     else:
       lstm_input = tf.unstack(x, self.time_steps, 1)

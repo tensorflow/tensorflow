@@ -18,6 +18,7 @@ limitations under the License.
 #include <unistd.h>
 #include "absl/base/casts.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 #include "tensorflow/stream_executor/rocm/rocm_driver.h"
 #include "tensorflow/stream_executor/rocm/rocm_event.h"
@@ -877,7 +878,7 @@ DeviceDescription* GpuExecutor::PopulateDeviceDescription() const {
   {
     int driver_version = 0;
     (void)GpuDriver::GetDriverVersion(&driver_version);
-    string augmented_driver_version = port::Printf(
+    string augmented_driver_version = absl::StrFormat(
         "%d (%s)", driver_version,
         rocm::DriverVersionStatusToString(Diagnostician::FindDsoVersion())
             .c_str());

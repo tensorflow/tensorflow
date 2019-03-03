@@ -238,6 +238,10 @@ class XlaBuilder {
   // See also set_die_immediately_on_error().
   Status first_error() const { return first_error_; }
 
+  // Returns the current status of the builder, complete with the stack trace
+  // information.
+  Status GetCurrentStatus() const;
+
   // Returns the shape of the given op.
   StatusOr<Shape> GetShape(const XlaOp& op) const;
 
@@ -906,6 +910,8 @@ class XlaBuilder {
   friend XlaOp Tanh(const XlaOp& operand);
   friend XlaOp Real(const XlaOp& operand);
   friend XlaOp Imag(const XlaOp& operand);
+  friend XlaOp Sqrt(const XlaOp& operand);
+  friend XlaOp Rsqrt(const XlaOp& operand);
   friend XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
                    absl::Span<const int64> broadcast_dimensions);
   friend XlaOp IsFinite(const XlaOp& operand);
@@ -1634,6 +1640,12 @@ XlaOp Real(const XlaOp& operand);
 // Enqueues an imaginary-part instruction onto the computation.
 XlaOp Imag(const XlaOp& operand);
 
+// Enqueues a sqrt computation onto the computation.
+XlaOp Sqrt(const XlaOp& operand);
+
+// Enqueues a rsqrt computation onto the computation.
+XlaOp Rsqrt(const XlaOp& operand);
+
 // Enqueues a lhs^rhs computation onto the computation.
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,
           absl::Span<const int64> broadcast_dimensions = {});
@@ -1715,9 +1727,11 @@ XlaOp Sort(const XlaOp& keys, absl::Span<const XlaOp> values = {},
 // * All operands must be tensors with the same dimensions. The element types of
 //   the tensors may be different.
 // * The result is a tuple that consists of the operands in sorted order (along
-//   the provided dimension, as above). When comparing, 'comparator' is called
-//   with 2 * n scalar parameters, where parameter 2 * i and 2 * i + 1
-//   correspond to the value of operand i at two index positions.
+//   the provided dimension, as above). The same permutation as implied by the
+//   comparison computation is applied to all operand tensors. When comparing
+//   two index positions, 'comparator' is called with 2 * n scalar parameters,
+//   where parameter 2 * i and 2 * i + 1 correspond to the value of operand i at
+//   two index positions.
 // Default comparator computations can be found in lib/comparators.h
 XlaOp Sort(absl::Span<const XlaOp> operands, const XlaComputation& comparator,
            int64 dimension = -1, bool is_stable = false);

@@ -353,18 +353,26 @@ def remove_training_nodes(input_graph, protected_nodes=None):
     nodes_after_removal.append(new_node)
 
   types_to_splice = {"Identity": True}
+  control_input_names = set()
+  node_names_with_control_input = set()
+  for node in nodes_after_removal:
+    for node_input in node.input:
+      if "^" in node_input:
+        control_input_names.add(node_input.replace("^", ""))
+        node_names_with_control_input.add(node.name)
+
   names_to_splice = {}
   for node in nodes_after_removal:
     if node.op in types_to_splice and node.name not in protected_nodes:
       # We don't want to remove nodes that have control edge inputs, because
       # they might be involved in subtle dependency issues that removing them
       # will jeopardize.
-      has_control_edge = False
-      for input_name in node.input:
-        if re.match(r"^\^", input_name):
-          has_control_edge = True
-      if not has_control_edge:
+      if node.name not in node_names_with_control_input:
         names_to_splice[node.name] = node.input[0]
+
+  # We also don't want to remove nodes which are used as control edge inputs.
+  names_to_splice = {name: value for name, value in names_to_splice.items()
+                     if name not in control_input_names}
 
   nodes_after_splicing = []
   for node in nodes_after_removal:

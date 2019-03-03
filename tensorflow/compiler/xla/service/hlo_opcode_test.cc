@@ -54,11 +54,19 @@ TEST(HloOpcodeTest, OpcodeProperties) {
         EXPECT_FALSE(HloOpcodeIsComparison(opcode));
     }
     switch (opcode) {
+      case HloOpcode::kAfterAll:
+      case HloOpcode::kAllReduce:
+      case HloOpcode::kAllToAll:
       case HloOpcode::kCall:
       case HloOpcode::kConcatenate:
+      case HloOpcode::kCustomCall:
+      case HloOpcode::kDynamicSlice:
+      case HloOpcode::kDynamicUpdateSlice:
       case HloOpcode::kFusion:
       case HloOpcode::kMap:
-      case HloOpcode::kAfterAll:
+      case HloOpcode::kReduce:
+      case HloOpcode::kRng:
+      case HloOpcode::kSort:
       case HloOpcode::kTuple:
         EXPECT_TRUE(HloOpcodeIsVariadic(opcode));
         break;

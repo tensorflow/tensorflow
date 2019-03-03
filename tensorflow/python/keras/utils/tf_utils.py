@@ -20,9 +20,9 @@ from __future__ import print_function
 import six
 
 from tensorflow.python.eager import context
+from tensorflow.python.framework import composite_tensor
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import smart_cond as smart_module
-from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.framework import tensor_shape
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import control_flow_ops
@@ -313,7 +313,9 @@ def is_symbolic_tensor(tensor):
   """
   if isinstance(tensor, variables.Variable):
     return not context.executing_eagerly()
-  if isinstance(tensor, (ops.Tensor, sparse_tensor.SparseTensor)):
+  if isinstance(tensor, composite_tensor.CompositeTensor):
+    return tensor._is_graph_tensor  # pylint: disable=protected-access
+  if isinstance(tensor, ops.Tensor):
     return hasattr(tensor, 'graph')
   if isinstance(tensor, tuple(_user_convertible_tensor_types)):
     return hasattr(ops.convert_to_tensor(tensor), 'graph')

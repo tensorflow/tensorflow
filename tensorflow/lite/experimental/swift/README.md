@@ -59,20 +59,3 @@ script:
 ```shell
 generate_xcodeproj.sh --genconfig tensorflow/lite/swift/TensorFlowLite.tulsiproj:TensorFlowLite --outputfolder ~/path/to/generated/TensorFlowLite.xcodeproj
 ```
-
-### CocoaPods
-
-Add the following to your `Podfile`:
-
-```ruby
-use_frameworks!
-pod 'TensorFlowLiteSwift'
-```
-
-Then, run `pod install`.
-
-In your Swift files, import the module:
-
-```swift
-import TensorFlowLite
-```

@@ -30,6 +30,7 @@ limitations under the License.
 
 #include "absl/container/inlined_vector.h"
 #include "absl/strings/str_cat.h"
+#include "absl/strings/str_format.h"
 #include "tensorflow/stream_executor/lib/error.h"
 #include "tensorflow/stream_executor/lib/numbers.h"
 #include "tensorflow/stream_executor/lib/process_state.h"
@@ -37,6 +38,7 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/str_util.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
 #include "tensorflow/stream_executor/platform/logging.h"
+#include "tensorflow/stream_executor/rocm/rocm_diagnostics.h"
 
 namespace stream_executor {
 namespace rocm {
@@ -136,7 +138,7 @@ void Diagnostician::LogDiagnosticInformation() {
     }
   }
   port::StatusOr<DriverVersion> dso_version = FindDsoVersion();
-  LOG(INFO) << "ROCm reported version is: "
+  LOG(INFO) << "librocm reported version is: "
             << rocm::DriverVersionStatusToString(dso_version);
 
   port::StatusOr<DriverVersion> kernel_version = FindKernelDriverVersion();
@@ -178,7 +180,7 @@ port::StatusOr<DriverVersion> Diagnostician::FindDsoVersion() {
       string dso_version = dot + strlen(so_suffix);
       // TODO(b/22689637): Eliminate the explicit namespace if possible.
       auto stripped_dso_version = port::StripSuffixString(dso_version, ".ld64");
-      auto result = static_cast<port::StatusOr<DriverVersion> *>(data);
+      auto result = static_cast<port::StatusOr<DriverVersion>*>(data);
       *result = rocm::StringToDriverVersion(stripped_dso_version);
       return 1;
     }

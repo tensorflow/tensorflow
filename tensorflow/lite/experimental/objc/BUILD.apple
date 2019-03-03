@@ -98,7 +98,7 @@ objc_library(
         "tests/*.h",
     ]),
     copts = TEST_COPTS,
-    resources = [
+    data = [
         "//tensorflow/lite:testdata/add.bin",
         "//tensorflow/lite:testdata/add_quantized.bin",
     ],

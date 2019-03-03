@@ -30,8 +30,6 @@ upper_tabs:
         path: /lite/ops_versioning
       - title: TensorFlow Lite compatibility guide
         path: /lite/tf_ops_compatibility
-      - title: List of hosted models
-        path: /lite/models
       - title: TensorFlow Lite for iOS
         path: /lite/ios
       - title: TensorFlow Lite for Raspberry Pi
@@ -85,27 +83,36 @@ upper_tabs:
     #   contents:
     #   - title: Overview
     #     path: /lite/models/
-    #   - heading: Beginner
-    #     style: divider
-    #   - title: Image labeling
+    #   - title: Hosted models
+    #     path: /lite/models/hosted
+    #   - title: Image classification
     #     section:
     #     - title: Overview
-    #       path: /lite/models/image/label/overview
+    #       path: /lite/models/image_classification/overview
     #     - title: Android
-    #       path: /lite/models/image/label/android
+    #       path: /lite/models/image_classification/android
     #     - title: iOS
-    #       path: /lite/models/image/label/ios
-    #   - heading: Advanced
-    #     style: divider
-    #   - heading: Image
-    #   - title: Image classification
-    #     path: /lite/models/image/classification/
-    #   - heading: Audio
-    #   - title: Hot word detection
-    #     path: /lite/models/audio/hot_word/
-    #   - heading: Text
-    #   - title: Text classification
-    #     path: /lite/models/text/classification/
+    #       path: /lite/models/image_classification/ios
+    #   - title: Object detection
+    #     section:
+    #     - title: Overview
+    #       path: /lite/models/object_detection/overview
+    #   - title: Speech recognition
+    #     section:
+    #     - title: Overview
+    #       path: /lite/models/speech_recognition/overview
+    #   - title: Pose estimation
+    #     section:
+    #     - title: Overview
+    #       path: /lite/models/pose_estimation/overview
+    #   - title: Segmentation
+    #     section:
+    #     - title: Overview
+    #       path: /lite/models/segmentation/overview
+    #   - title: Smart reply
+    #     section:
+    #     - title: Overview
+    #       path: /lite/models/smart_reply/overview
 
     - name: API
       skip_translation: true

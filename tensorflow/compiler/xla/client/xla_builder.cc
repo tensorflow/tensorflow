@@ -299,12 +299,17 @@ XlaComputation XlaBuilder::BuildAndNoteError() {
   return build_status.ConsumeValueOrDie();
 }
 
-StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
+Status XlaBuilder::GetCurrentStatus() const {
   if (!first_error_.ok()) {
     string backtrace;
     first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
     return AppendStatus(first_error_, backtrace);
   }
+  return Status::OK();
+}
+
+StatusOr<XlaComputation> XlaBuilder::Build(bool remove_dynamic_dimensions) {
+  TF_RETURN_IF_ERROR(GetCurrentStatus());
   return Build(instructions_.back().id(), remove_dynamic_dimensions);
 }
 
@@ -318,11 +323,7 @@ StatusOr<XlaComputation> XlaBuilder::Build(XlaOp root,
 
 StatusOr<XlaComputation> XlaBuilder::Build(int64 root_id,
                                            bool remove_dynamic_dimensions) {
-  if (!first_error_.ok()) {
-    string backtrace;
-    first_error_backtrace_.Dump(tensorflow::DebugWriteToString, &backtrace);
-    return AppendStatus(first_error_, backtrace);
-  }
+  TF_RETURN_IF_ERROR(GetCurrentStatus());
 
   // TODO(b/121223198): XLA backend cannot handle dynamic dimensions yet, remove
   // all dynamic dimensions before building xla program until we have support in
@@ -3285,6 +3286,12 @@ XlaOp Real(const XlaOp& operand) {
 }
 XlaOp Imag(const XlaOp& operand) {
   return operand.builder()->UnaryOp(HloOpcode::kImag, operand);
+}
+XlaOp Sqrt(const XlaOp& operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kSqrt, operand);
+}
+XlaOp Rsqrt(const XlaOp& operand) {
+  return operand.builder()->UnaryOp(HloOpcode::kRsqrt, operand);
 }
 
 XlaOp Pow(const XlaOp& lhs, const XlaOp& rhs,

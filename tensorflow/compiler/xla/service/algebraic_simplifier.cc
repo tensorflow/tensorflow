@@ -109,7 +109,7 @@ bool IsAllFpConstantPowerOf2(const HloInstruction* op) {
 
   int exp;
   double mantissa = std::frexp(*val, &exp);
-  // frexp returns a value in the range (-1; -0.5] U [0.5, 1).  A return value
+  // frexp returns a value in the range (-1, -0.5] U [0.5, 1).  A return value
   // of +/-0.5 therefore indicates that the floating point value is a power of
   // 2.
   return mantissa == 0.5 || mantissa == -0.5;
@@ -1029,6 +1029,24 @@ Status AlgebraicSimplifierVisitor::HandleDivide(HloInstruction* divide) {
     return ReplaceWithNewInstruction(
         divide, HloInstruction::CreateBinary(
                     divide->shape(), HloOpcode::kMultiply, a, new_power));
+  }
+
+  // A/sqrt(B) => A*rsqrt(X).
+  if (Match(divide, m::Divide(m::Op(&a), m::Sqrt(m::Op(&b))))) {
+    auto* rsqrt = computation_->AddInstruction(
+        HloInstruction::CreateUnary(divide->shape(), HloOpcode::kRsqrt, b));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(rsqrt->shape(),
+                                             HloOpcode::kMultiply, a, rsqrt));
+  }
+
+  // A/rsqrt(B) => A*sqrt(B).
+  if (Match(divide, m::Divide(m::Op(&a), m::Rsqrt(m::Op(&b))))) {
+    auto* sqrt = computation_->AddInstruction(
+        HloInstruction::CreateUnary(divide->shape(), HloOpcode::kSqrt, b));
+    return ReplaceWithNewInstruction(
+        divide, HloInstruction::CreateBinary(sqrt->shape(),
+                                             HloOpcode::kMultiply, a, sqrt));
   }
 
   // Simplifying integral division would produce unexpected results.

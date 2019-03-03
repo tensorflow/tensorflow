@@ -209,7 +209,7 @@ def _simple_reduce(per_replica_value, reduce_to_device, accumulation_fn,
   count = len(all_values)
 
   with ops.device(reduce_to_device):
-    with context.context().device_policy(context.DEVICE_PLACEMENT_SILENT):
+    with context.device_policy(context.DEVICE_PLACEMENT_SILENT):
       reduced = cross_device_utils.aggregate_tensors_or_indexed_slices(
           all_values, accumulation_fn)
       if reduce_op == reduce_util.ReduceOp.MEAN:

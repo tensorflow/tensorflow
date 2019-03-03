@@ -114,7 +114,7 @@ int Run(int argc, char** argv) {
       Flag("min_output_bytes", &FLAGS_min_output_bytes, "min_output_bytes"),
       Flag("min_micros", &FLAGS_min_micros, "min micros"),
       Flag("min_accelerator_micros", &FLAGS_min_accelerator_micros,
-           "min acclerator_micros"),
+           "min accelerator_micros"),
       Flag("min_cpu_micros", &FLAGS_min_cpu_micros, "min_cpu_micros"),
       Flag("min_params", &FLAGS_min_params, "min params"),
       Flag("min_float_ops", &FLAGS_min_float_ops, "min float ops"),

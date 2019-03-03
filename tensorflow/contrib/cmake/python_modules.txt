@@ -71,6 +71,7 @@ tensorflow/python/summary/writer
 tensorflow/python/tools
 tensorflow/python/tools/api
 tensorflow/python/tools/api/generator
+tensorflow/python/tpu
 tensorflow/python/training
 tensorflow/python/training/tracking
 tensorflow/python/user_ops

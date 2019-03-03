@@ -72,6 +72,7 @@ class KernelAndDevice {
         default_runner_([](std::function<void()> f) { f(); }),
         collective_executor_(std::move(collective_executor)) {}
 
+  // Not thread safe.
   virtual ~KernelAndDevice() {}
 
   // TODO(ashankar): Handle list-valued inputs.
@@ -135,6 +136,8 @@ class KernelAndDeviceOp final : public KernelAndDevice {
         rendez_(rendez),
         log_memory_(log_memory) {}
 
+  virtual ~KernelAndDeviceOp();
+
   Status Init(const NodeDef& ndef, GraphCollector* graph_collector) override;
 
   using KernelAndDevice::Run;
@@ -162,6 +165,15 @@ class KernelAndDeviceOp final : public KernelAndDevice {
   Rendezvous* const rendez_;
   checkpoint::TensorSliceReaderCacheWrapper slice_reader_cache_;
   const bool log_memory_;
+
+  // For deferred ops, AsyncOpKernel::DoneCallback is called once the op is
+  // enqueued to device. The execution of the op may not finish when
+  // device_->Compute returns. We rely on no_deferred_ops_cv_ to know when the
+  // execution has finished.
+  // Available via OpKernelContext to every OpKernel invocation.
+  mutex num_deferred_ops_mu_;
+  condition_variable no_deferred_ops_cv_;
+  int64 num_deferred_ops_ GUARDED_BY(num_deferred_ops_mu_) = 0;
 };
 
 // Represents a multi-device function. Functions can also be run using

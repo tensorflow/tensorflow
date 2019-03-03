@@ -10,15 +10,21 @@ detection model, takes up a total of 22KB.
 ## Table of Contents
 
 -   [Getting Started](#getting-started)
+
     *   [Getting Started with Portable Reference Code](#getting-started-with-portable-reference-code)
     *   [Building Portable Reference Code using Make](#building-portable-reference-code-using-make)
     *   [Building for the "Blue Pill" STM32F103 using Make](#building-for-the-blue-pill-stm32f103-using-make)
     *   [Building for "Hifive1" SiFive FE310 development board using Make](#building-for-hifive1-sifive-fe310-development-board-using-make)
     *   [Building for Ambiq Micro Apollo3Blue EVB using Make](#building-for-ambiq-micro-apollo3blue-evb-using-make)
         *   [Additional Apollo3 Instructions](#additional-apollo3-instructions)
+    *   [Building for the Eta Compute ECM3531 EVB using Make](#Building-for-the-Eta-Compute-ECM3531-EVB-using-Make)
+
 -   [Goals](#goals)
+
 -   [Generating Project Files](#generating-project-#files)
+
 -   [How to Port TensorFlow Lite Micro to a New Platform](#how-to-port-tensorflow-lite-micro-to-a-new-platform)
+
     *   [Requirements](#requirements)
     *   [Getting Started](getting-started)
     *   [Troubleshooting](#troubleshooting)
@@ -39,12 +45,13 @@ easy as possible to add support for others.
 If you're a product developer, we have build instructions or pre-generated
 project files that you can download for the following platforms:
 
-| Device | Mbed | Keil | Make/GCC
--------- | ---- | ---- | --------
-[STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html) | [Download](https://drive.google.com/open?id=1OtgVkytQBrEYIpJPsE8F6GUKHPBS3Xeb) | - | [Download](https://drive.google.com/open?id=1u46mTtAMZ7Y1aD-He1u3R8AE4ZyEpnOl) | -
-["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) | - | - | [Instructions](#building-for-the-blue-pill-stm32f103-using-make)
-[Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/) | - | - | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
-[Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/) | - | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
+Device                                                                                         | Mbed                                                                           | Keil                                                                           | Make/GCC
+---------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ | ------------------------------------------------------------------------------ | --------
+[STM32F746G Discovery Board](https://www.st.com/en/evaluation-tools/32f746gdiscovery.html)     | [Download](https://drive.google.com/open?id=1OtgVkytQBrEYIpJPsE8F6GUKHPBS3Xeb) | -                                                                              | [Download](https://drive.google.com/open?id=1u46mTtAMZ7Y1aD-He1u3R8AE4ZyEpnOl)
+["Blue Pill" STM32F103-compatible development board](https://github.com/google/stm32_bare_lib) | -                                                                              | -                                                                              | [Instructions](#building-for-the-blue-pill-stm32f103-using-make)
+[Ambiq Micro Apollo3Blue EVB using Make](https://ambiqmicro.com/apollo-ultra-low-power-mcus/)  | -                                                                              | -                                                                              | [Instructions](#building-for-ambiq-micro-apollo3blue-evb-using-make)
+[Generic Keil uVision Projects](http://www2.keil.com/mdk5/uvision/)                            | -                                                                              | [Download](https://drive.google.com/open?id=1Lw9rsdquNKObozClLPoE5CTJLuhfh5mV) | -
+[Eta Compute ECM3531 EVB](https://etacompute.com/)                                             | -                                                                              | -                                                                              | [Instructions](#Building-for-the-Eta-Compute-ECM3531-EVB-using-Make)
 
 If your device is not yet supported, it may not be too hard to add support. You
 can learn about that process
@@ -231,7 +238,7 @@ Successfully tagged riscv_build:latest
 
 Building micro_speech_test binary
 
--   Lauch the Docker that we just created using: `docker run -it-v
+-   Launch the Docker that we just created using: `docker run -it-v
     /tmp/copybara_out:/workspace riscv_build:latest bash`
 -   Enter the source root directory by running `cd /workspace`
 -   Download the dependencies by running
@@ -242,7 +249,7 @@ Building micro_speech_test binary
 -   Build the binary: `make -f
     tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=riscv32_mcu`
 
-Lauching Renode to test the binary, currently this set up is not automated.
+Launching Renode to test the binary, currently this set up is not automated.
 
 -   Execute the binary on Renode: `renode -P 5000 --disable-xwt -e 's
     @/workspace/tensorflow/lite/experimental/micro/testing/sifive_fe310.resc'`
@@ -316,6 +323,53 @@ To flash a part with JFlash Lite, do the following:
 3. Interface = SWD at 1000 kHz 
 4. Data file = `tensorflow/lite/experimental/micro/tools/make/gen/apollo3evb_cortex-m4/bin/pushbutton_cmsis_speech_test.bin`
 5. Prog Addr = 0x0000C000
+
+## Building for the Eta Compute ECM3531 EVB using Make
+
+1.  Follow the instructions at
+    [Tensorflow Micro Speech](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/experimental/micro/examples/micro_speech#getting-started)
+    to down load the Tensorflow source code and the support libraries \(but do
+    not run the make command shown there.\)
+2.  Download the Eta Compute SDK, version 0.0.17. Contact info@etacompute.com
+3.  You will need the the Arm compiler arm-none-eabi-gcc, version 7.3.1
+    20180622, release ARM/embedded-7-branch revision 261907, 7-2018-q2-update.
+    This compiler is downloaded when you run the
+    tensorflow/lite/experimental/micro/tools/make/download_dependencies.sh
+    script.
+4.  Edit the file
+    tensorflow/lite/experimental/micro/tools/make/targets/ecm3531_makefile.inc
+    so that the variables ETA_SDK and GCC_ARM point to the correct directories.
+5.  Compile the code with the command \
+    &nbsp;&nbsp;&nbsp;&nbsp;make -f
+    tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531
+    TAGS="CMSIS" test \
+    This will produce a set of executables in the
+    tensorflow/lite/experimental/micro/tools/make/gen/ecm3531_cortex-m3/bin
+    directory.
+6.  To load an executable into SRAM \
+    &nbsp;&nbsp;&nbsp;&nbsp;Start ocd \
+    &nbsp;&nbsp;&nbsp;&nbsp;cd
+    tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 \
+    &nbsp;&nbsp;&nbsp;&nbsp;./load_program name_of_executable, for e.g.,
+    ./load_program audio_provider_test \
+    &nbsp;&nbsp;&nbsp;&nbsp;Start PuTTY \(Connection type = Serial, Speed =
+    11520, Data bits = 8, Stop bits = 1, Parity = None\) \
+    The following output should appear: \
+    Testing TestAudioProvider \
+    Testing TestTimer \
+    2/2 tests passed \
+    \~\~\~ALL TESTS PASSED\~\~\~ \
+    Execution time \(msec\) = 7
+7.  To load into flash \
+    &nbsp;&nbsp;&nbsp;&nbsp;Edit the variable ETA_LDS_FILE in
+    tensorflow/lite/experimental/micro/tools/&nbsp;&nbsp;make/targets/ecm3531_makefile.inc
+    to point to the ecm3531_flash.lds file \
+    &nbsp;&nbsp;&nbsp;&nbsp;Recompile \( make -f
+    tensorflow/lite/experimental/micro/tools/make/Makefile TARGET=ecm3531
+    TAGS="CMSIS" test\) \
+    &nbsp;&nbsp;&nbsp;&nbsp;cd
+    tensorflow/lite/experimental/micro/tools/make/targets/ecm3531 \
+    &nbsp;&nbsp;&nbsp;&nbsp;./flash_program executable_name to load into flash.
 
 ## Goals
 

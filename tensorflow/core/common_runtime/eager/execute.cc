@@ -775,6 +775,44 @@ bool IsPinnableOp(const string& op_type) {
          !absl::StartsWith(op_type, "XRT");
 }
 
+Status MaybeUpdateFunctionOpDevice(EagerOperation* op) {
+  gtl::FlatMap<Device*, int> device_counts;
+  Device* op_device =
+      op->Device() == nullptr ? op->EagerContext()->HostCPU() : op->Device();
+  for (int i = 0; i < op->Inputs().size(); ++i) {
+    TensorHandle* tensor_handle = op->Inputs()[i];
+    if (tensor_handle->dtype == DT_RESOURCE) {
+      Device* resource_device = tensor_handle->resource_device();
+      device_counts[resource_device]++;
+      VLOG(2) << "for op " << op->Name() << " input " << i << " "
+              << DataTypeString(tensor_handle->dtype)
+              << " input device = " << resource_device->name()
+              << ", op device = " << op_device->name();
+    }
+  }
+
+  Device* target_device = nullptr;
+  int target_device_count = 0;
+
+  for (const auto& kv : device_counts) {
+    if (kv.second > target_device_count) {
+      target_device_count = kv.second;
+      target_device = kv.first;
+    }
+  }
+
+  if (target_device != nullptr &&
+      (target_device != op_device || op->Device() == nullptr)) {
+    VLOG(1) << (target_device != op_device ? "Changing " : "Setting ")
+            << "device of operation " << op->Name() << " to "
+            << target_device->name() << " because most inputs are resources on"
+            << " this device.";
+    op->SetDevice(target_device);
+  }
+
+  return Status::OK();
+}
+
 // The Op device may be updated if:
 // - A resource touching input is specified: all resource-touching ops run in
 // the device the resource is, regardless of anything else that has been
@@ -784,6 +822,9 @@ bool IsPinnableOp(const string& op_type) {
 // (int32/int64). This can be disabled by setting the environment variable
 // "TF_EAGER_ENABLE_SMALL_TENSOR_CPU_PINNING" to "0" or "false".
 Status MaybeUpdateOpDevice(EagerOperation* op) {
+  if (op->is_function()) {
+    return MaybeUpdateFunctionOpDevice(op);
+  }
   EagerContext* ctx = op->EagerContext();
   bool all_inputs_eligible_for_cpu_pinning =
       ctx->PinSmallOpsToCPU() && !op->is_function() && IsPinnableOp(op->Name());

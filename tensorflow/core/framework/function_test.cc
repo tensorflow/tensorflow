@@ -156,6 +156,48 @@ ControlDep(x:int32) -> (y:int32) {
   EXPECT_EQ(DebugString(result.nodes), e2);
 }
 
+TEST(TFunc, ControlRet) {
+  auto fdef = FDH::Create(
+      // Name
+      "ControlRet",
+      // Inputs
+      {"x: int32"},
+      // Outputs
+      {"y: int32"},
+      // Attrs
+      {},
+      // Nodes
+      {
+          {{"a"}, "Identity", {"x"}, {{"T", DT_INT32}}},
+      },
+      // Returns
+      {{"y", "a:output:0"}},
+      // Control returns
+      {{"must_execute", "a"}});
+
+  const char* e = R"P(
+ControlRet(x:int32) -> (y:int32) {
+  a = Identity[T=int32](x)
+  @return must_execute = a
+  return y = a:output:0
+}
+)P";
+  EXPECT_EQ(DebugString(fdef), e);
+
+  // Instantiate one with T=float
+  InstantiationResult result;
+  TF_ASSERT_OK(
+      InstantiateFunction(fdef, Attrs({{"T", DT_FLOAT}}), GetOpSig, &result));
+  const char* e2 = R"P(
+(x:int32) -> (a:int32) {
+  a = Identity[T=int32](x)
+}
+)P";
+  EXPECT_EQ(result.arg_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(result.ret_types, DataTypeVector({DT_INT32}));
+  EXPECT_EQ(DebugString(result.nodes), e2);
+}
+
 REGISTER_OP("HasDefaultType")
     .Output("out: T")
     .Attr("T: {float, double, int32, int64} = DT_FLOAT");

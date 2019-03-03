@@ -92,12 +92,13 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicSlices) {
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 5);
 
-  EXPECT_EQ(args[0].Get<int32>({}), 0);
+  EXPECT_GE(args[0].Get<int32>({}), -1);
+  EXPECT_LE(args[0].Get<int32>({}), 1);
 
-  EXPECT_GE(args[1].Get<int32>({}), 0);
-  EXPECT_LE(args[0].Get<int32>({}), 2);
+  EXPECT_GE(args[1].Get<int32>({}), -1);
+  EXPECT_LE(args[1].Get<int32>({}), 2);
 
-  EXPECT_GE(args[2].Get<int32>({}), 0);
+  EXPECT_GE(args[2].Get<int32>({}), -1);
   EXPECT_LE(args[2].Get<int32>({}), 3);
 }
 
@@ -122,12 +123,13 @@ XLA_TEST_F(TestUtilsTest, MultipleIndexSpacesForDynamicUpdateSlices) {
                           MakeFakeArguments(module.get()));
   ASSERT_EQ(args.size(), 7);
 
-  EXPECT_EQ(args[0].Get<int32>({}), 0);
+  EXPECT_GE(args[0].Get<int32>({}), -1);
+  EXPECT_LE(args[0].Get<int32>({}), 1);
 
-  EXPECT_GE(args[1].Get<int32>({}), 0);
-  EXPECT_LE(args[0].Get<int32>({}), 2);
+  EXPECT_GE(args[1].Get<int32>({}), -1);
+  EXPECT_LE(args[1].Get<int32>({}), 2);
 
-  EXPECT_GE(args[2].Get<int32>({}), 0);
+  EXPECT_GE(args[2].Get<int32>({}), -1);
   EXPECT_LE(args[2].Get<int32>({}), 3);
 }
 
@@ -250,6 +252,78 @@ ENTRY %module (parameter.0: s32[], parameter.1: f32[20,20]) -> f32[] {
   EXPECT_TRUE(
       ShapeUtil::Equal(args[1].shape(), ShapeUtil::MakeShape(F32, {20, 20})))
       << ShapeUtil::HumanString(args[1].shape());
+}
+
+XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForGather) {
+  auto module = ParseHloString(R"(
+  HloModule Test
+
+ENTRY %module(paramater.0: f32[200,100,300], parameter.1: s32[10,2]) ->
+                                                          f32[10,300] {
+  %parameter.0 = f32[200,100,300] parameter(0)
+  %parameter.1 = s32[10,2] parameter(1)
+  ROOT gather = f32[10,300] gather(f32[200,100,300] %parameter.0,
+                                   s32[10,2] %parameter.1),
+      offset_dims={1},
+      collapsed_slice_dims={0,1},
+      start_index_map={0,1},
+      index_vector_dim=1,
+      slice_sizes={1,1,300}
+}
+)")
+                    .ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 2);
+
+  const Shape& indices_shape = args[1].shape();
+  EXPECT_TRUE(
+      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
+      << ShapeUtil::HumanString(indices_shape);
+  auto indices = args[1].data<int32>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, -1);
+    EXPECT_LE(index, 100);
+  }
+}
+
+XLA_TEST_F(TestUtilsTest, MakeFakeArgumentsForScatter) {
+  auto module = ParseHloString(R"(
+  HloModule Test
+
+scatter_update (lhs: f32[], rhs: f32[]) -> f32[] {
+  lhs = f32[] parameter(0)
+  ROOT rhs = f32[] parameter(1)
+}
+
+ENTRY main {
+  operand = f32[200,100,300] parameter(0)
+  indices = s32[10,2] parameter(1)
+  updates = f32[10,300] parameter(2)
+  ROOT scatter = f32[200,100,300] scatter(operand, indices, updates),
+    to_apply=scatter_update,
+    update_window_dims={1},
+    inserted_window_dims={0,1},
+    scatter_dims_to_operand_dims={0,1},
+    index_vector_dim=1
+  }
+)")
+                    .ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(std::vector<Literal> args,
+                          MakeFakeArguments(module.get()));
+  ASSERT_EQ(args.size(), 3);
+
+  const Shape& indices_shape = args[1].shape();
+  EXPECT_TRUE(
+      ShapeUtil::Equal(indices_shape, ShapeUtil::MakeShape(S32, {10, 2})))
+      << ShapeUtil::HumanString(indices_shape);
+  auto indices = args[1].data<int32>();
+  for (const auto index : indices) {
+    EXPECT_GE(index, -1);
+    EXPECT_LE(index, 100);
+  }
 }
 
 }  // namespace
