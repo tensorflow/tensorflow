@@ -466,12 +466,12 @@ class FusedConvParameters : public ConvParameters {
 };
 
 inline bool operator==(const FusedConvParameters& lhs,
-                const FusedConvParameters& rhs) {
+                       const FusedConvParameters& rhs) {
   return lhs.get_data_as_tuple() == rhs.get_data_as_tuple();
 }
 
 inline bool operator!=(const FusedConvParameters& lhs,
-                const FusedConvParameters& rhs) {
+                       const FusedConvParameters& rhs) {
   return !(lhs == rhs);
 }
 

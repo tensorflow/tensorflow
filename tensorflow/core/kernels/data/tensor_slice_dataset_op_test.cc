@@ -39,7 +39,7 @@ class TensorSliceDatasetOpTest : public DatasetOpsTestBase {
   // Creates a new TensorSliceDataset op kernel.
   Status CreateTensorSliceDatasetKernel(
       DataTypeVector dtypes, std::vector<PartialTensorShape> shapes,
-      std::unique_ptr<OpKernel> *tensor_dataset_kernel) {
+      std::unique_ptr<OpKernel>* tensor_dataset_kernel) {
     std::vector<string> components;
     components.reserve(dtypes.size());
     for (int i = 0; i < dtypes.size(); i++) {
@@ -55,9 +55,9 @@ class TensorSliceDatasetOpTest : public DatasetOpsTestBase {
 
   // Creates a new TensorSliceDataset op kernel context.
   Status CreateTensorSliceDatasetContext(
-      OpKernel *const tensor_dataset_kernel,
-      gtl::InlinedVector<TensorValue, 4> *inputs,
-      std::unique_ptr<OpKernelContext> *context) {
+      OpKernel* const tensor_dataset_kernel,
+      gtl::InlinedVector<TensorValue, 4>* inputs,
+      std::unique_ptr<OpKernelContext>* context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*tensor_dataset_kernel, *inputs));
     TF_RETURN_IF_ERROR(
         CreateOpKernelContext(tensor_dataset_kernel, inputs, context));
@@ -138,7 +138,7 @@ TEST_P(DatasetGetNextTest, GetNext) {
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
+  for (auto& component : components) {
     inputs.push_back(&component);
     dtypes.push_back(component.dtype());
   }
@@ -153,7 +153,7 @@ TEST_P(DatasetGetNextTest, GetNext) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -177,8 +177,8 @@ TEST_P(DatasetGetNextTest, GetNext) {
       if (out_tensors[i].dtype() == DT_VARIANT) {
         // Currently `ExpectEqual()` does not support the variant tensor
         // yet, so we manually cast the variant to numeric/string tensor.
-        const Tensor *output = out_tensors[i].scalar<Variant>()().get<Tensor>();
-        const Tensor *expected_output =
+        const Tensor* output = out_tensors[i].scalar<Variant>()().get<Tensor>();
+        const Tensor* expected_output =
             expected_outputs[i + num_tensors_per_slice * cur_slice]
                 .scalar<Variant>()()
                 .get<Tensor>();
@@ -215,7 +215,7 @@ TEST_F(TensorSliceDatasetOpTest, DatasetName) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -239,7 +239,7 @@ TEST_P(DatasetOutputDtypesTest, DatasetOutputDtypes) {
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
+  for (auto& component : components) {
     inputs.emplace_back(&component);
     dtypes.emplace_back(component.dtype());
   }
@@ -254,7 +254,7 @@ TEST_P(DatasetOutputDtypesTest, DatasetOutputDtypes) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -286,7 +286,7 @@ TEST_P(DatasetOutputShapesTest, DatasetOutputShapes) {
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
+  for (auto& component : components) {
     inputs.emplace_back(&component);
     dtypes.emplace_back(component.dtype());
   }
@@ -300,7 +300,7 @@ TEST_P(DatasetOutputShapesTest, DatasetOutputShapes) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -334,7 +334,7 @@ TEST_P(DatasetCardinalityTest, Cardinality) {
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
+  for (auto& component : components) {
     inputs.emplace_back(&component);
     dtypes.emplace_back(component.dtype());
   }
@@ -348,7 +348,7 @@ TEST_P(DatasetCardinalityTest, Cardinality) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -378,7 +378,7 @@ TEST_F(TensorSliceDatasetOpTest, DatasetSave) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -408,7 +408,7 @@ TEST_P(IteratorOutputDtypesTest, IteratorOutputDtypes) {
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
+  for (auto& component : components) {
     inputs.emplace_back(&component);
     dtypes.emplace_back(component.dtype());
   }
@@ -423,7 +423,7 @@ TEST_P(IteratorOutputDtypesTest, IteratorOutputDtypes) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -461,7 +461,7 @@ TEST_P(IteratorOutputShapesTest, IteratorOutputShapes) {
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
+  for (auto& component : components) {
     inputs.emplace_back(&component);
     dtypes.emplace_back(component.dtype());
   }
@@ -476,7 +476,7 @@ TEST_P(IteratorOutputShapesTest, IteratorOutputShapes) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -518,7 +518,7 @@ TEST_F(TensorSliceDatasetOpTest, IteratorOutputPrefix) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -549,7 +549,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   DataTypeVector dtypes;
   std::vector<PartialTensorShape> shapes;
   gtl::InlinedVector<TensorValue, 4> inputs;
-  for (auto &component : components) {
+  for (auto& component : components) {
     inputs.emplace_back(&component);
     dtypes.emplace_back(component.dtype());
   }
@@ -564,7 +564,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   TF_ASSERT_OK(
       CreateTensorSliceDatasetContext(tensor_slice_dataset_kernel.get(),
                                       &inputs, &tensor_slice_dataset_context));
-  DatasetBase *tensor_slice_dataset;
+  DatasetBase* tensor_slice_dataset;
   TF_ASSERT_OK(CreateDataset(tensor_slice_dataset_kernel.get(),
                              tensor_slice_dataset_context.get(),
                              &tensor_slice_dataset));
@@ -596,9 +596,9 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
     } else if (breakpoint <= num_slices) {
       for (int i = 0; i < out_tensors.size(); ++i) {
         if (out_tensors[i].dtype() == DT_VARIANT) {
-          const Tensor *output =
+          const Tensor* output =
               out_tensors[i].scalar<Variant>()().get<Tensor>();
-          const Tensor *expected_output =
+          const Tensor* expected_output =
               expected_outputs[i + num_tensors_per_slice * (cur_iteration - 1)]
                   .scalar<Variant>()()
                   .get<Tensor>();

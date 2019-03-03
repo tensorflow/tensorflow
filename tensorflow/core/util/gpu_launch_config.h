@@ -21,11 +21,11 @@ limitations under the License.
 #include <algorithm>
 
 #include "absl/base/casts.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/stream_executor.h"
 #include "tensorflow/core/platform/types.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 
 // Usage of GetGpuLaunchConfig, GetGpu2DLaunchConfig, and
 // GetGpu3DLaunchConfig:
@@ -384,6 +384,7 @@ constexpr bool NoneIsReference() {
 }
 }  // namespace detail
 
+#if GOOGLE_CUDA
 // Launches a CUDA kernel through cudaLaunchKernel with the given arguments.
 //
 // The kernel parameters 'Ts' must be constructible from the arguments 'Args'.
@@ -404,6 +405,8 @@ Status CudaLaunchKernel(void (*function)(Ts...), dim3 grid_dim, dim3 block_dim,
   }
   return Status::OK();
 }
+
+#endif 
 
 }  // namespace tensorflow
 

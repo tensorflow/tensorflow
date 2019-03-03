@@ -13,20 +13,20 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
+#include "tensorflow/stream_executor/rocm/rocm_rng.h"
 #include "rocm/include/hiprand/hiprand.h"
 #include "tensorflow/stream_executor/device_memory.h"
-#include "tensorflow/stream_executor/rocm/rocm_rng.h"
-#include "tensorflow/stream_executor/rocm/rocm_activation.h"
-#include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
-#include "tensorflow/stream_executor/rocm/rocm_helpers.h"
-#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
-#include "tensorflow/stream_executor/rocm/rocm_stream.h"
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/platform/dso_loader.h"
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/rng.h"
+#include "tensorflow/stream_executor/rocm/rocm_activation.h"
+#include "tensorflow/stream_executor/rocm/rocm_gpu_executor.h"
+#include "tensorflow/stream_executor/rocm/rocm_helpers.h"
+#include "tensorflow/stream_executor/rocm/rocm_platform_id.h"
+#include "tensorflow/stream_executor/rocm/rocm_stream.h"
 
 // Formats hiprandStatus_t to output prettified values into a log stream.
 std::ostream &operator<<(std::ostream &in, const hiprandStatus_t &status) {

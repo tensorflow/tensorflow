@@ -24,17 +24,17 @@ limitations under the License.
 #define CUB_USE_COOPERATIVE_GROUPS
 #endif  // CUDA_VERSION >= 9000
 
-#include "third_party/cub/block/block_load.cuh"
-#include "third_party/cub/block/block_scan.cuh"
-#include "third_party/cub/block/block_store.cuh"
-#include "third_party/cub/iterator/counting_input_iterator.cuh"
-#include "third_party/cub/iterator/transform_input_iterator.cuh"
 #include "cuda/include/cuComplex.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/util/cuda_launch_config.h"
 #include "tensorflow/core/util/permutation_input_iterator.h"
 #include "tensorflow/core/util/permutation_output_iterator.h"
+#include "third_party/cub/block/block_load.cuh"
+#include "third_party/cub/block/block_scan.cuh"
+#include "third_party/cub/block/block_store.cuh"
+#include "third_party/cub/iterator/counting_input_iterator.cuh"
+#include "third_party/cub/iterator/transform_input_iterator.cuh"
 
 #include "tensorflow/core/kernels/scan_ops.h"
 

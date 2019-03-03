@@ -68,8 +68,8 @@ hipError_t hipHostMallocVanilla(void** ptr, size_t size, unsigned int flags) {
   auto hipSymbolName(Args... args)->decltype(::hipSymbolName(args...)) {    \
     using FuncPtrT = std::add_pointer<decltype(::hipSymbolName)>::type;     \
     static FuncPtrT loaded = []() -> FuncPtrT {                             \
-      static const char *kName = TO_STR(hipSymbolName);                     \
-      void *f;                                                              \
+      static const char* kName = TO_STR(hipSymbolName);                     \
+      void* f;                                                              \
       auto s = stream_executor::port::Env::Default()->GetSymbolFromLibrary( \
           stream_executor::internal::CachedDsoLoader::GetHipDsoHandle()     \
               .ValueOrDie(),                                                \

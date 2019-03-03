@@ -9,11 +9,9 @@ import "tensorflow/core/profiler/op_profile.proto";
 // the programs running on connected devices over a period of time.
 service ProfilerService {
   // Starts a profiling session, blocks until it completes, and returns data.
-  rpc Profile(ProfileRequest) returns (ProfileResponse) {
-  }
+  rpc Profile(ProfileRequest) returns (ProfileResponse) {}
   // Collects profiling data and returns user-friendly metrics.
-  rpc Monitor(MonitorRequest) returns (MonitorResponse) {
-  }
+  rpc Monitor(MonitorRequest) returns (MonitorResponse) {}
 }
 
 message ProfileOptions {

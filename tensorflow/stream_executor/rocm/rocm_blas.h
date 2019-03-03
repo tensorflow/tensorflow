@@ -85,7 +85,7 @@ class ROCMBlas : public blas::BlasSupport {
   // Convenience functions that call DoBlasInternalImpl with different values
   // for err_on_failure.
   template <typename FuncT, typename... Args>
-  bool DoBlasInternal(FuncT rocblas_func, Stream *stream,
+  bool DoBlasInternal(FuncT rocblas_func, Stream* stream,
                       bool pointer_mode_host, Args... args) {
     return DoBlasInternalImpl(rocblas_func, stream, pointer_mode_host,
                               /*err_on_failure=*/true, args...);
@@ -145,7 +145,7 @@ class ROCMBlas : public blas::BlasSupport {
 
   // GpuExecutor which instantiated this ROCMBlas.
   // Immutable post-initialization.
-  GpuExecutor *parent_;
+  GpuExecutor* parent_;
 
   // rocBLAS library handle on the device.
   rocblas_handle blas_ GUARDED_BY(mu_);

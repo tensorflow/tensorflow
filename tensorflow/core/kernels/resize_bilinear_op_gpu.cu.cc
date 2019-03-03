@@ -164,7 +164,7 @@ struct ResizeBilinear<GPUDevice, T> {
     if (total_count == 0) return;
 
     GpuLaunchConfig config = GetGpuLaunchConfig(total_count, d);
-    (GPU_LAUNCH_KERNEL(ResizeBilinearKernel<T>,
+    GPU_LAUNCH_KERNEL(ResizeBilinearKernel<T>,
         dim3(config.block_count), dim3(config.thread_per_block), 0, d.stream(),
         config.virtual_thread_count, images.data(), height_scale,
         width_scale, batch, in_height, in_width, channels, out_height,

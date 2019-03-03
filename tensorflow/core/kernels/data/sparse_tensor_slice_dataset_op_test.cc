@@ -38,7 +38,7 @@ class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBase {
  protected:
   // Creates a new SparseTensorSliceDataset op kernel.
   Status CreateSparseTensorSliceDatasetKernel(
-      DataType tvalues, std::unique_ptr<OpKernel> *op_kernel) {
+      DataType tvalues, std::unique_ptr<OpKernel>* op_kernel) {
     node_def_ = test::function::NDef(kNodeName, kOpName,
                                      {"indices", "values", "dense_shape"},
                                      {{"Tvalues", tvalues}});
@@ -48,8 +48,8 @@ class SparseTensorSliceDatasetOpTest : public DatasetOpsTestBase {
 
   // Creates a new SparseTensorSliceDataset op kernel context.
   Status CreateSparseTensorSliceDatasetContext(
-      OpKernel *const op_kernel, gtl::InlinedVector<TensorValue, 4> *inputs,
-      std::unique_ptr<OpKernelContext> *context) {
+      OpKernel* const op_kernel, gtl::InlinedVector<TensorValue, 4>* inputs,
+      std::unique_ptr<OpKernelContext>* context) {
     TF_RETURN_IF_ERROR(CheckOpKernelInput(*op_kernel, *inputs));
     TF_RETURN_IF_ERROR(CreateOpKernelContext(op_kernel, inputs, context));
     return Status::OK();
@@ -141,7 +141,7 @@ TEST_P(DatasetGetNextTest, GetNext) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -189,7 +189,7 @@ TEST_F(SparseTensorSliceDatasetOpTest, DatasetName) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -217,7 +217,7 @@ TEST_P(DatasetOutputDtypesTest, DatasetOutputDtypes) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -252,7 +252,7 @@ TEST_P(DatasetOutputShapesTest, DatasetOutputShapes) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -287,7 +287,7 @@ TEST_P(DatasetCardinalityTest, Cardinality) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -315,7 +315,7 @@ TEST_F(SparseTensorSliceDatasetOpTest, DatasetSave) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -348,7 +348,7 @@ TEST_P(IteratorOutputDtypesTest, IteratorOutputDtypes) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -389,7 +389,7 @@ TEST_P(IteratorOutputShapesTest, IteratorOutputShapes) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -427,7 +427,7 @@ TEST_F(SparseTensorSliceDatasetOpTest, IteratorOutputPrefix) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
@@ -461,7 +461,7 @@ TEST_P(IteratorRoundtripTest, Roundtrip) {
   std::unique_ptr<OpKernelContext> dataset_kernel_ctx;
   TF_ASSERT_OK(CreateSparseTensorSliceDatasetContext(
       dataset_kernel.get(), &inputs, &dataset_kernel_ctx));
-  DatasetBase *dataset;
+  DatasetBase* dataset;
   TF_ASSERT_OK(
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);

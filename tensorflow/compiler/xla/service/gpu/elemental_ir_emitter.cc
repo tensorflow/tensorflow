@@ -305,12 +305,12 @@ StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitTanh(PrimitiveType prim_type,
 
 StatusOr<llvm::Value*> GpuElementalIrEmitter::EmitRoundNearestAfz(
     PrimitiveType prim_type, llvm::Value* value) {
-  // Use libdevice __nv_round instead of llvm.round. This is to workaround a
-  // bug in the PTX backend, which implements llvm.round with PTX cvt.rni.
-  // When the llvm.round is fixed, we may still want to use __nv_round here as
-  // expanding the non-trivial implementation early while inlining allows better
-  // optimizations.
-  return EmitLibdeviceMathCall("__nv_round", {value}, {prim_type}, prim_type);
+    // Use libdevice __nv_round instead of llvm.round. This is to workaround a
+    // bug in the PTX backend, which implements llvm.round with PTX cvt.rni.
+    // When the llvm.round is fixed, we may still want to use __nv_round here as
+    // expanding the non-trivial implementation early while inlining allows
+    // better optimizations.
+    return EmitLibdeviceMathCall("__nv_round", {value}, {prim_type}, prim_type);
 }
 
 llvm::Value* GpuElementalIrEmitter::EmitDeviceFunctionCall(
