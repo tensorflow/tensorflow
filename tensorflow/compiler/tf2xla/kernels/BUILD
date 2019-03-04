@@ -173,7 +173,6 @@ tf_kernel_library(
         "//tensorflow/core/kernels:control_flow_ops",
         "//tensorflow/core/kernels:cwise_op",
         "//tensorflow/core/kernels:list_kernels",
-        "//tensorflow/core/kernels:ops_util",
         "//tensorflow/core/kernels:pooling_ops",
         "//tensorflow/core/kernels:random_op",
         "//tensorflow/core/kernels:resource_variable_ops",
@@ -227,7 +226,6 @@ cc_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core/kernels:conv_ops",
-        "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/types:span",
     ],
 )
