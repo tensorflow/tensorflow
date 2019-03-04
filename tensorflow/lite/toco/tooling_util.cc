@@ -27,11 +27,11 @@ limitations under the License.
 #include "absl/strings/str_replace.h"
 #include "absl/strings/str_split.h"
 #include "re2/re2.h"
+#include "tensorflow/core/lib/core/status.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/dump_graphviz.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/toco_graphviz_dump_options.h"
-#include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -1270,7 +1270,7 @@ void FixEdgeArrays(Model* model) {
 
 void DedupeConstantArrays(Model* model, size_t min_size) {
   // Walk all 0..N and compare with the remaining n+1..N.
-  // This lets us avoid N^2 comparisions and erase duplicate arrays while
+  // This lets us avoid N^2 comparisons and erase duplicate arrays while
   // iterating.
   const auto& array_map = model->GetArrayMap();
   for (auto lhs_array_it = array_map.begin(); lhs_array_it != array_map.end();
@@ -1462,16 +1462,22 @@ void MakeArrayDims(int num_dims, int batch, int height, int width, int depth,
   }
 }
 
-void CreateOrCheckRnnStateArray(const string& name, int size, Model* model) {
+void CreateOrCheckRnnStateArray(const string& name, int size,
+                                int state_num_dims, Model* model) {
   int batch = 1;
   int num_dims = -1;
-  for (const auto& input_array : model->flags.input_arrays()) {
-    // Pick 'num_dims' and 'batch' from the first input_arrays, unless we find
-    // a better match by name.
-    if (input_array.name() == name || num_dims == -1) {
-      num_dims = input_array.shape().dims_size();
-      if (num_dims > 0) {
-        batch = input_array.shape().dims(0);
+  if (state_num_dims > 0) {
+    num_dims = state_num_dims;
+  } else {
+    // state_num_dims is not given. We will infer it from an input tensor.
+    for (const auto& input_array : model->flags.input_arrays()) {
+      // Pick 'num_dims' and 'batch' from the first input_arrays, unless we find
+      // a better match by name.
+      if (input_array.name() == name || num_dims == -1) {
+        num_dims = input_array.shape().dims_size();
+        if (num_dims > 0) {
+          batch = input_array.shape().dims(0);
+        }
       }
     }
   }
@@ -1675,7 +1681,7 @@ void ResolveModelFlags(const ModelFlags& model_flags, Model* model) {
   // Creation of the RNN state arrays
   for (const auto& rnn_state : model->flags.rnn_states()) {
     CreateOrCheckRnnStateArray(rnn_state.state_array(), rnn_state.size(),
-                               model);
+                               rnn_state.num_dims(), model);
   }
 
   model->flags.set_change_concat_input_ranges(

@@ -1571,9 +1571,9 @@ TEST_F(OpConverterTest, ConvertMatMul) {
     NodeDef node_def = get_matmul_nodedef(DT_INT32, false, false);
     AddTestTensor("input", {2}, /*batch_size=*/1, nvinfer1::DataType::kINT32);
     AddTestWeights<int32>("weights", {2, 1}, {3, 5});
-    RunValidationAndConversion(
-        node_def, error::UNIMPLEMENTED,
-        "Data type is not supported, for node my_matmul got int32");
+    RunValidationAndConversion(node_def, error::UNIMPLEMENTED,
+                               "Data type int32 is not supported for MatMul, "
+                               "must be one of [float, half], at my_matmul");
   }
   // transpose_a is set.
   for (bool transpose_b : {false, true}) {
@@ -3328,8 +3328,9 @@ TEST_F(OpConverterTest, ConvertTopK) {
   {
     // Input list is empty, should fail.
     NodeDef node_def = MakeNodeDef("my_topk", "TopKV2", {});
-    RunValidationAndConversion(node_def, error::INVALID_ARGUMENT,
-                               "Input expects tensor and weights, at my_topk");
+    RunValidationAndConversion(
+        node_def, error::INVALID_ARGUMENT,
+        "TopKV2 got 0 inputs but expected 2, at my_topk");
   }
 
   for (const auto dtype : {DT_FLOAT, DT_INT32}) {
@@ -3346,8 +3347,8 @@ TEST_F(OpConverterTest, ConvertTopK) {
                     /*trt_dtype=*/TfDataTypeToTrt(dtype));
       AddTestTensor("weights", {2});
       RunValidationAndConversion(
-          node_def, error::INVALID_ARGUMENT,
-          "Input expects tensor and weights, at my_topk");
+          node_def, error::UNIMPLEMENTED,
+          "The input \"k\" for TopKV2 must be a constant, at my_topk");
     }
     {
       // Ok.

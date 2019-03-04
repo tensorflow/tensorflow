@@ -25,6 +25,8 @@ from tensorflow.lite.python.interpreter import Interpreter
 from tensorflow.python import keras
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
+from tensorflow.python.framework import dtypes
+from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
@@ -196,7 +198,8 @@ class FromConcreteFunctionTest(test_util.TensorFlowTestCase):
     def to_save(x):
       return model(x)
 
-    concrete_func = to_save.get_concrete_function(input_data)
+    concrete_func = to_save.get_concrete_function(
+        tensor_spec.TensorSpec([None, 1], dtypes.float32))
 
     # Convert model and ensure model is not None.
     converter = lite.TFLiteConverterV2.from_concrete_function(concrete_func)

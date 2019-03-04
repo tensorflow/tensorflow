@@ -409,7 +409,8 @@ void UpdateToEngineNode(const std::vector<EngineInfo>& infos,
 //         one). Connect to the pre-existing engine node instead.
 // 3. In this way, we ensure the graph is topologically sort-able after each
 //    invocation of CreateTRTNode().
-Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
+Status CreateTRTNode(const ConversionParams& params,
+                     const std::vector<EngineInfo>& infos, int pos,
                      int max_batch_size, Graph* graph,
                      nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
@@ -570,7 +571,9 @@ Status CreateTRTNode(const std::vector<EngineInfo>& infos, int pos,
           .Attr("static_engine",
                 info.engine_type == EngineInfo::EngineType::TRTStatic)
           .Attr("segment_funcdef_name",
-                StrCat(info.engine_name, "_native_segment"))
+                params.use_function_backup
+                    ? StrCat(info.engine_name, "_native_segment")
+                    : "")
           .Attr("serialized_segment", segment_string)
           .Attr("calibration_data", "")
           .Attr("max_cached_engines_count", info.maximum_cached_engines)
@@ -796,8 +799,20 @@ std::pair<int, Allocator*> GetDeviceAndAllocator(const ConversionParams& params,
 }
 
 // Entry function from optimization pass.
-// TODO(aaeory): parameter should use pointer type.
-Status ConvertAfterShapes(ConversionParams& params) {
+Status ConvertAfterShapes(const ConversionParams& params) {
+  // Sanity checks.
+  if (params.precision_mode == TrtPrecisionMode::INT8) {
+    if (params.use_calibration && !params.use_function_backup) {
+      return errors::InvalidArgument(
+          "Calibration requires enabling fallback to TF function execution.");
+    }
+  } else {
+    if (params.use_calibration) {
+      return errors::InvalidArgument(
+          "Calibration with FP32 or FP16 is not supported.");
+    }
+  }
+
   // Convert graphdef to graph.
   FunctionLibraryDefinition flib(OpRegistry::Global(),
                                  params.input_graph_def->library());
@@ -850,11 +865,6 @@ Status ConvertAfterShapes(ConversionParams& params) {
       continue;
     }
     curr_engine.precision_mode = params.precision_mode;
-    if (params.use_calibration &&
-        params.precision_mode != TrtPrecisionMode::INT8) {
-      return errors::InvalidArgument(
-          "Calibration with FP32 or FP16 is not supported.");
-    }
     curr_engine.engine_type = ((params.is_dyn_op || params.use_calibration)
                                    ? EngineInfo::EngineType::TRTDynamic
                                    : EngineInfo::EngineType::TRTStatic);
@@ -862,12 +872,14 @@ Status ConvertAfterShapes(ConversionParams& params) {
     curr_engine.cached_engine_batches = params.cached_engine_batches;
     curr_engine.maximum_cached_engines = params.max_cached_engines;
     StrAppend(&curr_engine.engine_name, "TRTEngineOp_", t);
-    status = RegisterSegmentFunctionToFunctionLibrary(
-        &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
-    if (!status.ok()) {
-      LOG(WARNING) << "Failed to register segment graphdef as a function " << t
-                   << ": " << status;
-      continue;
+    if (params.use_function_backup) {
+      status = RegisterSegmentFunctionToFunctionLibrary(
+          &graph, curr_engine.segment_graph_def, curr_engine.engine_name);
+      if (!status.ok()) {
+        LOG(WARNING) << "Failed to register segment graphdef as a function "
+                     << t << ": " << status;
+        continue;
+      }
     }
 
     engine_bytes_size.push_back(curr_engine.segment_graph_def.ByteSizeLong());
@@ -918,8 +930,9 @@ Status ConvertAfterShapes(ConversionParams& params) {
       LOG(WARNING) << "Can't identify the cuda device. Running on device 0 ";
     }
     cudaSetDevice(cuda_device_id);
-    auto status = CreateTRTNode(engine_segments, i, params.max_batch_size,
-                                &graph, alloc.get(), &engine_nodes);
+    auto status =
+        CreateTRTNode(params, engine_segments, i, params.max_batch_size, &graph,
+                      alloc.get(), &engine_nodes);
 
     string msg = StrCat("TensorRT node ", engine.engine_name,
                         " added for segment ", i, " consisting of ",

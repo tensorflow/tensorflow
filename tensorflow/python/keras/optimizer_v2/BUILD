@@ -215,8 +215,9 @@ py_test(
 
 py_test(
     name = "learning_rate_schedule_test",
-    size = "small",
+    size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
+    shard_count = 4,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",

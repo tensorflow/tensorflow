@@ -32,6 +32,7 @@ from tensorflow.python.distribute import numpy_dataset
 from tensorflow.python.distribute import reduce_util
 from tensorflow.python.distribute import shared_variable_creator
 from tensorflow.python.distribute import values
+from tensorflow.python.distribute.cluster_resolver import TFConfigClusterResolver
 from tensorflow.python.eager import context
 from tensorflow.python.eager import tape
 from tensorflow.python.framework import constant_op
@@ -408,6 +409,15 @@ def all_local_devices(num_gpus=None):
           ("/device:CPU:0",))
 
 
+def _all_devices():
+  devices = []
+  tfconfig = TFConfigClusterResolver()
+  if tfconfig.cluster_spec().as_dict():
+    devices = _cluster_spec_to_device_list(tfconfig.cluster_spec(),
+                                           context.num_gpus())
+  return devices if devices else all_local_devices()
+
+
 @tf_export("distribute.MirroredStrategy")
 class MirroredStrategy(distribute_lib.DistributionStrategy):
   """Mirrors vars to distribute across multiple devices and machines.
@@ -435,7 +445,7 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
   def __init__(self, container_strategy, devices=None, cross_device_ops=None):
     super(MirroredExtended, self).__init__(container_strategy)
     if devices is None:
-      devices = all_local_devices()
+      devices = _all_devices()
     if not devices:
       raise ValueError("Got an empty `devices` list. Please make sure the "
                        "`devices` you pass in is not empty.")
@@ -496,8 +506,15 @@ class MirroredExtended(distribute_lib.DistributionStrategyExtended):
     self._device_map = values.ReplicaDeviceMap(devices)
     self._input_workers = input_lib.InputWorkers(
         self._device_map, worker_devices)
-    self._inferred_cross_device_ops = cross_device_ops_lib.MultiWorkerAllReduce(
-        workers, _infer_num_gpus_per_worker(devices))
+
+    if len(workers) > 1:
+      self._inferred_cross_device_ops = (
+          cross_device_ops_lib.MultiWorkerAllReduce(
+              workers, _infer_num_gpus_per_worker(devices)))
+    else:
+      # TODO(yuefengz): make `choose_the_best` work with device strings
+      # containing job names.
+      self._inferred_cross_device_ops = cross_device_ops_lib.NcclAllReduce()
 
   def _create_variable(self, next_creator, *args, **kwargs):
     """Create a mirrored variable. See `DistributionStrategy.scope`."""
