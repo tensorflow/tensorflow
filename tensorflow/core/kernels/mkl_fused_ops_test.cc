@@ -434,7 +434,7 @@ class FilterCacheTest : public OpsTestBase {
     // Compare outputs to expected results
     const Tensor& output = *GetOutput(0);
     const Tensor& output_layout = *GetOutput(2);
-    ConvMklToTF<T> conv_comp;
+    CommonTestUtilities<T> conv_comp;
     conv_comp.ConvertAndCompare(dtype, output, output_layout, expected);
 
     // TODO(bhavanis): For now, we rely on internal performance tests to
@@ -446,7 +446,7 @@ class FilterCacheTest : public OpsTestBase {
     // Compare output to expected results
     const Tensor& output_new = *GetOutput(0);
     const Tensor& output_layout_new = *GetOutput(2);
-    ConvMklToTF<T> conv_comp_new;
+    CommonTestUtilities<T> conv_comp_new;
     conv_comp_new.ConvertAndCompare(dtype, output_new, output_layout_new,
                                     expected);
   }

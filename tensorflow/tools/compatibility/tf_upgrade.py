@@ -184,6 +184,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "you need to inspect this usage manually.\n"),
     }
 
+    self.module_deprecations = {}
+
 
 if __name__ == "__main__":
   parser = argparse.ArgumentParser(

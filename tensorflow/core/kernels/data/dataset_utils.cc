@@ -231,5 +231,35 @@ Status VariantTensorDataWriter::WriteTensorInternal(StringPiece key,
   return Status::OK();
 }
 
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionLibraryDefinition& to_add) {
+  for (const auto& fn : to_add.ListFunctionNames()) {
+    if (auto found = base->Find(fn)) {
+      if (!OpDefEqual(found->signature(), to_add.Find(fn)->signature())) {
+        return errors::InvalidArgument("Cannot add function '", fn,
+                                       "' because a different function with "
+                                       "the same signature already exists.");
+      }
+      TF_RETURN_IF_ERROR(base->RemoveFunction(fn));
+    }
+  }
+  return base->AddLibrary(to_add);
+}
+
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionDefLibrary& to_add) {
+  for (const auto& fd : to_add.function()) {
+    if (auto found = base->Find(fd.signature().name())) {
+      if (!OpDefEqual(found->signature(), fd.signature())) {
+        return errors::InvalidArgument("Cannot add function '",
+                                       fd.signature().name(),
+                                       "' because a different function with "
+                                       "the same signature already exists.");
+      }
+      TF_RETURN_IF_ERROR(base->RemoveFunction(fd.signature().name()));
+    }
+  }
+  return base->AddLibrary(to_add);
+}
 }  // namespace data
 }  // namespace tensorflow

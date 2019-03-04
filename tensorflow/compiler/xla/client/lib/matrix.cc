@@ -27,6 +27,7 @@ limitations under the License.
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
 #include "tensorflow/compiler/xla/client/lib/constants.h"
+#include "tensorflow/compiler/xla/client/lib/slicing.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/status.h"
@@ -45,7 +46,7 @@ XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m,
   return ConvertElementType(indicator, type);
 }
 
-XlaOp GetMatrixDiagonal(XlaOp x) {
+XlaOp GetMatrixDiagonal(XlaOp x, int k) {
   XlaBuilder* builder = x.builder();
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(Shape shape, builder->GetShape(x));
@@ -53,10 +54,13 @@ XlaOp GetMatrixDiagonal(XlaOp x) {
     TF_RET_CHECK(n_dims >= 2);
     const int64 m = shape.dimensions(n_dims - 2);
     const int64 n = shape.dimensions(n_dims - 1);
+
+    auto offset = ConstantR0WithType(builder, S32, k);
+
     absl::Span<const int64> major_dims =
         AsInt64Slice(shape.dimensions()).subspan(/*pos=*/0, /*len=*/n_dims - 2);
-    auto a = Iota(builder, U32, n);
-    auto b = Iota(builder, U32, m);
+    auto a = Iota(builder, S32, n);
+    auto b = Iota(builder, S32, m) + offset;
     auto indicator = Eq(b, Broadcast(a, {m}), /*broadcast_dimensions=*/{0});
     auto mask = Broadcast(indicator, major_dims);
 
@@ -66,9 +70,21 @@ XlaOp GetMatrixDiagonal(XlaOp x) {
         primitive_util::IsIntegralType(shape.element_type())
             ? CreateScalarOrComputation(shape.element_type(), builder)
             : CreateScalarAddComputation(shape.element_type(), builder);
-
-    return Reduce(Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
-                  reducer, {m >= n ? n_dims - 2 : n_dims - 1});
+    // k == 0, we can save one slice op.
+    if (k == 0) {
+      return Reduce(Select(mask, x, Zeros(builder, shape)), ScalarLike(x, 0),
+                    reducer, {m >= n ? n_dims - 2 : n_dims - 1});
+    } else if (k > 0) {
+      auto result = Reduce(Select(mask, x, Zeros(builder, shape)),
+                           ScalarLike(x, 0), reducer, {n_dims - 2});
+      return SliceInMinorDims(result, {std::min<int64>(k, n)},
+                              {std::min(m + k, n)});
+    } else {
+      auto result = Reduce(Select(mask, x, Zeros(builder, shape)),
+                           ScalarLike(x, 0), reducer, {n_dims - 1});
+      return SliceInMinorDims(result, {std::min<int64>(-k, m)},
+                              {std::min(m, n - k)});
+    }
   });
 }
 
@@ -336,4 +352,5 @@ XlaOp TransposeInMinorDims(XlaOp x) {
 XlaOp MaybeTransposeInMinorDims(XlaOp x, bool transpose) {
   return transpose ? TransposeInMinorDims(x) : x;
 }
+
 }  // namespace xla

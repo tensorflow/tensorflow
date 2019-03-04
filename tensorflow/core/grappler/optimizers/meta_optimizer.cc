@@ -17,6 +17,7 @@ limitations under the License.
 #include "absl/strings/substitute.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/function.pb.h"
+#include "tensorflow/core/framework/tensor_util.h"
 #include "tensorflow/core/framework/versions.pb.h"
 #include "tensorflow/core/graph/graph_constructor.h"
 #include "tensorflow/core/grappler/clusters/virtual_cluster.h"
@@ -26,8 +27,8 @@ limitations under the License.
 #include "tensorflow/core/grappler/optimizers/custom_graph_optimizer_registry.h"
 #include "tensorflow/core/grappler/optimizers/debug_stripper.h"
 #include "tensorflow/core/grappler/optimizers/dependency_optimizer.h"
-#include "tensorflow/core/grappler/optimizers/experimental_implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/function_optimizer.h"
+#include "tensorflow/core/grappler/optimizers/implementation_selector.h"
 #include "tensorflow/core/grappler/optimizers/layout_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/loop_optimizer.h"
 #include "tensorflow/core/grappler/optimizers/memory_optimizer.h"
@@ -102,6 +103,18 @@ uint64 DeadlineMicroSeconds(const RewriterConfig& cfg) {
   }
 }
 
+Status CompressConstants(GraphDef* graph) {
+  for (int i = 0; i < graph->node_size(); ++i) {
+    NodeDef* node = graph->mutable_node(i);
+    if ((IsConstant(*node) || IsHostConstant(*node)) &&
+        HasNodeAttr(*node, "value")) {
+      AttrValue& attr_val = (*node->mutable_attr())["value"];
+      tensor::CompressTensorProtoInPlace(attr_val.mutable_tensor());
+    }
+  }
+  return Status::OK();
+}
+
 }  // namespace
 
 #define MK_OPT(NAME, VALUE) \
@@ -124,7 +137,8 @@ std::unique_ptr<GraphOptimizer> MetaOptimizer::MakeNewOptimizer(
   MK_OPT("scoped_allocator",
          new ScopedAllocatorOptimizer(cfg_.scoped_allocator_optimization(),
                                       cfg_.scoped_allocator_opts()));
-  MK_OPT("small_op", new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
+  MK_OPT("pin_to_host",
+         new PinToHostOptimizer(cfg_.pin_to_host_optimization()));
 
   return std::unique_ptr<GraphOptimizer>();
 }
@@ -146,6 +160,9 @@ Status MetaOptimizer::InitializeOptimizers(
   }
   if (!cfg_.disable_model_pruning()) {
     optimizers->push_back(MakeUnique<ModelPruner>());
+  }
+  if (cfg_.implementation_selector() != RewriterConfig::OFF) {
+    optimizers->push_back(MakeUnique<ImplementationSelector>());
   }
   if (cfg_.function_optimization() != RewriterConfig::OFF) {
     optimizers->push_back(
@@ -240,18 +257,10 @@ Status MetaOptimizer::InitializeCustomGraphOptimizers(
         pre_initialized_optimizers.end()) {
       continue;
     }
-    // Initialize the ExperimentalImplementationSelector here instead of
-    // CustomizeOptimizer registry, due the static link issue in TensorRT for
-    // double registry.
-    // TODO(laigd): Remove this hack and change it back to use the registry once
-    // the duplicate static import issue is fixed.
-    std::unique_ptr<CustomGraphOptimizer> custom_optimizer;
-    if (optimizer_config.name() == "ExperimentalImplementationSelector") {
-      custom_optimizer.reset(new ExperimentalImplementationSelector());
-    } else {
-      custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
-          optimizer_config.name());
-    }
+
+    auto custom_optimizer = CustomGraphOptimizerRegistry::CreateByNameOrNull(
+        optimizer_config.name());
+
     if (custom_optimizer) {
       VLOG(2) << "Registered custom configurable graph optimizer: "
               << optimizer_config.name();
@@ -436,6 +445,9 @@ Status MetaOptimizer::OptimizeGraph(Cluster* cluster, const GrapplerItem& item,
     RUN_OPTIMIZER_OR_RETURN_IF_ERROR(sa_optimizer);
   }
 
+  // Compress the constants in the final graph.
+  TF_RETURN_IF_ERROR(CompressConstants(optimized_graph));
+
   // Record graph optimization result.
   optimization_results_.push_back(optimization_result);
 
@@ -552,7 +564,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
 
   // Optimize each function only once.
   absl::flat_hash_set<string> optimized_funcs;
-  bool optimize_function_library = true;
+  bool optimize_function_library =
+      item.optimization_options().optimize_function_library;
 
   while (optimize_function_library) {
     optimize_function_library = false;
@@ -604,7 +617,8 @@ Status MetaOptimizer::Optimize(Cluster* cluster, const GrapplerItem& item,
       // instantiated by the function definition, because we must guarantee
       // function execution semantics wrt side effects (see
       // function_optimizer.cc).
-      func_item.optimization_options().is_function_instantiation = true;
+      func_item.optimization_options().allow_pruning_stateful_and_dataset_ops =
+          false;
 
       // Optimize function body graph.
       GraphDef optimized_func_graph;
@@ -698,9 +712,10 @@ Status RunMetaOptimizer(const GrapplerItem& item, const ConfigProto& cfg,
 }
 
 Status OptimizeGraph(
-    std::vector<string> ret_node_names, FunctionLibraryDefinition* flib,
-    const DeviceSet& device_set, Device* cpu_device,
-    const ConfigProto& config_proto,
+    std::vector<string> ret_node_names, std::vector<string> keep_node_names,
+    FunctionLibraryDefinition* flib, const DeviceSet& device_set,
+    Device* cpu_device, const ConfigProto& config_proto,
+    const string& grappler_item_id,
     const GrapplerItem::OptimizationOptions& optimization_options,
     std::unique_ptr<tensorflow::Graph>* g) {
   if (!tensorflow::grappler::MetaOptimizerEnabled(config_proto)) {
@@ -708,6 +723,7 @@ Status OptimizeGraph(
   }
 
   tensorflow::grappler::GrapplerItem item;
+  item.id = grappler_item_id;
   item.optimization_options() = optimization_options;
 
   // Add all available devices so that inlined function can be placed.
@@ -718,6 +734,9 @@ Status OptimizeGraph(
 
   // Add fetches so that the graph can be pruned.
   item.fetch.swap(ret_node_names);
+
+  // Add noes that can't be removed from the graph.
+  item.keep_ops = std::move(keep_node_names);
 
   (*g)->ToGraphDef(&item.graph);
 

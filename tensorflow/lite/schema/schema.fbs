@@ -219,6 +219,13 @@ enum BuiltinOperator : byte {
   UNIQUE = 103,
   CEIL = 104,
   REVERSE_V2 = 105,
+  ADD_N = 106,
+  GATHER_ND = 107,
+  COS = 108,
+  WHERE = 109,
+  RANK = 110,
+  ELU = 111,
+  REVERSE_SEQUENCE = 112,
 }
 
 // Options for the builtin operators.
@@ -304,6 +311,12 @@ union BuiltinOptions {
   SplitVOptions,
   UniqueOptions,
   ReverseV2Options,
+  AddNOptions,
+  GatherNdOptions,
+  CosOptions,
+  WhereOptions,
+  RankOptions,
+  ReverseSequenceOptions,
 }
 
 enum Padding : byte { SAME, VALID }
@@ -547,6 +560,9 @@ table TransposeOptions {
 table ExpOptions {
 }
 
+table CosOptions {
+}
+
 table ReducerOptions {
   keep_dims: bool;
 }
@@ -641,6 +657,9 @@ table ShapeOptions {
   out_type : TensorType;
 }
 
+table RankOptions {
+}
+
 table PowOptions {
 }
 
@@ -724,6 +743,19 @@ table UniqueOptions {
 table ReverseV2Options {
 }
 
+table AddNOptions {
+}
+
+table GatherNdOptions {
+}
+
+table WhereOptions {
+}
+
+table ReverseSequenceOptions {
+  seq_dim:int;
+  batch_dim:int = 0;
+}
 // An OperatorCode can be an enum value (BuiltinOperator) if the operator is a
 // builtin, or a string if the operator is custom.
 table OperatorCode {

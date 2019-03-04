@@ -2,6 +2,7 @@ op {
   graph_op_name: "Conv3DBackpropFilterV2"
   endpoint {
     name: "nn.conv3d_backprop_filter"
+    deprecation_version: 2
   }
   endpoint {
     name: "nn.conv3d_backprop_filter_v2"

@@ -30,6 +30,7 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_state_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -773,6 +774,16 @@ class TensorUtilTest(test.TestCase):
       self.assertAllClose(np.array([10, 20, 30], dtype=np.int64), a)
 
 
+class IsTensorTest(test.TestCase):
+
+  @test_util.run_in_graph_and_eager_modes
+  def testConstantTensor(self):
+    np_val = np.random.rand(3).astype(np.int32)
+    tf_val = constant_op.constant(np_val)
+    self.assertFalse(tensor_util.is_tensor(np_val))
+    self.assertTrue(tensor_util.is_tensor(tf_val))
+
+
 class ConstantValueTest(test.TestCase):
 
   def testConstant(self):
@@ -942,6 +953,22 @@ class ConstantValueTest(test.TestCase):
                                 constant_op.constant([[0], [1]]))
     c_val = tensor_util.constant_value(tf_val)
     self.assertAllEqual(c_val, [[False, True], [True, False]])
+
+  def testLiteral(self):
+    x = "hi"
+    self.assertIs(x, tensor_util.constant_value(x))
+
+  def testNumpyNdarray(self):
+    np_val = np.random.rand(3, 4, 7).astype(np.float32)
+    self.assertIs(np_val, tensor_util.constant_value(np_val))
+
+  def testVariable(self):
+    var = variables.Variable(1.0, name="variable_node")
+    self.assertIsNone(tensor_util.constant_value(var))
+
+  def testVariableV1(self):
+    var = variables.VariableV1(1.0, name="variable_node")
+    self.assertIsNone(tensor_util.constant_value(var))
 
 
 class ConstantValueAsShapeTest(test.TestCase):

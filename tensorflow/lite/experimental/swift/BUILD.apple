@@ -1,0 +1,106 @@
+# TensorFlow Lite for Swift
+
+package(default_visibility = ["//visibility:private"])
+
+licenses(["notice"])  # Apache 2.0
+
+exports_files(["LICENSE"])
+
+load("@build_bazel_rules_apple//apple:ios.bzl", "ios_application", "ios_unit_test")
+load("@build_bazel_rules_swift//swift:swift.bzl", "swift_library")
+
+MINIMUM_OS_VERSION = "9.0"
+
+# Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
+DEFAULT_TAGS = [
+    "apple",
+    "manual",
+]
+
+swift_library(
+    name = "TensorFlowLite",
+    srcs = glob(["Sources/*.swift"]),
+    module_name = "TensorFlowLite",
+    tags = DEFAULT_TAGS,
+    deps = [
+        "//tensorflow/lite/experimental/c:c_api",
+    ],
+)
+
+ios_unit_test(
+    name = "TensorFlowLiteTests",
+    size = "small",
+    minimum_os_version = MINIMUM_OS_VERSION,
+    tags = DEFAULT_TAGS + [
+        # DISABLED: Following sanitizer tests are not supported by iOS test targets.
+        "noasan",
+        "nomsan",
+        "notsan",
+    ],
+    deps = [
+        ":TestsLib",
+    ],
+)
+
+ios_application(
+    name = "TensorFlowLiteApp",
+    app_icons = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Assets.xcassets/AppIcon.appiconset/**"]),
+    bundle_id = "com.tensorflow.lite.swift.TensorFlowLite",
+    families = [
+        "ipad",
+        "iphone",
+    ],
+    infoplists = ["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Info.plist"],
+    launch_storyboard = "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/LaunchScreen.storyboard",
+    minimum_os_version = MINIMUM_OS_VERSION,
+    sdk_frameworks = [
+        "CoreGraphics",
+    ],
+    tags = DEFAULT_TAGS,
+    deps = [
+        ":AppLib",
+    ],
+)
+
+swift_library(
+    name = "TestsLib",
+    testonly = 1,
+    srcs = glob(["Tests/*.swift"]),
+    tags = DEFAULT_TAGS,
+    deps = [
+        ":Resources",
+        ":TensorFlowLite",
+    ],
+)
+
+swift_library(
+    name = "AppLib",
+    srcs = glob(["TestApps/TensorFlowLiteApp/TensorFlowLiteApp/*.swift"]),
+    module_name = "TensorFlowLiteAppLib",
+    tags = DEFAULT_TAGS,
+    deps = [
+        ":AppResources",
+        ":TensorFlowLite",
+    ],
+)
+
+objc_library(
+    name = "Resources",
+    data = [
+        "//tensorflow/lite:testdata/add.bin",
+        "//tensorflow/lite:testdata/add_quantized.bin",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
+    tags = DEFAULT_TAGS,
+)
+
+objc_library(
+    name = "AppResources",
+    data = glob([
+        "TestApps/TensorFlowLiteApp/TensorFlowLiteApp/Base.lproj/*.storyboard",
+    ]),
+    tags = DEFAULT_TAGS,
+    deps = [
+        ":Resources",
+    ],
+)

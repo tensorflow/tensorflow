@@ -78,9 +78,6 @@ Status ConvBackpropExtractAndVerifyDimension(
         " stride: ", dim->stride, " dilation: ", dim->dilation);
   }
 
-  // TODO(reedwm): Correctly handle explicit padding here. The rest of the
-  // fields set on 'dim' are only used in XLA. TensorFlow ops do not yet support
-  // explicit padding for XLA.
   int64 effective_filter_size = (dim->filter_size - 1) * dim->dilation + 1;
   dim->expanded_output_size = (dim->output_size - 1) * dim->stride + 1;
   const auto padded_out_size = dim->input_size + effective_filter_size - 1;
@@ -102,7 +99,7 @@ Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
-    Padding padding, const std::vector<int64>& explicit_paddings,
+    Padding padding, absl::Span<const int64> explicit_paddings,
     TensorFormat data_format, ConvBackpropDimensions* dims) {
   // The + 2 in the following line is for the batch and feature dimensions.
   const int num_dims = num_spatial_dims + 2;

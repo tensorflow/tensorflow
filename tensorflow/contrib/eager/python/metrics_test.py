@@ -35,7 +35,7 @@ from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class MetricsTest(test.TestCase):
@@ -314,7 +314,7 @@ class MetricsTest(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     mean = metrics.Mean()
-    checkpoint = checkpointable_utils.Checkpoint(mean=mean)
+    checkpoint = trackable_utils.Checkpoint(mean=mean)
     mean.build()
     mean._built = True
     self.evaluate(mean.init_variables())
@@ -327,7 +327,7 @@ class MetricsTest(test.TestCase):
     self.assertAllEqual(200., self.evaluate(mean.value()))
 
     restore_mean = metrics.Mean()
-    restore_checkpoint = checkpointable_utils.Checkpoint(mean=restore_mean)
+    restore_checkpoint = trackable_utils.Checkpoint(mean=restore_mean)
     status = restore_checkpoint.restore(save_path)
     restore_update = restore_mean(300.)
     status.assert_consumed().run_restore_ops()

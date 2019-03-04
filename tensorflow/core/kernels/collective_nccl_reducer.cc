@@ -149,7 +149,9 @@ void NcclReducer::Run(StatusCallback done) {
           << col_params_->group.num_tasks << " current task "
           << col_params_->instance.task_names[col_params_->default_rank]
           << " num local devices " << num_local_devices
-          << " num global devices " << num_global_devices;
+          << " num global devices " << num_global_devices << " device "
+          << col_ctx_->device_name << " instance "
+          << col_params_->instance.instance_key;
   NcclManager::instance()->AddToAllReduce(
       std::move(participant),
       {nccl_collective_key, num_local_devices, num_global_devices,

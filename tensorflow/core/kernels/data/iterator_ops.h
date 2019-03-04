@@ -19,6 +19,8 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/tensor_shape.h"
+#include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/ops_util.h"
 
 namespace tensorflow {
@@ -113,6 +115,24 @@ class IteratorGetNextOp : public AsyncOpKernel {
 
  private:
   BackgroundWorker background_worker_;
+};
+
+class IteratorGetNextAsOptionalOp : public AsyncOpKernel {
+ public:
+  explicit IteratorGetNextAsOptionalOp(OpKernelConstruction* ctx)
+      : AsyncOpKernel(ctx),
+        background_worker_(ctx->env(),
+                           "tf_data_iterator_get_next_as_optional") {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &output_types_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &output_shapes_));
+  }
+
+  void ComputeAsync(OpKernelContext* ctx, DoneCallback done) override;
+
+ private:
+  BackgroundWorker background_worker_;
+  DataTypeVector output_types_;
+  std::vector<PartialTensorShape> output_shapes_;
 };
 
 class IteratorGetNextSyncOp : public OpKernel {

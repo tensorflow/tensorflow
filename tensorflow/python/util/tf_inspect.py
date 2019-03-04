@@ -36,6 +36,19 @@ else:
       'annotations'
   ])
 
+
+def _convert_maybe_argspec_to_fullargspec(argspec):
+  if isinstance(argspec, FullArgSpec):
+    return argspec
+  return FullArgSpec(
+      args=argspec.args,
+      varargs=argspec.varargs,
+      varkw=argspec.keywords,
+      defaults=argspec.defaults,
+      kwonlyargs=[],
+      kwonlydefaults=None,
+      annotations={})
+
 if hasattr(_inspect, 'getfullargspec'):
   _getfullargspec = _inspect.getfullargspec  # pylint: disable=invalid-name
 
@@ -74,16 +87,7 @@ else:
     Returns:
       A FullArgSpec with empty kwonlyargs, kwonlydefaults and annotations.
     """
-    argspecs = getargspec(target)
-    fullargspecs = FullArgSpec(
-        args=argspecs.args,
-        varargs=argspecs.varargs,
-        varkw=argspecs.keywords,
-        defaults=argspecs.defaults,
-        kwonlyargs=[],
-        kwonlydefaults=None,
-        annotations={})
-    return fullargspecs
+    return _convert_maybe_argspec_to_fullargspec(getargspec(target))
 
 
 def currentframe():
@@ -212,7 +216,8 @@ def _get_argspec_for_partial(obj):
 
   # Checks if all arguments have default value set after first one.
   invalid_default_values = [
-      args[i] for i, j in enumerate(all_defaults) if not j and i > first_default
+      args[i] for i, j in enumerate(all_defaults)
+      if j is None and i > first_default
   ]
 
   if invalid_default_values:
@@ -238,7 +243,7 @@ def getfullargspec(obj):
     directly on the callable.
   """
   decorators, target = tf_decorator.unwrap(obj)
-  return next((d.decorator_argspec
+  return next((_convert_maybe_argspec_to_fullargspec(d.decorator_argspec)
                for d in decorators
                if d.decorator_argspec is not None), _getfullargspec(target))
 

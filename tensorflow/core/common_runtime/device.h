@@ -127,16 +127,22 @@ class Device : public DeviceBase {
   // flag settings. Override this to return false for devices that don't allow
   // such calls. Instead, these devices must use other mechanisms (such as
   // num_deferred_ops) to ensure the device has finished processing necessary
-  // work at session completion.
+  // work at session completion. In addition, for these devices, RefreshStatus
+  // must be called at session completion to retrieve execution result status.
   //
-  // Devices that override this function must also implement CurrentStatus.
+  // Devices that override this function must also implement RefreshStatus.
   virtual bool AllowsSyncOnCompletion() const { return true; }
 
   // This is used in conjunction with AllowsSyncOnCompletion to allow the
   // executor to get execution result status at session completion.
-  virtual Status CurrentStatus() {
+  //
+  // For supported devices, this call returns the underlying device stream's
+  // current status in a non-blocking way, without using blocking calls such as
+  // Stream::BlockHostUntilDone or Device::Sync. When applicable, the device
+  // status is also updated with the retrieved stream status.
+  virtual Status RefreshStatus() {
     return errors::Unimplemented(
-        "CurrentStatus is not supported on this device.");
+        "RefreshStatus is not supported on this device.");
   }
 
   // Optionally modify the device's GraphDef before execution.

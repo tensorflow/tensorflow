@@ -145,6 +145,7 @@ from tensorflow.python.keras.layers.pooling import GlobalMaxPool3D
 
 # Recurrent layers.
 from tensorflow.python.keras.layers.recurrent import RNN
+from tensorflow.python.keras.layers.recurrent import AbstractRNNCell
 from tensorflow.python.keras.layers.recurrent import StackedRNNCells
 from tensorflow.python.keras.layers.recurrent import SimpleRNNCell
 from tensorflow.python.keras.layers.recurrent import GRUCell

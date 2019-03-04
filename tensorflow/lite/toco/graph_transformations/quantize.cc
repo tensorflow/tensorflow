@@ -489,20 +489,20 @@ void FixMinMaxPostQuantization(GraphTransformation* transformation,
     }
   }
   if (!SupportsQuantization(op)) {
-    LOG(FATAL) << "Unimplemented: this graph contains an operator of type "
-               << HelpfulOperatorTypeName(op)
-               << " for which the quantized form is not yet implemented. "
-                  "Sorry, and patches welcome (that's a relatively fun patch "
-                  "to write, mostly providing the actual quantized arithmetic "
-                  "code for this op).";
+    return tensorflow::errors::InvalidArgument(
+        "Unimplemented: this graph contains an operator of type ",
+        HelpfulOperatorTypeName(op),
+        " for which the quantized form is not yet implemented. Sorry, and "
+        "patches welcome (that's a relatively fun patch to write, mostly "
+        "providing the actual quantized arithmetic code for this op).");
   }
 
   for (const auto& input : op.inputs) {
     const auto& array = model->GetArray(input);
     if (array.data_type == ArrayDataType::kFloat) {
       if (!array.minmax && !array.buffer) {
-        LOG(ERROR) << "Can't quantize input array " << input
-                   << " because it lacks min/max info";
+        LOG(WARNING) << "Can't quantize input array " << input
+                     << " because it lacks min/max info";
         return ::tensorflow::Status::OK();
       }
       const auto* other_op = GetOpWithOutput(*model, input);

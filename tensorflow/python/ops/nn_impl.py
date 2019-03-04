@@ -456,7 +456,8 @@ def depthwise_conv2d(input,
                      padding,
                      rate=None,
                      name=None,
-                     data_format=None):
+                     data_format=None,
+                     dilations=None):
   """Depthwise 2-D convolution.
 
   Given a 4D input tensor ('NHWC' or 'NCHW' data formats)
@@ -492,12 +493,14 @@ def depthwise_conv2d(input,
       greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
     data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: Alias of rate.
 
   Returns:
     A 4-D `Tensor` with shape according to `data_format`.  E.g., for
     "NHWC" format, shape is
     `[batch, out_height, out_width, in_channels * channel_multiplier].`
   """
+  rate = deprecated_argument_lookup("dilations", dilations, "rate", rate)
   with ops.name_scope(name, "depthwise", [input, filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
     filter = ops.convert_to_tensor(filter, name="filter_in")
@@ -591,7 +594,8 @@ def separable_conv2d(input,
                      padding,
                      rate=None,
                      name=None,
-                     data_format=None):
+                     data_format=None,
+                     dilations=None):
   """2-D convolution with separable filters.
 
   Performs a depthwise convolution that acts separately on channels followed by
@@ -631,12 +635,14 @@ def separable_conv2d(input,
       greater than 1, then all values of strides must be 1.
     name: A name for this operation (optional).
     data_format: The data format for input. Either "NHWC" (default) or "NCHW".
+    dilations: Alias of rate.
 
   Returns:
     A 4-D `Tensor` with shape according to 'data_format'. For
       example, with data_format="NHWC", shape is [batch, out_height,
       out_width, out_channels].
   """
+  rate = deprecated_argument_lookup("dilations", dilations, "rate", rate)
   with ops.name_scope(name, "separable_conv2d",
                       [input, depthwise_filter, pointwise_filter]) as name:
     input = ops.convert_to_tensor(input, name="tensor_in")
@@ -751,7 +757,8 @@ def separable_conv2d_v2(
 
 
 @tf_export(v1=["nn.sufficient_statistics"])
-def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
+def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
+                          keepdims=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
   These sufficient statistics are computed using the one pass algorithm on
@@ -766,6 +773,7 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
       close to the true mean provides the most numerically stable results.
     keep_dims: produce statistics with the same dimensionality as the input.
     name: Name used to scope the operations that compute the sufficient stats.
+    keepdims: Alias for keep_dims.
 
   Returns:
     Four `Tensor` objects of the same type as `x`:
@@ -776,6 +784,10 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None):
     * the shift by which the mean must be corrected or None if `shift` is None.
   """
   axes = list(set(axes))
+  keep_dims = deprecated_argument_lookup(
+      "keepdims", keepdims, "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
@@ -867,7 +879,8 @@ def moments(
     axes,
     shift=None,  # pylint: disable=unused-argument
     name=None,
-    keep_dims=False):
+    keep_dims=None,
+    keepdims=None):
   """Calculate the mean and variance of `x`.
 
   The mean and variance are calculated by aggregating the contents of `x`
@@ -890,10 +903,15 @@ def moments(
     shift: Not used in the current implementation
     name: Name used to scope the operations that compute the moments.
     keep_dims: produce moments with the same dimensionality as the input.
+    keepdims: Alias to keep_dims.
 
   Returns:
     Two `Tensor` objects: `mean` and `variance`.
   """
+  keep_dims = deprecated_argument_lookup(
+      "keepdims", keepdims, "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
   with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
@@ -957,7 +975,8 @@ def moments_v2(
 
 
 @tf_export(v1=["nn.weighted_moments"])
-def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
+def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
+                     keepdims=None):
   """Returns the frequency-weighted mean and variance of `x`.
 
   Args:
@@ -968,10 +987,15 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False):
       broadcast with x.
     name: Name used to scope the operation.
     keep_dims: Produce moments with the same dimensionality as the input.
+    keepdims: Alias of keep_dims.
 
   Returns:
     Two tensors: `weighted_mean` and `weighted_variance`.
   """
+  keep_dims = deprecated_argument_lookup(
+      "keepdims", keepdims, "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
   with ops.name_scope(name, "weighted_moments", [x, frequency_weights, axes]):
     x = ops.convert_to_tensor(x, name="x")
     frequency_weights = ops.convert_to_tensor(
@@ -1184,14 +1208,17 @@ def fused_batch_norm(
 
 
 @tf_export(v1=["nn.batch_norm_with_global_normalization"])
-def batch_norm_with_global_normalization(t,
-                                         m,
-                                         v,
-                                         beta,
-                                         gamma,
-                                         variance_epsilon,
-                                         scale_after_normalization,
-                                         name=None):
+def batch_norm_with_global_normalization(t=None,
+                                         m=None,
+                                         v=None,
+                                         beta=None,
+                                         gamma=None,
+                                         variance_epsilon=None,
+                                         scale_after_normalization=None,
+                                         name=None,
+                                         input=None,  # pylint: disable=redefined-builtin
+                                         mean=None,
+                                         variance=None):
   """Batch normalization.
 
   This op is deprecated. See `tf.nn.batch_normalization`.
@@ -1213,10 +1240,16 @@ def batch_norm_with_global_normalization(t,
     scale_after_normalization: A bool indicating whether the resulted tensor
       needs to be multiplied with gamma.
     name: A name for this operation (optional).
+    input: Alias for t.
+    mean: Alias for m.
+    variance: Alias for v.
 
   Returns:
      A batch-normalized `t`.
   """
+  t = deprecated_argument_lookup("input", input, "t", t)
+  m = deprecated_argument_lookup("mean", mean, "m", m)
+  v = deprecated_argument_lookup("variance", variance, "v", v)
   return batch_normalization(t, m, v, beta, gamma if scale_after_normalization
                              else None, variance_epsilon, name)
 

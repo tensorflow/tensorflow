@@ -470,7 +470,8 @@ def register_dispatchers():
       _BINARY_ELEMENTWISE_OPS + [x[0] for x in _RAGGED_DISPATCH_OPS])
   for op in op_list:
     _, undecorated_op = tf_decorator.unwrap(op)
-    if not hasattr(undecorated_op, tf_export.API_ATTRS['tensorflow'].names):
+    if not hasattr(undecorated_op,
+                   tf_export.API_ATTRS[tf_export.TENSORFLOW_API_NAME].names):
       raise AssertionError('Expected %s to be an exported symbol '
                            '(while adding a RaggedTensor dispatcher)')
 

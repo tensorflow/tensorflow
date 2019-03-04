@@ -42,8 +42,8 @@ StatusOr<bool> OptimizeInputOutputBufferAlias::Build(
   bool changed = false;
   TF_RET_CHECK(LayoutUtil::HasLayout(input_shape));
   TF_RET_CHECK(LayoutUtil::HasLayout(output_shape));
-  VLOG(0) << "input_shape:" << input_shape.ToString();
-  VLOG(0) << "output_shape:" << output_shape.ToString();
+  VLOG(1) << "input_shape:" << input_shape.ToString();
+  VLOG(1) << "output_shape:" << output_shape.ToString();
 
   // For all buffers defined by the parameter, build a map from the byte
   // size to the list of the buffers of that size.

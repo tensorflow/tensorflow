@@ -163,6 +163,28 @@ TEST(SliceOpTest, SizeMinus1) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
 }
 
+TEST(SliceOpTest, SliceUint8) {
+  SliceOpModel<uint8_t, int32_t> m({3, 2, 3, 1}, {4}, {4}, TensorType_INT32,
+                                   TensorType_UINT8);
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  m.SetBegin({1, 0, 0, 0});
+  m.SetSize({2, 1, -1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
+}
+
+TEST(SliceOpTest, SliceInt8) {
+  SliceOpModel<int8_t, int32_t> m({3, 2, 3, 1}, {4}, {4}, TensorType_INT32,
+                                  TensorType_INT8);
+  m.SetInput({1, 1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 5, 5, 5, 6, 6, 6});
+  m.SetBegin({1, 0, 0, 0});
+  m.SetSize({2, 1, -1, 1});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutputShape(), ElementsAreArray({2, 1, 3, 1}));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({3, 3, 3, 5, 5, 5}));
+}
+
 }  // namespace
 }  // namespace tflite
 

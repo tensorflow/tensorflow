@@ -112,7 +112,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     get_next = self.getNext(dataset)
     self.evaluate(get_next())
 
-  # TODO(b/123300735): Add eager coverage for the following tests.
+  @test_util.run_v1_only("b/123902160")
   def testSkipEagerOptimizationLargeInputFromTensor(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None))
     dataset = dataset_ops.Dataset.from_tensors(input_t)
@@ -127,7 +127,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       sess.run(init_op, {input_t: np.ones([512, 1024, 1025], np.int32)})
       self.evaluate(get_next)
 
-  # TODO(b/117581999): Add eager coverage for the following tests.
+  @test_util.run_v1_only("b/123902160")
   def testSkipEagerOptimizationLargeInputFromTensorSlices(self):
     input_t = array_ops.placeholder(dtypes.int32, (None, None, None, None))
     dataset = dataset_ops.Dataset.from_tensor_slices(input_t)
@@ -219,7 +219,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
     self.assertDatasetProduces(dataset, expected_output=[0])
 
   @parameterized.named_parameters(_generate_captured_refvar_test_cases())
-  # Skip eager because RefVariables are not supported in eager mode.
+  @test_util.run_v1_only("RefVariables are not supported in eager mode.")
   def testSkipEagerOptimizationWithCapturedRefVar(self, dataset_fn):
     """Tests that default optimizations are disabled with ref variables."""
     variable = variable_scope.get_variable(
@@ -236,7 +236,7 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
       options.experimental_optimization.noop_elimination = True
       options.experimental_optimization.map_and_batch_fusion = True
       optimized_dataset = unoptimized_dataset.with_options(options)
-      optimized_it = optimized_dataset.make_initializable_iterator()
+      optimized_it = dataset_ops.make_initializable_iterator(optimized_dataset)
 
     self.assertGreaterEqual(len(w), 1)
     expected = ("tf.data static optimizations are not compatible with "
@@ -248,7 +248,8 @@ class OptimizeDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
     # Check that outputs are the same in the optimized and unoptimized cases,
     # when the variable value is changing.
-    unoptimized_it = unoptimized_dataset.make_initializable_iterator()
+    unoptimized_it = dataset_ops.make_initializable_iterator(
+        unoptimized_dataset)
     with ops.control_dependencies([assign_op]):
       unoptimized_output = unoptimized_it.get_next()
       optimized_output = optimized_it.get_next()

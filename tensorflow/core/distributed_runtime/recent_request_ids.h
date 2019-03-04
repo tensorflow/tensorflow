@@ -20,6 +20,7 @@ limitations under the License.
 #include <unordered_set>
 #include <vector>
 
+#include "tensorflow/core/distributed_runtime/message_wrappers.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
@@ -58,8 +59,13 @@ class RecentRequestIds {
   // ShortDebugString are added to returned errors.
   Status TrackUnique(int64 request_id, const string& method_name,
                      const protobuf::Message& request);
+  // Overloaded versions of the above function for wrapped protos.
+  Status TrackUnique(int64 request_id, const string& method_name,
+                     const RunStepRequestWrapper* wrapper);
 
  private:
+  bool Insert(int64 request_id);
+
   mutex mu_;
   // next_index_ indexes into circular_buffer_, and points to the next storage
   // space to use. When the buffer is full, next_index_ points at the oldest

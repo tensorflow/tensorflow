@@ -306,9 +306,18 @@ cc_library(
         "reference/depthwiseconv_float.h",
         "reference/depthwiseconv_uint8.h",
         "reference/fully_connected.h",
+        "reference/integer_ops/add.h",
+        "reference/integer_ops/conv.h",
+        "reference/integer_ops/depthwise_conv.h",
         "reference/integer_ops/dequantize.h",
+        "reference/integer_ops/fully_connected.h",
+        "reference/integer_ops/l2normalization.h",
+        "reference/integer_ops/log_softmax.h",
+        "reference/integer_ops/logistic.h",
+        "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
+        "reference/integer_ops/tanh.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],
@@ -582,14 +591,19 @@ cc_test(
 
 cc_test(
     name = "depthwiseconv_quantized_test",
-    srcs = ["depthwiseconv_quantized_test.cc"],
+    srcs = [
+        "depthwiseconv_quantized_test.cc",
+        "optimized/depthwiseconv_uint8_transitional.h",
+    ],
     shard_count = 2,
     deps = [
         ":optimized_base",
         ":reference_base",
         ":test_util",
         ":types",
+        "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@gemmlowp",
     ],
 )
 
@@ -640,7 +654,7 @@ cc_test(
     srcs = [
         "logsoftmax_quantized_test.cc",
     ],
-    shard_count = 3,
+    shard_count = 4,
     tags = [
         # TODO(b/122242739): Reenable after fixing the flakiness?
         "nomac",

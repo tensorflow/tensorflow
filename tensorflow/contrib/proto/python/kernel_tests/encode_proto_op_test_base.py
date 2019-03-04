@@ -15,9 +15,6 @@
 # =============================================================================
 """Table-driven test for encode_proto op.
 
-This test is run once with each of the *.TestCase.pbtxt files
-in the test directory.
-
 It tests that encode_proto is a lossless inverse of decode_proto
 (for the specified fields).
 """
@@ -145,7 +142,8 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
         # loss of packing in the encoding).
         self.assertEqual(in_buf, out_buf)
 
-  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  @parameterized.named_parameters(
+      *test_base.ProtoOpTestBase.named_parameters(extension=False))
   def testRoundtrip(self, case):
     in_bufs = [value.SerializeToString() for value in case.values]
 
@@ -154,7 +152,8 @@ class EncodeProtoOpTestBase(test_base.ProtoOpTestBase, parameterized.TestCase):
     return self._testRoundtrip(
         in_bufs, 'tensorflow.contrib.proto.TestValue', case.fields)
 
-  @parameterized.named_parameters(*test_base.ProtoOpTestBase.named_parameters())
+  @parameterized.named_parameters(
+      *test_base.ProtoOpTestBase.named_parameters(extension=False))
   def testRoundtripPacked(self, case):
     # Now try with the packed serialization.
     # We test the packed representations by loading the same test cases using

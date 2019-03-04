@@ -31,7 +31,6 @@ namespace {
 class DeviceResolverLocalTest : public ::testing::Test {
  protected:
   DeviceResolverLocalTest() {
-    ConfigProto cp;
     SessionOptions options;
     string task_name = "/job:localhost/replica:0/task:0";
     auto* device_count = options.config.mutable_device_count();
@@ -56,7 +55,7 @@ TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesKnown) {
   Notification note;
   Status status;
   drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
+                                 [&note, &status](const Status& s) {
                                    status = s;
                                    note.Notify();
                                  });
@@ -74,7 +73,7 @@ TEST_F(DeviceResolverLocalTest, GetDeviceLocalitiesUnknown) {
   Notification note;
   Status status;
   drl_->GetDeviceLocalitiesAsync(cp.instance, &localities,
-                                 [this, &note, &status](const Status& s) {
+                                 [&note, &status](const Status& s) {
                                    status = s;
                                    note.Notify();
                                  });

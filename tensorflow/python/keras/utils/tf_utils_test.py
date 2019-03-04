@@ -89,6 +89,10 @@ class TestIsSymbolicTensor(test.TestCase):
         self._input = input_
         self.value = ops.convert_to_tensor(42.)
 
+      @property
+      def dtype(self):
+        return self.value.dtype
+
     ops.register_tensor_conversion_function(
         Foo, lambda x, *args, **kwargs: x.value)
     tf_utils.register_symbolic_tensor_type(Foo)
@@ -128,6 +132,16 @@ class TestIsSymbolicTensor(test.TestCase):
     # `Tensor`.
     y = model(ops.convert_to_tensor(7.))
     self.assertIsInstance(y, Foo)
+    # Confirm that (custom) loss sees `Foo` instance, not Tensor.
+    obtained_prediction_box = [None]
+    def custom_loss(y_obs, y_pred):
+      del y_obs
+      obtained_prediction_box[0] = y_pred
+      return y_pred
+    # Apparently `compile` calls the loss function enough to trigger the
+    # side-effect.
+    model.compile('SGD', loss=custom_loss)
+    self.assertIsInstance(obtained_prediction_box[0], Foo)
 
 
 class ConvertInnerNodeDataTest(test.TestCase):

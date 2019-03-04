@@ -15,17 +15,16 @@ limitations under the License.
 #include "tensorflow/lite/experimental/microfrontend/lib/noise_reduction.h"
 #include "tensorflow/lite/experimental/microfrontend/lib/noise_reduction_util.h"
 
-#include <gmock/gmock.h>
-#include <gtest/gtest.h>
+#include "tensorflow/lite/experimental/micro/testing/micro_test.h"
 
 namespace {
 
 const int kNumChannels = 2;
 
 // Test noise reduction using default config values.
-class NoiseReductionTest : public ::testing::Test {
- protected:
-  NoiseReductionTest() {
+class NoiseReductionTestConfig {
+ public:
+  NoiseReductionTestConfig() {
     config_.smoothing_bits = 10;
     config_.even_smoothing = 0.025;
     config_.odd_smoothing = 0.06;
@@ -35,38 +34,48 @@ class NoiseReductionTest : public ::testing::Test {
   struct NoiseReductionConfig config_;
 };
 
-TEST_F(NoiseReductionTest, TestNoiseReductionEstimate) {
+}  // namespace
+
+TF_LITE_MICRO_TESTS_BEGIN
+
+TF_LITE_MICRO_TEST(NoiseReductionTest_TestNoiseReductionEstimate) {
+  NoiseReductionTestConfig config;
   struct NoiseReductionState state;
-  ASSERT_TRUE(NoiseReductionPopulateState(&config_, &state, kNumChannels));
+  TF_LITE_MICRO_EXPECT(
+      NoiseReductionPopulateState(&config.config_, &state, kNumChannels));
 
   uint32_t signal[] = {247311, 508620};
   NoiseReductionApply(&state, signal);
 
   const uint32_t expected[] = {6321887, 31248341};
-  ASSERT_EQ(state.num_channels, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(state.num_channels,
+                          sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < state.num_channels; ++i) {
-    EXPECT_EQ(state.estimate[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(state.estimate[i], expected[i]);
   }
 
   NoiseReductionFreeStateContents(&state);
 }
 
-TEST_F(NoiseReductionTest, TestNoiseReduction) {
+TF_LITE_MICRO_TEST(NoiseReductionTest_TestNoiseReduction) {
+  NoiseReductionTestConfig config;
   struct NoiseReductionState state;
-  ASSERT_TRUE(NoiseReductionPopulateState(&config_, &state, kNumChannels));
+  TF_LITE_MICRO_EXPECT(
+      NoiseReductionPopulateState(&config.config_, &state, kNumChannels));
 
   uint32_t signal[] = {247311, 508620};
   NoiseReductionApply(&state, signal);
 
   const uint32_t expected[] = {241137, 478104};
-  ASSERT_EQ(state.num_channels, sizeof(expected) / sizeof(expected[0]));
+  TF_LITE_MICRO_EXPECT_EQ(state.num_channels,
+                          sizeof(expected) / sizeof(expected[0]));
   int i;
   for (i = 0; i < state.num_channels; ++i) {
-    EXPECT_EQ(signal[i], expected[i]);
+    TF_LITE_MICRO_EXPECT_EQ(signal[i], expected[i]);
   }
 
   NoiseReductionFreeStateContents(&state);
 }
 
-}  // namespace
+TF_LITE_MICRO_TESTS_END

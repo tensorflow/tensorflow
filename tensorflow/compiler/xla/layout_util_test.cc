@@ -317,6 +317,81 @@ TEST_F(LayoutUtilTest, DefaultLayoutGettersMajorToMinor) {
                             ShapeUtil::MakeShape(F32, {10, 20, 30, 15, 25}))));
 }
 
+TEST_F(LayoutUtilTest, HumanStringWithTiling) {
+  Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3, 4}, {0, 1, 2});
+  Tile* tile;
+
+  // No tiling.
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape), "f32[2,3,4]{0,1,2}");
+
+  // 2D tile.
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(512);
+  tile->add_dimensions(1024);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "f32[2,3,4]{0,1,2:T(512,1024)}");
+
+  // 1D tile.
+  shape.mutable_layout()->clear_tiles();
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(512);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "f32[2,3,4]{0,1,2:T(512)}");
+
+  // 2 tiles.
+  shape = ShapeUtil::MakeShapeWithLayout(BF16, {2, 3, 4}, {1, 2, 0});
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(16);
+  tile->add_dimensions(256);
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(2);
+  tile->add_dimensions(1);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "bf16[2,3,4]{1,2,0:T(16,256)(2,1)}");
+
+  // PRED with element size of 8 bits.
+  shape = ShapeUtil::MakeShapeWithLayout(PRED, {8, 8, 8}, {0, 2, 1});
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(8);
+  tile->add_dimensions(128);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "pred[8,8,8]{0,2,1:T(8,128)}");
+
+  // PRED with element size of 32 bits.
+  shape.mutable_layout()->clear_tiles();
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(8);
+  tile->add_dimensions(128);
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "pred[8,8,8]{0,2,1:T(8,128)E(32)}");
+
+  // No tile. PRED with element size of 32 bits.
+  shape.mutable_layout()->clear_tiles();
+  shape.mutable_layout()->set_element_size_in_bits(32);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "pred[8,8,8]{0,2,1:E(32)}");
+
+  // Tile with negative dimension size for combining dimensions.
+  shape = ShapeUtil::MakeShapeWithLayout(BF16, {2, 3, 1004}, {2, 1, 0});
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(2);
+  tile->add_dimensions(Tile::kCombineDimension);
+  tile->add_dimensions(128);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "bf16[2,3,1004]{2,1,0:T(2,*,128)}");
+
+  // Tile with two negative dimensions.
+  shape = ShapeUtil::MakeShapeWithLayout(BF16, {8, 2, 3, 1004}, {3, 2, 1, 0});
+  tile = shape.mutable_layout()->add_tiles();
+  tile->add_dimensions(2);
+  tile->add_dimensions(Tile::kCombineDimension);
+  tile->add_dimensions(Tile::kCombineDimension);
+  tile->add_dimensions(128);
+  EXPECT_EQ(ShapeUtil::HumanStringWithLayout(shape),
+            "bf16[8,2,3,1004]{3,2,1,0:T(2,*,*,128)}");
+}
+
 TEST_F(LayoutUtilTest, ValidateLayout_ValidArrayLayout) {
   Shape shape = ShapeUtil::MakeShapeWithLayout(F32, {2, 3}, {0, 1});
   auto status =

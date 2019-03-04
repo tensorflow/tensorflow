@@ -18,15 +18,19 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import numpy as np
+
 from tensorflow.python.eager import def_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
-from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import test_util
 from tensorflow.python.ops import gen_random_ops
+from tensorflow.python.ops import gen_stateful_random_ops
 from tensorflow.python.ops import logging_ops
 from tensorflow.python.ops import stateful_random_ops as \
 random
+from tensorflow.python.ops import variables
 from tensorflow.python.platform import test
 
 
@@ -39,8 +43,8 @@ class StatefulRandomOpsTest(test.TestCase):
                                     random.RNG_ALG_PHILOX)
     self.assertAllEqual(
         list(map(random._uint_to_int,
-                 [random.RNG_ALG_PHILOX, 0xFFAA666677778888,
-                  0xFFFF222233334444] + [0] * (random.PHILOX_STATE_SIZE - 2))),
+                 [0xFFAA666677778888, 0xFFFF222233334444] +
+                 [0] * (random.PHILOX_STATE_SIZE - 2))),
         state)
 
   @test_util.run_v2_only
@@ -112,26 +116,80 @@ class StatefulRandomOpsTest(test.TestCase):
     compare(True, False)
 
   @test_util.run_v2_only
-  def testSameAsOldRandomOps(self):
-    """Tests that the generated numbers are the same as the old random_ops.py .
+  def testCPUSameAsOldRandomOps(self):
+    """Tests that the generated numbers are the same as the old random_ops.py.
+
+    The CPU version.
     """
-    seed1, seed2 = 50, 60
+    seed1, seed2 = 79, 25
     # note how the two seeds for the old op correspond to the seed for the new
     # op
-    random.get_global_generator().reset([0, seed2, seed1])
-    shape = constant_op.constant([2, 3])
-    dtype = dtypes.float32
+    with ops.device("/device:CPU:0"):
+      random.reset_global_generator([0, seed2, seed1])
+    shape = constant_op.constant([4, 7])
+    dtype = dtypes.float64
+
     # create a graph for the old op in order to call it many times
     @def_function.function
     def old():
-      return gen_random_ops.random_standard_normal(
-          shape, dtype=dtype, seed=seed1, seed2=seed2)
+      with ops.device("/device:CPU:0"):
+        return gen_random_ops.random_standard_normal(
+            shape, dtype=dtype, seed=seed1, seed2=seed2)
 
     def new():
-      return random.get_global_generator().standard_normal(shape, dtype=dtype)
+      with ops.device("/device:CPU:0"):
+        return random.get_global_generator().standard_normal(shape, dtype=dtype)
 
     for _ in range(100):
       self.assertAllEqual(old(), new())
+
+  @test_util.run_v2_only
+  @test_util.run_cuda_only
+  def testGPUSameAsOldRandomOps(self):
+    """Tests that the generated numbers are the same as the old random_ops.py.
+
+    The GPU version.
+    """
+    seed1, seed2 = 79, 25
+    with ops.device(test_util.gpu_device_name()):
+      random.reset_global_generator([0, seed2, seed1])
+    shape = constant_op.constant([4, 7])
+    dtype = dtypes.float64
+
+    @def_function.function
+    def old():
+      with ops.device(test_util.gpu_device_name()):
+        return gen_random_ops.random_standard_normal(
+            shape, dtype=dtype, seed=seed1, seed2=seed2)
+
+    def new():
+      with ops.device(test_util.gpu_device_name()):
+        return random.get_global_generator().standard_normal(shape, dtype=dtype)
+
+    for _ in range(100):
+      self.assertAllEqual(old(), new())
+
+  @test_util.run_v2_only
+  def testStatefulStandardNormal(self):
+    """Tests that op 'StatefulStandardNormal' still works.
+    """
+    shape = constant_op.constant([4, 7])
+    dtype = dtypes.float64
+    seed = 1234
+    algorithm = random.RNG_ALG_PHILOX
+    state = random._make_state_from_seed(seed, algorithm)
+    with ops.device("/device:CPU:0"):
+      var1 = variables.Variable(
+          np.concatenate((np.array([algorithm], dtype=random.STATE_TYPE),
+                          state), axis=None),
+          dtype=random.STATE_TYPE)
+      var2 = variables.Variable(state, dtype=random.STATE_TYPE)
+      for _ in range(100):
+        t1 = gen_stateful_random_ops.stateful_standard_normal(
+            var1.handle, shape, dtype)
+        t2 = gen_stateful_random_ops.stateful_standard_normal_v2(
+            var2.handle, algorithm, shape, dtype)
+        self.assertAllEqual(t1, t2)
 
   @test_util.run_v2_only
   def testResetGlobalGeneratorBadWithDefun(self):
@@ -145,7 +203,7 @@ class StatefulRandomOpsTest(test.TestCase):
 
     random.reset_global_generator(50)
     with self.assertRaisesWithPredicateMatch(
-        errors_impl.NotFoundError, "Resource .+ does not exist"):
+        AssertionError, "variable.*deleted"):
       a = f()
       random.reset_global_generator(50)
       b = f()

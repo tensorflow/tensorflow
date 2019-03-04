@@ -262,6 +262,24 @@ tf_py_test(
 )
 
 py_library(
+    name = "signature_serialization",
+    srcs = [
+        "signature_serialization.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":revived_types",
+        ":signature_constants",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python:util",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:function",
+        "//tensorflow/python/training/tracking:base",
+    ],
+)
+
+py_library(
     name = "save",
     srcs = [
         "save.py",
@@ -271,10 +289,11 @@ py_library(
         ":builder",
         ":constants",
         ":function_serialization",
+        ":nested_structure_coder",
         ":revived_types",
-        ":saved_object_graph_py",
         ":signature_constants",
         ":signature_def_utils",
+        ":signature_serialization",
         ":tag_constants",
         ":utils",
         "//tensorflow/core:protos_all_py",
@@ -286,14 +305,16 @@ py_library(
         "//tensorflow/python:framework_ops",
         "//tensorflow/python:lib",
         "//tensorflow/python:resource_variable_ops",
-        "//tensorflow/python:tensor_spec",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
-        "//tensorflow/python/training/checkpointable:base",
-        "//tensorflow/python/training/checkpointable:tracking",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/saving:functional_saver",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:object_identity",
+        "//tensorflow/python/training/tracking:util",
     ],
 )
 
@@ -320,14 +341,40 @@ py_library(
     deps = [
         ":constants",
         ":function_deserialization",
+        ":load_v1_in_v2",
         ":loader",
+        ":nested_structure_coder",
         ":revived_types",
-        ":saved_object_graph_py",
         ":utils",
-        "//tensorflow/python:function",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:init_ops",
         "//tensorflow/python:lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:tensor_util",
         "//tensorflow/python:util",
-        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python:variables",
+        "//tensorflow/python/training/tracking",
+        "//tensorflow/python/training/tracking:base",
+        "//tensorflow/python/training/tracking:graph_view",
+        "//tensorflow/python/training/tracking:util",
+    ],
+)
+
+py_library(
+    name = "load_v1_in_v2",
+    srcs = [
+        "load_v1_in_v2.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        ":loader",
+        ":signature_serialization",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:saver",
+        "//tensorflow/python/eager:wrap_function",
+        "//tensorflow/python/training/tracking",
     ],
 )
 
@@ -344,7 +391,34 @@ tf_py_test(
         "//tensorflow/python:tensor_spec",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:tracking",
+        "//tensorflow/python/training/tracking:tracking",
+    ],
+    tags = ["no_mac"],  # TODO(b/124822121): Re-enable this test.
+)
+
+tf_py_test(
+    name = "load_v1_in_v2_test",
+    srcs = ["load_v1_in_v2_test.py"],
+    additional_deps = [
+        ":builder",
+        ":load",
+        ":save",
+        ":signature_def_utils",
+        ":simple_save",
+        ":utils",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:lib",
+        "//tensorflow/python:resource_variable_ops",
+        "//tensorflow/python:session",
+        "//tensorflow/python:tensor_spec",
+        "//tensorflow/python/eager:def_function",
+        "//tensorflow/python/eager:test",
+        "//tensorflow/python/training/tracking:tracking",
+        "//tensorflow/python:variables",
     ],
 )
 
@@ -355,7 +429,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
-        ":saved_object_graph_py",
+        "//tensorflow/core:protos_all_py",
     ],
 )
 
@@ -364,7 +438,7 @@ tf_py_test(
     srcs = ["revived_types_test.py"],
     additional_deps = [
         ":revived_types",
-        ":saved_object_graph_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:client_testlib",
     ],
 )
@@ -377,7 +451,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":nested_structure_coder",
-        ":saved_object_graph_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/eager:function",
     ],
@@ -395,27 +469,11 @@ py_library(
     ],
 )
 
-tf_proto_library(
-    name = "struct",
-    srcs = ["struct.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos(),
-    visibility = ["//tensorflow:internal"],
-)
-
-tf_proto_library(
-    name = "saved_object_graph",
-    srcs = ["saved_object_graph.proto"],
-    cc_api_version = 2,
-    protodeps = tf_additional_all_protos() + [":struct"],
-    visibility = ["//tensorflow:internal"],
-)
-
 py_library(
     name = "nested_structure_coder",
     srcs = ["nested_structure_coder.py"],
     deps = [
-        ":struct_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "@six_archive//:six",
     ],
@@ -426,7 +484,7 @@ tf_py_test(
     srcs = ["nested_structure_coder_test.py"],
     additional_deps = [
         ":nested_structure_coder",
-        ":struct_py",
+        "//tensorflow/core:protos_all_py",
         "//tensorflow/python:framework",
         "//tensorflow/python/eager:test",
     ],

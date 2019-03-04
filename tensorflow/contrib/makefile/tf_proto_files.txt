@@ -31,6 +31,7 @@ tensorflow/core/framework/versions.proto
 tensorflow/core/grappler/costs/op_performance_data.proto
 tensorflow/core/kernels/boosted_trees/boosted_trees.proto
 tensorflow/core/lib/core/error_codes.proto
+tensorflow/core/protobuf/trackable_object_graph.proto
 tensorflow/core/protobuf/cluster.proto
 tensorflow/core/protobuf/config.proto
 tensorflow/core/protobuf/debug.proto
@@ -40,7 +41,9 @@ tensorflow/core/protobuf/meta_graph.proto
 tensorflow/core/protobuf/named_tensor.proto
 tensorflow/core/protobuf/queue_runner.proto
 tensorflow/core/protobuf/rewriter_config.proto
+tensorflow/core/protobuf/saved_object_graph.proto
 tensorflow/core/protobuf/saver.proto
+tensorflow/core/protobuf/struct.proto
 tensorflow/core/protobuf/tensor_bundle.proto
 tensorflow/core/protobuf/tensorflow_server.proto
 tensorflow/core/protobuf/verifier_config.proto

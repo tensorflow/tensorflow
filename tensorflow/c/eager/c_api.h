@@ -282,8 +282,13 @@ TF_CAPI_EXPORT extern const char* TFE_OpGetDevice(TFE_Op* op,
 TF_CAPI_EXPORT extern void TFE_OpSetXLACompilation(TFE_Op* op,
                                                    unsigned char enable);
 
-TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* h,
+TF_CAPI_EXPORT extern void TFE_OpAddInput(TFE_Op* op, TFE_TensorHandle* input,
                                           TF_Status* status);
+
+TF_CAPI_EXPORT extern void TFE_OpAddInputList(TFE_Op* op,
+                                              TFE_TensorHandle** inputs,
+                                              int num_inputs,
+                                              TF_Status* status);
 
 TF_CAPI_EXPORT extern TF_AttrType TFE_OpGetAttrType(TFE_Op* op,
                                                     const char* attr_name,

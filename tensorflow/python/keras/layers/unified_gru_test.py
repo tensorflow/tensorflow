@@ -47,9 +47,7 @@ from tensorflow.python.training import gradient_descent
 
 # Global config for grappler setting that is used for graph mode test.
 _rewrites = rewriter_config_pb2.RewriterConfig()
-_rewrites.function_optimization = rewriter_config_pb2.RewriterConfig.OFF
-_customer_optimizer = _rewrites.custom_optimizers.add()
-_customer_optimizer.name = 'ExperimentalImplementationSelector'
+_rewrites.implementation_selector = rewriter_config_pb2.RewriterConfig.ON
 _rewrites.min_graph_nodes = -1
 _graph_options = config_pb2.GraphOptions(rewrite_options=_rewrites)
 _config = config_pb2.ConfigProto(graph_options=_graph_options)
@@ -337,6 +335,21 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
                 'return_sequences': True},
         input_shape=(num_samples, timesteps, embedding_dim))
 
+  def test_return_states_GRU(self):
+    layer_class = keras.layers.UnifiedGRU
+    x = np.random.random((2, 3, 4))
+    y = np.abs(np.random.random((2, 5)))
+    s = np.abs(np.random.random((2, 5)))
+    inputs = keras.layers.Input(
+        shape=[3, 4], dtype=dtypes.float32)
+    masked = keras.layers.Masking()(inputs)
+    outputs, states = layer_class(units=5, return_state=True)(masked)
+
+    model = keras.models.Model(inputs, [outputs, states])
+    model.compile(loss='categorical_crossentropy',
+                  optimizer=gradient_descent.GradientDescentOptimizer(0.001))
+    model.fit(x, [y, s], epochs=1, batch_size=2, verbose=1)
+
   def test_dropout_GRU(self):
     num_samples = 2
     timesteps = 3
@@ -463,6 +476,29 @@ class UnifiedGRUTest(keras_parameterized.TestCase):
     out7 = model.predict(right_padded_input)
 
     np.testing.assert_allclose(out7, out6, atol=1e-5)
+
+  def test_stateful_GRU_training(self):
+    # See b/123587692 for more context.
+    vocab_size = 20
+    embedding_dim = 10
+    batch_size = 8
+    timestep = 12
+    units = 5
+    x = np.random.randint(0, vocab_size, size=(batch_size, timestep))
+    y = np.random.randint(0, vocab_size, size=(batch_size, timestep))
+
+    model = keras.Sequential([
+        keras.layers.Embedding(vocab_size, embedding_dim,
+                               batch_input_shape=[batch_size, timestep]),
+        keras.layers.UnifiedGRU(units,
+                                return_sequences=True,
+                                stateful=True),
+        keras.layers.Dense(vocab_size)
+    ])
+    model.compile(optimizer='adam',
+                  loss='sparse_categorical_crossentropy',
+                  run_eagerly=testing_utils.should_run_eagerly())
+    model.fit(x, y, epochs=1, shuffle=False)
 
 
 class GRULayerGradientTapeTest(test.TestCase):

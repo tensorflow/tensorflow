@@ -11,9 +11,15 @@ package(
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_custom_op_py_library",
     "tf_gen_op_libs",
+    "tf_gen_op_wrapper_py",
 )
 load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load(
+    "//tensorflow/core:platform/default/build_config.bzl",
+    "tf_proto_library_py",
+)
 
 xla_proto_library(
     name = "xrt_proto",
@@ -25,6 +31,12 @@ xla_proto_library(
         "//tensorflow/compiler/xla:xla_proto",
         "//tensorflow/compiler/xla/service:hlo_proto",
     ],
+)
+
+tf_proto_library_py(
+    name = "xrt_proto",  # bzl adds a _py suffix
+    srcs = ["xrt.proto"],
+    visibility = ["//visibility:public"],
 )
 
 cc_library(
@@ -75,6 +87,25 @@ tf_gen_op_libs(
     ],
     deps = [
         "//tensorflow/core:lib",
+    ],
+)
+
+tf_gen_op_wrapper_py(
+    name = "xrt_ops_wrapper_py",
+    out = "xrt_ops.py",
+    deps = [
+        ":xrt_compile_ops_op_lib",
+        ":xrt_execute_op_op_lib",
+        ":xrt_state_ops_op_lib",
+    ],
+)
+
+tf_custom_op_py_library(
+    name = "xrt_ops",
+    kernels = ["//tensorflow/compiler/xrt/kernels:xrt_ops"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":xrt_ops_wrapper_py",
     ],
 )
 

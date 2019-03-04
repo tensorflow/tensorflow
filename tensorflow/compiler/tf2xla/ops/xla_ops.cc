@@ -56,6 +56,41 @@ lhs_output: the broadcasted LHS tensor
 rhs_output: the broadcasted RHS tensor
 )doc");
 
+REGISTER_OP("XlaSelfAdjointEig")
+    .Input("a: T")
+    .Attr("lower: bool")
+    .Attr("max_iter: int")
+    .Attr("epsilon: float")
+    .Output("w: T")
+    .Output("v: T")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Computes the eigen decomposition of a batch of self-adjoint matrices
+(Note: Only real inputs are supported).
+
+Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices in
+tensor such that tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i], for
+i=0...N-1.
+
+a: the input tensor.
+
+lower: a boolean specifies whether the calculation is done with the lower
+  triangular part or the upper triangular part.
+
+max_iter: maximum number of sweep update, i.e., the whole lower triangular
+  part or upper triangular part based on parameter lower. Heuristically, it has
+  been argued that approximatly logN sweeps are needed in practice (Ref: Golub &
+  van Loan "Matrix Computation").
+
+epsilon: the tolerance ratio.
+
+w: The eigenvalues in ascending order, each repeated according to its
+  multiplicity.
+v: The column v[..., :, i] is the normalized eigenvector corresponding to the
+  eigenvalue w[..., i].
+)doc");
+
 REGISTER_OP("XlaConv")
     .Input("lhs: T")
     .Input("rhs: T")

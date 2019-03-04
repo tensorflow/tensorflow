@@ -259,6 +259,12 @@ class LinearOperatorIdentityTest(
           is_non_singular=None,
       )
 
+  def test_identity_adjoint_type(self):
+    operator = linalg_lib.LinearOperatorIdentity(
+        num_rows=2, is_non_singular=True)
+    self.assertIsInstance(
+        operator.adjoint(), linalg_lib.LinearOperatorIdentity)
+
   def test_identity_cholesky_type(self):
     operator = linalg_lib.LinearOperatorIdentity(
         num_rows=2,

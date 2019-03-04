@@ -39,6 +39,15 @@ message Fetch {
   string name = 2;  // Optional name for generated code.
 };
 
+// Variable represents a resource variable with the given name, shape and type.
+message Variable {
+  string node_name = 1;
+  string name =
+      2;  // Optional name for generated code. If empty, node_name will be used.
+  TensorShapeProto shape = 3;
+  DataType type = 4;
+}
+
 // Config represents configuration information for tf2xla conversion.
 message Config {
   // Each feed is a positional input argument for the generated computation.
@@ -47,4 +56,6 @@ message Config {
   // Each fetch is a positional output argument for the generated computation.
   // The order of each entry matches the order of each output argument.
   repeated Fetch fetch = 2;
+  // Each variable is a named input and output of the generated computation.
+  repeated Variable variable = 3;
 };

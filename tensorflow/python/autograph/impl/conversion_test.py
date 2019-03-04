@@ -92,11 +92,9 @@ class ConversionTest(test.TestCase):
     conversion.entity_to_graph(f, program_ctx, None, None)
 
     self.assertTrue(f in program_ctx.dependency_cache)
-    self.assertTrue(g in program_ctx.dependency_cache)
+    self.assertFalse(g in program_ctx.dependency_cache)
     f_node = program_ctx.dependency_cache[f][0]
-    g_node = program_ctx.dependency_cache[g][0]
     self.assertEqual('tf__f', f_node.name)
-    self.assertEqual('tf__g', g_node.name)
 
   def test_entity_to_graph_class_hierarchy(self):
 

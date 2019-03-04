@@ -59,6 +59,11 @@ class Subgraph {
   // interpreter.
   TfLiteStatus SetVariables(std::vector<int> variables);
 
+  // Ensure the internal node storage memory allocates at least `count`
+  // spots for node. NOTE, this doesn't actually add operators. This is an
+  // efficiency optimization that is subject to change.
+  void ReserveNodes(int count);
+
   // Adds a node with the given parameters and returns the index of the new
   // node in `node_index` (optionally). Interpreter will take ownership of
   // `builtin_data` and destroy it with `free`. Ownership of 'init_data'
@@ -68,33 +73,48 @@ class Subgraph {
                                      const char* init_data,
                                      size_t init_data_size, void* builtin_data,
                                      const TfLiteRegistration* registration,
-                                     int* node_index);
+                                     int* node_index = nullptr);
 
   // Adds `tensors_to_add` tensors, preserving pre-existing Tensor entries.
   // The value pointed to by `first_new_tensor_index` will be set to the
   // index of the first new tensor if `first_new_tensor_index` is non-null.
-  TfLiteStatus AddTensors(int tensors_to_add, int* first_new_tensor_index);
+  TfLiteStatus AddTensors(int tensors_to_add,
+                          int* first_new_tensor_index = nullptr);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
-  TfLiteStatus SetTensorParametersReadOnly(int tensor_index, TfLiteType type,
-                                           const char* name, const size_t rank,
-                                           const int* dims,
-                                           TfLiteQuantization quantization,
-                                           const char* buffer, size_t bytes,
-                                           const Allocation* allocation);
+  inline TfLiteStatus SetTensorParametersReadOnly(
+      int tensor_index, TfLiteType type, const char* name,
+      const std::vector<int>& dims, TfLiteQuantization quantization,
+      const char* buffer, size_t bytes,
+      const Allocation* allocation = nullptr) {
+    return SetTensorParametersReadOnly(tensor_index, type, name, dims.size(),
+                                       dims.data(), quantization, buffer, bytes,
+                                       allocation);
+  }
+  TfLiteStatus SetTensorParametersReadOnly(
+      int tensor_index, TfLiteType type, const char* name, const size_t rank,
+      const int* dims, TfLiteQuantization quantization, const char* buffer,
+      size_t bytes, const Allocation* allocation = nullptr);
 
   // Set description of inputs/outputs/data/fptrs for node `node_index`.
   // This variant assumes an external buffer has been allocated of size
   // bytes. The lifetime of buffer must be ensured to be greater or equal
   // to Interpreter.
+  inline TfLiteStatus SetTensorParametersReadWrite(
+      int tensor_index, TfLiteType type, const char* name,
+      const std::vector<int>& dims, TfLiteQuantization quantization,
+      bool is_variable = false) {
+    return SetTensorParametersReadWrite(tensor_index, type, name, dims.size(),
+                                        dims.data(), quantization, is_variable);
+  }
   TfLiteStatus SetTensorParametersReadWrite(int tensor_index, TfLiteType type,
                                             const char* name, const size_t rank,
                                             const int* dims,
                                             TfLiteQuantization quantization,
-                                            bool is_variable);
+                                            bool is_variable = false);
 
   // WARNING: Experimental interface, subject to change
   // Overrides execution plan. This bounds checks indices sent in.

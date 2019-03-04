@@ -21,6 +21,7 @@ from __future__ import print_function
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import tensor_shape
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import gen_linalg_ops
@@ -329,3 +330,189 @@ def matrix_exponential(input, name=None):  # pylint: disable=redefined-builtin
           result,
           array_ops.concat((batch_shape, array_ops.shape(result)[-2:]), axis=0))
     return array_ops.reshape(result, batch_shape.concatenate(result.shape[-2:]))
+
+
+@tf_export('linalg.tridiagonal_solve')
+def tridiagonal_solve(diagonals,
+                      rhs,
+                      diagonals_format='compact',
+                      transpose_rhs=False,
+                      conjugate_rhs=False,
+                      name=None):
+  r"""Solves tridiagonal systems of equations.
+
+  Solution is computed via Gaussian elemination with partial pivoting.
+
+  The input can be supplied in various formats: `matrix`, `tuple` and `compact`,
+  specified by the `diagonals_format` arg.
+
+  In `matrix` format, `diagonals` must be a tensor of shape `[..., M, M]`, with
+  two inner-most dimensions representing the square tridiagonal matrices.
+  Elements outside of the three diagonals will be ignored.
+
+  In `sequence` format, `diagonals` are supplied as a tuple or list of three
+  tensors of shapes `[..., N]`, `[..., M]`, `[..., N]` representing
+  superdiagonals, diagonals, and subdiagonals, respectively. `N` can be either
+  `M-1` or `M`; in the latter case, the last element of superdiagonal and the
+  first element of subdiagonal will be ignored.
+
+  In `compact` format the three diagonals are brought together into one tensor
+  of shape `[..., 3, M]`, with last two dimensions containing superdiagonals,
+  diagonals, and subdiagonals, in order. Similarly to `sequence` format,
+  elements `diagonals[..., 0, M-1]` and `diagonals[..., 2, 0]` are ignored.
+
+  The `compact` format is recommended as the one with best performance. In case
+  you need to cast a tensor into a compact format manually, use `tf.gather_nd`.
+  An example for a tensor of shape [m, m]:
+
+  ```python
+  rhs = tf.constant([...])
+  matrix = tf.constant([[...]])
+  m = matrix.shape[0]
+  dummy_idx = [0, 0]  # An arbitrary element to use as a dummy
+  indices = [[[i, i + 1] for i in range(m - 1)] + [dummy_idx],  # Superdiagonal
+           [[i, i] for i in range(m)],                          # Diagonal
+           [dummy_idx] + [[i + 1, i] for i in range(m - 1)]]    # Subdiagonal
+  diagonals=tf.gather_nd(matrix, indices)
+  x = tf.linalg.tridiagonal_solve(diagonals, rhs)
+  ```
+
+  Regardless of the `diagonals_format`, `rhs` is a tensor of shape `[..., M]` or
+  `[..., M, K]`. The latter allows to simultaneously solve K systems with the
+  same left-hand sides and K different right-hand sides. If `transpose_rhs`
+  is set to `True` the expected shape is `[..., M]` or `[..., K, M]`.
+
+  The batch dimensions, denoted as `...`, must be the same in `diagonals` and
+  `rhs`.
+
+  The output is a tensor of the same shape as `rhs`: either `[..., M]` or
+  `[..., M, K]`.
+
+  Args:
+    diagonals: A `Tensor` or tuple of `Tensor`s describing left-hand sides. The
+      shape depends of `diagonals_format`, see description above. Must be
+      `float32`, `float64`, `complex64`, or `complex128`.
+    rhs: A `Tensor` of shape [..., M] or [..., M, K] and with the same dtype as
+      `diagonals`.
+    diagonals_format: one of `matrix`, `sequence`, or `compact`. Default is
+      `compact`.
+    transpose_rhs: If `True`, `rhs` is transposed before solving (has no effect
+      if the shape of rhs is [..., M]).
+    conjugate_rhs: If `True`, `rhs` is conjugated before solving.
+    name:  A name to give this `Op` (optional).
+
+  Returns:
+    A `Tensor` of shape [..., M] or [..., M, K] containing the solutions.
+
+  Raises:
+    ValueError: An unsupported type is provided as input, or when the input
+    tensors have incorrect shapes.
+
+  """
+  if diagonals_format == 'compact':
+    return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
+                                             conjugate_rhs, name)
+
+  if diagonals_format == 'sequence':
+    if not isinstance(diagonals, (tuple, list)) or len(diagonals) != 3:
+      raise ValueError('Expected diagonals to be a sequence of length 3.')
+
+    superdiag, maindiag, subdiag = diagonals
+    if (not subdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1]) or
+        not superdiag.shape[:-1].is_compatible_with(maindiag.shape[:-1])):
+      raise ValueError(
+          'Tensors representing the three diagonals must have the same shape,'
+          'except for the last dimension, got {}, {}, {}'.format(
+              subdiag.shape, maindiag.shape, superdiag.shape))
+
+    m = tensor_shape.dimension_value(maindiag.shape[-1])
+
+    def pad_if_necessary(t, name, last_dim_padding):
+      n = tensor_shape.dimension_value(t.shape[-1])
+      if not n or n == m:
+        return t
+      if n == m - 1:
+        paddings = (
+            [[0, 0] for _ in range(len(t.shape) - 1)] + [last_dim_padding])
+        return array_ops.pad(t, paddings)
+      raise ValueError('Expected {} to be have length {} or {}, got {}.'.format(
+          name, m, m - 1, n))
+
+    subdiag = pad_if_necessary(subdiag, 'subdiagonal', [1, 0])
+    superdiag = pad_if_necessary(superdiag, 'superdiagonal', [0, 1])
+
+    diagonals = array_ops.stack((superdiag, maindiag, subdiag), axis=-2)
+    return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
+                                             conjugate_rhs, name)
+
+  if diagonals_format == 'matrix':
+    m1 = tensor_shape.dimension_value(diagonals.shape[-1])
+    m2 = tensor_shape.dimension_value(diagonals.shape[-2])
+    if m1 and m2 and m1 != m2:
+      raise ValueError(
+          'Expected last two dimensions of diagonals to be same, got {} and {}'
+          .format(m1, m2))
+    m = m1 or m2
+    if not m:
+      raise ValueError('The size of the matrix needs to be known for '
+                       'diagonals_format="matrix"')
+
+    # Extract diagonals; use input[..., 0, 0] as "dummy" m-th elements of sub-
+    # and superdiagonal.
+    # gather_nd slices into first indices, whereas we need to slice into the
+    # last two, so transposing back and forth is necessary.
+    dummy_idx = [0, 0]
+    indices = ([[[1, 0], [0, 0], dummy_idx]] + [
+        [[i + 1, i], [i, i], [i - 1, i]] for i in range(1, m - 1)
+    ] + [[dummy_idx, [m - 1, m - 1], [m - 2, m - 1]]])
+    diagonals = array_ops.transpose(
+        array_ops.gather_nd(array_ops.transpose(diagonals), indices))
+    return _tridiagonal_solve_compact_format(diagonals, rhs, transpose_rhs,
+                                             conjugate_rhs, name)
+
+  raise ValueError('Unrecognized diagonals_format: {}'.format(diagonals_format))
+
+
+def _tridiagonal_solve_compact_format(diagonals,
+                                      rhs,
+                                      transpose_rhs=False,
+                                      conjugate_rhs=False,
+                                      name=None):
+  """Helper function used after the input has been cast to compact form."""
+  diags_rank, rhs_rank = len(diagonals.shape), len(rhs.shape)
+
+  if diags_rank < 2:
+    raise ValueError(
+        'Expected diagonals to have rank at least 2, got {}'.format(diags_rank))
+  if rhs_rank != diags_rank and rhs_rank != diags_rank - 1:
+    raise ValueError('Expected the rank of rhs to be {} or {}, got {}'.format(
+        diags_rank - 1, diags_rank, rhs_rank))
+  if diagonals.shape[-2] != 3:
+    raise ValueError('Expected 3 diagonals got {}'.format(diagonals.shape[-2]))
+  if not diagonals.shape[:-2].is_compatible_with(rhs.shape[:diags_rank - 2]):
+    raise ValueError('Batch shapes {} and {} are incompatible'.format(
+        diagonals.shape[:-2], rhs.shape[:diags_rank - 2]))
+
+  def check_num_lhs_matches_num_rhs():
+    if diagonals.shape[-1] != rhs.shape[-2]:
+      raise ValueError('Expected number of left-hand sided and right-hand '
+                       'sides to be equal, got {} and {}'.format(
+                           diagonals.shape[-1], rhs.shape[-2]))
+
+  if rhs_rank == diags_rank - 1:
+    # Rhs provided as a vector, ignoring transpose_rhs
+    if conjugate_rhs:
+      rhs = math_ops.conj(rhs)
+    rhs = array_ops.expand_dims(rhs, -1)
+    check_num_lhs_matches_num_rhs()
+    return array_ops.squeeze(
+        linalg_ops.tridiagonal_solve(diagonals, rhs, name), -1)
+
+  if transpose_rhs:
+    rhs = array_ops.matrix_transpose(rhs, conjugate=conjugate_rhs)
+  elif conjugate_rhs:
+    rhs = math_ops.conj(rhs)
+
+  check_num_lhs_matches_num_rhs()
+  result = linalg_ops.tridiagonal_solve(diagonals, rhs, name)
+  return array_ops.matrix_transpose(result) if transpose_rhs else result

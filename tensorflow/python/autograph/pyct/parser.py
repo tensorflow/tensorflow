@@ -21,7 +21,9 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import re
 import textwrap
+import threading
 
 import gast
 import six
@@ -29,10 +31,14 @@ import six
 from tensorflow.python.util import tf_inspect
 
 
+_parse_lock = threading.Lock()  # Prevents linecache concurrency errors.
+
+
 def parse_entity(entity):
   """Returns the AST of given entity."""
   try:
-    source = tf_inspect.getsource(entity)
+    with _parse_lock:
+      source = tf_inspect.getsource_no_unwrap(entity)
   except (IOError, OSError) as e:
     raise ValueError(
         'Unable to locate the source code of {}. Note that functions defined'
@@ -105,7 +111,7 @@ def parse_str(src):
   """Returns the AST of given piece of code."""
   # TODO(mdan): This should exclude the module things are autowrapped in.
 
-  if six.PY2 and '.print(' in src:
+  if six.PY2 and re.search('\\Wprint\\s*\\(', src):
     # This special treatment is required because gast.parse is not aware of
     # whether print_function was present in the original context.
     src = 'from __future__ import print_function\n' + src

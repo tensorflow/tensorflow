@@ -261,7 +261,7 @@ void ReadModelFlagsFromCommandLineFlags(
     std::vector<string> mean_values =
         absl::StrSplit(parsed_model_flags.mean_values.value(), ',');
     QCHECK(mean_values.size() == model_flags->input_arrays_size());
-    for (int i = 0; i < mean_values.size(); ++i) {
+    for (size_t i = 0; i < mean_values.size(); ++i) {
       char* last = nullptr;
       model_flags->mutable_input_arrays(i)->set_mean_value(
           strtod(mean_values[i].data(), &last));
@@ -278,7 +278,7 @@ void ReadModelFlagsFromCommandLineFlags(
     std::vector<string> std_values =
         absl::StrSplit(parsed_model_flags.std_values.value(), ',');
     QCHECK(std_values.size() == model_flags->input_arrays_size());
-    for (int i = 0; i < std_values.size(); ++i) {
+    for (size_t i = 0; i < std_values.size(); ++i) {
       char* last = nullptr;
       model_flags->mutable_input_arrays(i)->set_std_value(
           strtod(std_values[i].data(), &last));
@@ -296,7 +296,7 @@ void ReadModelFlagsFromCommandLineFlags(
     std::vector<string> input_data_types =
         absl::StrSplit(parsed_model_flags.input_data_types.value(), ',');
     QCHECK(input_data_types.size() == model_flags->input_arrays_size());
-    for (int i = 0; i < input_data_types.size(); ++i) {
+    for (size_t i = 0; i < input_data_types.size(); ++i) {
       IODataType type;
       QCHECK(IODataType_Parse(input_data_types[i], &type));
       model_flags->mutable_input_arrays(i)->set_data_type(type);
@@ -319,7 +319,7 @@ void ReadModelFlagsFromCommandLineFlags(
     std::vector<string> input_shapes =
         absl::StrSplit(parsed_model_flags.input_shapes.value(), ':');
     QCHECK(input_shapes.size() == model_flags->input_arrays_size());
-    for (int i = 0; i < input_shapes.size(); ++i) {
+    for (size_t i = 0; i < input_shapes.size(); ++i) {
       auto* shape = model_flags->mutable_input_arrays(i)->mutable_shape();
       shape->clear_dims();
       // Treat an empty input shape as a scalar.

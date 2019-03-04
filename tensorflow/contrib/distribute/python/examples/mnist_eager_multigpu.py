@@ -25,20 +25,23 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from absl import app
+from absl import flags
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
-tf.flags.DEFINE_integer("num_gpus", None, "How many GPUs should we run on?"
-                        "Defaults to all available GPUs, otherwise CPU.")
-tf.flags.DEFINE_integer("batch_size", 64,
-                        "What should be the size of each batch?")
-tf.flags.DEFINE_integer("num_epochs", 10, "How many epochs to run?")
-tf.flags.DEFINE_float("learning_rate", 0.01, "Learning Rate")
-tf.flags.DEFINE_float("momentum", 0.5, "SGD momentum")
+flags.DEFINE_integer("num_gpus", None, "How many GPUs should we run on?"
+                     "Defaults to all available GPUs, otherwise CPU.")
+flags.DEFINE_integer("batch_size", 64,
+                     "What should be the size of each batch?")
+flags.DEFINE_integer("num_epochs", 10, "How many epochs to run?")
+flags.DEFINE_float("learning_rate", 0.01, "Learning Rate")
+flags.DEFINE_float("momentum", 0.5, "SGD momentum")
+flags.DEFINE_boolean("use_function", False,
+                     "Should we wrap the step in a tf.function.")
 
-FLAGS = tf.flags.FLAGS
+FLAGS = flags.FLAGS
 NUM_TRAIN_IMAGES = 60000
-NUM_TEST_IMAGES = 10000
 
 
 def create_model():
@@ -82,7 +85,7 @@ def mnist_datasets():
 def main(unused_argv):
   """Run a CNN model on MNIST data to demonstrate DistributedStrategies."""
 
-  tf.enable_eager_execution()
+  tf.enable_v2_behavior()
 
   num_gpus = FLAGS.num_gpus
   if num_gpus is None:
@@ -99,7 +102,7 @@ def main(unused_argv):
     test_ds = test_ds.batch(FLAGS.batch_size)
 
     model = create_model()
-    optimizer = tf.train.MomentumOptimizer(FLAGS.learning_rate, FLAGS.momentum)
+    optimizer = tf.keras.optimizers.SGD(FLAGS.learning_rate, FLAGS.momentum)
     training_loss = tf.keras.metrics.Mean("training_loss", dtype=tf.float32)
     training_accuracy = tf.keras.metrics.SparseCategoricalAccuracy(
         "training_accuracy", dtype=tf.float32)
@@ -126,12 +129,24 @@ def main(unused_argv):
 
     train_iterator = strategy.make_dataset_iterator(train_ds)
     test_iterator = strategy.make_dataset_iterator(test_ds)
+
     for epoch in range(0, FLAGS.num_epochs):
+      # TODO(b/123315763): Create the tf.function outside this loop once we are
+      # able to initialize iterator in eager mode.
+      dist_train = lambda it: strategy.experimental_run(train_step, it)
+      dist_test = lambda it: strategy.experimental_run(test_step, it)
+      if FLAGS.use_function:
+        dist_train = tf.function(dist_train)
+        dist_test = tf.function(dist_test)
+
       # Train
       print("Starting epoch {}".format(epoch))
       train_iterator.initialize()
-      for _ in range(NUM_TRAIN_IMAGES // FLAGS.batch_size):
-        strategy.experimental_run(train_step, train_iterator)
+      while True:
+        try:
+          dist_train(train_iterator)
+        except tf.errors.OutOfRangeError:
+          break
       print("Training loss: {:0.4f}, accuracy: {:0.2f}%".format(
           training_loss.result(), training_accuracy.result() * 100))
       training_loss.reset_states()
@@ -139,8 +154,11 @@ def main(unused_argv):
 
       # Test
       test_iterator.initialize()
-      for _ in range(NUM_TEST_IMAGES // FLAGS.batch_size):
-        strategy.experimental_run(test_step, test_iterator)
+      while True:
+        try:
+          dist_test(test_iterator)
+        except tf.errors.OutOfRangeError:
+          break
       print("Test loss: {:0.4f}, accuracy: {:0.2f}%".format(
           test_loss.result(), test_accuracy.result() * 100))
       test_loss.reset_states()
@@ -148,4 +166,4 @@ def main(unused_argv):
 
 
 if __name__ == "__main__":
-  tf.app.run()
+  app.run(main)

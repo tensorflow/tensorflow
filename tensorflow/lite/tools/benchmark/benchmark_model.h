@@ -66,9 +66,15 @@ class BenchmarkResults {
 
 class BenchmarkListener {
  public:
+  // Called before the (outer) inference loop begins.
+  // Note that this is called *after* the interpreter has been initialized, but
+  // *before* any warmup runs have been executed.
   virtual void OnBenchmarkStart(const BenchmarkParams& params) {}
+  // Called before a single (inner) inference call starts.
   virtual void OnSingleRunStart(RunType runType) {}
+  // Called before a single (inner) inference call ends.
   virtual void OnSingleRunEnd() {}
+  // Called after the (outer) inference loop begins.
   virtual void OnBenchmarkEnd(const BenchmarkResults& results) {}
   virtual ~BenchmarkListener() {}
 };

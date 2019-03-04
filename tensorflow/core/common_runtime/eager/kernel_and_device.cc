@@ -54,6 +54,16 @@ KernelAndDeviceFunc::~KernelAndDeviceFunc() {
   }
 }
 
+KernelAndDeviceOp::~KernelAndDeviceOp() {
+  // Make sure that the device execution has finished before deleting cm_.
+  {
+    mutex_lock lock(num_deferred_ops_mu_);
+    while (num_deferred_ops_ > 0) {
+      no_deferred_ops_cv_.wait(lock);
+    }
+  }
+}
+
 Status KernelAndDeviceOp::Init(const NodeDef& ndef,
                                GraphCollector* graph_collector) {
   OpKernel* k = nullptr;
@@ -90,37 +100,29 @@ Status KernelAndDeviceFunc::Init(const NodeDef& ndef,
   // Android tf library does not include grappler.
   const auto& config_it = ndef.attr().find("config_proto");
   if (it != ndef.attr().end()) {
-    ConfigProto config_proto;
-    if (!config_proto.ParseFromString(config_it->second.s())) {
+    if (!options.config_proto.ParseFromString(config_it->second.s())) {
       return errors::InvalidArgument(
           "Failed to parse config_proto attribute as tensorflow::ConfigProto "
           "proto.");
     }
-    // We are going to execute the graph via function library runtime, and
-    // because function execution semantics is slightly different from the
-    // regular tensorlow graph, we need to make sure that Grappler respects it
-    // when doing it's optimization passes (e.g. do not prune stateful and
-    // dataset ops).
     grappler::GrapplerItem::OptimizationOptions optimization_options;
-    optimization_options.is_function_instantiation = true;
 
-    // Keras graphs expected to be executed with regular graph execution
-    // semantics (it's allowed to prune stateful and dataset ops).
-    if (absl::StrContains(function_def->signature().name(), "keras_graph")) {
-      optimization_options.is_function_instantiation = false;
-    }
+    // Tensorflow 2.0 in eager mode with automatic control dependencies will
+    // prune all nodes that are not in the transitive fanin of the fetch nodes.
+    // However because the function will be executed via FunctionLibraryRuntime,
+    // and current function implementation does not prune stateful and dataset
+    // ops, we rely on Grappler to do the correct graph pruning.
+    optimization_options.allow_pruning_stateful_and_dataset_ops = true;
 
-    // Wrapped function expects execution semantics to be the same as
-    // `session.run`, so we should prune unreachable stateful and dataset ops.
-    if (absl::StrContains(function_def->signature().name(),
-                          "wrapped_function")) {
-      optimization_options.is_function_instantiation = false;
-    }
+    // All the nested function calls will be executed and optimized via
+    // PartitionedCallOp, there is no need to optimize functions now.
+    optimization_options.optimize_function_library = false;
 
     options.optimize_graph_fn = std::bind(
         grappler::OptimizeGraph, std::placeholders::_1, std::placeholders::_2,
-        std::placeholders::_3, std::placeholders::_4, config_proto,
-        optimization_options, std::placeholders::_5);
+        std::placeholders::_3, std::placeholders::_4, std::placeholders::_5,
+        options.config_proto, function_def->signature().name(),
+        optimization_options, std::placeholders::_6);
   }
 #endif
   options.graph_collector = graph_collector;
@@ -154,9 +156,11 @@ void UpdateStats(OpKernelContext* context,
     memory->set_peak_bytes(std::get<1>(sizes));
     memory->set_live_bytes(std::get<2>(sizes));
 
-    AllocatorStats allocator_stats;
-    allocator_pair.first->GetStats(&allocator_stats);
-    memory->set_allocator_bytes_in_use(allocator_stats.bytes_in_use);
+    absl::optional<AllocatorStats> allocator_stats =
+        allocator_pair.first->GetStats();
+    if (stats) {
+      memory->set_allocator_bytes_in_use(allocator_stats->bytes_in_use);
+    }
     allocator_pair.second->GetRecordsAndUnRef();
   }
   auto* ms = stats->mutable_memory_stats();
@@ -201,7 +205,19 @@ Status KernelAndDeviceOp::Run(ScopedStepContainer* step_container,
   params.slice_reader_cache = &slice_reader_cache_;
   params.rendezvous = rendez_;
   params.cancellation_manager = &cm_;
+  cm_.Reset();
   params.log_memory = log_memory_;
+  params.inc_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_++;
+  };
+  params.dec_num_deferred_ops_function = [this]() {
+    mutex_lock lock(num_deferred_ops_mu_);
+    num_deferred_ops_--;
+    if (num_deferred_ops_ == 0) {
+      no_deferred_ops_cv_.notify_all();
+    }
+  };
   std::unique_ptr<StepStatsCollector> step_stats_collector;
   if (stats != nullptr) {
     step_stats_collector.reset(new StepStatsCollector(step_stats));
@@ -265,6 +281,7 @@ Status KernelAndDeviceFunc::Run(
   opts.rendezvous = nullptr;
   opts.create_rendezvous = true;
   opts.cancellation_manager = &cm_;
+  cm_.Reset();
   // eager runtime does not yet support collective ops.
   opts.collective_executor = nullptr;
   opts.allow_dead_tensors = true;

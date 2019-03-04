@@ -40,7 +40,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import training as training_module
-from tensorflow.python.training.checkpointable import util as checkpointable
+from tensorflow.python.training.tracking import util as trackable
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -50,6 +50,7 @@ except ImportError:
 
 class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
+  @test_util.run_in_graph_and_eager_modes
   def test_weight_loading(self):
     with self.cached_session():
       a = keras.layers.Input(shape=(2,))
@@ -96,6 +97,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
       y = model.predict(x)
       self.assertAllClose(ref_y, y)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_weight_preprocessing(self):
     input_dim = 3
     output_dim = 3
@@ -222,6 +224,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
           for (x, y) in zip(weights1, weights2)
       ]
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sequential_weight_loading(self):
     if h5py is None:
       return
@@ -253,6 +256,7 @@ class TestWeightSavingAndLoading(test.TestCase, parameterized.TestCase):
 
       self.assertAllClose(y, ref_y)
 
+  @test_util.run_in_graph_and_eager_modes
   def test_sequential_weight_loading_group_name_with_incorrect_length(self):
     if h5py is None:
       return
@@ -994,7 +998,7 @@ class TestWeightSavingAndLoadingTFFormat(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_incompatible_checkpoint(self):
-    save_path = checkpointable.Checkpoint().save(
+    save_path = trackable.Checkpoint().save(
         os.path.join(self.get_temp_dir(), 'ckpt'))
     m = keras.Model()
     with self.assertRaisesRegexp(AssertionError, 'Nothing to load'):

@@ -847,6 +847,26 @@ class LinearOperator(object):
 
       return self._solvevec(rhs, adjoint=adjoint)
 
+  def adjoint(self, name="adjoint"):
+    """Returns the adjoint of the current `LinearOperator`.
+
+    Given `A` representing this `LinearOperator`, return `A*`.
+    Note that calling `self.adjoint()` and `self.H` are equivalent.
+
+    Args:
+      name:  A name for this `Op`.
+
+    Returns:
+      `LinearOperator` which represents the adjoint of this `LinearOperator`.
+    """
+    if self.is_self_adjoint is True:  # pylint: disable=g-bool-id-comparison
+      return self
+    with self._name_scope(name):
+      return linear_operator_algebra.adjoint(self)
+
+  # self.H is equivalent to self.adjoint().
+  H = property(adjoint, None)
+
   def inverse(self, name="inverse"):
     """Returns the Inverse of this `LinearOperator`.
 

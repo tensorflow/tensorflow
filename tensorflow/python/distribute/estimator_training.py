@@ -24,6 +24,7 @@ import six
 
 from tensorflow.python.distribute import distribute_coordinator as dc
 from tensorflow.python.distribute import distribute_coordinator_context as dc_context
+from tensorflow.python.distribute import multi_worker_util
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
@@ -296,10 +297,11 @@ def estimator_train(estimator, train_distributed_fn, hooks):
   assert estimator._config._distribute_coordinator_mode
   run_config = estimator._config
   assert estimator._config.cluster_spec
-  cluster_spec = estimator._config.cluster_spec
+  cluster_spec = multi_worker_util.normalize_cluster_spec(
+      estimator._config.cluster_spec)
   assert estimator._config._train_distribute
 
-  if 'evaluator' in cluster_spec:
+  if 'evaluator' in cluster_spec.jobs:
     raise ValueError("'evaluator' job is not supported if you don't use "
                      '`train_and_evaluate`')
 
@@ -344,10 +346,11 @@ def estimator_evaluate(estimator, evaluate_distributed_fn, hooks):
   assert estimator._config._distribute_coordinator_mode
   run_config = estimator._config
   assert estimator._config.cluster_spec
-  cluster_spec = estimator._config.cluster_spec
+  cluster_spec = multi_worker_util.normalize_cluster_spec(
+      estimator._config.cluster_spec)
   assert estimator._config._eval_distribute
 
-  if 'evaluator' in cluster_spec:
+  if 'evaluator' in cluster_spec.jobs:
     raise ValueError("'evaluator' job is not supported if you don't use "
                      '`train_and_evaluate`')
 

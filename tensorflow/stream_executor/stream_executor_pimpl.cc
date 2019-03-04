@@ -492,6 +492,10 @@ port::Status StreamExecutor::BlockHostUntilDone(Stream *stream) {
   return result;
 }
 
+port::Status StreamExecutor::GetStatus(Stream *stream) {
+  return implementation_->GetStatus(stream);
+}
+
 void *StreamExecutor::Allocate(uint64 size) {
   if (memory_limit_bytes_ > 0 &&
       mem_alloc_bytes_ + size > memory_limit_bytes_) {
@@ -865,6 +869,10 @@ bool StreamExecutor::UnregisterTraceListener(TraceListener *listener) {
 
   implementation_->UnregisterTraceListener(listener);
   return true;
+}
+
+absl::optional<AllocatorStats> StreamExecutor::GetAllocatorStats() {
+  return implementation_->GetAllocatorStats();
 }
 
 template <typename TraceCallT, typename... ArgsT>
