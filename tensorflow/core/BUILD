@@ -5058,6 +5058,7 @@ tf_cc_tests(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
