@@ -120,6 +120,7 @@ tf_kernel_library(
         ":case_op",
         ":conv_op_helpers",
         ":if_op",
+        ":tensor_list_utils",
         ":while_op",
         "//tensorflow/compiler/tf2xla:common",
         "//tensorflow/compiler/tf2xla:xla_compiler",
@@ -231,6 +232,23 @@ cc_library(
         "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core/kernels:conv_ops",
         "@com_google_absl//absl/types:span",
+    ],
+)
+
+cc_library(
+    name = "tensor_list_utils",
+    srcs = ["tensor_list_utils.cc"],
+    hdrs = ["tensor_list_utils.h"],
+    deps = [
+        "//tensorflow/compiler/tf2xla:common",
+        "//tensorflow/compiler/tf2xla:xla_compiler",
+        "//tensorflow/compiler/xla:literal_util",
+        "//tensorflow/compiler/xla:shape_util",
+        "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/compiler/xla:statusor",
+        "//tensorflow/compiler/xla/client:xla_builder",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
     ],
 )
 
