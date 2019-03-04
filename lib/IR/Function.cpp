@@ -32,6 +32,13 @@ Function::Function(Location location, StringRef name, FunctionType type,
       type(type), attrs(type.getContext(), attrs),
       argAttrs(type.getNumInputs()), blocks(this) {}
 
+Function::Function(Location location, StringRef name, FunctionType type,
+                   ArrayRef<NamedAttribute> attrs,
+                   ArrayRef<NamedAttributeList> argAttrs)
+    : name(Identifier::get(name, type.getContext())), location(location),
+      type(type), attrs(type.getContext(), attrs), argAttrs(argAttrs),
+      blocks(this) {}
+
 Function::~Function() {
   // Instructions may have cyclic references, which need to be dropped before we
   // can start deleting them.

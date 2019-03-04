@@ -46,6 +46,10 @@ class Function : public llvm::ilist_node_with_parent<Function, Module> {
 public:
   Function(Location location, StringRef name, FunctionType type,
            ArrayRef<NamedAttribute> attrs = {});
+  Function(Location location, StringRef name, FunctionType type,
+           ArrayRef<NamedAttribute> attrs,
+           ArrayRef<NamedAttributeList> argAttrs);
+
   ~Function();
 
   /// The source location the function was defined or derived from.
@@ -197,6 +201,10 @@ public:
     assert(index < getNumArguments() && "invalid argument number");
     argAttrs[index].setAttrs(getContext(), attributes);
   }
+
+  /// Return all argument attributes of this function.
+  MutableArrayRef<NamedAttributeList> getAllArgAttrs() { return argAttrs; }
+  ArrayRef<NamedAttributeList> getAllArgAttrs() const { return argAttrs; }
 
   /// Return the specified attribute if present, null otherwise.
   Attribute getAttr(Identifier name) const { return attrs.get(name); }

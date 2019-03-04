@@ -218,13 +218,16 @@ Function *impl::FunctionConversion::convertFunction(Function *f) {
 
   // Create a new function with argument types and result types converted.  Wrap
   // it into a unique_ptr to make sure it is cleaned up in case of error.
-  Type newFunctionType =
-      dialectConversion->convertFunctionSignatureType(f->getType());
+  auto newFunctionSig = dialectConversion->convertFunctionSignatureType(
+      f->getType(), f->getAllArgAttrs());
+  Type newFunctionType = newFunctionSig.first;
+  std::vector<NamedAttributeList> newFunctionArgAttrs = newFunctionSig.second;
+
   if (!newFunctionType)
     return emitError("could not convert function type");
   auto newFunction = llvm::make_unique<Function>(
       f->getLoc(), f->getName().strref(), newFunctionType.cast<FunctionType>(),
-      f->getAttrs());
+      f->getAttrs(), newFunctionArgAttrs);
 
   // Return early if the function has no blocks.
   if (f->getBlocks().empty())
@@ -306,9 +309,11 @@ bool impl::FunctionConversion::run(Module *module) {
   return false;
 }
 
-// Create a function type with arguments and results converted.
-FunctionType
-DialectConversion::convertFunctionSignatureType(FunctionType type) {
+// Create a function type with arguments and results converted, and argument
+// attributes passed through.
+std::pair<FunctionType, std::vector<NamedAttributeList>>
+DialectConversion::convertFunctionSignatureType(
+    FunctionType type, ArrayRef<NamedAttributeList> argAttrs) {
   SmallVector<Type, 8> arguments;
   SmallVector<Type, 4> results;
 
@@ -320,7 +325,8 @@ DialectConversion::convertFunctionSignatureType(FunctionType type) {
   for (auto t : type.getResults())
     results.push_back(convertType(t));
 
-  return FunctionType::get(arguments, results, type.getContext());
+  return std::make_pair(
+      FunctionType::get(arguments, results, type.getContext()), argAttrs.vec());
 }
 
 bool DialectConversion::convert(Module *m) {
