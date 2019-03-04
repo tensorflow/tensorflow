@@ -629,9 +629,6 @@ BENCHMARK_NAME := $(BINDIR)benchmark
 
 CORE_CC_ALL_SRCS := \
 $(ABSL_CC_SRCS) \
-tensorflow/c/c_api.cc \
-tensorflow/c/kernels.cc \
-tensorflow/c/tf_status_helper.cc \
 $(wildcard tensorflow/core/*.cc) \
 $(wildcard tensorflow/core/common_runtime/*.cc) \
 $(wildcard tensorflow/core/framework/*.cc) \
