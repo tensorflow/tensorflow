@@ -21,7 +21,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_nodes.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_allocator.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_logger.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_lru_cache.h"
@@ -283,8 +282,6 @@ void TRTEngineOp::ExecuteNativeSegment(OpKernelContext* ctx,
              for (size_t t = 0; t < outputs->size(); ++t) {
                ctx->set_output(t, outputs->at(t));
              }
-             test::AddTestValue(StrCat(this->name(), ":ExecuteNativeSegment"),
-                                "done");
              delete outputs;
            });
 }
@@ -329,7 +326,6 @@ void TRTEngineOp::ExecuteCalibration(OpKernelContext* ctx,
                                                 ->implementation()
                                                 ->GpuStreamMemberHack()));
   calib_res->calibrator_->setBatch(input_data, *stream);
-  test::AddTestValue(StrCat(name(), ":ExecuteCalibration"), "done");
   VLOG(2) << "Passed calibration data";
   ExecuteNativeSegment(ctx, helper);
 }
@@ -409,8 +405,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     const string input_name = StrCat(kInputPHName, i);
     const int binding_index = cuda_engine->getBindingIndex(input_name.c_str());
     if (binding_index == -1) {
-      LOG(ERROR) << "Input node not found, at " << input_name;
-      return kRetry;
+      const string msg =
+          StrCat("Input node ", input_name, " not found, at ", name());
+      LOG(ERROR) << msg;
+      ctx->SetStatus(errors::NotFound(msg));
+      return !kRetry;
     }
 
     const Tensor& input_tensor = ctx->input(i);
@@ -461,8 +460,11 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
         return kRetry;
       }
     } else {
-      LOG(ERROR) << "Output node not found, at " << output_name;
-      return kRetry;
+      const string msg =
+          StrCat("Ouput node ", output_name, " not found, at ", name());
+      LOG(ERROR) << msg;
+      ctx->SetStatus(errors::NotFound(msg));
+      return !kRetry;
     }
     auto status = ctx->allocate_output(i, output_shape, &output_tensor);
     if (!status.ok()) {
@@ -510,7 +512,6 @@ bool TRTEngineOp::ExecuteTrtEngine(OpKernelContext* ctx,
     LOG(WARNING) << "Failed to enqueue batch for TRT engine: " << name();
     return kRetry;
   }
-  test::AddTestValue(StrCat(name(), ":ExecuteTrtEngine"), "done");
   // Synchronization will be done by TF.
   return !kRetry;
 }
@@ -525,7 +526,7 @@ EngineContext* TRTEngineOp::GetEngine(
   // Get engine cache
   TRTEngineCacheResource* cache_res = nullptr;
   auto status = ctx->resource_manager()->LookupOrCreate(
-      "TRTEngineCache", funcdef_name_, &cache_res,
+      "TRTEngineCache", name(), &cache_res,
       {[this, ctx](TRTEngineCacheResource** cr) -> Status {
         *cr = new TRTEngineCacheResource(ctx, this->max_cached_engines_);
         return Status::OK();
