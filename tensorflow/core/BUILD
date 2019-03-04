@@ -3098,6 +3098,7 @@ tf_cuda_library(
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
         "common_runtime/session_state.cc",
+        "common_runtime/single_threaded_cpu_device.cc",
         "common_runtime/stats_publisher_interface.cc",
         "common_runtime/step_stats_collector.cc",
         "common_runtime/threadpool_device.cc",

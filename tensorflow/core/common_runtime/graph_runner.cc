@@ -92,7 +92,7 @@ class SimpleRendezvous : public Rendezvous {
 }  // namespace
 
 GraphRunner::GraphRunner(Env* env)
-    : device_deleter_(new SingleThreadedCpuDevice(env)),
+    : device_deleter_(NewSingleThreadedCpuDevice(env)),
       device_(device_deleter_.get()) {}
 GraphRunner::GraphRunner(Device* device) : device_(device) {}
 
