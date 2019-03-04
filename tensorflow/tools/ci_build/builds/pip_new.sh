@@ -664,7 +664,10 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
       pip show auditwheel
-      sudo pip3 install auditwheel==1.5.0
+      # If in virtualenv, re-pin auditwheel to version 1.5.0
+      if [ $(python -c 'import sys; print ("1" if hasattr(sys, "real_prefix") else "0")') == "1" ]; then
+        pip install auditwheel==1.5.0
+      fi
       auditwheel --version
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 
