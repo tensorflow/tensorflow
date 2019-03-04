@@ -76,39 +76,39 @@ inline int32_t ClampedIndex(int32_t index, int dim, bool pos_stride) {
                           std::min(std::max(index, -dim), dim - 1), dim));
 }
 
-// TODO(b/77971377) this logic should be removed, as it's a duplication of
-// StartForAxis() & StopForAxis() in kernels/internal/reference/reference_ops.h
-inline int32_t GetBeginValueAtIndex(StridedSliceContext* op_context, int idx) {
-  const int dim = op_context->input->dims->data[idx];
-  const bool pos_stride = GetTensorData<int32_t>(op_context->strides)[idx] > 0;
-  return op_context->params->begin_mask & (1 << idx)
-             ? pos_stride ? 0 : dim - 1
-             : ClampedIndex(GetTensorData<int32_t>(op_context->begin)[idx], dim,
-                            pos_stride);
-}
-
-inline int32_t GetEndValueAtIndex(StridedSliceContext* op_context, int idx) {
-  const int dim = op_context->input->dims->data[idx];
-  const bool pos_stride = GetTensorData<int32_t>(op_context->strides)[idx] > 0;
-  return op_context->params->end_mask & (1 << idx)
-             ? pos_stride ? dim : -1
-             : ClampedIndex(GetTensorData<int32_t>(op_context->end)[idx], dim,
-                            pos_stride);
-}
-
 // Processes the indexing tensors (begin, end and strides) to resize the
 // output tensor. This function is callable from both Prepare() and Eval() as
 // long as the caller ensures the indexing tensors are present.
 TfLiteStatus ResizeOutputTensor(TfLiteContext* context,
                                 StridedSliceContext* op_context) {
   std::vector<int> output_shape_vector;
+  std::vector<int32_t> starts;
+  std::vector<int32_t> stops;
+  std::vector<int32_t> strides;
+
+  starts.reserve(GetTensorShape(op_context->begin).FlatSize());
+  stops.reserve(GetTensorShape(op_context->end).FlatSize());
+  strides.reserve(GetTensorShape(op_context->strides).FlatSize());
+
+  for (int idxs = 0; idxs < op_context->dims; ++idxs) {
+    starts.emplace_back(GetTensorData<int32_t>(op_context->begin)[idxs]);
+    stops.emplace_back(GetTensorData<int32_t>(op_context->end)[idxs]);
+    strides.emplace_back(GetTensorData<int32_t>(op_context->strides)[idxs]);
+  }
 
   for (int idx = op_context->dims - 1; idx >= 0; --idx) {
     int32_t stride = GetTensorData<int32_t>(op_context->strides)[idx];
     TF_LITE_ENSURE_MSG(context, stride != 0, "stride value has to be non-zero");
 
-    int32_t begin = GetBeginValueAtIndex(op_context, idx);
-    int32_t end = GetEndValueAtIndex(op_context, idx);
+    auto op_params = ::tflite::strided_slice::BuildStridedSliceParams(
+        op_context->params->begin_mask, op_context->params->end_mask,
+        op_context->params->shrink_axis_mask, starts, stops, strides);
+
+    int32_t begin = tflite::strided_slice::StartForAxis(
+        op_params, GetTensorShape(op_context->input), idx);
+
+    int32_t end = tflite::strided_slice::StopForAxis(
+        op_params, GetTensorShape(op_context->input), idx, begin + 1);
 
     // When shrinking an axis, the end position does not matter (and can be
     // incorrect when negative indexing is used, see Issue #19260). Always use
