@@ -544,8 +544,11 @@ class ASTCodeUpgrader(object):
       A tuple representing number of files processed, log of actions, errors
     """
     lines = in_file.readlines()
+    import IPython.core.inputtransformer2 as ip
+    tm=ip.TransformerManager()
+    ipython_translation_lines=tm.transform_cell(lines)
     processed_file, new_file_content, log, process_errors = (
-        self.update_string_pasta("".join(lines), in_filename))
+        self.update_string_pasta("".join(ipython_translation_lines), in_filename))
 
     if out_file and processed_file:
       out_file.write(new_file_content)
