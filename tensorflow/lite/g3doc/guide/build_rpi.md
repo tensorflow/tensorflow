@@ -1,4 +1,4 @@
-# TensorFlow Lite for Raspberry Pi
+# Build TensorFlow Lite for Raspberry Pi
 
 ## Cross compiling
 

@@ -399,6 +399,7 @@ class RFFTOpsTest(BaseFFTOpsTest):
                 rank, (size,) * rank,
                 use_placeholder=True)
 
+  @test_util.run_deprecated_v1
   def testFftLength(self):
     if test.is_gpu_available(cuda_only=True):
       with spectral_ops_test_util.fft_kernel_label_map():
