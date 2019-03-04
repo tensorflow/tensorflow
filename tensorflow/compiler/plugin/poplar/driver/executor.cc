@@ -139,18 +139,21 @@ se::host::HostStream* PoplarExecutor::AsPoplarStream(se::Stream* stream) {
   return dynamic_cast<se::host::HostStream*>(stream->implementation());
 }
 
-cpu::runtime::XfeedManager* GetXfeedManager(int device_ordinal) {
-  static auto* managers =
-      new absl::flat_hash_map<int, cpu::runtime::XfeedManager*>();
+PoplarXfeedManager* GetXfeedManager(int device_ordinal) {
+  static auto* managers = new absl::flat_hash_map<int, PoplarXfeedManager*>();
   static absl::Mutex* mutex = new absl::Mutex();
 
   absl::MutexLock lock(mutex);
   auto it = managers->find(device_ordinal);
   if (it == managers->end()) {
-    it = managers->emplace(device_ordinal, new cpu::runtime::XfeedManager())
-             .first;
+    it = managers->emplace(device_ordinal, new PoplarXfeedManager()).first;
   }
   return it->second;
+}
+
+void ResetXfeedManager(int device_ordinal) {
+  auto* xfeed_manager = GetXfeedManager(device_ordinal);
+  xfeed_manager->Reset();
 }
 
 PoplarExecutor::TensorControl::TensorControl(size_t size_) {
@@ -273,28 +276,26 @@ void PoplarExecutor::ConnectOutfeedToStreamCallback(
       shapes_sizes.emplace_back(std::make_pair(operand_shape, size));
     }
 
+    const bool pop_if_full = outfeed_info->outfeed_config() == "get_last";
+
     for (unsigned j = 0; j < shapes_sizes.size(); ++j) {
       const Shape shape = std::get<0>(shapes_sizes[j]);
       size_t byte_size = std::get<1>(shapes_sizes[j]);
 
       current_engine_->connectStreamToCallback(
           GetOutfeedCopyHandle(outfeed_info->name(), j),
-          [&, shape, byte_size](void* src) {
+          [&, shape, byte_size, pop_if_full](void* src) {
             auto* xfeed_manager = GetXfeedManager(ordinal_);
-            auto* xfeed_buffer =
-                xfeed_manager->outfeed()->BlockingDequeueBuffer();
-            const auto N = xfeed_buffer->length();
 
-            void* dest = xfeed_buffer->data();
-            if (N != byte_size) {
-              LOG(FATAL) << "Outfeed buffer size != poplar datastream size : "
-                         << N << " != " << byte_size;
-              return;
-            }
-
-            std::memcpy(dest, src, N);
-            xfeed_manager->outfeed()->ReleaseCurrentBuffer(
-                xfeed_buffer->length(), xfeed_buffer->data(), shape);
+            // TODO(T7218): create buffer pool and pass pointer to
+            // PoplarOutfeedBuffer to avoid potentially expensive allocation in
+            // callback
+            PoplarOutfeedBuffer* buffer =
+                new PoplarOutfeedBuffer(byte_size, shape);
+            void* dest = buffer->data();
+            std::memcpy(dest, src, byte_size);
+            auto* outfeed = xfeed_manager->outfeed();
+            outfeed->EnqueueBufferAtomically(buffer, pop_if_full);
           });
     }
   }

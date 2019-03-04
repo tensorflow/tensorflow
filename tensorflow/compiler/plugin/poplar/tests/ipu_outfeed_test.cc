@@ -1,4 +1,4 @@
-/* Copyright 2017 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -244,6 +244,146 @@ TEST_F(OutfeedTest, OutfeedInWhileLoop) {
 
   delete computation_thread;  // Joins the thread.
   auto result_literal = client_->Transfer(*result).ConsumeValueOrDie();
+}
+
+TEST_F(OutfeedTest, OutfeedInWhileLoopGetAllSingleThread) {
+  XlaBuilder builder(TestName());
+  const auto counter_shape = ShapeUtil::MakeShape(S32, {});
+  const auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+  const auto outfeed_shape = ShapeUtil::MakeShape(F32, {3});
+
+  const auto tuple_shape =
+      ShapeUtil::MakeTupleShape({counter_shape, scalar_shape, outfeed_shape});
+
+  XlaComputation condition;
+  {
+    XlaBuilder builder("condition");
+    auto cond_tuple = Parameter(&builder, 0, tuple_shape, "cond_tuple");
+    auto counter = GetTupleElement(cond_tuple, 0);
+    Gt(ConstantR0<int32_t>(&builder, 5), counter);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  XlaComputation body;
+  {
+    XlaBuilder builder("body");
+    auto body_tuple = Parameter(&builder, 0, tuple_shape, "body_tuple");
+    auto counter = GetTupleElement(body_tuple, 0);
+    auto prev = GetTupleElement(body_tuple, 1);
+    auto values = GetTupleElement(body_tuple, 2);
+    auto addend = Reduce(values, ConstantR0<float>(&builder, 0.0f),
+                         CreateScalarAddComputation(F32, &builder), {0});
+
+    auto result = Add(prev, addend);
+    auto added_values = Add(ConstantR0<float>(&builder, 1.0f), values);
+    auto token = CreateToken(&builder);
+    auto outfeed_token =
+        OutfeedWithToken(added_values, token, outfeed_shape, "all");
+    // Outfeed token should be replaced with an empty tuple by the
+    // root token replacer pass
+    auto counter_inc = Add(counter, ConstantR0<int32>(&builder, 1));
+    Tuple(&builder, {counter_inc, result, added_values});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  auto init = ConstantR0<int32>(&builder, 0);
+  auto accumulator = ConstantR0<float>(&builder, 0.0f);
+  auto initial_values = ConstantR1<float>(&builder, {1.0f, 2.0f, 3.0f});
+  auto token = CreateToken(&builder);
+  auto loop_tuple = Tuple(&builder, {init, accumulator, initial_values});
+  While(condition, body, loop_tuple);
+
+  auto computation = builder.Build().ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> result =
+      client_->Execute(computation, {}, &execution_options_).ValueOrDie();
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal1,
+                          client_->TransferFromOutfeed(&outfeed_shape));
+  LiteralTestUtil::ExpectR1Near<float>({2.0f, 3.0f, 4.0f}, result_literal1,
+                                       ErrorSpec{1e-6});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal2,
+                          client_->TransferFromOutfeed(&outfeed_shape));
+  LiteralTestUtil::ExpectR1Near<float>({3.0f, 4.0f, 5.0f}, result_literal2,
+                                       ErrorSpec{1e-6});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal3,
+                          client_->TransferFromOutfeed(&outfeed_shape));
+  LiteralTestUtil::ExpectR1Near<float>({4.0f, 5.0f, 6.0f}, result_literal3,
+                                       ErrorSpec{1e-6});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal4,
+                          client_->TransferFromOutfeed(&outfeed_shape));
+  LiteralTestUtil::ExpectR1Near<float>({5.0f, 6.0f, 7.0f}, result_literal4,
+                                       ErrorSpec{1e-6});
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal5,
+                          client_->TransferFromOutfeed(&outfeed_shape));
+  LiteralTestUtil::ExpectR1Near<float>({6.0f, 7.0f, 8.0f}, result_literal5,
+                                       ErrorSpec{1e-6});
+
+  auto result_literal = client_->Transfer(*result).ConsumeValueOrDie();
+}
+
+TEST_F(OutfeedTest, OutfeedInWhileLoopGetLastSingleThread) {
+  XlaBuilder builder(TestName());
+  const auto counter_shape = ShapeUtil::MakeShape(S32, {});
+  const auto scalar_shape = ShapeUtil::MakeShape(F32, {});
+  const auto outfeed_shape = ShapeUtil::MakeShape(F32, {3});
+
+  const auto tuple_shape =
+      ShapeUtil::MakeTupleShape({counter_shape, scalar_shape, outfeed_shape});
+
+  XlaComputation condition;
+  {
+    XlaBuilder builder("condition");
+    auto cond_tuple = Parameter(&builder, 0, tuple_shape, "cond_tuple");
+    auto counter = GetTupleElement(cond_tuple, 0);
+    Gt(ConstantR0<int32_t>(&builder, 5), counter);
+    condition = builder.Build().ConsumeValueOrDie();
+  }
+
+  XlaComputation body;
+  {
+    XlaBuilder builder("body");
+    auto body_tuple = Parameter(&builder, 0, tuple_shape, "body_tuple");
+    auto counter = GetTupleElement(body_tuple, 0);
+    auto prev = GetTupleElement(body_tuple, 1);
+    auto values = GetTupleElement(body_tuple, 2);
+    auto addend = Reduce(values, ConstantR0<float>(&builder, 0.0f),
+                         CreateScalarAddComputation(F32, &builder), {0});
+
+    auto result = Add(prev, addend);
+    auto added_values = Add(ConstantR0<float>(&builder, 1.0f), values);
+    auto token = CreateToken(&builder);
+    auto outfeed_token =
+        OutfeedWithToken(added_values, token, outfeed_shape, "get_last");
+    // Outfeed token should be replaced with an empty tuple by the
+    // root token replacer pass
+    auto counter_inc = Add(counter, ConstantR0<int32>(&builder, 1));
+    Tuple(&builder, {counter_inc, result, added_values});
+    body = builder.Build().ConsumeValueOrDie();
+  }
+
+  auto init = ConstantR0<int32>(&builder, 0);
+  auto accumulator = ConstantR0<float>(&builder, 0.0f);
+  auto initial_values = ConstantR1<float>(&builder, {1.0f, 2.0f, 3.0f});
+  auto token = CreateToken(&builder);
+  auto loop_tuple = Tuple(&builder, {init, accumulator, initial_values});
+  While(condition, body, loop_tuple);
+
+  auto computation = builder.Build().ConsumeValueOrDie();
+  std::unique_ptr<GlobalData> result =
+      client_->Execute(computation, {}, &execution_options_).ValueOrDie();
+  auto* xfeed_manager = GetXfeedManager(0);
+
+  EXPECT_EQ(xfeed_manager->outfeed()->size(), 1);
+  EXPECT_TRUE(xfeed_manager->outfeed()->full());
+
+  TF_ASSERT_OK_AND_ASSIGN(Literal result_literal,
+                          client_->TransferFromOutfeed(&outfeed_shape));
+  LiteralTestUtil::ExpectR1Near<float>({6.0f, 7.0f, 8.0f}, result_literal,
+                                       ErrorSpec{1e-6});
 }
 
 }  // namespace

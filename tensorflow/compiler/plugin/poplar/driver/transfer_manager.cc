@@ -26,49 +26,99 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
-class PoplarInfeedBuffer : public cpu::runtime::XfeedBuffer {
- public:
-  explicit PoplarInfeedBuffer(int32 length)
-      : length_(length),
-        buffer_(new char[length]),
-        device_memory_(buffer_, length_) {}
-  ~PoplarInfeedBuffer() override { delete[] buffer_; }
+void PoplarXfeedManager::Reset() {
+  infeed()->Reset();
+  outfeed()->Reset();
+}
 
-  int32 length() override { return length_; }
-  void* data() override { return buffer_; }
-  void Done(StatusOr<Shape> /*shape*/) override { delete this; }
+void PoplarXfeedQueueManager::Reset() {
+  tensorflow::mutex_lock l(mu_);
+  CHECK(current_buffer_ == nullptr);
+  for (auto buffer : enqueued_buffers_) {
+    buffer->Done(ShapeUtil::MakeNil());
+  }
+  enqueued_buffers_.clear();
+}
 
-  se::DeviceMemoryBase* device_memory() { return &device_memory_; }
-
- private:
-  int32 length_;
-  char* buffer_;
-  se::DeviceMemoryBase device_memory_;
-};
-
-class PoplarOutfeedBuffer : public cpu::runtime::XfeedBuffer {
- public:
-  PoplarOutfeedBuffer(void* destination, int32 length)
-      : destination_(destination), length_(length) {}
-
-  StatusOr<Shape> WaitForNotification() {
-    done_.WaitForNotification();
-    return status_;
+Status PoplarXfeedQueueManager::EnqueueBufferAtomically(
+    cpu::runtime::XfeedBuffer* const buffer, bool pop_if_full) {
+  tensorflow::mutex_lock l(mu_);
+  bool was_empty = enqueued_buffers_.empty();
+  if (pop_if_full) {
+    if (enqueued_buffers_.size() == max_size_) {
+      auto front = enqueued_buffers_.front();
+      front->Done(Shape{});
+      enqueued_buffers_.pop_front();
+      if (max_size_ == 1) {
+        was_empty = true;
+      }
+    }
+  } else {
+    while (enqueued_buffers_.size() == max_size_) {
+      VLOG(3) << queue_name_ << ", enqueued buffers full, waiting for dequeue";
+      not_full_cv_.wait(l);
+    }
   }
 
-  int32 length() override { return length_; }
-  void* data() override { return destination_; }
-  void Done(StatusOr<Shape> shape) override {
-    status_ = std::move(shape);
-    done_.Notify();
+  enqueued_buffers_.push_back(buffer);
+
+  if (was_empty && !enqueued_buffers_.empty()) {
+    // This has the potential to suffer from the notified thread
+    // immediately trying and failing to acquire mu_, but seems
+    // preferable to the alternative of notifying outside the lock
+    // on every enqueue.
+    not_empty_cv_.notify_one();
   }
 
- private:
-  void* destination_;
-  int32 length_;
-  StatusOr<Shape> status_;
-  tensorflow::Notification done_;
-};
+  return Status::OK();
+}
+
+cpu::runtime::XfeedBuffer* PoplarXfeedQueueManager::BlockingDequeueBuffer() {
+  tensorflow::mutex_lock l(mu_);
+  bool was_full = enqueued_buffers_.size() == max_size_;
+  VLOG(3) << "Waiting for an available buffer.";
+  while (enqueued_buffers_.empty()) {
+    not_empty_cv_.wait(l);
+  }
+  VLOG(3) << "A buffer is available!";
+  CHECK(current_buffer_ == nullptr);
+  current_buffer_ = enqueued_buffers_.front();
+  enqueued_buffers_.pop_front();
+
+  if (was_full) {
+    not_full_cv_.notify_one();
+  }
+
+  return current_buffer_;
+}
+
+void PoplarXfeedQueueManager::ReleaseCurrentBuffer(int32 length, void* data,
+                                                   StatusOr<Shape> shape) {
+  VLOG(3) << "Releasing buffer with shape: "
+          << (shape.ok() ? ShapeUtil::HumanString(shape.ValueOrDie())
+                         : "<error status>");
+  tensorflow::mutex_lock l(mu_);
+  CHECK(current_buffer_ != nullptr);
+  CHECK_EQ(length, current_buffer_->length());
+  CHECK_EQ(data, current_buffer_->data());
+  current_buffer_->Done(std::move(shape));
+  current_buffer_ = nullptr;
+}
+
+bool PoplarXfeedQueueManager::full() const {
+  tensorflow::mutex_lock l(mu_);
+  return enqueued_buffers_.size() == max_size_;
+}
+
+size_t PoplarXfeedQueueManager::size() const {
+  tensorflow::mutex_lock l(mu_);
+  return enqueued_buffers_.size();
+}
+
+void PoplarXfeedQueueManager::set_size(size_t size) {
+  tensorflow::mutex_lock l(mu_);
+  max_size_ = size;
+}
 
 PoplarTransferManager::PoplarTransferManager()
     : GenericTransferManager(kPoplarPlatformId,
@@ -97,6 +147,8 @@ Status PoplarTransferManager::TransferLiteralToInfeed(
     }
   });
 
+  auto* xfeed_manager =
+      xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
   for (int64 i = 0; i < ShapeUtil::TupleElementCount(shape); ++i) {
     const Shape& tuple_element_shape = ShapeUtil::GetSubshape(shape, {i});
     int64 tuple_element_size = GetByteSizeRequirement(tuple_element_shape);
@@ -104,12 +156,9 @@ Status PoplarTransferManager::TransferLiteralToInfeed(
         cpu::runtime::XfeedBuffer * buffer,
         TransferBufferToInfeedInternal(executor, tuple_element_size,
                                        literal.untyped_data({i})));
-    buffers.push_back(buffer);
-  }
 
-  cpu::runtime::XfeedManager* xfeed_manager =
-      xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
-  xfeed_manager->infeed()->EnqueueBuffersAtomically(buffers);
+    xfeed_manager->infeed()->EnqueueBufferAtomically(buffer);
+  }
 
   cleanup.release();
   return Status::OK();
@@ -170,9 +219,9 @@ Status PoplarTransferManager::TransferBufferToInfeed(
   TF_ASSIGN_OR_RETURN(cpu::runtime::XfeedBuffer * buffer,
                       TransferBufferToInfeedInternal(executor, size, source));
 
-  cpu::runtime::XfeedManager* xfeed_manager =
+  auto* xfeed_manager =
       xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
-  xfeed_manager->infeed()->EnqueueBuffersAtomically({buffer});
+  xfeed_manager->infeed()->EnqueueBufferAtomically(buffer);
 
   return Status::OK();
 }
@@ -213,41 +262,23 @@ StatusOr<Shape> PoplarTransferManager::TransferArrayBufferFromOutfeed(
 StatusOr<Shape> PoplarTransferManager::TransferBuffersFromOutfeedInternal(
     se::StreamExecutor* executor,
     absl::Span<const std::pair<void*, int64>> buffer_data, bool is_tuple) {
-  std::vector<std::unique_ptr<PoplarOutfeedBuffer>> buffers;
-  for (auto b : buffer_data) {
-    int64 size = b.second;
-    if (size > std::numeric_limits<int32>::max()) {
-      return InvalidArgument("Outfeed shape is too large: needs %d bytes",
-                             size);
-    }
-
-    if (size <= 0) {
-      return InvalidArgument("Outfeed shape must have positive size; got %d",
-                             size);
-    }
-
-    int32 size_32 = static_cast<int32>(size);
-    VLOG(2)
-        << "Enqueueing outfeed buffer (for the device to populate) of length "
-        << size_32 << "B";
-    buffers.emplace_back(
-        absl::make_unique<PoplarOutfeedBuffer>(b.first, size_32));
-  }
-
-  std::vector<cpu::runtime::XfeedBuffer*> buffer_pointers;
-  buffer_pointers.reserve(buffers.size());
-  for (auto& b : buffers) {
-    buffer_pointers.push_back(b.get());
-  }
-
-  cpu::runtime::XfeedManager* xfeed_manager =
+  auto* xfeed_manager =
       xla::poplarplugin::GetXfeedManager(executor->device_ordinal());
-  xfeed_manager->outfeed()->EnqueueBuffersAtomically(buffer_pointers);
-  VLOG(2) << "Waiting for buffer to be notified as populated.";
+
   std::vector<Shape> outfed_shapes;
-  for (auto& buffer : buffers) {
-    TF_ASSIGN_OR_RETURN(Shape outfed_shape, buffer->WaitForNotification());
-    outfed_shapes.push_back(std::move(outfed_shape));
+  for (auto b : buffer_data) {
+    auto* user_buffer = b.first;
+    auto byte_size = b.second;
+    auto outfed_buffer = reinterpret_cast<PoplarOutfeedBuffer*>(
+        xfeed_manager->outfeed()->BlockingDequeueBuffer());
+    TF_RET_CHECK(outfed_buffer->length() == byte_size);
+
+    TF_ASSIGN_OR_RETURN(Shape outfed_shape, outfed_buffer->shape());
+    std::memcpy(user_buffer, outfed_buffer->data(), byte_size);
+    xfeed_manager->outfeed()->ReleaseCurrentBuffer(
+        byte_size, outfed_buffer->data(), outfed_shape);
+
+    outfed_shapes.emplace_back(outfed_shape);
   }
   if (is_tuple) {
     return ShapeUtil::MakeTupleShape(outfed_shapes);

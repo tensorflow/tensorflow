@@ -29,6 +29,9 @@ CommutativeInstructionReorderOperands::CommutativeInstructionReorderOperands() {
 }
 
 static bool IsReshaping(const HloInstruction* inst) {
+  if (inst->opcode() == HloOpcode::kAddDependency) {
+    inst = inst->operand(0);
+  }
   switch (inst->opcode()) {
     case HloOpcode::kBroadcast:
     case HloOpcode::kReshape:

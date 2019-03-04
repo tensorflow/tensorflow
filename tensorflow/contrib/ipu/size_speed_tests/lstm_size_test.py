@@ -4,7 +4,7 @@ from __future__ import print_function
 
 import numpy as np
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
-from tensorflow.contrib.compiler import xla
+from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib import ipu
 from tensorflow.contrib.ipu import utils
 from tensorflow.contrib.ipu import popnn_rnn
@@ -53,7 +53,7 @@ def RunLayer(layer_func, x):
     pc = array_ops.placeholder(dataType, shape=[batch_size, num_hidden])
     report = gen_ipu_ops.ipu_event_trace()
   with ipu.ops.ipu_scope("/device:IPU:0"):
-    r = xla.compile(layer_func, inputs=[px, ph, pc])
+    r = ipu_compiler.compile(layer_func, inputs=[px, ph, pc])
 
   opts = utils.create_ipu_config(profiling=True, use_poplar_text_report=True)
   with sl.Session(config=config_pb2.ConfigProto(ipu_options=opts)) as sess:

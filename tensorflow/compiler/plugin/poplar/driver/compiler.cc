@@ -34,6 +34,7 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/commutative_instruction_reorder_operands.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/computation_flattener.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/constant_slice_folding.h"
+#include "tensorflow/compiler/plugin/poplar/driver/passes/dependency_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_max_pool.h"
@@ -226,6 +227,20 @@ bool AreAllOutputsParameters(
       root->shape(),
       root->GetModule()->entry_computation_layout().result_shape());
 }
+
+void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
+                                 const OutfeedInfos& outfeed_infos,
+                                 int device_ordinal) {
+  auto* xfeed_manager = GetXfeedManager(device_ordinal);
+  for (const auto& outfeed_info : outfeed_infos) {
+    if (outfeed_info->outfeed_config() == "get_last") {
+      xfeed_manager->outfeed()->set_size(1);
+    } else if (outfeed_info->outfeed_config() == "all") {
+      xfeed_manager->outfeed()->set_size(
+          PoplarXfeedQueueManager::DEFAULT_QUEUE_SIZE);
+    }
+  }
+}
 }  // namespace
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
@@ -329,6 +344,9 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     simplifier_opts.set_enable_window_reduce_to_reduce_replacement(false);
 
     HloPassPipeline pipeline("IPU");
+    if (!poplarExecutor->RetainControlDependencies()) {
+      pipeline.AddPass<DependencyReplacer>(false);
+    }
     pipeline.AddPass<HloGetDimensionSizeRewriter>();
     pipeline.AddPass<HloComputationNameUniquify>();
     pipeline.AddPass<NotSupportedGatherExpander>();
@@ -373,6 +391,7 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     pipeline.AddPass<NonLinearityRecomputaion>(
         poplarExecutor->NonLinearityRecomputaionEnabled());
     pipeline.AddPass<HloDCE>();
+    pipeline.AddPass<DependencyReplacer>(true);
     pipeline.AddPass<InplaceFinder>(resources.annotations);
     pipeline.AddPass<ShardingPass>();
     pipeline.AddPass<HloDCE>();
@@ -507,6 +526,10 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
     poplarExecutor->AddCompileEndEventRecord(module->name(), stream.str(),
                                              map_json, duration);
   }
+
+  ConfigurePoplarXFeedManager(resources.annotations.infeed_infos,
+                              resources.annotations.outfeed_infos,
+                              stream_exec->device_ordinal());
 
   std::unique_ptr<Executable> executable;
   PoplarExecutable* poplar_executable = new PoplarExecutable(

@@ -1609,6 +1609,269 @@ TEST_F(HloMatcherTest, TestShardingIgnoreWideConstSharding) {
   EXPECT_EQ(0, *entry->root_instruction()->sharding_unique_device());
 }
 
+TEST_F(HloMatcherTest, MatchWithTokenDependencyAfter) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  add1 = f32[10,10] add(p0, p1)
+  after-all = token[] after-all(add1)
+  add-dep = f32[10,10] add-dependency(p0, after-all)
+  ROOT sub1 = f32[10,10] subtract(add-dep, p1)
+ }
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
+
+  // clang-format off
+  std::vector<HloMatcherPattern> patterns = {
+    HloMatcherPattern(
+      PatternType("test"),
+      PatternMetaTarget(0),
+      PatternInputs({1, 2}),
+      PatternOutputs({0}),
+      Pattern({
+        {HloOpcode::kAdd, NodeOperands({1, 2})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+        {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+      })
+    )
+  };
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module);
+  TestMatcher matcher(patterns, annotations, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
+
+  // after-all is after the fused add
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  auto* add_dep = root->operand(0);
+  EXPECT_EQ(add_dep->opcode(), HloOpcode::kAddDependency);
+  EXPECT_EQ(add_dep->operand(1)->opcode(), HloOpcode::kAfterAll);
+  EXPECT_EQ(add_dep->operand(1)->operand(0)->opcode(), HloOpcode::kFusion);
+}
+
+TEST_F(HloMatcherTest, MatchWithTokenDependencyBefore) {
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = f32[10,10] parameter(0)
+  p1 = f32[10,10] parameter(1)
+  sub1 = f32[10,10] subtract(p0, p1)
+  after-all = token[] after-all(sub1)
+  add-dep = f32[10,10] add-dependency(p0, after-all)
+  ROOT add1 = f32[10,10] add(add-dep, sub1)
+ }
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
+
+  // clang-format off
+std::vector<HloMatcherPattern> patterns = {
+  HloMatcherPattern(
+    PatternType("test"),
+    PatternMetaTarget(0),
+    PatternInputs({1, 2}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({1, 2})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+    })
+  )
+};
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module);
+  TestMatcher matcher(patterns, annotations, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
+
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(6, hlo_module->entry_computation()->instruction_count());
+
+  // after-all is after the fused add
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  EXPECT_EQ(root->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kAddDependency);
+}
+
+TEST_F(HloMatcherTest, MatchWithTokenDependencyOnExternalEdge) {
+  // The 'add' in the fusion is dependent on the sine operator outside of
+  // it
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  p2 = f32[1] parameter(2)
+  s0 = f32[1] sine(p2)
+  aa = token[] after-all(s0)
+
+  m1 = f32[1] multiply(p0, p1)
+  ad = f32[1] add-dependency(p2, aa)
+  m2 = f32[1] add(m1, ad)
+
+  ROOT o = (f32[1]) tuple(m2, s0)
+ }
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
+
+  // clang-format off
+std::vector<HloMatcherPattern> patterns = {
+  HloMatcherPattern(
+    PatternType("muladd"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3, 4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({1, 2})},
+      {HloOpcode::kMultiply, NodeOperands({3, 4})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+    })
+  )
+};
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module);
+  TestMatcher matcher(patterns, annotations, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
+
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(8, hlo_module->entry_computation()->instruction_count());
+
+  // after-all is after the fused add
+  auto* root = hlo_module->entry_computation()->root_instruction();
+  auto* fusion = root->operand(0);
+  EXPECT_EQ(fusion->opcode(), HloOpcode::kFusion);
+  EXPECT_EQ(fusion->operand(0)->opcode(), HloOpcode::kAddDependency);
+}
+
+TEST_F(HloMatcherTest, MatchWithTokenDependencyOnInternalEdge) {
+  // The 'add' in the fusion is dependent on the sine operator outside of
+  // it
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  p2 = f32[1] parameter(2)
+  s0 = f32[1] sine(p2)
+  aa = token[] after-all(s0)
+
+  m1 = f32[1] multiply(p0, p1)
+  ad = f32[1] add-dependency(m1, aa)
+  m2 = f32[1] add(ad, p2)
+
+  ROOT o = (f32[1]) tuple(m2, s0)
+ }
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
+
+  // clang-format off
+std::vector<HloMatcherPattern> patterns = {
+  HloMatcherPattern(
+    PatternType("muladd"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3, 4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({1, 2})},
+      {HloOpcode::kMultiply, NodeOperands({3, 4})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+    })
+  )
+};
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module);
+  TestMatcher matcher(patterns, annotations, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
+
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(8, hlo_module->entry_computation()->instruction_count());
+}
+
+TEST_F(HloMatcherTest, MatchWithTokenIsDependencyFromInternalEdge) {
+  // The multiply part of the fusion is a dependency of another inst
+  std::string hlo = R"(
+HloModule top
+
+ENTRY c1 {
+  p0 = f32[1] parameter(0)
+  p1 = f32[1] parameter(1)
+  p2 = f32[1] parameter(2)
+
+  m1 = f32[1] multiply(p0, p1)
+  m2 = f32[1] add(m1, p2)
+  aa = token[] after-all(m1)
+
+  ad = f32[1] add-dependency(p1, aa)
+  s0 = f32[1] sine(ad)
+  ROOT o = (f32[1]) tuple(m2, s0)
+ }
+)";
+
+  auto config = GetModuleConfigForTest();
+  auto module = ParseHloString(hlo, config);
+  EXPECT_TRUE(module.ok());
+  auto* hlo_module = module.ValueOrDie().get();
+
+  // clang-format off
+std::vector<HloMatcherPattern> patterns = {
+  HloMatcherPattern(
+    PatternType("muladd"),
+    PatternMetaTarget(0),
+    PatternInputs({2, 3, 4}),
+    PatternOutputs({0}),
+    Pattern({
+      {HloOpcode::kAdd, NodeOperands({1, 2})},
+      {HloOpcode::kMultiply, NodeOperands({3, 4})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})},
+      {HloMatcherOpcode::kAnyOpcode, NodeOperands({})}
+    })
+  )
+};
+  // clang-format on
+
+  CompilerAnnotations annotations(hlo_module);
+  TestMatcher matcher(patterns, annotations, false);
+
+  EXPECT_TRUE(matcher.Run(hlo_module).ValueOrDie());
+  LOG(INFO) << hlo_module->ToString();
+  ASSERT_EQ(1, matcher.replace_count);
+  EXPECT_EQ(8, hlo_module->entry_computation()->instruction_count());
+}
+
 }  // namespace
 }  // namespace poplarplugin
 }  // namespace xla

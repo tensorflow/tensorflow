@@ -131,4 +131,156 @@ class IPUConsumeDatasetOp : public OpKernel {
 REGISTER_KERNEL_BUILDER(Name("IPUConsumeDataset").Device(DEVICE_CPU),
                         IPUConsumeDatasetOp);
 
+class PopDatastreamOutfeedEnqueueOp : public XlaOpKernel {
+ public:
+  explicit PopDatastreamOutfeedEnqueueOp(OpKernelConstruction* ctx)
+      : XlaOpKernel(ctx), device_ordinal_(0) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("outfeed_mode", &outfeed_mode_));
+  }
+
+  ~PopDatastreamOutfeedEnqueueOp() override{};
+
+  void Compile(XlaOpKernelContext* ctx) override {
+    xla::XlaBuilder* b = ctx->builder();
+    const auto num_inputs = ctx->num_inputs();
+
+    OP_REQUIRES(
+        ctx, outfeed_mode_ == "all" || outfeed_mode_ == "get_last",
+        errors::InvalidArgument("Unkown outfeed_mode : ", outfeed_mode_,
+                                ", supported values are 'all' and 'get_last'"));
+
+    std::vector<xla::XlaOp> inputs;
+    std::vector<xla::Shape> xla_shapes;
+    inputs.reserve(num_inputs);
+    xla_shapes.reserve(num_inputs);
+
+    bool is_tuple = num_inputs > 1;
+
+    for (int i = 0; i < num_inputs; ++i) {
+      inputs.push_back(ctx->Input(i));
+      auto input_shape = ctx->InputShape(i);
+      auto dtype = ctx->input_type(i);
+      xla::Shape xla_shape;
+      OP_REQUIRES_OK(ctx,
+                     TensorShapeToXLAShape(dtype, input_shape, &xla_shape));
+
+      xla_shapes.emplace_back(xla_shape);
+    }
+
+    xla::Shape outfeed_shape;
+    xla::XlaOp outfeed_input;
+    if (is_tuple) {
+      outfeed_shape = xla::ShapeUtil::MakeTupleShape(xla_shapes);
+      outfeed_input = Tuple(b, inputs);
+    } else {
+      outfeed_shape = xla_shapes[0];
+      outfeed_input = inputs[0];
+    }
+
+    xla::XlaOp outfeed_token = CreateToken(b);
+    xla::XlaOp outfeed = OutfeedWithToken(outfeed_input, outfeed_token,
+                                          outfeed_shape, outfeed_mode_);
+  }
+
+ private:
+  int device_ordinal_;
+  std::string outfeed_mode_ = "all";
+  TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamOutfeedEnqueueOp);
+};
+
+REGISTER_IPU_OP("PopDatastreamOutfeedEnqueue", PopDatastreamOutfeedEnqueueOp);
+
+class PopDatastreamOutfeedDequeueOp : public OpKernel {
+ public:
+  explicit PopDatastreamOutfeedDequeueOp(OpKernelConstruction* ctx)
+      : OpKernel(ctx), device_ordinal_(0) {
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("device_ordinal", &device_ordinal_));
+
+    OP_REQUIRES(ctx, device_ordinal_ >= 0,
+                errors::InvalidArgument("Need device_ordinal >= 0, got ",
+                                        device_ordinal_));
+
+    std::vector<PartialTensorShape> partial_shapes;
+    std::vector<tensorflow::DataType> types;
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_shapes", &partial_shapes));
+    OP_REQUIRES_OK(ctx, ctx->GetAttr("output_types", &types));
+
+    outfeed_all_ =
+        ((partial_shapes.size() > 1) && partial_shapes[0].unknown_rank());
+    int start = outfeed_all_ ? 1 : 0;
+    tensor_shapes_.reserve(partial_shapes.size() - start);
+    for (int i = start; i < partial_shapes.size(); ++i) {
+      xla::PrimitiveType xla_type;
+      TensorShape tensor_shape;
+      OP_REQUIRES(ctx, partial_shapes[i].AsTensorShape(&tensor_shape),
+                  errors::InvalidArgument("Unable to cast partial tensor shape "
+                                          "to tensor shape for tensor : ",
+                                          partial_shapes[i].DebugString()));
+      OP_REQUIRES_OK(ctx, DataTypeToPrimitiveType(types[i - start], &xla_type));
+      xla_shapes_.emplace_back(TensorShapeToXLAShape(xla_type, tensor_shape));
+      tensor_shapes_.emplace_back(tensor_shape);
+    }
+
+    OP_REQUIRES(ctx, ctx->num_outputs() == xla_shapes_.size(),
+                errors::InvalidArgument(
+                    "Outfeed num_outputs() != Attribute num outputs: ",
+                    ctx->num_outputs(), " != ", xla_shapes_.size()));
+  }
+
+  ~PopDatastreamOutfeedDequeueOp() override{};
+
+  void Compute(OpKernelContext* ctx) override {
+    auto platform = se::MultiPlatformManager::PlatformWithName("Poplar");
+    OP_REQUIRES(ctx, platform.ok(), platform.status());
+    auto* p =
+        static_cast<xla::poplarplugin::PoplarPlatform*>(platform.ValueOrDie());
+
+    auto* transfer_manager =
+        xla::TransferManager::GetForPlatform(p).ValueOrDie();
+
+    auto executor = p->ExecutorForDevice(device_ordinal_).ValueOrDie();
+    for (int i = 0; i < ctx->num_outputs(); ++i) {
+      Tensor* output_tensor = nullptr;
+      TensorShape tensor_shape = tensor_shapes_[i];
+      const auto& xla_shape = xla_shapes_[i];
+      if (outfeed_all_) {
+        auto* outfeed_queue_manager =
+            xla::poplarplugin::GetXfeedManager(device_ordinal_)->outfeed();
+        const size_t num_elements = outfeed_queue_manager->size();
+
+        tensor_shape.InsertDim(0, num_elements);
+        OP_REQUIRES_OK(ctx,
+                       ctx->allocate_output(i, tensor_shape, &output_tensor));
+
+        for (size_t j = 0; j < num_elements; ++j) {
+          auto subslice = output_tensor->SubSlice(j);
+          const char* data = subslice.tensor_data().data();
+          auto result_literal = xla::MutableBorrowingLiteral(data, xla_shape);
+          OP_REQUIRES_OK(ctx, transfer_manager->TransferLiteralFromOutfeed(
+                                  executor, xla_shape, result_literal));
+        }
+      } else {
+        OP_REQUIRES_OK(ctx,
+                       ctx->allocate_output(i, tensor_shape, &output_tensor));
+        const char* tensor_data = output_tensor->tensor_data().data();
+        auto result_literal =
+            xla::MutableBorrowingLiteral(tensor_data, xla_shape);
+        OP_REQUIRES_OK(ctx, transfer_manager->TransferLiteralFromOutfeed(
+                                executor, xla_shape, result_literal));
+      }
+    }
+  }
+
+ private:
+  int device_ordinal_;
+  std::vector<xla::Shape> xla_shapes_;
+  std::vector<TensorShape> tensor_shapes_;
+  bool outfeed_all_;
+  TF_DISALLOW_COPY_AND_ASSIGN(PopDatastreamOutfeedDequeueOp);
+};
+
+REGISTER_KERNEL_BUILDER(Name("PopDatastreamOutfeedDequeue").Device(DEVICE_CPU),
+                        PopDatastreamOutfeedDequeueOp);
+
 }  // namespace tensorflow

@@ -186,5 +186,25 @@ std::string GetDebugName(const HloInstruction* inst) {
   return tf_core_name + "/" + inst->name();
 }
 
+void GetAllDeps(const HloInstruction* base,
+                std::vector<HloInstruction*>& deps) {
+  for (auto* inst : base->operands()) {
+    if (inst->opcode() != HloOpcode::kAfterAll) {
+      deps.push_back(inst);
+    } else {
+      GetAllDeps(inst, deps);
+    }
+  }
+}
+
+void GetAllDepNames(const HloInstruction* base,
+                    std::vector<std::string>& names) {
+  std::vector<HloInstruction*> deps;
+  GetAllDeps(base, deps);
+  for (const auto* d : deps) {
+    names.push_back(d->name());
+  }
+}
+
 }  // namespace poplarplugin
 }  // namespace xla

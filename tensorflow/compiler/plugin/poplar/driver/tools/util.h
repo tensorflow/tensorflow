@@ -84,6 +84,11 @@ bool UseSyntheticData();
 
 std::string GetDebugName(const HloInstruction*);
 
+void GetAllDeps(const HloInstruction* base, std::vector<HloInstruction*>& deps);
+
+void GetAllDepNames(const HloInstruction* base,
+                    std::vector<std::string>& names);
+
 }  // namespace poplarplugin
 }  // namespace xla
 

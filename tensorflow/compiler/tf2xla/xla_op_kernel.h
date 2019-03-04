@@ -268,6 +268,12 @@ class XlaOpKernelContext {
   OpKernelContext* const context_;
 };
 
+// Retrieves an XlaExpression that was allocated by a previous Op.
+const XlaExpression* CastExpressionFromTensor(const Tensor& tensor);
+
+// Assigns an XlaExpression to a tensor on an XLA compilation device.
+void AssignExpressionToTensor(Tensor* tensor, const XlaExpression& value);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_TF2XLA_XLA_OP_KERNEL_H_

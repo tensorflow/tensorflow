@@ -30,7 +30,8 @@ def create_ipu_config(profiling=False, enable_ipu_events=False,
                       use_poplar_text_report=False,
                       report_every_nth_execution=0,
                       always_rearrange_copies_on_the_host=False,
-                      disable_graph_convolution_caching=False):
+                      disable_graph_convolution_caching=False,
+                      retain_control_dependencies=False):
   """Create an empty IPU session configuration structure.
 
   Args:
@@ -61,6 +62,12 @@ def create_ipu_config(profiling=False, enable_ipu_events=False,
                                               convoltuion. This can improve 
                                               runtime at the expense of graph
                                               size.
+    :param retain_control_dependencies: When set to true, control dependencies
+                                        from the Tensorflow graph are passed
+                                        through to the backend.  This can result
+                                        in a different memory size due to
+                                        differing constraints on the operation
+                                        scheduler.
 
   Returns:
 
@@ -85,6 +92,9 @@ def create_ipu_config(profiling=False, enable_ipu_events=False,
   opts.speed_size_config.always_rearrange_copies_on_the_host = always_rearrange_copies_on_the_host
 
   opts.speed_size_config.disable_graph_convolution_caching = disable_graph_convolution_caching
+
+  opts.retain_control_dependencies = retain_control_dependencies
+
   return opts
 
 def set_compilation_options(opts, compilation_options=None):

@@ -23,6 +23,151 @@ limitations under the License.
 namespace xla {
 namespace poplarplugin {
 
+// This class is a modified version of the xla::cpu::runtime::XfeedQueueManager.
+// The reason for creating a separate implementation is to add functionality
+// for limiting the number of enqueued buffers and removing elements to make
+// room for new ones.
+class PoplarXfeedQueueManager {
+ public:
+  static const size_t DEFAULT_QUEUE_SIZE = std::numeric_limits<size_t>::max();
+
+  PoplarXfeedQueueManager(string queue_name)
+      : queue_name_(queue_name),
+        max_size_(PoplarXfeedQueueManager::DEFAULT_QUEUE_SIZE) {}
+
+  // Calls the completion callback for any enqueued buffers that have
+  // not been dequeued by the runtime, and empties the
+  // queue. Reset may not be called while a runtime computation is
+  // processing a dequeued buffer. The only safe way to ensure this
+  // condition is to call Reset when no computation is taking place.
+  void Reset();
+
+  // Adds a buffer to the queue atomically. buffer->Done will be
+  // called when the buffer will no longer be accessed by the
+  // PoplarXfeedManager, either as a result of a call to Reset or because the
+  // runtime has dequeued and used the buffer. If pop_if_full is true then the
+  // oldest enqueued item will be popped to make room for a new element.
+  Status EnqueueBufferAtomically(cpu::runtime::XfeedBuffer* const buffer,
+                                 bool pop_if_full = false);
+
+  // Blocks until the queue is non-empty, then returns the buffer at the head of
+  // the queue. Sets the current buffer to be the returned buffer. It is an
+  // error to call BlockingDequeueBuffer if there is an unreleased current
+  // buffer, i.e., ReleaseCurrentBuffer must be called between calls to
+  // BlockingDequeueBuffer.
+  cpu::runtime::XfeedBuffer* BlockingDequeueBuffer();
+
+  // Releases the current buffer, which is the last buffer returned by
+  // BlockingDequeuBuffer and not yet released. length and data must
+  // match the buffer->length() and buffer->data() for the current
+  // buffer.
+  //
+  // 'shape' communicates the shape of the buffer being released. If the program
+  // passed a value that could not be decoded as a shape, 'shape' will be an
+  // error status. In the case of outfeed, this indicates the layout of the
+  // shape that has been outfed. In the case of infeed, this can be used for
+  // sanity checking purposes.
+  void ReleaseCurrentBuffer(int32 length, void* data, StatusOr<Shape> shape);
+
+  // Sets a maximum size on the fifo the manager owns.
+  void set_size(size_t size);
+
+  // Returns the number enqueued buffers.
+  size_t size() const;
+
+  // Checks if buffer FIFO size is at maximum size.
+  bool full() const;
+
+ private:
+  const string queue_name_;
+
+  mutable tensorflow::mutex mu_;
+
+  // Condition variable that is signaled every time a buffer is
+  // enqueued to an empty queue.
+  tensorflow::condition_variable not_empty_cv_;
+
+  // Condition variable that is signaled every time a buffer is
+  // dequeued from a full queue.
+  tensorflow::condition_variable not_full_cv_;
+
+  // XfeedBuffer* queue contents are not owned, but buffer->Done must
+  // be called when the buffer is no longer needed by the runtime.
+  std::deque<cpu::runtime::XfeedBuffer*> enqueued_buffers_;
+
+  // If non-NULL, the buffer that is currently being processed by the
+  // runtime. Not owned.
+  cpu::runtime::XfeedBuffer* current_buffer_ = nullptr;
+
+  // Maximum size of the buffer FIFO.
+  size_t max_size_;
+};
+
+// Client-side class used to enqueue infeed buffers.
+class PoplarXfeedManager {
+ public:
+  PoplarXfeedManager() = default;
+
+  void Reset();
+
+  PoplarXfeedQueueManager* infeed() { return &infeed_; }
+  PoplarXfeedQueueManager* outfeed() { return &outfeed_; }
+
+ private:
+  PoplarXfeedQueueManager infeed_ = {"infeed"};
+  PoplarXfeedQueueManager outfeed_ = {"outfeed"};
+};
+
+class PoplarInfeedBuffer : public cpu::runtime::XfeedBuffer {
+ public:
+  explicit PoplarInfeedBuffer(int32 length)
+      : length_(length),
+        buffer_(new char[length]),
+        device_memory_(buffer_, length_) {}
+  ~PoplarInfeedBuffer() override { delete[] buffer_; }
+
+  int32 length() override { return length_; }
+  void* data() override { return buffer_; }
+  void Done(StatusOr<Shape> /*shape*/) override { delete this; }
+
+  se::DeviceMemoryBase* device_memory() { return &device_memory_; }
+
+ private:
+  int32 length_;
+  char* buffer_;
+  se::DeviceMemoryBase device_memory_;
+};
+
+class PoplarOutfeedBuffer : public cpu::runtime::XfeedBuffer {
+ public:
+  PoplarOutfeedBuffer(int32 length, xla::Shape shape)
+      : length_(length),
+        status_(std::move(shape)),
+        destination_(new char[length]) {}
+
+  PoplarOutfeedBuffer(void* destination, int32 length, xla::Shape shape)
+      : length_(length), status_(std::move(shape)), destination_(destination) {}
+
+  StatusOr<Shape> WaitForNotification() {
+    done_.WaitForNotification();
+    return status_;
+  }
+
+  int32 length() override { return length_; }
+  void* data() override { return destination_; }
+  void Done(StatusOr<Shape> shape) override {
+    delete[] reinterpret_cast<char*>(destination_);
+  }
+
+  StatusOr<Shape> shape() const { return status_; }
+
+ private:
+  int32 length_;
+  StatusOr<Shape> status_;
+  void* destination_;
+  tensorflow::Notification done_;
+};
+
 class PoplarTransferManager : public GenericTransferManager {
  public:
   PoplarTransferManager();

@@ -44,7 +44,14 @@ PoplarExecutable::PoplarExecutable(
       is_remap_graph_(is_remap_graph),
       execution_count_(0),
       infeed_infos_(std::move(infeed_infos)),
-      outfeed_infos_(std::move(outfeed_infos)) {}
+      outfeed_infos_(std::move(outfeed_infos)) {
+  auto platform =
+      se::MultiPlatformManager::PlatformWithName(tensorflow::PLATFORM_NAME);
+  if (platform.ok()) {
+    auto* p = static_cast<PoplarPlatform*>(platform.ValueOrDie());
+    p->ResetXfeedManagers();
+  }
+}
 
 PoplarExecutable::~PoplarExecutable() {
   if (poplar_engine_.get() != nullptr) {
