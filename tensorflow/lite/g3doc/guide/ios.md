@@ -1,4 +1,4 @@
-# iOS Demo App
+# iOS quickstart
 
 This tutorial provides a simple iOS mobile application to classify images using
 the iOS device camera. In this tutorial, you will download the demo application

@@ -1,5 +1,4 @@
-
-# TensorFlow Lite Ops Versioning
+# TensorFlow Lite operator versions
 
 This document describes TensorFlow Lite's op versioning schema. Op
 versioning enables developers to add new functionalities and parameters into

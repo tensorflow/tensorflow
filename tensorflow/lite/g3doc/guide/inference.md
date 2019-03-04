@@ -1,4 +1,4 @@
-# TensorFlow Lite Inference
+# TensorFlow Lite inference
 
 [TOC]
 

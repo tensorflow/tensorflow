@@ -1,4 +1,4 @@
-# Converter command-line examples
+# Converter command line examples
 
 This page shows how to use the TensorFlow Lite Converter in the command line.
 

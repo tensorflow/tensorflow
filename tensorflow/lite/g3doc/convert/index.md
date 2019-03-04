@@ -1,4 +1,4 @@
-# TensorFlow Lite Converter
+# TensorFlow Lite converter
 
 TensorFlow Lite uses the optimized
 [FlatBuffer](https://google.github.io/flatbuffers/) format to represent graphs.

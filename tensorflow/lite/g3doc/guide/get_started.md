@@ -1,4 +1,4 @@
-# TF Lite Developer Guide
+# Get started with TensorFlow Lite
 
 Using a TensorFlow Lite model in your mobile app requires multiple
 considerations: you must choose a pre-trained or custom model, convert the model
