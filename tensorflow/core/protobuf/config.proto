@@ -445,9 +445,9 @@ message ConfigProto {
     // experimental.
     bool collective_nccl = 7;
     
-    // In the following words, session state means the value of a variable,
-    // elements in a hash table, or any other resource, accessible by worker
-    // sessions held by a TF server.
+    // In the following, session state means the value of a variable, elements
+    // in a hash table, or any other resource, accessible by worker sessions
+    // held by a TF server.
     //
     // When clusterspec propagation is used, the value of isolate_session_state
     // is ignored when deciding whether to share session states in a TF server.
