@@ -435,6 +435,7 @@ static Instruction *getInstAtPosition(ArrayRef<unsigned> positions,
   return nullptr;
 }
 
+const char *const kSliceFusionBarrierAttrName = "slice_fusion_barrier";
 // Computes memref dependence between 'srcAccess' and 'dstAccess', projects
 // out any dst loop IVs at depth greater than 'dstLoopDepth', and computes slice
 // bounds in 'sliceState' which represent the src IVs in terms of the dst IVs,
@@ -491,24 +492,28 @@ bool mlir::getBackwardComputationSliceState(const MemRefAccess &srcAccess,
   sliceState->lbOperands.resize(numSrcLoopIVs, sliceBoundOperands);
   sliceState->ubOperands.resize(numSrcLoopIVs, sliceBoundOperands);
 
-  // For read-read access pairs, clear any slice bounds on sequential loops.
+  llvm::SmallDenseSet<Value *, 8> sequentialLoops;
   if (readReadAccesses) {
+    // For read-read access pairs, clear any slice bounds on sequential loops.
     // Get sequential loops in loop nest rooted at 'srcLoopIVs[0]'.
-    llvm::SmallDenseSet<Value *, 8> sequentialLoops;
     getSequentialLoops(srcLoopIVs[0], &sequentialLoops);
-
-    // Clear all sliced loop bounds beginning at the first sequential loop.
-    for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
-      Value *iv = srcLoopIVs[i]->getInductionVar();
-      if (sequentialLoops.count(iv) == 0)
-        continue;
-      for (unsigned j = i; j < numSrcLoopIVs; ++j) {
-        sliceState->lbs[j] = AffineMap();
-        sliceState->ubs[j] = AffineMap();
-      }
-      break;
-    }
   }
+  // Clear all sliced loop bounds beginning at the first sequential loop, or
+  // first loop with a slice fusion barrier attribute..
+  // TODO(andydavis, bondhugula) Use MemRef read/write regions instead of
+  // using 'kSliceFusionBarrierAttrName'.
+  for (unsigned i = 0; i < numSrcLoopIVs; ++i) {
+    Value *iv = srcLoopIVs[i]->getInductionVar();
+    if (sequentialLoops.count(iv) == 0 &&
+        srcLoopIVs[i]->getAttr(kSliceFusionBarrierAttrName) == nullptr)
+      continue;
+    for (unsigned j = i; j < numSrcLoopIVs; ++j) {
+      sliceState->lbs[j] = AffineMap();
+      sliceState->ubs[j] = AffineMap();
+    }
+    break;
+  }
+
   return true;
 }
 
