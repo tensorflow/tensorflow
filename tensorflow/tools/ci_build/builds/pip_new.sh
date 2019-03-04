@@ -538,9 +538,15 @@ run_test_with_bazel() {
     BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
   fi
 
-  # TODO(hyey): Update test target after validation.
+  TEST_TARGETS_SYMLINK=""
+  for TARGET in ${BAZEL_TEST_TARGETS[@]}; do
+    TARGET_NEW=$(echo ${TARGET} | sed -e "s/\/\//\/\/${PIP_TEST_PREFIX}\//g")
+    TEST_TARGETS_SYMLINK+="${TARGET_NEW} "
+  done
+  echo "Test targets (symlink): ${TEST_TARGETS_SYMLINK}"
+
   # Run the test.
-  bazel test --build_tests_only ${BAZEL_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- //$PIP_TEST_PREFIX/tensorflow/python/...
+  bazel test --build_tests_only ${BAZEL_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- ${TEST_TARGETS_SYMLINK}
 
   unlink ${TEST_ROOT}/tensorflow
 }
