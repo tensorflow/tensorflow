@@ -517,17 +517,15 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         if (!current_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-          current_elements_manager_ =
-              absl::WrapUnique<Thread>(ctx->env()->StartThread(
-                  {}, "tf_data_parallel_interleave_current",
-                  [this, new_ctx]() { CurrentElementsManager(new_ctx); }));
+          current_elements_manager_ = ctx->StartThread(
+              "tf_data_parallel_interleave_current",
+              [this, new_ctx]() { CurrentElementsManager(new_ctx); });
         }
         if (!future_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-          future_elements_manager_ =
-              absl::WrapUnique<Thread>(ctx->env()->StartThread(
-                  {}, "tf_data_parallel_interleave_future",
-                  [this, new_ctx]() { FutureElementsManager(new_ctx); }));
+          future_elements_manager_ = ctx->StartThread(
+              "tf_data_parallel_interleave_future",
+              [this, new_ctx]() { FutureElementsManager(new_ctx); });
         }
       }
 

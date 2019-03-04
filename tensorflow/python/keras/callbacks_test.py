@@ -648,7 +648,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=0)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -669,7 +669,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=2)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
@@ -1236,17 +1236,28 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
 
 
 # Note that this test specifies model_type explicitly.
-class TestTensorBoardV2WriteModelTest(test.TestCase):
+class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
 
   def setUp(self):
-    super(TestTensorBoardV2WriteModelTest, self).setUp()
+    super(TestTensorBoardV2NonParameterizedTest, self).setUp()
     self.logdir = os.path.join(self.get_temp_dir(), 'tb')
     self.train_dir = os.path.join(self.logdir, 'train')
     self.validation_dir = os.path.join(self.logdir, 'validation')
 
+  def _get_seq_model(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3), input_shape=(10, 10, 1)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
   def fitModelAndAssertKerasModelWritten(self, model):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    tb_cbk = keras.callbacks.TensorBoard(self.logdir, write_graph=True)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir,
+                                         write_graph=True,
+                                         profile_batch=0)
     model.fit(
         x,
         y,
@@ -1288,6 +1299,74 @@ class TestTensorBoardV2WriteModelTest(test.TestCase):
     model = keras.models.Model(inputs=inputs, outputs=[x])
     model.compile('sgd', 'mse', run_eagerly=False)
     self.fitModelAndAssertKerasModelWritten(model)
+
+  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_TensorBoard_autoTrace(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=1, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
+        },
+    )
+
+  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=2, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
+        },
+    )
+
+  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=10000, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    # Enabled trace only on the 10000th batch, thus it should be empty.
+    self.assertEmpty(summary_file.tensors)
 
 
 if __name__ == '__main__':

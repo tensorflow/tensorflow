@@ -1,5 +1,5 @@
 
-# Introduction to TensorFlow Lite
+# TensorFlow Lite guide
 
 TensorFlow Lite is TensorFlow’s lightweight solution for mobile and embedded
 devices. It enables on-device machine learning inference with low latency and a

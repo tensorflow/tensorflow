@@ -1681,7 +1681,10 @@ class _ModelFnWrapper(object):
       _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
 
     running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
-    _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
+    # In export mode, params['use_tpu'] has already been set based on mode
+    # (i.e. True for _REWRITE_FOR_INFERENCE_MODE, False otherwise).
+    if not is_export_mode:
+      _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
 
     if not running_on_cpu:
       user_context = tpu_context.TPUContext(
@@ -2524,8 +2527,8 @@ class TPUEstimator(estimator_lib.Estimator):
       """
       # We should only call model fn once and it should be inside `computation`
       # so that building the graph will happen under `rewrite_for_inference`.
-      mode = model_fn_lib.ModeKeys.PREDICT
-      estimator_spec = self._call_model_fn(features, labels, mode, config)
+      estimator_spec = super(TPUEstimator, self)._call_model_fn(
+          features, labels, mode, config)
 
       # We pick the TPU tensors out from `export_output` and later return them
       # from `computation` for rewriting.
@@ -2752,18 +2755,26 @@ class TPUEstimator(estimator_lib.Estimator):
 
     def _model_fn(features, labels, mode, config, params):
       """A Estimator `model_fn` for TPUEstimator."""
+
+      # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
+      # but not in `export_savedmodel()`.
+      if self._is_input_fn_invoked:
+        is_export_mode = False
+      else:
+        is_export_mode = True
+
+      # Clear the bit.
+      self._is_input_fn_invoked = None
+
+      if is_export_mode:
+        if mode == _REWRITE_FOR_INFERENCE_MODE:
+          _add_item_to_params(params, _USE_TPU_KEY, True)
+          mode = model_fn_lib.ModeKeys.PREDICT
+        else:
+          _add_item_to_params(params, _USE_TPU_KEY, False)
+
       with self._ctx.with_mode(mode) as ctx:
         model_fn_wrapper = _ModelFnWrapper(model_fn, config, params, ctx)
-
-        # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
-        # but not in `export_savedmodel()`.
-        if self._is_input_fn_invoked:
-          is_export_mode = False
-        else:
-          is_export_mode = True
-
-        # Clear the bit.
-        self._is_input_fn_invoked = None
 
         # examples_hook is added to training_hooks for both CPU and TPU
         # execution.

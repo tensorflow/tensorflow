@@ -839,7 +839,7 @@ TEST_F(XlaBuilderTest, DynamicReshape) {
   XlaBuilder b(TestName());
   Shape tuple_param_shape = ShapeUtil::MakeTupleShape(
       {ShapeUtil::MakeShape(F32, {2, 3, 4, 5, 6},
-                            {false, false, true, true, false, false}),
+                            {false, false, true, true, false}),
        ShapeUtil::MakeShape(U32, {}), ShapeUtil::MakeShape(U32, {})});
   auto p0 = Parameter(&b, 0, tuple_param_shape, "p0");
   ASSERT_IS_OK(b.SetDynamicBinding(/*dynamic_size_param_num=*/0,

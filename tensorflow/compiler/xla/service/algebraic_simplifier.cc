@@ -3709,6 +3709,11 @@ Status AlgebraicSimplifierVisitor::HandleMap(HloInstruction* map) {
         HloInstruction::CreateBroadcast(
             map->shape(), computation_->AddInstruction(std::move(clone)), {}));
   }
+  // Inline the map if the map computation only contains an elementwise
+  // operation that can accept arbitrary shapes.
+  if (map_root->opcode() == HloOpcode::kFusion || !map_root->IsElementwise()) {
+    return Status::OK();
+  }
   std::vector<HloInstruction*> new_operands;
   for (auto* root_operand : map_root->operands()) {
     if (root_operand->opcode() != HloOpcode::kParameter) {

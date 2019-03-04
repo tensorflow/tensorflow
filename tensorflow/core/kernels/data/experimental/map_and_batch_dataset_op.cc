@@ -514,9 +514,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         if (!runner_thread_) {
           auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-          runner_thread_.reset(ctx->env()->StartThread(
-              {}, "tf_data_map_and_batch",
-              std::bind(&Iterator::RunnerThread, this, ctx_copy)));
+          runner_thread_ = ctx->StartThread(
+              "tf_data_map_and_batch",
+              std::bind(&Iterator::RunnerThread, this, ctx_copy));
         }
       }
 

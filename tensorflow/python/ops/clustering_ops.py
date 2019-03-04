@@ -288,29 +288,34 @@ class KMeans(object):
     """
     init_value = array_ops.constant([], dtype=dtypes.float32)
     cluster_centers = variable_scope.variable(
-        init_value, name=CLUSTERS_VAR_NAME, validate_shape=False)
+        init_value, name=CLUSTERS_VAR_NAME, validate_shape=False,
+        use_resource=False)
     cluster_centers_initialized = variable_scope.variable(
-        False, dtype=dtypes.bool, name='initialized')
+        False, dtype=dtypes.bool, name='initialized', use_resource=False)
 
     if self._use_mini_batch and self._mini_batch_steps_per_iteration > 1:
       # Copy of cluster centers actively updated each step according to
       # mini-batch update rule.
       cluster_centers_updated = variable_scope.variable(
-          init_value, name='clusters_updated', validate_shape=False)
+          init_value, name='clusters_updated', validate_shape=False,
+          use_resource=False)
       # How many steps till we copy the updated clusters to cluster_centers.
       update_in_steps = variable_scope.variable(
           self._mini_batch_steps_per_iteration,
           dtype=dtypes.int64,
-          name='update_in_steps')
+          name='update_in_steps',
+          use_resource=False)
       # Count of points assigned to cluster_centers_updated.
       cluster_counts = variable_scope.variable(
-          array_ops.zeros([num_clusters], dtype=dtypes.int64))
+          array_ops.zeros([num_clusters], dtype=dtypes.int64),
+          use_resource=False)
     else:
       cluster_centers_updated = cluster_centers
       update_in_steps = None
       cluster_counts = (
-          variable_scope.variable(
-              array_ops.ones([num_clusters], dtype=dtypes.int64))
+          variable_scope.variable(  # pylint:disable=g-long-ternary
+              array_ops.ones([num_clusters], dtype=dtypes.int64),
+              use_resource=False)
           if self._use_mini_batch else None)
     return (cluster_centers, cluster_centers_initialized, cluster_counts,
             cluster_centers_updated, update_in_steps)

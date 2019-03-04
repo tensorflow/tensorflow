@@ -181,7 +181,7 @@ Status MetaOptimizer::InitializeOptimizers(
   if (cfg_.remapping() != RewriterConfig::OFF) {
     optimizers->push_back(MakeUnique<Remapper>(cfg_.remapping()));
   }
-  if (cfg_.pin_to_host_optimization() != RewriterConfig::OFF) {
+  if (cfg_.pin_to_host_optimization() == RewriterConfig::ON) {
     optimizers->push_back(MakeUnique<PinToHostOptimizer>());
   }
   if (cfg_.arithmetic_optimization() != RewriterConfig::OFF) {
@@ -693,7 +693,7 @@ bool MetaOptimizerEnabled(const ConfigProto& cfg) {
          rewrite_cfg.memory_optimization() != RewriterConfig::NO_MEM_OPT ||
          rewrite_cfg.debug_stripper() == RewriterConfig::ON ||
          rewrite_cfg.scoped_allocator_optimization() == RewriterConfig::ON ||
-         rewrite_cfg.pin_to_host_optimization() != RewriterConfig::OFF ||
+         rewrite_cfg.pin_to_host_optimization() == RewriterConfig::ON ||
          !rewrite_cfg.optimizers().empty() ||
          !rewrite_cfg.custom_optimizers().empty();
 }

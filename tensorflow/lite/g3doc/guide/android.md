@@ -1,5 +1,4 @@
-
-# Android Demo App
+# Android quickstart
 
 An example Android application using TensorFLow Lite is available
 [on GitHub](https://github.com/tensorflow/tensorflow/tree/master/tensorflow/lite/java/demo).
