@@ -37,9 +37,9 @@
 #                        input tags for `--test_filter_tags` flag.
 #                          e.g. TF_TEST_FILTER_TAGS="no_pip,-nomac,no_oss"
 #   TF_TEST_TARGETS:     Bazel test targets.
-#                          e.g. TF_TEST_TARGETS="//tensorflow/contrib/... \
-#                               //tensorflow/... \
-#                               //tensorflow/python/..."
+#                          e.g. TF_TEST_TARGETS="//tensorflow/... \
+#                               -//tensorflow/contrib/... \
+#                               -//tensorflow/python/..."
 #   TF_PIP_TESTS:        PIP tests to run. If NOT specified, skips all tests.
 #                          e.g. TF_PIP_TESTS="test_pip_virtualenv_clean \
 #                               test_pip_virtualenv_clean \
@@ -663,6 +663,10 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
+      if [[ ${PY_MAJOR_MINOR_VER} == "3.6" ]]; then
+        # Revert pyenv changes, so that auditwheel can work properly.
+        pyenv global system
+      fi
       pip show auditwheel
       set +e
       pip install auditwheel==1.5.0
