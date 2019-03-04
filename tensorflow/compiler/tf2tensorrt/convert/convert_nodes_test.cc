@@ -2243,7 +2243,7 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     NodeDef node_def = MakeNodeDef("my_nms", "CombinedNonMaxSuppression", {});
     RunValidationAndConversion(
         node_def, error::INVALID_ARGUMENT,
-        "Six inputs expected for CombinedNonMaxSuppression, at my_nms");
+        "CombinedNonMaxSuppression got 0 inputs but expected 6, at my_nms");
   }
   // Get the NodeDef for CombinedNMS.
   auto get_nms_nodedef = []() -> NodeDef {
@@ -2270,6 +2270,10 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
   struct TestParams {
     const std::vector<int32> boxes_tensor_dims;
     const std::vector<int32> scores_tensor_dims;
+    const int32 max_output_size_per_class;
+    const int32 max_total_size;
+    const float iou_threshold;
+    const float score_threshold;
     const std::vector<int32> expected_nmsed_boxes_dims;
     const std::vector<int32> expected_nmsed_scores_dims;
     const std::vector<int32> expected_nmsed_classes_dims;
@@ -2277,15 +2281,21 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
 
   // Ok.
   const int kCombinedNMSOKCases = 1;
-  TestParams ok_params[kCombinedNMSOKCases] = {
-      TestParams{{1, 1, 4}, {1, 3}, {10, 4}, {10}, {10}}};
+  TestParams ok_params[kCombinedNMSOKCases] = {TestParams{
+      {1, 1, 4}, {1, 3}, 30, 10, .5f, 0.0f, {10, 4}, {10, 1}, {10, 1}}};
   const int batch_size = 1;
 
   for (int i = 0; i < kCombinedNMSOKCases; ++i) {
     Reset();
 
-    AddTestTensor("boxes_tensor", ok_params[i].boxes_tensor_dims);
-    AddTestTensor("scores_tensor", ok_params[i].scores_tensor_dims);
+    AddTestTensor("boxes", ok_params[i].boxes_tensor_dims);
+    AddTestTensor("scores", ok_params[i].scores_tensor_dims);
+    AddTestWeights<int32>("max_output_size_per_class", {1},
+                          {ok_params[i].max_output_size_per_class});
+    AddTestWeights<int32>("max_total_size", {1}, {ok_params[i].max_total_size});
+    AddTestWeights<float>("iou_threshold", {1}, {ok_params[i].iou_threshold});
+    AddTestWeights<float>("score_threshold", {1},
+                          {ok_params[i].score_threshold});
 
     RunValidationAndConversion(get_nms_nodedef());
 
@@ -2294,10 +2304,10 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     TRT_TensorOrWeights nmsed_classes;
     TRT_TensorOrWeights valid_detections;
 
-    TF_EXPECT_OK(GetTensorOrWeights("nmsed_boxes", &nmsed_boxes));
-    TF_EXPECT_OK(GetTensorOrWeights("nmsed_scores", &nmsed_scores));
-    TF_EXPECT_OK(GetTensorOrWeights("nmsed_classes", &nmsed_classes));
-    TF_EXPECT_OK(GetTensorOrWeights("valid_detections", &valid_detections));
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms", &nmsed_boxes));
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms:1", &nmsed_scores));
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms:2", &nmsed_classes));
+    TF_EXPECT_OK(GetTensorOrWeights("my_nms:3", &valid_detections));
 
     EXPECT_TRUE(nmsed_boxes.is_tensor());
     EXPECT_TRUE(nmsed_scores.is_tensor());
@@ -2313,22 +2323,20 @@ TEST_F(OpConverterTest, ConvertCombinedNMS) {
     ExpectTrtDimsEqualsArray({batch_size},
                              valid_detections.tensor()->getDimensions());
 
-    std::vector<float> output_data(40);
-    const DataVec input_data{
-        {"boxes_tensor", test::AsTensor<float>({0, 0, 0, 4})},
-        {"scores_tensor", test::AsTensor<float>({0, 0, 0})},
-        {"output_size_per_class", {30}},
-        {"total_size", {10}},
-        {"iou_threshold", {.5f}},
-        {"score_threshold", {0.0f}}};
+    DataVec output_data{
+        {"my_nms", ConstructTensor<float>(40)},
+        {"my_nms:1", ConstructTensor<float>(10)},
+        {"my_nms:2", ConstructTensor<float>(10)},
+        {"my_nms:3", ConstructTensor<int32>(1)},
+    };
+    const DataVec input_data{{"boxes", test::AsTensor<float>({0, 0, 0, 4})},
+                             {"scores", test::AsTensor<float>({0, 0, 0})}};
     BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(output_data, ElementsAre(0, 10, 4));
+    EXPECT_THAT(GetSpanForData<float>(output_data[0]), ElementsAre(0, 10, 4));
   }
 }
 
-
-
-#endif // CombinedNonMaxSuppression
+#endif  // CombinedNonMaxSuppression
 
 TEST_F(OpConverterTest, ConvertActivation) {
   {
