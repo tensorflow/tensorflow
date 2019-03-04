@@ -1111,7 +1111,6 @@ cc_library(
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
