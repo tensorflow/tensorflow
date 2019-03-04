@@ -969,6 +969,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -998,6 +999,7 @@ tf_py_test(
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -2616,6 +2618,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
