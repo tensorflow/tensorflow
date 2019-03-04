@@ -663,10 +663,6 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
-      if [[ ${PY_MAJOR_MINOR_VER} == "3.6" ]]; then
-        # Revert pyenv changes, so that auditwheel can work properly.
-        pyenv global system
-      fi
       pip show auditwheel
       set +e
       pip install auditwheel==1.5.0
