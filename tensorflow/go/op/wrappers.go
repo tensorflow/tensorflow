@@ -7570,6 +7570,21 @@ func OptionalGetValue(scope *Scope, optional tf.Output, output_types []tf.DataTy
 	return components
 }
 
+// Returns true if and only if the given Optional variant has a value.
+func OptionalHasValue(scope *Scope, optional tf.Output) (has_value tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "OptionalHasValue",
+		Input: []tf.Input{
+			optional,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Outputs a tensor containing the reduction across all input tensors.
 //
 // Outputs a tensor containing the reduction across all input tensors passed to ops
@@ -10560,6 +10575,38 @@ func FusedBatchNorm(scope *Scope, x tf.Output, scale tf.Output, offset tf.Output
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2), op.Output(3), op.Output(4)
+}
+
+// Creates a dataset that shards the input dataset.
+//
+// Creates a dataset that shards the input dataset by num_workers, returning a
+// sharded dataset for the index-th worker. This attempts to automatically shard
+// a dataset by examining the Dataset graph and inserting a shard op before the
+// inputs to a reader Dataset (e.g. CSVDataset, TFRecordDataset).
+//
+// This dataset will throw a NotFound error if we cannot shard the dataset
+// automatically.
+//
+// Arguments:
+//	input_dataset: A variant tensor representing the input dataset.
+//	num_workers: A scalar representing the number of workers to distribute this dataset across.
+//	index: A scalar representing the index of the current worker out of num_workers.
+//
+//
+func ExperimentalAutoShardDataset(scope *Scope, input_dataset tf.Output, num_workers tf.Output, index tf.Output, output_types []tf.DataType, output_shapes []tf.Shape) (handle tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"output_types": output_types, "output_shapes": output_shapes}
+	opspec := tf.OpSpec{
+		Type: "ExperimentalAutoShardDataset",
+		Input: []tf.Input{
+			input_dataset, num_workers, index,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // RandomStandardNormalAttr is an optional argument to RandomStandardNormal.
@@ -38805,21 +38852,6 @@ func OptionalNone(scope *Scope) (optional tf.Output) {
 	}
 	opspec := tf.OpSpec{
 		Type: "OptionalNone",
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Returns true if and only if the given Optional variant has a value.
-func OptionalHasValue(scope *Scope, optional tf.Output) (has_value tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "OptionalHasValue",
-		Input: []tf.Input{
-			optional,
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)

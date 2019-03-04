@@ -1907,10 +1907,11 @@ if __name__ == "__main__":
     if name_ == "maxpool5":
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,
-          test_util.disable_xla(
-              "b/123926014: incorrect output with only constants")(
-                  GetMaxPoolGradTest(input_size_, filter_size_, output_size_,
-                                     stride_, padding_)))
+          test_util.run_deprecated_v1(
+              test_util.disable_xla(
+                  "b/123926014: incorrect output with only constants")(
+                      GetMaxPoolGradTest(input_size_, filter_size_,
+                                         output_size_, stride_, padding_))))
     else:
       setattr(
           PoolingTest, "testMaxPoolGrad_" + name_,

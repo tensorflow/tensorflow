@@ -2535,6 +2535,24 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
       x = func()
       self.assertRegexpMatches(x.device, 'GPU')
 
+  @test_util.run_in_graph_and_eager_modes
+  def testShapeCaching(self):
+
+    @function.defun
+    def func(x):
+      return array_ops.shape(x)
+
+    @function.defun(
+        input_signature=[tensor_spec.TensorSpec([None, None], dtypes.float32)])
+    def calls_func(x):
+      return func(x)
+
+    self.assertAllEqual([1, 1], self.evaluate(func(array_ops.zeros([1, 1]))))
+    self.assertAllEqual([2, 2], self.evaluate(func(array_ops.zeros([2, 2]))))
+    self.assertAllEqual(
+        [3, 3],
+        self.evaluate(calls_func(array_ops.zeros([3, 3]))))
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 
