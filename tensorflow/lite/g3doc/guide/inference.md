@@ -23,14 +23,15 @@ TensorFlow Lite inference on device typically follows the following steps.
    execution graph.
 
 1. **Transforming Data**
-   Input data acquired by the user generally may not match the input data format        expected by the model. For eg., a user may need to resize an image or change
+   Input data acquired by the user generally may not match the input data format
+   expected by the model. For eg., a user may need to resize an image or change
    the image format to be used by the model.
 
 1. **Running Inference**
 
    This step involves using the API to execute the model. It involves a few
    steps such as building the interpreter, and allocating tensors as explained
-   in detail in [Running a Model](running-a-model).
+   in detail in [Running a Model](#running_a_model).
 
 1. **Interpreting Output**
 
@@ -129,7 +130,7 @@ In both cases a valid TensorFlow Lite model must be provided or an
 initialize an Interpreter, it should remain unchanged for the whole lifetime of
 the `Interpreter`.
 
-### Running a Model
+### Running a Model {#running_a_model}
 
 #### C++
 Running a model involves a few simple steps:
