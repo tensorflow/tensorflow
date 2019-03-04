@@ -3609,6 +3609,7 @@ tf_cc_test(
     name = "platform_strings_test",
     size = "small",
     srcs = ["platform/platform_strings_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":lib",
         ":platform_strings",
