@@ -123,12 +123,13 @@ class SparseConcatOp : public OpKernel {
     Tensor output_ix(DT_INT64, TensorShape({num_entries, input_rank}));
     Tensor output_vals(DataTypeToEnum<T>::v(), TensorShape({num_entries}));
     Tensor output_shape(DT_INT64, TensorShape({input_rank}));
-    auto output_shape_t = output_shape.vec<int64>();
+    const auto output_shape_t = output_shape.vec<int64>();
     std::copy_n(out_shape_vec.begin(), input_rank, output_shape_t.data());
 
-    auto worker_threads = context->device()->tensorflow_cpu_worker_threads();
-    auto workers = worker_threads->workers;
-    int num_threads = worker_threads->num_threads;
+    const DeviceBase::CpuWorkerThreads& worker_threads =
+        *(context->device()->tensorflow_cpu_worker_threads());
+    thread::ThreadPool* workers = worker_threads.workers;
+    int num_threads = worker_threads.num_threads;
 
     // Concat on dim0, just copy and re-calculate the new indices, no further
     // work is needed.
@@ -213,7 +214,7 @@ class SparseConcatOp : public OpKernel {
   }
 
  private:
-  // This inline function is used to copy the indices and values from a range 
+  // This inline function is used to copy the indices and values from a range
   // of input sparse tensor to the output concatenated sparse tensor. It would
   // be called in multi-thread context.
   inline void ConcatTask(const OpInputList& inds, const OpInputList& vals,
@@ -232,15 +233,15 @@ class SparseConcatOp : public OpKernel {
       auto out_vals_t = output_vals->vec<T>();
 
       for (int64 j = 0; j < input_num; ++j) {
-	const int64 out_vals_offset = val_offset + j;
-	out_vals_t(out_vals_offset) = in_vals_t(j);
+        const int64 out_vals_offset = val_offset + j;
+        out_vals_t(out_vals_offset) = in_vals_t(j);
 
-	const int64 in_ix_offset = j * input_rank;
-	const int64 out_ix_offset = out_vals_offset * input_rank;
-	for (int64 k = 0; k < input_rank; ++k) {
-	  out_ix_t(out_ix_offset + k) = in_ix_t(in_ix_offset + k);
-	}
-	out_ix_t(out_ix_offset + concat_dim) += concat_dim_offset;
+        const int64 in_ix_offset = j * input_rank;
+        const int64 out_ix_offset = out_vals_offset * input_rank;
+        for (int64 k = 0; k < input_rank; ++k) {
+          out_ix_t(out_ix_offset + k) = in_ix_t(in_ix_offset + k);
+        }
+        out_ix_t(out_ix_offset + concat_dim) += concat_dim_offset;
       }
     }
   }
@@ -265,7 +266,7 @@ class SparseConcatOp : public OpKernel {
       const int64 out_ix_offset = i * input_rank;
       const int64 in_ix_offset = pos * input_rank;
       for (int k = 0; k < input_rank; ++k) {
-	out_ix_t(out_ix_offset + k) = in_ix_t(in_ix_offset + k);
+        out_ix_t(out_ix_offset + k) = in_ix_t(in_ix_offset + k);
       }
     }
   }
