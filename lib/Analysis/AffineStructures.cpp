@@ -2056,11 +2056,11 @@ Optional<int64_t> FlatAffineConstraints::getConstantBoundOnDimSize(
     // 31 >= 0, the lower bound for d0 is ceil(N - 31, 32), i.e., floor(N, 32).
     *lbFloorDivisor = atIneq(minLbPosition, pos);
     for (unsigned c = 0, e = getNumSymbolIds() + 1; c < e; c++) {
-      // ceildiv (val / d) = floordiv (val + d - 1 / d); hence, the addition of
-      // 'atIneq(minLbPosition, pos) - 1'.
-      (*lb)[c] = -atIneq(minLbPosition, getNumDimIds() + c) +
-                 atIneq(minLbPosition, pos) - 1;
+      (*lb)[c] = -atIneq(minLbPosition, getNumDimIds() + c);
     }
+    // ceildiv (val / d) = floordiv (val + d - 1 / d); hence, the addition of
+    // 'atIneq(minLbPosition, pos) - 1' to the constant term.
+    (*lb)[getNumSymbolIds()] += atIneq(minLbPosition, pos) - 1;
   }
   return minDiff;
 }

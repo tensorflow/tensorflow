@@ -697,7 +697,7 @@ func @R6_to_R2_reshape_square() -> memref<64x9xi32> {
 // CHECK-DAG: [[MAP2:#map[0-9]+]] = (d0, d1) -> ((((d0 * 9 + d1) mod 288) mod 144) floordiv 48)
 // CHECK-DAG: [[MAP3:#map[0-9]+]] = (d0, d1) -> (((((d0 * 9 + d1) mod 288) mod 144) mod 48) floordiv 16)
 // CHECK-DAG: [[MAP4:#map[0-9]+]] = (d0, d1) -> (((((d0 * 9 + d1) mod 288) mod 144) mod 48) mod 16)
-// CHECK-DAG: [[MAP5:#map[0-9]+]] = (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2 - (d0 * 37 + d1 * 36) floordiv 36)
+// CHECK-DAG: [[MAP5:#map[0-9]+]] = (d0, d1, d2, d3, d4, d5, d6, d7) -> (d2 - (d0 * 9 + d1) floordiv 288)
 // CHECK-DAG: [[MAP6:#map[0-9]+]] = (d0, d1, d2, d3, d4, d5, d6, d7) -> (d3)
 // CHECK-DAG: [[MAP7:#map[0-9]+]] = (d0, d1, d2, d3, d4, d5, d6, d7) -> (d4)
 // CHECK-DAG: [[MAP8:#map[0-9]+]] = (d0, d1, d2, d3, d4, d5, d6, d7) -> (d5)
@@ -1321,7 +1321,7 @@ func @R3_to_R2_reshape() {
   return
 }
 // CHECK:      [[MAP0:#map[0-9]+]] = (d0, d1) -> ((d0 * 3 + d1) floordiv 48)
-// CHECK-NEXT: [[MAP2:#map[0-9]+]] = (d0, d1, d2, d3, d4) -> (d2 - (d0 * 25 + d1 * 24) floordiv 24)
+// CHECK-NEXT: [[MAP2:#map[0-9]+]] = (d0, d1, d2, d3, d4) -> (d2 - (d0 * 3 + d1) floordiv 48)
 // CHECK-NEXT: [[MAP3:#map[0-9]+]] = (d0, d1, d2, d3, d4) -> (-d1 + d3)
 // CHECK-NEXT: [[MAP4:#map[0-9]+]] = (d0, d1, d2, d3, d4) -> (d4)
 // CHECK-NEXT: [[MAP5:#map[0-9]+]] = (d0, d1) -> (d0 * 3 + d1)
