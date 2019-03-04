@@ -38,6 +38,8 @@ from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.util.tf_export import tf_export
+from tensorflow.python.client import session
+
 
 ops.NotDifferentiable('RandomCrop')
 # TODO(b/31222613): This op may be differentiable, and there may be
@@ -2805,3 +2807,65 @@ def sobel_edges(image):
   output = array_ops.reshape(output, shape=shape)
   output.set_shape(static_image_shape.concatenate([num_kernels]))
   return output
+
+
+
+@tf_export('image.median_filtering')
+def median_filtering(tf_img,filter_shape=3):
+
+    #This methods takes both 2D Tensor as well as 3D Tensor Images
+    #Other than Tensor it takes optional parameter filter_Size
+    #Default Filter Size = 3
+    #Filter_size should be odd
+    #This method takes both kind of images where pixel values lie between 0 to 255 and where it lies between 0.0 and 1.0
+    try:
+        m,no = int(tf_img.shape[0]),int(tf_img.shape[1])
+    except:
+        raise Exception("Input Tensor is not an image")
+    try :
+        ch = int(tf_img.shape[2])
+    except:
+        ch = 1
+    tf_img = array_ops.reshape(tf_img,[m * no * ch])
+    if tf_img.shape[0] < filter_shape:
+        raise Exception('No of Pixels in the image should be more than the filter size')
+    if filter_shape % 2 == 0:
+        raise Exception("Filter size should be odd")
+    sess = session.InteractiveSession()
+    tf_img = tf_img.eval()
+    tf_img = tf_img.astype('float64')
+    maxi = max(tf_img)
+    if maxi == 1:
+        tf_img /= maxi
+    else :
+        tf_img /= 255
+    #k is the Zero-padding size
+    k = (filter_shape - 1)
+    n = np.empty((tf_img.shape[0] + k) )
+    for i in range(0,k/2) :
+        n[i] =  0
+    for i in range(0,tf_img.shape[0]) :
+        n[i + k/2] = tf_img[i]
+    for i in range(n.shape[0] - k/2,n.shape[0]):
+        n[i] = 0
+    res = np.empty([tf_img.shape[0]])
+    l = []
+    li = []
+    for i in range(filter_shape):
+        l.append(n[i])
+        li.append(n[i])
+    for i in range(tf_img.shape[0]):
+        l.sort()
+        res[i] = l[len(l)/2]
+        if i == tf_img.shape[0] :
+            break
+        del(li[0])
+        li.append(n[i + k])
+        for j in range(len(li)):
+            l[j] = li[j]
+    res *= 255
+    res = res.astype('int')
+    res = ops.convert_to_tensor(res)
+    res = array_ops.reshape(res,(m,no,ch))
+    sess.close()
+    return res
