@@ -46,6 +46,7 @@ tf_cc_test(
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
     ],
+    tags = ["no_oss"],
 )
 
 tf_cc_binary(
