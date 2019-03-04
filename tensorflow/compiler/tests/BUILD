@@ -836,6 +836,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "stateful_random_ops_test",
+    size = "small",
+    srcs = ["stateful_random_ops_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+        "//tensorflow/python:stateful_random_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "stateless_random_ops_test",
     size = "small",
     srcs = ["stateless_random_ops_test.py"],
