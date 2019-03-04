@@ -32,6 +32,7 @@ __all__ = [
     'CycleGANModel',
     'StarGANModel',
     'GANLoss',
+    'GANAuxiliaryLoss',
     'CycleGANLoss',
     'GANTrainOps',
     'GANTrainSteps',
