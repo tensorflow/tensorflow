@@ -7,7 +7,7 @@
 TensorFlow Lite inference is the process of executing a TensorFlow Lite
 model on-device and extracting meaningful results from it. Inference is the
 final step in using the model on-device in the
-[architecture](./overview.md#tensorflow-lite-architecture).
+[architecture](./index.md#tensorflow_lite_architecture).
 
 Inference for TensorFlow Lite models is run through an interpreter. This
 document outlines the various APIs for the interpreter along with the
