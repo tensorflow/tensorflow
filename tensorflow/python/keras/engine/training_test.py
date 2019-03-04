@@ -50,6 +50,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
+from tensorflow.python.framework import dtypes
 
 try:
   import scipy.sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
@@ -2814,7 +2815,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     class TestModel(keras.models.Model):
 
       def call(self, inputs, training=None, mask=None):
-        return math_ops.to_float(inputs['id'])
+        return math_ops.cast(inputs['id'], dtype=dtypes.float32)
 
     model = TestModel()
     model.compile(
@@ -2841,7 +2842,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     class TestModel(keras.models.Model):
 
       def call(self, inputs, training=None, mask=None):
-        return math_ops.to_float(inputs['id'])
+        return math_ops.cast(inputs['id'], dtype=dtypes.float32)
 
     model = TestModel()
     model.compile(
