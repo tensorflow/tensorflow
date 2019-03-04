@@ -1,4 +1,4 @@
-# TensorFlow Lite for generic ARM64 boards
+# Build TensorFlow Lite for ARM64 boards
 
 ## Cross compiling
 

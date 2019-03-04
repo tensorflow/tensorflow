@@ -1,5 +1,4 @@
-
-# Performance
+# Performance benchmarks
 
 This document lists TensorFlow Lite performance benchmarks when running well
 known models on some Android and iOS devices.

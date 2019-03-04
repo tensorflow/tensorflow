@@ -1,4 +1,6 @@
-# [Experimental] Using TensorFlow Lite with select TensorFlow ops
+# Select TensorFlow operators to use in TensorFlow Lite
+
+Caution: This feature is experimental.
 
 The TensorFlow Lite builtin op library has grown rapidly, and will continue to
 grow, but there remains a long tail of TensorFlow ops that are not yet natively
@@ -196,9 +198,7 @@ Python support is actively under development.
 
 When using a mixture of both builtin and select TensorFlow ops, all of the same
 TensorFlow Lite optimizations and optimized builtin kernels will be be available
-and usable with the converted model. For the TensorFlow ops, performance should
-generally be comparable to that of
-[TensorFlow Mobile](https://www.tensorflow.org/lite/tfmobile/).
+and usable with the converted model.
 
 The following table describes the average time taken to run inference on
 MobileNet on a Pixel 2. The listed times are an average of 100 runs. These
