@@ -38,8 +38,8 @@ working on getting your pull request submitted to our internal repository. After
 the change has been submitted internally, your pull request will be merged
 automatically on GitHub.
 
-If you want to contribute but you're not sure where to start, take a look at the
-[issues with the "contributions welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
+If you want to contribute, start working through the TensorFlow codebase, navigate to the [Github "issues" tab](https://github.com/tensorflow/tensorflow/issues) and start looking through interesting issues.
+If you are not sure of where to start, then start by trying one of the smaller/easier issues here i.e. [issues with the "good first issue" label](https://github.com/tensorflow/tensorflow/labels/good%20first%20issue) and then take a look at the [issues with the "contributions welcome" label](https://github.com/tensorflow/tensorflow/labels/stat%3Acontributions%20welcome).
 These are issues that we believe are particularly well suited for outside
 contributions, often because we probably won't get to them right now. If you
 decide to start on an issue, leave a comment so that other people know that
