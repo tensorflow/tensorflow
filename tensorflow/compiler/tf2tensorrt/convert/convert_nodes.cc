@@ -362,6 +362,11 @@ Status Converter::GetTrtBroadcastShape(
 
 nvinfer1::ITensor* Converter::CreateConstantLayer(
     const TRT_ShapedWeights& weights, const nvinfer1::Dims& dims) {
+  // Check if we have already created a constant for this particular weight.
+  const auto iter = weights_to_const_layers_.find(weights.GetValues());
+  if (iter != weights_to_const_layers_.end()) {
+    return iter->second;
+  }
   nvinfer1::Weights trt_weights = weights.GetTrtWeights();
   nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
   if (!layer) return nullptr;
@@ -372,6 +377,8 @@ nvinfer1::ITensor* Converter::CreateConstantLayer(
   // of the weights is. Once NVIDIA fixes this bug, we should remove the data
   // type setting logic below and test should still pass.
   trt_tensor->setType(trt_dtype);
+  // Add to cache.
+  weights_to_const_layers_[weights.GetValues()] = trt_tensor;
   return trt_tensor;
 }
 
