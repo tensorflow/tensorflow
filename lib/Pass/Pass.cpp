@@ -144,27 +144,20 @@ private:
 /// Run all of the passes in this manager over the current function.
 bool detail::FunctionPassExecutor::run(Function *function,
                                        FunctionAnalysisManager &fam) {
-  for (auto &pass : passes) {
-    /// Create an execution state for this pass.
+  // Run each of the held passes.
+  for (auto &pass : passes)
     if (!pass->run(function, fam))
       return false;
-    // TODO: This should be opt-out and handled separately.
-    if (function->verify())
-      return false;
-  }
   return true;
 }
 
 /// Run all of the passes in this manager over the current module.
 bool detail::ModulePassExecutor::run(Module *module,
                                      ModuleAnalysisManager &mam) {
-  for (auto &pass : passes) {
+  // Run each of the held passes.
+  for (auto &pass : passes)
     if (!pass->run(module, mam))
       return false;
-    // TODO: This should be opt-out and handled separately.
-    if (module->verify())
-      return false;
-  }
   return true;
 }
 
@@ -224,7 +217,28 @@ void ModuleToFunctionPassAdaptor::runOnModule() {
 // PassManager
 //===----------------------------------------------------------------------===//
 
-PassManager::PassManager() : mpe(new ModulePassExecutor()) {}
+namespace {
+/// Pass to verify a function and signal failure if necessary.
+class FunctionVerifier : public FunctionPass<FunctionVerifier> {
+  void runOnFunction() {
+    if (getFunction().verify())
+      signalPassFailure();
+    markAllAnalysesPreserved();
+  }
+};
+
+/// Pass to verify a module and signal failure if necessary.
+class ModuleVerifier : public ModulePass<ModuleVerifier> {
+  void runOnModule() {
+    if (getModule().verify())
+      signalPassFailure();
+    markAllAnalysesPreserved();
+  }
+};
+} // end anonymous namespace
+
+PassManager::PassManager(bool verifyPasses)
+    : mpe(new ModulePassExecutor()), verifyPasses(verifyPasses) {}
 
 PassManager::~PassManager() {}
 
@@ -246,6 +260,10 @@ void PassManager::addPass(Pass *pass) {
 void PassManager::addPass(ModulePassBase *pass) {
   nestedExecutorStack.clear();
   mpe->addPass(pass);
+
+  // Add a verifier run if requested.
+  if (verifyPasses)
+    mpe->addPass(new ModuleVerifier());
 }
 
 /// Add a function pass to the current manager. This takes ownership over the
@@ -256,7 +274,7 @@ void PassManager::addPass(FunctionPassBase *pass) {
   if (nestedExecutorStack.empty()) {
     /// Create an executor adaptor for this pass.
     auto *adaptor = new ModuleToFunctionPassAdaptor();
-    mpe->addPass(adaptor);
+    addPass(adaptor);
 
     /// Add the executor to the stack.
     fpe = &adaptor->getFunctionExecutor();
@@ -265,6 +283,10 @@ void PassManager::addPass(FunctionPassBase *pass) {
     fpe = cast<detail::FunctionPassExecutor>(nestedExecutorStack.back());
   }
   fpe->addPass(pass);
+
+  // Add a verifier run if requested.
+  if (verifyPasses)
+    fpe->addPass(new FunctionVerifier());
 }
 
 /// Run the passes within this manager on the provided module.

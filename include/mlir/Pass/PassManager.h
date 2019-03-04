@@ -34,7 +34,8 @@ class ModulePassExecutor;
 /// The main pass manager and pipeline builder.
 class PassManager {
 public:
-  PassManager();
+  // If verifyPasses is true, the verifier is run after each pass.
+  PassManager(bool verifyPasses = true);
   ~PassManager();
 
   /// Add an opaque pass pointer to the current manager. This takes ownership
@@ -61,6 +62,9 @@ private:
 
   /// The top level module pass executor.
   std::unique_ptr<detail::ModulePassExecutor> mpe;
+
+  /// Flag that specifies if the IR should be verified after each pass has run.
+  bool verifyPasses;
 };
 
 } // end namespace mlir

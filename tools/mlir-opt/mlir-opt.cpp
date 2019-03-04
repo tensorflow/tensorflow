@@ -68,6 +68,11 @@ static cl::opt<bool>
                                "expected-* lines on the corresponding line"),
                       cl::init(false));
 
+static cl::opt<bool>
+    verifyPasses("verify-each",
+                 cl::desc("Run the verifier after each transformation pass"),
+                 cl::init(true));
+
 static std::vector<const mlir::PassRegistryEntry *> *passList;
 
 enum OptResult { OptSuccess, OptFailure };
@@ -126,9 +131,7 @@ static OptResult performActions(SourceMgr &sourceMgr, MLIRContext *context) {
     return OptFailure;
 
   // Run each of the passes that were selected.
-  // TODO(riverriddle) Make sure that the verifer is run after each pass when it
-  // is no longer run by default within the PassManager.
-  PassManager pm;
+  PassManager pm(verifyPasses);
   for (const auto *passEntry : *passList)
     passEntry->addToPipeline(pm);
   if (!pm.run(module.get()))
