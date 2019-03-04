@@ -1350,6 +1350,7 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_ordering",
         ":hlo_pass",
         ":logical_buffer",
