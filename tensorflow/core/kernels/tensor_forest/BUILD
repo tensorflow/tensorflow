@@ -49,3 +49,11 @@ tf_kernel_library(
         ":resource_ops",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "resources.h",
+    ],
+    visibility = ["//visibility:public"],
+)

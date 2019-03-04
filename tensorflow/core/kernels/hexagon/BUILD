@@ -139,3 +139,15 @@ tf_cc_test(
         "//tensorflow/core/kernels:remote_fused_graph_execute_utils",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "graph_transferer.h",
+        "graph_transfer_utils.h",
+        "hexagon_control_wrapper.h",
+        "hexagon_ops_definitions.h",
+        "soc_interface.h",
+    ],
+    visibility = ["//visibility:public"],
+)

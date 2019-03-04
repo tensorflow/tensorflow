@@ -87,3 +87,12 @@ tf_kernel_library(
         "@com_google_absl//absl/strings",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "op_kernel_templates.h",
+        "resource_interface_templates.h",
+    ],
+    visibility = ["//visibility:public"],
+)

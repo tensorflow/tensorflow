@@ -29,3 +29,12 @@ tf_kernel_library(
         "@gemmlowp",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "depthwiseconv_float.h",
+        "types.h",
+    ],
+    visibility = ["//visibility:public"],
+)

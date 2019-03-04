@@ -448,10 +448,10 @@ pkg_tar(
         ":kernels_data_coreheaders",
         ":kernels_data_experimental_sql_coreheaders",
         ":kernels_fuzzing_coreheaders",
-        # ":kernels_hexagon_coreheaders",
-        # ":kernels_lookup_tables_coreheaders",
-        # ":kernels_neon_coreheaders",
-        # ":kernels_tensor_forest_coreheaders",
+        ":kernels_hexagon_coreheaders",
+        ":kernels_lookup_tables_coreheaders",
+        ":kernels_neon_coreheaders",
+        ":kernels_tensor_forest_coreheaders",
     ],
 )
 
@@ -506,6 +506,42 @@ pkg_tar(
         "//tensorflow/core/kernels/fuzzing:headers",
     ],
     package_dir = "fuzzing",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_hexagon_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/hexagon:headers",
+    ],
+    package_dir = "hexagon",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_lookup_tables_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/lookup_tables:headers",
+    ],
+    package_dir = "lookup_tables",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_neon_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/neon:headers",
+    ],
+    package_dir = "neon",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "kernels_tensor_forest_coreheaders",
+    srcs = [
+        "//tensorflow/core/kernels/tensor_forest:headers",
+    ],
+    package_dir = "tensor_forest",
     tags = ["manual"],
 )
 
