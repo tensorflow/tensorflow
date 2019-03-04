@@ -84,10 +84,13 @@ ARG CACHE_STOP=1
 ARG CHECKOUT_TF_SRC=1
 RUN test "${CHECKOUT_TF_SRC}" -eq 1 && git clone https://github.com/isaacnoble/tensorflow.git /tensorflow || true
 
-ARG USE_PYTHON_3_NOT_2
+ARG USE_PYTHON_3_NOT_2=1
 ARG _PY_SUFFIX=${USE_PYTHON_3_NOT_2:+3}
 ARG PYTHON=python${_PY_SUFFIX}
 ARG PIP=pip${_PY_SUFFIX}
+
+RUN echo "${PIP}"
+RUN echo "${PYTHON}"
 
 # See http://bugs.python.org/issue19846
 ENV LANG C.UTF-8
@@ -144,7 +147,7 @@ RUN ln -s /usr/local/cuda/lib64/stubs/libcuda.so /usr/local/cuda/lib64/stubs/lib
         tensorflow/tools/pip_package:build_pip_package && \
     rm /usr/local/cuda/lib64/stubs/libcuda.so.1 && \
     bazel-bin/tensorflow/tools/pip_package/build_pip_package /tmp/pip && \
-    pip --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl && \
+    ${PIP} --no-cache-dir install --upgrade /tmp/pip/tensorflow-*.whl && \
     rm -rf /tmp/pip && \
     rm -rf /root/.cache
 
