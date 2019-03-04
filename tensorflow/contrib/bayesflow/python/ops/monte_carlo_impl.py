@@ -27,6 +27,7 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
+from tensorflow.python.util import deprecation
 
 __all__ = [
     'expectation',
@@ -66,7 +67,7 @@ def expectation_importance_sampler(f,
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `sampling_dist_q.log_prob`.
     sampling_dist_q:  The sampling distribution.
-      `tf.contrib.distributions.Distribution`.
+      `tfp.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
     z:  `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
@@ -141,7 +142,7 @@ def expectation_importance_sampler_logspace(
       shape broadcastable to `q.batch_shape`.
       For example, `log_p` works "just like" `q.log_prob`.
     sampling_dist_q:  The sampling distribution.
-      `tf.contrib.distributions.Distribution`.
+      `tfp.distributions.Distribution`.
       `float64` `dtype` recommended.
       `log_p` and `q` should be supported on the same set.
     z:  `Tensor` of samples from `q`, produced by `q.sample` for some `n`.
@@ -188,6 +189,12 @@ def _logspace_mean(log_values):
   return log_mean_of_values
 
 
+@deprecation.deprecated(
+    '2018-10-01',
+    'The tf.contrib.bayesflow library has moved to '
+    'TensorFlow Probability (https://github.com/tensorflow/probability). '
+    'Use `tfp.monte_carlo.expectation` instead.',
+    warn_once=True)
 def expectation(f, samples, log_prob=None, use_reparametrization=True,
                 axis=0, keep_dims=False, name=None):
   r"""Computes the Monte-Carlo approximation of \\(E_p[f(X)]\\).
@@ -236,17 +243,17 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   Example Use:
 
   ```python
-  bf = tf.contrib.bayesflow
-  ds = tf.contrib.distributions
+  import tensorflow_probability as tfp
+  tfd = tfp.distributions
 
   # Monte-Carlo approximation of a reparameterized distribution, e.g., Normal.
 
   num_draws = int(1e5)
-  p = ds.Normal(loc=0., scale=1.)
-  q = ds.Normal(loc=1., scale=2.)
-  exact_kl_normal_normal = ds.kl_divergence(p, q)
+  p = tfd.Normal(loc=0., scale=1.)
+  q = tfd.Normal(loc=1., scale=2.)
+  exact_kl_normal_normal = tfd.kl_divergence(p, q)
   # ==> 0.44314718
-  approx_kl_normal_normal = bf.expectation(
+  approx_kl_normal_normal = tfp.monte_carlo.expectation(
       f=lambda x: p.log_prob(x) - q.log_prob(x),
       samples=p.sample(num_draws, seed=42),
       log_prob=p.log_prob,
@@ -260,9 +267,9 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   num_draws = int(1e5)
   p = ds.Gamma(concentration=1., rate=1.)
   q = ds.Gamma(concentration=2., rate=3.)
-  exact_kl_gamma_gamma = ds.kl_divergence(p, q)
+  exact_kl_gamma_gamma = tfd.kl_divergence(p, q)
   # ==> 0.37999129
-  approx_kl_gamma_gamma = bf.expectation(
+  approx_kl_gamma_gamma = tfp.monte_carlo.expectation(
       f=lambda x: p.log_prob(x) - q.log_prob(x),
       samples=p.sample(num_draws, seed=42),
       log_prob=p.log_prob,
@@ -278,7 +285,7 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
   KL-divergence, the following is preferred:
 
   ```python
-  approx_kl_p_q = bf.monte_carlo_csiszar_f_divergence(
+  approx_kl_p_q = tfp.vi.monte_carlo_csiszar_f_divergence(
       f=bf.kl_reverse,
       p_log_prob=q.log_prob,
       q=p,
@@ -346,12 +353,12 @@ def expectation(f, samples, log_prob=None, use_reparametrization=True,
 
 def _sample_mean(values):
   """Mean over sample indices.  In this module this is always [0]."""
-  return math_ops.reduce_mean(values, reduction_indices=[0])
+  return math_ops.reduce_mean(values, axis=[0])
 
 
 def _sample_max(values):
   """Max over sample indices.  In this module this is always [0]."""
-  return math_ops.reduce_max(values, reduction_indices=[0])
+  return math_ops.reduce_max(values, axis=[0])
 
 
 def _get_samples(dist, z, n, seed):

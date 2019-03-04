@@ -38,6 +38,7 @@ from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gen_script_ops
 from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.util import compat
+from tensorflow.python.util import deprecation
 from tensorflow.python.util import nest
 from tensorflow.python.util.tf_export import tf_export
 
@@ -287,31 +288,32 @@ def _internal_py_func(func,
 
 # TODO(akshayka): Implement higher-order derivatives.
 @ops.RegisterGradient("EagerPyFunc")
-def _EagerPyFuncGrad(op, dy):
+def _EagerPyFuncGrad(op, *dy):
   """Computes the gradient of an EagerPyFunc."""
 
   token = op.get_attr("token")
 
-  def eagerly_executed_grad(dy):
+  def eagerly_executed_grad(*dy):
     tape, eager_inputs, eager_outputs = tape_cache.pop(compat.as_bytes(token))
     return tape.gradient(eager_outputs, eager_inputs, output_gradients=dy)
 
   with ops.control_dependencies(op.outputs):
     return _internal_py_func(
         func=eagerly_executed_grad,
-        inp=[dy] if isinstance(dy, ops.Tensor) else dy,
+        inp=dy,
         Tout=[tensor.dtype for tensor in op.inputs],
         eager=True,
         is_grad_func=True)
 
 
+@tf_export("py_function")
 def eager_py_func(func, inp, Tout, name=None):
   """Wraps a python function into a TensorFlow op that executes it eagerly.
 
   This function allows expressing computations in a TensorFlow graph as
   Python functions. In particular, it wraps a Python function `func`
   in a once-differentiable TensorFlow operation that executes it with eager
-  exeuction enabled. As a consequence, `tf.contrib.eager.py_func` makes it
+  execution enabled. As a consequence, `tf.contrib.eager.py_func` makes it
   possible to express control flow using Python constructs (`if`, `while`,
   `for`, etc.), instead of TensorFlow control flow constructs (`tf.cond`,
   `tf.while_loop`). For example, you might use `tf.contrib.eager.py_func` to
@@ -387,7 +389,20 @@ def eager_py_func(func, inp, Tout, name=None):
   return _internal_py_func(func=func, inp=inp, Tout=Tout, eager=True, name=name)
 
 
-@tf_export("py_func")
+@deprecation.deprecated(
+    date=None,
+    instructions="""tf.py_func is deprecated in TF V2. Instead, there are two
+    options available in V2.
+    - tf.py_function takes a python function which manipulates tf eager
+    tensors instead of numpy arrays. It's easy to convert a tf eager tensor to
+    an ndarray (just call tensor.numpy()) but having access to eager tensors
+    means `tf.py_function`s can use accelerators such as GPUs as well as
+    being differentiable using a gradient tape.
+    - tf.numpy_function maintains the semantics of the deprecated tf.py_func
+    (it is not differentiable, and manipulates numpy arrays). It drops the
+    stateful argument making all functions stateful.
+    """)
+@tf_export(v1=["py_func"])
 def py_func(func, inp, Tout, stateful=True, name=None):
   """Wraps a python function and uses it as a TensorFlow op.
 
@@ -455,6 +470,13 @@ def py_func(func, inp, Tout, stateful=True, name=None):
 
   return _internal_py_func(
       func=func, inp=inp, Tout=Tout, stateful=stateful, eager=False, name=name)
+
+@tf_export("numpy_function", v1=[])
+def numpy_function(func, inp, Tout, name=None):
+  return py_func(func, inp, Tout, stateful=True, name=name)
+
+numpy_function.__doc__ = py_func.__doc__.replace(
+    "py_func", "numpy_function")
 
 
 ops.NotDifferentiable("PyFunc")

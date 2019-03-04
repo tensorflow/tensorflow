@@ -20,6 +20,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
+#include "absl/container/node_hash_map.h"
 #include "absl/types/optional.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/executable.h"
@@ -58,7 +59,7 @@ class NVPTXCompiler : public LLVMCompiler {
       DeviceMemoryAllocator* device_allocator) override;
 
   StatusOr<std::vector<std::unique_ptr<AotCompilationResult>>>
-  CompileAheadOfTime(std::vector<std::unique_ptr<HloModule>> module,
+  CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
                      AotCompilationOptions const& options) override;
 
   se::Platform::Id PlatformId() const override;
@@ -96,8 +97,9 @@ class NVPTXCompiler : public LLVMCompiler {
 
   // Tries to compile the given ptx string to cubin.  Returns a vector with the
   // compiled cubin.  If compilation was unsuccessful, returns an empty vector.
-  std::vector<uint8> CompilePtxOrGetCachedResult(const string& ptx,
-                                                 int cc_major, int cc_minor);
+  std::vector<uint8> CompilePtxOrGetCachedResult(
+      const string& ptx, int cc_major, int cc_minor,
+      const HloModuleConfig& hlo_module_config);
 
   // The compilation_cache_ map is a cache from {ptx string, cc_major, cc_minor}
   // -> cubin so we don't recompile the same ptx twice.  This is important for
@@ -140,10 +142,10 @@ class NVPTXCompiler : public LLVMCompiler {
     tensorflow::condition_variable compilation_done_cv_;
   };
 
-  // Don't even think about switching this to FlatMap; iterator stability is
-  // critical here.
-  std::unordered_map<CompilationCacheKey, CompilationCacheValue,
-                     CompilationCacheHash, CompilationCacheEq>
+  // Don't even think about switching this to flat_hash_map; iterator stability
+  // is critical here.
+  absl::node_hash_map<CompilationCacheKey, CompilationCacheValue,
+                      CompilationCacheHash, CompilationCacheEq>
       compilation_cache_ GUARDED_BY(mutex_);
 
   TF_DISALLOW_COPY_AND_ASSIGN(NVPTXCompiler);

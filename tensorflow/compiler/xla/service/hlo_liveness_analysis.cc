@@ -17,6 +17,7 @@ limitations under the License.
 
 #include <deque>
 
+#include "absl/container/flat_hash_set.h"
 #include "absl/memory/memory.h"
 #include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/map_util.h"
@@ -36,11 +37,11 @@ namespace xla {
 namespace {
 
 using Worklist = std::deque<const HloInstruction*>;
-using Workset = std::unordered_set<const HloInstruction*>;
+using Workset = absl::flat_hash_set<const HloInstruction*>;
 
 void AddToWorklist(const HloInstruction* instruction, Worklist* worklist,
                    Workset* workset) {
-  if (workset->count(instruction) == 0) {
+  if (!workset->contains(instruction)) {
     worklist->push_back(instruction);
     workset->insert(instruction);
     VLOG(3) << "ADD instruction: " << instruction->name();
@@ -219,6 +220,33 @@ void PropagateLivenessToParameterCallers(
   }
 }
 
+// Makes sure that if a live instruction is within a computation used in control
+// flow operations, we mark live even other related instructions.
+void PropagateLivenessThroughControlFlow(
+    const HloInstruction* instruction,
+    HloLivenessAnalysis::HloIndexMap* live_index_map, Worklist* worklist,
+    Workset* workset, CallGraph* call_graph) {
+  const CallGraphNode& call_graph_node =
+      call_graph->GetNode(instruction->parent());
+  if (call_graph_node.context() == CallContext::kSequential) {
+    for (const CallSite& callsite : call_graph_node.caller_callsites()) {
+      HloInstruction* caller = callsite.instruction();
+      if (caller->opcode() == HloOpcode::kWhile) {
+        // If a live instruction is within the %while body or condition
+        // computation, mark the predicate value returned by the condition
+        // computation live as well.
+        MarkLiveAtIndex(caller->while_condition()->root_instruction(), {},
+                        live_index_map, worklist, workset);
+      } else if (caller->opcode() == HloOpcode::kConditional) {
+        // If a live instruction is within the true or false branches of a
+        // conditional, we mark the predicate operand live as well.
+        MarkLiveAtIndex(caller->operand(0), {}, live_index_map, worklist,
+                        workset);
+      }
+    }
+  }
+}
+
 }  // namespace
 
 HloLivenessAnalysis::HloLivenessAnalysis(const HloModule& module)
@@ -257,12 +285,10 @@ void HloLivenessAnalysis::RunAnalysis() {
     } else if (instruction->opcode() == HloOpcode::kGetTupleElement) {
       PropagateLivenessThroughGTE(instruction, &live_index_map_, &worklist,
                                   &workset);
-    } else if (instruction->opcode() == HloOpcode::kWhile &&
-               ShapeUtil::IsTuple(instruction->shape())) {
+    } else if (instruction->opcode() == HloOpcode::kWhile) {
       PropagateLivenessThroughWhile(instruction, &live_index_map_, &worklist,
                                     &workset);
-    } else if (instruction->opcode() == HloOpcode::kParameter &&
-               ShapeUtil::IsTuple(instruction->shape())) {
+    } else if (instruction->opcode() == HloOpcode::kParameter) {
       PropagateLivenessToParameterCallers(instruction, &live_index_map_,
                                           &worklist, &workset,
                                           call_graph_.get());
@@ -277,6 +303,8 @@ void HloLivenessAnalysis::RunAnalysis() {
         MarkLiveAtAllIndices(operand, &live_index_map_, &worklist, &workset);
       }
     }
+    PropagateLivenessThroughControlFlow(instruction, &live_index_map_,
+                                        &worklist, &workset, call_graph_.get());
   }
 }
 

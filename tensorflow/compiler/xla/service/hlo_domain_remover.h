@@ -26,7 +26,7 @@ namespace xla {
 // Removes all the kDomain instructions of a given kind from the input module,
 // and calls the normalizer to propagate the properties on the possibly new born
 // instructions.
-class HloDomainRemover : public HloPassInterface {
+class HloDomainRemover : public HloModulePass {
  public:
   // Creates a new HloDomainRemover object tasked at removing all the kDomain
   // instructions of a given kind.

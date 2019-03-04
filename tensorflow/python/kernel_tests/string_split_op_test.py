@@ -22,6 +22,7 @@ import numpy as np
 
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors_impl
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import string_ops
 from tensorflow.python.platform import test
@@ -32,19 +33,20 @@ class StringSplitOpTest(test.TestCase):
   def testStringSplit(self):
     strings = ["pigs on the wing", "animals"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split(strings)
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0]])
       self.assertAllEqual(values, [b"pigs", b"on", b"the", b"wing", b"animals"])
       self.assertAllEqual(shape, [2, 4])
 
+  @test_util.run_deprecated_v1
   def testStringSplitEmptyDelimiter(self):
     strings = ["hello", "hola", b"\xF0\x9F\x98\x8E"]  # Last string is U+1F60E
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split(strings, delimiter="")
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [0, 4],
                                     [1, 0], [1, 1], [1, 2], [1, 3], [2, 0],
                                     [2, 1], [2, 2], [2, 3]])
@@ -60,9 +62,9 @@ class StringSplitOpTest(test.TestCase):
   def testStringSplitEmptyToken(self):
     strings = ["", " a", "b ", " c", " ", " d ", "  e", "f  ", "  g  ", "  "]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split(strings)
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(
           indices,
           [[1, 0], [2, 0], [3, 0], [5, 0], [6, 0], [7, 0], [8, 0]])
@@ -72,19 +74,20 @@ class StringSplitOpTest(test.TestCase):
   def testStringSplitOnSetEmptyToken(self):
     strings = ["", " a", "b ", " c", " ", " d ", ". e", "f .", " .g. ", " ."]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split(strings, delimiter=" .")
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(
           indices,
           [[1, 0], [2, 0], [3, 0], [5, 0], [6, 0], [7, 0], [8, 0]])
       self.assertAllEqual(values, [b"a", b"b", b"c", b"d", b"e", b"f", b"g"])
       self.assertAllEqual(shape, [10, 1])
 
+  @test_util.run_deprecated_v1
   def testStringSplitWithDelimiter(self):
     strings = ["hello|world", "hello world"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self.assertRaises(
           ValueError, string_ops.string_split, strings, delimiter=["|", ""])
 
@@ -92,21 +95,22 @@ class StringSplitOpTest(test.TestCase):
           ValueError, string_ops.string_split, strings, delimiter=["a"])
 
       tokens = string_ops.string_split(strings, delimiter="|")
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0]])
       self.assertAllEqual(values, [b"hello", b"world", b"hello world"])
       self.assertAllEqual(shape, [2, 2])
 
       tokens = string_ops.string_split(strings, delimiter="| ")
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [1, 0], [1, 1]])
       self.assertAllEqual(values, [b"hello", b"world", b"hello", b"world"])
       self.assertAllEqual(shape, [2, 2])
 
+  @test_util.run_deprecated_v1
   def testStringSplitWithDelimiterTensor(self):
     strings = ["hello|world", "hello world"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       delimiter = array_ops.placeholder(dtypes.string)
 
       tokens = string_ops.string_split(strings, delimiter=delimiter)
@@ -121,10 +125,11 @@ class StringSplitOpTest(test.TestCase):
       self.assertAllEqual(values, [b"hello", b"world", b"hello world"])
       self.assertAllEqual(shape, [2, 2])
 
+  @test_util.run_deprecated_v1
   def testStringSplitWithDelimitersTensor(self):
     strings = ["hello.cruel,world", "hello cruel world"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       delimiter = array_ops.placeholder(dtypes.string)
 
       tokens = string_ops.string_split(strings, delimiter=delimiter)
@@ -143,18 +148,18 @@ class StringSplitOpTest(test.TestCase):
   def testStringSplitWithNoSkipEmpty(self):
     strings = ["#a", "b#", "#c#"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split(strings, "#", skip_empty=False)
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1],
                                     [1, 0], [1, 1],
                                     [2, 0], [2, 1], [2, 2]])
       self.assertAllEqual(values, [b"", b"a", b"b", b"", b"", b"c", b""])
       self.assertAllEqual(shape, [3, 3])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split(strings, "#")
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(values, [b"a", b"b", b"c"])
       self.assertAllEqual(indices, [[0, 0], [1, 0], [2, 0]])
       self.assertAllEqual(shape, [3, 1])
@@ -165,9 +170,9 @@ class StringSplitV2OpTest(test.TestCase):
   def testSplitV2(self):
     strings = ["pigs on the wing", "animals"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split_v2(strings)
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2], [0, 3], [1, 0]])
       self.assertAllEqual(values, [b"pigs", b"on", b"the", b"wing", b"animals"])
       self.assertAllEqual(shape, [2, 4])
@@ -180,9 +185,9 @@ class StringSplitV2OpTest(test.TestCase):
     # ['', '', '4', '5', '', '6', '']
     strings = ["1<>2<>3", "<><>4<>5<><>6<>"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split_v2(strings, sep="<>")
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(
           indices, [[0, 0], [0, 1], [0, 2],
                     [1, 0], [1, 1], [1, 2], [1, 3], [1, 4], [1, 5], [1, 6]])
@@ -198,9 +203,9 @@ class StringSplitV2OpTest(test.TestCase):
     # ['1', '2', '', '3', '']
     strings = ["1,2,3", "4,5,,6,"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split_v2(strings, sep=',')
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2],
                                     [1, 0], [1, 1], [1, 2], [1, 3], [1, 4]])
       self.assertAllEqual(values, [b"1", b"2", b"3",
@@ -215,9 +220,9 @@ class StringSplitV2OpTest(test.TestCase):
     #['1', '2', '3']
     strings = ["1 2 3", "  4  5    6  "]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split_v2(strings)
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1], [0, 2],
                                     [1, 0], [1, 1], [1, 2]])
       self.assertAllEqual(values, [b"1", b"2", b"3", b"4", b"5", b"6"])
@@ -231,9 +236,9 @@ class StringSplitV2OpTest(test.TestCase):
     # ['4', '5,,6,']
     strings = ["1,2,3", "4,5,,6,"]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split_v2(strings, sep=',', maxsplit=1)
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1],
                                     [1, 0], [1, 1]])
       self.assertAllEqual(values, [b"1", b"2,3", b"4", b"5,,6,"])
@@ -247,9 +252,9 @@ class StringSplitV2OpTest(test.TestCase):
     # ['4', '5    6  ']
     strings = ["1 2 3", "  4  5    6  "]
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       tokens = string_ops.string_split_v2(strings, maxsplit=1)
-      indices, values, shape = sess.run(tokens)
+      indices, values, shape = self.evaluate(tokens)
       self.assertAllEqual(indices, [[0, 0], [0, 1],
                                     [1, 0], [1, 1]])
       self.assertAllEqual(values, [b"1", b"2 3", b"4", b"5    6  "])

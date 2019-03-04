@@ -57,7 +57,7 @@ class TransferManager {
   // without waiting for any other operation on a stream to complete.
   //
   // This function should be avoided in favor of the asynchronous version below.
-  virtual StatusOr<std::unique_ptr<Literal>> TransferLiteralFromDevice(
+  virtual StatusOr<Literal> TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer);
   virtual Status TransferLiteralFromDevice(
       se::Stream* stream, const ShapedBuffer& device_buffer,
@@ -95,7 +95,13 @@ class TransferManager {
   // but need not have the same layout.
   //
   // This operation is performed asynchronously on the given stream. It returns
-  // once the transfer is enqueued.
+  // once the transfer is enqueued, and may return before the transfer has
+  // completed.
+  //
+  // The caller may free the data structures 'literal' and 'device_buffer'
+  // immediately after this function returns, however their constituent buffers
+  // on both host and device must remain valid until the enqueued transfer has
+  // completed on 'stream'.
   virtual Status TransferLiteralToDeviceAsync(
       se::Stream* stream, const LiteralSlice& literal,
       const ShapedBuffer& device_buffer) = 0;
@@ -113,9 +119,9 @@ class TransferManager {
   Status TransferArrayToDeviceAsync(se::Stream* stream,
                                     const LiteralSlice& literal,
                                     const se::DeviceMemoryBase& dest);
-  StatusOr<std::unique_ptr<Literal>> TransferArrayFromDevice(
-      se::Stream* stream, const Shape& shape,
-      const se::DeviceMemoryBase& source);
+  StatusOr<Literal> TransferArrayFromDevice(se::Stream* stream,
+                                            const Shape& shape,
+                                            const se::DeviceMemoryBase& source);
 
   // Transfers the given literal into the Infeed interface of the device,
   // using the given executor.
@@ -139,6 +145,12 @@ class TransferManager {
                                const ShapedBuffer& device_buffer);
   Status WriteTupleIndexTablesAsync(se::Stream* stream,
                                     const ShapedBuffer& device_buffer);
+
+  // Writes a tuple index buffer for the root of 'device_buffer', which must
+  // be a tuple. Unlike WriteTupleIndexTables, only writes the root buffer,
+  // rather than writing all subbuffers. This method is always asynchronous.
+  Status WriteRootTupleIndexTable(se::Stream* stream,
+                                  const ShapedBuffer& device_buffer);
 
   // Determines the byte size requirement for the given shape on the underlying
   // architecture. This will be used to allocate an appropriately sized memory

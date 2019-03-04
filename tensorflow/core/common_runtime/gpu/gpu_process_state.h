@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/process_state.h"
+#include "tensorflow/core/common_runtime/shared_counter.h"
 #include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/thread_annotations.h"
@@ -32,13 +33,25 @@ limitations under the License.
 namespace tensorflow {
 
 class Allocator;
-class VisitableAllocator;
 class PoolAllocator;
+class SharedCounter;
 
 // Singleton that manages per-process state when GPUs are present.
 class GPUProcessState {
  public:
-  static GPUProcessState* singleton();
+  // If ps == nullptr, returns pointer to the single instance of this class to
+  // be used within this process.
+  //
+  // If ps != nullptrs, accepts a value to be returned by all subsequent calls.
+  // A non-null ps may ONLY be provided during program static storage
+  // initialization.  Must not be called more than once with a non-null ps.
+  //
+  // If a derived class of GPUProcessState is ever used in a process, it must
+  // always be used in place of this class.  In order to ensure that existing
+  // calls to GPUProcessState::singleton() all resolve to the derived instance
+  // instead, this function must be called once during startup, supplying the
+  // derived instance value, prior to any accessor call to this function.
+  static GPUProcessState* singleton(GPUProcessState* ps = nullptr);
 
   // Query whether any GPU device has been created so far.
   // Disable thread safety analysis since a race is benign here.
@@ -72,21 +85,39 @@ class GPUProcessState {
 
   virtual Allocator* GetCUDAHostAllocator(int numa_node);
 
-  // Registers a function to be called once on every new Region
-  // allocated by every GPURegionAllocator proximate to the specified
-  // bus.  The AllocVisitor is provided with a memory pointer and the
-  // size of the area it identifies.  The pointer is not guaranteed to
-  // be valid after the call terminates.  The intention is for this
-  // interface to be used for network device memory registration.
-  // "bus_id" is platform-specific.  On many platforms it
-  // should be 0.  On machines with multiple PCIe buses, it should be
-  // the index of one of the PCIe buses.  If the bus_id is invalid,
-  // results are undefined.
-  typedef std::function<void(void*, size_t)> AllocVisitor;
-  virtual void AddGPUAllocVisitor(int bus_id, const AllocVisitor& visitor);
+  // Registers a Visitor to be invoked on new chunks of memory allocated by the
+  // SubAllocator of every GPU proximate to the specified bus.  The AllocVisitor
+  // is provided with a memory pointer, a GPU id, and the size of the area it
+  // identifies.  The pointer is not guaranteed to be valid after the call
+  // terminates.  The intention is for this interface to be used for network
+  // device memory registration.  "bus_id" is platform-specific.  On many
+  // platforms it should be 0.  On machines with multiple PCIe buses, it should
+  // be the index of one of the PCIe buses (maybe the NUMA node at which the
+  // PCIe is rooted).  If the bus_id is invalid, results are undefined.
+  virtual void AddGPUAllocVisitor(int bus_id,
+                                  const SubAllocator::Visitor& visitor);
+
+  // Registers a Visitor to be invoked on new chunks of memory allocated by
+  // the SubAllocator of the CUDAHostAllocator for the given numa_node.
+  virtual void AddCUDAHostAllocVisitor(int numa_node,
+                                       const SubAllocator::Visitor& visitor);
+
+  // Registers a Visitor to be invoked on each chunk handed back for freeing to
+  // the SubAllocator of the CUDAHostAllocator for the given numa_node.
+  virtual void AddCUDAHostFreeVisitor(int numa_node,
+                                      const SubAllocator::Visitor& visitor);
+
+  // Returns bus_id for the given GPU id.
+  virtual int BusIdForGPU(TfGpuId tf_gpu_id);
+
+  SharedCounter* GPUAllocatorCounter(TfGpuId tf_gpu_id);
 
  protected:
+  // GPUProcessState is a singleton that should not normally be deleted except
+  // at process shutdown.
   GPUProcessState();
+  virtual ~GPUProcessState() {}
+  friend class GPUDeviceTest;
 
   // Helper method for unit tests to reset the ProcessState singleton by
   // cleaning up everything. Never use in production.
@@ -103,18 +134,20 @@ class GPUProcessState {
 
   mutex mu_;
 
-  std::vector<VisitableAllocator*> gpu_allocators_ GUARDED_BY(mu_);
-  std::vector<std::vector<AllocVisitor>> gpu_visitors_ GUARDED_BY(mu_);
-  std::vector<Allocator*> cuda_host_allocators_ GUARDED_BY(mu_);
+  struct AllocatorParts {
+    std::unique_ptr<Allocator> allocator;
+    std::unique_ptr<SharedCounter> counter;
+    SubAllocator* sub_allocator;  // owned by allocator
+    std::unique_ptr<Allocator> recording_allocator;
+  };
+  std::vector<AllocatorParts> gpu_allocators_ GUARDED_BY(mu_);
+  std::vector<std::vector<SubAllocator::Visitor>> gpu_visitors_ GUARDED_BY(mu_);
 
-  virtual ~GPUProcessState();
-
-  // Optional RecordingAllocators that wrap the corresponding
-  // Allocators for runtime attribute use analysis.
-  std::vector<Allocator*> gpu_al_ GUARDED_BY(mu_);
-  std::vector<Allocator*> cuda_al_ GUARDED_BY(mu_);
-
-  friend class GPUDeviceTest;
+  std::vector<AllocatorParts> cuda_host_allocators_ GUARDED_BY(mu_);
+  std::vector<std::vector<SubAllocator::Visitor>> cuda_host_alloc_visitors_
+      GUARDED_BY(mu_);
+  std::vector<std::vector<SubAllocator::Visitor>> cuda_host_free_visitors_
+      GUARDED_BY(mu_);
 };
 
 }  // namespace tensorflow

@@ -75,6 +75,16 @@ void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
   }
 }
 
+void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
+               llvm::IRBuilder<>* b, llvm::Module* module) {
+  std::vector<llvm::Value*> buffer_ptrs;
+  buffer_ptrs.reserve(buffers.size());
+  absl::c_transform(
+      buffers, std::back_inserter(buffer_ptrs),
+      [](const llvm_ir::IrArray& buffer) { return buffer.GetBasePointer(); });
+  llvm_ir::EmitTuple(tuple, buffer_ptrs, b, module);
+}
+
 llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
                                  int alignment, llvm::Value* operand,
                                  llvm::IRBuilder<>* b, llvm::Module* module) {
@@ -83,7 +93,7 @@ llvm::Value* EmitGetTupleElement(const Shape& target_shape, int64 index,
   llvm::LoadInst* src_buffer = b->CreateLoad(element_ptr);
 
   // Mark the loaded pointer as dereferenceable if we know its shape.
-  if (!ShapeUtil::IsOpaque(target_shape)) {
+  if (!target_shape.IsOpaque()) {
     SetDereferenceableMetadataForLoad(
         src_buffer,
         ByteSizeOf(target_shape, src_buffer->getModule()->getDataLayout()));

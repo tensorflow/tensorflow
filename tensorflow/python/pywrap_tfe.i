@@ -22,8 +22,11 @@ limitations under the License.
 %rename("%s") TFE_ContextListDevices;
 %rename("%s") TFE_ContextAddFunction;
 %rename("%s") TFE_ContextAddFunctionDef;
+%rename("%s") TFE_ContextHasFunction;
 %rename("%s") TFE_ContextEnableRunMetadata;
 %rename("%s") TFE_ContextDisableRunMetadata;
+%rename("%s") TFE_ContextEnableGraphCollection;
+%rename("%s") TFE_ContextDisableGraphCollection;
 %rename("%s") TFE_ContextExportRunMetadata;
 %rename("%s") TFE_ContextClearCaches;
 %rename("%s") TFE_ContextGetDevicePlacementPolicy;
@@ -32,6 +35,15 @@ limitations under the License.
 %rename("%s") TFE_ContextSetServerDef;
 %rename("%s") TFE_ContextAsyncWait;
 %rename("%s") TFE_ContextAsyncClearError;
+%rename("%s") TFE_NewProfiler;
+%rename("%s") TFE_ProfilerIsOk;
+%rename("%s") TFE_DeleteProfiler;
+%rename("%s") TFE_ProfilerSerializeToString;
+%rename("%s") TFE_NewProfilerContext;
+%rename("%s") TFE_ProfilerContextSetEagerContext;
+%rename("%s") TFE_DeleteProfilerContext;
+%rename("%s") TFE_StartProfilerServer;
+%rename("%s") TFE_ProfilerClientStartTracing;
 %rename("%s") TFE_OpNameGetAttrType;
 %rename("%s") TFE_Py_InitEagerTensor;
 %rename("%s") TFE_Py_SetEagerTensorProfiler;
@@ -52,9 +64,10 @@ limitations under the License.
 %rename("%s") TFE_Py_TapeSetShouldRecord;
 %rename("%s") TFE_Py_TapeSetDeleteTrace;
 %rename("%s") TFE_Py_TapeSetRecordOperation;
-%rename("%s") TFE_Py_TapeSetWatchVariable;
 %rename("%s") TFE_Py_TapeGradient;
+%rename("%s") TFE_Py_TapeVariableAccessed;
 %rename("%s") TFE_Py_TapeWatch;
+%rename("%s") TFE_Py_TapeWatchVariable;
 %rename("%s") TFE_Py_TapeWatchedVariables;
 %rename("%s") TFE_NewContextOptions;
 %rename("%s") TFE_ContextOptionsSetConfig;
@@ -63,11 +76,18 @@ limitations under the License.
 %rename("%s") TFE_DeleteContextOptions;
 %rename("%s") TFE_Py_TensorShapeSlice;
 %rename("%s") TFE_Py_TensorShapeOnDevice;
+%rename("%s") TFE_Py_EnableInteractivePythonLogging;
 %rename("%s") TFE_ContextStartStep;
 %rename("%s") TFE_ContextEndStep;
+%rename("%s") TFE_Py_RegisterVSpace;
+%rename("%s") TFE_Py_EncodeArg;
+%rename("%s") TFE_EnableCollectiveOps;
+%rename("%s") TF_PickUnusedPortOrDie;
 
 %{
 #include "tensorflow/python/eager/pywrap_tfe.h"
+#include "tensorflow/c/c_api_experimental.h"
+#include "tensorflow/c/eager/c_api_experimental.h"
 %}
 
 %typemap(in) (const void* proto) {
@@ -130,6 +150,34 @@ limitations under the License.
   $1 = const_cast<char*>(TFE_GetPythonString($input));
 }
 
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* name {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* service_addr {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* logdir {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
+// For const parameters in a function, SWIG pretty much ignores the const.
+// See: http://www.swig.org/Doc2.0/SWIG.html#SWIG_nn13
+// Hence the 'const_cast'.
+%typemap(in) const char* worker_list {
+  $1 = const_cast<char*>(TFE_GetPythonString($input));
+}
+
 %typemap(in) (TFE_Context*) {
   $1 = (TFE_Context*)PyCapsule_GetPointer($input, nullptr);
 
@@ -166,6 +214,25 @@ limitations under the License.
       }
       if (EagerTensor_CheckExact(elem)) {
         (*$1)[i] = EagerTensor_Handle(elem);
+      } else if (tensorflow::swig::IsTensor(elem)) {
+        // If it isnt an EagerTensor, but is still a Tensor, it must be a graph
+        // tensor.
+        SWIG_exception_fail(
+            SWIG_TypeError,
+            tensorflow::strings::StrCat(
+                "An op outside of the function building code is being passed\n"
+                "a \"Graph\" tensor. It is possible to have Graph tensors\n"
+                "leak out of the function building context by including a\n"
+                "tf.init_scope in your function building code.\n"
+                "For example, the following function will fail:\n",
+                "  @tf.function\n",
+                "  def has_init_scope():\n",
+                "    my_constant = tf.constant(1.)\n",
+                "    with tf.init_scope():\n",
+                "      added = my_constant * 2\n",
+                "The graph tensor has name: ",
+                TFE_GetPythonString(PyObject_GetAttrString(elem, "name")))
+                .c_str());
       } else {
         SWIG_exception_fail(
             SWIG_TypeError,
@@ -186,7 +253,10 @@ limitations under the License.
                         "outputs of the operation)");
   }
   $1 = &temp;
-  $1->resize(PyInt_AsLong($input), nullptr);
+  long sz = PyInt_AsLong($input);
+  if (sz > 0) {
+    $1->resize(PyInt_AsLong($input), nullptr);
+  }
 }
 
 // Create new Status object.
@@ -203,6 +273,7 @@ limitations under the License.
     SWIG_fail;
   } else {
     int num_outputs = $1->size();
+    Py_CLEAR($result);
     $result = PyList_New(num_outputs);
     for (int i = 0; i < num_outputs; ++i) {
       PyObject *output;
@@ -219,6 +290,8 @@ limitations under the License.
 %native(TFE_Py_FastPathExecute) TFE_Py_FastPathExecute_C;
 
 %include "tensorflow/python/eager/pywrap_tfe.h"
+%include "tensorflow/c/c_api_experimental.h"
+%include "tensorflow/c/eager/c_api_experimental.h"
 
 // Clear all typemaps.
 %typemap(out) TF_DataType;

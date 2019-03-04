@@ -7,6 +7,7 @@ load("@bazel_tools//tools/build_defs/pkg:pkg.bzl", "pkg_tar")
 load("@local_config_syslibs//:build_defs.bzl", "if_not_system_lib")
 load("//tensorflow:tensorflow.bzl", "tf_binary_additional_srcs")
 load("//tensorflow:tensorflow.bzl", "if_cuda")
+load("//tensorflow:tensorflow.bzl", "if_not_windows")
 load("//third_party/mkl:build_defs.bzl", "if_mkl")
 
 genrule(
@@ -38,6 +39,7 @@ pkg_tar(
     extension = "tar.gz",
     files = [
         "include/tensorflow/jni/LICENSE",
+        "//:LICENSE",
         "//tensorflow/java:libtensorflow_jni",
     ],
     # Mark as "manual" till
@@ -86,7 +88,13 @@ pkg_tar(
 
 pkg_tar(
     name = "clib",
-    files = ["//tensorflow:libtensorflow.so"],
+    files = select({
+        "//tensorflow:windows": [
+            "//tensorflow:tensorflow.dll",
+            "//tensorflow:tensorflow_dll_import_lib",
+        ],
+        "//conditions:default": ["//tensorflow:libtensorflow.so"],
+    }),
     package_dir = "lib",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
@@ -99,7 +107,10 @@ pkg_tar(
 
 pkg_tar(
     name = "clicenses",
-    files = [":include/tensorflow/c/LICENSE"],
+    files = [
+        ":include/tensorflow/c/LICENSE",
+        "//:LICENSE",
+    ],
     package_dir = "include/tensorflow/c",
     # Mark as "manual" till
     # https://github.com/bazelbuild/bazel/issues/2352
@@ -112,6 +123,7 @@ pkg_tar(
 genrule(
     name = "clicenses_generate",
     srcs = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
@@ -125,8 +137,9 @@ genrule(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@hwloc//:COPYING",
+        "@icu//:icu4c/LICENSE",
         "@jpeg//:LICENSE.md",
-        "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -135,24 +148,26 @@ genrule(
         "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ] + select({
-        "//tensorflow:with_aws_support": [
+    ] + if_not_windows([
+        "@llvm//:LICENSE.TXT",
+    ]) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
             "@aws//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
@@ -160,6 +175,7 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",
@@ -167,7 +183,6 @@ genrule(
         "grpc",
         [
             "@grpc//:LICENSE",
-            "@grpc//third_party/nanopb:LICENSE.txt",
             "@grpc//third_party/address_sorting:LICENSE",
         ],
     ),
@@ -179,6 +194,7 @@ genrule(
 genrule(
     name = "jnilicenses_generate",
     srcs = [
+        "//third_party/icu/data:LICENSE",
         "//third_party/hadoop:LICENSE.txt",
         "//third_party/eigen3:LICENSE",
         "//third_party/fft2d:LICENSE",
@@ -192,8 +208,9 @@ genrule(
         "@gemmlowp//:LICENSE",
         "@gif_archive//:COPYING",
         "@highwayhash//:LICENSE",
+        "@hwloc//:COPYING",
+        "@icu//:icu4j/main/shared/licenses/LICENSE",
         "@jpeg//:LICENSE.md",
-        "@llvm//:LICENSE.TXT",
         "@lmdb//:LICENSE",
         "@local_config_sycl//sycl:LICENSE.text",
         "@nasm//:LICENSE",
@@ -202,24 +219,28 @@ genrule(
         "@protobuf_archive//:LICENSE",
         "@snappy//:COPYING",
         "@zlib_archive//:zlib.h",
-    ] + select({
-        "//tensorflow:with_aws_support": [
+        "@grpc//:LICENSE",
+        "@grpc//third_party/address_sorting:LICENSE",
+    ] + if_not_windows([
+        "@llvm//:LICENSE.TXT",
+    ]) + select({
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_aws_support": [],
+        "//conditions:default": [
             "@aws//:LICENSE",
         ],
-        "//conditions:default": [],
     }) + select({
-        "//tensorflow:with_gcp_support": [
+        "//tensorflow:android": [],
+        "//tensorflow:ios": [],
+        "//tensorflow:linux_s390x": [],
+        "//tensorflow:windows": [],
+        "//tensorflow:no_gcp_support": [],
+        "//conditions:default": [
             "@com_github_googlecloudplatform_google_cloud_cpp//:LICENSE",
         ],
-        "//conditions:default": [],
-    }) + select({
-        "//tensorflow:with_jemalloc_linux_x86_64": [
-            "@jemalloc//:COPYING",
-        ],
-        "//tensorflow:with_jemalloc_linux_ppc64le": [
-            "@jemalloc//:COPYING",
-        ],
-        "//conditions:default": [],
     }) + select({
         "//tensorflow/core/kernels:xsmm": [
             "@libxsmm_archive//:LICENSE.md",
@@ -227,6 +248,7 @@ genrule(
         "//conditions:default": [],
     }) + if_cuda([
         "@cub_archive//:LICENSE.TXT",
+        "@local_config_nccl//:LICENSE",
     ]) + if_mkl([
         "//third_party/mkl:LICENSE",
         "//third_party/mkl_dnn:LICENSE",

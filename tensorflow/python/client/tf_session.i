@@ -463,7 +463,7 @@ TF_ImportGraphDefResultsMissingUnusedInputMappings_wrapper{
 }
 
 // Override default py3 behavior of attempting to encode into Unicode.
-%typemap(out) std::string tensorflow::GetResourceHandleShapeAndType {
+%typemap(out) std::string tensorflow::GetHandleShapeAndType {
   $result = PyBytes_FromStringAndSize($1.data(), $1.size());
 }
 
@@ -599,6 +599,27 @@ def TF_Reset(target, containers=None, config=None):
       opers.push_back(oper_ptr);
     }
     $1 = &opers;
+  } else {
+    $1 = nullptr;
+  }
+}
+
+// $input is a Python list of wrapped TF_Operations
+%typemap(in) (const std::vector<TF_Operation*>* control_outputs)
+    (std::vector<TF_Operation*> control_outputs) {
+  if ($input != Py_None) {
+    if (!PyList_Check($input)) {
+      SWIG_exception_fail(SWIG_TypeError, "$symname: expected list");
+    }
+    size_t size = PyList_Size($input);
+    for (int i = 0; i < size; ++i) {
+      PyObject* item = PyList_GetItem($input, i);
+      TF_Operation* oper_ptr;
+      SWIG_ConvertPtr(item, reinterpret_cast<void**>(&oper_ptr),
+                      $descriptor(TF_Operation*), 0);
+      control_outputs.push_back(oper_ptr);
+    }
+    $1 = &control_outputs;
   } else {
     $1 = nullptr;
   }
@@ -782,7 +803,7 @@ def TF_Reset(target, containers=None, config=None):
 %unignore TF_TryEvaluateConstant_wrapper;
 %noexception TF_TryEvaluateConstant_wrapper;
 %unignore ExtendSession;
-%unignore ResourceHandleShapeAndType;
+%unignore HandleShapeAndType;
 
 %include "tensorflow/python/client/tf_session_helper.h"
 

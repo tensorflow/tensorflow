@@ -94,13 +94,15 @@ def main(_):
         "sepal_length", "sepal_width", "petal_length", "petal_width", "label"]
     batch_size = 32
     def training_input_fn():
-      return tf.contrib.data.make_csv_dataset(
-          [training_data_path], batch_size,
-          column_names=column_names, label_name="label")
+      return tf.data.experimental.make_csv_dataset([training_data_path],
+                                                   batch_size,
+                                                   column_names=column_names,
+                                                   label_name="label")
     def test_input_fn():
-      return tf.contrib.data.make_csv_dataset(
-          [test_data_path], batch_size,
-          column_names=column_names, label_name="label")
+      return tf.data.experimental.make_csv_dataset([test_data_path],
+                                                   batch_size,
+                                                   column_names=column_names,
+                                                   label_name="label")
     feature_columns = [tf.feature_column.numeric_column(feature)
                        for feature in column_names[:-1]]
 

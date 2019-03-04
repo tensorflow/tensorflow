@@ -85,7 +85,7 @@ class ReverseSequenceTest(xla_test.XLATestCase):
 
   def testSeqLength(self):
     for dtype in self.all_types:
-      for seq_dtype in self.int_types:
+      for seq_dtype in self.all_types & {np.int32, np.int64}:
         self._testBasic(dtype, seq_dtype)
 
 

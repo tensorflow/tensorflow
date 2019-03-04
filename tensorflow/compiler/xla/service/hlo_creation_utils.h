@@ -16,6 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CREATION_UTILS_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_HLO_CREATION_UTILS_H_
 
+#include "tensorflow/compiler/xla/literal_util.h"
 #include "tensorflow/compiler/xla/service/hlo_computation.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -48,8 +49,9 @@ StatusOr<HloInstruction*> MakeSliceHlo(HloInstruction* operand,
 // Creates a convolution HLO instruction and adds it to the computation
 // containing `lhs` and `rhs` (`lhs` and `rhs` must be in the same computation).
 StatusOr<HloInstruction*> MakeConvolveHlo(
-    HloInstruction* lhs, HloInstruction* rhs, const Window& window,
-    const ConvolutionDimensionNumbers& dimension_numbers);
+    HloInstruction* lhs, HloInstruction* rhs, int64 feature_group_count,
+    const Window& window, const ConvolutionDimensionNumbers& dimension_numbers,
+    const PrecisionConfig& precision_config);
 
 // Creates a transpose HLO instruction and adds it to the computation containing
 // `operand`.
@@ -80,9 +82,9 @@ StatusOr<HloInstruction*> MakeDynamicUpdateSliceHlo(
 
 // Creates a broadcast HLO instruction and adds it to the computation containing
 // `operand`.
-StatusOr<HloInstruction*> MakeBroadcastHlo(
-    HloInstruction* operand, absl::Span<const int64> broadcast_dimensions,
-    absl::Span<const int64> result_shape_bounds);
+HloInstruction* MakeBroadcastHlo(HloInstruction* operand,
+                                 absl::Span<const int64> broadcast_dimensions,
+                                 absl::Span<const int64> result_shape_bounds);
 
 // Creates a GetTupleElement HLO instruction and adds it to the computation
 // containing `operand`.
@@ -98,12 +100,51 @@ StatusOr<HloInstruction*> MakeConcatHlo(
 // Creates a Dot HLO instruction and adds it to the computation containing `lhs`
 // and `rhs` (both must be in the same computation).
 StatusOr<HloInstruction*> MakeDotHlo(HloInstruction* lhs, HloInstruction* rhs,
-                                     const DotDimensionNumbers& dim_numbers);
+                                     const DotDimensionNumbers& dim_numbers,
+                                     const PrecisionConfig& precision_config);
 
 // Creates a Map HLO instruction and adds it to the computation containing the
 // operands. All operands must be in the same computation.
 StatusOr<HloInstruction*> MakeMapHlo(absl::Span<HloInstruction* const> operands,
                                      HloComputation* map_computation);
+
+// Creates a Reduce HLO instruction and adds it to the computation containing
+// the operand. This will create the sub-computation needed for the reduction in
+// the given module. binary_opcode should represent a binary operation.
+StatusOr<HloInstruction*> MakeReduceHlo(HloInstruction* operand,
+                                        HloInstruction* init_value,
+                                        HloOpcode binary_opcode,
+                                        HloModule* module);
+
+// Creates a Select HLO instruction and adds it to the computation containing
+// the predicate. The on_true and on_false instructions must also be contained
+// in the same computation.
+StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
+                                        HloInstruction* on_true,
+                                        HloInstruction* on_false);
+
+// Creates a Sort HLO instruction and adds it to the computation containing the
+// operands. All operands must be in the same computation. Also creates a
+// default compare sub-computation which sorts the first operand into ascending
+// order. 'is_stable' specifies whether the sorting should be stable.
+StatusOr<HloInstruction*> MakeSortHlo(
+    const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
+    int64 dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
+    HloModule* module);
+
+// Creates an R1 Constant HLO instruction of the given PrimitiveType with the
+// given values and adds it to the given computation.
+template <typename NativeT>
+StatusOr<HloInstruction*> MakeR1ConstantHlo(HloComputation* computation,
+                                            PrimitiveType type,
+                                            absl::Span<const NativeT> values) {
+  Literal literal = LiteralUtil::CreateR1<NativeT>(values);
+  if (literal.shape().element_type() != type) {
+    TF_ASSIGN_OR_RETURN(literal, literal.Convert(type));
+  }
+  return computation->AddInstruction(
+      HloInstruction::CreateConstant(std::move(literal)));
+}
 
 // -----------------------------------------------------------------------------
 // Some other miscellaneous helpers to generate common HLO patterns.  All of
@@ -166,9 +207,9 @@ StatusOr<HloInstruction*> PadVectorWithZeros(HloInstruction* operand,
 // Broadcasts a zero value of type `element_type` into a tensor with element
 // type `element_type` and dimension bounds `broadcast_dimensions`.  The
 // broadcast instruction is emitted into `computation`.
-StatusOr<HloInstruction*> BroadcastZeros(
-    HloComputation* computation, PrimitiveType element_type,
-    absl::Span<const int64> broadcast_dimensions);
+HloInstruction* BroadcastZeros(HloComputation* computation,
+                               PrimitiveType element_type,
+                               absl::Span<const int64> broadcast_dimensions);
 
 // Creates a HLO computation that takes arguments of type `domain` and produces
 // a value of type `range`.

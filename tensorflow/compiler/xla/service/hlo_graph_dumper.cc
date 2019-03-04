@@ -21,11 +21,12 @@ limitations under the License.
 #include <deque>
 #include <map>
 #include <memory>
+#include <queue>
 #include <string>
 #include <tuple>
-#include <unordered_map>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/match.h"
 #include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
@@ -37,7 +38,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/compiler/xla/service/hlo_tfgraph_builder.h"
+#include "tensorflow/compiler/xla/service/pattern_matcher.h"
 #include "tensorflow/compiler/xla/shape_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/window_util.h"
@@ -111,14 +112,19 @@ class NodeFilter {
            result == kSomeUsersOmitted;
   }
 
-  bool ShowFusionSubcomputation(const HloInstruction* instr) const {
-    CHECK_EQ(instr->opcode(), HloOpcode::kFusion);
-    return Show(instr) && !SomeOrAllOperandsOmitted(instr);
-  }
-
  private:
   std::function<NodeFilterResult(const HloInstruction* instr)> filter_;
 };
+
+// We arbitrarily set this as the boundary between "large" and "small"
+// instructions.
+bool IsSmall(const HloInstruction* instr) {
+  if (ShapeUtil::HasPrimitiveType(instr->shape(), OPAQUE) ||
+      ShapeUtil::HasPrimitiveType(instr->shape(), TOKEN)) {
+    return true;
+  }
+  return ShapeUtil::ElementsInRecursive(instr->shape()) < 4096;
+}
 
 // Node color schemes, used by NodeColorAttributes.
 enum ColorScheme {
@@ -126,6 +132,7 @@ enum ColorScheme {
   kBrown,
   kDarkBlue,
   kDarkGreen,
+  kDarkOrange,
   kDarkRed,
   kGray,
   kGreen,
@@ -158,6 +165,10 @@ NodeColors NodeColorsForScheme(ColorScheme color) {
       return NodeColors{"filled", "#1565c0", "#003c8f", "white"};
     case kDarkGreen:
       return NodeColors{"filled", "#2e7d32", "#005005", "white"};
+    case kDarkOrange:
+      // This is more of a "medium" orange, made to look close to kOrange;
+      // there's probably room for a darker weight if desired.
+      return NodeColors{"filled", "#ffb74d", "#c88719", "black"};
     case kDarkRed:
       return NodeColors{"filled", "#b71c1c", "#7f0000", "white"};
     case kGray:
@@ -225,34 +236,28 @@ string HtmlLikeStringSanitize(absl::string_view s) {
 // it to a short string lets us tell the user what the subcomputation is without
 // drawing it as a graph.
 optional<string> MatchTrivialComputation(const HloComputation* computation) {
+  namespace m = match;
+
   if (computation->instruction_count() != 3) {
     return nullopt;
   }
-
   HloInstruction* root = computation->root_instruction();
-  if (root->operand_count() != 2) {
+  const HloInstruction *param0, *param1;
+  if (!Match(root, m::Op()
+                       .WithNumOperands(2)
+                       .WithShape(m::Shape().IsEffectiveScalar())
+                       .WithBinaryOperandsAnyOrder(
+                           m::Parameter(&param0, 0)
+                               .WithShape(m::Shape().IsEffectiveScalar()),
+                           m::Parameter(&param1, 1)
+                               .WithShape(m::Shape().IsEffectiveScalar())))) {
     return nullopt;
   }
 
-  // Check that both of the operands to the root are parameters.
-  const HloInstruction* operand0 = root->operand(0);
-  const HloInstruction* operand1 = root->operand(1);
-  if (operand0->opcode() != HloOpcode::kParameter ||
-      operand1->opcode() != HloOpcode::kParameter) {
-    return nullopt;
-  }
-
-  // Check that the two operands of root are param0 and param1.  All of the
-  // opcodes we recognize are commutative, so we're OK with either order.
-  auto n0 = operand0->parameter_number();
-  auto n1 = operand1->parameter_number();
-  if (!(n0 == 0 && n1 == 1) && !(n1 == 0 && n0 == 1)) {
-    return nullopt;
-  }
-
-  // If the params are reversed, check that the operation being performed is
-  // commutative.
-  if (n0 == 1) {
+  // If the params are reversed (i.e. operand0 is param1 and operand1 is
+  // param0), check that the operation being performed is commutative.
+  if (root->operand(0) == param1) {
+    CHECK_EQ(root->operand(1), param0);
     switch (root->opcode()) {
       case HloOpcode::kLe:
       case HloOpcode::kGe:
@@ -262,13 +267,6 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
       default:
         break;
     }
-  }
-
-  // Check that the root and params are all effective scalars.
-  if (!ShapeUtil::IsEffectiveScalar(root->shape()) ||
-      !ShapeUtil::IsEffectiveScalar(operand0->shape()) ||
-      !ShapeUtil::IsEffectiveScalar(operand1->shape())) {
-    return nullopt;
   }
 
   // If we recognize the root's opcode, we've successfully pattern-matched!
@@ -381,7 +379,7 @@ class HloDotDumper {
   // Each HloInstruction dumped gets a monotically-increasing node ID.  This
   // must start at 1, because that's where graphviz's accounting starts.
   int64 next_node_id_ = 1;
-  std::unordered_map<const HloInstruction*, int64> node_ids_;
+  absl::flat_hash_map<const HloInstruction*, int64> node_ids_;
 
   // The "root" tag doesn't have an associated HloInstruction pointer, so we
   // need to store it outside the map.
@@ -398,7 +396,7 @@ class HloDotDumper {
 
   // Each HloComputation that's emitted gets a monotonically-increasing ID.
   int64 next_cluster_id_ = 1;
-  std::unordered_map<const HloComputation*, int64> cluster_ids_;
+  absl::flat_hash_map<const HloComputation*, int64> cluster_ids_;
 
   // Edges to print from Footer().  Edges come at the end because graphviz is
   // unhappy if an edge from a subcomputation to a node in the outer computation
@@ -408,7 +406,7 @@ class HloDotDumper {
 
   // When coloring by sharding information, we track the sharding string
   // representation to color association, by round-robin the color schemes.
-  std::unordered_map<HloSharding, ColorScheme, HloSharding::Hasher>
+  absl::flat_hash_map<HloSharding, ColorScheme, HloSharding::Hasher>
       sharding_colors_;
   int64 next_shard_color_ = 0;
 };
@@ -454,9 +452,8 @@ stylesheet=<
   string graph_label =
       StrCat(label_, "<br/>Computation ", computation_->name());
   if (computation_->IsFusionComputation()) {
-    StrAppend(&graph_label,
-              StrCat(" (in fusion instruction ",
-                     computation_->FusionInstruction()->name(), ")"));
+    StrAppend(&graph_label, " (in fusion instruction ",
+              computation_->FusionInstruction()->name(), ")");
   }
   if (profile_ != nullptr) {
     auto cycles = profile_->total_cycles_executed(*computation_);
@@ -538,7 +535,12 @@ stylesheet=<
     }
   }
 
-  return StrFormat(fmt, graph_label, StrJoin(edge_css_rules, "\n"));
+  // Browsers require that we URI-encode the contents of our data URI.  (It
+  // seems this was a relatively recent change?) In practice, this means that we
+  // need to escape '#'.
+  return StrFormat(
+      fmt, graph_label,
+      absl::StrReplaceAll(StrJoin(edge_css_rules, "\n"), {{"#", "%23"}}));
 }
 
 string HloDotDumper::Footer() { return StrCat(StrJoin(edges_, "\n"), "\n}"); }
@@ -563,8 +565,8 @@ bool HloDotDumper::ShouldShowSubcomputation(const HloComputation* subcomp) {
   }
 
   // Show the subcomputation if we're showing any of its members.
-  return std::any_of(
-      computation_->instructions().begin(), computation_->instructions().end(),
+  return absl::c_any_of(
+      subcomp->instructions(),
       [&](const HloInstruction* instr) { return filter_.Show(instr); });
 }
 
@@ -735,17 +737,16 @@ bool HloDotDumper::ShouldMergeIntoUsers(const HloInstruction* instr) const {
     return true;
   }
   const int kMinUsersToOmit = 3;
-  return instr->opcode() == HloOpcode::kParameter &&
-         ShapeUtil::IsTuple(instr->shape()) && !instr->IsFused() &&
-         std::count_if(instr->users().begin(), instr->users().end(),
-                       [&](const HloInstruction* user) {
-                         return filter_.Show(user);
-                       }) > kMinUsersToOmit &&
-         std::all_of(instr->users().begin(), instr->users().end(),
-                     [&](const HloInstruction* user) {
-                       return !filter_.Show(user) ||
-                              user->opcode() == HloOpcode::kGetTupleElement;
-                     });
+  return instr->opcode() == HloOpcode::kParameter && instr->shape().IsTuple() &&
+         !instr->IsFused() &&
+         absl::c_count_if(instr->users(),
+                          [&](const HloInstruction* user) {
+                            return filter_.Show(user);
+                          }) > kMinUsersToOmit &&
+         absl::c_all_of(instr->users(), [&](const HloInstruction* user) {
+           return !filter_.Show(user) ||
+                  user->opcode() == HloOpcode::kGetTupleElement;
+         });
 }
 
 string HloDotDumper::DumpInstruction(const HloInstruction* instr) {
@@ -818,7 +819,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
 
     // Print the literal value of constants with <= K elements.
     optional<int64> elem_count;
-    if (ShapeUtil::IsArray(shape)) {
+    if (shape.IsArray()) {
       elem_count = 1;
       for (int64 dim : shape.dimensions()) {
         *elem_count *= dim;
@@ -828,8 +829,7 @@ string HloDotDumper::GetInstructionNodeInlinedOperands(
     // collected from profiling tools. Those constants may not have a valid
     // literal.
     if (elem_count.has_value() && *elem_count <= 8 && constant->HasLiteral()) {
-      return StrFormat("%s (%s)", constant->literal().ToString(),
-                       ShapeUtil::HumanString(constant->shape()));
+      return constant->literal().ToString();
     }
 
     // Otherwise, print e.g. "%constant.42 (s32[100])".
@@ -893,19 +893,21 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     sharding_colors_.emplace(instr->sharding(), color);
     return color;
   }
-  const auto kParameterColor = kOrange;
+
+  // Choose different weights of orange for small vs large parameters.  This
+  // distinction is often important, especially in fusion nodes.
+  auto parameter_color = IsSmall(instr) ? kOrange : kDarkOrange;
 
   // Special case: If this instruction has a parameter merged into it, paint it
   // the same color as a parameter.  Unless the merged-in parameter is a
   // parameter to a fusion node that is bound to a constant -- these aren't
   // "real" parameters from the user's perspective.
-  if (std::any_of(instr->operands().begin(), instr->operands().end(),
-                  [&](const HloInstruction* operand) {
-                    return operand->opcode() == HloOpcode::kParameter &&
-                           ShouldMergeIntoUsers(operand) &&
-                           TryGetFusionParameterConstant(operand) == nullptr;
-                  })) {
-    return kParameterColor;
+  if (absl::c_any_of(instr->operands(), [&](const HloInstruction* operand) {
+        return operand->opcode() == HloOpcode::kParameter &&
+               ShouldMergeIntoUsers(operand) &&
+               TryGetFusionParameterConstant(operand) == nullptr;
+      })) {
+    return parameter_color;
   }
 
   // Pick different colors or shapes for instructions which are particularly
@@ -950,6 +952,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRemainder:
     case HloOpcode::kRng:
     case HloOpcode::kRoundNearestAfz:
+    case HloOpcode::kRsqrt:
     case HloOpcode::kSelect:
     case HloOpcode::kShiftLeft:
     case HloOpcode::kShiftRightArithmetic:
@@ -958,6 +961,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kSin:
     case HloOpcode::kSlice:
     case HloOpcode::kSort:
+    case HloOpcode::kSqrt:
     case HloOpcode::kSubtract:
     case HloOpcode::kTanh:
       // De-emphasize scalar-shaped elementwise ops -- they're generally
@@ -970,6 +974,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kGetTupleElement:
     case HloOpcode::kTrace:
     case HloOpcode::kAfterAll:
+    case HloOpcode::kAddDependency:
     case HloOpcode::kTuple:
       return kWhite;
     case HloOpcode::kBroadcast:
@@ -1011,11 +1016,13 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kConvolution:
     case HloOpcode::kDot:
     case HloOpcode::kFft:
+    case HloOpcode::kTriangularSolve:
+    case HloOpcode::kCholesky:
       return kDarkBlue;
     case HloOpcode::kReducePrecision:
       return kRed;
     case HloOpcode::kParameter:
-      return kParameterColor;
+      return parameter_color;
     case HloOpcode::kBatchNormGrad:
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
@@ -1026,8 +1033,9 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kDomain:
     case HloOpcode::kFusion:
     case HloOpcode::kMap:
+    case HloOpcode::kGetDimensionSize:
       return kGray;
-    case HloOpcode::kCrossReplicaSum:
+    case HloOpcode::kAllReduce:
     case HloOpcode::kAllToAll:
     case HloOpcode::kCollectivePermute:
     case HloOpcode::kInfeed:
@@ -1036,6 +1044,7 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kRecvDone:
     case HloOpcode::kSend:
     case HloOpcode::kSendDone:
+    case HloOpcode::kReplicaId:
       return kBrown;
     case HloOpcode::kCall:
     case HloOpcode::kConditional:
@@ -1093,7 +1102,7 @@ string HloDotDumper::GetInstructionNodeMetadata(const HloInstruction* instr) {
                               instr->metadata().source_line()));
   }
 
-  return StrJoin(lines, "<br/>");
+  return StrJoin(lines, "\n");
 }
 
 string HloDotDumper::GetInstructionNodeBackendConfig(
@@ -1160,20 +1169,6 @@ string HloDotDumper::GetInstructionNodeExtraInfo(const HloInstruction* instr) {
   return StrJoin(lines, "<br/>");
 }
 
-// Gets the total number of array elements in the given shape.  For tuples, this
-// is the sum of all the sizes of all of the array elements recursively in the
-// tuple.
-static int64 TotalElementsInShape(const Shape& shape) {
-  int64 elems = 0;
-  ShapeUtil::ForEachSubshape(
-      shape, [&](const Shape& subshape, const ShapeIndex& /*index*/) {
-        if (ShapeUtil::IsArray(subshape)) {
-          elems += ShapeUtil::ElementsIn(subshape);
-        }
-      });
-  return elems;
-}
-
 void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
   auto add_edge = [&](const HloInstruction* from, const HloInstruction* to,
                       int64 operand_num, bool control_edge = false) {
@@ -1196,14 +1191,11 @@ void HloDotDumper::AddInstructionIncomingEdges(const HloInstruction* instr) {
     }
 
     // We print "small" arrays using a hollow arrowhead and "large" arrays using
-    // a filled arrowhead.  For now, we use an arbitrary cutoff for what "big"
-    // means.
-    bool is_big_array = TotalElementsInShape(from->shape()) >= 4096;
-
+    // a filled arrowhead.
     constexpr char kEdgeFmt[] =
         R"(%s -> %s [arrowhead=%s tooltip="%s -> %s" %s];)";
     edges_.push_back(StrFormat(kEdgeFmt, InstructionId(from), InstructionId(to),
-                               (is_big_array ? "normal" : "empty"),
+                               (IsSmall(from) ? "empty" : "normal"),
                                from->name(), to->name(), edge_label));
   };
 
@@ -1266,12 +1258,12 @@ const HloInstruction* HloDotDumper::GetNodeForEdge(
 
 class GraphRendererRegistry {
  public:
-  void AddRenderer(GraphRendererInterface* graph_renderer) {
+  void SetRenderer(std::shared_ptr<GraphRendererInterface> graph_renderer) {
     tensorflow::mutex_lock lock(mu_);
     graph_renderer_ = graph_renderer;
   }
 
-  GraphRendererInterface* GetDefaultRenderer() {
+  std::shared_ptr<GraphRendererInterface> GetDefaultRenderer() {
     tensorflow::mutex_lock lock(mu_);
     return graph_renderer_;
   }
@@ -1283,23 +1275,25 @@ class GraphRendererRegistry {
 
  private:
   tensorflow::mutex mu_;
-  GraphRendererInterface* graph_renderer_ = nullptr;
+  std::shared_ptr<GraphRendererInterface> graph_renderer_ GUARDED_BY(mu_);
 };
 
 }  // namespace
 
-Registrar::Registrar(GraphRendererInterface* dumper) {
-  GraphRendererRegistry::Default()->AddRenderer(dumper);
+Registrar::Registrar(std::shared_ptr<GraphRendererInterface> dumper) {
+  GraphRendererRegistry::Default()->SetRenderer(dumper);
 }
 
 namespace {
 
 // Gets a NodeFilter that includes roughly all instructions whose distance from
 // root is <= radius.
-NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
+NodeFilter MakeNodeRadiusAroundFilter(
+    const HloInstruction* root, int64 radius,
+    const absl::flat_hash_set<const HloInstruction*>& boundary) {
   // First, find the neighborhood of nodes with distance from root <= radius.
   // These nodes are our initial set of "normal" nodes.
-  std::unordered_map<const HloInstruction*, NodeFilterResult> nodes;
+  absl::flat_hash_map<const HloInstruction*, NodeFilterResult> nodes;
   std::deque<std::pair<const HloInstruction*, /*depth*/ int64>> worklist;
   worklist.push_back({root, 0});
   while (!worklist.empty()) {
@@ -1312,6 +1306,9 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
     if (depth == radius) {
       continue;
     }
+    if (boundary.contains(instr)) {
+      continue;
+    }
 
     // Traverse into instr's operands.
     //
@@ -1320,7 +1317,7 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
     // are not interesting to the graph at hand.
     if (instr == root || instr->opcode() != HloOpcode::kTuple) {
       for (const HloInstruction* operand : instr->operands()) {
-        if (!nodes.count(operand)) {
+        if (!nodes.contains(operand)) {
           worklist.push_back({operand, depth + 1});
         }
       }
@@ -1348,7 +1345,7 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
       continue;
     }
     for (const HloInstruction* user : instr->users()) {
-      if (!nodes.count(user)) {
+      if (!nodes.contains(user)) {
         worklist.push_back({user, depth + 1});
       }
     }
@@ -1357,7 +1354,7 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
   auto is_displayed = [&](const HloInstruction* instr) {
     // Constants are displayed inline with their users; they're never omitted.
     // Nodes in subcomputations are always shown.
-    return nodes.count(instr) > 0 || instr->opcode() == HloOpcode::kConstant ||
+    return nodes.contains(instr) || instr->opcode() == HloOpcode::kConstant ||
            instr->parent() != root->parent();
   };
 
@@ -1368,12 +1365,11 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
     NodeFilterResult& filter_result = kv.second;
     const auto& operands = instr->operands();
 
-    if (std::any_of(operands.begin(), operands.end(), is_displayed) &&
-        !std::all_of(operands.begin(), operands.end(), is_displayed)) {
+    if (absl::c_any_of(operands, is_displayed) &&
+        !absl::c_all_of(operands, is_displayed)) {
       // Mark nodes with some operands omitted appropriately.
       filter_result = kSomeOperandsOmitted;
-    } else if (!operands.empty() &&
-               std::none_of(operands.begin(), operands.end(), is_displayed)) {
+    } else if (!operands.empty() && absl::c_none_of(operands, is_displayed)) {
       // Mark nodes with *all* operands omitted appropriately.
       filter_result = kOmitNodeOperands;
     }
@@ -1381,8 +1377,7 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
     // Promote nodes with type kSomeUsersOmitted to kNormalNode if all of their
     // users made it into the graph.
     if (filter_result == kSomeUsersOmitted &&
-        std::all_of(instr->users().begin(), instr->users().end(),
-                    is_displayed)) {
+        absl::c_all_of(instr->users(), is_displayed)) {
       filter_result = kNormalNode;
     }
   }
@@ -1403,6 +1398,56 @@ NodeFilter MakeNodeFilter(const HloInstruction* root, int64 radius) {
   });
 }
 
+// Gets a node filter that includes nodes on all paths from `from` to `to`.  If
+// the all-paths set contains more than max_nodes elements, includes the nodes
+// on the shortest paths and sets hit_limit to true.
+NodeFilter MakeNodeFromToFilter(const HloInstruction* from,
+                                const HloInstruction* to, int64 max_nodes,
+                                bool* hit_limit) {
+  *hit_limit = false;
+
+  // Elements in the queue are paths through the graph.
+  std::deque<std::vector<const HloInstruction*>> queue;
+  queue.push_front({from});
+
+  // Compute the set of nodes we want to show using a slightly-modified
+  // Djikstra's algorithm.  The only real difference is, rather than stopping
+  // when we find a (shortest) path, we continue until we've found max_nodes
+  // nodes on some path.
+  std::unordered_set<const HloInstruction*> visited;
+  std::unordered_set<const HloInstruction*> to_display = {from, to};
+  while (!queue.empty() && to_display.size() < max_nodes) {
+    std::vector<const HloInstruction*> path = std::move(queue.front());
+    queue.pop_front();
+    if (!visited.insert(path.back()).second) {
+      continue;
+    }
+
+    for (const auto* user : path.back()->users()) {
+      if (user == to) {
+        auto it = path.begin();
+        for (; it != path.end() && to_display.size() < max_nodes; ++it) {
+          to_display.insert(*it);
+        }
+        if (it != path.end()) {
+          *hit_limit = true;
+        }
+      } else if (!visited.count(user)) {
+        auto new_path = path;
+        new_path.push_back(user);
+        queue.push_back(std::move(new_path));
+      }
+    }
+  }
+
+  return NodeFilter([=](const HloInstruction* instr) {
+    if (instr == from || instr == to) {
+      return kHighlightNode;
+    }
+    return to_display.count(instr) ? kNormalNode : kHideNode;
+  });
+}
+
 string SaveGraph(const string& graph,
                  GraphRendererInterface::GraphKind graph_kind,
                  const string& dest_path) {
@@ -1411,9 +1456,6 @@ string SaveGraph(const string& graph,
   switch (graph_kind) {
     case GraphRendererInterface::DOT_GRAPH:
       file_extension = ".dot";
-      break;
-    case GraphRendererInterface::TF_GRAPHDEF:
-      file_extension = ".pbtxt";
       break;
   }
   string path = JoinPath(dest_path, StrCat("hlo_graph_", output_num++, "."));
@@ -1437,39 +1479,42 @@ string ExportGraph(const string& graph,
                    GraphRendererInterface::GraphKind graph_kind,
                    const DebugOptions& debug_options) {
   string path = debug_options.xla_hlo_graph_path();
-  if (!path.empty()) {
+  if (!path.empty() && !debug_options.xla_hlo_dump_as_html()) {
     return SaveGraph(graph, graph_kind, path);
   } else {
     auto graph_renderer =
         GraphRendererRegistry::Default()->GetDefaultRenderer();
     CHECK(graph_renderer != nullptr)
         << "No registered renderer for the HLO graph. "
-           "Use --xla_hlo_graph_path=PATH to export to local file system";
+           "Use --xla_hlo_graph_path=PATH --xla_hlo_dump_as_html=false to "
+           "export to local file system";
     return graph_renderer->RenderGraph(graph, graph_kind, debug_options);
   }
 }
 
 }  // namespace
 
+string HloComputationToDotGraph(const HloComputation& computation,
+                                const DotGraphOptions& options) {
+  DebugOptions default_debug_options;
+  return HloDotDumper(&computation, options.label,
+                      options.debug_options ? *options.debug_options
+                                            : default_debug_options,
+                      options.show_backend_config, options.profile,
+                      NodeFilter())
+      .Dump();
+}
+
 string DumpGraph(const HloComputation& computation, const string& label,
                  const DebugOptions& debug_options,
                  const HloExecutionProfile* hlo_execution_profile,
                  bool show_backend_config) {
   GraphRendererInterface::GraphKind graph_kind;
-  string graph;
-  if (debug_options.xla_hlo_dump_as_graphdef()) {
-    HloTfGraphBuilder builder(debug_options);
-    TF_CHECK_OK(builder.AddComputation(computation));
-    CHECK(tensorflow::protobuf::TextFormat::PrintToString(builder.GetGraphDef(),
-                                                          &graph));
-    graph_kind = GraphRendererInterface::TF_GRAPHDEF;
-  } else {
-    graph =
-        HloDotDumper(&computation, label, debug_options, show_backend_config,
-                     hlo_execution_profile, NodeFilter())
-            .Dump();
-    graph_kind = GraphRendererInterface::DOT_GRAPH;
-  }
+  string graph =
+      HloDotDumper(&computation, label, debug_options, show_backend_config,
+                   hlo_execution_profile, NodeFilter())
+          .Dump();
+  graph_kind = GraphRendererInterface::DOT_GRAPH;
 
   string graph_url = ExportGraph(graph, graph_kind, debug_options);
   LOG(INFO) << "computation " << computation.name() << " [" << label
@@ -1477,14 +1522,38 @@ string DumpGraph(const HloComputation& computation, const string& label,
   return graph_url;
 }
 
-string DumpNeighborhoodAround(const HloInstruction& node, int radius,
-                              bool show_backend_config) {
+string DumpNeighborhoodAround(
+    const HloInstruction& node, int radius, bool show_backend_config,
+    const absl::flat_hash_set<const HloInstruction*>& boundary) {
   auto debug_options = node.GetModule()->config().debug_options();
   string label =
       StrCat("Neighborhood of ", radius, " nodes around ", node.name());
-  NodeFilter filter = MakeNodeFilter(&node, radius);
+  NodeFilter filter = MakeNodeRadiusAroundFilter(&node, radius, boundary);
   string graph =
       HloDotDumper(node.parent(), label, debug_options, show_backend_config,
+                   /*profile=*/nullptr, filter)
+          .Dump();
+  return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);
+}
+
+string DumpAllPathsFromTo(const HloInstruction& from, const HloInstruction& to,
+                          int64 max_nodes, bool show_backend_config) {
+  CHECK_EQ(from.parent(), to.parent()) << "Nodes must be in same computation!";
+  auto debug_options = from.GetModule()->config().debug_options();
+
+  bool hit_limit = false;
+  NodeFilter filter = MakeNodeFromToFilter(&from, &to, max_nodes, &hit_limit);
+  string label;
+  if (!hit_limit) {
+    label = StrCat("All paths from ", from.name(), " to ", to.name());
+  } else {
+    label = StrCat(max_nodes, " nodes on the shortest paths from ", from.name(),
+                   " to ", to.name(),
+                   "<br/><br/>***SHOWING ONLY A SUBSET OF ALL PATHS BETWEEN "
+                   "NODES***<br/><br/>");
+  }
+  string graph =
+      HloDotDumper(from.parent(), label, debug_options, show_backend_config,
                    /*profile=*/nullptr, filter)
           .Dump();
   return ExportGraph(graph, GraphRendererInterface::DOT_GRAPH, debug_options);
@@ -1527,6 +1596,146 @@ string MaybeDumpHloModule(const HloModule& module, const string& label,
     DumpText(module, label, debug_options.xla_generate_hlo_text_to());
   }
   return graph_url;
+}
+
+string WrapDotInHTML(const string& dot) {
+  static const char html_prefix[] = R"html(
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style type="text/css">
+    body {
+      height: 100vh;
+      margin: 0;
+    }
+  </style>
+</head>
+<body>
+  <!-- Integrity hash is generated by https://www.srihash.org/ -->
+  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.1/viz.js"
+     integrity="sha384-aD1MJYb0WKIUT+CtwJp5LTuV3U4pLAS6B/nUxL7ECimC2pN9N8vjlMr/yQCAkzxE"
+     crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/viz.js@2.1.1/full.render.js"
+     integrity="sha384-bAixY275aIpCj6Te19y0MILZ4V+VEC8CVFujFEH+Lf7W+4XYYeYLwW5IBI6yQmMT"
+     crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/svg-pan-zoom@3.6.0/dist/svg-pan-zoom.min.js"
+     integrity="sha384-3008WpYB2pOBvE7lwkrKf+qTmbTPGGPYxA9C1YVhvbPukns4ZFj7E98QPLkNW9dS"
+     crossorigin="anonymous"></script>
+  <div id="container" style="height:95vh; border:1px solid black; "></div>
+  <script>
+    var data = `
+)html";
+
+  static const char html_suffix[] = R"html(
+`;
+    var cssregex = new RegExp('stylesheet=<([^]*)\n>\n', 'gm');
+    var results = cssregex.exec(data)
+    // graphviz has problem dealing with large stylesheets.
+    // https://github.com/tensorflow/tensorflow/issues/17220#issuecomment-369228492
+    // In order to avoid the problem, remove the stylesheet from the dot and
+    // insert it directly info the rendered SVG.
+    var dot_data = data;
+    var css_data = ''
+    if (results !== null) {
+        css_data = results[1].replace(/\s*data:.*\s*,/,''); // Strip content-type field.
+        dot_data = data.replace(cssregex, ''); // Remove the stylesheet
+    }
+
+    var render_start = performance.now()
+    function add_controls(svg) {
+        var htmlblob = new Blob([document.documentElement.innerHTML],
+                                {type: 'text/html'});
+        var savehtml = document.createElement('a');
+        savehtml.setAttribute('href', URL.createObjectURL(htmlblob));
+        savehtml.setAttribute('download', 'graph.html');
+        savehtml.innerHTML = " [Save HTML+SVG] ";
+        document.body.append(savehtml);
+        var svgblob = new Blob([svg.outerHTML], {type: 'image/svg'});
+        var savesvg = document.createElement('a');
+        savesvg.setAttribute('href', URL.createObjectURL(svgblob));
+        savesvg.setAttribute('download', 'graph.svg');
+        savesvg.innerHTML = " [Save SVG] ";
+        document.body.append(savesvg);
+        var dotblob =  new Blob([data], {type: 'text/dot'});
+        var savedot = document.createElement('a');
+        savedot.setAttribute('href', URL.createObjectURL(dotblob));
+        savedot.setAttribute('download', 'graph.dot');
+        savedot.innerHTML = " [Save DOT] ";
+        document.body.append(savedot);
+        // Will get called after embed element was loaded
+        var panzoom = svgPanZoom(svg, {
+            zoomEnabled: true,
+            controlIconsEnabled: true,
+        });
+        document.getElementsByTagName("BODY")[0].onresize = function() {
+            panzoom.resize();
+            panzoom.fit();
+            panzoom.center();
+        };
+        var render_end = performance.now();
+        var render_note = document.createElement('div')
+        render_note.innerHTML = 'Rendering took '
+                                + (render_end - render_start).toFixed(2) + "ms."
+        document.body.append(render_note);
+    }
+    var svg = document.getElementById('graph')
+    if (svg == null) {
+        // Need to render SVG first.
+        var viz = new Viz();
+        viz.renderSVGElement(dot_data)
+            .then(function(svg){
+                var container = document.getElementById('container')
+                var style = document.createElementNS('http://www.w3.org/2000/svg', 'style');
+                var node = document.createTextNode(css_data);
+                style.appendChild(node);
+                svg.setAttribute('width', '100%');
+                svg.setAttribute('height', '100%');
+                svg.setAttribute('id', 'graph');
+                svg.appendChild(style);
+                container.appendChild(svg);
+                add_controls(svg);
+            })
+    } else {
+        // HTML already has rendered SVG embedded, so we just need to add
+        // controls.
+        add_controls(svg);
+    }
+  </script>
+</body>
+</html>
+)html";
+
+  return html_prefix + dot + html_suffix;
+}
+
+string RenderDotAsHTMLFile(const string& dot,
+                           const DebugOptions& debug_options) {
+  string html = WrapDotInHTML(dot);
+
+  auto env = tensorflow::Env::Default();
+  std::vector<string> dirs;
+  string output_dir = debug_options.xla_hlo_graph_path();
+  if (output_dir.empty()) {
+    env->GetLocalTempDirectories(&dirs);
+  } else {
+    dirs.push_back(output_dir);
+  }
+  // Try each directory, as they might be full, have inappropriate
+  // permissions or have different problems at times.
+  string output;
+  for (const string& dir : dirs) {
+    string filename = tensorflow::io::JoinPath(dir, "graph-");
+    if (env->CreateUniqueFileName(&filename, ".html")) {
+      output = filename;
+      break;
+    }
+  }
+  if (output.empty()) {
+    LOG(FATAL) << "Failed to create unique output file name.";
+  }
+  TF_CHECK_OK(tensorflow::WriteStringToFile(env, output, html));
+  return "file://" + output;
 }
 
 }  // namespace hlo_graph_dumper

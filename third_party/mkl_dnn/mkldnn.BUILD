@@ -17,8 +17,12 @@ cc_library(
     name = "mkl_dnn",
     srcs = glob([
         "src/common/*.cpp",
+        "src/common/*.hpp",
         "src/cpu/*.cpp",
+        "src/cpu/*.hpp",
         "src/cpu/gemm/*.cpp",
+        "src/cpu/gemm/*.hpp",
+        "src/cpu/xbyak/*.h",
     ]),
     hdrs = glob(["include/*"]),
     copts = [
@@ -42,8 +46,8 @@ cc_library(
         "src",
         "src/common",
         "src/cpu",
-        "src/cpu/xbyak",
         "src/cpu/gemm",
+        "src/cpu/xbyak",
     ],
     nocopts = "-fno-exceptions",
     visibility = ["//visibility:public"],
@@ -52,7 +56,7 @@ cc_library(
             "@mkl_linux//:mkl_headers",
             "@mkl_linux//:mkl_libs_linux",
         ],
-        "@org_tensorflow//tensorflow:darwin": [
+        "@org_tensorflow//tensorflow:macos": [
             "@mkl_darwin//:mkl_headers",
             "@mkl_darwin//:mkl_libs_darwin",
         ],
@@ -62,4 +66,32 @@ cc_library(
         ],
         "//conditions:default": [],
     }),
+)
+
+cc_library(
+    name = "mkldnn_single_threaded",
+    srcs = glob([
+        "src/common/*.cpp",
+        "src/common/*.hpp",
+        "src/cpu/*.cpp",
+        "src/cpu/*.hpp",
+        "src/cpu/gemm/*.cpp",
+        "src/cpu/gemm/*.hpp",
+        "src/cpu/xbyak/*.h",
+    ]),
+    hdrs = glob(["include/*"]),
+    copts = [
+        "-fexceptions",
+        "-DMKLDNN_THR=MKLDNN_THR_SEQ",  # Disables threading.
+    ],
+    includes = [
+        "include",
+        "src",
+        "src/common",
+        "src/cpu",
+        "src/cpu/gemm",
+        "src/cpu/xbyak",
+    ],
+    nocopts = "-fno-exceptions",
+    visibility = ["//visibility:public"],
 )

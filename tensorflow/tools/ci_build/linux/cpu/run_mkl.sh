@@ -33,7 +33,7 @@ yes "" | $PYTHON_BIN_PATH configure.py
 # Setting KMP_BLOCKTIME to 0 lets OpenMP threads to sleep right after parallel execution
 # in an MKL primitive. This reduces the effects of an oversubscription of OpenMP threads
 # caused by executing multiple tests concurrently.
-bazel test --test_tag_filters=-no_oss,-oss_serial,-gpu,-benchmark-test --test_lang_filters=py -k \
+bazel test --test_tag_filters=-no_oss,-oss_serial,-gpu,-benchmark-test --test_lang_filters=cc,py -k \
     --jobs=${N_JOBS} --test_timeout 300,450,1200,3600 --build_tests_only \
     --config=mkl --test_env=KMP_BLOCKTIME=0 --config=opt --test_output=errors -- \
-    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/...
+    //tensorflow/... -//tensorflow/compiler/... -//tensorflow/contrib/... -//tensorflow/lite/...

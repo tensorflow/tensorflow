@@ -43,8 +43,7 @@ function cp_external() {
 
 PLATFORM="$(uname -s | tr 'A-Z' 'a-z')"
 function is_windows() {
-  # On windows, the shell script is actually running in msys
-  if [[ "${PLATFORM}" =~ (mingw64|msys)_nt* ]]; then
+  if [[ "${PLATFORM}" =~ (cygwin|mingw32|mingw64|msys)_nt* ]]; then
     true
   else
     false
@@ -119,9 +118,6 @@ function prepare_src() {
         fi
       fi
     fi
-    mkdir "${TMPDIR}/tensorflow/aux-bin"
-    # Install toco as a binary in aux-bin.
-    cp bazel-bin/tensorflow/contrib/lite/python/tflite_convert ${TMPDIR}/tensorflow/aux-bin/
   fi
 
   # protobuf pip package doesn't ship with header files. Copy the headers

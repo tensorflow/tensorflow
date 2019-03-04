@@ -71,9 +71,9 @@ Status LocalExecutable::ValidateExecutionOptions(
           "parameter "
           "%d: want %s, got %s",
           i,
-          ShapeUtil::HumanString(
+          ShapeUtil::HumanStringWithLayout(
               computation_layout.parameter_layout(i).shape()),
-          ShapeUtil::HumanString(arguments[i]->on_host_shape()));
+          ShapeUtil::HumanStringWithLayout(arguments[i]->on_host_shape()));
     }
   }
 
@@ -164,9 +164,8 @@ StatusOr<ScopedShapedBuffer> LocalExecutable::Run(
   //    ExecutableRunOptions.eigen_intra_op_thread_pool.
   // *) The thread pool used for XLA CPU ops is from
   //    backend_->eigen_intra_op_thread_pool().
-  ServiceExecutableRunOptions service_options(
-      run_options, backend_->StreamBorrower(),
-      backend_->eigen_intra_op_thread_pool());
+  ServiceExecutableRunOptions service_options(run_options,
+                                              backend_->StreamBorrower());
 
   if (executable_->dumping_snapshot()) {
     return ExecuteAndDump(&service_options, arguments);
@@ -195,9 +194,8 @@ Status LocalExecutable::RecordArguments(
     HloSnapshot* hlo_snapshot) {
   hlo_snapshot->clear_arguments();
   for (const ShapedBuffer* argument : arguments) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                        LiteralFromShapedBuffer(*argument));
-    *hlo_snapshot->add_arguments() = literal->ToProto();
+    TF_ASSIGN_OR_RETURN(Literal literal, LiteralFromShapedBuffer(*argument));
+    *hlo_snapshot->add_arguments() = literal.ToProto();
   }
   return Status::OK();
 }
@@ -205,13 +203,12 @@ Status LocalExecutable::RecordArguments(
 Status LocalExecutable::RecordResult(const ShapedBuffer* result,
                                      HloSnapshot* hlo_snapshot) {
   hlo_snapshot->clear_result();
-  TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> literal,
-                      LiteralFromShapedBuffer(*result));
-  *hlo_snapshot->mutable_result() = literal->ToProto();
+  TF_ASSIGN_OR_RETURN(Literal literal, LiteralFromShapedBuffer(*result));
+  *hlo_snapshot->mutable_result() = literal.ToProto();
   return Status::OK();
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalExecutable::LiteralFromShapedBuffer(
+StatusOr<Literal> LocalExecutable::LiteralFromShapedBuffer(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(auto stream,
                       backend_->BorrowStream(shaped_buffer.device_ordinal()));
@@ -277,7 +274,7 @@ StatusOr<ScopedShapedBuffer> LocalClient::LiteralToShapedBuffer(
   return std::move(scoped_buffer);
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalClient::ShapedBufferToLiteral(
+StatusOr<Literal> LocalClient::ShapedBufferToLiteral(
     const ShapedBuffer& shaped_buffer) {
   TF_ASSIGN_OR_RETURN(auto stream, mutable_backend()->BorrowStream(
                                        shaped_buffer.device_ordinal()));
@@ -298,18 +295,42 @@ Status LocalClient::TransferToInfeedLocal(const Literal& literal,
                                                                literal);
 }
 
-StatusOr<std::unique_ptr<Literal>> LocalClient::TransferFromOutfeedLocal(
-    const Shape& shape, int device_ordinal) {
+StatusOr<Literal> LocalClient::TransferFromOutfeedLocal(const Shape& shape,
+                                                        int device_ordinal) {
   TF_ASSIGN_OR_RETURN(se::StreamExecutor * executor,
                       backend().stream_executor(device_ordinal));
   auto literal = Literal::CreateFromShape(shape);
   TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralFromOutfeed(
-      executor, shape, literal.get()));
+      executor, shape, &literal));
   return std::move(literal);
 }
 
 StatusOr<int> LocalClient::ReplicaNumberToDeviceOrdinal(int replica_number) {
   return local_service_->ReplicaNumberToDeviceOrdinal(replica_number);
+}
+
+StatusOr<TransferToServerResponse> LocalClient::TransferToLocalServer(
+    const ::xla::BorrowingLiteral& literal, int device_oridinal) {
+  const ::xla::Shape& shape = literal.shape();
+
+  TF_ASSIGN_OR_RETURN(
+      ::xla::ScopedShapedBuffer shaped_buffer,
+      backend().transfer_manager()->AllocateScopedShapedBuffer(
+          shape, backend().memory_allocator(), device_oridinal));
+  TF_ASSIGN_OR_RETURN(auto stream,
+                      mutable_backend()->BorrowStream(device_oridinal));
+  TF_RETURN_IF_ERROR(backend().transfer_manager()->TransferLiteralToDevice(
+      stream.get(), literal, shaped_buffer));
+  std::vector<::xla::ScopedShapedBuffer> replicated_buffer;
+  replicated_buffer.emplace_back(std::move(shaped_buffer));
+  ::xla::TransferToServerResponse result;
+  TF_ASSIGN_OR_RETURN(*result.mutable_data(),
+                      local_service_->RegisterReplicatedBuffers(
+                          std::move(replicated_buffer),
+                          absl::StrCat("TransferToServer literal of shape ",
+                                       ::xla::ShapeUtil::HumanString(shape))));
+
+  return result;
 }
 
 }  // namespace xla

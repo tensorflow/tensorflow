@@ -1,7 +1,9 @@
 # Where component owners are known, add them here.
 
 /tenosrflow/core/debug @caisq
+/tensorflow/core/nccl/ @azaks2 @chsigg
 /tensorflow/core/platform/windows/ @mrry
+/tensorflow/core/platform/s3 @yongtang
 /tensorflow/go @asimshankar
 /tensorflow/java/ @asimshankar
 /tensorflow/python/debug @caisq
@@ -30,33 +32,36 @@
 /tensorflow/contrib/gan/ @joel-shor
 /tensorflow/contrib/graph_editor/ @purpledog
 # NEED OWNER: /tensorflow/contrib/grid_rnn/
+/tensorflow/contrib/hadoop @yongtang
 /tensorflow/contrib/hvx/ @satok16
 /tensorflow/contrib/integrate/ @shoyer
+/tensorflow/contrib/kafka @yongtang
 /tensorflow/contrib/kernel_methods/ @petrosmol
+/tensorflow/contrib/kinesis @yongtang
 /tensorflow/contrib/ios_examples/ @petewarden
 /tensorflow/contrib/labeled_tensor/ @shoyer
 /tensorflow/contrib/layers/ @fchollet @martinwicke
 /tensorflow/contrib/learn/ @martinwicke @ispirmustafa @alextp
-/tensorflow/contrib/linalg/ @langmore
 /tensorflow/contrib/linear_optimizer/ @petrosmol @andreasst @katsiapis
 /tensorflow/contrib/lookup/ @ysuematsu @andreasst
 /tensorflow/contrib/losses/ @alextp @ispirmustafa
 /tensorflow/contrib/makefile/ @petewarden @satok16 @wolffg
 /tensorflow/contrib/metrics/ @alextp @honkentuber @ispirmustafa
-/tensorflow/contrib/nccl/ @cwhipkey @zheng-xq
 /tensorflow/contrib/opt/ @strategist333 @alextp
 /tensorflow/contrib/pi_examples/ @maciekcc
 /tensorflow/contrib/quantization/ @petewarden
 /tensorflow/contrib/rnn/ @ebrevdo @scottzhu
-/tensorflow/contrib/saved_model/ @nfiedel @sukritiramesh @allenl
+/tensorflow/contrib/saved_model/ @nfiedel @sukritiramesh @allenlavoie
 /tensorflow/contrib/seq2seq/ @ebrevdo @lmthang
 /tensorflow/contrib/session_bundle/ @nfiedel @sukritiramesh
 /tensorflow/contrib/slim/ @sguada @thenbasilmanran
 /tensorflow/contrib/stateless/ @girving @alextp
 /tensorflow/contrib/tensor_forest/ @gilberthendry @thomascolthurst @yupbank
-/tensorflow/contrib/tensorrt/ @aaroey
+/tensorflow/contrib/tensorrt/ @aaroey @smit-hinsu @azaks2
 # NEED OWNER: /tensorflow/contrib/testing/
 /tensorflow/contrib/timeseries/ @allenlavoie
 /tensorflow/contrib/tpu/ @frankchn @saeta @jhseu @sourabhbajaj
 /tensorflow/contrib/training/ @joel-shor @ebrevdo
 /tensorflow/contrib/util/ @sherrym
+
+/third_party/systemlibs/ @perfinion

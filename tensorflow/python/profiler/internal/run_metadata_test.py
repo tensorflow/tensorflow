@@ -26,6 +26,7 @@ from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import rewriter_config_pb2
 from tensorflow.python.client import session
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops import variables
@@ -49,7 +50,7 @@ def _extract_node(run_meta, node_name):
       dev = dev[dev.find('cpu:'):]
     elif dev.find('gpu:') > 0:
       dev = dev[dev.find('gpu:'):]
-    else:
+    elif '/host:cpu' not in dev:
       assert False, 'Unrecognized device name: %s' % dev
 
     for node_stat in dev_stat.node_stats:
@@ -110,6 +111,7 @@ def _run_loop_model():
 
 class RunMetadataTest(test.TestCase):
 
+  @test_util.run_deprecated_v1
   def testGPU(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -125,6 +127,7 @@ class RunMetadataTest(test.TestCase):
     self.assertEqual(len(ret['gpu:0']), 1)
     self.assertEqual(len(ret['gpu:0/stream:all']), 1, '%s' % run_meta)
 
+  @test_util.run_deprecated_v1
   def testAllocationHistory(self):
     if not test.is_gpu_available(cuda_only=True):
       return
@@ -154,6 +157,7 @@ class RunMetadataTest(test.TestCase):
     # deallocates the memory after matmul started.
     self.assertGreater(random_allocs[1].alloc_micros, mm.all_start_micros)
 
+  @test_util.run_deprecated_v1
   def testCPU(self):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):
@@ -167,6 +171,7 @@ class RunMetadataTest(test.TestCase):
     ret = _extract_node(run_meta, 'MatMul:MatMul')
     self.assertEqual(len(ret), 0)
 
+  @test_util.run_v1_only('b/120545219')
   def testLoopCPU(self):
     ops.reset_default_graph()
     with ops.device('/cpu:0'):

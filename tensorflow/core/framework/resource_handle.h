@@ -67,6 +67,11 @@ class ResourceHandle {
 
   string DebugString() const;
 
+  // GUID for anonymous resources. Resources with this shared_name will have
+  // their shared_name replaced with a GUID at creation time
+  static constexpr const char* ANONYMOUS_NAME =
+      "cd2c89b7-88b7-44c8-ad83-06c2a9158347";
+
  public:
   string device_;
   string container_;

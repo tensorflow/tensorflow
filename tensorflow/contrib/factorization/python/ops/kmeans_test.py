@@ -27,7 +27,7 @@ from sklearn.cluster import KMeans as SklearnKMeans
 # pylint: disable=g-import-not-at-top
 from tensorflow.contrib.factorization.python.ops import kmeans as kmeans_lib
 from tensorflow.python.estimator import run_config
-from tensorflow.python.feature_column import feature_column as fc
+from tensorflow.python.feature_column import feature_column_lib as fc
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
@@ -232,7 +232,7 @@ class KMeansTest(KMeansTestBase):
     self.assertEqual(features.shape, parsed_feature_dict.shape)
     self.assertEqual(features.dtype, parsed_feature_dict.dtype)
     # Then check that running the tensor yields the original list of points.
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       parsed_points = sess.run(parsed_feature_dict)
       self.assertAllEqual(self.points, parsed_points)
 

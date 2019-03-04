@@ -121,20 +121,12 @@ the Android NDK and SDK must be installed on your system.
 2.  The Android NDK is required to build the native (C/C++) TensorFlow code. The
     current recommended version is 14b, which may be found
     [here](https://developer.android.com/ndk/downloads/older_releases.html#ndk-14b-downloads).
-
-      * NDK 16, the revision released in November 2017, is **incompatible** with
-        Bazel. See [here](https://github.com/tensorflow/tensorflow/issues/14918).
-
 3.  The Android SDK and build tools may be obtained
     [here](https://developer.android.com/tools/revisions/build-tools.html), or
     alternatively as part of [Android
     Studio](https://developer.android.com/studio/index.html). Build tools API >=
     23 is required to build the TF Android demo (though it will run on API >= 21
     devices).
-
-      - The Android Studio SDK Manager's NDK installer will install the latest
-        revision of the NDK, which is **incompatible** with Bazel. You'll need
-        to download an older version manually, as (2) suggests.
 
 ##### Edit WORKSPACE
 
@@ -188,7 +180,7 @@ After editing your WORKSPACE file to update the SDK/NDK configuration, you may
 build the APK. Run this from your workspace root:
 
 ```bash
-bazel build -c opt //tensorflow/examples/android:tensorflow_demo
+bazel build --cxxopt='--std=c++11' -c opt //tensorflow/examples/android:tensorflow_demo
 ```
 
 ##### Install

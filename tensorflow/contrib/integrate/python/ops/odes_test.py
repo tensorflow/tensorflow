@@ -49,7 +49,7 @@ class OdeIntTest(test.TestCase):
     y_solved = odes.odeint(func, y0, t)
     self.assertIn('odeint', y_solved.name)
     self.assertEqual(y_solved.get_shape(), tensor_shape.TensorShape([11]))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_solved = sess.run(y_solved)
     y_true = np.exp(t)
     self.assertAllClose(y_true, y_solved)
@@ -62,7 +62,7 @@ class OdeIntTest(test.TestCase):
     func = lambda y, t: k * y
     t = np.linspace(0.0, 1.0, 11)
     y_solved = odes.odeint(func, 1.0 + 0.0j, t)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_solved = sess.run(y_solved)
     y_true = np.exp(k * t)
     self.assertAllClose(y_true, y_solved)
@@ -74,7 +74,7 @@ class OdeIntTest(test.TestCase):
     func = lambda t, y: (y - t)**2 + 1.0
     t = np.linspace(0.0, 1.0, 11)
     y_solved = odes.odeint(func, np.float64(0.5), t)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_solved = sess.run(y_solved)
     y_true = 1.0 / (2.0 - t) + t
     self.assertAllClose(y_true, y_solved)
@@ -96,7 +96,7 @@ class OdeIntTest(test.TestCase):
     t = np.linspace(0.0, 1.0, 11)
 
     y_solved = odes.odeint(func, y0, t)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_solved = sess.run(y_solved)
 
     y_true = np.zeros((len(t), 2, 1))
@@ -113,7 +113,7 @@ class OdeIntTest(test.TestCase):
       y_solved = odes.odeint(func, array_ops.reshape(y0, shape), t)
       self.assertEqual(y_solved.get_shape(),
                        tensor_shape.TensorShape(expected_shape))
-      with self.test_session() as sess:
+      with self.cached_session() as sess:
         y_solved = sess.run(y_solved)
         self.assertEquals(y_solved.shape, expected_shape)
 
@@ -126,7 +126,7 @@ class OdeIntTest(test.TestCase):
       for t_dtype in [dtypes.float32, dtypes.float64]:
         y0 = math_ops.cast(1.0, y0_dtype)
         y_solved = odes.odeint(func, y0, math_ops.cast(t, t_dtype))
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           y_solved = sess.run(y_solved)
         expected = np.asarray(np.exp(t))
         self.assertAllClose(y_solved, expected, rtol=1e-5)
@@ -148,13 +148,13 @@ class OdeIntTest(test.TestCase):
         self.y0, [0, 1],
         method='dopri5',
         options={'max_num_steps': 0})
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    'max_num_steps'):
         sess.run(y)
 
     y = odes.odeint(self.func, self.y0, [1, 0])
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaisesRegexp(errors_impl.InvalidArgumentError,
                                    'monotonic increasing'):
         sess.run(y)
@@ -164,7 +164,7 @@ class OdeIntTest(test.TestCase):
     times0 = np.linspace(0, 10, num=11, dtype=float)
     times1 = np.linspace(0, 10, num=101, dtype=float)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_solved_0, info_0 = sess.run(
           odes.odeint(self.func, self.y0, times0, full_output=True))
       y_solved_1, info_1 = sess.run(
@@ -179,7 +179,7 @@ class OdeIntTest(test.TestCase):
     t = [0, 20]
     kwargs = dict(
         full_output=True, method='dopri5', options=dict(max_num_steps=2000))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       _, info_0 = sess.run(
           odes.odeint(self.func, self.y0, t, rtol=0, atol=1e-6, **kwargs))
       _, info_1 = sess.run(
@@ -196,7 +196,7 @@ class StepSizeTest(test.TestCase):
     new_step = odes._optimal_step_size(
         last_step=constant_op.constant(1.0),
         error_ratio=constant_op.constant(1.0))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       new_step = sess.run(new_step)
     self.assertAllClose(new_step, 0.9)
 
@@ -204,7 +204,7 @@ class StepSizeTest(test.TestCase):
     new_step = odes._optimal_step_size(
         last_step=constant_op.constant(1.0),
         error_ratio=constant_op.constant(0.0))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       new_step = sess.run(new_step)
     self.assertAllClose(new_step, 10.0)
 
@@ -212,7 +212,7 @@ class StepSizeTest(test.TestCase):
     new_step = odes._optimal_step_size(
         last_step=constant_op.constant(1.0),
         error_ratio=constant_op.constant(1e6))
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       new_step = sess.run(new_step)
     self.assertAllClose(new_step, 0.2)
 
@@ -229,13 +229,13 @@ class InterpolationTest(test.TestCase):
     y_fit = array_ops.stack(
         [odes._interp_evaluate(coeffs, 0.0, 10.0, t) for t in times])
     y_expected = f(times)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_actual = sess.run(y_fit)
       self.assertAllClose(y_expected, y_actual)
 
     # attempt interpolation outside bounds
     y_invalid = odes._interp_evaluate(coeffs, 0.0, 10.0, 100.0)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors_impl.InvalidArgumentError):
         sess.run(y_invalid)
 
@@ -251,7 +251,7 @@ class OdeIntFixedTest(test.TestCase):
     y0 = [0., 1.]
     y_grid = odes.odeint_fixed(evol_func, y0, t, dt, method=method)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_grid_array = sess.run(y_grid)
 
     np.testing.assert_allclose(
@@ -265,7 +265,7 @@ class OdeIntFixedTest(test.TestCase):
     y0 = [1.]
     y_grid = odes.odeint_fixed(evol_func, y0, t, dt, method=method)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       y_grid_array = sess.run(y_grid)
 
     np.testing.assert_allclose(

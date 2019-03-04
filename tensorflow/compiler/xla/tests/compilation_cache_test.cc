@@ -42,14 +42,14 @@ class CompilationCacheTest : public ClientLibraryTestBase {
                                absl::Span<GlobalData* const> arguments,
                                float expected_result, bool expect_cache_hit) {
     ExecutionProfile execution_profile;
-    std::unique_ptr<Literal> result =
+    Literal result =
         client_
             ->ExecuteAndTransfer(computation, arguments,
                                  /*execution_options=*/&execution_options_,
                                  &execution_profile)
             .ConsumeValueOrDie();
     EXPECT_TRUE(LiteralTestUtil::Near(
-        *LiteralUtil::CreateR0<float>(expected_result), *result, error_spec_));
+        LiteralUtil::CreateR0<float>(expected_result), result, error_spec_));
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
 
@@ -63,10 +63,9 @@ class CompilationCacheTest : public ClientLibraryTestBase {
                            ->Execute(computation, arguments,
                                      &execution_options_, &execution_profile)
                            .ConsumeValueOrDie();
-    std::unique_ptr<Literal> result =
-        client_->Transfer(*data_handle).ConsumeValueOrDie();
+    Literal result = client_->Transfer(*data_handle).ConsumeValueOrDie();
     EXPECT_TRUE(LiteralTestUtil::Near(
-        *LiteralUtil::CreateR2<float>(expected_result), *result, error_spec_));
+        LiteralUtil::CreateR2<float>(expected_result), result, error_spec_));
     EXPECT_EQ(expect_cache_hit, execution_profile.compilation_cache_hit());
   }
 
@@ -88,13 +87,13 @@ XLA_TEST_F(CompilationCacheTest, DISABLED_ComputationCalledMultipleTimes) {
 XLA_TEST_F(CompilationCacheTest,
            DISABLED_ComputationCalledWithDifferentParameters) {
   std::unique_ptr<GlobalData> data_42 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(42.0f))
+      client_->TransferToServer(LiteralUtil::CreateR0<float>(42.0f))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> data_123 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(123.0f))
+      client_->TransferToServer(LiteralUtil::CreateR0<float>(123.0f))
           .ConsumeValueOrDie();
   std::unique_ptr<GlobalData> data_456 =
-      client_->TransferToServer(*LiteralUtil::CreateR0<float>(456.0f))
+      client_->TransferToServer(LiteralUtil::CreateR0<float>(456.0f))
           .ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
@@ -145,12 +144,12 @@ XLA_TEST_F(CompilationCacheTest, DISABLED_DifferentParameterLayouts) {
   auto rowmaj_array = LiteralUtil::CreateR2WithLayout(
       {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({1, 0}));
   auto rowmaj_handle =
-      client_->TransferToServer(*rowmaj_array).ConsumeValueOrDie();
+      client_->TransferToServer(rowmaj_array).ConsumeValueOrDie();
 
   auto colmaj_array = LiteralUtil::CreateR2WithLayout(
       {{1.0f, 2.0f}, {3.0f, 4.0f}}, LayoutUtil::MakeLayout({0, 1}));
   auto colmaj_handle =
-      client_->TransferToServer(*colmaj_array).ConsumeValueOrDie();
+      client_->TransferToServer(colmaj_array).ConsumeValueOrDie();
 
   XlaBuilder builder(TestName());
   Parameter(&builder, 0, ShapeUtil::MakeShape(F32, {2, 2}), "param0");

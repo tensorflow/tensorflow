@@ -26,7 +26,10 @@ using shape_inference::ShapeHandle;
 REGISTER_OP("DecodeRaw")
     .Input("bytes: string")
     .Output("output: out_type")
-    .Attr("out_type: {half,float,double,int32,uint16,uint8,int16,int8,int64}")
+    .Attr(
+        "out_type: "
+        "{half,float,double,int32,uint16,uint8,int16,int8,int64,complex64,"
+        "complex128}")
     .Attr("little_endian: bool = true")
     .SetShapeFn([](InferenceContext* c) {
       // Note: last dimension is data dependent.
@@ -343,10 +346,11 @@ REGISTER_OP("DecodeCSV")
       // Validate the record_defaults inputs.
       for (int i = 1; i < c->num_inputs(); ++i) {
         ShapeHandle v;
-        TF_RETURN_IF_ERROR(c->WithRank(c->input(i), 1, &v));
-        if (c->Value(c->Dim(v, 0)) > 1) {
+        TF_RETURN_IF_ERROR(c->WithRankAtMost(c->input(i), 1, &v));
+        if (c->Rank(c->input(i)) == 1 && c->Value(c->Dim(v, 0)) > 1) {
           return errors::InvalidArgument(
-              "Shape of a default must be a length-0 or length-1 vector");
+              "Shape of a default must be a length-0 or length-1 vector, or a "
+              "scalar.");
         }
       }
 

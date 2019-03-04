@@ -16,8 +16,12 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 #define TENSORFLOW_COMPILER_XLA_PYTHON_LOCAL_COMPUTATION_BUILDER_H_
 
+#include <string>
+#include <vector>
+
+#include <Python.h>
+
 #include "absl/types/span.h"
-#include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/executable_build_options.h"
 #include "tensorflow/compiler/xla/client/local_client.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
@@ -28,51 +32,68 @@ limitations under the License.
 namespace xla {
 namespace swig {
 
-// Initializes the number of replicas that XLA will be initialized with (when
-// first obtaining a handle to the local XLA service). If this is called after
-// the handle to the local XLA service has been established, then an error is
-// returned.
-Status InitializeReplicaCount(int replica_count);
+// Registers a 'fn_capsule' as a CPU custom call target.
+// 'fn_capsule' is a void* pointer encapsulated in a PyCapsule object, with name
+// "xla._CPU_CUSTOM_CALL_TARGET".
+Status RegisterCpuCustomCallTarget(const string& name, PyObject* fn_capsule);
 
-// Returns the replica count that is currently set, regardless of whether the
-// local XLA service has been instantiated yet or not.
-int GetReplicaCount();
+// Wrapper around an xla::LocalClient.
+class LocalClient {
+ public:
+  // Initializes a local XLA client for `platform_name`. Returns an error if no
+  /// such platform exists, or if the platform has no visible devices.
+  static StatusOr<LocalClient> Get(const string& platform_name);
 
-// Wraps the local client's infeed-transfer function.
-//
-// The default device ordinal (0) is used.
-Status TransferToInfeedLocal(const Literal& literal);
+  // Copyable and moveable; the class is just a wrapper around a
+  // xla::LocalClient pointer for convenient SWIG wrapping.
 
-// Transfers the given literal to the infeed of the given replica.
-//
-// The replica number is resolved to an appropriate device ordinal.
-Status TransferToInfeedLocalReplica(const Literal& literal, int replica_number);
+  // Returns the number of devices known to the XLA client.
+  int DeviceCount() const;
 
-// Transfers a literal of the given shape from the outfeed of the given replica.
-//
-// The replica number is resolved to an appropriate device ordinal.
-StatusOr<std::unique_ptr<Literal> > TransferFromOutfeedLocalReplica(
-    const Shape& shape, int replica_number);
+  // Wraps the local client's infeed-transfer function.
+  //
+  // The default device ordinal (0) is used.
+  Status TransferToInfeed(const Literal& literal, int device_ordinal);
 
-// Wraps a ScopedShapedBuffer produced by copying a literal "to
-// device," i.e. copying a literal to a scoped buffer via the local
-// client.
+  // Transfers a literal of the given shape from the outfeed of the given
+  // replica.
+  StatusOr<Literal> TransferFromOutfeed(const Shape& shape, int device_ordinal);
+
+  xla::LocalClient* client() const { return client_; }
+
+ private:
+  LocalClient(xla::LocalClient* client);
+
+  xla::LocalClient* client_;
+};
+
+class LocalShapedBufferTuple;
+
+// Represents a reference to literals that live in a device-allocated buffer via
+// XLA. Specifically, wraps a ScopedShapedBuffer produced by transferring a
+// literal to device via the local client.
 class LocalShapedBuffer {
  public:
   static StatusOr<LocalShapedBuffer*> FromLiteral(
-      const Literal& argument, const absl::optional<Shape>& shape_with_layout);
+      const Literal& argument, const absl::optional<Shape>& shape_with_layout,
+      const LocalClient& client, int device_ordinal);
 
-  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer);
+  LocalShapedBuffer(ScopedShapedBuffer shaped_buffer, xla::LocalClient* client);
+  StatusOr<Literal> ToLiteral() const;
+  const Shape& shape() const;
   const ScopedShapedBuffer* shaped_buffer() const;
-
-  StatusOr<std::unique_ptr<Literal> > ToLiteral() const;
 
   // Transfers ownership of the encapsulated ShapedBuffer to the caller,
   // analogous to std::unique_ptr::release().
   ShapedBuffer Release();
 
+  // Destructures a tuple-valued LocalShapedBuffer into its constituent
+  // elements in LocalShapedBufferTuple form.
+  StatusOr<LocalShapedBufferTuple*> DestructureTuple();
+
  private:
   ScopedShapedBuffer shaped_buffer_;
+  xla::LocalClient* client_;
 };
 
 // Result of a tuple destructuring operation on a LocalShapedBuffer -- this
@@ -92,53 +113,53 @@ class LocalShapedBufferTuple {
   StatusOr<LocalShapedBuffer*> Release(int i);
 
   // Returns the number of elements in the destructured tuple.
-  int size() const;
+  int64 size() const;
 
  private:
   std::vector<LocalShapedBuffer*> elements_;
 };
 
-// Destructures a tuple-valued LocalShapedBuffer into its constitutent elements
-// in LocalShapedBufferTuple form.
-StatusOr<LocalShapedBufferTuple*> DestructureLocalShapedBufferTuple(
-    LocalShapedBuffer* local_shaped_buffer);
-
-// Wraps a LocalExecutable produced by compiling a
-// LocalComputation. The Execute method forwards to that of the
-// underlying LocalExecutable, and additionally handles tranferring
-// arguments and return values in and back out of the client library's
-// local client. This class is intended to be made available to Python
-// via SWIG.
-class CompiledLocalComputation {
+// Represents a compiled computation that can be executed given handles to
+// device-allocated literals. Specifically, wraps an XLA LocalExecutable.
+class LocalExecutable {
  public:
-  CompiledLocalComputation(std::unique_ptr<LocalExecutable> executable);
+  LocalExecutable(std::unique_ptr<xla::LocalExecutable> executable,
+                  xla::DeviceAssignment device_assignment,
+                  xla::LocalClient* client);
 
-  // Execute the computation with the given argument literals, and
-  // with optionally-specified argument layouts. The literals will be
-  // re-laid out according to the corresponding elements of
-  // shapes_with_layout.
-  StatusOr<std::unique_ptr<Literal> > Execute(
-      const std::vector<Literal>& arguments,
-      const std::vector<absl::optional<Shape> >& shapes_with_layout);
+  int num_replicas() const {
+    return executable_->build_options().num_replicas();
+  }
 
-  LocalShapedBuffer* ExecuteWithShapedBuffers(
+  // Returns the device ordinals to which each replica is assigned.
+  std::vector<int> DeviceOrdinals() const;
+
+  StatusOr<LocalShapedBuffer*> Execute(
       absl::Span<LocalShapedBuffer* const> argument_handles);
 
+  // Execute on many replicas. Takes a sequence of argument lists (one argument
+  // list per replica) and returns a tuple of results (one result per replica).
+  // The number of argument lists must be equal to the replica count.
+  StatusOr<LocalShapedBufferTuple*> ExecutePerReplica(
+      absl::Span<const std::vector<LocalShapedBuffer*> > argument_handles);
+
  private:
-  std::unique_ptr<LocalExecutable> executable_;
+  const std::unique_ptr<xla::LocalExecutable> executable_;
+  const xla::DeviceAssignment device_assignment_;
+  xla::LocalClient* const client_;
 };
 
-// Wraps a XlaComputation produced by a LocalComputationBuilder. The
+// Wraps a XlaComputation produced by a ComputationBuilder. The
 // Compile method compiles the computation to a (local) executable via
 // the client library's local client. This class is intended to be
 // made available to Python via SWIG.
-class LocalComputation {
+class Computation {
  public:
-  LocalComputation(XlaComputation computation);
+  Computation(XlaComputation computation);
 
-  StatusOr<CompiledLocalComputation*> Compile(
+  StatusOr<LocalExecutable*> Compile(
       const std::vector<Shape>& argument_shapes,
-      const ExecutableBuildOptions* build_options);
+      const ExecutableBuildOptions* build_options, const LocalClient& client);
 
   const XlaComputation& computation() const;
 
@@ -147,6 +168,15 @@ class LocalComputation {
   // string on failure.
   string GetSerializedProto() const;
 
+  // Returns the computation in human-readable HLO text format.
+  StatusOr<string> GetHloText() const;
+
+  // Returns the computation in graphviz dot format.
+  StatusOr<string> GetHloDotGraph() const;
+
+  // Returns the program shape for this computation.
+  StatusOr<ProgramShape> GetProgramShape() const;
+
   // Returns the return-value shape for this computation.
   StatusOr<Shape> GetReturnValueShape() const;
 
@@ -154,7 +184,7 @@ class LocalComputation {
   XlaComputation computation_;
 };
 
-// Wraps a XlaOp produced by a LocalComputationBuilder. This class is intended
+// Wraps a XlaOp produced by a ComputationBuilder. This class is intended
 // to be made available to Python via SWIG.
 class LocalOp {
  public:
@@ -171,17 +201,20 @@ class LocalOp {
 //   Python.
 // - Set up the underlying builder to use the client library's
 //   LocalClient.
-// - Wrap Computations in LocalComputations for Python access.
-// - Correspondingly unwrap incoming LocalComputations.
-class LocalComputationBuilder {
+// - Wrap Computations in Computations for Python access.
+// - Correspondingly unwrap incoming Computations.
+class ComputationBuilder {
  public:
-  LocalComputationBuilder(const string& computation_name);
+  ComputationBuilder(const string& computation_name);
 
   void SetOpMetadata(const OpMetadata& metadata);
   void ClearOpMetadata();
 
-  // Returns an owned LocalComputation to the caller on success.
-  StatusOr<LocalComputation*> Build();
+  // Returns an owned Computation to the caller on success.
+  StatusOr<Computation*> Build();
+
+  // Returns an owned Computation to the caller on success with given root.
+  StatusOr<Computation*> BuildWithRoot(const LocalOp& root);
 
   LocalOp Parameter(int64 parameter_number, const Shape& shape,
                     const string& name);
@@ -191,6 +224,8 @@ class LocalComputationBuilder {
   // Returns the shape of the current return value for the computation.
   StatusOr<Shape> GetReturnValueShape();
 
+  LocalOp ReplicaId();
+
   LocalOp Infeed(const Shape& shape);
 
   void Outfeed(const LocalOp& operand, const Shape& shape,
@@ -198,8 +233,16 @@ class LocalComputationBuilder {
 
   LocalOp ConstantLiteral(const Literal& literal);
 
+  LocalOp Iota(PrimitiveType element_type, int64 size);
+
+  LocalOp BroadcastedIota(const Shape& shape, int64 dimension);
+
   LocalOp Broadcast(const LocalOp& operand,
                     absl::Span<const int64> broadcast_sizes);
+
+  LocalOp BroadcastInDim(const LocalOp& operand,
+                         absl::Span<const int64> out_dim_sizes,
+                         absl::Span<const int64> broadcast_dimensions);
 
   LocalOp Pad(const LocalOp& operand, const LocalOp& padding_value,
               const PaddingConfig& padding_config);
@@ -209,7 +252,12 @@ class LocalComputationBuilder {
 
   LocalOp Collapse(const LocalOp& operand, absl::Span<const int64> dimensions);
 
-  LocalOp CrossReplicaSum(const LocalOp& operand);
+  LocalOp AllToAll(const LocalOp& operand, int64 split_dimension,
+                   int64 concat_dimension, int64 split_count,
+                   absl::Span<const ReplicaGroup> replica_groups);
+
+  LocalOp CrossReplicaSum(const LocalOp& operand,
+                          absl::Span<const ReplicaGroup> replica_groups);
 
   LocalOp Slice(const LocalOp& operand, absl::Span<const int64> start_indices,
                 absl::Span<const int64> limit_indices,
@@ -227,11 +275,11 @@ class LocalComputationBuilder {
   LocalOp ConcatInDim(absl::Span<const LocalOp> operands, int64 dimension);
 
   LocalOp SelectAndScatterWithGeneralPadding(
-      const LocalOp& operand, const LocalComputation& select,
+      const LocalOp& operand, const Computation& select,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
       absl::Span<const std::pair<int64, int64> > padding, const LocalOp& source,
-      const LocalOp& init_value, const LocalComputation& scatter);
+      const LocalOp& init_value, const Computation& scatter);
 
   LocalOp Tuple(absl::Span<const LocalOp> elements);
 
@@ -248,7 +296,8 @@ class LocalComputationBuilder {
       absl::Span<const std::pair<int64, int64> > padding,
       absl::Span<const int64> lhs_dilation,
       absl::Span<const int64> rhs_dilation,
-      const ConvolutionDimensionNumbers& dimension_numbers);
+      const ConvolutionDimensionNumbers& dimension_numbers,
+      int64 feature_group_count);
 
   LocalOp ConvertElementType(const LocalOp& operand,
                              PrimitiveType new_element_type);
@@ -256,8 +305,14 @@ class LocalComputationBuilder {
   LocalOp BitcastConvertType(const LocalOp& operand,
                              PrimitiveType new_element_type);
 
-  LocalOp Call(const LocalComputation& local_computation,
+  LocalOp Call(const Computation& local_computation,
                absl::Span<const LocalOp> operands);
+
+  LocalOp CustomCall(const string& call_target_name,
+                     absl::Span<const LocalOp> operands,
+                     const Shape& shape_with_layout,
+                     const std::vector<Shape>& operand_shapes_with_layout,
+                     const string& opaque);
 
   LocalOp Transpose(const LocalOp& operand,
                     absl::Span<const int64> permutation);
@@ -265,18 +320,20 @@ class LocalComputationBuilder {
   LocalOp Rev(const LocalOp& operand, absl::Span<const int64> dimensions);
 
   LocalOp Map(absl::Span<const LocalOp> operands,
-              const LocalComputation& local_computation,
+              const Computation& local_computation,
               absl::Span<const int64> dimensions);
 
   LocalOp Reduce(const LocalOp& operand, const LocalOp& init_value,
-                 const LocalComputation& local_computation,
+                 const Computation& local_computation,
                  absl::Span<const int64> dimensions_to_reduce);
 
   LocalOp ReduceWindowWithGeneralPadding(
       const LocalOp& operand, const LocalOp& init_value,
-      const LocalComputation& local_computation,
+      const Computation& local_computation,
       absl::Span<const int64> window_dimensions,
       absl::Span<const int64> window_strides,
+      absl::Span<const int64> base_dilations,
+      absl::Span<const int64> window_dilations,
       absl::Span<const std::pair<int64, int64> > padding);
 
   LocalOp RngNormal(const LocalOp& mu, const LocalOp& sigma,
@@ -284,13 +341,13 @@ class LocalComputationBuilder {
 
   LocalOp RngUniform(const LocalOp& a, const LocalOp& b, const Shape& shape);
 
-  LocalOp While(const LocalComputation& condition, const LocalComputation& body,
+  LocalOp While(const Computation& condition, const Computation& body,
                 const LocalOp& init);
 
   LocalOp Conditional(const LocalOp& predicate, const LocalOp& true_operand,
-                      const LocalComputation& true_computation,
+                      const Computation& true_computation,
                       const LocalOp& false_operand,
-                      const LocalComputation& false_computation);
+                      const Computation& false_computation);
 
   StatusOr<bool> IsConstant(const LocalOp& operand);
 
@@ -299,7 +356,25 @@ class LocalComputationBuilder {
   LocalOp SortKeyVal(const LocalOp& keys, const LocalOp& values,
                      int64 dimension);
 
-  StatusOr<LocalComputation*> BuildConstantSubGraph(const LocalOp& operand);
+  LocalOp QR(const LocalOp& a, bool full_matrices);
+
+  LocalOp Cholesky(const LocalOp& a, bool lower);
+
+  // `transpose_a` is the integer value of a TriangularSolveOptions::Transpose
+  // enum. We use an integer here so we don't have to teach SWIG about the
+  // enum.
+  LocalOp TriangularSolve(const LocalOp& a, const LocalOp& b, bool left_side,
+                          bool lower, bool unit_diagonal, int transpose_a);
+
+  LocalOp Gather(const LocalOp& input, const LocalOp& start_indices,
+                 const GatherDimensionNumbers& dimension_numbers,
+                 absl::Span<const int64> slice_sizes);
+
+  LocalOp Scatter(const LocalOp& input, const LocalOp& scatter_indices,
+                  const LocalOp& updates, const Computation& update_computation,
+                  const ScatterDimensionNumbers& dimension_numbers);
+
+  StatusOr<Computation*> BuildConstantSubGraph(const LocalOp& operand);
 
 #define _FORWARD(method_name, return_sig, args_sig) \
   return_sig method_name args_sig;
@@ -341,6 +416,7 @@ class LocalComputationBuilder {
   _FORWARD_BINOP(Pow)
   _FORWARD_BINOP(Complex)
   _FORWARD_UNOP(Not)
+  _FORWARD_UNOP(Clz)
   _FORWARD_UNOP(Abs)
   _FORWARD_UNOP(Exp)
   _FORWARD_UNOP(Expm1)
@@ -388,8 +464,8 @@ class LocalComputationBuilder {
 
 // Functions for freeing resources from the Python side.
 void DeleteLocalShapedBuffer(LocalShapedBuffer* local_shaped_buffer);
-void DeleteCompiledLocalComputation(CompiledLocalComputation* computation);
-void DeleteLocalComputation(LocalComputation* computation);
+void DeleteLocalExecutable(LocalExecutable* computation);
+void DeleteComputation(Computation* computation);
 
 }  // namespace swig
 }  // namespace xla

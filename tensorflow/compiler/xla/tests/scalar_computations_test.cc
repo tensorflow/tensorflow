@@ -161,9 +161,9 @@ XLA_TEST_F(ScalarComputationsTest, CastS64ToF32) {
   ConvertElementType(a, F32);
 
   int64 value = 3LL << 35;
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR0<int64>(value);
+  Literal a_literal = LiteralUtil::CreateR0<int64>(value);
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
   ComputeAndCompareR0<float>(&builder, static_cast<float>(value),
                              {a_data.get()});
 }
@@ -225,20 +225,20 @@ XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsS32) {
 
 XLA_TEST_F(ScalarComputationsTest, MulThreeScalarsF32Params) {
   XlaBuilder builder(TestName());
-  std::unique_ptr<Literal> a_literal = LiteralUtil::CreateR0<float>(2.1f);
-  std::unique_ptr<Literal> b_literal = LiteralUtil::CreateR0<float>(5.5f);
-  std::unique_ptr<Literal> c_literal = LiteralUtil::CreateR0<float>(0.5f);
+  Literal a_literal = LiteralUtil::CreateR0<float>(2.1f);
+  Literal b_literal = LiteralUtil::CreateR0<float>(5.5f);
+  Literal c_literal = LiteralUtil::CreateR0<float>(0.5f);
 
   std::unique_ptr<GlobalData> a_data =
-      client_->TransferToServer(*a_literal).ConsumeValueOrDie();
+      client_->TransferToServer(a_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> b_data =
-      client_->TransferToServer(*b_literal).ConsumeValueOrDie();
+      client_->TransferToServer(b_literal).ConsumeValueOrDie();
   std::unique_ptr<GlobalData> c_data =
-      client_->TransferToServer(*c_literal).ConsumeValueOrDie();
+      client_->TransferToServer(c_literal).ConsumeValueOrDie();
 
-  XlaOp a = Parameter(&builder, 0, a_literal->shape(), "a");
-  XlaOp b = Parameter(&builder, 1, b_literal->shape(), "b");
-  XlaOp c = Parameter(&builder, 2, c_literal->shape(), "c");
+  XlaOp a = Parameter(&builder, 0, a_literal.shape(), "a");
+  XlaOp b = Parameter(&builder, 1, b_literal.shape(), "b");
+  XlaOp c = Parameter(&builder, 2, c_literal.shape(), "c");
   Mul(Mul(a, b), c);
 
   ComputeAndCompareR0<float>(&builder, 5.775f,
@@ -377,9 +377,9 @@ XLA_TEST_F(ScalarComputationsTest, DivU32s) {
         auto dividend_literal = LiteralUtil::CreateR0<uint32>(dividend);
         auto divisor_literal = LiteralUtil::CreateR0<uint32>(divisor);
         TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
-                                client_->TransferToServer(*dividend_literal));
+                                client_->TransferToServer(dividend_literal));
         TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
-                                client_->TransferToServer(*divisor_literal));
+                                client_->TransferToServer(divisor_literal));
         auto actual_literal =
             client_
                 ->ExecuteAndTransfer(div_computation,
@@ -388,7 +388,7 @@ XLA_TEST_F(ScalarComputationsTest, DivU32s) {
                 .ConsumeValueOrDie();
         auto expected_literal =
             LiteralUtil::CreateR0<uint32>(dividend / divisor);
-        EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+        EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, actual_literal));
       }
     }
   }
@@ -419,9 +419,9 @@ XLA_TEST_F(ScalarComputationsTest, RemU32s) {
         auto dividend_literal = LiteralUtil::CreateR0<uint32>(dividend);
         auto divisor_literal = LiteralUtil::CreateR0<uint32>(divisor);
         TF_ASSERT_OK_AND_ASSIGN(auto dividend_data,
-                                client_->TransferToServer(*dividend_literal));
+                                client_->TransferToServer(dividend_literal));
         TF_ASSERT_OK_AND_ASSIGN(auto divisor_data,
-                                client_->TransferToServer(*divisor_literal));
+                                client_->TransferToServer(divisor_literal));
         auto actual_literal =
             client_
                 ->ExecuteAndTransfer(rem_computation,
@@ -430,7 +430,7 @@ XLA_TEST_F(ScalarComputationsTest, RemU32s) {
                 .ConsumeValueOrDie();
         auto expected_literal =
             LiteralUtil::CreateR0<uint32>(dividend % divisor);
-        EXPECT_TRUE(LiteralTestUtil::Equal(*expected_literal, *actual_literal));
+        EXPECT_TRUE(LiteralTestUtil::Equal(expected_literal, actual_literal));
       }
     }
   }
@@ -441,8 +441,8 @@ XLA_TEST_F(ScalarComputationsTest, RemainderTwoScalarsNonConstDividendS32) {
   auto x = Parameter(&builder, 0, ShapeUtil::MakeShape(S32, {}), "x");
   Rem(x, ConstantR0<int32>(&builder, 80000));
 
-  std::unique_ptr<Literal> literal = LiteralUtil::CreateR0<int32>(87919);
-  TF_ASSERT_OK_AND_ASSIGN(auto input_data, client_->TransferToServer(*literal));
+  Literal literal = LiteralUtil::CreateR0<int32>(87919);
+  TF_ASSERT_OK_AND_ASSIGN(auto input_data, client_->TransferToServer(literal));
   ComputeAndCompareR0<int32>(&builder, 7919, {input_data.get()});
 }
 

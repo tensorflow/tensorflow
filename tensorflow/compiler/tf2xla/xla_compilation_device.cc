@@ -42,7 +42,7 @@ class XlaCompilationAllocator : public Allocator {
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override {
     // Regardless of the size requested, always allocates an XlaExpression.
-    // Respects the aligment request because there is alignment checking even
+    // Respects the alignment request because there is alignment checking even
     // for Tensors whose data is never accessed.
     void* p = port::AlignedMalloc(sizeof(XlaExpression), alignment);
     XlaExpression* expression = reinterpret_cast<XlaExpression*>(p);
@@ -60,8 +60,6 @@ class XlaCompilationAllocator : public Allocator {
   // buffers, so they get ids to track.
   bool ShouldAllocateEmptyTensors() override { return true; }
 
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
-
  private:
   // Don't run any constructors or destructors for complex objects,
   // since there is no backing store for the tensor to run them
@@ -76,12 +74,11 @@ class XlaCompilationAllocator : public Allocator {
 
 XlaCompilationDevice::XlaCompilationDevice(const SessionOptions& options,
                                            DeviceType type)
-    : LocalDevice(
-          options,
-          Device::BuildDeviceAttributes(
-              strings::StrCat("/device:", type.type(), ":0"), type,
-              Bytes(256 << 20), DeviceLocality(),
-              strings::StrCat("device: XLA compilation device ", type.type()))),
+    : LocalDevice(options, Device::BuildDeviceAttributes(
+                               absl::StrCat("/device:", type.type(), ":0"),
+                               type, Bytes(256 << 20), DeviceLocality(),
+                               absl::StrCat("device: XLA compilation device ",
+                                            type.type()))),
       allocator_(new XlaCompilationAllocator()) {}
 
 XlaCompilationDevice::~XlaCompilationDevice() {}
@@ -93,7 +90,7 @@ Allocator* XlaCompilationDevice::GetAllocator(AllocatorAttributes attr) {
 void XlaCompilationDevice::Compute(OpKernel* op_kernel,
                                    OpKernelContext* context) {
   VLOG(4) << "XlaCompilationDevice::Compute "
-          << SummarizeNodeDef(op_kernel->def());
+          << FormatNodeDefForError(op_kernel->def());
   auto* b = XlaContext::Get(context).builder();
   xla::OpMetadata metadata;
   metadata.set_op_type(op_kernel->type_string());
@@ -123,15 +120,6 @@ Status XlaCompilationDevice::MakeTensorFromProto(
     Tensor* tensor) {
   return errors::InvalidArgument(
       "XLACompilationDevice::MakeTensorFromProto should not be called");
-}
-
-XlaExpression::XlaExpression() = default;
-
-void XlaExpression::set_handle(const xla::XlaOp& h) { handle_ = h; }
-
-void XlaExpression::set_constant_value(Tensor value) {
-  has_constant_value_ = true;
-  constant_value_ = std::move(value);
 }
 
 }  // namespace tensorflow

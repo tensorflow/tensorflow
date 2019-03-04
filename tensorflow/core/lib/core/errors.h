@@ -136,11 +136,9 @@ string FormatNodeNamesForError(const T& names) {
         ::tensorflow::strings::StrAppend(output, FormatNodeNameForError(s));
       });
 }
-// TODO(b/113350742): Consolidate the two different formats `{{key value}}` and
-// `^^key:value^^` in a follow-on CL.
 // LINT.IfChange
 inline string FormatColocationNodeForError(const string& name) {
-  return strings::StrCat("^^colocation_node:", name, "^^");
+  return strings::StrCat("{{colocation_node ", name, "}}");
 }
 // LINT.ThenChange(//tensorflow/python/framework/error_interpolation.py)
 template <typename T>
@@ -150,6 +148,10 @@ string FormatColocationNodeForError(const T& names) {
         ::tensorflow::strings::StrAppend(output,
                                          FormatColocationNodeForError(s));
       });
+}
+
+inline string FormatFunctionForError(const string& name) {
+  return strings::StrCat("{{function_node ", name, "}}");
 }
 
 // The CanonicalCode() for non-errors.

@@ -23,12 +23,13 @@ from tensorflow.python.framework import ops
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
-from tensorflow.python.ops import functional_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
 from tensorflow.python.ops import random_ops
 from tensorflow.python.ops.distributions import distribution
 from tensorflow.python.ops.distributions import util as distribution_util
+from tensorflow.python.util import deprecation
 from tensorflow.python.util.tf_export import tf_export
 
 
@@ -51,7 +52,7 @@ fractional components, and such that
 with `self.probs` and `self.total_count`."""
 
 
-@tf_export("distributions.Multinomial")
+@tf_export(v1=["distributions.Multinomial"])
 class Multinomial(distribution.Distribution):
   """Multinomial distribution.
 
@@ -148,6 +149,14 @@ class Multinomial(distribution.Distribution):
   ```
   """
 
+  @deprecation.deprecated(
+      "2019-01-01",
+      "The TensorFlow Distributions library has moved to "
+      "TensorFlow Probability "
+      "(https://github.com/tensorflow/probability). You "
+      "should update all references to use `tfp.distributions` "
+      "instead of `tf.distributions`.",
+      warn_once=True)
   def __init__(self,
                total_count,
                logits=None,
@@ -257,7 +266,7 @@ class Multinomial(distribution.Distribution):
       x = math_ops.reduce_sum(array_ops.one_hot(x, depth=k), axis=-2)  # [n, k]
       return x
 
-    x = functional_ops.map_fn(
+    x = map_fn.map_fn(
         _sample_single, [flat_logits, flat_ndraws],
         dtype=self.dtype)  # [B1B2...Bm, n, k]
 

@@ -83,11 +83,11 @@ class _Linear(object):
     for shape in shapes:
       if shape.ndims != 2:
         raise ValueError("linear is expecting 2D arguments: %s" % shapes)
-      if shape[1].value is None:
+      if shape.dims[1].value is None:
         raise ValueError("linear expects shape[1] to be provided for shape %s, "
                          "but saw %s" % (shape, shape[1]))
       else:
-        total_arg_size += shape[1].value
+        total_arg_size += shape.dims[1].value
 
     dtype = [a.dtype for a in args][0]
 
@@ -156,11 +156,11 @@ def _linear(args,
   for shape in shapes:
     if shape.ndims != 2:
       raise ValueError("linear is expecting 2D arguments: %s" % shapes)
-    if shape[1].value is None:
+    if shape.dims[1].value is None:
       raise ValueError("linear expects shape[1] to be provided for shape %s, "
                        "but saw %s" % (shape, shape[1]))
     else:
-      total_arg_size += shape[1].value
+      total_arg_size += shape.dims[1].value
 
   dtype = [a.dtype for a in args][0]
 

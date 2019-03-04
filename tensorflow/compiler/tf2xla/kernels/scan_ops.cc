@@ -23,14 +23,13 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/framework/tensor_types.h"
 #include "tensorflow/core/framework/types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
-#include "tensorflow/core/kernels/concat_lib.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -39,8 +38,8 @@ namespace {
 
 // TODO(phawkins): implement double-sized windowed reductions in XLA and remove
 // the type constraint.
-constexpr std::array<DataType, 3> kScanOpTypes = {
-    {DT_HALF, DT_BFLOAT16, DT_FLOAT}};
+constexpr std::array<DataType, 4> kScanOpTypes = {
+    {DT_HALF, DT_BFLOAT16, DT_FLOAT, DT_INT32}};
 
 class ScanOp : public XlaOpKernel {
  public:
@@ -103,10 +102,10 @@ class ScanOp : public XlaOpKernel {
       reducer = ctx->GetOrCreateMul(dtype);
     }
     auto output = xla::ReduceWindowWithGeneralPadding(
-        XlaHelpers::ConvertElementType(builder, ctx->Input(0), dtype), init,
-        *reducer, window_dims, window_strides, padding);
-    output =
-        XlaHelpers::ConvertElementType(builder, output, ctx->input_type(0));
+        XlaHelpers::ConvertElementType(ctx->Input(0), dtype), init, *reducer,
+        window_dims, window_strides,
+        /*base_dilations=*/{}, /*window_dilations=*/{}, padding);
+    output = XlaHelpers::ConvertElementType(output, ctx->input_type(0));
 
     // In exclusive mode, we have computed an extra element containing the sum
     // of all the input elements. Slice off this extra "last" element.
@@ -135,7 +134,7 @@ class CumsumOp : public ScanOp {
 };
 REGISTER_XLA_OP(Name("Cumsum")
                     .TypeConstraint("T", kScanOpTypes)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 CumsumOp);
 
 class CumprodOp : public ScanOp {
@@ -144,7 +143,7 @@ class CumprodOp : public ScanOp {
 };
 REGISTER_XLA_OP(Name("Cumprod")
                     .TypeConstraint("T", kScanOpTypes)
-                    .CompileTimeConstInput("axis"),
+                    .CompileTimeConstantInput("axis"),
                 CumprodOp);
 
 }  // anonymous namespace

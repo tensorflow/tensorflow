@@ -224,14 +224,13 @@ class ShapeTree {
   // REQUIRES: index must exist in the ShapeTree.
   iterator find(ShapeIndexView index) {
     Node* element = Lookup(index);
-    return iterator(&nodes_, typename std::vector<Node>::iterator(element),
-                    /*iterate_leaves_only=*/false);
+    auto element_iter = nodes_.begin() + (element - &nodes_[0]);
+    return iterator(&nodes_, element_iter, /*iterate_leaves_only=*/false);
   }
   const_iterator find(ShapeIndexView index) const {
     Node* element = Lookup(index);
-    return iterator(&nodes_,
-                    typename std::vector<Node>::const_iterator(element),
-                    /*iterate_leaves_only=*/false);
+    auto element_iter = nodes_.cbegin() + (element - &nodes_[0]);
+    return const_iterator(&nodes_, element_iter, /*iterate_leaves_only=*/false);
   }
 
   // Returns the number of leaf nodes in the tree.
@@ -396,7 +395,7 @@ class ShapeTreeIterator
 template <typename T>
 int64 ShapeTree<T>::CountSubshapes(const Shape& shape) {
   int64 current_count = 1;
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     int64 count = ShapeUtil::TupleElementCount(shape);
     for (int i = 0; i < count; ++i) {
       current_count += CountSubshapes(shape.tuple_shapes(i));
@@ -408,7 +407,7 @@ int64 ShapeTree<T>::CountSubshapes(const Shape& shape) {
 template <typename T>
 void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
                                 Node* node, Index* index) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
 #ifndef NDEBUG
     index->children_count = size;
@@ -444,7 +443,7 @@ void ShapeTree<T>::InitChildren(const Shape& shape, const T& init_value,
 
 template <typename T>
 void ShapeTree<T>::InitChildren(const Shape& shape, Node* node, Index* index) {
-  if (ShapeUtil::IsTuple(shape)) {
+  if (shape.IsTuple()) {
     const int64 size = ShapeUtil::TupleElementCount(shape);
 #ifndef NDEBUG
     index->children_count = size;
@@ -668,12 +667,11 @@ void ShapeTree<T>::CopySubtreeFrom(const ShapeTree<T>& other,
 template <typename T>
 bool ShapeTree<T>::operator==(const ShapeTree<T>& other) const {
   bool equal = true;
-  ForEachElement(
-      [this, &other, &equal](const ShapeIndex& index, const T& data) {
-        if (data != other.element(index)) {
-          equal = false;
-        }
-      });
+  ForEachElement([&other, &equal](const ShapeIndex& index, const T& data) {
+    if (data != other.element(index)) {
+      equal = false;
+    }
+  });
   return equal;
 }
 

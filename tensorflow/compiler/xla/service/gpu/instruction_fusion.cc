@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/instruction_fusion.h"
 
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -46,6 +47,8 @@ bool IsFusible(const HloInstruction& hlo) {
          hlo.opcode() == HloOpcode::kReduce ||
          hlo.opcode() == HloOpcode::kReduceWindow ||
          hlo.opcode() == HloOpcode::kReshape ||
+         hlo.opcode() == HloOpcode::kReverse ||
+         hlo.opcode() == HloOpcode::kScatter ||
          hlo.opcode() == HloOpcode::kSlice ||
          hlo.opcode() == HloOpcode::kTranspose;
 }
@@ -77,7 +80,7 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
 // This function limits the maximum number of operands to a fusion.
 //
 // There's a cap on how many parameters we can pass to a CUDA kernel, but
-// exactly what that limit is is hazy, as it depends on (among other things) how
+// exactly what that limit is hazy, as it depends on (among other things) how
 // much GPU constant memory is in use for other purposes.
 //
 // Moreover, we don't even know at the point that we're running fusion how many
@@ -125,8 +128,8 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
   }
 
   // Compute the precise number of operands to the new fusion.
-  tensorflow::gtl::FlatSet<const HloInstruction*> operands(
-      a->operands().begin(), a->operands().end());
+  absl::flat_hash_set<const HloInstruction*> operands(a->operands().begin(),
+                                                      a->operands().end());
   operands.insert(b->operands().begin(), b->operands().end());
   // If there's an edge between `a` and `b`, don't count it: We're fusing that
   // producer -> consumer relationship.
@@ -177,6 +180,11 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
           IsIEEEFloatingPointScalarConstant(alpha->operand(0))) {
         return true;
       }
+    } else if (consumer->operand_count() == 2 &&
+               consumer->opcode() == HloOpcode::kAdd &&
+               consumer->operand(other_operand_index) != producer) {
+      // Fuse a bias add into the output of the dot.
+      return true;
     }
   }
 
@@ -222,6 +230,11 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
+  // Scatter is only supported at the root of a kInput fusion.
+  if (producer->opcode() == HloOpcode::kScatter) {
+    return false;
+  }
+
   // Do not fuse into reduce input fusions if the resulting kernel would suffer
   // from poor data locality (due to unfriendly input layouts).
   if (IsInputFusibleReduction(*consumer) &&
@@ -245,12 +258,17 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
     return false;
   }
 
-  // Fuse scalar constants into loop fusion nodes, this reduces the number of
+  // Fuse scalar constants into loop fusion nodes. This reduces the number of
   // parameters and makes matching scalar broadcasts easier.
-  if (ShapeUtil::IsEffectiveScalar(producer->shape()) &&
-      consumer->opcode() == HloOpcode::kFusion &&
-      producer->opcode() == HloOpcode::kConstant) {
-    return true;
+  //
+  // Don't fuse other constants: Unfused constants in GPU land can be
+  // represented as an external constant (i.e. not emitted in LLVM IR / PTX),
+  // but fused constants are handled by shrared CPU/GPU code and always emitted
+  // in the IR/PTX.  The external constant representation makes for faster
+  // compiles and significantly smaller assembly code.
+  if (producer->opcode() == HloOpcode::kConstant) {
+    return ShapeUtil::IsEffectiveScalar(producer->shape()) &&
+           consumer->opcode() == HloOpcode::kFusion;
   }
 
   if (!IsFusible(*producer) || !IsFusible(*consumer) ||
@@ -264,27 +282,13 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
                                                      int64 operand_index) {
-  const HloInstruction* producer = consumer->operand(operand_index);
-  // The IR emitter has limited support for non-loop fusions with multi output
-  // at present.
-  // TODO(tjoerg): Relax this constraint to allow for arbitraty kinds of fusion.
-  if (consumer->opcode() == HloOpcode::kFusion &&
-      consumer->fusion_kind() != HloInstruction::FusionKind::kLoop) {
-    return false;
-  }
-  // Multi-output fusion requires instructions with compatible shapes.
-  if (!ShapeUtil::Compatible(producer->shape(), consumer->shape())) {
-    return false;
-  }
-  // TODO(tjoerg): Stop calling `ShouldFuse` to relax the criteria for
-  // multi-output fusion. In particular, do not check whether an instruction is
-  // expensive to duplicate, since this doesn't matter here.
-  return GpuInstructionFusion::ShouldFuse(consumer, operand_index);
+  return false;
 }
 
 HloInstruction::FusionKind GpuInstructionFusion::ChooseKind(
     const HloInstruction* producer, const HloInstruction* consumer) {
-  if (IsReductionToVector(*consumer)) {
+  if (IsReductionToVector(*consumer) ||
+      consumer->opcode() == HloOpcode::kScatter) {
     return HloInstruction::FusionKind::kInput;
   }
   if (producer->opcode() == HloOpcode::kDot ||

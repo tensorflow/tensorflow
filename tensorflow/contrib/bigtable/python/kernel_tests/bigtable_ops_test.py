@@ -57,11 +57,11 @@ class BigtableOpsTest(test.TestCase):
     sess.run(write_op)
 
   def runReadKeyTest(self, read_ds):
-    itr = read_ds.make_initializable_iterator()
+    itr = dataset_ops.make_initializable_iterator(read_ds)
     n = itr.get_next()
     expected = list(self.COMMON_ROW_KEYS)
     expected.reverse()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i in range(3):
@@ -78,13 +78,13 @@ class BigtableOpsTest(test.TestCase):
     self.runReadKeyTest(self._table.keys_by_range_dataset("r1", "r4"))
 
   def runScanTest(self, read_ds):
-    itr = read_ds.make_initializable_iterator()
+    itr = dataset_ops.make_initializable_iterator(read_ds)
     n = itr.get_next()
     expected_keys = list(self.COMMON_ROW_KEYS)
     expected_keys.reverse()
     expected_values = list(self.COMMON_VALUES)
     expected_values.reverse()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i in range(3):
@@ -120,12 +120,12 @@ class BigtableOpsTest(test.TestCase):
   def testLookup(self):
     ds = self._table.keys_by_prefix_dataset("r")
     ds = ds.apply(self._table.lookup_columns(cf1="c1"))
-    itr = ds.make_initializable_iterator()
+    itr = dataset_ops.make_initializable_iterator(ds)
     n = itr.get_next()
     expected_keys = list(self.COMMON_ROW_KEYS)
     expected_values = list(self.COMMON_VALUES)
     expected_tuples = zip(expected_keys, expected_values)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i, elem in enumerate(expected_tuples):
@@ -141,10 +141,10 @@ class BigtableOpsTest(test.TestCase):
 
   def testSampleKeys(self):
     ds = self._table.sample_keys()
-    itr = ds.make_initializable_iterator()
+    itr = dataset_ops.make_initializable_iterator(ds)
     n = itr.get_next()
     expected_key = self.COMMON_ROW_KEYS[0]
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       output = sess.run(n)
@@ -161,9 +161,9 @@ class BigtableOpsTest(test.TestCase):
         sess.run(n)
 
   def runSampleKeyPairsTest(self, ds, expected_key_pairs):
-    itr = ds.make_initializable_iterator()
+    itr = dataset_ops.make_initializable_iterator(ds)
     n = itr.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       for i, elems in enumerate(expected_key_pairs):
@@ -218,24 +218,24 @@ class BigtableOpsTest(test.TestCase):
   def testSampleKeyPairsPrefixAndStartKey(self):
     ds = bigtable_api._BigtableSampleKeyPairsDataset(
         self._table, prefix="r", start="r1", end="")
-    itr = ds.make_initializable_iterator()
-    with self.test_session() as sess:
+    itr = dataset_ops.make_initializable_iterator(ds)
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(itr.initializer)
 
   def testSampleKeyPairsPrefixAndEndKey(self):
     ds = bigtable_api._BigtableSampleKeyPairsDataset(
         self._table, prefix="r", start="", end="r3")
-    itr = ds.make_initializable_iterator()
-    with self.test_session() as sess:
+    itr = dataset_ops.make_initializable_iterator(ds)
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(itr.initializer)
 
   def testParallelScanPrefix(self):
     ds = self._table.parallel_scan_prefix(prefix="r", cf1="c1")
-    itr = ds.make_initializable_iterator()
+    itr = dataset_ops.make_initializable_iterator(ds)
     n = itr.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       expected_values = list(zip(self.COMMON_ROW_KEYS, self.COMMON_VALUES))
@@ -251,9 +251,9 @@ class BigtableOpsTest(test.TestCase):
 
   def testParallelScanRange(self):
     ds = self._table.parallel_scan_range(start="r1", end="r4", cf1="c1")
-    itr = ds.make_initializable_iterator()
+    itr = dataset_ops.make_initializable_iterator(ds)
     n = itr.get_next()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       self._writeCommonValues(sess)
       sess.run(itr.initializer)
       expected_values = list(zip(self.COMMON_ROW_KEYS, self.COMMON_VALUES))

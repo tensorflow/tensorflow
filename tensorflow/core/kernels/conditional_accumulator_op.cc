@@ -34,7 +34,8 @@ class ConditionalAccumulatorOp : public ConditionalAccumulatorBaseOp {
   Creator GetCreator() const override {
     return [this](ConditionalAccumulatorBase** ret) {
       ConditionalAccumulator<Device, T>* accumulator =
-          new ConditionalAccumulator<Device, T>(dtype_, shape_, cinfo_.name());
+          new ConditionalAccumulator<Device, T>(dtype_, shape_, cinfo_.name(),
+                                                reduction_type_);
       *ret = accumulator;
       return Status::OK();
     };

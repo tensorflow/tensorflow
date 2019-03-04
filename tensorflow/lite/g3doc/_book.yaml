@@ -1,0 +1,121 @@
+upper_tabs:
+- name: "Install"
+  lower_tabs:
+    guides:
+    - include: /install/_toc.yaml
+
+- name: "Learn"
+  path: /learn/
+  is_default: true
+  menu:
+  - include: /learn/_menu_toc.yaml
+  lower_tabs:
+    # Subsite tabs
+    other:
+    - name: "Guide"
+      contents:
+      - title: "TensorFlow Lite guide"
+        path: /lite/guide
+
+      - heading: "Get started"
+      - title: "Overview"
+        path: /lite/guide/get_started
+      - title: "Android quickstart"
+        path: /lite/guide/android
+      - title: "iOS quickstart"
+        path: /lite/guide/ios
+      - title: "TensorFlow Lite FAQ"
+        path: /lite/guide/faq
+
+      - heading: "Convert a model"
+      - title: "TensorFlow Lite converter"
+        path: /lite/convert/
+      - title: "Command line examples"
+        path: /lite/convert/cmdline_examples
+      - title: "Command line reference"
+        path: /lite/convert/cmdline_reference
+      - title: "Python API"
+        path: /lite/convert/python_api
+
+      - heading: "Inference"
+      - title: "Overview"
+        path: /lite/guide/inference
+      - title: "Custom operators"
+        path: /lite/guide/ops_custom
+      - title: "Operator versions"
+        path: /lite/guide/ops_version
+      - title: "Operator compatibility"
+        path: /lite/guide/ops_compatibility
+      - title: "Select operators from TensorFlow"
+        path: /lite/guide/ops_select
+      - title: "List of hosted models"
+        path: /lite/guide/hosted_models
+
+      - heading: "Performance"
+      - title: "Best practices"
+        path: /lite/performance/best_practices
+      - title: "Benchmarks"
+        path: /lite/performance/benchmarks
+      - title: "Model optimization"
+        path: /lite/performance/model_optimization
+      - title: "Post-training quantization"
+        path: /lite/performance/post_training_quantization
+      - title: "Post-training quantization example"
+        path: https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/tutorials/post_training_quant.ipynb
+        status: external
+      - title: "GPU delegate"
+        path: /lite/performance/gpu
+      - title: "Advanced GPU"
+        path: /lite/performance/gpu_advanced
+
+      - heading: "Build TensorFlow Lite"
+      - title: "Build for iOS"
+        path: /lite/guide/build_ios
+      - title: "Build for ARM64"
+        path: /lite/guide/build_arm64
+      - title: "Build for Raspberry Pi"
+        path: /lite/guide/build_rpi
+
+    - name: "Examples"
+      contents:
+      - title: "Examples"
+        path: /lite/examples
+
+    - name: "Models"
+      contents:
+      - title: "Overview"
+        path: /lite/models/
+      - title: "Image classification"
+        section:
+        - title: "Overview"
+          path: /lite/models/image_classification/overview
+        - title: "Android"
+          path: /lite/models/image_classification/android
+        - title: "iOS"
+          path: /lite/models/image_classification/ios
+      - title: "Object detection"
+        section:
+        - title: "Overview"
+          path: /lite/models/object_detection/overview
+      - title: "Pose estimation"
+        section:
+        - title: "Overview"
+          path: /lite/models/pose_estimation/overview
+      - title: "Segmentation"
+        section:
+        - title: "Overview"
+          path: /lite/models/segmentation/overview
+      - title: "Smart reply"
+        section:
+        - title: "Overview"
+          path: /lite/models/smart_reply/overview
+
+    - name: "API"
+      skip_translation: true
+      contents:
+      - title: "API"
+        path: /api_docs/python/tf/lite
+
+- include: /api_docs/_upper_tabs_api.yaml
+- include: /resources/_upper_tabs_resources.yaml
+- include: /_upper_tabs_right.yaml

@@ -19,11 +19,14 @@ from __future__ import division
 from __future__ import print_function
 
 import os
+import re
 
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import error_interpolation
 from tensorflow.python.framework import ops
+from tensorflow.python.framework import test_util
 from tensorflow.python.framework import traceable_stack
+from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 from tensorflow.python.util import tf_stack
 
@@ -112,6 +115,7 @@ class ComputeColocationSummaryFromOpTest(test.TestCase):
     self.assertIn("No node-device colocations", summary)
 
 
+@test_util.run_deprecated_v1
 class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
 
   def setUp(self):
@@ -167,27 +171,71 @@ class InterpolateFilenamesAndLineNumbersTest(test.TestCase):
     self.assertEqual(interpolated_string, normal_string)
 
   def testOneTagWithAFakeNameResultsInPlaceholders(self):
-    one_tag_string = "^^node:MinusOne^^"
+    one_tag_string = "{{node MinusOne}}"
     interpolated_string = error_interpolation.interpolate(
         one_tag_string, self.graph)
     self.assertEqual(one_tag_string, interpolated_string)
 
   def testTwoTagsNoSeps(self):
-    two_tags_no_seps = "^^node:One^^^^node:Three^^"
+    two_tags_no_seps = "{{node One}}{{node Three}}"
     interpolated_string = error_interpolation.interpolate(
         two_tags_no_seps, self.graph)
     self.assertRegexpMatches(interpolated_string,
                              "constant_op.py:[0-9]+.*constant_op.py:[0-9]+")
 
   def testTwoTagsWithSeps(self):
-    two_tags_with_seps = ";;;^^node:Two^^,,,^^node:Three^^;;;"
+    two_tags_with_seps = ";;;{{node Two}},,,{{node Three}};;;"
     interpolated_string = error_interpolation.interpolate(
         two_tags_with_seps, self.graph)
     expected_regex = (
-        r"^;;;.*constant_op.py:[0-9]+\) ,,,.*constant_op.py:[0-9]*\) ;;;$")
+        r"^;;;.*constant_op.py:[0-9]+\) ,,,.*constant_op.py:[0-9]+\) ;;;$")
+    self.assertRegexpMatches(interpolated_string, expected_regex)
+
+  def testNewLine(self):
+    newline = "\n\n{{node One}}"
+    interpolated_string = error_interpolation.interpolate(newline, self.graph)
+    self.assertRegexpMatches(interpolated_string, "constant_op.py:[0-9]+.*")
+
+
+@test_util.run_deprecated_v1
+class InputNodesTest(test.TestCase):
+
+  def setUp(self):
+    # Add nodes to the graph for retrieval by name later.
+    one = constant_op.constant(1, name="One")
+    two = constant_op.constant(2, name="Two")
+    three = math_ops.add(one, two, name="Three")
+    self.graph = three.graph
+
+    # Change the list of bad file substrings so that constant_op.py is chosen
+    # as the defining stack frame for constant_op.constant ops.
+    self.old_bad_strings = error_interpolation._BAD_FILE_SUBSTRINGS
+    error_interpolation._BAD_FILE_SUBSTRINGS = [
+        "%sops.py" % os.sep,
+        "%sutil" % os.sep,
+    ]
+
+  def tearDown(self):
+    error_interpolation._BAD_FILE_SUBSTRINGS = self.old_bad_strings
+
+  def testNoInputs(self):
+    two_tags_with_seps = ";;;{{node One}},,,{{node Two}};;;"
+    interpolated_string = error_interpolation.interpolate(
+        two_tags_with_seps, self.graph)
+    expected_regex = (
+        r"^;;;.*constant_op.py:[0-9]+\) ,,,.*constant_op.py:[0-9]+\) ;;;$")
+    self.assertRegexpMatches(interpolated_string, expected_regex)
+
+  def testBasicInputs(self):
+    tag = ";;;{{node Three}};;;"
+    interpolated_string = error_interpolation.interpolate(tag, self.graph)
+    expected_regex = re.compile(
+        r"^;;;.*op_def_library.py:[0-9]+\) ;;;.*Input.*constant_op.py:[0-9]+\)",
+        re.DOTALL)
     self.assertRegexpMatches(interpolated_string, expected_regex)
 
 
+@test_util.run_deprecated_v1
 class InterpolateDeviceSummaryTest(test.TestCase):
 
   def _fancy_device_function(self, unused_op):
@@ -206,23 +254,23 @@ class InterpolateDeviceSummaryTest(test.TestCase):
     self.graph = self.three.graph
 
   def testNodeZeroHasNoDeviceSummaryInfo(self):
-    message = "^^colocation_node:zero^^"
+    message = "{{colocation_node zero}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("No device assignments were active", result)
 
   def testNodeOneHasExactlyOneInterpolatedDevice(self):
-    message = "^^colocation_node:one^^"
+    message = "{{colocation_node one}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertEqual(2, result.count("tf.device(/cpu)"))
 
   def testNodeTwoHasTwoInterpolatedDevice(self):
-    message = "^^colocation_node:two^^"
+    message = "{{colocation_node two}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertEqual(2, result.count("tf.device(/cpu)"))
     self.assertEqual(2, result.count("tf.device(/cpu:0)"))
 
   def testNodeThreeHasFancyFunctionDisplayNameForInterpolatedDevice(self):
-    message = "^^colocation_node:three^^"
+    message = "{{colocation_node three}}"
     result = error_interpolation.interpolate(message, self.graph)
     num_devices = result.count("tf.device")
     self.assertEqual(2, num_devices)
@@ -231,6 +279,7 @@ class InterpolateDeviceSummaryTest(test.TestCase):
     self.assertRegexpMatches(result, expected_re)
 
 
+@test_util.run_deprecated_v1
 class InterpolateColocationSummaryTest(test.TestCase):
 
   def setUp(self):
@@ -256,12 +305,12 @@ class InterpolateColocationSummaryTest(test.TestCase):
     self.graph = node_three.graph
 
   def testNodeThreeHasColocationInterpolation(self):
-    message = "^^colocation_node:Three_with_one^^"
+    message = "{{colocation_node Three_with_one}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(One)", result)
 
   def testNodeFourHasColocationInterpolationForNodeThreeOnly(self):
-    message = "^^colocation_node:Four_with_three^^"
+    message = "{{colocation_node Four_with_three}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(Three_with_one)", result)
     self.assertNotIn(
@@ -269,13 +318,13 @@ class InterpolateColocationSummaryTest(test.TestCase):
         "Node One should not appear in Four_with_three's summary:\n%s" % result)
 
   def testNodeFiveHasColocationInterpolationForNodeOneAndTwo(self):
-    message = "^^colocation_node:Five_with_one_with_two^^"
+    message = "{{colocation_node Five_with_one_with_two}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("colocate_with(One)", result)
     self.assertIn("colocate_with(Two)", result)
 
   def testColocationInterpolationForNodeLackingColocation(self):
-    message = "^^colocation_node:One^^"
+    message = "{{colocation_node One}}"
     result = error_interpolation.interpolate(message, self.graph)
     self.assertIn("No node-device colocations", result)
     self.assertNotIn("Two", result)

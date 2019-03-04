@@ -173,7 +173,7 @@ class JITTest(test.TestCase):
 class CompilationEnabledInGradientTest(test.TestCase):
 
   def testCompilationInGradient(self):
-    with self.test_session():
+    with self.cached_session():
       x = constant_op.constant([[3.]])
       y_nc = math_ops.matmul(x, x, name="not_compiled")
       with jit.experimental_jit_scope():

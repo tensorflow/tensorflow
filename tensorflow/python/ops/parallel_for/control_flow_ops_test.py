@@ -26,15 +26,19 @@ import numpy as np
 from tensorflow.core.example import example_pb2
 from tensorflow.core.example import feature_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import backprop
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import bitwise_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.ops import gradients as gradient_ops
 from tensorflow.python.ops import logging_ops
+from tensorflow.python.ops import map_fn
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.ops import parsing_ops
@@ -45,35 +49,13 @@ from tensorflow.python.ops import tensor_array_grad  # pylint: disable=unused-im
 from tensorflow.python.ops import tensor_array_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.ops.parallel_for import control_flow_ops as pfor_control_flow_ops
+from tensorflow.python.ops.parallel_for.test_util import PForTestCase
 from tensorflow.python.platform import test
 from tensorflow.python.util import nest
 
 
-class PForTest(test.TestCase):
-
-  def _run_targets(self, targets1, targets2=None, run_init=True):
-    targets1 = nest.flatten(targets1)
-    targets2 = ([] if targets2 is None else nest.flatten(targets2))
-    assert len(targets1) == len(targets2) or not targets2
-    if run_init:
-      init = variables.global_variables_initializer()
-      self.evaluate(init)
-    return self.evaluate(targets1 + targets2)
-
-  def run_and_assert_equal(self, targets1, targets2):
-    outputs = self._run_targets(targets1, targets2)
-    outputs = nest.flatten(outputs)  # flatten SparseTensorValues
-    n = len(outputs) // 2
-    for i in range(n):
-      if outputs[i + n].dtype != np.object:
-        self.assertAllClose(outputs[i + n], outputs[i], rtol=1e-4, atol=1e-5)
-      else:
-        self.assertAllEqual(outputs[i + n], outputs[i])
-
-  def _test_loop_fn(self, loop_fn, iters, loop_fn_dtypes=dtypes.float32):
-    t1 = pfor_control_flow_ops.pfor(loop_fn, iters=iters)
-    t2 = pfor_control_flow_ops.for_loop(loop_fn, loop_fn_dtypes, iters=iters)
-    self.run_and_assert_equal(t1, t2)
+@test_util.run_all_in_graph_and_eager_modes
+class PForTest(PForTestCase):
 
   def test_op_conversion_fallback_to_while_loop(self):
     # Note that we used top_k op for this test. If a converter gets defined for
@@ -93,464 +75,73 @@ class PForTest(test.TestCase):
         loop_fn, 3, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
     flags.FLAGS.op_conversion_fallback_to_while_loop = False
 
+  def test_parallel_iterations(self):
+    for parallel_iterations in [2, 3, 8, 10]:
+      x = random_ops.random_uniform([8, 3])
 
-class ArrayTest(PForTest):
+      # pylint: disable=cell-var-from-loop
+      def loop_fn(i):
+        return array_ops.gather(x, i)
+      # pylint: enable=cell-var-from-loop
 
-  def test_gather(self):
-    x = random_ops.random_uniform([3, 3, 3])
+      self._test_loop_fn(loop_fn, 8, parallel_iterations=parallel_iterations)
+      self._test_loop_fn(loop_fn, 4 * constant_op.constant(2),
+                         parallel_iterations=parallel_iterations)
 
-    def loop_fn(i):
-      outputs = []
-      x_i = array_ops.gather(x, i)
-      for y in [x, x_i]:
-        axes = [0, 2, -1] if y == x else [0]
-        for axis in axes:
-          outputs.append(array_ops.gather(y, 2, axis=axis))
-          outputs.append(array_ops.gather(y, i, axis=axis))
-          outputs.append(array_ops.gather(y, [i], axis=axis))
-          outputs.append(array_ops.gather(y, [i, 2], axis=axis))
-          outputs.append(array_ops.gather(y, [[2, i], [i, 1]], axis=axis))
-      return outputs
+  def test_parallel_iterations_zero(self):
+    with self.assertRaisesRegexp(ValueError, "positive integer"):
+      pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=0)
+    with self.assertRaisesRegexp(TypeError, "positive integer"):
+      pfor_control_flow_ops.for_loop(lambda i: 1, dtypes.int32, 8,
+                                     parallel_iterations=0)
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 20)
+  def test_parallel_iterations_one(self):
+    with self.assertRaisesRegexp(ValueError, "Use for_loop instead"):
+      pfor_control_flow_ops.pfor(lambda i: 1, 8, parallel_iterations=1)
 
-  def test_shape(self):
-    x = random_ops.random_uniform([3, 2, 3])
 
-    def loop_fn(i):
-      x_i = array_ops.gather(x, i)
-      return array_ops.shape(x_i), array_ops.shape(x_i, out_type=dtypes.int64)
+@test_util.run_all_in_graph_and_eager_modes
+class BitwiseTest(PForTestCase):
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32, dtypes.int64])
-
-  def test_size(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x_i = array_ops.gather(x, i)
-      return array_ops.size(x_i), array_ops.size(x_i, out_type=dtypes.int64)
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32, dtypes.int64])
-
-  def test_rank(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x_i = array_ops.gather(x, i)
-      return array_ops.rank(x_i)
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
-
-  def test_shape_n(self):
-    x = random_ops.random_uniform([3, 2, 3])
-    y = random_ops.random_uniform([3])
-
-    def loop_fn(i):
-      x_i = array_ops.gather(x, i)
-      y_i = array_ops.gather(y, i)
-      return array_ops.shape_n([x_i, x, y, y_i]), array_ops.shape_n(
-          [x_i, x, y, y_i], out_type=dtypes.int64)
-
-    self._test_loop_fn(
-        loop_fn, 3, loop_fn_dtypes=[dtypes.int32] * 4 + [dtypes.int64] * 4)
-
-  def test_reshape(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.reshape(x1, [-1]), array_ops.reshape(x1, [1, 3, 1, -1])
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
-
-  def test_expand_dims(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.expand_dims(
-          x1, axis=-1), array_ops.expand_dims(
-              x1, axis=1)
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
-
-  def test_slice(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.slice(x1, begin=(0, 1), size=(2, 1))
-
-    self._test_loop_fn(loop_fn, 3)
-
-  def test_tile(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.tile(x1, [2, 1])
-
-    self._test_loop_fn(loop_fn, 3)
-
-  def test_tile_loop_dependent(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.tile(x1, [i, 1])
-
-    with self.assertRaisesRegexp(ValueError, "expected to be loop invariant"):
-      pfor_control_flow_ops.pfor(loop_fn, 2)
-
-  def test_pack(self):
-    x = random_ops.random_uniform([3, 2, 3])
-    y = random_ops.random_uniform([2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.stack([x1, y], axis=-1)
-
-    self._test_loop_fn(loop_fn, 1)
-
-  def test_unpack(self):
-    x = random_ops.random_uniform([3, 2, 3, 4])
-
-    def loop_fn(i):
-      x_i = array_ops.gather(x, i)
-      return array_ops.unstack(
-          x_i, 4, axis=-1), array_ops.unstack(
-              x_i, 3, axis=1)
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 7)
-
-  def test_pad(self):
-    x = random_ops.random_uniform([3, 2, 3])
-    padding = constant_op.constant([[1, 2], [3, 4]])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.pad(x1, padding, mode="CONSTANT")
-
-    self._test_loop_fn(loop_fn, 3)
-
-  def test_split(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.split(x1, 2, axis=0), array_ops.split(x1, 3, axis=-1)
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 5)
-
-  def test_transpose(self):
-    x = random_ops.random_uniform([3, 2, 3, 4])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.transpose(x1, [2, 1, 0])
-
-    self._test_loop_fn(loop_fn, 3)
-
-  def test_zeros_like(self):
-    x = random_ops.random_uniform([3, 2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      z = array_ops.zeros_like(x1),
-      return z, z + x1
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
-
-  def test_concat_v2(self):
-    x = random_ops.random_uniform([3, 2, 3])
-    y = random_ops.random_uniform([2, 3])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return array_ops.concat(
-          [x1, x1, y], axis=0), array_ops.concat(
-              [x1, x1, y], axis=-1)
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
-
-  def test_unary_cwise_ops(self):
-    for op in [array_ops.identity, array_ops.stop_gradient]:
-      x = random_ops.random_uniform([3, 5])
+  def test_unary_cwise(self):
+    for op in [bitwise_ops.invert]:
+      x = random_ops.random_uniform([7, 3, 5], maxval=10, dtype=dtypes.int32)
 
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
         x1 = array_ops.gather(x, i)
-        y = op(x1) + x1
-        loss = nn.l2_loss(y)
-        return op(x), y, gradient_ops.gradients(loss, x1)
-
+        return op(x1)
       # pylint: enable=cell-var-from-loop
 
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
 
-  def test_strided_slice(self):
-    x = random_ops.random_uniform([3, 3, 4, 4, 2, 2, 2])
-
-    def loop_fn(i):
-      x_i = array_ops.gather(x, i)
-      y = x_i[:2, ::2, 1::3, ..., array_ops.newaxis, 1]
-      loss = nn.l2_loss(y)
-      return y, gradient_ops.gradients(loss, x_i)
-
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
-
-
-class MathTest(PForTest):
-
-  def test_unary_cwise_ops(self):
-    for op in [
-        math_ops.tanh, nn.relu, math_ops.sigmoid, math_ops.negative,
-        math_ops.square
-    ]:
-      x = random_ops.random_uniform([3, 5])
-
-      # pylint: disable=cell-var-from-loop
-      def loop_fn(i):
-        x1 = array_ops.gather(x, i)
-        y = op(x1)
-        loss = math_ops.reduce_sum(y * y)
-        return op(x), y, gradient_ops.gradients(loss, x1)
-
-      # pylint: enable=cell-var-from-loop
-
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
-
-  def test_unary_cwise_no_grad(self):
-    for op in [math_ops.ceil, math_ops.floor, math_ops.logical_not]:
-      x = random_ops.random_uniform([3, 5])
-      if op == math_ops.logical_not:
-        x = x > 0
-
-      # pylint: disable=cell-var-from-loop
-      def loop_fn(i):
-        return op(array_ops.gather(x, i))
-
-      # pylint: enable=cell-var-from-loop
-
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=x.dtype)
-
-  def test_binary_cwise_ops(self):
-    logical_ops = [
-        math_ops.logical_and, math_ops.logical_or, math_ops.logical_xor
+  def test_binary_cwise(self):
+    binary_ops = [
+        bitwise_ops.bitwise_and,
+        bitwise_ops.bitwise_or,
+        bitwise_ops.bitwise_xor,
+        bitwise_ops.left_shift,
+        bitwise_ops.right_shift,
     ]
-    bool_ops = [
-        math_ops.less, math_ops.less_equal, math_ops.greater,
-        math_ops.greater_equal, math_ops.equal, math_ops.not_equal
-    ]
-    float_ops = [
-        math_ops.add, math_ops.subtract, math_ops.multiply, math_ops.divide,
-        math_ops.maximum, math_ops.minimum
-    ]
-    for op in logical_ops + bool_ops + float_ops:
-      x = random_ops.random_uniform([7, 3, 5])
-      y = random_ops.random_uniform([3, 5])
-      if op in logical_ops:
-        x = x > 0
-        y = y > 0
+    for op in binary_ops:
+      x = random_ops.random_uniform([7, 3, 5], maxval=10, dtype=dtypes.int32)
+      y = random_ops.random_uniform([3, 5], maxval=10, dtype=dtypes.int32)
 
+      output_dtypes = []
       # pylint: disable=cell-var-from-loop
       def loop_fn(i):
         x1 = array_ops.gather(x, i)
         y1 = array_ops.gather(y, i)
-        return op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)
-
+        outputs = [op(x, y), op(x1, y), op(x, y1), op(x1, y1), op(x1, x1)]
+        del output_dtypes[:]
+        output_dtypes.extend([t.dtype for t in outputs])
+        return outputs
       # pylint: enable=cell-var-from-loop
-
-      dtype = dtypes.float32 if op in float_ops else dtypes.bool
-      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtype] * 5)
-
-  def test_addn(self):
-    x = random_ops.random_uniform([2, 3, 5])
-    y = random_ops.random_uniform([3, 5])
-    z = random_ops.random_uniform([3, 5])
-
-    def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      return math_ops.add_n([x1, y, z])
-
-    self._test_loop_fn(loop_fn, 2)
-
-  def test_matmul(self):
-    for tr_a in (True, False):
-      for tr_b in (True, False):
-        for stack_a in (True, False):
-          for stack_b in (True, False):
-            shape_a = (5, 3) if tr_a else (3, 5)
-            if stack_a:
-              shape_a = (2,) + shape_a
-            shape_b = (7, 5) if tr_b else (5, 7)
-            if stack_b:
-              shape_b = (2,) + shape_b
-
-            x = random_ops.random_uniform(shape_a)
-            y = random_ops.random_uniform(shape_b)
-
-            # pylint: disable=cell-var-from-loop
-            def loop_fn(i):
-              a = array_ops.gather(x, i) if stack_a else x
-              b = array_ops.gather(y, i) if stack_b else y
-              return math_ops.matmul(a, b, transpose_a=tr_a, transpose_b=tr_b)
-
-            # pylint: enable=cell-var-from-loop
-
-            self._test_loop_fn(loop_fn, 2)
-
-  def test_batch_matmul(self):
-    for tr_a in (True, False):
-      for tr_b in (True, False):
-        for stack_a in (True, False):
-          for stack_b in (True, False):
-            shape_a = (4, 5, 3) if tr_a else (4, 3, 5)
-            if stack_a:
-              shape_a = (2,) + shape_a
-            shape_b = (4, 7, 5) if tr_b else (4, 5, 7)
-            if stack_b:
-              shape_b = (2,) + shape_b
-
-            x = random_ops.random_uniform(shape_a)
-            y = random_ops.random_uniform(shape_b)
-
-            # pylint: disable=cell-var-from-loop
-            def loop_fn(i):
-              a = array_ops.gather(x, i) if stack_a else x
-              b = array_ops.gather(y, i) if stack_b else y
-              return math_ops.matmul(a, b, transpose_a=tr_a, transpose_b=tr_b)
-
-            # pylint: enable=cell-var-from-loop
-
-            self._test_loop_fn(loop_fn, 2)
-
-  def test_reduction(self):
-    x = random_ops.random_uniform([2, 3, 4, 5])
-    for op in [
-        math_ops.reduce_sum, math_ops.reduce_prod, math_ops.reduce_max,
-        math_ops.reduce_min
-    ]:
-      for axis in ([1], None, [0, 2]):
-        for keepdims in (True, False):
-
-          # pylint: disable=cell-var-from-loop
-          def loop_fn(i):
-            a = array_ops.gather(x, i)
-            return op(a, axis=axis, keepdims=keepdims)
-
-          # pylint: enable=cell-var-from-loop
-
-          self._test_loop_fn(loop_fn, 2)
-
-  def test_cum_sum(self):
-    x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
-      for exclusive in (True, False):
-        for reverse in (True, False):
-
-          # pylint: disable=cell-var-from-loop
-          def loop_fn(i):
-            a = array_ops.gather(x, i)
-            return math_ops.cumsum(
-                a, axis=axis, exclusive=exclusive, reverse=reverse)
-
-          # pylint: enable=cell-var-from-loop
-
-          self._test_loop_fn(loop_fn, 2)
-
-  def test_cum_prod(self):
-    x = random_ops.random_uniform([2, 3, 4, 5])
-    for axis in (1, -2):
-      for exclusive in (True, False):
-        for reverse in (True, False):
-
-          # pylint: disable=cell-var-from-loop
-          def loop_fn(i):
-            a = array_ops.gather(x, i)
-            return math_ops.cumprod(
-                a, axis=axis, exclusive=exclusive, reverse=reverse)
-
-          # pylint: enable=cell-var-from-loop
-
-          self._test_loop_fn(loop_fn, 2)
-
-  def test_bias_add(self):
-    x_shape = [2, 3, 4, 5, 6]
-    x = random_ops.random_uniform(x_shape)
-    for data_format in ("NCHW", "NHWC"):
-      bias_dim = 2 if data_format == "NCHW" else -1
-      bias_shape = x_shape[bias_dim]
-      bias = random_ops.random_uniform([bias_shape])
-
-      # pylint: disable=cell-var-from-loop
-      def loop_fn(i):
-        a = array_ops.gather(x, i)
-        y = nn.bias_add(a, bias, data_format=data_format)
-        loss = math_ops.reduce_sum(y * y)
-        return y, gradient_ops.gradients(loss, bias)
-
-      # pylint: enable=cell-var-from-loop
-
-      self._test_loop_fn(
-          loop_fn, 2, loop_fn_dtypes=[dtypes.float32, dtypes.float32])
-
-  def test_unsorted_segment_sum(self):
-    t = random_ops.random_uniform([3, 3, 2])
-    segment_ids = constant_op.constant([[0, 0, 2], [0, 1, 2], [2, 2, 2]])
-    num_segments = 3
-
-    def loop_fn(i):
-      data = array_ops.gather(t, i)
-      data_0 = array_ops.gather(t, 0)
-      seg_ids = array_ops.gather(segment_ids, i)
-      return (math_ops.unsorted_segment_sum(data, seg_ids, num_segments),
-              math_ops.unsorted_segment_sum(data_0, seg_ids, num_segments))
-
-    self._test_loop_fn(loop_fn, 3, [dtypes.float32] * 2)
-
-  def test_cast(self):
-    x = constant_op.constant([[1], [2]])
-    y = constant_op.constant([[1.0], [2.0]])
-
-    def loop_fn(i):
-      return (math_ops.cast(array_ops.gather(x, i), dtypes.float32),
-              math_ops.cast(array_ops.gather(y, i), dtypes.int32))
-
-    self._test_loop_fn(
-        loop_fn, 2, loop_fn_dtypes=[dtypes.float32, dtypes.int32])
-
-  def test_tanh_axpy(self):
-    a = constant_op.constant(3.)
-    x = random_ops.random_uniform([4, 5])
-    y = random_ops.random_uniform([6, 5])
-    n = x.shape[0]
-
-    def loop_fn(i):
-      return math_ops.tanh(a * array_ops.gather(x, i) + array_ops.gather(y, i))
-
-    self._test_loop_fn(loop_fn, n)
-
-  def test_select(self):
-    cond = constant_op.constant([True, False])
-    a = random_ops.random_uniform([2, 3, 5])
-    b = random_ops.random_uniform([2, 3, 5])
-    for cond_shape in [2], [2, 3], [2, 3, 5]:
-      cond = random_ops.random_uniform(cond_shape) > 0.5
-
-      # pylint: disable=cell-var-from-loop
-      def loop_fn(i):
-        a_i = array_ops.gather(a, i)
-        b_i = array_ops.gather(b, i)
-        cond_i = array_ops.gather(cond, i)
-        return array_ops.where(cond_i, a_i, b_i)
-
-      # pylint: enable=cell-var-from-loop
-
-      self._test_loop_fn(loop_fn, 2)
+      self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=output_dtypes)
 
 
-class NNTest(PForTest):
+@test_util.run_all_in_graph_and_eager_modes
+class NNTest(PForTestCase):
 
   def test_conv2d(self):
     x = random_ops.random_uniform([3, 2, 12, 12, 3])
@@ -602,67 +193,109 @@ class NNTest(PForTest):
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
   def test_avg_pool(self):
-    x = random_ops.random_uniform([3, 2, 12, 12, 3])
-    ksize = [1, 3, 3, 1]
+    with backprop.GradientTape(persistent=True) as g:
+      x = random_ops.random_uniform([3, 2, 12, 12, 3])
+      g.watch(x)
+      ksize = [1, 3, 3, 1]
 
     def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      output = nn.avg_pool(
-          x1, ksize, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
-      loss = nn.l2_loss(output)
-      return output, gradient_ops.gradients(loss, x1)
+      with g:
+        x1 = array_ops.gather(x, i)
+        output = nn.avg_pool(
+            x1, ksize, strides=[1, 2, 2, 1], padding="VALID",
+            data_format="NHWC")
+        loss = nn.l2_loss(output)
+      return output, g.gradient(loss, x1)
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
   def test_max_pool(self):
-    x = random_ops.random_uniform([3, 2, 12, 12, 3])
-    ksize = [1, 3, 3, 1]
+    with backprop.GradientTape(persistent=True) as g:
+      x = random_ops.random_uniform([3, 2, 12, 12, 3])
+      g.watch(x)
+      ksize = [1, 3, 3, 1]
+      strides = [1, 2, 2, 1]
 
     def loop_fn(i):
-      x1 = array_ops.gather(x, i)
-      output = nn.max_pool(
-          x1, ksize, strides=[1, 2, 2, 1], padding="VALID", data_format="NHWC")
-      loss = nn.l2_loss(output)
-      return output, gradient_ops.gradients(loss, x1)
+      with g:
+        x1 = array_ops.gather(x, i)
+        output = nn.max_pool(
+            x1, ksize, strides=strides, padding="VALID", data_format="NHWC")
+        loss = nn.l2_loss(output)
+        ones = array_ops.ones_like(output)
+        g.watch(ones)
+        grad = g.gradient(loss, x1, output_gradients=ones)
+      grad_grad = g.gradient(grad, ones)
+      return output, grad, grad_grad
 
-    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
 
+  def test_max_pool3d(self):
+    with backprop.GradientTape(persistent=True) as g:
+      x = random_ops.random_uniform([3, 3, 2, 12, 12, 3])
+      g.watch(x)
+      ksize = [1, 1, 3, 3, 1]
+      strides = [1, 1, 2, 2, 1]
+
+    def loop_fn(i):
+      with g:
+        x1 = array_ops.gather(x, i)
+        output = nn.max_pool3d(
+            x1, ksize, strides=strides, padding="VALID", data_format="NDHWC")
+        loss = nn.l2_loss(output)
+        ones = array_ops.ones_like(output)
+        g.watch(ones)
+        grad = g.gradient(loss, x1, output_gradients=ones)
+      grad_grad = g.gradient(grad, ones)
+      return output, grad, grad_grad
+
+    self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 3)
+
+  @test_util.disable_xla("This test never passed for XLA")
   def test_fused_batch_norm(self):
     data_formats = ["NHWC"]
     if test.is_gpu_available():
       data_formats.append("NCHW")
     for is_training in (True, False):
       for data_format in data_formats:
-        if data_format == "NCHW":
-          x = random_ops.random_uniform([3, 1, 2, 5, 5])
-        else:
-          x = random_ops.random_uniform([3, 1, 5, 5, 2])
-        scale = random_ops.random_uniform([2])
-        offset = random_ops.random_uniform([2])
-        mean = None if is_training else random_ops.random_uniform([2])
-        variance = None if is_training else random_ops.random_uniform([2])
+        with backprop.GradientTape(persistent=True) as g:
+          if data_format == "NCHW":
+            x = random_ops.random_uniform([3, 1, 2, 5, 5])
+          else:
+            x = random_ops.random_uniform([3, 1, 5, 5, 2])
+          g.watch(x)
+          scale = random_ops.random_uniform([2])
+          g.watch(scale)
+          offset = random_ops.random_uniform([2])
+          g.watch(offset)
+          mean = None if is_training else random_ops.random_uniform([2])
+          variance = None if is_training else random_ops.random_uniform([2])
 
         # pylint: disable=cell-var-from-loop
         def loop_fn(i):
-          x1 = array_ops.gather(x, i)
-          outputs = nn.fused_batch_norm(
-              x1,
-              scale,
-              offset,
-              mean=mean,
-              variance=variance,
-              epsilon=0.01,
-              data_format=data_format,
-              is_training=is_training)
-          outputs = list(outputs)
-          # We only test the first value of outputs when is_training is False.
-          # It looks like CPU and GPU have different outputs for batch_mean and
-          # batch_variance for this case.
-          if not is_training:
-            outputs[1] = constant_op.constant(0.)
-            outputs[2] = constant_op.constant(0.)
-          loss = nn.l2_loss(outputs[0])
-          gradients = gradient_ops.gradients(loss, [x1, scale, offset])
+          with g:
+            x1 = array_ops.gather(x, i)
+            outputs = nn.fused_batch_norm(
+                x1,
+                scale,
+                offset,
+                mean=mean,
+                variance=variance,
+                epsilon=0.01,
+                data_format=data_format,
+                is_training=is_training)
+            outputs = list(outputs)
+            # We only test the first value of outputs when is_training is False.
+            # It looks like CPU and GPU have different outputs for batch_mean
+            # and batch_variance for this case.
+            if not is_training:
+              outputs[1] = constant_op.constant(0.)
+              outputs[2] = constant_op.constant(0.)
+            loss = nn.l2_loss(outputs[0])
+          if is_training:
+            gradients = g.gradient(loss, [x1, scale, offset])
+          else:
+            gradients = [constant_op.constant(0.)] * 3
           return outputs + gradients
 
         # pylint: enable=cell-var-from-loop
@@ -670,21 +303,25 @@ class NNTest(PForTest):
         self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 6)
 
   def test_softmax_cross_entropy_with_logits(self):
-    logits = random_ops.random_uniform([3, 2, 4])
-    labels = random_ops.random_uniform([3, 2, 4])
-    labels /= math_ops.reduce_sum(labels, axis=[2], keepdims=True)
+    with backprop.GradientTape(persistent=True) as g:
+      logits = random_ops.random_uniform([3, 2, 4])
+      g.watch(logits)
+      labels = random_ops.random_uniform([3, 2, 4])
+      labels /= math_ops.reduce_sum(labels, axis=[2], keepdims=True)
 
     def loop_fn(i):
-      logits_i = array_ops.gather(logits, i)
-      labels_i = array_ops.gather(labels, i)
-      loss = nn.softmax_cross_entropy_with_logits(
-          labels=labels_i, logits=logits_i)
-      return loss, gradient_ops.gradients(math_ops.reduce_sum(loss), logits_i)
+      with g:
+        logits_i = array_ops.gather(logits, i)
+        labels_i = array_ops.gather(labels, i)
+        loss = nn.softmax_cross_entropy_with_logits(
+            labels=labels_i, logits=logits_i)
+        total_loss = math_ops.reduce_sum(loss)
+      return loss, g.gradient(total_loss, logits_i)
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32] * 2)
 
 
-class RandomTest(PForTest):
+class RandomTest(PForTestCase):
 
   # The random values generated in the two implementations are not guaranteed to
   # match. So we only check the returned shapes.
@@ -737,8 +374,9 @@ class RandomTest(PForTest):
     self._test_loop_fn(loop_fn, 5)
 
 
-class LoggingTest(PForTest):
+class LoggingTest(PForTestCase):
 
+  @test_util.run_v1_only("b/122612051")
   def test_print(self):
     x = random_ops.random_uniform([3, 5])
 
@@ -759,8 +397,9 @@ class LoggingTest(PForTest):
       sess.run(pfor_control_flow_ops.pfor(loop_fn, 3))
 
 
-class TensorArrayTest(PForTest):
+class TensorArrayTest(PForTestCase):
 
+  @test_util.run_v1_only("b/122612051")
   def test_create_outside_and_read(self):
 
     ta = tensor_array_ops.TensorArray(
@@ -771,6 +410,7 @@ class TensorArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
 
+  @test_util.run_v1_only("b/122612051")
   def test_create_outside_and_gather(self):
 
     ta = tensor_array_ops.TensorArray(
@@ -781,6 +421,7 @@ class TensorArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
 
+  @test_util.run_v1_only("b/122612051")
   def test_create_outside_and_write_and_scatter(self):
 
     t = tensor_array_ops.TensorArray(dtypes.int32, 10, clear_after_read=False)
@@ -802,6 +443,7 @@ class TensorArrayTest(PForTest):
     output2 = self._run_targets(out2)
     self.assertAllClose(output2, output1)
 
+  @test_util.run_v1_only("b/122612051")
   def test_create_inside_and_write(self):
 
     def loop_fn(i):
@@ -813,6 +455,7 @@ class TensorArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, [dtypes.int32] * 2)
 
+  @test_util.run_v1_only("b/122612051")
   def test_create_inside_and_scatter(self):
 
     def loop_fn(i):
@@ -825,6 +468,7 @@ class TensorArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, [dtypes.int32] * 2)
 
+  @test_util.run_v1_only("b/122612051")
   def test_create_inside_and_read(self):
 
     def loop_fn(i):
@@ -837,6 +481,7 @@ class TensorArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 3)
 
+  @test_util.run_v1_only("b/122612051")
   def test_create_inside_and_gather(self):
 
     def loop_fn(i):
@@ -849,6 +494,7 @@ class TensorArrayTest(PForTest):
 
     self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 3)
 
+  @test_util.run_v1_only("b/122612051")
   def test_grad(self):
     x = random_ops.random_uniform([3, 2])
     ta = tensor_array_ops.TensorArray(
@@ -868,8 +514,9 @@ class TensorArrayTest(PForTest):
       self.assertAllClose(actual_grad, computed_grad)
 
 
-class StackTest(PForTest):
+class StackTest(PForTestCase):
 
+  @test_util.run_v1_only("b/122612051")
   def test_stack_inside_loop_invariant(self):
 
     def loop_fn(_):
@@ -885,6 +532,7 @@ class StackTest(PForTest):
 
     self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
 
+  @test_util.run_v1_only("b/122612051")
   def test_stack_inside_push_loop_dependent(self):
 
     def loop_fn(i):
@@ -900,6 +548,7 @@ class StackTest(PForTest):
 
     self._test_loop_fn(loop_fn, 2, [dtypes.int32] * 2)
 
+  @test_util.run_v1_only("b/122612051")
   def test_stack_outside_pop(self):
     s = data_flow_ops.stack_v2(max_size=4, elem_type=dtypes.int32)
     op = data_flow_ops.stack_push_v2(s, 5)
@@ -923,6 +572,7 @@ class StackTest(PForTest):
     self.assertAllEqual([6, 6], v2)
     self.assertAllEqual(5, v3)
 
+  @test_util.run_v1_only("b/122612051")
   def test_stack_outside_push(self):
     s = data_flow_ops.stack_v2(max_size=4, elem_type=dtypes.int32)
 
@@ -935,7 +585,7 @@ class StackTest(PForTest):
 
 # TODO(agarwal): test nested while_loops. This currently requires converting a
 # tf.cond.
-class ControlFlowTest(PForTest):
+class ControlFlowTest(PForTestCase):
 
   def test_while_outside_loop(self):
 
@@ -946,6 +596,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_invariant_while(self):
 
     def loop_fn(_):
@@ -953,6 +604,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_invariant_while_with_control_dependency(self):
 
     def loop_fn(i):
@@ -962,6 +614,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_while_with_stateful_ops(self):
 
     def loop_fn(_):
@@ -971,6 +624,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_while_unstacked_condition(self):
 
     def loop_fn(i):
@@ -979,6 +633,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32, dtypes.int32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_while(self):
     x = random_ops.random_uniform([3, 5])
     lengths = constant_op.constant([4, 0, 2])
@@ -994,6 +649,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.float32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_while_jacobian(self):
     x = random_ops.random_uniform([1, 3])
     y = random_ops.random_uniform([3, 3])
@@ -1021,6 +677,7 @@ class ControlFlowTest(PForTest):
       out, expected = sess.run([out, expected_output])
       self.assertAllClose(expected, out)
 
+  @test_util.run_v1_only("b/122612051")
   def test_tensor_array_as_loop_variable(self):
 
     def loop_fn(i):
@@ -1036,6 +693,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_read_tensor_array_partitioned_indices(self):
     # Note that tensor array values are pfor loop dependent, and the while loop
     # termination condition is also dependent on pfor iteration.
@@ -1053,6 +711,7 @@ class ControlFlowTest(PForTest):
 
     self._test_loop_fn(loop_fn, 3, loop_fn_dtypes=[dtypes.int32])
 
+  @test_util.run_v1_only("b/122612051")
   def test_external_while_loop_grad(self):
     # Here we test that external while_loops that are extended from inside pfor
     # (due to gradient calls) are not actually converted. If the below was
@@ -1078,6 +737,7 @@ class ControlFlowTest(PForTest):
       self.assertAllEqual([1, 1, 1],
                           sess.run(pfor_control_flow_ops.pfor(loop_fn, 3)))
 
+  @test_util.run_v1_only("b/122612051")
   def test_tensor_array_grad(self):
     inp = constant_op.constant(np.random.rand(3, 4, 2), dtype=dtypes.float32)
     ta = tensor_array_ops.TensorArray(dtypes.float32, size=3)
@@ -1098,13 +758,12 @@ class ControlFlowTest(PForTest):
     pfor_out, pfor_out_grad = pfor_control_flow_ops.pfor(loop_fn, 4)
     # Note that tf.while_loop does not work in the setup above. So we manually
     # construct the equivalent computation of the above loops here.
-    real_out = math_ops.reduce_sum(inp, reduction_indices=[0])
-    real_out = math_ops.reduce_prod(real_out, reduction_indices=[1])
+    real_out = math_ops.reduce_sum(inp, axis=[0])
+    real_out = math_ops.reduce_prod(real_out, axis=[1])
     # Note that gradients of real_out will accumulate the gradients across the
     # output value. Hence we do the same aggregation on pfor_out_grad.
     real_out_grad = gradient_ops.gradients(real_out, inp)[0]
-    sum_pfor_out_grad = math_ops.reduce_sum(
-        pfor_out_grad, reduction_indices=[0])
+    sum_pfor_out_grad = math_ops.reduce_sum(pfor_out_grad, axis=[0])
 
     with session.Session() as sess:
       v1, v2, v1_grad, v2_grad = sess.run(
@@ -1176,13 +835,15 @@ def create_dynamic_lstm(cell_fn, batch_size, state_size, max_steps):
   return pfor_output, tf_output
 
 
-class RNNTest(PForTest):
+class RNNTest(PForTestCase):
 
+  @test_util.run_v1_only("b/122612051")
   def test_dynamic_rnn(self):
     pfor_outputs, tf_outputs = create_dynamic_lstm(rnn_cell.BasicRNNCell,
                                                    3, 5, 7)
     self.run_and_assert_equal(pfor_outputs, tf_outputs)
 
+  @test_util.run_v1_only("b/122612051")
   def test_dynamic_lstm(self):
     pfor_outputs, tf_outputs = create_dynamic_lstm(rnn_cell.BasicLSTMCell,
                                                    3, 5, 7)
@@ -1208,14 +869,77 @@ class Benchmarks(test.Benchmark):
     with sess:
       init = variables.global_variables_initializer()
       sess.run(init)
-      sess.run(targets)
+      run_fn = sess.make_callable(targets)
+      run_fn()  # Warm up
       begin = time.time()
       for _ in range(iters):
-        sess.run(targets)
+        run_fn()
       end = time.time()
     avg_time_ms = 1000 * (end - begin) / iters
     self.report_benchmark(iters=iters, wall_time=avg_time_ms, name=name)
     return avg_time_ms
+
+  def benchmark_sess_run_overhead(self):
+    with ops.Graph().as_default():
+      x = constant_op.constant(1.0)
+      self._run(x, 10000, name="session_run_overhead")
+
+  def benchmark_add(self):
+    with ops.Graph().as_default():
+      n = 256
+      params = 1000
+      x = random_ops.random_normal([n, params])
+      y = random_ops.random_normal([n, params])
+
+      def loop_fn(i):
+        x_i = array_ops.gather(x, i)
+        y_i = array_ops.gather(y, i)
+        return x_i + y_i
+
+      pfor_outputs = pfor_control_flow_ops.pfor(loop_fn, n)
+      while_outputs = pfor_control_flow_ops.for_loop(loop_fn, dtypes.float32, n)
+      manual = x + y
+
+      self._run(manual, 1000, name="manual_add")
+      self._run(pfor_outputs, 1000, name="pfor_add")
+      self._run(while_outputs, 100, name="while_add")
+
+  def benchmark_matmul(self):
+    with ops.Graph().as_default():
+      n = 1024
+      params = 1000
+      x = random_ops.random_normal([n, params])
+      y = random_ops.random_normal([params, params])
+
+      def loop_fn(i):
+        x_i = array_ops.expand_dims(array_ops.gather(x, i), 0)
+        return math_ops.matmul(x_i, y)
+
+      pfor_outputs = pfor_control_flow_ops.pfor(loop_fn, n)
+      while_outputs = pfor_control_flow_ops.for_loop(loop_fn, dtypes.float32, n)
+      manual = math_ops.matmul(x, y)
+
+      self._run(manual, 1000, name="manual_matmul")
+      self._run(pfor_outputs, 1000, name="pfor_matmul")
+      self._run(while_outputs, 100, name="while_matmul")
+
+  def benchmark_map_fn(self):
+    with ops.Graph().as_default():
+      b = 256
+      params = 1000
+      inp = random_ops.random_normal((b, params))
+      fn = lambda x: x * x
+
+      def pfor_map_fn(f, x):
+        return pfor_control_flow_ops.pfor(
+            lambda i: f(array_ops.gather(x, i)),
+            array_ops.shape(x)[0])
+
+      map_output = map_fn.map_fn(fn, inp)
+      pfor_output = pfor_map_fn(fn, inp)
+
+      self._run(map_output, 100, name="tf_map_fn")
+      self._run(pfor_output, 100, name="pfor_map_fn")
 
   def benchmark_basic_while(self):
     with ops.Graph().as_default():
@@ -1241,16 +965,10 @@ class Benchmarks(test.Benchmark):
       self._run(pfor_outputs, 100, name="pfor_rnn")
       self._run(tf_outputs, 100, name="tf_rnn")
 
-  def benchmark_dynamic_lstm(self):
-    with ops.Graph().as_default():
-      pfor_outputs, tf_outputs = create_dynamic_lstm(rnn_cell.BasicLSTMCell,
-                                                     128, 512, 16)
-      self._run(pfor_outputs, 100, name="pfor_lstm")
-      self._run(tf_outputs, 100, name="tf_lstm")
 
+class SparseTest(PForTestCase):
 
-class SparseTest(PForTest):
-
+  @test_util.run_v1_only("b/122612051")
   def test_var_loop_len(self):
     num_iters = array_ops.placeholder(dtypes.int32)
 
@@ -1259,9 +977,10 @@ class SparseTest(PForTest):
                                         [3])  # [0, 2, 0]
 
     pfor = pfor_control_flow_ops.pfor(loop_fn, num_iters)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(pfor, feed_dict={num_iters: 3})
 
+  @test_util.run_v1_only("b/122612051")
   def test_sparse_result_none_stacked(self):
     num_iters = 10
 
@@ -1278,6 +997,7 @@ class SparseTest(PForTest):
     manual = sparse_tensor.SparseTensor(indices, values, dense_shapes)
     self.run_and_assert_equal(pfor, manual)
 
+  @test_util.run_v1_only("b/122612051")
   def test_sparse_result_all_stacked(self):
     num_iters = 10
 
@@ -1293,6 +1013,7 @@ class SparseTest(PForTest):
                                         (num_iters, num_iters))
     self.run_and_assert_equal(pfor, manual)
 
+  @test_util.run_v1_only("b/122612051")
   def test_sparse_result_indices_stacked(self):
     num_iters = 10
 
@@ -1307,6 +1028,7 @@ class SparseTest(PForTest):
                                         [1] * num_iters, (num_iters, num_iters))
     self.run_and_assert_equal(pfor, manual)
 
+  @test_util.run_v1_only("b/122612051")
   def test_sparse_result_values_stacked(self):
     num_iters = 10
 
@@ -1321,6 +1043,7 @@ class SparseTest(PForTest):
                                         (num_iters, num_iters))
     self.run_and_assert_equal(pfor, manual)
 
+  @test_util.run_v1_only("b/122612051")
   def test_sparse_result_shapes_stacked(self):
     num_iters = 10
 
@@ -1334,6 +1057,7 @@ class SparseTest(PForTest):
                                         [1] * num_iters, (num_iters, num_iters))
     self.run_and_assert_equal(pfor, manual)
 
+  @test_util.run_v1_only("b/122612051")
   def test_sparse_result_shapes_stacked_2D(self):
     num_iters = 10
 
@@ -1350,7 +1074,7 @@ class SparseTest(PForTest):
     self.run_and_assert_equal(pfor, manual)
 
 
-class ParsingTest(PForTest):
+class ParsingTest(PForTestCase):
 
   def test_decode_csv(self):
     csv_tensor = constant_op.constant([["1:2:3"], ["::"], ["7:8:9"]])
@@ -1362,6 +1086,7 @@ class ParsingTest(PForTest):
 
     self._test_loop_fn(loop_fn, iters=3, loop_fn_dtypes=[dtypes.int32] * 3)
 
+  @test_util.run_v1_only("b/122612051")
   def test_parse_single_example(self):
 
     def _int64_feature(*values):

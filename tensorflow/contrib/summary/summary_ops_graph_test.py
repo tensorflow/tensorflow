@@ -22,6 +22,7 @@ import time
 
 import six
 
+from tensorflow.contrib.summary import summary as summary_ops
 from tensorflow.contrib.summary import summary_test_util
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.framework import node_def_pb2
@@ -32,7 +33,6 @@ from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import state_ops
-from tensorflow.python.ops import summary_ops_v2 as summary_ops
 from tensorflow.python.ops import variables
 from tensorflow.python.platform import gfile
 from tensorflow.python.platform import test
@@ -52,7 +52,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
       summary_ops.histogram('histogram', [1.0], step=1)
       summary_ops.image('image', [[[[1.0]]]], step=1)
       summary_ops.audio('audio', [[1.0]], 1.0, 1, step=1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       sess.run(summary_ops.all_summary_ops())
     # The working condition of the ops is tested in the C++ test so we just
@@ -64,7 +64,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     writer = summary_ops.create_file_writer(logdir, max_queue=0)
     with writer.as_default(), summary_ops.always_record_summaries():
       summary_ops.scalar('scalar', 2.0, step=1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       sess.run(summary_ops.all_summary_ops())
     events = summary_test_util.events_from_logdir(logdir)
@@ -77,7 +77,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     with writer.as_default(), summary_ops.always_record_summaries():
       with ops.name_scope('scope'):
         summary_ops.scalar('scalar', 2.0, step=1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       sess.run(summary_ops.all_summary_ops())
     events = summary_test_util.events_from_logdir(logdir)
@@ -90,7 +90,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     writer = summary_ops.create_file_writer(logdir, max_queue=0)
     with writer.as_default(), summary_ops.always_record_summaries():
       summary_ops.scalar('scalar', 2.0)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       sess.run(summary_ops.summary_writer_initializer_op())
       step, _ = sess.run(
@@ -105,7 +105,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
         logdir, max_queue=1, flush_millis=999999)
     with writer.as_default(), summary_ops.always_record_summaries():
       summary_ops.scalar('scalar', 2.0, step=1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
       # Note: First tf.Event is always file_version.
@@ -123,7 +123,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
     with writer.as_default(), summary_ops.always_record_summaries():
       summary_ops.scalar('scalar', 2.0, step=1)
       flush_op = summary_ops.flush()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
       # Note: First tf.Event is always file_version.
@@ -157,7 +157,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
       with writer3.as_default():
         summary_ops.scalar('three', 3.0, step=3)
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Run init ops across writers sequentially to avoid race condition.
       # TODO(nickfelt): fix race condition in resource manager lookup or create
       sess.run(writer1.init())
@@ -191,7 +191,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
           logdir, max_queue=100, flush_millis=1000000)
       with writer.as_default():
         summary_ops.scalar('one', 1.0, step=1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
       self.assertEqual(1, get_total())  # file_version Event
@@ -219,7 +219,7 @@ class GraphFileTest(test_util.TensorFlowTestCase):
           logdir, max_queue=100, flush_millis=1000000)
       with writer.as_default():
         summary_ops.scalar('one', 1.0, step=1)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(summary_ops.summary_writer_initializer_op())
       get_total = lambda: len(summary_test_util.events_from_logdir(logdir))
       self.assertEqual(1, get_total())  # file_version Event
@@ -241,7 +241,7 @@ class GraphDbTest(summary_test_util.SummaryDbTest):
     training_util.get_or_create_global_step()
     name = 'hi'
     graph = graph_pb2.GraphDef(node=(node_def_pb2.NodeDef(name=name),))
-    with self.test_session():
+    with self.cached_session():
       with self.create_db_writer().as_default():
         summary_ops.initialize(graph=graph)
     six.assertCountEqual(self, [name],
@@ -249,7 +249,7 @@ class GraphDbTest(summary_test_util.SummaryDbTest):
 
   def testScalarSummary(self):
     """Test record_summaries_every_n_global_steps and all_summaries()."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       global_step = training_util.get_or_create_global_step()
       global_step.initializer.run()
       with ops.device('/cpu:0'):
@@ -280,7 +280,7 @@ class GraphDbTest(summary_test_util.SummaryDbTest):
 
   def testScalarSummaryNameScope(self):
     """Test record_summaries_every_n_global_steps and all_summaries()."""
-    with ops.Graph().as_default(), self.test_session() as sess:
+    with ops.Graph().as_default(), self.cached_session() as sess:
       global_step = training_util.get_or_create_global_step()
       global_step.initializer.run()
       with ops.device('/cpu:0'):
@@ -311,7 +311,7 @@ class GraphDbTest(summary_test_util.SummaryDbTest):
           self.assertEqual(events[1].summary.value[0].tag, 'scope/my_scalar')
 
   def testSummaryGraphModeCond(self):
-    with ops.Graph().as_default(), self.test_session():
+    with ops.Graph().as_default(), self.cached_session():
       training_util.get_or_create_global_step()
       logdir = tempfile.mkdtemp()
       with summary_ops.create_file_writer(
@@ -332,7 +332,7 @@ class GraphDbTest(summary_test_util.SummaryDbTest):
       self.assertEqual(events[1].summary.value[0].tag, 'cond/scalar')
 
   def testSummaryGraphModeWhile(self):
-    with ops.Graph().as_default(), self.test_session():
+    with ops.Graph().as_default(), self.cached_session():
       training_util.get_or_create_global_step()
       logdir = tempfile.mkdtemp()
       with summary_ops.create_file_writer(

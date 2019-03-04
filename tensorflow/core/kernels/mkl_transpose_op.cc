@@ -25,12 +25,10 @@ limitations under the License.
 #include "tensorflow/core/kernels/transpose_functor.h"
 #include "tensorflow/core/kernels/transpose_op.h"
 
-#ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
 #include "tensorflow/core/util/mkl_util.h"
 
 using mkldnn::stream;
-#endif
 
 namespace tensorflow {
 
@@ -106,7 +104,6 @@ static const char kMKLConjugateTranspose = 'C';
 
 #endif  // if !defined(INTEL_MKL_DNN_ONLY)
 
-#ifndef INTEL_MKL_ML_ONLY
 // MKL-DNN based Transpose implementation
 template <typename T>
 Status MKLTransposeND(OpKernelContext* ctx, const Tensor& in, Tensor* out,
@@ -144,7 +141,7 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     out.SetUsrMem(in_dims, out_strides, out_tensor);
 
     std::vector<primitive> net;
-    net.push_back(in.CreateReorder(in.GetUsrMem(), out.GetUsrMem()));
+    net.push_back(FindOrCreateReorder<T>(in.GetUsrMem(), out.GetUsrMem()));
     stream(stream::kind::eager).submit(net).wait();
     return Status::OK();
   } catch (mkldnn::error& e) {
@@ -154,7 +151,6 @@ Status MKLTransposeND(OpKernelContext* context, const Tensor& in_tensor,
     return errors::Aborted("Operation received an exception:", error_msg);
   }
 }
-#endif  // #ifndef INTEL_MKL_ML_ONLY
 
 }  // namespace
 
@@ -181,7 +177,6 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
   }
 #endif
 
-#ifndef INTEL_MKL_ML_ONLY
   // MKL-DNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
   if (in.dims() <= TENSOR_MAX_DIMS) {
@@ -194,7 +189,6 @@ Status MklTransposeCpuOp::DoTranspose(OpKernelContext* ctx, const Tensor& in,
         break;
     }
   }
-#endif
 
   // Fallback to eigen if transpose parameters not supported by MKL or MKL-DNN
   typedef Eigen::ThreadPoolDevice CPUDevice;
@@ -227,7 +221,6 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
   }
 #endif
 
-#ifndef INTEL_MKL_ML_ONLY
   // MKL-DNN has limit on the maximum number of dimensions in a tensor.
   // Fallback to Eigen for not supported cases.
   if (in.dims() <= TENSOR_MAX_DIMS) {
@@ -240,7 +233,6 @@ Status MklConjugateTransposeCpuOp::DoTranspose(OpKernelContext* ctx,
         break;
     }
   }
-#endif
 
   // Fallback to eigen if transpose parameters not supported by MKL or MKL-DNN
   typedef Eigen::ThreadPoolDevice CPUDevice;

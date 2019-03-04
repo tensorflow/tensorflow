@@ -39,7 +39,7 @@ class BCastArgsOp : public XlaOpKernel {
     OP_REQUIRES(
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
-    gtl::InlinedVector<BCast::Vec, 2> shapes;
+    absl::InlinedVector<BCast::Vec, 2> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape in_shape = ctx->InputShape(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
@@ -67,8 +67,8 @@ class BCastArgsOp : public XlaOpKernel {
   TF_DISALLOW_COPY_AND_ASSIGN(BCastArgsOp);
 };
 REGISTER_XLA_OP(Name("BroadcastArgs")
-                    .CompileTimeConstInput("s0")
-                    .CompileTimeConstInput("s1"),
+                    .CompileTimeConstantInput("s0")
+                    .CompileTimeConstantInput("s1"),
                 BCastArgsOp);
 
 // Given shapes of two tensors, computes the reduction indices for the
@@ -88,20 +88,16 @@ class BCastGradArgsOp : public XlaOpKernel {
         ctx, ctx->num_inputs() == 2,
         errors::Unimplemented("Broadcast for n-ary operations (n > 2)"));
 
-    gtl::InlinedVector<BCast::Vec, 4> shapes;
+    absl::InlinedVector<BCast::Vec, 4> shapes;
     for (int i = 0; i < ctx->num_inputs(); ++i) {
       const TensorShape in_shape = ctx->InputShape(i);
       OP_REQUIRES(ctx, TensorShapeUtils::IsVector(in_shape),
                   errors::InvalidArgument("In[", i, "] must be a vector.",
                                           in_shape.DebugString()));
-      xla::Literal literal;
-      OP_REQUIRES_OK(ctx, ctx->ConstantInput(i, &literal));
+      std::vector<int64> vec;
+      OP_REQUIRES_OK(ctx, ctx->ConstantInputAsIntVector(i, &vec));
 
-      BCast::Vec vec;
-      for (int64 i = 0; i < in_shape.num_elements(); ++i) {
-        vec.push_back(literal.Get<int>({i}));
-      }
-      shapes.push_back(vec);
+      shapes.push_back(BCast::Vec(vec.begin(), vec.end()));
     }
     BCast bcast(shapes[0], shapes[1]);
     OP_REQUIRES(ctx, bcast.IsValid(),
@@ -126,8 +122,8 @@ class BCastGradArgsOp : public XlaOpKernel {
 };
 
 REGISTER_XLA_OP(Name("BroadcastGradientArgs")
-                    .CompileTimeConstInput("s0")
-                    .CompileTimeConstInput("s1"),
+                    .CompileTimeConstantInput("s0")
+                    .CompileTimeConstantInput("s1"),
                 BCastGradArgsOp);
 
 }  // namespace

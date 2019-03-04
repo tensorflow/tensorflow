@@ -54,6 +54,7 @@ void SplitCustom<Device, T>::operator()(
 TF_CALL_GPU_NUMBER_TYPES(DEFINE_GPU_KERNELS);
 TF_CALL_complex64(DEFINE_GPU_KERNELS);
 TF_CALL_complex128(DEFINE_GPU_KERNELS);
+TF_CALL_int64(DEFINE_GPU_KERNELS);
 TF_CALL_bfloat16(DEFINE_GPU_KERNELS);
 
 #undef DEFINE_GPU_KERNELS
@@ -198,10 +199,10 @@ struct SplitOpGPULaunch {
     CudaLaunchConfig config = GetCudaLaunchConfig(
         prefix_dim_size * split_dim_size * suffix_dim_size, d);
 
-    SplitOpKernel<T>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            input, prefix_dim_size, split_dim_size, suffix_dim_size,
-            output_ptr_data);
+    TF_CHECK_OK(CudaLaunchKernel(SplitOpKernel<T>, config.block_count,
+                                 config.thread_per_block, 0, d.stream(), input,
+                                 prefix_dim_size, split_dim_size,
+                                 suffix_dim_size, output_ptr_data));
   }
 };
 

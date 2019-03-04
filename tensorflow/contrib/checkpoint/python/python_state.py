@@ -17,11 +17,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import functools
-
 import numpy
 
-from tensorflow.python.training.checkpointable import base
+from tensorflow.python.training.tracking import base
+from tensorflow.python.training.tracking import python_state as core_python_state
 
 # pylint: disable=g-import-not-at-top
 try:
@@ -32,8 +31,8 @@ except ImportError:
 # pylint: enable=g-import-not-at-top
 
 
-class NumpyState(base.CheckpointableBase):
-  """A checkpointable object whose NumPy array attributes are saved/restored.
+class NumpyState(base.Trackable):
+  """A trackable object whose NumPy array attributes are saved/restored.
 
   Example usage:
 
@@ -70,7 +69,7 @@ class NumpyState(base.CheckpointableBase):
     """Create placeholder NumPy arrays for to-be-restored attributes.
 
     Typically `_lookup_dependency` is used to check by name whether a dependency
-    exists. We cheat slightly by creating a checkpointable object for `name` if
+    exists. We cheat slightly by creating a trackable object for `name` if
     we don't already have one, giving us attribute re-creation behavior when
     loading a checkpoint.
 
@@ -83,7 +82,7 @@ class NumpyState(base.CheckpointableBase):
     value = super(NumpyState, self)._lookup_dependency(name)
     if value is None:
       value = _NumpyWrapper(numpy.array([]))
-      new_reference = base.CheckpointableReference(name=name, ref=value)
+      new_reference = base.TrackableReference(name=name, ref=value)
       self._unconditional_checkpoint_dependencies.append(new_reference)
       self._unconditional_dependency_names[name] = value
       super(NumpyState, self).__setattr__(name, value)
@@ -99,35 +98,35 @@ class NumpyState(base.CheckpointableBase):
   def __setattr__(self, name, value):
     """Automatically wrap NumPy arrays assigned to attributes."""
     # TODO(allenl): Consider supporting lists/tuples, either ad-hoc or by making
-    # ndarrays checkpointable natively and using standard checkpointable list
+    # ndarrays trackable natively and using standard trackable list
     # tracking.
-    if isinstance(value, numpy.ndarray):
+    if isinstance(value, (numpy.ndarray, numpy.generic)):
       try:
         existing = super(NumpyState, self).__getattribute__(name)
         existing.array = value
         return
       except AttributeError:
         value = _NumpyWrapper(value)
-        self._track_checkpointable(value, name=name, overwrite=True)
+        self._track_trackable(value, name=name, overwrite=True)
     elif (name not in ("_setattr_tracking", "_update_uid")
           and getattr(self, "_setattr_tracking", True)):
-      # Mixing restore()-created attributes with user-added checkpointable
+      # Mixing restore()-created attributes with user-added trackable
       # objects is tricky, since we can't use the `_lookup_dependency` trick to
       # re-create attributes (we might accidentally steal the restoration for
-      # another checkpointable object). For now `NumpyState` objects must be
+      # another trackable object). For now `NumpyState` objects must be
       # leaf nodes. Theoretically we could add some extra arguments to
       # `_lookup_dependency` to figure out whether we should create a NumPy
       # array for the attribute or not.
       raise NotImplementedError(
           ("Assigned %s to the %s property of %s, which is not a NumPy array. "
-           "Currently mixing NumPy arrays and other checkpointable objects is "
+           "Currently mixing NumPy arrays and other trackable objects is "
            "not supported. File a feature request if this limitation bothers "
            "you.")
           % (value, name, self))
     super(NumpyState, self).__setattr__(name, value)
 
 
-class _NumpyWrapper(base.CheckpointableBase):
+class _NumpyWrapper(core_python_state.PythonState):
   """Wraps a NumPy array for storage in an object-based checkpoint."""
 
   def __init__(self, array):
@@ -138,8 +137,8 @@ class _NumpyWrapper(base.CheckpointableBase):
     """
     self.array = array
 
-  def _serialize(self):
-    """Callback for `PythonStringStateSaveable` to serialize the array."""
+  def serialize(self):
+    """Callback to serialize the array."""
     string_file = BytesIO()
     try:
       numpy.save(string_file, self.array, allow_pickle=False)
@@ -148,19 +147,11 @@ class _NumpyWrapper(base.CheckpointableBase):
       string_file.close()
     return serialized
 
-  def _deserialize(self, string_value):
-    """Callback for `PythonStringStateSaveable` to deserialize the array."""
+  def deserialize(self, string_value):
+    """Callback to deserialize the array."""
     string_file = BytesIO(string_value)
     try:
       self.array = numpy.load(string_file, allow_pickle=False)
     finally:
       string_file.close()
 
-  def _gather_saveables_for_checkpoint(self):
-    """Specify callbacks for saving and restoring `array`."""
-    return {
-        "array": functools.partial(
-            base.PythonStringStateSaveable,
-            state_callback=self._serialize,
-            restore_callback=self._deserialize)
-        }

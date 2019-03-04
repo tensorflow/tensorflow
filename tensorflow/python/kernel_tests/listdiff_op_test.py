@@ -42,12 +42,12 @@ class ListDiffTest(test.TestCase):
         out = [compat.as_bytes(str(a)) for a in out]
       for diff_func in [array_ops.setdiff1d]:
         for index_dtype in [dtypes.int32, dtypes.int64]:
-          with self.test_session() as sess:
+          with self.cached_session() as sess:
             x_tensor = ops.convert_to_tensor(x, dtype=dtype)
             y_tensor = ops.convert_to_tensor(y, dtype=dtype)
             out_tensor, idx_tensor = diff_func(x_tensor, y_tensor,
                                                index_dtype=index_dtype)
-            tf_out, tf_idx = sess.run([out_tensor, idx_tensor])
+            tf_out, tf_idx = self.evaluate([out_tensor, idx_tensor])
           self.assertAllEqual(tf_out, out)
           self.assertAllEqual(tf_idx, idx)
           self.assertEqual(1, out_tensor.get_shape().ndims)

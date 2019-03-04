@@ -18,6 +18,7 @@ limitations under the License.
 
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/cloud/http_request.h"
+#include "tensorflow/core/platform/cloud/retrying_utils.h"
 
 namespace tensorflow {
 
@@ -31,10 +32,11 @@ namespace tensorflow {
 class ComputeEngineMetadataClient {
  public:
   explicit ComputeEngineMetadataClient(
-      std::shared_ptr<HttpRequest::Factory> http_request_factory);
-  ComputeEngineMetadataClient(
       std::shared_ptr<HttpRequest::Factory> http_request_factory,
-      int64 initial_retry_delay_usec);
+      const RetryConfig& config = RetryConfig(
+          10000,  /* init_delay_time_us = 1 ms */
+          1000000 /* max_delay_time_us = 1 s */
+          ));
   virtual ~ComputeEngineMetadataClient() {}
 
   /// \brief Get the metadata value for a given attribute of the metadata
@@ -54,7 +56,7 @@ class ComputeEngineMetadataClient {
 
  private:
   std::shared_ptr<HttpRequest::Factory> http_request_factory_;
-  const int64 initial_retry_delay_usec_;
+  const RetryConfig retry_config_;
 
   TF_DISALLOW_COPY_AND_ASSIGN(ComputeEngineMetadataClient);
 };

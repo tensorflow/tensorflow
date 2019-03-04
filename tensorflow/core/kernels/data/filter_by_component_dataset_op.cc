@@ -14,17 +14,17 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/core/common_runtime/function.h"
+#include "tensorflow/core/framework/dataset.h"
 #include "tensorflow/core/framework/partial_tensor_shape.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/data/dataset.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
 
 namespace tensorflow {
-
+namespace data {
 namespace {
 
-// See documentation in ../ops/dataset_ops.cc for a high-level
+// See documentation in ../../ops/dataset_ops.cc for a high-level
 // description of the following op.
 // TODO(prazek): Filter already has a logic of filtering by the given tensor,
 // but it must return both components.  We could introduce kernel like
@@ -64,8 +64,8 @@ class FilterByLastComponentDatasetOp : public UnaryDatasetOpKernel {
 
     std::unique_ptr<IteratorBase> MakeIteratorInternal(
         const string& prefix) const override {
-      return std::unique_ptr<Iterator>(new Iterator(
-          {this, strings::StrCat(prefix, "::FilterByLastComponent")}));
+      return absl::make_unique<Iterator>(Iterator::Params{
+          this, strings::StrCat(prefix, "::FilterByLastComponent")});
     }
 
     const DataTypeVector& output_dtypes() const override {
@@ -142,6 +142,11 @@ class FilterByLastComponentDatasetOp : public UnaryDatasetOpKernel {
       }
 
      protected:
+      std::shared_ptr<model::Node> CreateNode(
+          IteratorContext* ctx, model::Node::Args args) const override {
+        return model::MakeUnknownRatioNode(std::move(args));
+      }
+
       Status SaveInternal(IteratorStateWriter* writer) override {
         mutex_lock l(mu_);
         TF_RETURN_IF_ERROR(SaveInput(writer, input_impl_));
@@ -166,5 +171,5 @@ REGISTER_KERNEL_BUILDER(Name("FilterByLastComponentDataset").Device(DEVICE_CPU),
                         FilterByLastComponentDatasetOp);
 
 }  // namespace
-
+}  // namespace data
 }  // namespace tensorflow

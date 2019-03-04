@@ -26,13 +26,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 #define TENSORFLOW_CORE_LIB_CORE_STRINGPIECE_H_
 
-#include <assert.h>
-#include <stddef.h>
-#include <string.h>
-#include <iosfwd>
-#include <string>
 #include "absl/strings/string_view.h"
-#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 

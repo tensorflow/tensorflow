@@ -14,36 +14,48 @@ limitations under the License.
 ==============================================================================*/
 
 #include "tensorflow/compiler/jit/mark_for_compilation_pass_test_helper.h"
+#include "tensorflow/core/common_runtime/device_factory.h"
+#include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/public/session_options.h"
 
 namespace tensorflow {
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
     std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def,
-    SessionOptions* session_options) {
-  // Assign all nodes to the CPU device.
+    bool enable_global_jit) {
+  // Assign all unassigned nodes to the CPU device.
   static const char* kCpuDevice = "/job:localhost/replica:0/task:0/cpu:0";
   for (Node* n : (*graph)->nodes()) {
-    n->set_assigned_device_name(kCpuDevice);
+    if (n->assigned_device_name().empty()) {
+      n->set_assigned_device_name(kCpuDevice);
+    }
   }
+
+  SessionOptions session_options;
+  if (enable_global_jit) {
+    session_options.config.mutable_graph_options()
+        ->mutable_optimizer_options()
+        ->set_global_jit_level(OptimizerOptions::ON_2);
+  }
+
+  // Call AddDevices to register the XLA devices.
+  //
+  // It may be worth refactoring out XlaOpRegistry::RegisterCompilationDevice to
+  // make this more direct, but probably not worth it solely for this test.
+  std::vector<std::unique_ptr<Device>> devices;
+  TF_RETURN_IF_ERROR(DeviceFactory::AddDevices(session_options, "", &devices));
 
   GraphOptimizationPassOptions opt_options;
   opt_options.graph = graph;
-  opt_options.session_options = session_options;
+  opt_options.session_options = &session_options;
   opt_options.flib_def = flib_def;
   MarkForCompilationPass pass;
   return pass.RunImpl(opt_options);
 }
 
 /*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
-    std::unique_ptr<Graph>* graph, FunctionLibraryDefinition* flib_def) {
-  SessionOptions session_options;
-  return MarkForCompilation(graph, flib_def, &session_options);
-}
-
-/*static*/ Status MarkForCompilationPassTestHelper::MarkForCompilation(
-    std::unique_ptr<Graph>* graph) {
+    std::unique_ptr<Graph>* graph, bool enable_global_jit) {
   FunctionDefLibrary flib;
   FunctionLibraryDefinition flib_def((*graph)->op_registry(), flib);
-  return MarkForCompilation(graph, &flib_def);
+  return MarkForCompilation(graph, &flib_def, enable_global_jit);
 }
 }  // namespace tensorflow

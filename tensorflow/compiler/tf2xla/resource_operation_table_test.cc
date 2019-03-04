@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/resource_operation_table.h"
 
 #include "absl/algorithm/container.h"
+#include "absl/container/flat_hash_map.h"
 #include "absl/strings/str_join.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/core/lib/core/status_test_util.h"
@@ -33,8 +34,8 @@ bool HasResourceInputOrOutput(const OpDef& op_def) {
 }
 
 TEST(ResourceOperationTableTest, HaveAllResourceOps) {
-  gtl::FlatMap<string, bool> known_resource_ops;
-  for (StringPiece known_resource_op :
+  absl::flat_hash_map<string, bool> known_resource_ops;
+  for (absl::string_view known_resource_op :
        resource_op_table_internal::GetKnownResourceOps()) {
     ASSERT_TRUE(
         known_resource_ops.insert({string(known_resource_op), false}).second);

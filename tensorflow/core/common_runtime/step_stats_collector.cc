@@ -27,6 +27,7 @@ limitations under the License.
 #include "tensorflow/core/lib/strings/scanner.h"
 #include "tensorflow/core/lib/strings/stringprintf.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/ptr_util.h"
 
 namespace tensorflow {
 namespace {
@@ -40,46 +41,24 @@ struct AllocStats {
 };
 }  // namespace
 
-NodeExecStatsWrapper::NodeExecStatsWrapper(const string& node_name)
-    : NodeExecStatsWrapper(new NodeExecStats) {
-  stats_->set_node_name(node_name);
-}
-NodeExecStatsWrapper::NodeExecStatsWrapper(NodeExecStats* stats)
-    : stats_(stats) {}
-
-void NodeExecStatsWrapper::SetOutput(int slot, const Tensor* v) {
-  DCHECK(v);
-  NodeOutput* no = stats_->add_output();
-  no->set_slot(slot);
-  v->FillDescription(no->mutable_tensor_description());
+NodeExecStatsWrapper::NodeExecStatsWrapper(
+    const Node* node, StepStatsCollector* step_stats_collector)
+    : NodeExecStatsWrapper(MakeUnique<NodeExecStats>(), node,
+                           step_stats_collector) {
+  stats_->set_node_name(node->name());
 }
 
-void NodeExecStatsWrapper::SetMemory(OpKernelContext* ctx) {
-  for (const auto& allocator_pair : ctx->wrapped_allocators()) {
-    AddAllocation(allocator_pair.first, allocator_pair.second);
-  }
-  auto* ms = stats_->mutable_memory_stats();
-  ms->set_temp_memory_size(ctx->temp_memory_allocated());
-  for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
-    ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
-  }
-  ms->set_persistent_memory_size(ctx->persistent_memory_allocated());
-}
+NodeExecStatsWrapper::NodeExecStatsWrapper(
+    std::unique_ptr<NodeExecStats> stats, const Node* node,
+    StepStatsCollector* step_stats_collector)
+    : stats_(std::move(stats)),
+      node_(node),
+      step_stats_collector_(step_stats_collector) {}
 
-void NodeExecStatsWrapper::SetReferencedTensors(
-    const TensorReferenceVector& tensors) {
-  // be careful not to increment the reference count on any tensor
-  // while recording the information
-  for (size_t i = 0; i < tensors.size(); ++i) {
-    AllocationDescription* description = stats_->add_referenced_tensor();
-    tensors.at(i).FillDescription(description);
-  }
-}
-
-// TODO(tucker): merge with the DetailText function in session.cc
-// in a common location.
-bool NodeExecStatsWrapper::SetTimelineLabel(const Node* node) {
-  bool is_transfer_node = false;
+void NodeExecStatsWrapper::Done(const string& device) {
+  // TODO(tucker): merge with the DetailText function in session.cc in a common
+  // location.
+  DCHECK(node_);
   string memory;
   for (auto& all : stats_->memory()) {
     int64 tot = all.total_bytes();
@@ -96,31 +75,96 @@ bool NodeExecStatsWrapper::SetTimelineLabel(const Node* node) {
       }
     }
   }
-  const AttrSlice attrs = node->attrs();
+  const AttrSlice attrs = node_->attrs();
   string text;
-  if (IsSend(node)) {
+  if (IsSend(node_)) {
     string tensor_name;
     TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
     string recv_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "recv_device", &recv_device));
-    text = strings::StrCat(memory, node->name(), " = ", node->type_string(),
+    text = strings::StrCat(memory, node_->name(), " = ", node_->type_string(),
                            "(", tensor_name, " @", recv_device);
-    is_transfer_node = true;
-  } else if (IsRecv(node)) {
+  } else if (IsRecv(node_)) {
     string tensor_name;
     TF_CHECK_OK(GetNodeAttr(attrs, "tensor_name", &tensor_name));
     string send_device;
     TF_CHECK_OK(GetNodeAttr(attrs, "send_device", &send_device));
-    text = strings::StrCat(memory, node->name(), " = ", node->type_string(),
+    text = strings::StrCat(memory, node_->name(), " = ", node_->type_string(),
                            "(", tensor_name, " @", send_device);
-    is_transfer_node = true;
   } else {
     text =
-        strings::StrCat(memory, node->name(), " = ", node->type_string(), "(",
-                        str_util::Join(node->requested_inputs(), ", "), ")");
+        strings::StrCat(memory, node_->name(), " = ", node_->type_string(), "(",
+                        str_util::Join(node_->requested_inputs(), ", "), ")");
   }
   stats_->set_timeline_label(text);
-  return is_transfer_node;
+  step_stats_collector_->Save(device, this);
+}
+
+void NodeExecStatsWrapper::RecordExecutorStarted() {
+  int64 now_nanos = Env::Default()->NowNanos();
+  stats_->set_all_start_micros(now_nanos / EnvTime::kMicrosToNanos);
+  stats_->set_all_start_nanos(now_nanos);
+}
+
+void NodeExecStatsWrapper::RecordComputeStarted() {
+  int64 now_nanos = Env::Default()->NowNanos();
+  DCHECK_NE(stats_->all_start_micros(), 0);
+  DCHECK_NE(stats_->all_start_nanos(), 0);
+  stats_->set_op_start_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                                  stats_->all_start_micros());
+  stats_->set_op_start_rel_nanos(now_nanos - stats_->all_start_nanos());
+}
+
+void NodeExecStatsWrapper::RecordComputeEnded() {
+  int64 now_nanos = Env::Default()->NowNanos();
+  DCHECK_NE(stats_->all_start_micros(), 0);
+  DCHECK_NE(stats_->all_start_nanos(), 0);
+  stats_->set_op_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                                stats_->all_start_micros());
+  stats_->set_op_end_rel_nanos(now_nanos - stats_->all_start_nanos());
+}
+
+void NodeExecStatsWrapper::RecordExecutorEnded() {
+  int64 now_nanos = Env::Default()->NowNanos();
+  DCHECK_NE(stats_->all_start_micros(), 0);
+  DCHECK_NE(stats_->all_start_nanos(), 0);
+  stats_->set_all_end_rel_micros(now_nanos / EnvTime::kMicrosToNanos -
+                                 stats_->all_start_micros());
+  stats_->set_all_end_rel_nanos(now_nanos - stats_->all_start_nanos());
+}
+
+void NodeExecStatsWrapper::SetScheduled(int64 nanos) {
+  stats_->set_scheduled_micros(nanos / EnvTime::kMicrosToNanos);
+  stats_->set_scheduled_nanos(nanos);
+}
+
+void NodeExecStatsWrapper::SetMemory(OpKernelContext* ctx) {
+  for (const auto& allocator_pair : ctx->ConsumeWrappedAllocators()) {
+    AddAllocation(allocator_pair.first, allocator_pair.second);
+  }
+  auto* ms = stats_->mutable_memory_stats();
+  ms->set_temp_memory_size(ctx->temp_memory_allocated());
+  for (const auto& alloc_id : ctx->persistent_alloc_ids()) {
+    ms->mutable_persistent_tensor_alloc_ids()->Add(alloc_id);
+  }
+  ms->set_persistent_memory_size(ctx->persistent_memory_allocated());
+}
+
+void NodeExecStatsWrapper::SetOutput(int slot, const Tensor* tensor) {
+  DCHECK(tensor);
+  NodeOutput* node_output = stats_->add_output();
+  node_output->set_slot(slot);
+  tensor->FillDescription(node_output->mutable_tensor_description());
+}
+
+void NodeExecStatsWrapper::SetReferencedTensors(
+    const TensorReferenceVector& tensors) {
+  // be careful not to increment the reference count on any tensor
+  // while recording the information
+  for (size_t i = 0; i < tensors.size(); ++i) {
+    AllocationDescription* description = stats_->add_referenced_tensor();
+    tensors.at(i).FillDescription(description);
+  }
 }
 
 void NodeExecStatsWrapper::AddAllocation(
@@ -132,9 +176,10 @@ void NodeExecStatsWrapper::AddAllocation(
   memory->set_peak_bytes(std::get<1>(sizes));
   memory->set_live_bytes(std::get<2>(sizes));
 
-  AllocatorStats stats;
-  allocator->GetStats(&stats);
-  memory->set_allocator_bytes_in_use(stats.bytes_in_use);
+  absl::optional<AllocatorStats> stats = allocator->GetStats();
+  if (stats) {
+    memory->set_allocator_bytes_in_use(stats->bytes_in_use);
+  }
   allocations_.push_back(std::make_pair(memory, tracking_allocator));
 }
 
@@ -150,8 +195,8 @@ void NodeExecStatsWrapper::Finalize() {
   allocations_.clear();
 }
 
-StepStatsCollector::StepStatsCollector(StepStats* ss)
-    : finalized_(false), step_stats_(ss) {}
+StepStatsCollector::StepStatsCollector(StepStats* step_stats)
+    : finalized_(false), step_stats_(step_stats) {}
 
 static int ExtractGpuWithStreamAll(string device_name) {
   // Check if the device name matches the ".*gpu:(\\d+)/stream:all$" regexp,
@@ -176,7 +221,7 @@ static int ExtractGpuWithStreamAll(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = std::string(capture);
+    string ordered_capture(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -205,7 +250,7 @@ static int ExtractGpuWithoutStream(string device_name) {
   } else {
     // Convert the captured string into an integer. But first we need to put
     // the digits back in order
-    string ordered_capture = std::string(capture);
+    string ordered_capture(capture);
     std::reverse(ordered_capture.begin(), ordered_capture.end());
     int gpu_id;
     CHECK(strings::safe_strto32(ordered_capture, &gpu_id));
@@ -252,7 +297,7 @@ void StepStatsCollector::BuildCostModel(
 
   for (auto& itr : per_device_stats) {
     const StringPiece device_name = itr.first;
-    const int gpu_id = ExtractGpuWithoutStream(std::string(device_name));
+    const int gpu_id = ExtractGpuWithoutStream(string(device_name));
     if (gpu_id >= 0) {
       // Reference the gpu hardware stats in addition to the regular stats
       // for this gpu device if they're available.
@@ -338,28 +383,55 @@ void StepStatsCollector::BuildCostModel(
   }
 }
 
-void StepStatsCollector::Save(const string& device, NodeExecStats* nt) {
-  Save(device, new NodeExecStatsWrapper(nt));
+void StepStatsCollector::Save(const string& device,
+                              NodeExecStats* node_stats_pb) {
+  Save(device,
+       new NodeExecStatsWrapper(std::unique_ptr<NodeExecStats>(node_stats_pb),
+                                nullptr, this));
 }
 
 void StepStatsCollector::Save(const string& device,
-                              NodeExecStatsWrapper* stats) {
-  if (!stats) return;
-  VLOG(1) << "Save dev " << device << " nt " << stats->stats();
+                              NodeExecStatsWrapper* node_stats) {
+  if (!node_stats) return;
+  VLOG(1) << "Save dev " << device << " node stats " << node_stats->stats();
   {
     mutex_lock l(mu_);
     if (finalized_) {
       LOG(WARNING) << "stats saved after finalize will not be collected.";
     }
-    if (!step_stats_ || collectedNodes >= kMaxCollectedNodes) {
+    if (!step_stats_ || collected_nodes_ >= kMaxCollectedNodes) {
       VLOG(1) << "step_stats_ nullptr or already collected too many nodes.";
-      delete stats;
+      delete node_stats;
       return;
     }
-    auto& dss = dev_stats_[device];
-    dss.push_back(std::unique_ptr<NodeExecStatsWrapper>(stats));
-    collectedNodes++;
+    auto& device_stats = dev_stats_[device];
+    device_stats.push_back(std::unique_ptr<NodeExecStatsWrapper>(node_stats));
+    collected_nodes_++;
   }
+}
+
+void StepStatsCollector::SaveThreadName(const string& device,
+                                        const uint32 thread_id,
+                                        const string& thread_name) {
+  VLOG(1) << "Save dev " << device << " thread id " << thread_id << " name "
+          << thread_name;
+  {
+    mutex_lock l(mu_);
+    if (finalized_) {
+      LOG(WARNING) << "thread_name saved after finalize will not be collected.";
+    }
+    auto& thread_names_map = thread_names_[device];
+    thread_names_map[thread_id] = thread_name;
+  }
+}
+
+NodeExecStatsInterface* StepStatsCollector::CreateNodeExecStats(
+    const Node* node) {
+  // Only collect statistics for non-transfer nodes.
+  if (IsSend(node) || IsRecv(node)) {
+    return nullptr;
+  }
+  return new NodeExecStatsWrapper(node, this);
 }
 
 string StepStatsCollector::ReportAllocsOnResourceExhausted(const string& err) {
@@ -446,12 +518,12 @@ void StepStatsCollector::Finalize() {
   FinalizeInternal();
 }
 
-void StepStatsCollector::FinalizeAndSwap(StepStats* ss) {
+void StepStatsCollector::FinalizeAndSwap(StepStats* step_stats) {
   mutex_lock l(mu_);
   CHECK(step_stats_);
   FinalizeInternal();
-  ss->Swap(step_stats_);
-  collectedNodes = 0;
+  step_stats->Swap(step_stats_);
+  collected_nodes_ = 0;
 }
 
 void StepStatsCollector::FinalizeInternal() {
@@ -473,6 +545,16 @@ void StepStatsCollector::FinalizeInternal() {
     for (auto& stats : dev_stat.second) {
       stats->Finalize();
       stats->stats()->Swap(dss->add_node_stats());
+    }
+  }
+  for (const auto& device_thread : thread_names_) {
+    if (dev_stats_pb.find(device_thread.first) == dev_stats_pb.end()) {
+      // skip device without DeviceStepStats.
+      continue;
+    }
+    DeviceStepStats* dss = dev_stats_pb.at(device_thread.first);
+    for (const auto& thread_name : device_thread.second) {
+      (*dss->mutable_thread_names())[thread_name.first] = thread_name.second;
     }
   }
 }

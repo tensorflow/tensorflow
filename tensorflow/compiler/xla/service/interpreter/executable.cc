@@ -37,7 +37,7 @@ namespace xla {
 namespace interpreter {
 
 InterpreterExecutable::InterpreterExecutable(
-    std::unique_ptr<const HloModule> hlo_module,
+    std::unique_ptr<HloModule> hlo_module,
     std::unique_ptr<HloEvaluator> evaluator)
     : Executable(std::move(hlo_module), /*hlo_profile_printer=*/nullptr,
                  /*hlo_profile_index_map=*/nullptr),
@@ -68,35 +68,47 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteOnStream(
         "Mismatch between argument count and graph parameter count.");
   }
 
+  // Check that the args have the right shape.
+  for (int64 i = 0; i < computation->num_parameters(); ++i) {
+    const auto& expected_shape = computation->parameter_instruction(i)->shape();
+    const auto& actual_shape = arguments[i]->on_device_shape();
+    if (!ShapeUtil::Equal(expected_shape, actual_shape)) {
+      return InvalidArgument(
+          "Shape mismatch on parameter %d.  Expected %s, but was %s.", i,
+          ShapeUtil::HumanString(expected_shape),
+          ShapeUtil::HumanString(actual_shape));
+    }
+  }
+
   TF_ASSIGN_OR_RETURN(TransferManager * transfer_manager,
                       TransferManager::GetForPlatform(platform));
 
   // Transform the ShapedBuffer arguments into literals which the evaluator
   // consumes.
-  std::vector<std::unique_ptr<Literal>> arg_literals;
+  std::vector<Literal> arg_literals;
   for (int64 p = 0; p < computation->num_parameters(); ++p) {
-    TF_ASSIGN_OR_RETURN(std::unique_ptr<Literal> arg_literal,
+    TF_ASSIGN_OR_RETURN(Literal arg_literal,
                         transfer_manager->TransferLiteralFromDevice(
                             run_options->stream(), *arguments[p]));
     arg_literals.push_back(std::move(arg_literal));
   }
 
   // Execute the graph using the HloEvaluator.
-  std::unique_ptr<Literal> result_literal;
+  Literal result_literal;
   {
     tensorflow::mutex_lock lock(evaluator_lock_);
+    evaluator_->ResetVisitStates();
     TF_ASSIGN_OR_RETURN(result_literal,
-                        evaluator_->Evaluate<std::unique_ptr<Literal>>(
-                            *computation, arg_literals));
+                        evaluator_->Evaluate(*computation, arg_literals));
   }
 
   // Transform the result literal back into a ShapedBuffer.
   TF_ASSIGN_OR_RETURN(ScopedShapedBuffer result,
                       transfer_manager->AllocateScopedShapedBuffer(
-                          result_literal->shape(), run_options->allocator(),
+                          result_literal.shape(), run_options->allocator(),
                           executor->device_ordinal()));
   TF_RETURN_IF_ERROR(transfer_manager->TransferLiteralToDevice(
-      run_options->stream(), *result_literal, result));
+      run_options->stream(), result_literal, result));
 
   uint64 end_micros = tensorflow::Env::Default()->NowMicros();
 
@@ -117,7 +129,7 @@ StatusOr<ScopedShapedBuffer> InterpreterExecutable::ExecuteAsyncOnStream(
 }
 
 /*static*/ int64 InterpreterExecutable::ShapeSizeBytes(const Shape& shape) {
-  if (ShapeUtil::IsOpaque(shape)) {
+  if (shape.IsOpaque()) {
     return sizeof(void*);
   }
   return ShapeUtil::ByteSizeOf(shape, sizeof(void*));

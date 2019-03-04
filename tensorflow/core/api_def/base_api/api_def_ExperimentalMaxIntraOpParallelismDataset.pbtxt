@@ -1,0 +1,13 @@
+op {
+  graph_op_name: "ExperimentalMaxIntraOpParallelismDataset"
+  in_arg {
+    name: "max_intra_op_parallelism"
+    description: <<END
+Identifies the maximum intra-op parallelism to use.
+END
+  }
+  summary: <<END
+Creates a dataset that overrides the maximum intra-op parallelism.
+END
+  visibility: HIDDEN
+}

@@ -24,6 +24,7 @@ limitations under the License.
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/platform/types.h"
 
 namespace tensorflow {
 
@@ -94,6 +95,26 @@ class Status {
   std::unique_ptr<State> state_;
 
   void SlowCopyFrom(const State* src);
+};
+
+// Helper class to manage multiple child status values.
+class StatusGroup {
+ public:
+  // Return a merged status with combined child status messages.
+  //
+  // The status code returned is OK if all children were successful, otherwise
+  // the first non-OK child status code is reported.
+  Status as_status() const;
+
+  bool ok() const { return ok_; }
+
+  // Augment this group with the child status `status`.
+  void Update(const Status& status);
+
+ private:
+  bool ok_ = true;
+  size_t num_ok_ = 0;
+  std::vector<Status> children_;
 };
 
 inline Status::Status(const Status& s)

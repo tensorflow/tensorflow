@@ -52,9 +52,12 @@ TEST(ParsingOpsTest, DecodeCSV_ShapeFn) {
   INFER_OK(op, "[1,2,?,4];?;?", "in0;in0");
   INFER_OK(op, "[1,2,?,4];[?];[?]", "in0;in0");
 
+  // Scalar defaults are ok
+  INFER_OK(op, "?;?;[]", "in0;in0");
+
   // Check errors in the record_defaults inputs.
-  INFER_ERROR("must be rank 1", op, "?;?;[]");
-  INFER_ERROR("must be rank 1", op, "?;[];?");
+  INFER_ERROR("must be at most rank 1 but is rank 2", op, "?;?;[1,2]");
+  INFER_ERROR("must be at most rank 1 but is rank 2", op, "?;[3,4];?");
   INFER_ERROR("Shape of a default must be", op, "?;?;[2]");
   INFER_ERROR("Shape of a default must be", op, "?;[2];?");
 }

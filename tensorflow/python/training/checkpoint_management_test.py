@@ -38,7 +38,7 @@ from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import checkpoint_management
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training.checkpoint_state_pb2 import CheckpointState
-from tensorflow.python.training.checkpointable import util
+from tensorflow.python.training.tracking import util
 
 
 class LatestCheckpointWithRelativePaths(test.TestCase):
@@ -62,6 +62,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
     finally:
       shutil.rmtree(tempdir)
 
+  @test_util.run_deprecated_v1
   def testNameCollision(self):
     # Make sure we have a clean directory to work in.
     with self.tempDir() as tempdir:
@@ -73,7 +74,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
         # Collides with the default name of the checkpoint state file.
         filepath = os.path.join(traindir, "checkpoint")
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           unused_a = variables.Variable(0.0)  # So that Saver saves something.
           variables.global_variables_initializer().run()
 
@@ -99,6 +100,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           self.assertIsNotNone(
               checkpoint_management.latest_checkpoint(traindir))
 
+  @test_util.run_deprecated_v1
   def testRelativePath(self):
     # Make sure we have a clean directory to work in.
     with self.tempDir() as tempdir:
@@ -113,7 +115,7 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
         filename = "snapshot"
         filepath = os.path.join(traindir, filename)
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Build a simple graph.
           v0 = variables.Variable(0.0)
           inc = v0.assign_add(1.0)
@@ -123,12 +125,12 @@ class LatestCheckpointWithRelativePaths(test.TestCase):
           # Record a short training history.
           variables.global_variables_initializer().run()
           save.save(sess, filepath, global_step=0)
-          inc.eval()
+          self.evaluate(inc)
           save.save(sess, filepath, global_step=1)
-          inc.eval()
+          self.evaluate(inc)
           save.save(sess, filepath, global_step=2)
 
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           # Build a new graph with different initialization.
           v0 = variables.Variable(-1.0)
 
@@ -270,6 +272,7 @@ class SaverUtilsTest(test.TestCase):
   def tearDown(self):
     gfile.DeleteRecursively(self._base_dir)
 
+  @test_util.run_deprecated_v1
   def testCheckpointExists(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
@@ -288,6 +291,7 @@ class SaverUtilsTest(test.TestCase):
           ckpt_prefix = checkpoint_management.latest_checkpoint(self._base_dir)
           self.assertTrue(checkpoint_management.checkpoint_exists(ckpt_prefix))
 
+  @test_util.run_deprecated_v1
   def testGetCheckpointMtimes(self):
     prefixes = []
     for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):
@@ -302,6 +306,7 @@ class SaverUtilsTest(test.TestCase):
     self.assertEqual(2, len(mtimes))
     self.assertTrue(mtimes[1] >= mtimes[0])
 
+  @test_util.run_deprecated_v1
   def testRemoveCheckpoint(self):
     for sharded in (False, True):
       for version in (saver_pb2.SaverDef.V2, saver_pb2.SaverDef.V1):

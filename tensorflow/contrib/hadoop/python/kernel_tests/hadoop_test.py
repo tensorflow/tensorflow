@@ -21,6 +21,7 @@ from __future__ import print_function
 import os
 
 from tensorflow.contrib.hadoop.python.ops import hadoop_dataset_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -47,11 +48,11 @@ class SequenceFileDatasetTest(test.TestCase):
 
     dataset = hadoop_dataset_ops.SequenceFileDataset(filenames).repeat(
         num_repeats)
-    iterator = dataset.make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(dataset)
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       for _ in range(num_repeats):  # Dataset is repeated.
         for i in range(25):  # 25 records.

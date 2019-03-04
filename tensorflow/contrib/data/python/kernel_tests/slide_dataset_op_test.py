@@ -21,29 +21,32 @@ from absl.testing import parameterized
 import numpy as np
 
 from tensorflow.contrib.data.python.ops import sliding
+from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
 
-class SlideDatasetTest(test.TestCase, parameterized.TestCase):
+@test_util.run_v1_only("deprecated API, no eager or V2 test coverage")
+class SlideDatasetTest(test_base.DatasetTestBase, parameterized.TestCase):
 
-  @parameterized.parameters(
-      (20, 14, 7, 1),
-      (20, 17, 9, 1),
-      (20, 14, 14, 1),
-      (20, 10, 14, 1),
-      (20, 14, 19, 1),
-      (20, 4, 1, 2),
-      (20, 2, 1, 6),
-      (20, 4, 7, 2),
-      (20, 2, 7, 6),
-      (1, 10, 4, 1),
-      (0, 10, 4, 1),
+  @parameterized.named_parameters(
+      ("1", 20, 14, 7, 1),
+      ("2", 20, 17, 9, 1),
+      ("3", 20, 14, 14, 1),
+      ("4", 20, 10, 14, 1),
+      ("5", 20, 14, 19, 1),
+      ("6", 20, 4, 1, 2),
+      ("7", 20, 2, 1, 6),
+      ("8", 20, 4, 7, 2),
+      ("9", 20, 2, 7, 6),
+      ("10", 1, 10, 4, 1),
+      ("11", 0, 10, 4, 1),
   )
   def testSlideDataset(self, count, window_size, window_shift, window_stride):
     """Tests a dataset that slides a window its input elements."""
@@ -62,20 +65,20 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count) ->
     # _SlideDataset(window_size, window_shift, window_stride).
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
         .repeat(count).apply(
             sliding.sliding_window_batch(
                 window_size=window_size_t,
                 window_shift=window_shift_t,
-                window_stride=window_stride_t)).make_initializable_iterator())
+                window_stride=window_stride_t)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
     self.assertEqual([[None] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -96,18 +99,18 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @parameterized.parameters(
-      (20, 14, 7, 1),
-      (20, 17, 9, 1),
-      (20, 14, 14, 1),
-      (20, 10, 14, 1),
-      (20, 14, 19, 1),
-      (20, 4, 1, 2),
-      (20, 2, 1, 6),
-      (20, 4, 7, 2),
-      (20, 2, 7, 6),
-      (1, 10, 4, 1),
-      (0, 10, 4, 1),
+  @parameterized.named_parameters(
+      ("1", 20, 14, 7, 1),
+      ("2", 20, 17, 9, 1),
+      ("3", 20, 14, 14, 1),
+      ("4", 20, 10, 14, 1),
+      ("5", 20, 14, 19, 1),
+      ("6", 20, 4, 1, 2),
+      ("7", 20, 2, 1, 6),
+      ("8", 20, 4, 7, 2),
+      ("9", 20, 2, 7, 6),
+      ("10", 1, 10, 4, 1),
+      ("11", 0, 10, 4, 1),
   )
   def testSlideDatasetDeprecated(self, count, window_size, stride,
                                  window_stride):
@@ -126,20 +129,20 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
 
     # The pipeline is TensorSliceDataset -> MapDataset(square_3) ->
     # RepeatDataset(count) -> _SlideDataset(window_size, stride, window_stride).
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_tensor_slices(components).map(_map_fn)
         .repeat(count).apply(
             sliding.sliding_window_batch(
                 window_size=window_size_t,
                 stride=stride_t,
-                window_stride=window_stride_t)).make_initializable_iterator())
+                window_stride=window_stride_t)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
     self.assertEqual([[None] + list(c.shape[1:]) for c in components],
                      [t.shape.as_list() for t in get_next])
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(
           init_op,
           feed_dict={
@@ -160,10 +163,10 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       with self.assertRaises(errors.OutOfRangeError):
         sess.run(get_next)
 
-  @parameterized.parameters(
-      (14, 0, 3, 1),
-      (14, 3, 0, 1),
-      (14, 3, 3, 0),
+  @parameterized.named_parameters(
+      ("1", 14, 0, 3, 1),
+      ("2", 14, 3, 0, 1),
+      ("3", 14, 3, 3, 0),
   )
   def testSlideDatasetInvalid(self, count, window_size, window_shift,
                               window_stride):
@@ -172,15 +175,15 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
     window_shift_t = array_ops.placeholder(dtypes.int64, shape=[])
     window_stride_t = array_ops.placeholder(dtypes.int64, shape=[])
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(10).map(lambda x: x).repeat(count_t).apply(
             sliding.sliding_window_batch(
                 window_size=window_size_t,
                 window_shift=window_shift_t,
-                window_stride=window_stride_t)).make_initializable_iterator())
+                window_stride=window_stride_t)))
     init_op = iterator.initializer
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       with self.assertRaises(errors.InvalidArgumentError):
         sess.run(
             init_op,
@@ -197,24 +200,19 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
           sliding.sliding_window_batch(
               window_size=1, stride=1, window_shift=1, window_stride=1))
 
-  def assertSparseValuesEqual(self, a, b):
-    self.assertAllEqual(a.indices, b.indices)
-    self.assertAllEqual(a.values, b.values)
-    self.assertAllEqual(a.dense_shape, b.dense_shape)
-
   def testSlideSparse(self):
 
     def _sparse(i):
       return sparse_tensor.SparseTensorValue(
           indices=[[0]], values=(i * [1]), dense_shape=[1])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
-        sliding.sliding_window_batch(
-            window_size=5, window_shift=3)).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(_sparse).apply(
+            sliding.sliding_window_batch(window_size=5, window_shift=3)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       num_batches = (10 - 5) // 3 + 1
       for i in range(num_batches):
@@ -237,13 +235,13 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
           values=array_ops.fill([math_ops.to_int32(i)], i),
           dense_shape=[i])
 
-    iterator = dataset_ops.Dataset.range(10).map(_sparse).apply(
-        sliding.sliding_window_batch(
-            window_size=5, window_shift=3)).make_initializable_iterator()
+    iterator = dataset_ops.make_initializable_iterator(
+        dataset_ops.Dataset.range(10).map(_sparse).apply(
+            sliding.sliding_window_batch(window_size=5, window_shift=3)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       num_batches = (10 - 5) // 3 + 1
       for i in range(num_batches):
@@ -269,15 +267,14 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       return sparse_tensor.SparseTensorValue(
           indices=[[0]], values=(i * [1]), dense_shape=[1])
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.range(10).map(_sparse).apply(
             sliding.sliding_window_batch(window_size=4, window_shift=2)).apply(
-                sliding.sliding_window_batch(window_size=3, window_shift=1))
-        .make_initializable_iterator())
+                sliding.sliding_window_batch(window_size=3, window_shift=1)))
     init_op = iterator.initializer
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(init_op)
       # Slide: 1st batch.
       actual = sess.run(get_next)
@@ -309,14 +306,13 @@ class SlideDatasetTest(test.TestCase, parameterized.TestCase):
       yield [4.0, 5.0, 6.0]
       yield [7.0, 8.0, 9.0, 10.0]
 
-    iterator = (
+    iterator = dataset_ops.make_initializable_iterator(
         dataset_ops.Dataset.from_generator(
             generator, dtypes.float32, output_shapes=[None]).apply(
-                sliding.sliding_window_batch(window_size=3, window_shift=1))
-        .make_initializable_iterator())
+                sliding.sliding_window_batch(window_size=3, window_shift=1)))
     next_element = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(iterator.initializer)
       with self.assertRaisesRegexp(
           errors.InvalidArgumentError,

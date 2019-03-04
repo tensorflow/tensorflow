@@ -20,6 +20,7 @@ limitations under the License.
 #include <set>
 #include <vector>
 
+#include "absl/container/flat_hash_map.h"
 #include "absl/types/span.h"
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/device_memory_allocator.h"
@@ -52,7 +53,8 @@ class BufferAllocations {
         DeviceMemoryAllocator* memory_allocator);
 
    private:
-    std::map<BufferAllocation::Index, se::DeviceMemoryBase> registered_buffers_;
+    absl::flat_hash_map<BufferAllocation::Index, se::DeviceMemoryBase>
+        registered_buffers_;
   };
 
   ~BufferAllocations();

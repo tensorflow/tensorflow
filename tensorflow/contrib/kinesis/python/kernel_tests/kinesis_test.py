@@ -29,6 +29,7 @@ from __future__ import print_function
 import boto3
 
 from tensorflow.contrib.kinesis.python.ops import kinesis_dataset_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -59,12 +60,13 @@ class KinesisDatasetTest(test.TestCase):
         stream, read_indefinitely=False).repeat(num_epochs)
     batch_dataset = repeat_dataset.batch(batch_size)
 
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
+    iterator = iterator_ops.Iterator.from_structure(
+        dataset_ops.get_legacy_output_types(batch_dataset))
     init_op = iterator.make_initializer(repeat_dataset)
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from shard 0 of stream 1.
       sess.run(init_op, feed_dict={stream: stream_name, num_epochs: 1})
       for i in range(10):
@@ -102,13 +104,14 @@ class KinesisDatasetTest(test.TestCase):
         stream, shard, read_indefinitely=False).repeat(num_epochs)
     batch_dataset = repeat_dataset.batch(batch_size)
 
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
+    iterator = iterator_ops.Iterator.from_structure(
+        dataset_ops.get_legacy_output_types(batch_dataset))
     init_op = iterator.make_initializer(repeat_dataset)
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
     data = list()
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from shard 0 of stream 2.
       sess.run(
           init_op, feed_dict={

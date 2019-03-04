@@ -37,21 +37,20 @@ int main(int argc, char** argv) {
   xla::LocalClient* client(xla::ClientLibrary::LocalClientOrDie());
 
   // Transfer parameters.
-  std::unique_ptr<xla::Literal> param0_literal =
+  xla::Literal param0_literal =
       xla::LiteralUtil::CreateR1<float>({1.1f, 2.2f, 3.3f, 5.5f});
   std::unique_ptr<xla::GlobalData> param0_data =
-      client->TransferToServer(*param0_literal).ConsumeValueOrDie();
+      client->TransferToServer(param0_literal).ConsumeValueOrDie();
 
-  std::unique_ptr<xla::Literal> param1_literal =
-      xla::LiteralUtil::CreateR2<float>(
-          {{3.1f, 4.2f, 7.3f, 9.5f}, {1.1f, 2.2f, 3.3f, 4.4f}});
+  xla::Literal param1_literal = xla::LiteralUtil::CreateR2<float>(
+      {{3.1f, 4.2f, 7.3f, 9.5f}, {1.1f, 2.2f, 3.3f, 4.4f}});
   std::unique_ptr<xla::GlobalData> param1_data =
-      client->TransferToServer(*param1_literal).ConsumeValueOrDie();
+      client->TransferToServer(param1_literal).ConsumeValueOrDie();
 
   // Build computation.
   xla::XlaBuilder builder("");
-  auto p0 = Parameter(&builder, 0, param0_literal->shape(), "param0");
-  auto p1 = Parameter(&builder, 1, param1_literal->shape(), "param1");
+  auto p0 = Parameter(&builder, 0, param0_literal.shape(), "param0");
+  auto p1 = Parameter(&builder, 1, param1_literal.shape(), "param1");
   Add(p1, p0, {0});
 
   xla::StatusOr<xla::XlaComputation> computation_status = builder.Build();
@@ -59,17 +58,16 @@ int main(int argc, char** argv) {
 
   // Execute and transfer result of computation.
   xla::ExecutionProfile profile;
-  xla::StatusOr<std::unique_ptr<xla::Literal>> result =
-      client->ExecuteAndTransfer(
-          computation,
-          /*arguments=*/{param0_data.get(), param1_data.get()},
-          /*execution_options=*/nullptr,
-          /*execution_profile=*/&profile);
-  std::unique_ptr<xla::Literal> actual = result.ConsumeValueOrDie();
+  xla::StatusOr<xla::Literal> result = client->ExecuteAndTransfer(
+      computation,
+      /*arguments=*/{param0_data.get(), param1_data.get()},
+      /*execution_options=*/nullptr,
+      /*execution_profile=*/&profile);
+  xla::Literal actual = result.ConsumeValueOrDie();
 
   LOG(INFO) << absl::StrFormat("computation took %dns",
                                profile.compute_time_ns());
-  LOG(INFO) << actual->ToString();
+  LOG(INFO) << actual.ToString();
 
   return 0;
 }

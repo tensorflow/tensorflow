@@ -13,10 +13,7 @@
 # limitations under the License.
 # ==============================================================================
 
-"""Operations for working with string Tensors.
-
-See the [Strings](https://tensorflow.org/api_guides/python/string_ops) guide.
-"""
+"""Operations for working with string Tensors."""
 
 from __future__ import absolute_import
 from __future__ import division
@@ -29,27 +26,64 @@ from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
+from tensorflow.python.framework import tensor_util
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import gen_parsing_ops
 from tensorflow.python.ops import gen_string_ops
 from tensorflow.python.ops import math_ops
-from tensorflow.python.util import compat as util_compat
 
 # go/tf-wildcard-import
 # pylint: disable=wildcard-import
+# pylint: disable=g-bad-import-order
 from tensorflow.python.ops.gen_string_ops import *
+from tensorflow.python.util import compat as util_compat
 from tensorflow.python.util import deprecation
+from tensorflow.python.util import dispatch
 from tensorflow.python.util.tf_export import tf_export
+# pylint: enable=g-bad-import-order
 # pylint: enable=wildcard-import
 
-# Expose regex_full_match in strings namespace
-tf_export("strings.regex_full_match")(regex_full_match)
 
-
-def regex_replace(source, pattern, rewrite, replace_global=True):
-  r"""Replace elements of `source` matching regex `pattern with `rewrite`.
+# pylint: disable=redefined-builtin
+@tf_export("strings.regex_full_match")
+@dispatch.add_dispatch_support
+def regex_full_match(input, pattern, name=None):
+  r"""Match elements of `input` with regex `pattern`.
 
   Args:
-    source: string `Tensor`, the source strings to process.
+    input: string `Tensor`, the source strings to process.
+    pattern: string or scalar string `Tensor`, regular expression to use,
+      see more details at https://github.com/google/re2/wiki/Syntax
+    name: Name of the op.
+
+  Returns:
+    bool `Tensor` of the same shape as `input` with match results.
+  """
+  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
+  if not compat.forward_compatible(2018, 11, 10):
+    return gen_string_ops.regex_full_match(
+        input=input, pattern=pattern, name=name)
+  if isinstance(pattern, util_compat.bytes_or_text_types):
+    # When `pattern` is static through the life of the op we can
+    # use a version which performs the expensive regex compilation once at
+    # creation time.
+    return gen_string_ops.static_regex_full_match(
+        input=input, pattern=pattern, name=name)
+  return gen_string_ops.regex_full_match(
+      input=input, pattern=pattern, name=name)
+
+regex_full_match.__doc__ = gen_string_ops.regex_full_match.__doc__
+
+
+@tf_export(
+    "strings.regex_replace", v1=["strings.regex_replace", "regex_replace"])
+@deprecation.deprecated_endpoints("regex_replace")
+@dispatch.add_dispatch_support
+def regex_replace(input, pattern, rewrite, replace_global=True, name=None):
+  r"""Replace elements of `input` matching regex `pattern` with `rewrite`.
+
+  Args:
+    input: string `Tensor`, the source strings to process.
     pattern: string or scalar string `Tensor`, regular expression to use,
       see more details at https://github.com/google/re2/wiki/Syntax
     rewrite: string or scalar string `Tensor`, value to use in match
@@ -57,26 +91,105 @@ def regex_replace(source, pattern, rewrite, replace_global=True):
       text matching corresponding parenthesized group.
     replace_global: `bool`, if `True` replace all non-overlapping matches,
       else replace only the first match.
+    name: A name for the operation (optional).
 
   Returns:
-    string `Tensor` of the same shape as `source` with specified replacements.
+    string `Tensor` of the same shape as `input` with specified replacements.
   """
-  # TODO(b/112455102): Remove compat.forward_compatible once past the horizon.
-  if not compat.forward_compatible(2018, 10, 10):
-    return gen_string_ops.regex_replace(
-        input=source, pattern=pattern,
-        rewrite=rewrite, replace_global=replace_global)
   if (isinstance(pattern, util_compat.bytes_or_text_types) and
       isinstance(rewrite, util_compat.bytes_or_text_types)):
     # When `pattern` and `rewrite` are static through the life of the op we can
     # use a version which performs the expensive regex compilation once at
     # creation time.
     return gen_string_ops.static_regex_replace(
-        input=source, pattern=pattern,
-        rewrite=rewrite, replace_global=replace_global)
+        input=input, pattern=pattern,
+        rewrite=rewrite, replace_global=replace_global,
+        name=name)
   return gen_string_ops.regex_replace(
-      input=source, pattern=pattern,
-      rewrite=rewrite, replace_global=replace_global)
+      input=input, pattern=pattern,
+      rewrite=rewrite, replace_global=replace_global,
+      name=name)
+
+
+@tf_export("strings.format")
+def string_format(template, inputs, placeholder="{}", summarize=3, name=None):
+  r"""Formats a string template using a list of tensors.
+
+  Formats a string template using a list of tensors, abbreviating tensors by
+  only printing the first and last `summarize` elements of each dimension
+  (recursively). If formatting only one tensor into a template, the tensor does
+  not have to be wrapped in a list.
+
+  Example:
+    Formatting a single-tensor template:
+    ```python
+    sess = tf.Session()
+    with sess.as_default():
+        tensor = tf.range(10)
+        formatted = tf.strings.format("tensor: {}, suffix", tensor)
+        out = sess.run(formatted)
+        expected = "tensor: [0 1 2 ... 7 8 9], suffix"
+
+        assert(out.decode() == expected)
+    ```
+
+    Formatting a multi-tensor template:
+    ```python
+    sess = tf.Session()
+    with sess.as_default():
+        tensor_one = tf.reshape(tf.range(100), [10, 10])
+        tensor_two = tf.range(10)
+        formatted = tf.strings.format("first: {}, second: {}, suffix",
+          (tensor_one, tensor_two))
+
+        out = sess.run(formatted)
+        expected = ("first: [[0 1 2 ... 7 8 9]\n"
+              " [10 11 12 ... 17 18 19]\n"
+              " [20 21 22 ... 27 28 29]\n"
+              " ...\n"
+              " [70 71 72 ... 77 78 79]\n"
+              " [80 81 82 ... 87 88 89]\n"
+              " [90 91 92 ... 97 98 99]], second: [0 1 2 ... 7 8 9], suffix")
+
+        assert(out.decode() == expected)
+    ```
+
+  Args:
+    template: A string template to format tensor values into.
+    inputs: A list of `Tensor` objects, or a single Tensor.
+      The list of tensors to format into the template string. If a solitary
+      tensor is passed in, the input tensor will automatically be wrapped as a
+      list.
+    placeholder: An optional `string`. Defaults to `{}`.
+      At each placeholder occurring in the template, a subsequent tensor
+      will be inserted.
+    summarize: An optional `int`. Defaults to `3`.
+      When formatting the tensors, show the first and last `summarize`
+      entries of each tensor dimension (recursively). If set to -1, all
+      elements of the tensor will be shown.
+    name: A name for the operation (optional).
+
+  Returns:
+    A scalar `Tensor` of type `string`.
+
+  Raises:
+    ValueError: if the number of placeholders does not match the number of
+      inputs.
+  """
+  # If there is only one tensor to format, we will automatically wrap it in a
+  # list to simplify the user experience
+  if tensor_util.is_tensor(inputs):
+    inputs = [inputs]
+  if template.count(placeholder) != len(inputs):
+    raise ValueError("%s placeholder(s) in template does not match %s tensor(s)"
+                     " provided as input" % (template.count(placeholder),
+                                             len(inputs)))
+
+  return gen_string_ops.string_format(inputs,
+                                      template=template,
+                                      placeholder=placeholder,
+                                      summarize=summarize,
+                                      name=name)
 
 
 @tf_export("string_split")
@@ -128,6 +241,7 @@ def string_split(source, delimiter=" ", skip_empty=True):  # pylint: disable=inv
   shape.set_shape([2])
   return sparse_tensor.SparseTensor(indices, values, shape)
 
+
 @tf_export("strings.split")
 def string_split_v2(source, sep=None, maxsplit=-1):
   """Split elements of `source` based on `sep` into a `SparseTensor`.
@@ -170,7 +284,7 @@ def string_split_v2(source, sep=None, maxsplit=-1):
     second column corresponds to the index of the split component in this row.
   """
   if sep is None:
-    sep = ''
+    sep = ""
   sep = ops.convert_to_tensor(sep, dtype=dtypes.string)
   source = ops.convert_to_tensor(source, dtype=dtypes.string)
 
@@ -201,12 +315,16 @@ def _reduce_join_reduction_dims(x, axis, reduction_indices):
     return math_ops.range(array_ops.rank(x) - 1, -1, -1)
 
 
-@tf_export("reduce_join")
-def reduce_join(inputs, axis=None,
+@tf_export(v1=["strings.reduce_join", "reduce_join"])
+@deprecation.deprecated_endpoints("reduce_join")
+def reduce_join(inputs, axis=None,  # pylint: disable=missing-docstring
                 keep_dims=False,
                 separator="",
                 name=None,
-                reduction_indices=None):
+                reduction_indices=None,
+                keepdims=None):
+  keep_dims = deprecation.deprecated_argument_lookup(
+      "keepdims", keepdims, "keep_dims", keep_dims)
   inputs_t = ops.convert_to_tensor(inputs)
   reduction_indices = _reduce_join_reduction_dims(
       inputs_t, axis, reduction_indices)
@@ -218,8 +336,63 @@ def reduce_join(inputs, axis=None,
       name=name)
 
 
+@tf_export("strings.reduce_join", v1=[])
+def reduce_join_v2(  # pylint: disable=missing-docstring
+    inputs,
+    axis=None,
+    keepdims=False,
+    separator="",
+    name=None):
+  return reduce_join(
+      inputs, axis, keep_dims=keepdims, separator=separator, name=name)
+
+
 reduce_join.__doc__ = deprecation.rewrite_argument_docstring(
     gen_string_ops.reduce_join.__doc__, "reduction_indices", "axis")
+reduce_join.__doc__ = reduce_join.__doc__.replace("tf.reduce_join(",
+                                                  "tf.strings.reduce_join(")
+
+
+# This wrapper provides backwards compatibility for code that predates the
+# unit argument and that passed 'name' as a positional argument.
+@tf_export(v1=["strings.length"])
+@dispatch.add_dispatch_support
+def string_length(input, name=None, unit="BYTE"):
+  return gen_string_ops.string_length(input, unit=unit, name=name)
+
+
+@tf_export("strings.length", v1=[])
+@dispatch.add_dispatch_support
+def string_length_v2(input, unit="BYTE", name=None):
+  return string_length(input, name, unit)
+
+
+string_length.__doc__ = gen_string_ops.string_length.__doc__
+
+
+@tf_export(v1=["substr"])
+@deprecation.deprecated(None, "Use `tf.strings.substr` instead of `tf.substr`.")
+def substr_deprecated(input, pos, len, name=None, unit="BYTE"):
+  return substr(input, pos, len, name=name, unit=unit)
+
+substr_deprecated.__doc__ = gen_string_ops.substr.__doc__
+
+
+@tf_export(v1=["strings.substr"])
+@dispatch.add_dispatch_support
+def substr(input, pos, len, name=None, unit="BYTE"):
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
+
+substr.__doc__ = gen_string_ops.substr.__doc__
+
+
+@tf_export("strings.substr", v1=[])
+@dispatch.add_dispatch_support
+def substr_v2(input, pos, len, unit="BYTE", name=None):
+  return gen_string_ops.substr(input, pos, len, unit=unit, name=name)
+
+substr_v2.__doc__ = gen_string_ops.substr.__doc__
+
 
 ops.NotDifferentiable("RegexReplace")
 ops.NotDifferentiable("StringToHashBucket")
@@ -231,3 +404,75 @@ ops.NotDifferentiable("StringSplit")
 ops.NotDifferentiable("AsString")
 ops.NotDifferentiable("EncodeBase64")
 ops.NotDifferentiable("DecodeBase64")
+
+
+@tf_export("strings.to_number", v1=[])
+@dispatch.add_dispatch_support
+def string_to_number(input, out_type=dtypes.float32, name=None):
+  r"""Converts each string in the input Tensor to the specified numeric type.
+
+  (Note that int32 overflow results in an error while float overflow
+  results in a rounded value.)
+
+  Args:
+    input: A `Tensor` of type `string`.
+    out_type: An optional `tf.DType` from: `tf.float32, tf.float64, tf.int32,
+      tf.int64`. Defaults to `tf.float32`.
+      The numeric type to interpret each string in `string_tensor` as.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `out_type`.
+  """
+  return gen_parsing_ops.string_to_number(input, out_type, name)
+
+
+@tf_export(v1=["strings.to_number", "string_to_number"])
+def string_to_number_v1(
+    string_tensor=None,
+    out_type=dtypes.float32,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_parsing_ops.string_to_number(string_tensor, out_type, name)
+
+string_to_number_v1.__doc__ = gen_parsing_ops.string_to_number.__doc__
+
+
+@tf_export("strings.to_hash_bucket", v1=[])
+@dispatch.add_dispatch_support
+def string_to_hash_bucket(input, num_buckets, name=None):
+  # pylint: disable=line-too-long
+  r"""Converts each string in the input Tensor to its hash mod by a number of buckets.
+
+  The hash function is deterministic on the content of the string within the
+  process.
+
+  Note that the hash function may change from time to time.
+  This functionality will be deprecated and it's recommended to use
+  `tf.string_to_hash_bucket_fast()` or `tf.string_to_hash_bucket_strong()`.
+
+  Args:
+    input: A `Tensor` of type `string`.
+    num_buckets: An `int` that is `>= 1`. The number of buckets.
+    name: A name for the operation (optional).
+
+  Returns:
+    A `Tensor` of type `int64`.
+  """
+  # pylint: enable=line-too-long
+  return gen_string_ops.string_to_hash_bucket(input, num_buckets, name)
+
+
+@tf_export(v1=["strings.to_hash_bucket", "string_to_hash_bucket"])
+def string_to_hash_bucket_v1(
+    string_tensor=None,
+    num_buckets=None,
+    name=None,
+    input=None):
+  string_tensor = deprecation.deprecated_argument_lookup(
+      "input", input, "string_tensor", string_tensor)
+  return gen_string_ops.string_to_hash_bucket(string_tensor, num_buckets, name)
+
+string_to_hash_bucket_v1.__doc__ = gen_string_ops.string_to_hash_bucket.__doc__

@@ -16,7 +16,7 @@ limitations under the License.
 
 #include "absl/memory/memory.h"
 #include "tensorflow/compiler/jit/defs.h"
-#include "tensorflow/compiler/jit/kernels/xla_launch_op.h"
+#include "tensorflow/compiler/jit/kernels/xla_ops.h"
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
@@ -126,8 +126,9 @@ Status GetBodyAndConstantsAndResources(FunctionLibraryRuntime* flr,
   const DataTypeVector& arg_types = (*fbody)->arg_types;
   std::vector<bool> const_args(arg_types.size());
   // If we can't analyze the const args. Bail out.
-  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-      *((*fbody)->graph), &const_args, /*compile_time_const_nodes=*/nullptr));
+  TF_RETURN_IF_ERROR(
+      BackwardsConstAnalysis(*((*fbody)->graph), &const_args,
+                             /*compile_time_const_nodes=*/nullptr, flr));
 
   for (int i = 0; i < const_args.size(); ++i) {
     if (const_args[i]) {

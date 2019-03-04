@@ -50,9 +50,10 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
     }
     for (Node* n : matches) {
       AttrSlice n_attrs = n->attrs();
-      auto base_make_node = [n, g, &n_attrs](const string& op,
-                                             const string& name) {
-        NodeBuilder node_builder(name, op);
+      auto base_make_node = [n, &n_attrs](const string& op,
+                                          const string& name) {
+        NodeDebugInfo debug_info(*n);
+        NodeBuilder node_builder(name, op, OpRegistry::Global(), &debug_info);
         node_builder.Device(n->requested_device());
         string colo;
         if (GetNodeAttr(n_attrs, "_class", &colo).ok()) {
@@ -60,7 +61,7 @@ class ParallelConcatRemovePass : public GraphOptimizationPass {
         }
         return node_builder;
       };
-      auto make_node = [n, g, &n_attrs, &base_make_node](string op) {
+      auto make_node = [n, g, &base_make_node](string op) {
         return base_make_node(
             op, g->NewName(strings::StrCat(n->name(), "/Internal")));
       };

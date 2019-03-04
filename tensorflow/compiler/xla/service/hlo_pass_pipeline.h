@@ -22,6 +22,7 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
+#include "absl/strings/str_cat.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
 #include "tensorflow/compiler/xla/service/hlo_pass_interface.h"
 #include "tensorflow/compiler/xla/statusor.h"
@@ -61,16 +62,49 @@ class HloPassPipeline : public HloPassInterface {
     return *pass;
   }
 
-  // Run all passes on the given HLO module.
   StatusOr<bool> Run(HloModule* module) override;
+  StatusOr<bool> RunOnModuleGroup(HloModuleGroup* module_group) override;
 
  private:
+  // Returns the set of passes which are enabled. DebugOptions can selectively
+  // disable passes via --xla_disable_hlo_passes flag.
+  std::vector<HloPassInterface*> GetEnabledPasses(
+      const DebugOptions& debug_options);
+
+  // Maybe dumps the given module or module group depending on flag values
+  // contained in DebugOptions of module config.
+  void MaybeDumpHlo(const HloModuleGroup& module_group,
+                    absl::string_view after_pass_name,
+                    absl::string_view before_pass_name);
+  void MaybeDumpHlo(const HloModule& module, absl::string_view after_pass_name,
+                    absl::string_view before_pass_name);
+
+  // Runs the invariant checker on the given HLO. HloT can be either HloModule
+  // or HloModuleGroup.
+  template <typename HloT>
+  Status RunInvariantCheckers(HloT* hlo, absl::string_view after_pass_name);
+
+  // Helper which runs the given pass on the given HLO. HloT can be either
+  // HloModule or HloModuleGroup.
+  template <typename HloT>
+  StatusOr<bool> RunPassesInternal(HloT* hlo,
+                                   absl::Span<HloPassInterface* const> passes);
+
+  // Helpers which run the given passes on the given HLO construct. These
+  // helpers enable templating of the core of the pipeline logic by providing
+  // HloModule and HloModuleGroup specific methods with the same name.
+  static StatusOr<bool> RunHelper(HloPassInterface* pass, HloModule* module) {
+    return pass->Run(module);
+  }
+  static StatusOr<bool> RunHelper(HloPassInterface* pass,
+                                  HloModuleGroup* module_group) {
+    return pass->RunOnModuleGroup(module_group);
+  }
+
   const string name_;
   std::vector<std::unique_ptr<HloPassInterface>> passes_;
   std::vector<std::unique_ptr<HloPassInterface>> invariant_checkers_;
   bool run_called_ = false;
-
-  TF_DISALLOW_COPY_AND_ASSIGN(HloPassPipeline);
 };
 
 }  // namespace xla

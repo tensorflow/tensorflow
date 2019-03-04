@@ -30,7 +30,7 @@ namespace xla {
 //
 // Current despecialization passes are Defuser, ImplicitBroadcastRemover,
 // and BFloat16MixedPrecisionRemoval.
-class Despecializer : public HloPassInterface {
+class Despecializer : public HloModulePass {
  public:
   Despecializer();
   absl::string_view name() const override { return "despecializer"; }

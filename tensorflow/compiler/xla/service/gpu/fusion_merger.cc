@@ -35,7 +35,7 @@ namespace {
 // Traverses users of tuple shape, adding leaf instructions to 'instructions'.
 void MaybeResolveTupleElements(HloInstruction* instruction,
                                std::vector<HloInstruction*>* instructions) {
-  if (ShapeUtil::IsTuple(instruction->shape())) {
+  if (instruction->shape().IsTuple()) {
     for (auto tuple_user : instruction->users()) {
       MaybeResolveTupleElements(tuple_user, instructions);
     }
@@ -62,7 +62,7 @@ double CalculateBytesReadByFusionParameter(HloInstruction* param) {
 
   // Iterate through 'instructions' accumulating byte sizes of each instruction
   // shape. For each 'instruction' in 'instructions', if all users of
-  // 'instruction' are Slice instructions, accumuates the byte sizes of each
+  // 'instruction' are Slice instructions, accumulates the byte sizes of each
   // Slice for a more accurate estimate of bytes read.
   double bytes = 0.0;
   for (auto& instruction : instructions) {
@@ -229,7 +229,7 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
   if (!absl::c_all_of(fusion->users(), [&](const HloInstruction* user) {
         return user->opcode() == HloOpcode::kFusion &&
                (user->fusion_kind() == HloInstruction::FusionKind::kLoop ||
-                (user->fusion_kind() == HloInstruction::FusionKind::kInput &&
+                (IsReduceInputFusion(*user) &&
                  LayoutsAreReduceInputFusionFriendly(*fusion, *user)));
       })) {
     VLOG(3) << "Not merging " << fusion->name()

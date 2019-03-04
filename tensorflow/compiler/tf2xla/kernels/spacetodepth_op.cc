@@ -48,7 +48,7 @@ class SpaceToDepthOp : public XlaOpKernel {
     OP_REQUIRES(ctx, kRequiredDims == input_rank,
                 errors::InvalidArgument("Input rank should be ", kRequiredDims,
                                         "; got ", input_rank));
-    const gtl::InlinedVector<int64, 4> input_shape =
+    const absl::InlinedVector<int64, 4> input_shape =
         input_tensor_shape.dim_sizes();
 
     xla::XlaOp input = ctx->Input(0);

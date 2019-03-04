@@ -35,7 +35,7 @@ const char kUsageHeader[] =
     "graph.\n\n"
     "Operation wrappers are generated under the path specified by the "
     "'--output_dir' argument. This path can be absolute or relative to the\n"
-    "current working directory and will be created if it does not exists.\n\n"
+    "current working directory and will be created if it does not exist.\n\n"
     "Note that the operations will not be available through the "
     "'org.tensorflow.op.Ops' API until the generated classes are compiled\n"
     "using an appropriate annotation processor.\n\n"

@@ -57,7 +57,6 @@ struct SoftmaxEigenImpl {
     Eigen::DSizes<int, 2> one_by_class(1, num_classes);
 #else
     Eigen::IndexList<Eigen::type2index<kClassDim> > along_class;
-    Eigen::IndexList<Eigen::type2index<1> > depth_dim;
     Eigen::IndexList<int, Eigen::type2index<1> > batch_by_one;
     batch_by_one.set(0, batch_size);
     Eigen::IndexList<Eigen::type2index<1>, int> one_by_class;

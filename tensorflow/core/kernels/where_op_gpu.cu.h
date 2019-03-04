@@ -21,13 +21,13 @@ limitations under the License.
 #define EIGEN_USE_GPU
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
-#include "external/cub_archive/cub/device/device_reduce.cuh"
-#include "external/cub_archive/cub/device/device_select.cuh"
-#include "external/cub_archive/cub/iterator/counting_input_iterator.cuh"
-#include "external/cub_archive/cub/iterator/transform_input_iterator.cuh"
+#include "third_party/cub/device/device_reduce.cuh"
+#include "third_party/cub/device/device_select.cuh"
+#include "third_party/cub/iterator/counting_input_iterator.cuh"
+#include "third_party/cub/iterator/transform_input_iterator.cuh"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor_types.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/where_op.h"
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -324,9 +324,10 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
         CalculateStrides<TIndex, T, NDIM>(input);
     const TIndex output_rows = output.dimension(0);
     CudaLaunchConfig config = GetCudaLaunchConfig(output_rows, d);
-    PropagateWhereIndicesKernel<NDIM, TIndex>
-        <<<config.block_count, config.thread_per_block, 0, d.stream()>>>(
-            output_rows, strides, output.data());
+    TF_CHECK_OK(CudaLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), output_rows, strides,
+                                 output.data()));
 
     return Status::OK();
   }

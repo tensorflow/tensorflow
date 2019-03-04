@@ -177,47 +177,41 @@ class ReferenceUtil {
 
   // Windowed reductions with Add as the function to apply.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DAdd(
-      const absl::Span<const float>& operand, float init,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride, Padding padding);
+      absl::Span<const float> operand, float init,
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      Padding padding);
   static std::unique_ptr<Array2D<float>> ReduceWindow2DAdd(
-      const Array2D<float>& operand, float init,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride, Padding padding);
+      const Array2D<float>& operand, float init, absl::Span<const int64> window,
+      absl::Span<const int64> stride, Padding padding);
   static std::unique_ptr<Array3D<float>> ReduceWindow3DAdd(
-      const Array3D<float>& operand, float init,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride, Padding padding);
+      const Array3D<float>& operand, float init, absl::Span<const int64> window,
+      absl::Span<const int64> stride, Padding padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DAdd(
-      const Array4D<float>& operand, float init,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride, Padding padding);
+      const Array4D<float>& operand, float init, absl::Span<const int64> window,
+      absl::Span<const int64> stride, Padding padding);
 
   // Windowed reductions with a generic reduce function.
   static std::unique_ptr<std::vector<float>> ReduceWindow1DGeneric(
-      const absl::Span<const float>& operand, float init,
+      absl::Span<const float> operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride,
-      const absl::Span<const std::pair<int64, int64>>& padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const std::pair<int64, int64>> padding);
   static std::unique_ptr<Array2D<float>> ReduceWindow2DGeneric(
       const Array2D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride,
-      const absl::Span<const std::pair<int64, int64>>& padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const std::pair<int64, int64>> padding);
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride, Padding padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      Padding padding);
   // With arbitrary padding.
   static std::unique_ptr<Array4D<float>> ReduceWindow4DGeneric(
       const Array4D<float>& operand, float init,
       const std::function<float(float, float)>& reduce_func,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride,
-      const absl::Span<const std::pair<int64, int64>>& padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      absl::Span<const std::pair<int64, int64>> padding);
 
   // Batch normalize data.
   static std::unique_ptr<Array4D<float>> BatchNorm4D(
@@ -230,8 +224,8 @@ class ReferenceUtil {
   // TODO(b/74533103) Switch tests to evaluator and remove this implementation.
   static std::unique_ptr<Array4D<float>> SelectAndScatter4DGePlus(
       const Array4D<float>& operand, const Array4D<float>& source, float init,
-      const absl::Span<const int64>& window,
-      const absl::Span<const int64>& stride, bool same_padding);
+      absl::Span<const int64> window, absl::Span<const int64> stride,
+      bool same_padding);
 
   // Concatenates the lhs and rhs arrays along the concatenate_dimension.
   // E.g. if concatenate_dimension is 0, the "n1"/height dimension is
@@ -332,8 +326,8 @@ class ReferenceUtil {
 
   // Slices with index clamping
   template <typename T>
-  static std::vector<T> ClampSlice1D(const absl::Span<const T>& input,
-                                     int64 start, int64 size) {
+  static std::vector<T> ClampSlice1D(absl::Span<const T> input, int64 start,
+                                     int64 size) {
     start = std::min<int64>(std::max<int64>(0, start), input.size() - size);
     std::vector<T> result;
     for (int64 i = 0; i < size; ++i) {

@@ -50,10 +50,10 @@ class SparseConditionalAccumulator
  public:
   SparseConditionalAccumulator(const DataType& dtype,
                                const PartialTensorShape& shape,
-                               const string& name)
+                               const string& name, const string& reduction_type)
       : TypedConditionalAccumulatorBase<
             std::tuple<const Tensor*, const Tensor*, const Tensor*>>(
-            dtype, shape, name) {
+            dtype, shape, name, reduction_type) {
     accum_idx_vec_ = nullptr;
     count_element_ = nullptr;
     accum_val_ = nullptr;

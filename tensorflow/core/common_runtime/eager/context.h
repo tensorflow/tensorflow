@@ -29,10 +29,15 @@ limitations under the License.
 #include "tensorflow/core/common_runtime/eager/kernel_and_device.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/rendezvous_mgr.h"
+#include "tensorflow/core/example/example.pb.h"
+#include "tensorflow/core/platform/env.h"
 #ifndef __ANDROID__
 #include "tensorflow/core/distributed_runtime/eager/eager_client.h"
 #include "tensorflow/core/distributed_runtime/server_lib.h"
+#include "tensorflow/core/distributed_runtime/worker_cache.h"
 #endif
+#include "tensorflow/core/framework/collective.h"
+#include "tensorflow/core/framework/log_memory.h"
 #include "tensorflow/core/framework/rendezvous.h"
 #include "tensorflow/core/lib/core/stringpiece.h"
 #include "tensorflow/core/lib/core/threadpool.h"
@@ -58,23 +63,37 @@ enum ContextDevicePlacementPolicy {
   // Silently copy the tensor, which has a performance cost since the operation
   // will be blocked till the copy completes. This is the default policy.
   DEVICE_PLACEMENT_SILENT = 2,
-  // Default placement policy which silently copies int32 tensors but not other
-  // dtypes.
+  // Placement policy which silently copies int32 tensors but not other dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
+};
+
+class RunMetadataListener {
+ public:
+  virtual ~RunMetadataListener() {}
+  virtual void BeforeClearRunMetadata() = 0;
 };
 
 class EagerContext {
  public:
-  explicit EagerContext(const SessionOptions& opts,
-                        ContextDevicePlacementPolicy default_policy, bool async,
-                        std::unique_ptr<DeviceMgr> device_mgr,
-                        Rendezvous* rendezvous);
+  // TODO: remove this constructor once we migrate all callers to the next one.
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_policy, bool async,
+               std::unique_ptr<const DeviceMgr> device_mgr,
+               Rendezvous* rendezvous);
+
+  EagerContext(const SessionOptions& opts,
+               ContextDevicePlacementPolicy default_policy, bool async,
+               const DeviceMgr* device_mgr, bool device_mgr_owned,
+               Rendezvous* rendezvous);
+
   ~EagerContext();
 
   // Returns the function library runtime for the given device.
   FunctionLibraryRuntime* func_lib(Device* d) const {
     return pflr_->GetFLR(d->name());
   }
+
+  ProcessFunctionLibraryRuntime* pflr() const { return pflr_.get(); }
 
   // True if running in asynchronous mode.
   bool Async() const;
@@ -121,7 +140,9 @@ class EagerContext {
 
   Status FindDeviceByName(const string& name, Device** result);
 
-  Device* HostCPU() { return devices_[0]; }
+  Device* HostCPU() const { return devices_[0]; }
+
+  GraphCollector* GetGraphCollector() { return &graph_collector_; }
 
   uint64 NextId() { return executor_.NextId(); }
 
@@ -133,15 +154,26 @@ class EagerContext {
 
   void AddKernelToCache(Fprint128 cache_key, KernelAndDevice* kernel);
 
-  bool LogDevicePlacement() { return log_device_placement_; }
+  bool LogDevicePlacement() const { return log_device_placement_; }
+  bool LogMemory() const { return log_memory_; }
 
-  Rendezvous* GetRendezvous() { return rendezvous_; }
+  Rendezvous* GetRendezvous() const { return rendezvous_; }
+  CollectiveExecutorMgrInterface* collective_executor_mgr() {
+    return (collective_executor_mgr_ != nullptr)
+               ? collective_executor_mgr_.get()
+               : unowned_collective_executor_mgr_;
+  }
+  std::unique_ptr<CollectiveExecutor::Handle> GetCollectiveExecutorHandle() {
+    return std::unique_ptr<CollectiveExecutor::Handle>(
+        new CollectiveExecutor::Handle(
+            collective_executor_mgr()->FindOrCreate(0), true /*inherit_ref*/));
+  }
 
   const tensorflow::DeviceMgr* local_device_mgr() const {
     return (local_device_manager_ != nullptr) ? local_device_manager_.get()
                                               : local_unowned_device_manager_;
   }
-  const tensorflow::DeviceMgr* remote_device_mgr() {
+  const tensorflow::DeviceMgr* remote_device_mgr() const {
     return remote_device_manager_.get();
   }
 
@@ -149,10 +181,17 @@ class EagerContext {
   void ReleaseDeviceMgr() { local_device_manager_.release(); }
 
   // TODO(apassos) clean up RunMetadata storage.
-  mutex* MetadataMu() { return &metadata_mu_; }
-  bool ShouldStoreMetadata() { return should_store_metadata_.load(); }
-  void SetShouldStoreMetadata(bool value);
+  mutex* MetadataMu() LOCK_RETURNED(metadata_mu_) { return &metadata_mu_; }
+  bool ShouldStoreStepStats() LOCKS_EXCLUDED(metadata_mu_);
+  void SetShouldStoreStepStats(bool value);
+  bool ShouldStoreGraphs() LOCKS_EXCLUDED(metadata_mu_);
+  void SetShouldStoreGraphs(bool value);
   RunMetadata* RunMetadataProto() { return &run_metadata_; }
+  void ClearRunMetadata() EXCLUSIVE_LOCKS_REQUIRED(metadata_mu_);
+
+  Status RegisterRunMetadataListener(RunMetadataListener* listener)
+      LOCKS_EXCLUDED(metadata_mu_);
+  void ClearRunMetadataListener() LOCKS_EXCLUDED(metadata_mu_);
 
   void StartStep();
   void EndStep();
@@ -187,12 +226,22 @@ class EagerContext {
     return active_remote_contexts_.find(context_id) !=
            active_remote_contexts_.end();
   }
+
+  Status StoreCollectiveOpsServer(
+      std::unique_ptr<ServerInterface> server, DeviceMgr* device_mgr,
+      CollectiveExecutorMgrInterface* rpc_collective_executor_mgr);
 #endif
 
   // If true, then tensors should be shipped across processes via the
   // EagerService.SendTensor RPC. If false, _Send/_Recv ops should be used
   // instead (which in-turn use WorkerService.RecvTensor RPCs).
   bool UseSendTensorRPC() { return use_send_tensor_rpc_; }
+  bool PinSmallOpsToCPU() { return pin_small_ops_to_cpu_; }
+
+  tensorflow::Env* TFEnv() const { return env_; }
+
+  // All child threads will be reset() when destructing EagerContext.
+  void AddChildThread(std::unique_ptr<Thread> thread);
 
  private:
   void InitDeviceMapAndAsync();
@@ -207,8 +256,8 @@ class EagerContext {
       thread_local_policies_ GUARDED_BY(policy_map_mu_);
 
   // Only one of the below is set.
-  std::unique_ptr<DeviceMgr> local_device_manager_;
-  DeviceMgr* local_unowned_device_manager_;
+  std::unique_ptr<const DeviceMgr> local_device_manager_;
+  const DeviceMgr* local_unowned_device_manager_;
   std::unique_ptr<DeviceMgr> remote_device_manager_;
 
   // Devices owned by device_manager
@@ -236,9 +285,12 @@ class EagerContext {
       GUARDED_BY(cache_mu_);
 
   // Whether we should compute RunMetadata.
-  std::atomic<bool> should_store_metadata_{false};
+  std::atomic<bool> should_store_step_stats_{false};
+  std::atomic<bool> should_store_graphs_{false};
   mutex metadata_mu_;
   RunMetadata run_metadata_ GUARDED_BY(metadata_mu_);
+  RunMetadataListener* metadata_listener_ GUARDED_BY(metadata_mu_) = nullptr;
+  GraphCollector graph_collector_;
   const bool log_device_placement_;
   // EagerExecutor for async execution.
   EagerExecutor executor_;
@@ -254,7 +306,12 @@ class EagerContext {
   std::unordered_map<std::thread::id, bool> thread_local_async_
       GUARDED_BY(async_map_mu_);
 
+  const bool log_memory_;
+
   Env* const env_;
+
+  std::unique_ptr<CollectiveExecutorMgrInterface> collective_executor_mgr_;
+  CollectiveExecutorMgrInterface* unowned_collective_executor_mgr_ = nullptr;
 
 #ifndef __ANDROID__
   void CloseRemoteContexts();
@@ -282,6 +339,8 @@ class EagerContext {
 #endif
 
   bool use_send_tensor_rpc_;
+  const bool pin_small_ops_to_cpu_;
+  std::vector<std::unique_ptr<tensorflow::Thread>> child_threads_;
 };
 
 }  // namespace tensorflow

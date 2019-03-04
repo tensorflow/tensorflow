@@ -92,9 +92,20 @@ class LiteralBase {
   // array.
   string GetR1U8AsString() const;
 
-  // Returns a string representation of the literal value.
-  // Warning: this function can take minutes for multi-million element Literals.
-  string ToString(bool print_layout = false) const;
+  // Returns a string representation of the literal value. The Shape of the
+  // literal is a prefix of the literal value in the string.
+
+  // Warning: this function can take minutes for multi-million
+  // element Literals.
+  string ToString() const;
+
+  // Returns a string representation of the literal value which does *not*
+  // include the shape string.
+  string ToStringWithoutShape() const;
+
+  // Returns a string representation of the literal value which includes the
+  // shape string with its layout.does *not* include the shape string.
+  string ToStringWithLayout() const;
 
   // Gets an element in the literal at the given index. The multi_index is
   // CHECKed against the dimension sizes.
@@ -203,6 +214,10 @@ class LiteralBase {
   // Returns the count of the elements in the array at the given shape index in
   // this literal.
   int64 element_count(const ShapeIndex& index = {}) const {
+    if (index.empty()) {
+      // Common case, avoid GetSubshape().
+      return ShapeUtil::ElementsIn(shape());
+    }
     return ShapeUtil::ElementsIn(ShapeUtil::GetSubshape(shape(), index));
   }
 
@@ -217,31 +232,20 @@ class LiteralBase {
 
   // Converts this literal to the given shape. Returns an error is the
   // conversion is not possible.
-  //
-  // round_f32_to_bf16: if true, converting F32 elements to BF16 uses rounding
-  // instead of truncation; otherwise, truncation is used.
-  //
-  // TODO(b/69266521): remove the round_to_bfloat16 flag when rounding becomes
-  // the default behavior.
-  StatusOr<std::unique_ptr<Literal>> ConvertToShape(
-      const Shape& dest_shape, bool round_f32_to_bf16 = false) const;
+  StatusOr<Literal> ConvertToShape(const Shape& dest_shape) const;
 
   // Converts this literal to another primitive type using a bitcast
   // conversion. The to and from primitive types must have the same bit
   // width. Returns an error if the conversion is not possible. This literal
   // must be array-shaped.
-  StatusOr<std::unique_ptr<Literal>> BitcastConvert(
-      PrimitiveType primitive_dest_type) const;
+  StatusOr<Literal> BitcastConvert(PrimitiveType primitive_dest_type) const;
 
   // Converts this literal to another primitive type. Returns an error if the
   // conversion is not possible. This literal must be array-shaped.
-  StatusOr<std::unique_ptr<Literal>> Convert(
-      PrimitiveType primitive_dest_type) const;
+  StatusOr<Literal> Convert(PrimitiveType primitive_dest_type) const;
 
-  // Clones the underlying buffers into a new Literal, or new
-  // std::unique_ptr<Literal>.
+  // Clones the underlying buffers into a new Literal.
   Literal Clone() const;
-  std::unique_ptr<Literal> CloneToUnique() const;
 
   // TODO(b/67651157): The methods below which perform computation on Literals
   // (Reshape, Slice, etc) should be moved elsewhere, and perhaps combined with
@@ -259,24 +263,23 @@ class LiteralBase {
   // Note: this is useful when the client wants to ensure that a value placed in
   // the XLA allocation tracker has a particular layout; for efficiency
   // purposes or avoiding unimplemented operation/layout combinations.
-  std::unique_ptr<Literal> Relayout(const Layout& new_layout,
-                                    const ShapeIndex& shape_index = {}) const;
+  Literal Relayout(const Layout& new_layout,
+                   const ShapeIndex& shape_index = {}) const;
 
   // An overload of Relayout which changes the layout of the entire shape rather
   // than being limited to a single array within the shape.
-  std::unique_ptr<Literal> Relayout(const Shape& shape_with_layout) const;
+  Literal Relayout(const Shape& shape_with_layout) const;
 
   // Creates a new literal by reshaping this literal to have the given
   // dimensions. The total number of elements must not change; The
   // implementation currently only supports monotonic dim0-major layouts.
   // This literal must be an array.
-  StatusOr<std::unique_ptr<Literal>> Reshape(
-      absl::Span<const int64> dimensions) const;
+  StatusOr<Literal> Reshape(absl::Span<const int64> dimensions) const;
 
   // Creates a new literal by broadcasting this literal with `dimensions` to
   // yield a literal of shape `result_shape`.
-  StatusOr<std::unique_ptr<Literal>> Broadcast(
-      const Shape& result_shape, absl::Span<const int64> dimensions) const;
+  StatusOr<Literal> Broadcast(const Shape& result_shape,
+                              absl::Span<const int64> dimensions) const;
 
   // Creates a new literal by reordering the dimensions of this literal.
   // The given `permutation` must be a permutation of the dimension numbers
@@ -285,7 +288,7 @@ class LiteralBase {
   // For example, a transpose call on a literal of shape [3 x 8 x 4] and
   // `permutation` = {2, 0, 1} returns a new literal of shape [4 x 3 x 8].
   // This literal must be an array.
-  std::unique_ptr<Literal> Transpose(absl::Span<const int64> permutation) const;
+  Literal Transpose(absl::Span<const int64> permutation) const;
 
   // Creates a sub-array from this literal by extracting the indices
   // [start_index, limit_index) of each dimension. The result literal has the
@@ -293,15 +296,15 @@ class LiteralBase {
   // start_indices and limit_indices must be the rank of the literal, and the
   // indices follow the order of the dimensions.
   // This literal must be an array.
-  std::unique_ptr<Literal> Slice(absl::Span<const int64> start_indices,
-                                 absl::Span<const int64> limit_indices) const;
+  Literal Slice(absl::Span<const int64> start_indices,
+                absl::Span<const int64> limit_indices) const;
 
   // Creates a literal with a prepended dimension with bound "times"; e.g. a
   // f32[3x2] with times=4 will produce a f32[4x3x2] with the 3x2 from this
   // literal replicated four times.
   // This literal must be an array.
   template <typename NativeT>
-  std::unique_ptr<Literal> Replicate(int64 times) const;
+  Literal Replicate(int64 times) const;
 
   // Creates a new Literal object with the shape specified as parameter.
   // The content of the literal values is the default value of the primitive
@@ -309,10 +312,10 @@ class LiteralBase {
   //
   // Note: It's an antipattern to use this method then immediately call
   // MutableLiteralBase::Populate on the result (since that results in zero
-  // initialization, then reinitialization. Conside if a call to
+  // initialization, then reinitialization. Consider if a call to
   // absl::make_unique<Literal>(shape), followed by the call to
   // MutableLiteralBase::Populate can be used instead.
-  static std::unique_ptr<Literal> CreateFromShape(const Shape& shape);
+  static Literal CreateFromShape(const Shape& shape);
 
  protected:
   // A data structure representing a subshape at a particular ShapeIndex within
@@ -539,8 +542,8 @@ class LiteralBase {
 
  private:
   template <typename NativeT>
-  std::unique_ptr<Literal> SliceInternal(
-      const Shape& result_shape, absl::Span<const int64> start_indices) const;
+  Literal SliceInternal(const Shape& result_shape,
+                        absl::Span<const int64> start_indices) const;
 };
 
 // Abstract base class representing a mutable literal in XLA.
@@ -687,8 +690,7 @@ class MutableLiteralBase : public LiteralBase {
   static Literal MoveIntoTuple(absl::Span<Literal> elements);
 
   // Serialize from a proto.
-  static StatusOr<std::unique_ptr<Literal>> CreateFromProto(
-      const LiteralProto& proto);
+  static StatusOr<Literal> CreateFromProto(const LiteralProto& proto);
 
  protected:
   // Returns the piece at the given ShapeIndex.
@@ -865,9 +867,9 @@ class BorrowingLiteral : public LiteralBase {
 
 template <typename NativeT>
 absl::Span<const NativeT> LiteralBase::Piece::data() const {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
@@ -878,9 +880,9 @@ absl::Span<const NativeT> LiteralBase::Piece::data() const {
 
 template <typename NativeT>
 absl::Span<NativeT> LiteralBase::Piece::data() {
-  CHECK(ShapeUtil::IsArray(subshape())) << ShapeUtil::HumanString(subshape());
-  CHECK_EQ(subshape().element_type(),
-           primitive_util::NativeToPrimitiveType<NativeT>())
+  DCHECK(subshape().IsArray()) << ShapeUtil::HumanString(subshape());
+  DCHECK_EQ(subshape().element_type(),
+            primitive_util::NativeToPrimitiveType<NativeT>())
       << "Attempting to access "
       << PrimitiveType_Name(primitive_util::NativeToPrimitiveType<NativeT>())
       << " type, but literal element type is "
@@ -959,8 +961,12 @@ void MutableLiteralBase::AppendSparseElement(
   Piece& p = piece(shape_index);
   const Shape& subshape = p.subshape();
   CHECK(LayoutUtil::IsSparseArray(subshape));
-  int64 rank = ShapeUtil::Rank(subshape);
+  int64 rank = subshape.rank();
   CHECK_EQ(multi_index.size(), rank);
+  for (int64 i = 0; i < rank; ++i) {
+    CHECK_GE(multi_index[i], 0);
+    CHECK_LT(multi_index[i], subshape.dimensions(i));
+  }
   int64 last_element = p.sparse_indices()->index_count();
   CHECK_LT(last_element, LayoutUtil::MaxSparseElements(subshape.layout()));
   p.sparse_indices()->Append(multi_index);
@@ -975,7 +981,7 @@ void LiteralBase::EachCell(
   if (ShapeUtil::IsZeroElementArray(shape())) {
     return;
   }
-  std::vector<int64> indices(ShapeUtil::Rank(shape()), 0);
+  std::vector<int64> indices(shape().rank(), 0);
   do {
     per_cell(indices, Get<NativeT>(indices));
   } while (IndexUtil::BumpIndices(shape(), absl::MakeSpan(indices)));
@@ -983,21 +989,20 @@ void LiteralBase::EachCell(
 
 template <typename NativeT>
 inline void MutableLiteralBase::PopulateR1(absl::Span<const NativeT> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 1);
+  CHECK(shape().IsArray());
+  CHECK_EQ(shape().rank(), 1);
   CHECK_EQ(ShapeUtil::ElementsIn(shape()), values.size());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  for (int64 i = 0; i < values.size(); ++i) {
-    Set({i}, values[i]);
-  }
+  auto data_span = data<NativeT>();
+  std::copy(values.begin(), values.end(), data_span.begin());
 }
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateR2(
     std::initializer_list<std::initializer_list<NativeT>> values) {
-  CHECK(ShapeUtil::IsArray(shape()));
-  CHECK_EQ(ShapeUtil::Rank(shape()), 2);
+  CHECK(shape().IsArray());
+  CHECK_EQ(shape().rank(), 2);
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
 
@@ -1020,10 +1025,10 @@ void MutableLiteralBase::PopulateR2(
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateFromArray(const Array<NativeT>& values) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
-  CHECK_EQ(ShapeUtil::Rank(shape()), values.num_dimensions());
+  CHECK_EQ(shape().rank(), values.num_dimensions());
   for (int dim = 0; dim < values.num_dimensions(); ++dim) {
     CHECK_EQ(values.dim(dim), shape().dimensions(dim));
   }
@@ -1052,7 +1057,7 @@ void MutableLiteralBase::PopulateSparse(SparseIndexArray indices,
                                         absl::Span<const NativeT> values,
                                         bool sort) {
   CHECK(LayoutUtil::IsSparseArray(shape()));
-  int rank = ShapeUtil::Rank(shape());
+  int rank = shape().rank();
   CHECK_EQ(indices.rank(), rank);
   int64 max_elements = LayoutUtil::MaxSparseElements(shape().layout());
   CHECK_LE(indices.max_indices(), max_elements);
@@ -1076,7 +1081,7 @@ template <typename NativeT, typename FnType>
 Status MutableLiteralBase::PopulateInternal(const FnType& generator,
                                             bool parallel) {
   const Shape& this_shape = shape();
-  const int64 rank = ShapeUtil::Rank(this_shape);
+  const int64 rank = this_shape.rank();
   TF_RET_CHECK(LayoutUtil::IsDenseArray(this_shape));
   TF_RET_CHECK(this_shape.element_type() ==
                primitive_util::NativeToPrimitiveType<NativeT>());
@@ -1128,7 +1133,7 @@ Status MutableLiteralBase::PopulateParallel(const FnType& generator) {
 
 template <typename NativeT>
 void MutableLiteralBase::PopulateWithValue(NativeT value) {
-  CHECK(ShapeUtil::IsArray(shape()));
+  CHECK(shape().IsArray());
   CHECK_EQ(shape().element_type(),
            primitive_util::NativeToPrimitiveType<NativeT>());
   for (NativeT& element : data<NativeT>()) {
@@ -1137,15 +1142,14 @@ void MutableLiteralBase::PopulateWithValue(NativeT value) {
 }
 
 template <typename NativeT>
-std::unique_ptr<Literal> LiteralBase::Replicate(int64 times) const {
+Literal LiteralBase::Replicate(int64 times) const {
   DimensionVector bounds = {times};
   bounds.reserve(shape().dimensions_size() + 1);
   for (int64 bound : shape().dimensions()) {
     bounds.push_back(bound);
   }
-  auto literal = absl::make_unique<Literal>(
-      ShapeUtil::MakeShape(shape().element_type(), bounds));
-  int64 elements = ShapeUtil::ElementsIn(literal->shape());
+  Literal literal(ShapeUtil::MakeShape(shape().element_type(), bounds));
+  int64 elements = ShapeUtil::ElementsIn(literal.shape());
   if (elements == 0) {
     return literal;
   }
@@ -1157,7 +1161,7 @@ std::unique_ptr<Literal> LiteralBase::Replicate(int64 times) const {
   bool done = false;
   while (!done) {
     const auto element = Get<NativeT>(input_indices);
-    literal->Set<NativeT>(output_indices, element);
+    literal.Set<NativeT>(output_indices, element);
 
     done = true;
     for (int n = 0; n < output_indices.size(); ++n) {

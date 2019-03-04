@@ -58,8 +58,12 @@ class StringDest : public WritableFile {
   Status Close() override { return Status::OK(); }
   Status Flush() override { return Status::OK(); }
   Status Sync() override { return Status::OK(); }
-  Status Append(const StringPiece& slice) override {
+  Status Append(StringPiece slice) override {
     contents_->append(slice.data(), slice.size());
+    return Status::OK();
+  }
+  Status Tell(int64* pos) override {
+    *pos = contents_->size();
     return Status::OK();
   }
 

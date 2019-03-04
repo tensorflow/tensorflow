@@ -410,8 +410,9 @@ class StagingMap : public ResourceBase {
         copy_or_move_tensors(&it->second, *key, *indices, tuple));
 
     // Remove entry if all the values have been consumed
-    if (!std::any_of(it->second.begin(), it->second.end(),
-                     std::mem_fn(&OptionalTensor::has_value))) {
+    if (!std::any_of(
+            it->second.begin(), it->second.end(),
+            [](const OptionalTensor& tensor) { return tensor.has_value(); })) {
       map_.erase(it);
     }
 
@@ -444,8 +445,9 @@ class StagingMap : public ResourceBase {
     *key = it->first;
 
     // Remove entry if all the values have been consumed
-    if (!std::any_of(it->second.begin(), it->second.end(),
-                     std::mem_fn(&OptionalTensor::has_value))) {
+    if (!std::any_of(
+            it->second.begin(), it->second.end(),
+            [](const OptionalTensor& tensor) { return tensor.has_value(); })) {
       map_.erase(it);
     }
 
@@ -478,7 +480,7 @@ class StagingMap : public ResourceBase {
     return map_.size();
   }
 
-  string DebugString() override { return "StagingMap"; }
+  string DebugString() const override { return "StagingMap"; }
 };
 
 template <bool Ordered>
@@ -580,7 +582,6 @@ class MapUnstageOp : public OpKernel {
 
     const Tensor* key_tensor;
     const Tensor* indices_tensor;
-    OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));
@@ -642,7 +643,6 @@ class MapPeekOp : public OpKernel {
 
     const Tensor* key_tensor;
     const Tensor* indices_tensor;
-    OpInputList values_tensor;
 
     OP_REQUIRES_OK(ctx, ctx->input("key", &key_tensor));
     OP_REQUIRES_OK(ctx, ctx->input("indices", &indices_tensor));

@@ -56,6 +56,41 @@ lhs_output: the broadcasted LHS tensor
 rhs_output: the broadcasted RHS tensor
 )doc");
 
+REGISTER_OP("XlaSelfAdjointEig")
+    .Input("a: T")
+    .Attr("lower: bool")
+    .Attr("max_iter: int")
+    .Attr("epsilon: float")
+    .Output("w: T")
+    .Output("v: T")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Attr("T: numbertype")
+    .Doc(R"doc(
+Computes the eigen decomposition of a batch of self-adjoint matrices
+(Note: Only real inputs are supported).
+
+Computes the eigenvalues and eigenvectors of the innermost N-by-N matrices in
+tensor such that tensor[...,:,:] * v[..., :,i] = e[..., i] * v[...,:,i], for
+i=0...N-1.
+
+a: the input tensor.
+
+lower: a boolean specifies whether the calculation is done with the lower
+  triangular part or the upper triangular part.
+
+max_iter: maximum number of sweep update, i.e., the whole lower triangular
+  part or upper triangular part based on parameter lower. Heuristically, it has
+  been argued that approximatly logN sweeps are needed in practice (Ref: Golub &
+  van Loan "Matrix Computation").
+
+epsilon: the tolerance ratio.
+
+w: The eigenvalues in ascending order, each repeated according to its
+  multiplicity.
+v: The column v[..., :, i] is the normalized eigenvector corresponding to the
+  eigenvalue w[..., i].
+)doc");
+
 REGISTER_OP("XlaConv")
     .Input("lhs: T")
     .Input("rhs: T")
@@ -83,7 +118,7 @@ lhs_dilation: dilation to apply between input elements
 rhs_dilation: dilation to apply between kernel elements
 feature_group_count: number of feature groups for grouped convolution.
 dimension_numbers: a serialized xla::ConvolutionDimensionNumbers proto.
-precision_config: a serialized xla::PrecisionConfigProto proto.
+precision_config: a serialized xla::PrecisionConfig proto.
 )doc");
 
 REGISTER_OP("XlaDot")
@@ -102,7 +137,37 @@ Wraps the XLA ConvGeneralDilated operator, documented at
 lhs: the LHS tensor
 rhs: the RHS tensor
 dimension_numbers: a serialized xla::DotDimensionNumbers proto.
-precision_config: a serialized xla::PrecisionConfigProto proto.
+precision_config: a serialized xla::PrecisionConfig proto.
+)doc");
+
+REGISTER_OP("XlaDynamicSlice")
+    .Input("input: T")
+    .Input("start_indices: Tindices")
+    .Input("size_indices: Tindices")
+    .Output("output: T")
+    .Attr("T: type")
+    .Attr("Tindices: {int32, int64}")
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Wraps the XLA DynamicSlice operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#dynamicslice
+.
+
+DynamicSlice extracts a sub-array from the input array at dynamic
+start_indices. The size of the slice in each dimension is passed in
+size_indices, which specify the end point of exclusive slice intervals in each
+dimension -- [start, start + size). The shape of start_indices must have rank 1,
+with dimension size equal to the rank of operand.
+
+input: A `Tensor` of type T.
+
+start_indices: Rank 1 tensor of N integers containing the starting indices of
+  the slice for each dimension. Value must be greater than or equal to zero.
+
+start_indices: List of N integers containing the slice size for each
+  dimension. Each value must be strictly greater than zero, and start + size
+  must be less than or equal to the size of the dimension to avoid
+  implementation defined behavior.
 )doc");
 
 REGISTER_OP("XlaDynamicUpdateSlice")
@@ -253,6 +318,8 @@ REGISTER_OP("XlaReduceWindow")
     .Input("init_value: T")
     .Input("window_dimensions: Tindices")
     .Input("window_strides: Tindices")
+    .Input("base_dilations: Tindices")
+    .Input("window_dilations: Tindices")
     .Input("padding: Tindices")
     .Attr("T: numbertype")
     .Attr("Tindices: {int32, int64}")
@@ -324,10 +391,35 @@ Wraps the XLA Sort operator, documented at
  https://www.tensorflow.org/performance/xla/operation_semantics#sort
 .
 
-Sorts a tensor. Currently only rank 1 sorts in ascending order are supported.
+Sorts a tensor. Currently only sorts in ascending order are supported.
 
 input: A `Tensor` of type T.
 output: A `Tensor` of type T.
+)doc");
+
+REGISTER_OP("XlaKeyValueSort")
+    .Input("keys: K")
+    .Input("values: V")
+    .Output("sorted_keys: K")
+    .Output("sorted_values: V")
+    .Attr("K: realnumbertype")
+    .Attr("V: type")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      c->set_output(0, c->input(0));
+      c->set_output(1, c->input(1));
+      return Status::OK();
+    })
+    .Doc(R"doc(
+Wraps the XLA Sort operator, documented at
+ https://www.tensorflow.org/performance/xla/operation_semantics#sort
+.
+
+Sorts a tensor. Currently only sorts in ascending order are supported.
+
+keys: A `Tensor` of type K.
+values: A `Tensor` of type V.
+sorted_keys: A `Tensor` of type K.
+sorted_values: A `Tensor` of type V.
 )doc");
 
 // TODO(b/37549631) setting the While Op to always be stateful is too
@@ -354,6 +446,30 @@ cond: A function takes 'input' and returns a tensor.  If the tensor is
       otherwise.
 body: A function that takes a list of tensors and returns another
       list of tensors. Both lists have the same types as specified by T.
+)doc");
+
+REGISTER_OP("XlaDequantize")
+    .Input("input: uint32")
+    .Output("output: bfloat16")
+    .Attr("min_range: float")
+    .Attr("max_range: float")
+    .Attr("mode: string")
+    .Attr("transpose_output: bool")
+    .SetIsStateful()
+    .SetShapeFn(shape_inference::UnknownShape)
+    .Doc(R"doc(
+Takes the packed uint32 input and unpacks the input to uint8 to do
+Dequantization on deivce.
+
+input: Input tensors whose types is uint32, shape is [d0, ..., dn].
+output: Output tensors whose types is bloat16. If transpose_output is true,
+     output shape is [dn * 4, dn-1, ..., d1, d0]. If transpose_output
+     is false, output shape is [d0,..., dn * 4].
+min_range: The minimum scalar value possibly produced for the input.
+max_range: The maximum scalar value possibly produced for the input.
+mode: String to determine the dequantize mode in {"MIN_COMBINED", "MIN_FIRST", "SCALED"}.
+transpose_output: Boolean to determine if output is transposed. transpose_output
+     is faster when input is large and rank of input is higher than 1.
 )doc");
 
 }  // namespace

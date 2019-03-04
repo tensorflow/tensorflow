@@ -60,8 +60,8 @@ class LocalExecutable {
   // Validates that the given arguments and options satisfy various constraints
   // of the computation.
   //
-  // The given ExecutableRunOptions override any values from legacy_flags
-  // (TF_XLA_FLAGS environment variable).
+  // The given ExecutableRunOptions override any values from TF_XLA_FLAGS
+  // environment variable.
   Status ValidateExecutionOptions(
       const absl::Span<const ShapedBuffer* const> arguments,
       const ExecutableRunOptions& run_options, const Backend& backend);
@@ -69,8 +69,8 @@ class LocalExecutable {
   // Records the computation in a SessionModule proto with the arguments used to
   // invoke it, and the result. Enabled by flag: --tla_dump_executions_to.
   //
-  // The given ServiceExecutableRunOptions override any values from legacy_flags
-  // (TF_XLA_FLAGS environment variable).
+  // The given ServiceExecutableRunOptions override any values from TF_XLA_FLAGS
+  // environment variable.
   StatusOr<ScopedShapedBuffer> ExecuteAndDump(
       const ServiceExecutableRunOptions* run_options,
       const absl::Span<const ShapedBuffer* const> arguments);
@@ -84,8 +84,7 @@ class LocalExecutable {
   Status RecordResult(const ShapedBuffer* result, HloSnapshot* hlo_snapshot);
 
   // Returns a literal containing the contents of the given ShapedBuffer.
-  StatusOr<std::unique_ptr<Literal>> LiteralFromShapedBuffer(
-      const ShapedBuffer& shaped_buffer);
+  StatusOr<Literal> LiteralFromShapedBuffer(const ShapedBuffer& shaped_buffer);
 
   // The ordinal of the device which this executable was compiled for. The
   // executable can run on all equivalent devices (as determined by
@@ -115,8 +114,8 @@ class LocalClient : public Client {
   // Build and return a LocalExecutable object. The executable is compiled using
   // the given XlaComputation, argument layouts and options.
   //
-  // The given ExecutableBuildOptions override any values from legacy_flags
-  // (TF_XLA_FLAGS environment variable).
+  // The given ExecutableBuildOptions overrides any values from XLA_FLAGS
+  // environment variable.
   StatusOr<std::unique_ptr<LocalExecutable>> Compile(
       const XlaComputation& computation,
       const absl::Span<const Shape* const> argument_layouts,
@@ -130,10 +129,13 @@ class LocalClient : public Client {
       const Literal& literal, int device_ordinal,
       DeviceMemoryAllocator* allocator = nullptr);
 
+  // Transfer the BorrowingLiteral to the device with the given ordinal.
+  StatusOr<TransferToServerResponse> TransferToLocalServer(
+      const ::xla::BorrowingLiteral& literal, int device_oridinal);
+
   // Copy the data from the device contained in the given ShapedBuffer and
   // return as a Literal.
-  StatusOr<std::unique_ptr<Literal>> ShapedBufferToLiteral(
-      const ShapedBuffer& shaped_buffer);
+  StatusOr<Literal> ShapedBufferToLiteral(const ShapedBuffer& shaped_buffer);
 
   // Converts a GlobalDataHandle into a pointer to a ShapedBuffer that's valid
   // as long as the handle is valid.
@@ -151,8 +153,8 @@ class LocalClient : public Client {
   // TODO(b/69670845): Remove the 'Local' from the name when LocalClient does
   // not inherit from Client and there is no possibility of confusion with
   // Client::TransferFromOutfeed.
-  StatusOr<std::unique_ptr<Literal>> TransferFromOutfeedLocal(
-      const Shape& shape, int device_ordinal);
+  StatusOr<Literal> TransferFromOutfeedLocal(const Shape& shape,
+                                             int device_ordinal);
 
   // Returns the device ordinal that corresponds to the given replica number.
   //

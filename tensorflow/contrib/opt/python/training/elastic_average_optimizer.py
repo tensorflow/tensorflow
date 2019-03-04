@@ -30,6 +30,7 @@ from tensorflow.python.ops import variables
 from tensorflow.python.training import optimizer
 from tensorflow.python.training import saver
 from tensorflow.python.training import session_run_hook
+from tensorflow.python.training.saving import saveable_object_util
 
 LOCAL_VARIABLE_NAME = 'local_center_variable'
 GLOBAL_VARIABLE_NAME = 'global_center_variable'
@@ -128,12 +129,14 @@ class ElasticAverageCustomGetter(object):
               = list(global_center_variable)[i]
       return local_var
     else:
-      return getter(
-          name,
-          trainable=trainable,
-          collections=collections,
-          *args,
-          **kwargs)
+      kwargs['trainable'] = trainable
+      kwargs['collections'] = collections
+      if ops.GraphKeys.LOCAL_VARIABLES in collections:
+        with ops.device(self._worker_device):
+          return getter(name, *args, **kwargs)
+      else:
+        return getter(name, *args, **kwargs)
+
 
 
 class ElasticAverageOptimizer(optimizer.Optimizer):
@@ -422,7 +425,7 @@ class ElasticAverageOptimizer(optimizer.Optimizer):
     if var_list is None:
       var_list = variables.trainable_variables()
     if not isinstance(var_list, dict):
-      var_list = saver.BaseSaverBuilder.OpListToDict(var_list)
+      var_list = saveable_object_util.op_list_to_dict(var_list)
 
     swapped_var_list = {}
     for key, var in var_list.items():

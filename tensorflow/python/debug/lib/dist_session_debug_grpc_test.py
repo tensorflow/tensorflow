@@ -44,6 +44,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging
 
 
+@test_util.run_v1_only("b/120545219")
 class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
   """Test the debugging of distributed sessions."""
 
@@ -59,8 +60,7 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     cluster_spec = "worker|localhost:%d" % worker_port
     tf_logging.info("cluster_spec: %s", cluster_spec)
 
-    server_bin = test.test_src_dir_path(
-        "tools/dist_test/server/grpc_tensorflow_server")
+    server_bin = test.test_src_dir_path("python/debug/grpc_tensorflow_server")
 
     cls.server_target = "grpc://localhost:%d" % worker_port
 
@@ -118,8 +118,8 @@ class DistributedSessionDebugTest(test_util.TensorFlowTestCase):
     """
     with ops.Graph().as_default() as graph:
       with ops.device("/job:worker/task:0/cpu:0"):
-        self.a = variables.Variable(10.0, name="a")
-        self.b = variables.Variable(100.0, name="b")
+        self.a = variables.VariableV1(10.0, name="a")
+        self.b = variables.VariableV1(100.0, name="b")
         self.inc_a = state_ops.assign_add(self.a, 2.0, name="inc_a")
         self.dec_b = state_ops.assign_add(self.b, -5.0, name="dec_b")
         self.p = math_ops.multiply(self.inc_a, self.dec_b, name="p")

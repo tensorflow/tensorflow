@@ -22,6 +22,7 @@ import functools
 
 import six
 
+from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 
@@ -59,6 +60,29 @@ def fn_args(fn):
   return tuple(args)
 
 
+def has_kwargs(fn):
+  """Returns whether the passed callable has **kwargs in its signature.
+
+  Args:
+    fn: Function, or function-like object (e.g., result of `functools.partial`).
+
+  Returns:
+    `bool`: if `fn` has **kwargs in its signature.
+
+  Raises:
+     `TypeError`: If fn is not a Function, or function-like object.
+  """
+  if isinstance(fn, functools.partial):
+    fn = fn.func
+  elif _is_callable_object(fn):
+    fn = fn.__call__
+  elif not callable(fn):
+    raise TypeError(
+        'fn should be a function-like object, but is of type {}.'.format(
+            type(fn)))
+  return tf_inspect.getfullargspec(fn).varkw is not None
+
+
 def get_func_name(func):
   """Returns name of passed callable."""
   _, func = tf_decorator.unwrap(func)
@@ -90,3 +114,16 @@ def get_func_code(func):
       return None
   else:
     raise ValueError('Argument must be callable')
+
+
+_rewriter_config_optimizer_disabled = None
+
+
+def get_disabled_rewriter_config():
+  global _rewriter_config_optimizer_disabled
+  if _rewriter_config_optimizer_disabled is None:
+    config = config_pb2.ConfigProto()
+    rewriter_config = config.graph_options.rewrite_options
+    rewriter_config.disable_meta_optimizer = True
+    _rewriter_config_optimizer_disabled = config.SerializeToString()
+  return _rewriter_config_optimizer_disabled

@@ -16,14 +16,13 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_COMMON_RUNTIME_POOL_ALLOCATOR_H_
 #define TENSORFLOW_CORE_COMMON_RUNTIME_POOL_ALLOCATOR_H_
 
-// Simple LRU pool allocators for various flavors of CPU RAM that
-// implement the VisitableAllocator interface.
+// Simple LRU pool allocators for various flavors of CPU RAM.
 
 #include <atomic>
 #include <map>
 #include <memory>
 #include <vector>
-#include "tensorflow/core/common_runtime/visitable_allocator.h"
+#include "tensorflow/core/framework/allocator.h"
 #include "tensorflow/core/lib/core/bits.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
@@ -41,7 +40,7 @@ class RoundUpInterface {
 
 // Size-limited pool of memory buffers obtained from a SubAllocator
 // instance.  Pool eviction policy is LRU.
-class PoolAllocator : public VisitableAllocator {
+class PoolAllocator : public Allocator {
  public:
   // "pool_size_limit" is the maximum number of returned, re-usable
   // memory buffers to keep in the pool.  If pool_size_limit == 0, the
@@ -63,14 +62,6 @@ class PoolAllocator : public VisitableAllocator {
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
 
   void DeallocateRaw(void* ptr) override;
-
-  // REQUIRES: The following functions may only be called prior
-  // to the first Allocate*() call.  Once allocation has begun, it is
-  // illegal to register another visitor.
-
-  void AddAllocVisitor(Visitor visitor) override;
-
-  void AddFreeVisitor(Visitor visitor) override;
 
   // Allocate an unused memory region of size "num_bytes".  Fetch from
   // the pool if available, otherwise call allocator_.
@@ -108,8 +99,6 @@ class PoolAllocator : public VisitableAllocator {
     return pool_size_limit_;
   }
 
-  void GetStats(AllocatorStats* stats) override { stats->Clear(); }
-
  private:
   struct PtrRecord {
     void* ptr;
@@ -141,12 +130,6 @@ class PoolAllocator : public VisitableAllocator {
   int64 put_count_ GUARDED_BY(mutex_) = 0;
   int64 allocated_count_ GUARDED_BY(mutex_) = 0;
   int64 evicted_count_ GUARDED_BY(mutex_) = 0;
-  // Write access to these is guarded by mutex_, but not read
-  // access. They may only be modified prior to the first
-  // allocation.  Later attempts to modify will fail.
-  std::vector<Visitor> alloc_visitors_;
-  std::vector<Visitor> free_visitors_;
-  std::atomic<bool> allocation_begun_;
 };
 
 // Do-nothing rounder. Passes through sizes unchanged.
@@ -165,8 +148,9 @@ class Pow2Rounder : public RoundUpInterface {
 
 class BasicCPUAllocator : public SubAllocator {
  public:
-  // Argument numa_node is currently ignored.
-  explicit BasicCPUAllocator(int numa_node) : numa_node_(numa_node) {}
+  BasicCPUAllocator(int numa_node, const std::vector<Visitor>& alloc_visitors,
+                    const std::vector<Visitor>& free_visitors)
+      : SubAllocator(alloc_visitors, free_visitors), numa_node_(numa_node) {}
 
   ~BasicCPUAllocator() override {}
 
@@ -176,6 +160,8 @@ class BasicCPUAllocator : public SubAllocator {
 
  private:
   int numa_node_;
+
+  TF_DISALLOW_COPY_AND_ASSIGN(BasicCPUAllocator);
 };
 
 }  // namespace tensorflow

@@ -48,7 +48,7 @@ class InfeedTest : public ClientLibraryTestBase {
     ASSERT_IS_OK(client_->TransferToInfeed(literal));
     XlaBuilder builder(TestName());
     Infeed(&builder, literal.shape());
-    if (ShapeUtil::IsTuple(literal.shape())) {
+    if (literal.shape().IsTuple()) {
       // TODO(b/30609564): Use ComputeAndCompareLiteral instead.
       ComputeAndCompareTuple(&builder, literal, {});
     } else {
@@ -58,52 +58,52 @@ class InfeedTest : public ClientLibraryTestBase {
 };
 
 TEST_F(InfeedTest, SingleInfeedR0Bool) {
-  TestInfeedRoundTrip(*LiteralUtil::CreateR0<bool>(true));
+  TestInfeedRoundTrip(LiteralUtil::CreateR0<bool>(true));
 }
 
 TEST_F(InfeedTest, SingleInfeedR1U32) {
-  TestInfeedRoundTrip(*LiteralUtil::CreateR1<uint32>({1, 2, 3}));
+  TestInfeedRoundTrip(LiteralUtil::CreateR1<uint32>({1, 2, 3}));
 }
 
 TEST_F(InfeedTest, SingleInfeedR2F32) {
-  TestInfeedRoundTrip(*LiteralUtil::CreateR2F32Linspace(0.0, 1.0, 128, 64));
+  TestInfeedRoundTrip(LiteralUtil::CreateR2F32Linspace(0.0, 1.0, 128, 64));
 }
 
 TEST_F(InfeedTest, SingleInfeedR3F32) {
   TestInfeedRoundTrip(
-      *LiteralUtil::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
-                              {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
+      LiteralUtil::CreateR3({{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
+                             {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}}));
 }
 
 TEST_F(InfeedTest, SingleInfeedR3F32DifferentLayout) {
   const Layout r3_dim0minor = LayoutUtil::MakeLayout({0, 1, 2});
   const Layout r3_dim0major = LayoutUtil::MakeLayout({2, 1, 0});
 
-  TestInfeedRoundTrip(*LiteralUtil::CreateR3WithLayout(
+  TestInfeedRoundTrip(LiteralUtil::CreateR3WithLayout(
       {{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
        {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}},
       r3_dim0minor));
 
-  TestInfeedRoundTrip(*LiteralUtil::CreateR3WithLayout(
+  TestInfeedRoundTrip(LiteralUtil::CreateR3WithLayout(
       {{{1.0f, 2.0f, 3.0f}, {4.0f, 5.0f, 6.0f}},
        {{1.1f, 2.1f, 3.1f}, {6.1f, 3.5f, 2.8f}}},
       r3_dim0major));
 }
 
 TEST_F(InfeedTest, SingleInfeedR4S32) {
-  TestInfeedRoundTrip(*LiteralUtil::CreateR4(
+  TestInfeedRoundTrip(LiteralUtil::CreateR4(
       {{{{1, -2}, {-4, 5}, {6, 7}}, {{8, 9}, {10, 11}, {12, 13}}},
        {{{10, 3}, {7, -2}, {3, 6}}, {{2, 5}, {-11, 5}, {-2, -5}}}}));
 }
 
 TEST_F(InfeedTest, SingleInfeedTuple) {
-  TestInfeedRoundTrip(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<uint32>({1, 2, 3}).get(),
-                               LiteralUtil::CreateR0<bool>(false).get()}));
+  TestInfeedRoundTrip(LiteralUtil::MakeTupleFromSlices(
+      {LiteralUtil::CreateR1<uint32>({1, 2, 3}),
+       LiteralUtil::CreateR0<bool>(false)}));
 }
 
 TEST_F(InfeedTest, SingleInfeedEmptyTuple) {
-  TestInfeedRoundTrip(*LiteralUtil::MakeTuple({}));
+  TestInfeedRoundTrip(LiteralUtil::MakeTuple({}));
 }
 
 // Tests Infeed operation used in a while loop, as in the code below. The
@@ -157,21 +157,21 @@ TEST_F(InfeedTest, DISABLED_SingleInfeedInWhile) {
 
   // Send 5 Infeed data of shape F32[3].
   ASSERT_IS_OK(
-      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({1, 2, 3})));
+      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({1, 2, 3})));
   ASSERT_IS_OK(
-      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({4, 5, 6})));
+      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({4, 5, 6})));
   ASSERT_IS_OK(
-      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({7, 8, 9})));
+      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({7, 8, 9})));
   ASSERT_IS_OK(
-      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({10, 11, 12})));
+      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({10, 11, 12})));
   ASSERT_IS_OK(
-      client_->TransferToInfeed(*LiteralUtil::CreateR1<float>({13, 14, 15})));
+      client_->TransferToInfeed(LiteralUtil::CreateR1<float>({13, 14, 15})));
 
   delete computation_thread;  // Joins the thread.
   auto result_literal = client_->Transfer(*result).ConsumeValueOrDie();
 
   // Only the first 3 infeed data should be added.
-  LiteralTestUtil::ExpectR0Near<float>(45.0f, *result_literal, ErrorSpec{1e-7});
+  LiteralTestUtil::ExpectR0Near<float>(45.0f, result_literal, ErrorSpec{1e-7});
 }
 
 // Tests two Infeed operations with a total order. The order is enforced by
@@ -250,17 +250,17 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
 
   // Send the first 4 Infeed data of shape Tuple(F32[2], PRED).
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({1, 2}).get(),
-                               LiteralUtil::CreateR0<bool>(true).get()})));
+      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({1, 2}),
+                                        LiteralUtil::CreateR0<bool>(true)})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({3, 4}).get(),
-                               LiteralUtil::CreateR0<bool>(true).get()})));
+      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({3, 4}),
+                                        LiteralUtil::CreateR0<bool>(true)})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({5, 6}).get(),
-                               LiteralUtil::CreateR0<bool>(true).get()})));
+      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({5, 6}),
+                                        LiteralUtil::CreateR0<bool>(true)})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({7, 8}).get(),
-                               LiteralUtil::CreateR0<bool>(false).get()})));
+      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({7, 8}),
+                                        LiteralUtil::CreateR0<bool>(false)})));
 
   // Asynchronously launch the execution on the device.
   std::unique_ptr<GlobalData> result;
@@ -275,21 +275,21 @@ TEST_F(InfeedTest, DISABLED_TwoInfeedsInTotalOrder) {
   // Infeed data, and send the rest Infeed data of shape Tuple(F32[3], PRED).
   sleep(1);
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({1, 2, 3}).get(),
-                               LiteralUtil::CreateR0<bool>(true).get()})));
+      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({1, 2, 3}),
+                                        LiteralUtil::CreateR0<bool>(true)})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({7, 8, 9}).get(),
-                               LiteralUtil::CreateR0<bool>(false).get()})));
+      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({7, 8, 9}),
+                                        LiteralUtil::CreateR0<bool>(false)})));
   ASSERT_IS_OK(client_->TransferToInfeed(
-      *LiteralUtil::MakeTuple({LiteralUtil::CreateR1<float>({4, 5, 6}).get(),
-                               LiteralUtil::CreateR0<bool>(true).get()})));
+      LiteralUtil::MakeTupleFromSlices({LiteralUtil::CreateR1<float>({4, 5, 6}),
+                                        LiteralUtil::CreateR0<bool>(true)})));
 
   // Wait for the execution to be done, and transfer the result.
   delete computation_thread;  // Joins the thread.
   auto result_literal = client_->Transfer(*result).ConsumeValueOrDie();
 
   // Only the first 6 infeed data should be added.
-  LiteralTestUtil::ExpectR0Near<float>(66.0f, *result_literal, ErrorSpec{1e-7});
+  LiteralTestUtil::ExpectR0Near<float>(66.0f, result_literal, ErrorSpec{1e-7});
 }
 
 }  // namespace

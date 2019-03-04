@@ -272,6 +272,15 @@ class Array {
     std::iota(&values_[0], &values_[0] + num_elements(), value);
   }
 
+  // Fills the array with a repeating sequence:
+  //   [value, value + 1, ..., value + length - 1, value, ... ]
+  void FillRepeatedIota(const T& value, int64 length) {
+    for (int64 i = 0; i < num_elements(); i += length) {
+      std::iota(&values_[i], &values_[std::min(i + length, num_elements())],
+                value);
+    }
+  }
+
   // Fills the array with the sequence i*multiplier for i=0,1,...
   void FillWithMultiples(const T& multiplier) {
     for (int64 i = 0; i < num_elements(); ++i) {
@@ -280,11 +289,11 @@ class Array {
   }
 
   // Fills the array with random normal variables with the specified mean.
-  void FillRandom(const T& value, const double mean = 0.0,
+  void FillRandom(const T& stddev, const double mean = 0.0,
                   const int seed = 12345) {
     std::mt19937 g(seed);
     std::normal_distribution<double> distribution(mean,
-                                                  static_cast<double>(value));
+                                                  static_cast<double>(stddev));
     for (int64 i = 0; i < num_elements(); ++i) {
       values_[i] = static_cast<T>(distribution(g));
     }

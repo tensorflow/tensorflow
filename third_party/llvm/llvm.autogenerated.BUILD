@@ -109,16 +109,23 @@ template_rule(
 )
 
 # A common library that all LLVM targets depend on.
+# TODO(b/113996071): We need to glob all potentially #included files and stage
+# them here because LLVM's build files are not strict headers clean, and remote
+# build execution requires all inputs to be depended upon.
 cc_library(
     name = "config",
-    hdrs = [
+    hdrs = glob([
+        "**/*.h",
+        "**/*.def",
+        "**/*.inc.cpp",
+    ]) + [
         "include/llvm/Config/AsmParsers.def",
         "include/llvm/Config/AsmPrinters.def",
         "include/llvm/Config/Disassemblers.def",
         "include/llvm/Config/Targets.def",
-        "include/llvm/Config/abi-breaking.h",
         "include/llvm/Config/config.h",
         "include/llvm/Config/llvm-config.h",
+        "include/llvm/Config/abi-breaking.h",
     ],
     defines = llvm_defines,
     includes = ["include"],
@@ -639,6 +646,7 @@ cc_library(
         ":amdgpu_asm_printer",
         ":amdgpu_info",
         ":amdgpu_utils",
+        ":binary_format",
         ":config",
         ":core",
         ":mc",
@@ -786,6 +794,7 @@ cc_library(
         ":amdgpu_utils",
         ":analysis",
         ":asm_printer",
+        ":binary_format",
         ":code_gen",
         ":config",
         ":core",
@@ -816,6 +825,7 @@ cc_library(
     ]),
     copts = llvm_copts + ["-Iexternal/llvm/lib/Target/ARM"],
     deps = [
+        ":arm_asm_printer",
         ":arm_desc",
         ":arm_info",
         ":arm_utils",
@@ -2134,6 +2144,7 @@ cc_library(
         ":core",
         ":global_i_sel",
         ":mc",
+        ":profile_data",
         ":selection_dag",
         ":support",
         ":target",
@@ -2232,7 +2243,6 @@ cc_library(
     deps = [
         ":code_gen",
         ":config",
-        ":core",
         ":support",
     ],
 )

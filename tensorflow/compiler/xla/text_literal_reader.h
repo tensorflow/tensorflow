@@ -41,7 +41,7 @@ class TextLiteralReader {
  public:
   // See class comment -- reads a file in its entirety (there must be only one
   // literal in the text file path provided).
-  static StatusOr<std::unique_ptr<Literal>> ReadPath(absl::string_view path);
+  static StatusOr<Literal> ReadPath(absl::string_view path);
 
  private:
   // Ownership of file is transferred.
@@ -49,7 +49,7 @@ class TextLiteralReader {
 
   // Parses a shape string on the first line, followed by lines of values to the
   // end of the file.
-  StatusOr<std::unique_ptr<Literal>> ReadAllLines();
+  StatusOr<Literal> ReadAllLines();
 
   // Owns the file being read
   std::unique_ptr<tensorflow::RandomAccessFile> file_;

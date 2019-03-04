@@ -68,6 +68,11 @@ void EmitTupleSelect(const IrArray& select, const IrArray& pred,
 void EmitTuple(const IrArray& tuple, absl::Span<llvm::Value* const> operands,
                llvm::IRBuilder<>* b, llvm::Module* module);
 
+// Similar to EmitTuple above, except that the output buffers are provided in
+// the form of IrArray.
+void EmitTuple(const IrArray& tuple, absl::Span<const IrArray> buffers,
+               llvm::IRBuilder<>* b, llvm::Module* module);
+
 // A tuple is an array of pointers, one for each operand. Each pointer points to
 // the output buffer of its corresponding operand. A GetTupleElement instruction
 // forwards the pointer to underlying tuple element buffer at the given index.

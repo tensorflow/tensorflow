@@ -12,9 +12,12 @@ exports_files([
     # The leakr files are used by //third_party/cloud_tpu.
     "leakr_badwords.dic",
     "leakr_badfiles.dic",
+    "leakr_file_type_recipe.ftrcp",
 ])
 
 load("//tensorflow:tensorflow.bzl", "tf_cc_shared_object")
+load("//tensorflow:tensorflow.bzl", "tf_custom_op_library_additional_deps_impl")
+load("//tensorflow:tensorflow.bzl", "tf_native_cc_binary")
 load(
     "//tensorflow/core:platform/default/build_config.bzl",
     "tf_additional_binary_deps",
@@ -23,6 +26,11 @@ load(
     "//tensorflow/python/tools/api/generator:api_gen.bzl",
     "gen_api_init_files",  # @unused
 )
+load("//tensorflow/python/tools/api/generator:api_gen.bzl", "get_compat_files")
+load(
+    "//tensorflow/python/tools/api/generator:api_init_files.bzl",
+    "TENSORFLOW_API_INIT_FILES",  # @unused
+)
 load(
     "//tensorflow/python/tools/api/generator:api_init_files_v1.bzl",
     "TENSORFLOW_API_INIT_FILES_V1",  # @unused
@@ -30,6 +38,20 @@ load(
 load(
     "//third_party/ngraph:build_defs.bzl",
     "if_ngraph",
+)
+
+# @unused
+TENSORFLOW_API_INIT_FILES_V2 = (
+    TENSORFLOW_API_INIT_FILES +
+    get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
+)
+
+# @unused
+TENSORFLOW_API_INIT_FILES_V1 = (
+    TENSORFLOW_API_INIT_FILES_V1 +
+    get_compat_files(TENSORFLOW_API_INIT_FILES, 2) +
+    get_compat_files(TENSORFLOW_API_INIT_FILES_V1, 1)
 )
 
 # Config setting used when building for products
@@ -71,6 +93,12 @@ config_setting(
         "crosstool_top": "//external:android/crosstool",
         "cpu": "armeabi",
     },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "emscripten",
+    values = {"crosstool_top": "//external:android/emscripten"},
     visibility = ["//visibility:public"],
 )
 
@@ -120,12 +148,6 @@ config_setting(
 )
 
 config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
@@ -138,8 +160,17 @@ config_setting(
 )
 
 config_setting(
+    name = "macos",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin_x86_64",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios",
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
+    values = {"apple_platform_type": "ios"},
     visibility = ["//visibility:public"],
 )
 
@@ -187,23 +218,14 @@ config_setting(
 )
 
 config_setting(
+    name = "arm",
+    values = {"cpu": "arm"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "freebsd",
     values = {"cpu": "freebsd"},
-    visibility = ["//visibility:public"],
-)
-
-# TODO(jhseu): Enable on other platforms other than Linux.
-config_setting(
-    name = "with_jemalloc_linux_x86_64",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "k8"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le",
-    define_values = {"with_jemalloc": "true"},
-    values = {"cpu": "ppc"},
     visibility = ["//visibility:public"],
 )
 
@@ -213,60 +235,46 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# Features that are default ON are handled differently below.
+#
 config_setting(
-    name = "with_gcp_support",
-    define_values = {"with_gcp_support": "true"},
+    name = "no_aws_support",
+    define_values = {"no_aws_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "with_hdfs_support",
-    define_values = {"with_hdfs_support": "true"},
+    name = "no_gcp_support",
+    define_values = {"no_gcp_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "with_aws_support",
-    define_values = {"with_aws_support": "true"},
+    name = "no_hdfs_support",
+    define_values = {"no_hdfs_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 config_setting(
-    name = "with_kafka_support",
-    define_values = {"with_kafka_support": "true"},
+    name = "no_ignite_support",
+    define_values = {"no_ignite_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_kafka_support",
+    define_values = {"no_kafka_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
+    name = "no_nccl_support",
+    define_values = {"no_nccl_support": "true"},
     visibility = ["//visibility:public"],
 )
 
 # Crosses between platforms and file system libraries not supported on those
 # platforms due to limitations in nested select() statements.
-config_setting(
-    name = "with_gcp_support_windows_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_windows_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_aws_support_windows_override",
-    define_values = {"with_aws_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_kafka_support_windows_override",
-    define_values = {"with_kafka_support": "true"},
-    values = {"cpu": "x64_windows"},
-    visibility = ["//visibility:public"],
-)
-
 config_setting(
     name = "with_cuda_support_windows_override",
     define_values = {"using_cuda_nvcc": "true"},
@@ -275,50 +283,17 @@ config_setting(
 )
 
 config_setting(
-    name = "with_gcp_support_android_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_android_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_aws_support_android_override",
-    define_values = {"with_aws_support": "true"},
-    values = {"crosstool_top": "//external:android/crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_gcp_support_ios_override",
-    define_values = {"with_gcp_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_hdfs_support_ios_override",
-    define_values = {"with_hdfs_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_aws_support_ios_override",
-    define_values = {"with_aws_support": "true"},
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "with_xla_support",
     define_values = {"with_xla_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
+# By default, XLA GPU is compiled into tensorflow when building with
+# --config=cuda even when `with_xla_support` is false. The config setting
+# here allows us to override the behavior if needed.
+config_setting(
+    name = "no_xla_deps_in_cuda",
+    define_values = {"no_xla_deps_in_cuda": "true"},
     visibility = ["//visibility:public"],
 )
 
@@ -334,36 +309,18 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+config_setting(
+    name = "with_numa_support",
+    define_values = {"with_numa_support": "true"},
+    visibility = ["//visibility:public"],
+)
+
 # Crosses between framework_shared_object and a bunch of other configurations
 # due to limitations in nested select() statements.
 config_setting(
     name = "framework_shared_object",
     define_values = {
         "framework_shared_object": "true",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_x86_64_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "k8",
-    },
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
-    name = "with_jemalloc_linux_ppc64le_dynamic",
-    define_values = {
-        "with_jemalloc": "true",
-        "framework_shared_object": "true",
-    },
-    values = {
-        "cpu": "ppc",
     },
     visibility = ["//visibility:public"],
 )
@@ -408,6 +365,13 @@ config_setting(
 )
 
 config_setting(
+    name = "using_rocm_hipcc",
+    define_values = {
+        "using_rocm_hipcc": "true",
+    },
+)
+
+config_setting(
     name = "with_mpi_support",
     values = {"define": "with_mpi_support=true"},
     visibility = ["//visibility:public"],
@@ -427,15 +391,25 @@ config_setting(
     visibility = ["//visibility:public"],
 )
 
+# This flag specifies whether TensorFlow 2.0 API should be built instead
+# of 1.* API. Note that TensorFlow 2.0 API is currently under development.
+config_setting(
+    name = "api_version_2",
+    define_values = {"tf_api_version": "2"},
+)
+
+# This flag is defined for select statements that match both
+# on 'windows' and 'api_version_2'. In this case, bazel requires
+# having a flag which is a superset of these two.
+config_setting(
+    name = "windows_and_api_version_2",
+    define_values = {"tf_api_version": "2"},
+    values = {"cpu": "x64_windows"},
+)
+
 package_group(
     name = "internal",
-    packages = [
-        "-//third_party/tensorflow/python/estimator",
-        "//learning/meta_rank/...",
-        "//tensorflow/...",
-        "//tensorflow_fold/llgtm/...",
-        "//third_party/py/tensor2tensor/...",
-    ],
+    packages = ["//tensorflow/..."],
 )
 
 load(
@@ -496,11 +470,10 @@ tf_cc_shared_object(
     name = "libtensorflow_framework.so",
     framework_so = [],
     linkopts = select({
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": [
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow:tf_framework_version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
         ],
     }),
     linkstatic = 1,
@@ -531,19 +504,26 @@ tf_cc_shared_object(
 # symbols in object files.
 
 tf_cc_shared_object(
-    name = "libtensorflow.so",
+    name = "tensorflow",
     linkopts = select({
-        "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow/c:exported_symbols.lds)",
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
-        "//tensorflow:windows": [],
+        "//tensorflow:windows": [
+        ],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow/c:version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow/c:version_script.lds)",
         ],
+    }),
+    per_os_targets = True,
+    visibility = ["//visibility:public"],
+    # add win_def_file for tensorflow
+    win_def_file = select({
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        "//conditions:default": None,
     }),
     deps = [
         "//tensorflow/c:c_api",
@@ -556,18 +536,24 @@ tf_cc_shared_object(
 )
 
 tf_cc_shared_object(
-    name = "libtensorflow_cc.so",
+    name = "tensorflow_cc",
     linkopts = select({
-        "//tensorflow:darwin": [
-            "-Wl,-exported_symbols_list",  # This line must be directly followed by the exported_symbols.lds file
-            "$(location //tensorflow:tf_exported_symbols.lds)",
+        "//tensorflow:macos": [
+            "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-z defs",
-            "-Wl,--version-script",  #  This line must be directly followed by the version_script.lds file
-            "$(location //tensorflow:tf_version_script.lds)",
+            "-Wl,--version-script,$(location //tensorflow:tf_version_script.lds)",
         ],
+    }),
+    per_os_targets = True,
+    visibility = ["//visibility:public"],
+    # add win_def_file for tensorflow_cc
+    win_def_file = select({
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        "//conditions:default": None,
     }),
     deps = [
         "//tensorflow:tf_exported_symbols.lds",
@@ -582,6 +568,92 @@ tf_cc_shared_object(
     ] + if_ngraph(["@ngraph_tf//:ngraph_tf"]),
 )
 
+# ** Targets for Windows build (start) **
+
+# Build a shared library (DLL) by cc_binary from tf_custom_op_library_additional_deps_impl,
+# it contains all object code from its dependencies.
+# This target is only used for parsing the symbols to be exported in tensorflow.dll.
+# Do NOT depend on it.
+tf_native_cc_binary(
+    name = "tf_custom_op_library_additional_deps.dll",
+    linkshared = 1,
+    linkstatic = 1,
+    deps = tf_custom_op_library_additional_deps_impl(),
+)
+
+# Get a DEF file generated by parsing all object files
+# of tf_custom_op_library_additional_deps.so
+filegroup(
+    name = "tensorflow_def_file",
+    srcs = [":tf_custom_op_library_additional_deps.dll"],
+    output_group = "def_file",
+)
+
+# Filter the DEF file to reduce the number of symbols to 64K or less.
+# Note that we also write the name of the pyd file into DEF file so that
+# the dynamic libraries of custom ops can find it at runtime.
+genrule(
+    name = "tensorflow_filtered_def_file",
+    srcs = [":tensorflow_def_file"],
+    outs = ["tensorflow_filtered_def_file.def"],
+    cmd = select({
+        "//tensorflow:windows": """
+              $(location @local_config_def_file_filter//:def_file_filter) \\
+              --input $(location :tensorflow_def_file) \\
+              --output $@
+          """,
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
+    }),
+    tools = ["@local_config_def_file_filter//:def_file_filter"],
+    visibility = ["//visibility:public"],
+)
+
+# The interface library (tensorflow.dll.if.lib) for linking tensorflow DLL library (tensorflow.dll) on Windows.
+# To learn more about import library (called interface library in Bazel):
+#     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly
+filegroup(
+    name = "get_tensorflow_dll_import_lib",
+    srcs = ["//tensorflow:tensorflow.dll"],
+    output_group = "interface_library",
+    visibility = ["//visibility:public"],
+)
+
+# Rename the import library for tensorflow.dll from tensorflow.dll.if.lib to tensorflow.lib
+genrule(
+    name = "tensorflow_dll_import_lib",
+    srcs = [":get_tensorflow_dll_import_lib"],
+    outs = ["tensorflow.lib"],
+    cmd = select({
+        "//tensorflow:windows": "cp -f $< $@",
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# The interface library (tensorflow_cc.dll.if.lib) for linking tensorflow DLL library (tensorflow_cc.dll) on Windows.
+# To learn more about import library (called interface library in Bazel):
+#     https://docs.microsoft.com/en-us/cpp/build/linking-an-executable-to-a-dll?view=vs-2017#linking-implicitly
+filegroup(
+    name = "get_tensorflow_cc_dll_import_lib",
+    srcs = ["//tensorflow:tensorflow_cc.dll"],
+    output_group = "interface_library",
+    visibility = ["//visibility:public"],
+)
+
+# Rename the import library for tensorflow.dll from tensorflow_cc.dll.if.lib to tensorflow.lib
+genrule(
+    name = "tensorflow_cc_dll_import_lib",
+    srcs = [":get_tensorflow_cc_dll_import_lib"],
+    outs = ["tensorflow_cc.lib"],
+    cmd = select({
+        "//tensorflow:windows": "cp -f $< $@",
+        "//conditions:default": "touch $@",  # Just a placeholder for Unix platforms
+    }),
+    visibility = ["//visibility:public"],
+)
+
+# ** Targets for Windows build (end) **
+
 exports_files(
     [
         "tf_version_script.lds",
@@ -589,29 +661,124 @@ exports_files(
     ],
 )
 
+genrule(
+    name = "install_headers",
+    srcs = [
+        "//tensorflow/c:headers",
+        "//tensorflow/c/eager:headers",
+        "//tensorflow/cc:headers",
+        "//tensorflow/core:headers",
+    ],
+    outs = ["include"],
+    cmd = """
+    mkdir $@
+    for f in $(SRCS); do
+      d="$${f%/*}"
+      d="$${d#bazel-out*genfiles/}"
+      d="$${d#*external/eigen_archive/}"
+
+      if [[ $${d} == *local_config_* ]]; then
+        continue
+      fi
+
+      if [[ $${d} == external* ]]; then
+        extname="$${d#*external/}"
+        extname="$${extname%%/*}"
+        if [[ $${TF_SYSTEM_LIBS:-} == *$${extname}* ]]; then
+          continue
+        fi
+      fi
+
+      mkdir -p "$@/$${d}"
+      cp "$${f}" "$@/$${d}/"
+    done
+    """,
+    tags = ["manual"],
+    visibility = ["//visibility:public"],
+)
+
+genrule(
+    name = "root_init_gen",
+    srcs = select({
+        "api_version_2": [":tf_python_api_gen_v2"],
+        "//conditions:default": [":tf_python_api_gen_v1"],
+    }),
+    outs = ["__init__.py"],
+    cmd = select({
+        "api_version_2": "cp $(@D)/_api/v2/v2.py $(OUTS)",
+        "//conditions:default": "cp $(@D)/_api/v1/v1.py $(OUTS)",
+    }),
+)
+
 gen_api_init_files(
-    name = "tensorflow_python_api_gen",
-    srcs = ["api_template.__init__.py"],
+    name = "tf_python_api_gen_v1",
+    srcs = [
+        "api_template_v1.__init__.py",
+        "compat_template.__init__.py",
+        "compat_template_v1.__init__.py",
+    ],
     api_version = 1,
+    compat_api_versions = [
+        1,
+        2,
+    ],
+    compat_init_templates = [
+        "compat_template_v1.__init__.py",
+        "compat_template.__init__.py",
+    ],
+    output_dir = "_api/v1/",
     output_files = TENSORFLOW_API_INIT_FILES_V1,
+    output_package = "tensorflow._api.v1",
+    root_file_name = "v1.py",
+    root_init_template = "api_template_v1.__init__.py",
+)
+
+gen_api_init_files(
+    name = "tf_python_api_gen_v2",
+    srcs = [
+        "api_template.__init__.py",
+        "compat_template.__init__.py",
+        "compat_template_v1.__init__.py",
+    ],
+    api_version = 2,
+    compat_api_versions = [
+        1,
+        2,
+    ],
+    compat_init_templates = [
+        "compat_template_v1.__init__.py",
+        "compat_template.__init__.py",
+    ],
+    output_dir = "_api/v2/",
+    output_files = TENSORFLOW_API_INIT_FILES_V2,
+    output_package = "tensorflow._api.v2",
+    root_file_name = "v2.py",
     root_init_template = "api_template.__init__.py",
 )
 
 py_library(
     name = "tensorflow_py",
-    srcs = ["//tensorflow/python/estimator/api:estimator_python_api_gen"],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
-    deps = [
+    deps = select({
+        "api_version_2": [],
+        "//conditions:default": ["//tensorflow/contrib:contrib_py"],
+    }) + [
         ":tensorflow_py_no_contrib",
-        "//tensorflow/contrib:contrib_py",
         "//tensorflow/python/estimator:estimator_py",
     ],
 )
 
 py_library(
     name = "tensorflow_py_no_contrib",
-    srcs = [":tensorflow_python_api_gen"],
+    srcs = select({
+        "api_version_2": [":tf_python_api_gen_v2"],
+        "//conditions:default": [":tf_python_api_gen_v1"],
+    }) + [":root_init_gen"] + [
+        "//tensorflow/python/keras/api:keras_python_api_gen",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v1",
+        "//tensorflow/python/keras/api:keras_python_api_gen_compat_v2",
+    ],
     srcs_version = "PY2AND3",
     visibility = ["//visibility:public"],
     deps = ["//tensorflow/python:no_contrib"],

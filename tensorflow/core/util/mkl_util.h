@@ -17,8 +17,9 @@ limitations under the License.
 #define TENSORFLOW_CORE_UTIL_MKL_UTIL_H_
 #ifdef INTEL_MKL
 
-#include <string>
+#include <list>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -34,9 +35,7 @@ limitations under the License.
 #endif
 
 #ifdef INTEL_MKL_ML_ONLY
-// Using pragma message since #warning doesn't work with all compilers
-#pragma message("Compiling for INTEL MKL ML only will be deprecated soon.")
-#pragma message("Please use MKL DNN (the default option for --config=mkl)")
+#error "Please use INTEL MKL DNN (the default option for --config=mkl)."
 #endif
 
 #ifdef INTEL_MKL_ML_ONLY
@@ -55,9 +54,9 @@ limitations under the License.
 #include "tensorflow/core/platform/cpu_info.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/macros.h"
+#include "tensorflow/core/util/env_var.h"
 #include "tensorflow/core/util/padding.h"
 #include "tensorflow/core/util/tensor_format.h"
-#include "tensorflow/core/util/env_var.h"
 
 #ifndef INTEL_MKL_ML_ONLY
 #include "mkldnn.hpp"
@@ -84,7 +83,12 @@ namespace tensorflow {
 // MKL operation, and did not go through a conversion to a standard
 // Tensorflow tensor.
 
+// For use with MKL ML, has been deprecated
 typedef enum { W = 0, H = 1, C = 2, N = 3 } MklDims;
+
+// The dimensions order that MKL-DNN internally uses for 2D activations
+// [Batch, Channel, Height, Width] and
+// for 2D filters [Out_Channel, In_Channel, Height, Width].
 typedef enum {
   Dim_N = 0,
   Dim_C = 1,
@@ -94,6 +98,9 @@ typedef enum {
   Dim_I = 1
 } MklDnnDims;
 
+// The dimensions order that MKL-DNN internally uses for 3D activations
+// [Batch, Channel, Depth, Height, Width] and
+// for 3D filters [Out_Channel, In_Channel, Depth, Height, Width].
 typedef enum {
   Dim3d_N = 0,
   Dim3d_C = 1,
@@ -103,6 +110,42 @@ typedef enum {
   Dim3d_O = 0,
   Dim3d_I = 1
 } MklDnnDims3D;
+
+// Enum for the order of dimensions of a TF 2D filter with shape [filter_height,
+// filter_width, in_channels, out_channels]
+typedef enum {
+  TF_2DFILTER_DIM_H = 0,
+  TF_2DFILTER_DIM_W = 1,
+  TF_2DFILTER_DIM_I = 2,
+  TF_2DFILTER_DIM_O = 3
+} TFFilterDims2d;
+
+// Enum for the order of dimensions of a TF 3D filter with shape [filter_depth,
+// filter_height, filter_width, in_channels, out_channels]
+typedef enum {
+  TF_3DFILTER_DIM_P = 0,
+  TF_3DFILTER_DIM_H = 1,
+  TF_3DFILTER_DIM_W = 2,
+  TF_3DFILTER_DIM_I = 3,
+  TF_3DFILTER_DIM_O = 4
+} TFFilterDims3d;
+
+// The dimensions order that MKL-DNN requires for the filter in a grouped
+// convolution (2D only)
+typedef enum {
+  MKL_GROUP_FILTER_DIM_G = 0,
+  MKL_GROUP_FILTER_DIM_O = 1,
+  MKL_GROUP_FILTER_DIM_I = 2,
+  MKL_GROUP_FILTER_DIM_H = 3,
+  MKL_GROUP_FILTER_DIM_W = 4
+} MklDnnFilterGroupDims;
+
+// Enum used to templatize MklOp kernel implementations
+// that support both fp32 and int8 versions.
+enum class MklQuantization {
+  QUANTIZED_VERSION,
+  FP_VERSION,
+};
 
 static const int kSmallBatchSize = 32;
 
@@ -654,7 +697,6 @@ class MklDnnShape {
     }
   }
 
-
   inline void SetTfDimOrder(const size_t dimension, memory::format format) {
     TensorFormat data_format = MklDnnDataFormatToTFDataFormat(format);
     SetTfDimOrder(dimension, data_format);
@@ -783,7 +825,8 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
 }
 #else
 using mkldnn::stream;
-template <typename T> class MklDnnData;
+template <typename T>
+class MklDnnData;
 
 template <typename T>
 inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
@@ -793,11 +836,11 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
     if (!mkl_shape.IsMklTensor())
       return mkl_tensor;  // return input since it is already TF tensor
 
-    TensorShape output_shape = mkl_shape.GetTfShape();;
+    TensorShape output_shape = mkl_shape.GetTfShape();
 
     // Allocate output tensor.
-    context->allocate_temp(DataTypeToEnum<T>::v(),
-        output_shape, &output_tensor);
+    context->allocate_temp(DataTypeToEnum<T>::v(), output_shape,
+                           &output_tensor);
 
     auto cpu_engine = engine(engine::cpu, 0);
     MklDnnData<T> input(&cpu_engine);
@@ -812,7 +855,7 @@ inline Tensor ConvertMklToTF(OpKernelContext* context, const Tensor& mkl_tensor,
     if (input.IsReorderNeeded(output_tf_pd)) {
       std::vector<primitive> net;
       CHECK_EQ(input.CheckReorderToOpMem(output_tf_pd, &output_tensor, &net),
-             true);
+               true);
       stream(stream::kind::eager).submit(net).wait();
     } else {
       // If not, just forward input tensor to output tensor.
@@ -1387,6 +1430,18 @@ template <>
 memory::data_type MklDnnType<float>() {
   return memory::data_type::f32;
 }
+template <>
+memory::data_type MklDnnType<quint8>() {
+  return memory::data_type::u8;
+}
+template <>
+memory::data_type MklDnnType<qint8>() {
+  return memory::data_type::s8;
+}
+template <>
+memory::data_type MklDnnType<qint32>() {
+  return memory::data_type::s32;
+}
 
 /// Map TensorFlow's data format into MKL-DNN 3D data format
 /// @input: TensorFlow data format
@@ -1617,6 +1672,9 @@ class MklDnnData {
         cpu_engine_(e) {}
 
   ~MklDnnData() {
+    if (allocated_buffer_ != nullptr) {
+      cpu_allocator()->DeallocateRaw(allocated_buffer_);
+    }
     cpu_engine_ = nullptr;  // We don't own this.
     delete (user_memory_);
     delete (reorder_memory_);
@@ -1707,6 +1765,7 @@ class MklDnnData {
   inline void SetUsrMem(const memory::primitive_desc& pd,
                         void* data_buffer = nullptr) {
     CHECK_NOTNULL(cpu_engine_);
+    if (user_memory_) delete user_memory_;
     // TODO(nhasabni): can we remove dynamic memory allocation?
     if (data_buffer) {
       user_memory_ = new memory(pd, data_buffer);
@@ -2001,69 +2060,162 @@ class MklPrimitive {
 
 const mkldnn::memory::dims NONE_DIMS = {};
 
+//
+// LRUCache is a class which implements LRU (Least Recently Used) cache.
+// The implementation is similar to that of
+//    tensorflow/core/platform/cloud/expiring_lru_cache.h
+// without its thread-safe part because the cache is supposed to be
+// used as thread local (for instance, MklPrimitive caching).
+//
+// The LRU list maintains objects in chronological order based on
+// creation time, with the least recently accessed object at the
+// tail of LRU list, while the most recently accessed object
+// at the head of LRU list.
+//
+// This class is used to maintain an upper bound on the total number of
+// cached items. When the cache reaches its capacity, the LRU item will
+// be removed and replaced by a new one from SetOp call.
+//
+template <typename T>
+class LRUCache {
+ public:
+  explicit LRUCache(size_t capacity) {
+    capacity_ = capacity;
+    Clear();
+  }
+
+  T* GetOp(const string& key) {
+    auto it = cache_.find(key);
+    if (it == cache_.end()) {
+      return nullptr;
+    }
+
+    // Move to the front of LRU list as the most recently accessed.
+    lru_list_.erase(it->second.lru_iterator);
+    lru_list_.push_front(it->first);
+    it->second.lru_iterator = lru_list_.begin();
+    return it->second.op;
+  }
+
+  void SetOp(const string& key, T* op) {
+    if (lru_list_.size() >= capacity_) {
+      Delete();
+    }
+
+    // Insert an entry to the front of the LRU list
+    lru_list_.push_front(key);
+    Entry entry(op, lru_list_.begin());
+    cache_.emplace(std::make_pair(key, std::move(entry)));
+  }
+
+  void Clear() {
+    if (lru_list_.empty()) return;
+
+    // Clean up the cache
+    cache_.clear();
+    lru_list_.clear();
+  }
+
+ private:
+  struct Entry {
+    // The entry's value.
+    T* op;
+
+    // A list iterator pointing to the entry's position in the LRU list.
+    std::list<string>::iterator lru_iterator;
+
+    // Constructor
+    Entry(T* op, std::list<string>::iterator it) {
+      this->op = op;
+      this->lru_iterator = it;
+    }
+
+    // Move construcctor
+    Entry(Entry&& source) noexcept
+        : lru_iterator(std::move(source.lru_iterator)) {
+      op = std::move(source.op);
+      source.op = std::forward<T*>(nullptr);
+    }
+
+    // Destructor
+    ~Entry() {
+      if (op != nullptr) delete op;
+    }
+  };
+
+  // Remove the least recently accessed entry from LRU list, which
+  // is the tail of lru_list_. Update cache_ correspondingly.
+  bool Delete() {
+    if (lru_list_.empty()) return false;
+    string key = lru_list_.back();
+    lru_list_.pop_back();
+    cache_.erase(key);
+    return true;
+  }
+
+  // Cache capacity
+  size_t capacity_;
+
+  // The cache, a map from string key to a LRU entry.
+  std::unordered_map<string, Entry> cache_;
+
+  // The LRU list of entries.
+  // The front of the list contains the key of the most recently accessed
+  // entry, while the back of the list is the least recently accessed entry.
+  std::list<string> lru_list_;
+};
+
 template <typename T>
 class MklPrimitiveFactory {
  public:
-  MklPrimitiveFactory() {
-  }
+  MklPrimitiveFactory() {}
 
   ~MklPrimitiveFactory() {}
 
   MklPrimitive* GetOp(const string& key) {
-    auto& map = MklPrimitiveFactory<T>::GetHashMap();
-    auto stream_iter = map.find(key);
-    if (stream_iter == map.end()) {
-      return nullptr;
-    } else {
-      CHECK(stream_iter->second != nullptr) << "nullptr present in map";
-      return stream_iter->second;
-    }
+    auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
+    return lru_cache.GetOp(key);
   }
 
   void SetOp(const string& key, MklPrimitive* op) {
-    auto& map = MklPrimitiveFactory<T>::GetHashMap();
-    auto stream_iter = map.find(key);
-
-    CHECK(stream_iter == map.end());
-
-    map[key] = op;
+    auto& lru_cache = MklPrimitiveFactory<T>::GetLRUCache();
+    lru_cache.SetOp(key, op);
   }
 
   /// Function to decide whether HW has AVX512 or AVX2
   /// For those legacy device(w/o AVX512 and AVX2),
   /// MKL-DNN GEMM will be used.
   static inline bool IsLegacyPlatform() {
-    return (!port::TestCPUFeature(port::CPUFeature::AVX512F)
-                   && !port::TestCPUFeature(port::CPUFeature::AVX2));
+    return (!port::TestCPUFeature(port::CPUFeature::AVX512F) &&
+            !port::TestCPUFeature(port::CPUFeature::AVX2));
   }
 
   /// Fuction to check whether primitive memory optimization is enabled
   static inline bool IsPrimitiveMemOptEnabled() {
     bool is_primitive_mem_opt_enabled = true;
-    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITVE_MEMUSE", true,
-          &is_primitive_mem_opt_enabled));
+    TF_CHECK_OK(ReadBoolFromEnvVar("TF_MKL_OPTIMIZE_PRIMITIVE_MEMUSE", true,
+                                   &is_primitive_mem_opt_enabled));
     return is_primitive_mem_opt_enabled;
   }
 
  private:
-  static inline std::unordered_map<string, MklPrimitive*>& GetHashMap() {
-    static thread_local std::unordered_map<string, MklPrimitive*> map_;
-    return map_;
+  static inline LRUCache<MklPrimitive>& GetLRUCache() {
+    static const int kCapacity = 1024;  // cache capacity
+    static thread_local LRUCache<MklPrimitive> lru_cache_(kCapacity);
+    return lru_cache_;
   }
 };
 
 // utility class for creating keys of MKL primitive pool.
 class FactoryKeyCreator {
  public:
-  FactoryKeyCreator() {
-    key_.reserve(kMaxKeyLength);
-  }
+  FactoryKeyCreator() { key_.reserve(kMaxKeyLength); }
 
   ~FactoryKeyCreator() {}
 
   void AddAsKey(const string& str) { Append(str); }
 
-  void AddAsKey(const mkldnn::memory::dims &dims) {
+  void AddAsKey(const mkldnn::memory::dims& dims) {
     for (unsigned int i = 0; i < dims.size(); i++) {
       AddAsKey<int>(dims[i]);
     }
@@ -2071,7 +2223,7 @@ class FactoryKeyCreator {
 
   template <typename T>
   void AddAsKey(const T data) {
-    auto buffer = reinterpret_cast<const char *>(&data);
+    auto buffer = reinterpret_cast<const char*>(&data);
     Append(StringPiece(buffer, sizeof(T)));
   }
 
@@ -2087,7 +2239,6 @@ class FactoryKeyCreator {
   }
 };
 
-
 static inline memory::format get_desired_format(int channel,
                                                 bool is_2d = true) {
   memory::format fmt_desired = memory::format::any;
@@ -2096,9 +2247,8 @@ static inline memory::format get_desired_format(int channel,
     fmt_desired = is_2d ? memory::format::nChw16c : memory::format::nCdhw16c;
   } else if (port::TestCPUFeature(port::CPUFeature::AVX2) &&
              (channel % 8) == 0) {
-    fmt_desired = is_2d
-                      ? memory::format::nChw8c
-                      : memory::format::ncdhw;  //not support avx2 for 3d yet.
+    fmt_desired = is_2d ? memory::format::nChw8c
+                        : memory::format::ncdhw;  // no avx2 support for 3d yet.
   } else {
     fmt_desired = is_2d ? memory::format::nchw : memory::format::ncdhw;
   }
@@ -2110,37 +2260,34 @@ class MklReorderPrimitive : public MklPrimitive {
   explicit MklReorderPrimitive(const memory* from, const memory* to) {
     Setup(from, to);
   }
-    ~MklReorderPrimitive() {}
+  ~MklReorderPrimitive() {}
 
-    std::shared_ptr<primitive> GetPrimitive() {
-      return context_.reorder_prim;
-    }
+  std::shared_ptr<primitive> GetPrimitive() { return context_.reorder_prim; }
 
-    void SetMemory(const memory* from, const memory* to) {
-      context_.src_mem->set_data_handle(from->get_data_handle());
-      context_.dst_mem->set_data_handle(to->get_data_handle());
-    }
+  void SetMemory(const memory* from, const memory* to) {
+    context_.src_mem->set_data_handle(from->get_data_handle());
+    context_.dst_mem->set_data_handle(to->get_data_handle());
+  }
 
  private:
-    struct ReorderContext {
-      std::shared_ptr<mkldnn::memory> src_mem;
-      std::shared_ptr<mkldnn::memory> dst_mem;
-      std::shared_ptr<primitive> reorder_prim;
-      ReorderContext():
-        src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {
-      }
-    } context_;
+  struct ReorderContext {
+    std::shared_ptr<mkldnn::memory> src_mem;
+    std::shared_ptr<mkldnn::memory> dst_mem;
+    std::shared_ptr<primitive> reorder_prim;
+    ReorderContext()
+        : src_mem(nullptr), dst_mem(nullptr), reorder_prim(nullptr) {}
+  } context_;
 
-    engine cpu_engine_ = engine(engine::cpu, 0);
+  engine cpu_engine_ = engine(engine::cpu, 0);
 
-    void Setup(const memory* from, const memory* to) {
-      context_.src_mem.reset(new memory(
-            {from->get_primitive_desc().desc(), cpu_engine_}, DummyData));
-      context_.dst_mem.reset(new memory(
-            {to->get_primitive_desc().desc(), cpu_engine_}, DummyData));
-      context_.reorder_prim = std::make_shared<mkldnn::reorder>(
-          reorder(*context_.src_mem, *context_.dst_mem));
-    }
+  void Setup(const memory* from, const memory* to) {
+    context_.src_mem.reset(new memory(
+        {from->get_primitive_desc().desc(), cpu_engine_}, DummyData));
+    context_.dst_mem.reset(
+        new memory({to->get_primitive_desc().desc(), cpu_engine_}, DummyData));
+    context_.reorder_prim = std::make_shared<mkldnn::reorder>(
+        reorder(*context_.src_mem, *context_.dst_mem));
+  }
 };
 
 template <typename T>
@@ -2158,41 +2305,51 @@ class MklReorderPrimitiveFactory : public MklPrimitiveFactory<T> {
     return reorderPrim;
   }
 
-    static MklReorderPrimitiveFactory & GetInstance() {
-      static MklReorderPrimitiveFactory instance_;
-      return instance_;
-    }
+  static MklReorderPrimitiveFactory& GetInstance() {
+    static MklReorderPrimitiveFactory instance_;
+    return instance_;
+  }
 
  private:
-    MklReorderPrimitiveFactory() {}
-    ~MklReorderPrimitiveFactory() {}
+  MklReorderPrimitiveFactory() {}
+  ~MklReorderPrimitiveFactory() {}
 
-    static string CreateKey(const memory* from, const memory* to) {
-      string prefix = "reorder";
-      FactoryKeyCreator key_creator;
-      auto const &from_desc =  from->get_primitive_desc().desc().data;
-      auto const &to_desc =  to->get_primitive_desc().desc().data;
-      memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
-      memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
-      key_creator.AddAsKey(prefix);
-      key_creator.AddAsKey(static_cast<int>(from_desc.format));
-      key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
-      key_creator.AddAsKey(from_dims);
-      key_creator.AddAsKey(static_cast<int>(to_desc.format));
-      key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
-      key_creator.AddAsKey(to_dims);
-      return key_creator.GetKey();
-    }
+  static string CreateKey(const memory* from, const memory* to) {
+    string prefix = "reorder";
+    FactoryKeyCreator key_creator;
+    auto const& from_desc = from->get_primitive_desc().desc().data;
+    auto const& to_desc = to->get_primitive_desc().desc().data;
+    const int KIdxFirstStride = 0;
+    memory::dims from_dims(from_desc.dims, &from_desc.dims[from_desc.ndims]);
+    memory::dims to_dims(to_desc.dims, &to_desc.dims[to_desc.ndims]);
+    memory::dims from_strides(
+        from_desc.layout_desc.blocking.strides[KIdxFirstStride],
+        &from_desc.layout_desc.blocking
+             .strides[KIdxFirstStride][from_desc.ndims]);
+    memory::dims to_strides(
+        to_desc.layout_desc.blocking.strides[KIdxFirstStride],
+        &to_desc.layout_desc.blocking.strides[KIdxFirstStride][to_desc.ndims]);
+    key_creator.AddAsKey(prefix);
+    key_creator.AddAsKey(static_cast<int>(from_desc.format));
+    key_creator.AddAsKey(static_cast<int>(from_desc.data_type));
+    key_creator.AddAsKey(from_dims);
+    key_creator.AddAsKey(from_strides);
+    key_creator.AddAsKey(static_cast<int>(to_desc.format));
+    key_creator.AddAsKey(static_cast<int>(to_desc.data_type));
+    key_creator.AddAsKey(to_dims);
+    key_creator.AddAsKey(to_strides);
+    return key_creator.GetKey();
+  }
 
-    MklPrimitive* GetReorder(const memory* from, const memory* to) {
-      string key = CreateKey(from, to);
-      return this->GetOp(key);
-    }
+  MklPrimitive* GetReorder(const memory* from, const memory* to) {
+    string key = CreateKey(from, to);
+    return this->GetOp(key);
+  }
 
-    void SetReorder(const memory* from, const memory* to, MklPrimitive* op) {
-      string key = CreateKey(from, to);
-      this->SetOp(key, op);
-    }
+  void SetReorder(const memory* from, const memory* to, MklPrimitive* op) {
+    string key = CreateKey(from, to);
+    this->SetOp(key, op);
+  }
 };
 
 /// Fuction to find(or create) a reorder from memory pointed by
@@ -2210,7 +2367,8 @@ inline primitive FindOrCreateReorder(const memory* from, const memory* to) {
 
 // utility function to determine if it is conv 1x1 and stride != 1
 // for purpose of temporarily disabling primitive reuse
-inline bool IsConv1x1StrideNot1(memory::dims filter_dims, memory::dims strides) {
+inline bool IsConv1x1StrideNot1(memory::dims filter_dims,
+                                memory::dims strides) {
   if (filter_dims.size() != 4 || strides.size() != 2) return false;
 
   return ((filter_dims[2] == 1) && (filter_dims[3] == 1) &&

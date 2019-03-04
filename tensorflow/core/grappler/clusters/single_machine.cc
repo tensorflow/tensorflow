@@ -93,13 +93,13 @@ Status SingleMachine::Provision() {
             strings::StrCat("Not able to parse GPU device name: ", dev.name()));
       }
       TfGpuId tf_gpu_id(parsed.id);
-      CudaGpuId cuda_gpu_id;
-      Status s = GpuIdManager::TfToCudaGpuId(tf_gpu_id, &cuda_gpu_id);
+      PlatformGpuId platform_gpu_id;
+      Status s = GpuIdManager::TfToPlatformGpuId(tf_gpu_id, &platform_gpu_id);
       if (!s.ok()) {
         return errors::Unavailable("Unknown TF GPU device with id ",
                                    tf_gpu_id.value(), ": ", s.ToString());
       }
-      attr = GetLocalGPUInfo(cuda_gpu_id);
+      attr = GetLocalGPUInfo(platform_gpu_id);
     } else if (dev.device_type().find("XLA") == string::npos) {
       // Filter out the fake XLA devices to avoid double counting the actual
       // hardware resources that are available.
@@ -227,14 +227,14 @@ Status SingleMachine::GetPeakMemoryUsage(
 
   device_peak_memory->clear();
   for (Device* device : devices) {
-    AllocatorStats stats;
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
       return Status(error::INVALID_ARGUMENT,
                     "Tracking allocation is not enabled.");
     }
-    allocator->GetStats(&stats);
-    (*device_peak_memory)[device->name()] = stats.max_bytes_in_use;
+    absl::optional<AllocatorStats> stats = allocator->GetStats();
+    (*device_peak_memory)[device->name()] =
+        (stats ? stats->peak_bytes_in_use : 0);
   }
 
   return Status::OK();
@@ -455,7 +455,6 @@ Status SingleMachine::ClearAllocatorStats() const {
   std::vector<Device*> devices = device_mgr->ListDevices();
 
   for (Device* device : devices) {
-    AllocatorStats stats;
     auto* allocator = device->GetAllocator(AllocatorAttributes());
     if (!allocator->TracksAllocationSizes()) {
       return Status(error::INVALID_ARGUMENT,

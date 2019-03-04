@@ -32,8 +32,14 @@ void AddControlInput(TF_Graph* graph, TF_Operation* op, TF_Operation* input);
 void SetAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
              TF_Buffer* attr_value_proto, TF_Status* status);
 
+// Clears the attr in the node_def Protocol Buffer and sets a status upon
+// completion.
+void ClearAttr(TF_Graph* graph, TF_Operation* op, const char* attr_name,
+               TF_Status* status);
+
 void SetRequestedDevice(TF_Graph* graph, TF_Operation* op, const char* device);
 
+// Updates 'dst' to consume 'new_src'.
 void UpdateEdge(TF_Graph* graph, TF_Output new_src, TF_Input dst,
                 TF_Status* status);
 
@@ -54,16 +60,24 @@ void SetRequireShapeInferenceFns(TF_Graph* graph, bool require);
 void ExtendSession(TF_Session* session, TF_Status* status);
 
 // Returns the serialized CppShapeInferenceResult::HandleData proto for
-// `output` if its a resource tensor, or otherwise returns the empty string.
-std::string GetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output);
+// `output` if its a resource or variant tensor, or otherwise returns the empty
+// string.
+std::string GetHandleShapeAndType(TF_Graph* graph, TF_Output output);
 
 // Sets `output` based on `proto`, which should be a serialized
-// CppShapeInferenceResult::HandleData proto.
+// CppShapeInferenceResult::HandleData proto. `output` should be a resource
+// or variant tensor.
 // NOTE(skyewm): `proto` is passed a void*/size_t pair instead of a std::string
 // because I couldn't get SWIG to work otherwise.
-void SetResourceHandleShapeAndType(TF_Graph* graph, TF_Output output,
-                                   const void* proto, size_t proto_len,
-                                   TF_Status* status);
+void SetHandleShapeAndType(TF_Graph* graph, TF_Output output, const void* proto,
+                           size_t proto_len, TF_Status* status);
+
+// This method is used to add a new input edge to 'dst', which must be a While
+// op. The While op's "T" attribute must have already been updated to include
+// the new edge. This is used to construct tf.while_loop gradients.
+void AddWhileInputHack(TF_Graph* graph, TF_Output new_src, TF_Operation* dst,
+                       TF_Status* status);
+
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_C_PYTHON_API_H_

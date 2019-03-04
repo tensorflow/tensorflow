@@ -25,7 +25,7 @@ namespace xla {
 
 // For every kCall operation in the main computation, we inline the body of the
 // called function, and proceed recursively.
-class CallInliner : public HloPassInterface {
+class CallInliner : public HloModulePass {
  public:
   using InlinedInstructionMap =
       std::unordered_map<HloInstruction*, HloInstruction*>;

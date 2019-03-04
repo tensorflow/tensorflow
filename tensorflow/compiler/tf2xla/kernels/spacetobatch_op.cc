@@ -26,7 +26,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
                   absl::Span<const int64> block_shape,
                   const xla::Literal& paddings) {
   const int input_rank = input_tensor_shape.dims();
-  const gtl::InlinedVector<int64, 4> input_shape =
+  const absl::InlinedVector<int64, 4> input_shape =
       input_tensor_shape.dim_sizes();
   const int block_rank = block_shape.size();
 
@@ -39,7 +39,7 @@ void SpaceToBatch(XlaOpKernelContext* ctx, const xla::XlaOp& input,
 
   OP_REQUIRES(
       ctx,
-      xla::ShapeUtil::Rank(paddings.shape()) == 2 &&
+      paddings.shape().rank() == 2 &&
           block_rank == xla::ShapeUtil::GetDimension(paddings.shape(), 0) &&
           2 == xla::ShapeUtil::GetDimension(paddings.shape(), 1),
       errors::InvalidArgument("paddings should have shape [", block_rank,
@@ -161,8 +161,8 @@ class SpaceToBatchNDOp : public XlaOpKernel {
   }
 };
 REGISTER_XLA_OP(Name("SpaceToBatchND")
-                    .CompileTimeConstInput("paddings")
-                    .CompileTimeConstInput("block_shape"),
+                    .CompileTimeConstantInput("paddings")
+                    .CompileTimeConstantInput("block_shape"),
                 SpaceToBatchNDOp);
 
 class SpaceToBatchOp : public XlaOpKernel {
@@ -185,7 +185,7 @@ class SpaceToBatchOp : public XlaOpKernel {
  private:
   int block_size_;
 };
-REGISTER_XLA_OP(Name("SpaceToBatch").CompileTimeConstInput("paddings"),
+REGISTER_XLA_OP(Name("SpaceToBatch").CompileTimeConstantInput("paddings"),
                 SpaceToBatchOp);
 
 }  // namespace

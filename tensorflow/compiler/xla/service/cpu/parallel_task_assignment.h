@@ -60,7 +60,7 @@ class ParallelTaskAssignment {
 // own embedded computation, which is compiled as a parallel compute function,
 // and which is invoked from a kCall instruction that is lowered in codegen to
 // a runtime parallel fork/join call.
-class ParallelTaskAssigner : public HloPassInterface {
+class ParallelTaskAssigner : public HloModulePass {
  public:
   // 'max_parallelism': the maximum parallel task count per instruction.
   // 'shape_size': shape size function used by HloCostAnalysis during parallel

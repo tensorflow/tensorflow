@@ -23,7 +23,7 @@ namespace xla {
 
 // A pass which performs constant folding in order to avoid unnecessary
 // computation on constants.
-class HloConstantFolding : public HloPassInterface {
+class HloConstantFolding : public HloModulePass {
  public:
   absl::string_view name() const override { return "constant_folding"; }
 

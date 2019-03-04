@@ -61,6 +61,7 @@ cuda_py_test(
         "no_pip",
         "oss_serial",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -76,6 +77,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["no_pip"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_library(
@@ -130,6 +132,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["no_pip"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_library(

@@ -56,6 +56,11 @@ class RandomAccessFileFromMemmapped : public RandomAccessFile {
 
   ~RandomAccessFileFromMemmapped() override = default;
 
+  Status Name(StringPiece* result) const override {
+    return errors::Unimplemented(
+        "RandomAccessFileFromMemmapped does not support Name()");
+  }
+
   Status Read(uint64 offset, size_t to_read, StringPiece* result,
               char* scratch) const override {
     if (offset >= length_) {

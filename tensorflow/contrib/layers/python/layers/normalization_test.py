@@ -106,7 +106,7 @@ class InstanceNormTest(test.TestCase):
     images = random_ops.random_uniform(image_shape, seed=1)
     output_train = normalization.instance_norm(images, scope='IN')
     output_eval = normalization.instance_norm(images, scope='IN', reuse=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       # output_train and output_eval should be the same.
       train_np, eval_np = sess.run([output_train, output_eval])
@@ -130,7 +130,7 @@ class InstanceNormTest(test.TestCase):
         inputs = random_ops.random_uniform(input_shape, seed=0) * sigma + mu
         output_op = normalization.instance_norm(
             inputs, center=False, scale=False, data_format=data_format)
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           sess.run(variables.global_variables_initializer())
           outputs = sess.run(output_op)
           # Make sure that there are no NaNs
@@ -221,6 +221,15 @@ class GroupNormTest(test.TestCase):
       normalization.group_norm(inputs, channels_axis=-1,
                                reduction_axes=[-3, -2])
 
+  def testParamsShapeNotFullyDefinedBatchAxis(self):
+    height, width, groups = 3, 3, 4
+    inputs = array_ops.placeholder(dtypes.float32,
+                                   shape=(None, height, width, 2*groups))
+    output = normalization.group_norm(inputs, channels_axis=-1,
+                                      reduction_axes=[-3, -2], groups=groups)
+    self.assertListEqual([None, height, width, 2 * groups],
+                         output.shape.as_list())
+
   def testCreateOp(self):
     height, width, groups = 3, 3, 4
     images = random_ops.random_uniform((5, height, width, 2*groups), seed=1)
@@ -287,7 +296,7 @@ class GroupNormTest(test.TestCase):
     output_train = normalization.group_norm(images, groups=2, scope='IN')
     output_eval = normalization.group_norm(images, groups=2, scope='IN',
                                            reuse=True)
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       sess.run(variables.global_variables_initializer())
       # output_train and output_eval should be the same.
       train_np, eval_np = sess.run([output_train, output_eval])
@@ -349,7 +358,7 @@ class GroupNormTest(test.TestCase):
             channels_axis=channels_axis,
             reduction_axes=reduction_axes,
             mean_close_to_zero=mean_close_to_zero)
-        with self.test_session() as sess:
+        with self.cached_session() as sess:
           sess.run(variables.global_variables_initializer())
           outputs = sess.run(output_op)
           # Make sure that there are no NaNs

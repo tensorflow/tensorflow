@@ -35,7 +35,6 @@ limitations under the License.
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/errors.h"
 #include "tensorflow/core/lib/core/status.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
 
@@ -96,31 +95,42 @@ class BatchNormExpanderVisitor : public DfsHloVisitorWithDefault {
       HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    HloInstruction* exponent = add_instruction(HloInstruction::CreateBroadcast(
-        operand->shape(),
-        add_instruction(HloInstruction::CreateConvert(
-            ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-            add_instruction(HloInstruction::CreateConstant(
-                LiteralUtil::CreateR0<float>(-0.5f))))),
-        {}));
-    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kPower,
-                                        operand, exponent);
+    return HloInstruction::CreateUnary(operand->shape(), HloOpcode::kRsqrt,
+                                       operand);
   }
 
   std::unique_ptr<HloInstruction> Mean(
-      int64 element_count, HloInstruction* operand,
+      HloInstruction* element_count, HloInstruction* operand,
       const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
           add_instruction) {
-    HloInstruction* elem_count_recip =
-        add_instruction(HloInstruction::CreateBroadcast(
-            operand->shape(),
-            add_instruction(HloInstruction::CreateConvert(
-                ShapeUtil::MakeShape(operand->shape().element_type(), {}),
-                add_instruction(HloInstruction::CreateConstant(
-                    LiteralUtil::CreateR0<float>(1.0 / element_count))))),
-            {}));
-    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kMultiply,
-                                        operand, elem_count_recip);
+    auto broadcast = add_instruction(
+        HloInstruction::CreateBroadcast(operand->shape(), element_count, {}));
+    return HloInstruction::CreateBinary(operand->shape(), HloOpcode::kDivide,
+                                        operand, broadcast);
+  }
+
+  std::unique_ptr<HloInstruction> DynamicElementCountPerFeature(
+      HloInstruction* operand, int64 feature_index,
+      const std::function<HloInstruction*(std::unique_ptr<HloInstruction>)>&
+          add_instruction) {
+    auto elements_per_feature_u32 = add_instruction(
+        HloInstruction::CreateConstant(LiteralUtil::CreateR0<uint32>(1)));
+
+    for (int64 i = 0; i < operand->shape().rank(); ++i) {
+      if (i == feature_index) {
+        continue;
+      }
+      auto dynamic_dimension_size =
+          add_instruction(HloInstruction::CreateGetDimensionSize(
+              ShapeUtil::MakeShape(U32, {}), operand, i));
+      elements_per_feature_u32 = add_instruction(HloInstruction::CreateBinary(
+          ShapeUtil::MakeShape(U32, {}), HloOpcode::kMultiply,
+          dynamic_dimension_size, elements_per_feature_u32));
+    }
+
+    return HloInstruction::CreateConvert(
+        ShapeUtil::MakeShape(operand->shape().element_type(), {}),
+        elements_per_feature_u32);
   }
 
   // Replaces the existing HLO instruction old_instruction, with
@@ -196,30 +206,30 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
   const Shape operand_shape = operand->shape();
   PrimitiveType ptype = operand_shape.element_type();
   int64 feature_index = batch_norm->feature_index();
-  const int64 feature_count = operand_shape.dimensions(feature_index);
-  const int64 size_in_elements = ShapeUtil::ElementsIn(operand_shape);
-  int64 elements_per_feature_int64 = size_in_elements / feature_count;
 
   HloInstruction* scale = batch_norm->mutable_operand(1);
   HloInstruction* offset = batch_norm->mutable_operand(2);
   const Shape feature_shape = scale->shape();
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = add(HloInstruction::CreateBroadcast(
       operand_shape,
       add(HloInstruction::CreateConstant(std::move(epsilon_literal))), {}));
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
   }
+
+  auto elements_per_feature =
+      add(DynamicElementCountPerFeature(operand, feature_index, add));
 
   auto scale_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, scale, {feature_index}));
@@ -244,13 +254,13 @@ Status BatchNormExpanderVisitor::HandleBatchNormTraining(
       add_reduce_computation));
 
   // E[X].
-  auto mean = add(Mean(elements_per_feature_int64, sum, add));
+  auto mean = add(Mean(elements_per_feature, sum, add));
 
   auto mean_broadcasted = add(
       HloInstruction::CreateBroadcast(operand_shape, mean, {feature_index}));
 
   // E[X^2].
-  auto square_mean = add(Mean(elements_per_feature_int64, squared_sum, add));
+  auto square_mean = add(Mean(elements_per_feature, squared_sum, add));
 
   // E^2[X].
   auto mean_square =
@@ -331,7 +341,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
   const Shape feature_shape = scale->shape();
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon = computation_->AddInstruction(HloInstruction::CreateBroadcast(
       operand_shape,
       computation_->AddInstruction(
@@ -340,7 +350,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormInference(
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(operand_shape); ++i) {
+  for (int64 i = 0; i < operand_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -459,16 +469,15 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   int64 feature_index = batch_norm->feature_index();
 
-  const int64 size_in_elements = ShapeUtil::ElementsIn(activation_shape);
-  const int64 feature_count = activation_shape.dimensions(feature_index);
-  const int64 elements_per_feature_int64 = size_in_elements / feature_count;
+  auto elements_per_feature =
+      add(DynamicElementCountPerFeature(activation, feature_index, add));
 
   auto zero_literal = LiteralUtil::CreateR0(0.0f);
-  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal->Convert(ptype));
+  TF_ASSIGN_OR_RETURN(zero_literal, zero_literal.Convert(ptype));
   auto zero = add(HloInstruction::CreateConstant(std::move(zero_literal)));
 
   auto epsilon_literal = LiteralUtil::CreateR0(batch_norm->epsilon());
-  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal->Convert(ptype));
+  TF_ASSIGN_OR_RETURN(epsilon_literal, epsilon_literal.Convert(ptype));
   auto epsilon_scalar =
       add(HloInstruction::CreateConstant(std::move(epsilon_literal)));
   auto epsilon_activation = add(
@@ -478,7 +487,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   std::vector<int64> dimensions_without_feature;
 
-  for (int64 i = 0; i < ShapeUtil::Rank(activation_shape); ++i) {
+  for (int64 i = 0; i < activation_shape.rank(); ++i) {
     if (i != feature_index) {
       dimensions_without_feature.push_back(i);
     }
@@ -508,7 +517,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       activation_shape, HloOpcode::kSubtract, activation, mean_broadcasted);
 
   // Grad[Y] * (X - E[X]).
-  auto grad_output_times_activiation_minus_mean =
+  auto grad_output_times_activation_minus_mean =
       add_binary(activation_shape, HloOpcode::kMultiply, grad_output,
                  activation_minus_mean);
 
@@ -516,9 +525,9 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       GetOrCreateScalarAddComputation(ptype);
 
   // sum(Grad[Y] * (X - E[X])).
-  auto sum_grad_output_times_activiation_minus_mean =
+  auto sum_grad_output_times_activation_minus_mean =
       add(HloInstruction::CreateReduce(
-          feature_shape, grad_output_times_activiation_minus_mean, zero,
+          feature_shape, grad_output_times_activation_minus_mean, zero,
           dimensions_without_feature, add_reduce_computation));
 
   // Grad[beta] = Sum(Grad[Y]).
@@ -528,7 +537,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   // Grad[scale] = Sum(Grad[Y] * (X - E[X]) * rsqrt[Var[X] + epsilon]).
   auto grad_scale = add_binary(feature_shape, HloOpcode::kMultiply,
-                               sum_grad_output_times_activiation_minus_mean,
+                               sum_grad_output_times_activation_minus_mean,
                                rsqrt_var_add_epsilon);
 
   // I2 = Sum(Grad[Y])
@@ -537,7 +546,7 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
 
   // I3 = Sum(Grad[Y] * (X - E[X]))
   auto i3 = add(HloInstruction::CreateBroadcast(
-      activation_shape, sum_grad_output_times_activiation_minus_mean,
+      activation_shape, sum_grad_output_times_activation_minus_mean,
       {feature_index}));
 
   // I4 = (X - E[X]) * I3
@@ -554,15 +563,9 @@ Status BatchNormExpanderVisitor::HandleBatchNormGrad(
       add_binary(activation_shape, HloOpcode::kMultiply, scale_broadcasted,
                  rsqrt_var_add_epsilon_broadcasted);
 
-  scale_times_rsqrt_var_add_epsilon = add(
-      Mean(elements_per_feature_int64, scale_times_rsqrt_var_add_epsilon, add));
+  scale_times_rsqrt_var_add_epsilon =
+      add(Mean(elements_per_feature, scale_times_rsqrt_var_add_epsilon, add));
 
-  auto elements_per_feature_literal =
-      LiteralUtil::CreateR0<float>(elements_per_feature_int64);
-  TF_ASSIGN_OR_RETURN(elements_per_feature_literal,
-                      elements_per_feature_literal->Convert(ptype));
-  auto elements_per_feature = add(
-      HloInstruction::CreateConstant(std::move(elements_per_feature_literal)));
   auto i1 = add_binary(activation_shape, HloOpcode::kMultiply, grad_output,
                        add(HloInstruction::CreateBroadcast(
                            activation_shape, elements_per_feature, {})));

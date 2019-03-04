@@ -1,0 +1,203 @@
+path: "tensorflow.data.experimental"
+tf_module {
+  member {
+    name: "AUTOTUNE"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "CheckpointInputPipelineHook"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "CsvDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "DatasetStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "INFINITE_CARDINALITY"
+    mtype: "<type \'int\'>"
+  }
+  member {
+    name: "NestedStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OptimizationOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Optional"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "OptionalStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "RandomDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Reducer"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SparseTensorStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "SqlDataset"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StatsAggregator"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "StatsOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "Structure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TFRecordWriter"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "TensorStructure"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "ThreadingOptions"
+    mtype: "<type \'type\'>"
+  }
+  member {
+    name: "UNKNOWN_CARDINALITY"
+    mtype: "<type \'int\'>"
+  }
+  member_method {
+    name: "Counter"
+    argspec: "args=[\'start\', \'step\', \'dtype\'], varargs=None, keywords=None, defaults=[\'0\', \'1\', \"<dtype: \'int64\'>\"], "
+  }
+  member_method {
+    name: "bucket_by_sequence_length"
+    argspec: "args=[\'element_length_func\', \'bucket_boundaries\', \'bucket_batch_sizes\', \'padded_shapes\', \'padding_values\', \'pad_to_bucket_boundary\', \'no_padding\', \'drop_remainder\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "bytes_produced_stats"
+    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "cardinality"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "choose_from_datasets"
+    argspec: "args=[\'datasets\', \'choice_dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "copy_to_device"
+    argspec: "args=[\'target_device\', \'source_device\'], varargs=None, keywords=None, defaults=[\'/cpu:0\'], "
+  }
+  member_method {
+    name: "dense_to_sparse_batch"
+    argspec: "args=[\'batch_size\', \'row_shape\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "enumerate_dataset"
+    argspec: "args=[\'start\'], varargs=None, keywords=None, defaults=[\'0\'], "
+  }
+  member_method {
+    name: "filter_for_shard"
+    argspec: "args=[\'num_shards\', \'shard_index\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_next_as_optional"
+    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "get_single_element"
+    argspec: "args=[\'dataset\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "group_by_reducer"
+    argspec: "args=[\'key_func\', \'reducer\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "group_by_window"
+    argspec: "args=[\'key_func\', \'reduce_func\', \'window_size\', \'window_size_func\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "ignore_errors"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "latency_stats"
+    argspec: "args=[\'tag\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "make_batched_features_dataset"
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'features\', \'reader\', \'label_key\', \'reader_args\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'reader_num_threads\', \'parser_num_threads\', \'sloppy_ordering\', \'drop_final_batch\'], varargs=None, keywords=None, defaults=[\"<class \'tensorflow.python.data.ops.readers.TFRecordDatasetV1\'>\", \'None\', \'None\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'2\', \'False\', \'False\'], "
+  }
+  member_method {
+    name: "make_csv_dataset"
+    argspec: "args=[\'file_pattern\', \'batch_size\', \'column_names\', \'column_defaults\', \'label_name\', \'select_columns\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'header\', \'num_epochs\', \'shuffle\', \'shuffle_buffer_size\', \'shuffle_seed\', \'prefetch_buffer_size\', \'num_parallel_reads\', \'sloppy\', \'num_rows_for_inference\', \'compression_type\', \'ignore_errors\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\', \'None\', \',\', \'True\', \'\', \'True\', \'None\', \'True\', \'10000\', \'None\', \'-1\', \'1\', \'False\', \'100\', \'None\', \'False\'], "
+  }
+  member_method {
+    name: "make_saveable_from_iterator"
+    argspec: "args=[\'iterator\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "map_and_batch"
+    argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "map_and_batch_with_legacy_function"
+    argspec: "args=[\'map_func\', \'batch_size\', \'num_parallel_batches\', \'drop_remainder\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'None\', \'False\', \'None\'], "
+  }
+  member_method {
+    name: "parallel_interleave"
+    argspec: "args=[\'map_func\', \'cycle_length\', \'block_length\', \'sloppy\', \'buffer_output_elements\', \'prefetch_input_elements\'], varargs=None, keywords=None, defaults=[\'1\', \'False\', \'None\', \'None\'], "
+  }
+  member_method {
+    name: "parse_example_dataset"
+    argspec: "args=[\'features\', \'num_parallel_calls\'], varargs=None, keywords=None, defaults=[\'1\'], "
+  }
+  member_method {
+    name: "prefetch_to_device"
+    argspec: "args=[\'device\', \'buffer_size\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "rejection_resample"
+    argspec: "args=[\'class_func\', \'target_dist\', \'initial_dist\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "sample_from_datasets"
+    argspec: "args=[\'datasets\', \'weights\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "scan"
+    argspec: "args=[\'initial_state\', \'scan_func\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "shuffle_and_repeat"
+    argspec: "args=[\'buffer_size\', \'count\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
+  }
+  member_method {
+    name: "take_while"
+    argspec: "args=[\'predicate\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unbatch"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
+    name: "unique"
+    argspec: "args=[], varargs=None, keywords=None, defaults=None"
+  }
+}

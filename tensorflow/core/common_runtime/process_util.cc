@@ -28,19 +28,29 @@ limitations under the License.
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/tracing.h"
 #include "tensorflow/core/platform/types.h"
+#include "tensorflow/core/util/util.h"
 
 namespace tensorflow {
 
 namespace {
 
+int32 DefaultNumInterOpThreads() {
+  // Use environment setting if specified (init once)
+  static int env_num_threads = NumInterOpThreadsFromEnvironment();
+  if (env_num_threads > 0) {
+    return env_num_threads;
+  }
+
+  // Default to using the number of cores available in the process.
+  return port::NumSchedulableCPUs();
+}
+
 static thread::ThreadPool* InitComputePool(const SessionOptions& options) {
   int32 inter_op_parallelism_threads =
       options.config.inter_op_parallelism_threads();
   if (inter_op_parallelism_threads == 0) {
-    // Default to using the number of cores available in the process.
-    inter_op_parallelism_threads = port::NumSchedulableCPUs();
+    inter_op_parallelism_threads = DefaultNumInterOpThreads();
   }
-
   return new thread::ThreadPool(Env::Default(), "Compute",
                                 inter_op_parallelism_threads);
 }
@@ -52,28 +62,41 @@ thread::ThreadPool* ComputePool(const SessionOptions& options) {
   return compute_pool;
 }
 
+int32 NumInterOpThreadsFromEnvironment() {
+  int32 num;
+  const char* val = std::getenv("TF_NUM_INTEROP_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+}
+
+int32 NumIntraOpThreadsFromEnvironment() {
+  int32 num;
+  const char* val = std::getenv("TF_NUM_INTRAOP_THREADS");
+  return (val && strings::safe_strto32(val, &num)) ? num : 0;
+}
+
 int32 NumInterOpThreadsFromSessionOptions(const SessionOptions& options) {
   const int32 inter_op = options.config.inter_op_parallelism_threads();
   if (inter_op != 0) return inter_op;
 #ifdef INTEL_MKL
-  // MKL library executes ops in parallel using OMP threads
-  // Set inter_op conservatively to avoid thread oversubscription that could
-  // lead to severe perf degradations and OMP resource exhaustion
-  int mkl_intra_op = 1;
+  if (!DisableMKL()) {
+    // MKL library executes ops in parallel using OMP threads
+    // Set inter_op conservatively to avoid thread oversubscription that could
+    // lead to severe perf degradations and OMP resource exhaustion
+    int mkl_intra_op = 1;
 #ifdef _OPENMP
-  mkl_intra_op = omp_get_max_threads();
+    mkl_intra_op = omp_get_max_threads();
 #endif  // _OPENMP
-  CHECK_GE(mkl_intra_op, 1);
-  const int32 mkl_inter_op = std::max(
-      (port::NumSchedulableCPUs() + mkl_intra_op - 1) / mkl_intra_op, 2);
-  VLOG(0) << "Creating new thread pool with default inter op setting: "
-          << mkl_inter_op
-          << ". Tune using inter_op_parallelism_threads for best performance.";
-  return mkl_inter_op;
-#else
-  // Default to using the number of cores available in the process.
-  return port::NumSchedulableCPUs();
+    DCHECK_GE(mkl_intra_op, 1);
+    const int32 mkl_inter_op = std::max(
+        (DefaultNumInterOpThreads() + mkl_intra_op - 1) / mkl_intra_op, 2);
+    VLOG(0)
+        << "Creating new thread pool with default inter op setting: "
+        << mkl_inter_op
+        << ". Tune using inter_op_parallelism_threads for best performance.";
+    return mkl_inter_op;
+  }
 #endif  // INTEL_MKL
+  return DefaultNumInterOpThreads();
 }
 
 thread::ThreadPool* NewThreadPoolFromSessionOptions(

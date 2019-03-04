@@ -15,10 +15,10 @@ limitations under the License.
 
 // See docs in ../ops/data_flow_ops.cc.
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 
 #ifdef GOOGLE_CUDA
@@ -247,8 +247,8 @@ class DynamicStitchOpImplCPU : public DynamicStitchOpImplBase<T> {
             data.shaped<T, 2>({indices_vec.dimension(0), slice_size});
 
         if (DataTypeCanUseMemcpy(DataTypeToEnum<T>::v())) {
-          T* merged_base = &merged_flat(0, 0);
-          const T* data_base = &data_flat(0, 0);
+          T* merged_base = merged_flat.data();
+          const T* data_base = data_flat.data();
           for (int i = 0; i < indices_vec.size(); i++) {
             int32 index = internal::SubtleMustCopy(indices_vec(i));
             OP_REQUIRES(
@@ -327,6 +327,7 @@ struct ParallelDynamicStitchOpCPU : DynamicStitchOpImplCPU<T, true> {
 
 TF_CALL_POD_STRING_TYPES(REGISTER_DYNAMIC_STITCH);
 TF_CALL_variant(REGISTER_DYNAMIC_STITCH);
+TF_CALL_QUANTIZED_TYPES(REGISTER_DYNAMIC_STITCH);
 #undef REGISTER_DYNAMIC_STITCH
 
 #if GOOGLE_CUDA

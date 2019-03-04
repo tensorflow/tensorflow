@@ -16,9 +16,9 @@ limitations under the License.
 #ifndef TENSORFLOW_COMPILER_XLA_SERVICE_GPU_STREAM_ASSIGNMENT_H_
 #define TENSORFLOW_COMPILER_XLA_SERVICE_GPU_STREAM_ASSIGNMENT_H_
 
+#include "absl/container/flat_hash_map.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_module.h"
-#include "tensorflow/core/lib/gtl/flatmap.h"
 
 namespace xla {
 namespace gpu {
@@ -34,7 +34,7 @@ class StreamAssignment {
 
  private:
   int stream_count_ = 1;  // At least the main stream.
-  tensorflow::gtl::FlatMap<const HloInstruction*, int> hlo_to_stream_number_;
+  absl::flat_hash_map<const HloInstruction*, int> hlo_to_stream_number_;
 };
 
 // Assigns GPU streams to instructions in `module`.

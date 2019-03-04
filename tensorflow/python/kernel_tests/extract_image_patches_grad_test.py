@@ -23,6 +23,7 @@ import numpy as np
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import random_seed as random_seed_lib
+from tensorflow.python.framework import test_util
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import gradient_checker
 from tensorflow.python.ops import gradients_impl
@@ -78,12 +79,13 @@ class ExtractImagePatchesGradTest(test.TestCase):
       },
   ]
 
+  @test_util.run_deprecated_v1
   def testGradient(self):
     # Set graph seed for determinism.
     random_seed = 42
     random_seed_lib.set_random_seed(random_seed)
 
-    with self.test_session():
+    with self.cached_session():
       for test_case in self._TEST_CASES:
         np.random.seed(random_seed)
         in_shape = test_case['in_shape']
@@ -102,6 +104,7 @@ class ExtractImagePatchesGradTest(test.TestCase):
           print('extract_image_patches gradient err: %.4e' % err)
           self.assertLess(err, 1e-4)
 
+  @test_util.run_deprecated_v1
   def testConstructGradientWithLargeImages(self):
     batch_size = 4
     height = 1024

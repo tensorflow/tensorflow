@@ -28,6 +28,13 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
                  *rhs = batch_dot->mutable_operand(1);
   const Shape& lhs_shape = lhs->shape();
 
+  // A dot with no contracting dims will be rewritten into a multiply by
+  // AlgebraicSimplifier. Dots with multiple contracting dims are currently
+  // unsupported.
+  if (dim_numbers.lhs_contracting_dimensions_size() != 1) {
+    return false;
+  }
+
   std::vector<int64> degenerate_dims;
   for (int64 batch_dim : dim_numbers.lhs_batch_dimensions()) {
     if (lhs_shape.dimensions(batch_dim) == 1) {
@@ -63,8 +70,8 @@ BatchDotSimplification::ElideDegenerateBatchDimensionFromBatchDot(
       new_dim_numbers.rhs_contracting_dimensions(0) - degenerate_dims.size());
 
   TF_ASSIGN_OR_RETURN(HloInstruction * new_dot,
-                      MakeDotHlo(new_lhs, new_rhs, new_dim_numbers));
-  new_dot->set_precision_config(batch_dot->precision_config());
+                      MakeDotHlo(new_lhs, new_rhs, new_dim_numbers,
+                                 batch_dot->precision_config()));
 
   TF_ASSIGN_OR_RETURN(HloInstruction * new_dot_reshaped,
                       MakeReshapeHlo(batch_dot->shape(), new_dot));

@@ -24,6 +24,7 @@ import random
 import threading
 import weakref
 
+from absl.testing import parameterized
 import numpy as np
 
 from google.protobuf import text_format
@@ -46,8 +47,9 @@ from tensorflow.python.ops import variables
 from tensorflow.python.platform import googletest
 
 
-class TestUtilTest(test_util.TensorFlowTestCase):
+class TestUtilTest(test_util.TensorFlowTestCase, parameterized.TestCase):
 
+  @test_util.run_deprecated_v1
   def test_assert_ops_in_graph(self):
     with self.test_session():
       constant_op.constant(["hello", "taffy"], name="hello")
@@ -59,6 +61,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertRaises(ValueError, test_util.assert_ops_in_graph,
                       {"hello": "Variable"}, ops.get_default_graph())
 
+  @test_util.run_deprecated_v1
   def test_session_functions(self):
     with self.test_session() as sess:
       sess_ref = weakref.ref(sess)
@@ -69,9 +72,6 @@ class TestUtilTest(test_util.TensorFlowTestCase):
         # different values.
         with self.assertRaises(ValueError):
           with self.cached_session(graph=ops.Graph()) as sess2:
-            pass
-        with self.assertRaises(ValueError):
-          with self.cached_session(use_gpu=True) as sess2:
             pass
         with self.assertRaises(ValueError):
           with self.cached_session(force_gpu=True) as sess2:
@@ -271,6 +271,11 @@ class TestUtilTest(test_util.TensorFlowTestCase):
       self.assertAllClose(7, 7 + 1e-5)
 
   @test_util.run_in_graph_and_eager_modes
+  def testAllCloseList(self):
+    with self.assertRaisesRegexp(AssertionError, r"not close dif"):
+      self.assertAllClose([0], [1])
+
+  @test_util.run_in_graph_and_eager_modes
   def testAllCloseDictToNonDict(self):
     with self.assertRaisesRegexp(ValueError, r"Can't compare dict to non-dict"):
       self.assertAllClose(1, {"a": 1})
@@ -359,6 +364,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     b = [1, 2]
     self.assertArrayNear(a, b, 0.001)
 
+  @test_util.skip_if(True)  # b/117665998
   def testForceGPU(self):
     with self.assertRaises(errors.InvalidArgumentError):
       with self.test_session(force_gpu=True):
@@ -455,6 +461,9 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertAllEqual([120] * 3, k)
     self.assertAllEqual([20] * 3, j)
 
+    with self.assertRaisesRegexp(AssertionError, r"not equal lhs"):
+      self.assertAllEqual([0] * 3, k)
+
   @test_util.run_in_graph_and_eager_modes
   def testAssertNotAllClose(self):
     # Test with arrays
@@ -544,6 +553,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaises(AssertionError):
       self.assertAllLessEqual(x, 95.0)
 
+  @test_util.run_deprecated_v1
   def testAssertAllInRangeWithNonNumericValuesFails(self):
     s1 = constant_op.constant("Hello, ", name="s1")
     c = constant_op.constant([1 + 2j, -3 + 5j], name="c")
@@ -607,6 +617,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     with self.assertRaises(AssertionError):
       self.assertAllInSet(x, (42,))
 
+  @test_util.run_deprecated_v1
   def testRandomSeed(self):
     # Call setUp again for WithCApi case (since it makes a new defeault graph
     # after setup).
@@ -674,7 +685,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     self.assertIsNone(test_util.get_node_def_from_graph("bar", graph_def))
 
   def test_run_in_eager_and_graph_modes_test_class(self):
-    msg = "`run_test_in_graph_and_eager_modes` only supports test methods.*"
+    msg = "`run_in_graph_and_eager_modes` only supports test methods.*"
     with self.assertRaisesRegexp(ValueError, msg):
       @test_util.run_in_graph_and_eager_modes()
       class Foo(object):
@@ -699,6 +710,7 @@ class TestUtilTest(test_util.TensorFlowTestCase):
     test_util.run_in_graph_and_eager_modes(_test)(self)
     self.assertEqual(modes, ["graph"])
 
+  @test_util.run_deprecated_v1
   def test_run_in_graph_and_eager_modes_setup_in_same_mode(self):
     modes = []
     mode_name = lambda: "eager" if context.executing_eagerly() else "graph"
@@ -721,6 +733,12 @@ class TestUtilTest(test_util.TensorFlowTestCase):
 
     self.assertEqual(modes[0:2], ["setup_graph", "run_graph"])
     self.assertEqual(modes[2:], ["setup_eager", "run_eager"])
+
+  @parameterized.named_parameters(dict(testcase_name="argument",
+                                       arg=True))
+  @test_util.run_in_graph_and_eager_modes
+  def test_run_in_graph_and_eager_works_with_parameterized_keyword(self, arg):
+    self.assertEqual(arg, True)
 
 
 # Its own test case to reproduce variable sharing issues which only pop up when

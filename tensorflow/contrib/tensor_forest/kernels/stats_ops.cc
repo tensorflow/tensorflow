@@ -246,7 +246,8 @@ class ProcessInputOp : public OpKernel {
     const Tensor& input_weights = context->input(7);
     const Tensor& leaf_ids_tensor = context->input(8);
 
-    std::unique_ptr<TensorDataSet> data_set(new TensorDataSet(input_spec_, 0));
+    std::unique_ptr<TensorDataSet> data_set(
+        new TensorDataSet(input_spec_, random_seed_));
     data_set->set_input_tensors(input_data, sparse_input_indices,
                                 sparse_input_values, sparse_input_shape);
 
@@ -306,7 +307,7 @@ class ProcessInputOp : public OpKernel {
     // from a digits run on local desktop.  Heuristics might be necessary
     // if it really matters that much.
     const int64 costPerUpdate = 1000;
-    auto update = [this, &target, &leaf_ids_tensor, &num_targets, &data_set,
+    auto update = [&target, &leaf_ids_tensor, &num_targets, &data_set,
                    fertile_stats_resource, &locks, &set_lock, &ready_to_split,
                    num_data](int64 start, int64 end) {
       CHECK(start <= end);
@@ -316,7 +317,7 @@ class ProcessInputOp : public OpKernel {
                   static_cast<int32>(end), &ready_to_split);
     };
 
-    auto update_collated = [this, &target, &num_targets, fertile_stats_resource,
+    auto update_collated = [&target, &num_targets, fertile_stats_resource,
                             tree_resource, &leaf_examples, &set_lock,
                             &ready_to_split, &data_set,
                             num_leaves](int64 start, int64 end) {

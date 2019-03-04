@@ -19,8 +19,8 @@ limitations under the License.
 #include <limits>
 #include <vector>
 #include "tensorflow/core/common_runtime/device.h"
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/common_shape_fns.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 
 namespace tensorflow {
 
@@ -34,35 +34,40 @@ using mkldnn::prop_kind;
 
 template <typename T>
 void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
-  if (fwdParams.alg_kind != pooling_max && fwdParams.alg_kind != pooling_avg &&
-      fwdParams.alg_kind != pooling_avg_include_padding &&
-      fwdParams.alg_kind != pooling_avg_exclude_padding) {
-    assert("Pooling algorithm kind is not supported\n");
-  }
+  DCHECK(fwdParams.alg_kind == pooling_max ||
+         fwdParams.alg_kind == pooling_avg ||
+         fwdParams.alg_kind == pooling_avg_include_padding ||
+         fwdParams.alg_kind == pooling_avg_exclude_padding)
+      << "Pooling algorithm kind is not supported";
 
   context_.alg_kind = fwdParams.alg_kind;
+  context_.prop_kind = fwdParams.prop_kind;
+
   // create memory desc
   // FIXME: Pooling doesn't expose to get the src_primitive_desc,
   //        so src format is currently hard-coded.
   //        A utility function is used to do this,
   //        which may be broken with future CPU architectures
   bool is_2d = (fwdParams.src_dims.size() == 4);
-  context_.src_md.reset(
-      new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
-                       get_desired_format(fwdParams.src_dims[1], is_2d)));
+  if (std::is_same<T, qint8>::value || std::is_same<T, quint8>::value)
+    context_.src_fmt = is_2d ? memory::format::nhwc : memory::format::ndhwc;
+  else
+    context_.src_fmt = get_desired_format(fwdParams.src_dims[1], is_2d);
+
+  context_.src_md.reset(new memory::desc({fwdParams.src_dims}, MklDnnType<T>(),
+                                         context_.src_fmt));
   context_.dst_md.reset(new memory::desc({fwdParams.dst_dims}, MklDnnType<T>(),
                                          memory::format::any));
 
   // create a pooling descriptor
   context_.fwd_desc.reset(new pooling_forward::desc(
-      prop_kind::forward_training, fwdParams.alg_kind, *context_.src_md,
+      fwdParams.prop_kind, fwdParams.alg_kind, *context_.src_md,
       *context_.dst_md, fwdParams.strides, fwdParams.filter_dims,
       fwdParams.padding_left, fwdParams.padding_right, padding_kind::zero));
   context_.fwd_pd.reset(
       new pooling_forward::primitive_desc(*context_.fwd_desc, cpu_engine_));
 
   // store expected primitive format
-  context_.src_fmt = get_desired_format(fwdParams.src_dims[1], is_2d);
   context_.dst_fmt = static_cast<mkldnn::memory::format>(
       context_.fwd_pd.get()->dst_primitive_desc().desc().data.format);
 
@@ -74,7 +79,8 @@ void MklPoolingFwdPrimitive<T>::Setup(const MklPoolingParams& fwdParams) {
       new memory(context_.fwd_pd.get()->dst_primitive_desc(), DummyData));
 
   // for max pooling, need to return workspace(ws) for backward computing
-  if (fwdParams.alg_kind == pooling_max) {
+  if (fwdParams.alg_kind == pooling_max &&
+      fwdParams.prop_kind == prop_kind::forward_training) {
     auto ws_pd = context_.fwd_pd.get()->workspace_primitive_desc().desc().data;
     // store workspace's dims and format to create workspace tensor
     context_.ws_fmt = static_cast<mkldnn::memory::format>(ws_pd.format);
@@ -101,8 +107,10 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   context_.src_mem->set_data_handle(
       static_cast<void*>(const_cast<T*>(src_data)));
   context_.dst_mem->set_data_handle(static_cast<void*>(dst_data));
-  if (context_.alg_kind == pooling_max) {  // max pooling must have ws
-    assert(ws_data != nullptr);
+  if (context_.alg_kind == pooling_max &&
+      context_.prop_kind ==
+          prop_kind::forward_training) {  // max pooling must have ws
+    DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(ws_data);
   }
   context_.fwd_stream->submit(context_.fwd_primitives);
@@ -110,21 +118,25 @@ void MklPoolingFwdPrimitive<T>::Execute(const T* src_data, T* dst_data,
   // set back data handle
   context_.src_mem->set_data_handle(DummyData);
   context_.dst_mem->set_data_handle(DummyData);
-  if (context_.alg_kind == pooling_max) {  // max pooling must have ws
-    assert(ws_data != nullptr);
+  if (context_.alg_kind == pooling_max &&
+      context_.prop_kind ==
+          prop_kind::forward_training) {  // max pooling must have ws
+    DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(DummyData);
   }
 }
 
 template class MklPoolingFwdPrimitive<float>;
+template class MklPoolingFwdPrimitive<quint8>;
+template class MklPoolingFwdPrimitive<qint8>;
 
 template <typename T>
 void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
-  if (bwdParams.alg_kind != pooling_max && bwdParams.alg_kind != pooling_avg &&
-      bwdParams.alg_kind != pooling_avg_include_padding &&
-      bwdParams.alg_kind != pooling_avg_exclude_padding) {
-    assert("Pooling algorithm kind is not supported\n");
-  }
+  DCHECK(bwdParams.alg_kind == pooling_max ||
+         bwdParams.alg_kind == pooling_avg ||
+         bwdParams.alg_kind == pooling_avg_include_padding ||
+         bwdParams.alg_kind == pooling_avg_exclude_padding)
+      << "Pooling algorithm kind is not supported";
   context_.alg_kind = bwdParams.alg_kind;
 
   // check whether it is 2d or 3d
@@ -143,7 +155,7 @@ void MklPoolingBwdPrimitive<T>::Setup(const MklPoolingParams& bwdParams) {
   // create a forward primitive,
   // which will be used as a hint for creating backward primitive
   context_.fwd_desc.reset(new pooling_forward::desc(
-      prop_kind::forward_training, bwdParams.alg_kind, *context_.diff_src_md,
+      bwdParams.prop_kind, bwdParams.alg_kind, *context_.diff_src_md,
       *context_.diff_dst_md, bwdParams.strides, bwdParams.filter_dims,
       bwdParams.padding_left, bwdParams.padding_right, padding_kind::zero));
   context_.fwd_pd.reset(
@@ -190,7 +202,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
       static_cast<void*>(const_cast<T*>(diff_dst_data)));
   context_.diff_src_mem->set_data_handle(static_cast<void*>(diff_src_data));
   if (context_.alg_kind == pooling_max) {
-    assert(ws_data != nullptr);
+    DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(const_cast<void*>(ws_data));
   }
 
@@ -199,7 +211,7 @@ void MklPoolingBwdPrimitive<T>::Execute(const T* diff_dst_data,
   context_.diff_dst_mem->set_data_handle(DummyData);
   context_.diff_src_mem->set_data_handle(DummyData);
   if (context_.alg_kind == pooling_max) {
-    assert(ws_data != nullptr);
+    DCHECK(ws_data != nullptr);
     context_.ws_mem->set_data_handle(DummyData);
   }
 }

@@ -22,10 +22,10 @@ limitations under the License.
 
 #include <atomic>
 
+#include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/bounds_check.h"
 #include "tensorflow/core/kernels/gather_nd_op.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/mem.h"
@@ -114,7 +114,7 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
     generator::GatherNdSliceGenerator<T, Index, IXDIM> gather_nd_generator(
         slice_size, Tindices, Tparams, Tout, &error_loc);
 
-#ifdef INTEL_MKL
+#if defined(INTEL_MKL) && defined(ENABLE_MKL)
 // Eigen implementation below is not highly performant. gather_nd_generator
 // does not seem to be called in parallel, leading to very poor performance.
 // Additionally, since it uses scalar (Tscratch) to invoke 'generate', it
@@ -123,15 +123,15 @@ struct GatherNdSlice<CPUDevice, T, Index, IXDIM> {
 // is considerably more efficient.
 #pragma omp parallel for
     for (Eigen::DenseIndex i = 0; i < batch_size; i++) {
-      const Eigen::array<Eigen::DenseIndex, 1> loc = i;
+      const Eigen::array<Eigen::DenseIndex, 1> loc{i};
       gather_nd_generator(loc);
     }
-#else
+#else   // INTEL_MKL && ENABLE_MKL
     Tscratch.device(d) = Tscratch.reshape(reshape_dims)
                              .broadcast(broadcast_dims)
                              .generate(gather_nd_generator)
                              .sum();
-#endif
+#endif  // INTEL_MKL && ENABLE_MKL
 
     // error_loc() returns -1 if there's no out-of-bounds index,
     // otherwise it returns the location of an OOB index in Tindices.

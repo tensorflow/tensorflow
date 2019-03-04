@@ -166,6 +166,26 @@ TEST_F(SliceTest, SliceR4ThreeDimsMiddleMinor) {
   ComputeAndCompareR4(&builder, *expected, {}, ErrorSpec(0.000001));
 }
 
+TEST_F(SliceTest, SliceOfReshape) {
+  Array2D<int> values(2 * 3 * 24, 7);
+  values.FillIota(1);
+  XlaBuilder builder(TestName());
+  auto original = ConstantR2FromArray2D(&builder, values);
+  auto reshape = Reshape(original, {24, 3, 2, 7});
+  Slice(reshape, {0, 0, 0, 0}, {11, 3, 2, 7}, {1, 1, 1, 1});
+  ComputeAndCompare(&builder, {});
+}
+
+TEST_F(SliceTest, SliceOfCollapsingReshape) {
+  Array4D<int> values(2, 3, 5, 7);
+  values.FillIota(1);
+  XlaBuilder builder(TestName());
+  auto original = ConstantR4FromArray4D(&builder, values);
+  auto reshape = Reshape(original, {2 * 3 * 5, 7});
+  Slice(reshape, {0, 0}, {4, 7}, {1, 1});
+  ComputeAndCompare(&builder, {});
+}
+
 XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   Array4D<float> values(2, 4, 6, 8);
   values.FillRandom(3.14f);
@@ -176,8 +196,8 @@ XLA_TEST_F(SliceTest, StridedSliceR4WithOutputLayout) {
   XlaBuilder builder(TestName());
   auto original = ConstantR4FromArray4D(&builder, values);
   Slice(original, {0, 0, 0, 0}, {2, 4, 6, 8}, {1, 1, 2, 1});
-  ComputeAndCompareLiteral(&builder, *expected_literal, {}, ErrorSpec(0.000001),
-                           &expected_literal->shape());
+  ComputeAndCompareLiteral(&builder, expected_literal, {}, ErrorSpec(0.000001),
+                           &expected_literal.shape());
 }
 
 struct R1Spec {
@@ -201,7 +221,7 @@ class SliceR1Test : public ClientLibraryTestBase,
     auto literal = LiteralUtil::CreateR1<NativeT>(input);
 
     XlaBuilder builder(TestName());
-    auto original = Parameter(&builder, 0, literal->shape(), "p0");
+    auto original = Parameter(&builder, 0, literal.shape(), "p0");
     Slice(original, {spec.slice_start}, {spec.slice_limit},
           {spec.slice_stride});
 
@@ -213,7 +233,7 @@ class SliceR1Test : public ClientLibraryTestBase,
     }
 
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(*literal));
+                            client_->TransferToServer(literal));
     ComputeAndCompareR1<NativeT>(&builder, expected, {arg.get()});
   }
 };
@@ -252,7 +272,6 @@ XLA_TEST_P(SliceR1LargeTest, DoIt_U64) { Run<uint64>(GetParam()); }
 XLA_TEST_P(SliceR1LargeTest, DoIt_S64) { Run<int64>(GetParam()); }
 
 XLA_TEST_P(SliceR1Test, DoIt_PRED) { Run<bool>(GetParam()); }
-
 
 // Tests for R1 slice ops.
 // The format for each testcase is {input size, start, limit, stride}.
@@ -376,11 +395,11 @@ XLA_TEST_P(SliceR2Test, DoIt) {
       input, LayoutUtil::MakeLayout(spec.layout));
 
   XlaBuilder builder(TestName());
-  auto a = Parameter(&builder, 0, literal->shape(), "p0");
+  auto a = Parameter(&builder, 0, literal.shape(), "p0");
   Slice(a, spec.slice_starts, spec.slice_limits, spec.slice_strides);
 
   TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                          client_->TransferToServer(*literal));
+                          client_->TransferToServer(literal));
   std::unique_ptr<Array2D<int32>> expected = ReferenceUtil::Slice2D(
       input, spec.slice_starts, spec.slice_limits, spec.slice_strides);
   ComputeAndCompareR2<int32>(&builder, *expected, {arg.get()});
@@ -412,6 +431,7 @@ INSTANTIATE_TEST_CASE_P(
         R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{7, 11}}, {{0, 1}}},  //
         R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{11, 7}}, {{1, 0}}},  //
         R2Spec{511, 513, {{129, 300}}, {{400, 500}}, {{11, 7}}, {{0, 1}}},  //
+        R2Spec{8672, 512, {{8, 0}}, {{8672, 512}}, {{542, 1}}, {{1, 0}}},   //
         R2Spec{
             511, 513, {{129, 300}}, {{400, 500}}, {{101, 129}}, {{1, 0}}},  //
         R2Spec{
@@ -467,9 +487,9 @@ class SliceR4Test : public ClientLibraryTestBase,
     XlaBuilder builder(TestName());
     auto literal = LiteralUtil::CreateR4FromArray4DWithLayout(
         values, LayoutUtil::MakeLayout(spec.input_layout));
-    auto parameter = Parameter(&builder, 0, literal->shape(), "p0");
+    auto parameter = Parameter(&builder, 0, literal.shape(), "p0");
     TF_ASSERT_OK_AND_ASSIGN(std::unique_ptr<GlobalData> arg,
-                            client_->TransferToServer(*literal));
+                            client_->TransferToServer(literal));
     Slice(parameter, spec.slice_starts, spec.slice_limits, spec.slice_strides);
     ComputeAndCompareR4(&builder, *expected, {arg.get()}, ErrorSpec(0.000001));
   }

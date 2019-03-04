@@ -32,7 +32,7 @@ namespace gpu {
 // 2) The result of merging the fusion instruction into its users would not
 //    increase bytes transferred.
 //
-class FusionMerger : public HloPassInterface {
+class FusionMerger : public HloModulePass {
  public:
   absl::string_view name() const override { return "fusion merger"; }
 

@@ -25,7 +25,7 @@ namespace xla {
 // and identical instructions with the same operands are commoned. The pass
 // iterates over the instructions in topological order which enables the pass to
 // find arbitrarily large common expressions.
-class HloCSE : public HloPassInterface {
+class HloCSE : public HloModulePass {
  public:
   // If is_layout_sensitive is true, then the simplifier preserves layout during
   // transformation. Otherwise, layout is ignored.

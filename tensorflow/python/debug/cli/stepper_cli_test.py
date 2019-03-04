@@ -129,11 +129,12 @@ def _parse_updated(lines):
   return updated
 
 
+@test_util.run_v1_only("b/120545219")
 class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
 
   def setUp(self):
-    self.a = variables.Variable(10.0, name="a")
-    self.b = variables.Variable(20.0, name="b")
+    self.a = variables.VariableV1(10.0, name="a")
+    self.b = variables.VariableV1(20.0, name="b")
 
     self.c = math_ops.add(self.a, self.b, name="c")  # Should be 30.0.
     self.d = math_ops.subtract(self.a, self.c, name="d")  # Should be -20.0.
@@ -234,6 +235,9 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
       ], output.lines)
 
   def testContToValidNodeShouldUpdateStatus(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
+
     with stepper.NodeStepper(self.sess, self.e) as node_stepper:
       cli = stepper_cli.NodeStepperCLI(node_stepper)
 
@@ -274,6 +278,9 @@ class NodeStepperSimpleGraphTest(test_util.TensorFlowTestCase):
       self.assertIn(stepper_cli.NodeStepperCLI.STATE_CONT, stat_labels[index_d])
 
   def testSteppingOneStepAtATimeShouldUpdateStatus(self):
+    if test_util.is_gpu_available():
+      self.skipTest("b/123446705 this causes a segfault on GPU")
+
     with stepper.NodeStepper(self.sess, self.e) as node_stepper:
       cli = stepper_cli.NodeStepperCLI(node_stepper)
 

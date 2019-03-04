@@ -386,7 +386,8 @@ struct LaunchConvOp<GPUDevice, T> {
     // filter: [x, y, z, in, out]
     // t_filter: [out, in, x, y, z]
     functor::TransformFilter<GPUDevice, T, int, 5>()(
-        ctx->eigen_device<GPUDevice>(), To32Bit(filter.tensor<T, 5>()),
+        ctx->eigen_device<GPUDevice>(), FORMAT_OIHW,
+        To32Bit(filter.tensor<T, 5>()),
         To32Bit(transformed_filter.tensor<T, 5>()));
 
     Tensor transformed_output;
@@ -406,7 +407,7 @@ struct LaunchConvOp<GPUDevice, T> {
         AsDeviceMemory(transformed_output.template flat<T>().data(),
                        transformed_output.template flat<T>().size());
 
-    static int64 ConvolveScratchSize = GetCudnnWorkspaceLimit(
+    static int64 ConvolveScratchSize = GetDnnWorkspaceLimit(
         "TF_CUDNN_WORKSPACE_LIMIT_IN_MB", 1LL << 32);  // 4GB by default
 
     int device_id = stream->parent()->device_ordinal();
@@ -434,16 +435,22 @@ struct LaunchConvOp<GPUDevice, T> {
     if (cudnn_use_autotune && !AutoTuneConv3d::GetInstance()->Find(
                                   conv_parameters, &algorithm_config)) {
       std::vector<AlgorithmDesc> algorithms;
-      CHECK(stream->parent()->GetConvolveAlgorithms(
-          conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
-              stream->parent()),
-          &algorithms));
+      OP_REQUIRES(ctx,
+                  stream->parent()->GetConvolveAlgorithms(
+                      conv_parameters.ShouldIncludeWinogradNonfusedAlgo<T>(
+                          stream->parent()),
+                      &algorithms),
+                  errors::Unknown(
+                      "Failed to get convolution algorithm. This is probably "
+                      "because cuDNN failed to initialize, so try looking to "
+                      "see if a warning log message was printed above."));
+
       ProfileResult best_result;
       ProfileResult best_result_no_scratch;
       for (auto profile_algorithm : algorithms) {
         // TODO(zhengxq): profile each algorithm multiple times to better
         // accuracy.
-        CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+        DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
         ProfileResult profile_result;
         bool cudnn_launch_status =
             stream
@@ -479,7 +486,7 @@ struct LaunchConvOp<GPUDevice, T> {
       AutoTuneConv3d::GetInstance()->Insert(conv_parameters, algorithm_config);
     }
 
-    CudnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
+    DnnScratchAllocator scratch_allocator(ConvolveScratchSize, ctx);
     bool cudnn_launch_status =
         stream
             ->ThenConvolveWithAlgorithm(input_desc, input_ptr, filter_desc,
@@ -514,7 +521,8 @@ namespace functor {
 #define DECLARE_GPU_SPEC(T)                                           \
   template <>                                                         \
   void TransformFilter<GPUDevice, T, int, 5>::operator()(             \
-      const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
+      const GPUDevice& d, FilterTensorFormat dst_filter_format,       \
+      typename TTypes<T, 5, int>::ConstTensor in,                     \
       typename TTypes<T, 5, int>::Tensor out);                        \
   template <>                                                         \
   void ReverseTransformFilter<GPUDevice, T, 5>::operator()(           \
@@ -525,10 +533,19 @@ namespace functor {
       const GPUDevice& d, typename TTypes<T, 5, int>::ConstTensor in, \
       const std::array<int, 3>& padding_left,                         \
       const std::array<int, 3>& padding_right,                        \
-      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);
+      typename TTypes<T, 5, int>::Tensor out, TensorFormat format);   \
+  template <>                                                         \
+  void NHWCToNCHW<GPUDevice, T, 5>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      typename TTypes<T, 5>::Tensor out);                             \
+  template <>                                                         \
+  void NCHWToNHWC<GPUDevice, T, 5>::operator()(                       \
+      const GPUDevice& d, typename TTypes<T, 5>::ConstTensor in,      \
+      typename TTypes<T, 5>::Tensor out);
 
 DECLARE_GPU_SPEC(Eigen::half);
 DECLARE_GPU_SPEC(float);
+DECLARE_GPU_SPEC(double);
 #undef DECLARE_GPU_SPEC
 
 }  // namespace functor
@@ -540,6 +557,9 @@ REGISTER_KERNEL_BUILDER(
 REGISTER_KERNEL_BUILDER(
     Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<float>("T"),
     Conv3DOp<GPUDevice, float>);
+REGISTER_KERNEL_BUILDER(
+    Name("Conv3D").Device(DEVICE_GPU).TypeConstraint<double>("T"),
+    Conv3DOp<GPUDevice, double>);
 #endif  // GOOGLE_CUDA
 
 }  // namespace tensorflow

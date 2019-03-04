@@ -15,8 +15,10 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
 
+#include "absl/strings/ascii.h"
 #include "absl/strings/numbers.h"
 #include "absl/strings/str_cat.h"
+#include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/platform/types.h"
@@ -27,28 +29,38 @@ namespace {
 
 bool IsAllowed(char character) {
   auto c = static_cast<unsigned char>(character);
-  return (isalnum(c) != 0) || c == '_' || c == '.' || c == '-';
+  return (absl::ascii_isalnum(c) != 0) || c == '_' || c == '.' || c == '-';
 }
 
 }  // namespace
 
 NameUniquer::NameUniquer(const string& separator) {
-  CHECK(std::all_of(separator.begin(), separator.end(), IsAllowed))
+  CHECK(absl::c_all_of(separator, IsAllowed))
       << "separator should comprises allowed characters only";
   separator_ = separator;
 }
 
 /*static*/ string NameUniquer::GetSanitizedName(const string& name) {
+  if (name.empty()) {
+    return "";
+  }
+
   string result = name;
-  CHECK(!result.empty()) << "name should not be empty";
   char c = static_cast<unsigned char>(result[0]);
-  if (!isalpha(c) && c != '_') {
+  if (!absl::ascii_isalpha(c) && c != '_') {
     result[0] = '_';
   }
   for (int i = 1; i < result.length(); i++) {
     if (!IsAllowed(result[i])) {
       result[i] = '_';
     }
+  }
+
+  // HLO primitive type names (with the exception of 'tuple') are keywords in
+  // the HLO text representation and cannot be names, so append an underscore if
+  // the name is a primitive type.
+  if (primitive_util::IsPrimitiveTypeName(result) && result != "tuple") {
+    result += "_";
   }
   return result;
 }

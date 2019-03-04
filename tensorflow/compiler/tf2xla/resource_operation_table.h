@@ -19,7 +19,7 @@ limitations under the License.
 #include <string>
 #include <vector>
 
-#include "tensorflow/core/lib/core/stringpiece.h"
+#include "absl/strings/string_view.h"
 #include "tensorflow/core/platform/logging.h"
 
 // Exposes information about the resource operations supported by tf2xla in a
@@ -47,7 +47,7 @@ class XlaResourceOpInfo {
   XlaResourceOpKind kind() const { return op_kind_; }
   XlaResourceKind resource_kind() const { return resource_kind_; }
 
-  static StringPiece XlaResourceOpKindToString(XlaResourceOpKind op_kind);
+  static absl::string_view XlaResourceOpKindToString(XlaResourceOpKind op_kind);
 
  private:
   XlaResourceOpKind op_kind_;
@@ -57,13 +57,13 @@ class XlaResourceOpInfo {
 // Returns a XlaResourceOpInfo describing `op` if it is a resource operation
 // supported by tf2xla, otherwise returns null (i.e. if this returns null then
 // `op` is either not a resource operation or is unsupported by XLA).
-const XlaResourceOpInfo* GetResourceOpInfoForOp(StringPiece op);
+const XlaResourceOpInfo* GetResourceOpInfoForOp(absl::string_view op);
 
 namespace resource_op_table_internal {
 // NB! Implementation detail exposed for unit testing, do not use.
 //
 // Returns the set of resource operations known by this module.
-std::vector<StringPiece> GetKnownResourceOps();
+std::vector<absl::string_view> GetKnownResourceOps();
 }  // namespace resource_op_table_internal
 
 }  // namespace tensorflow

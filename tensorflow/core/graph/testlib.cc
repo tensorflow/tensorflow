@@ -123,6 +123,17 @@ Node* Assign(Graph* g, Node* var, Node* val) {
   return ret;
 }
 
+Node* Cumsum(Graph* g, Node* data, Node* axes, bool exclusive, bool reverse) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "Cumsum")
+                  .Input(data)
+                  .Input(axes)
+                  .Attr("exclusive", exclusive)
+                  .Attr("reverse", reverse)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
 Node* Reduce(Graph* g, const string& reduce, Node* data, Node* axes,
              bool keep_dims) {
   Node* ret;
@@ -481,6 +492,33 @@ Node* DiagPart(Graph* g, Node* in, DataType type) {
   TF_CHECK_OK(NodeBuilder(g->NewName("n"), "DiagPart")
                   .Input(in)
                   .Attr("T", type)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* CheckNumerics(Graph* g, Node* in, const string& message) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "CheckNumerics")
+                  .Input(in)
+                  .Attr("message", message)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Arg(Graph* g, int64 index, DataType type) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Arg")
+                  .Attr("T", type)
+                  .Attr("index", index)
+                  .Finalize(g, &ret));
+  return ret;
+}
+
+Node* Retval(Graph* g, int64 index, Node* in) {
+  Node* ret;
+  TF_CHECK_OK(NodeBuilder(g->NewName("n"), "_Retval")
+                  .Input(in)
+                  .Attr("index", index)
                   .Finalize(g, &ret));
   return ret;
 }

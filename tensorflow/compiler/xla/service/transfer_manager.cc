@@ -42,9 +42,9 @@ TransferManager::GetPlatformTransferManagers() {
   return r;
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
+StatusOr<Literal> TransferManager::TransferLiteralFromDevice(
     se::Stream* stream, const ShapedBuffer& device_buffer) {
-  StatusOr<std::unique_ptr<Literal>> ret;
+  StatusOr<Literal> ret;
 
   se::Stream* substream = stream->GetOrCreateSubStream();
   substream->ThenWaitFor(stream);
@@ -63,7 +63,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferLiteralFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return absl::make_unique<Literal>(std::move(literal));
+  return std::move(literal);
 }
 
 Status TransferManager::TransferLiteralFromDevice(
@@ -99,10 +99,10 @@ Status TransferManager::TransferLiteralToDevice(
   return substream->BlockHostUntilDone();
 }
 
-StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
+StatusOr<Literal> TransferManager::TransferArrayFromDevice(
     se::Stream* stream, const Shape& shape,
     const se::DeviceMemoryBase& source) {
-  StatusOr<std::unique_ptr<Literal>> ret;
+  StatusOr<Literal> ret;
   // Implement the synchronous version by waiting on the asynchronous version.
   // Use a substream so that if we are called from a HostCallback we don't
   // deadlock.
@@ -122,7 +122,7 @@ StatusOr<std::unique_ptr<Literal>> TransferManager::TransferArrayFromDevice(
   if (!s.ok()) {
     return s;
   }
-  return absl::make_unique<Literal>(std::move(literal));
+  return std::move(literal);
 }
 
 Status TransferManager::TransferArrayToDevice(
@@ -142,7 +142,7 @@ Status TransferManager::TransferArrayToDeviceAsync(
     se::Stream* stream, const LiteralSlice& literal,
     const se::DeviceMemoryBase& dest) {
   const Shape on_device_shape = HostShapeToDeviceShape(literal.shape());
-  TF_RET_CHECK(ShapeUtil::IsArray(on_device_shape))
+  TF_RET_CHECK(on_device_shape.IsArray())
       << "On-device representation of "
       << ShapeUtil::HumanString(literal.shape())
       << " is not an array: " << ShapeUtil::HumanString(on_device_shape);
@@ -227,7 +227,7 @@ Status TransferManager::WriteTupleIndexTablesAsync(
   return ShapeUtil::ForEachSubshapeWithStatus(
       device_buffer.on_device_shape(),
       [&](const Shape& device_subshape, const ShapeIndex& index) -> Status {
-        if (ShapeUtil::IsTuple(device_subshape)) {
+        if (device_subshape.IsTuple()) {
           se::DeviceMemoryBase device_memory = device_buffer.buffer(index);
           TF_RET_CHECK(GetByteSizeRequirement(device_subshape) ==
                        device_memory.size());
@@ -246,6 +246,22 @@ Status TransferManager::WriteTupleIndexTablesAsync(
 
         return Status::OK();
       });
+}
+
+Status TransferManager::WriteRootTupleIndexTable(
+    se::Stream* stream, const ShapedBuffer& device_buffer) {
+  TF_RET_CHECK(device_buffer.on_device_shape().IsTuple());
+  se::DeviceMemoryBase device_memory = device_buffer.buffer({});
+  TF_RET_CHECK(GetByteSizeRequirement(device_buffer.on_device_shape()) ==
+               device_memory.size());
+
+  std::vector<se::DeviceMemoryBase> elements;
+  for (int64 i = 0;
+       i < ShapeUtil::TupleElementCount(device_buffer.on_device_shape()); ++i) {
+    elements.push_back(device_buffer.buffer({i}));
+  }
+  return WriteSingleTupleIndexTable(
+      stream, elements, device_buffer.on_device_shape(), &device_memory);
 }
 
 Status TransferManager::TransferBufferFromDevice(

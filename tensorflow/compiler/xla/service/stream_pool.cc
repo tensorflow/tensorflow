@@ -28,8 +28,14 @@ StreamPool::Ptr StreamPool::BorrowStream(se::StreamExecutor* executor) {
       // Re-use an existing stream from the pool.
       stream = std::move(streams_.back());
       streams_.pop_back();
-      VLOG(1) << stream->DebugStreamPointers()
-              << " StreamPool reusing existing stream";
+      if (stream->ok()) {
+        VLOG(1) << stream->DebugStreamPointers()
+                << " StreamPool reusing existing stream";
+      } else {
+        VLOG(1) << stream->DebugStreamPointers()
+                << " stream was not ok, StreamPool deleting";
+        stream = nullptr;
+      }
     }
   }
 

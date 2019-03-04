@@ -24,11 +24,10 @@ import time
 import numpy as np
 
 from tensorflow.contrib import lookup
-from tensorflow.contrib.data.python.ops import prefetching_ops
-from tensorflow.contrib.data.python.ops import threadpool
-from tensorflow.contrib.data.python.ops import unique
 from tensorflow.contrib.eager.python import datasets
 from tensorflow.python.data import Dataset
+from tensorflow.python.data.experimental.ops import threadpool
+from tensorflow.python.data.experimental.ops import unique
 from tensorflow.python.eager import test
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import dtypes
@@ -38,7 +37,7 @@ from tensorflow.python.framework import sparse_tensor
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import script_ops
 from tensorflow.python.training import checkpoint_management
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 class IteratorTest(test.TestCase):
@@ -201,25 +200,6 @@ class IteratorTest(test.TestCase):
         y = math_ops.add(x, x)
     self.assertAllEqual([0., 2.], y.numpy())
 
-  def testGpuDefinedDataset(self):
-    with ops.device(test.gpu_device_name()):
-      ds = Dataset.from_tensors([0., 1.])
-      for x in ds:
-        y = math_ops.add(x, x)
-    self.assertAllEqual([0., 2.], y.numpy())
-
-  def testTensorsExplicitPrefetchToDevice(self):
-    ds = Dataset.from_tensor_slices([0., 1.])
-    ds = ds.apply(prefetching_ops.prefetch_to_device(test.gpu_device_name()))
-
-    with self.assertRaisesRegexp(TypeError, 'prefetch_to_device'):
-      datasets.Iterator(ds)
-
-    for i, x in enumerate(ds):
-      with ops.device(test.gpu_device_name()):
-        x = math_ops.add(x, x)
-        self.assertEqual(float(i) + float(i), x.numpy())
-
   def testOverrideThreadPool(self):
 
     def get_thread_id(_):
@@ -258,7 +238,7 @@ class IteratorTest(test.TestCase):
     dataset = Dataset.from_tensor_slices([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11])
     dataset = dataset.map(math_ops.square).batch(2)
     iterator = datasets.Iterator(dataset)
-    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertAllEqual([1, 4], iterator.get_next().numpy())
     save_path = checkpoint.save(checkpoint_prefix)
     self.assertAllEqual([9, 16], iterator.get_next().numpy())
@@ -277,7 +257,7 @@ class IteratorTest(test.TestCase):
     dataset_2 = Dataset.range(10)
     iterator_3 = datasets.Iterator(dataset_2)
 
-    checkpoint = checkpointable_utils.Checkpoint(
+    checkpoint = trackable_utils.Checkpoint(
         iterator_1=iterator_1, iterator_2=iterator_2, iterator_3=iterator_3)
     self.assertAllEqual([1, 4], iterator_1.get_next().numpy())
     self.assertEqual(0, iterator_3.get_next().numpy())
@@ -299,7 +279,7 @@ class IteratorTest(test.TestCase):
     dataset = Dataset.range(3)
     iterator = datasets.Iterator(dataset)
 
-    checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+    checkpoint = trackable_utils.Checkpoint(iterator=iterator)
     self.assertEqual(0, iterator.get_next().numpy())
     self.assertEqual(1, iterator.get_next().numpy())
     save_path = checkpoint.save(checkpoint_prefix)
@@ -313,7 +293,7 @@ class IteratorTest(test.TestCase):
     dataset = Dataset.range(10)
     for i in range(5):
       iterator = datasets.Iterator(dataset)
-      checkpoint = checkpointable_utils.Checkpoint(iterator=iterator)
+      checkpoint = trackable_utils.Checkpoint(iterator=iterator)
       checkpoint.restore(checkpoint_management.latest_checkpoint(
           checkpoint_directory))
       for j in range(2):

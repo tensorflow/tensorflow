@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 from tensorflow.contrib.kafka.python.ops import kafka_dataset_ops
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import errors
@@ -49,12 +50,13 @@ class KafkaDatasetTest(test.TestCase):
         topics, group="test", eof=True).repeat(num_epochs)
     batch_dataset = repeat_dataset.batch(batch_size)
 
-    iterator = iterator_ops.Iterator.from_structure(batch_dataset.output_types)
+    iterator = iterator_ops.Iterator.from_structure(
+        dataset_ops.get_legacy_output_types(batch_dataset))
     init_op = iterator.make_initializer(repeat_dataset)
     init_batch_op = iterator.make_initializer(batch_dataset)
     get_next = iterator.get_next()
 
-    with self.test_session() as sess:
+    with self.cached_session() as sess:
       # Basic test: read from topic 0.
       sess.run(init_op, feed_dict={topics: ["test:0:0:4"], num_epochs: 1})
       for i in range(5):
