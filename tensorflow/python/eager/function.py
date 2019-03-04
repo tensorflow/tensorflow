@@ -176,7 +176,9 @@ def _common_shape(x, y):
     return tensor_shape.TensorShape(None)
   dims = []
   for dim_x, dim_y in zip(x.dims, y.dims):
-    if dim_x != dim_y or tensor_shape.dimension_value(dim_x) is None:
+    if (dim_x != dim_y
+        or tensor_shape.dimension_value(dim_x) is None
+        or tensor_shape.dimension_value(dim_y) is None):
       dims.append(None)
     else:
       dims.append(tensor_shape.dimension_value(dim_x))
