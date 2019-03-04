@@ -90,6 +90,7 @@ def get_compute_sets_from_report(report):
 
 
 def get_maximum_tile_size_from_events(report):
+  print(report)
   lines = report.split('\n')
   found = False
   for l in lines:
@@ -98,7 +99,7 @@ def get_maximum_tile_size_from_events(report):
       if m:
         found = True
     else:
-      m = re.match(r' +Maximum.*: ([\d,]+) on tile [\d,]+', l)
+      m = re.match(r' +Maximum.*: ([\d,]+) .*on tile [\d,]+', l)
       if m:
         return int(m.group(1).replace(',', ''))
   return None

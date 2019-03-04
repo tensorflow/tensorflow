@@ -37,7 +37,17 @@ bool IsNotDependencyOfPeers(HloInstruction* inplace,
                             std::vector<HloInstruction*>& added_dependencies) {
   for (auto* peer : inplace_parent->users()) {
     if (peer == inplace) {
-      continue;
+      unsigned int num_uses = 0;
+      for (auto* operand : inplace->operands()) {
+        if (operand == inplace_parent) {
+          num_uses++;
+        }
+      }
+      if (num_uses > 1) {
+        return false;
+      } else {
+        continue;
+      }
     }
     if (inplace->opcode() == HloOpcode::kGetTupleElement) {
       // Special case for GTE - it's not a dependency if all other users of
