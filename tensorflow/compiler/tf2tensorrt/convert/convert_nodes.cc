@@ -3486,37 +3486,37 @@ Status ConvertConcat(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   TFAttrs attrs(node_def);
   if (inputs.size() < 3) {
-     return tensorflow::errors::InvalidArgument(
+     return errors::InvalidArgument(
         "ConcatV2 expects at least 3 inputs, at ", node_def.name());
   }
   // Get number of tensor inputs.
   const int num_inputs = attrs.get<int>("N");
   if (num_inputs != static_cast<int>(inputs.size()) - 1) {
-    return tensorflow::errors::InvalidArgument(
+    return errors::InvalidArgument(
         "Number of inputs for ConcatV2 is inconsistent with N attribute, at ",
         node_def.name());
   }
   // Get axis.
   if (!inputs.at(num_inputs).is_weights()) {
-    return tensorflow::errors::Unimplemented(
+    return errors::Unimplemented(
         "The input \"axis\" for ", node_def.op(), " must be a constant, at ",
         node_def.name());
   }
-  auto index_type = attrs.get<tensorflow::DataType>("Tidx");
+  auto index_type = attrs.get<DataType>("Tidx");
   int tf_axis = 0;
   // TODO(tmorris): Add a helper method for this check and make sure we check
   // int32 vs int64 in other ops.
-  if (index_type == tensorflow::DataType::DT_INT32) {
+  if (index_type == DataType::DT_INT32) {
     auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
     if (axis.size() != 1) {
-      return tensorflow::errors::InvalidArgument(
+      return errors::InvalidArgument(
         "Axis for GatherV2 must be a scalar, at ", node_def.name());
     }
     tf_axis = axis[0];
-  } else if (index_type == tensorflow::DataType::DT_INT64) {
+  } else if (index_type == DataType::DT_INT64) {
     auto axis = inputs.at(num_inputs).weights().GetSpan<int64>();
     if (axis.size() != 1) {
-      return tensorflow::errors::InvalidArgument(
+      return errors::InvalidArgument(
         "Axis for GatherV2 must be a scalar, at ", node_def.name());
     }
     tf_axis = static_cast<int>(axis[0]);
@@ -3529,13 +3529,13 @@ Status ConvertConcat(OpConverterParams* params) {
   for (int i = 0; i < num_inputs; i++) {
     auto dim_i = inputs.at(i).GetTrtDims();
     if (dim_i.nbDims != dim.nbDims) {
-      return tensorflow::errors::InvalidArgument(
+      return errors::InvalidArgument(
           "ConcatV2 received inputs with inconsistent rank, at ",
           node_def.name());
     }
     for (int j = 0; j < dim.nbDims; j++) {
       if (j != trt_axis && dim_i.d[j] != dim.d[j]) {
-        return tensorflow::errors::InvalidArgument(
+        return errors::InvalidArgument(
             "ConcatV2 received inputs with inconsistent shape, at ",
             node_def.name());
       }
@@ -3556,7 +3556,7 @@ Status ConvertConcat(OpConverterParams* params) {
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
   layer->setAxis(trt_axis);
   params->outputs->push_back(TRT_TensorOrWeights(layer->getOutput(0)));
-  return tensorflow::Status::OK();
+  return Status::OK();
 }
 
 Status ConvertFusedBatchNorm(OpConverterParams* params) {

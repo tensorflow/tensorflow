@@ -3681,7 +3681,7 @@ TEST_F(OpConverterTest, ConvertUnary) {
 // Get the NodeDef for ConcatV2.
 auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   Scope s = Scope::NewRootScope();
-  std::vector<tensorflow::Input> values;
+  std::vector<Input> values;
   for (int i = 0; i < num_inputs; ++i) {
     const string input_name = StrCat("values_", i);
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
@@ -3689,7 +3689,7 @@ auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
   auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
   auto concat =
       ops::Concat(s.WithOpName("my_concat"),
-                  tensorflow::gtl::ArraySlice<tensorflow::Input>(values), axis);
+                  gtl::ArraySlice<Input>(values), axis);
   return concat.operation.node()->def();
 };
 
