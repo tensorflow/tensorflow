@@ -3917,27 +3917,15 @@ Status ConvertTopK(OpConverterParams* params) {
 
 #if NV_TENSORRT_MAJOR > 5 || (NV_TENSORRT_MAJOR == 5 && NV_TENSORRT_MINOR >= 1)
 Status ConvertCombinedNMS(OpConverterParams* params) {
+  TF_RETURN_IF_ERROR(
+      CheckInputsWeights(*params, {{"boxes", false},
+                                  {"scores", false},
+                                  {"max_output_size_per_class", true},
+                                  {"max_total_size", true},
+                                  {"iou_threshold", true},
+                                  {"score_threshold", true}}));
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
-
-  if (inputs.size() != 6) {
-    return errors::InvalidArgument(
-        "Six inputs expected for CombinedNonMaxSuppression, at ",
-        node_def.name());
-  }
-  if (!(inputs.at(0).is_tensor() || inputs.at(1).is_tensor())) {
-    return errors::Unimplemented(
-        "CombinedNonMaxSuppression expects tensor for boxes and scores, at ",
-        node_def.name());
-  }
-  if (!(inputs.at(2).is_weights()) || !(inputs.at(3).is_weights()) ||
-      (!inputs.at(4).is_weights()) || !(inputs.at(5).is_weights())) {
-    return errors::InvalidArgument(
-        "CombinedNonMaxSuppression expects weights for "
-        "max_output_size_per_class, max_total_size, iou_threshold, "
-        "score_threshold, at ",
-        node_def.name());
-  }
 
   nvinfer1::ITensor* boxes_tensor =
       const_cast<nvinfer1::ITensor*>(inputs.at(0).tensor());
