@@ -2165,6 +2165,17 @@ tf_pyclif_proto_library(
 # -----------------------------------------------------------------------------
 # Internal targets
 
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["protobuf/autotuning.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    provide_cc_alias = True,
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
 tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
