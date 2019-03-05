@@ -689,11 +689,6 @@ class Model(Network):
     if kwargs:
       raise TypeError('Unrecognized keyword arguments: ' + str(kwargs))
 
-    # When the model expects dictionary inputs (i.e. FeatureColumn-based
-    # models), set run_eagerly to True as there's no support for graph
-    # functions.
-    training_utils.set_run_eagerly_for_dict_structure(self, x)
-
     # Case 1: distribution strategy.
     if self._distribution_strategy:
       if K.in_multi_worker_mode():
@@ -1246,10 +1241,11 @@ class Model(Network):
           reset_metrics=reset_metrics,
           output_loss_metrics=self._output_loss_metrics)
     else:
+      x = training_utils.ModelInputs(x).as_list()
+      ins = x + (y or []) + (sample_weights or [])
+
       if not isinstance(K.symbolic_learning_phase(), int):
-        ins = x + y + sample_weights + [True]
-      else:
-        ins = x + y + sample_weights
+        ins += [True]  # Add learning phase value.
 
       if reset_metrics:
         self._make_train_function()
@@ -1320,7 +1316,8 @@ class Model(Network):
           reset_metrics=reset_metrics,
           output_loss_metrics=self._output_loss_metrics)
     else:
-      inputs = x + y + sample_weights
+      x = training_utils.ModelInputs(x).as_list()
+      inputs = x + (y or []) + (sample_weights or [])
       if reset_metrics:
         self._make_test_function()
         outputs = self.test_function(inputs)  # pylint: disable=not-callable
