@@ -60,3 +60,13 @@ tf_cc_test(
         "@jsoncpp_git//:jsoncpp",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "capture_profile.h",
+        "dump_tpu_profile.h",
+        "trace_events_to_json.h",
+    ],
+    visibility = ["//visibility:public"],
+)

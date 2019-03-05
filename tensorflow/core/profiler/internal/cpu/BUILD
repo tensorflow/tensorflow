@@ -42,3 +42,11 @@ tf_cuda_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "host_tracer.h",
+    ],
+    visibility = ["//visibility:public"],
+)

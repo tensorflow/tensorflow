@@ -73,3 +73,16 @@ tf_cc_test(
         "//tensorflow/core/profiler/internal:tfprof_tf_testlib",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "accelerator_utilization_checker.h",
+        "checker.h",
+        "expensive_operation_checker.h",
+        "internal_checker_runner.h",
+        "operation_checker.h",
+        "tfprof_advisor.h",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -222,12 +222,10 @@ pkg_tar(
         ":nccl_coreheaders",
         ":ops_coreheaders",
         ":platform_coreheaders",
-        # ":protobuf_coreheaders",
-        # ":profiler_coreheaders",
+        ":profiler_coreheaders",
         ":public_coreheaders",
         # ":summary_coreheaders",
         # ":tpu_coreheaders",
-        # ":user_ops_coreheaders",
         # ":util_coreheaders",
     ],
 )
@@ -818,6 +816,101 @@ pkg_tar(
         "//tensorflow/core:platform_windows_headers",
     ],
     package_dir = "windows",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "profiler_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler:headers",
+    ],
+    package_dir = "profiler",
+    tags = ["manual"],
+    deps = [
+        ":profiler_internal_coreheaders",
+        ":profiler_lib_coreheaders",
+        ":profiler_rpc_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "profiler_internal_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/internal:headers",
+    ],
+    package_dir = "internal",
+    tags = ["manual"],
+    deps = [
+        ":profiler_internal_advisor_coreheaders",
+        ":profiler_internal_cpu_coreheaders",
+        ":profiler_internal_gpu_coreheaders",
+        ":profiler_internal_runtime_coreheaders",
+    ]
+)
+
+pkg_tar(
+    name = "profiler_internal_advisor_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/internal/advisor:headers",
+    ],
+    package_dir = "advisor",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "profiler_internal_cpu_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/internal/cpu:headers",
+    ],
+    package_dir = "cpu",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "profiler_internal_gpu_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/internal/gpu:headers",
+    ],
+    package_dir = "gpu",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "profiler_internal_runtime_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/internal/runtime:headers",
+    ],
+    package_dir = "runtime",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "profiler_lib_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/lib:headers",
+    ],
+    package_dir = "lib",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "profiler_rpc_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/rpc:headers",
+    ],
+    package_dir = "rpc",
+    tags = ["manual"],
+    deps = [
+        ":profiler_rpc_client_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "profiler_rpc_client_coreheaders",
+    srcs = [
+        "//tensorflow/core/profiler/rpc/client:headers",
+    ],
+    package_dir = "client",
     tags = ["manual"],
 )
 

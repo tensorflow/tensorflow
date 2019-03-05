@@ -23,3 +23,11 @@ tf_cuda_library(
         "//tensorflow/core/profiler/internal:profiler_interface",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "tracer.h",
+    ],
+    visibility = ["//visibility:public"],
+)

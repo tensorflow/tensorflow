@@ -70,3 +70,11 @@ tf_proto_library(
     protodeps = tf_additional_all_protos(),
     visibility = ["//visibility:public"],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "tfprof_options.h",
+    ],
+    visibility = ["//visibility:public"],
+)

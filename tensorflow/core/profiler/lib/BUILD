@@ -56,3 +56,12 @@ tf_cuda_library(
         "@com_google_absl//absl/types:optional",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "profiler_session.h",
+        "traceme.h",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -36,3 +36,12 @@ tf_cuda_library(
     ],
     alwayslink = 1,
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "profiler_server.h",
+        "profiler_service_impl.h",
+    ],
+    visibility = ["//visibility:public"],
+)

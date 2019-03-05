@@ -407,3 +407,26 @@ tf_cuda_library(
         "//tensorflow/core:protos_all_cc",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "print_model_analysis.h",
+        "profiler_interface.h",
+        "tfprof_code.h",
+        "tfprof_constants.h",
+        "tfprof_graph.h",
+        "tfprof_node.h",
+        "tfprof_node_show.h",
+        "tfprof_op.h",
+        "tfprof_scope.h",
+        "tfprof_show.h",
+        "tfprof_show_multi.h",
+        "tfprof_stats.h",
+        "tfprof_tensor.h",
+        "tfprof_timeline.h",
+        "tfprof_utils.h",
+        "traceme_recorder.h",
+    ],
+    visibility = ["//visibility:public"],
+)
