@@ -431,7 +431,9 @@ class LocalBuffer(object):
 
   def delete(self):
     if self.c_buffer is not None:
-      self._backend.delete_buffer(self.c_buffer)
+      # Python may have freed c_api first.
+      if c_api:
+        self._backend.delete_buffer(self.c_buffer)
       self.c_buffer = None
 
   def destructure(self):
