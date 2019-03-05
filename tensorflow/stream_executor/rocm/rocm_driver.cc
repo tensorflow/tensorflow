@@ -207,8 +207,7 @@ ScopedActivateContext::~ScopedActivateContext() {
           << to_restore_->device_ordinal();
 
   // Set context and update thread local.
-  CHECK_EQ(hipSuccess,
-           hipSetDevice(to_restore_->device_ordinal()));
+  CHECK_EQ(hipSuccess, hipSetDevice(to_restore_->device_ordinal()));
   tls->current_device_ordinal = to_restore_->device_ordinal();
 }
 
@@ -244,8 +243,7 @@ string ROCMPointerToMemorySpaceString(hipDeviceptr_t pointer) {
 // in the process of querying.
 string ROCMPointersToCanAccessString(hipDeviceptr_t from, hipDeviceptr_t to) {
   hipPointerAttribute_t from_pointerAttributes;
-  hipError_t result =
-      hipPointerGetAttributes(&from_pointerAttributes, from);
+  hipError_t result = hipPointerGetAttributes(&from_pointerAttributes, from);
   if (result != hipSuccess) {
     LOG(ERROR) << "could not retrieve source pointer's device: "
                << ToString(result);
@@ -320,8 +318,7 @@ static port::Status InternalInit() {
                                            string* device_name) {
   static const size_t kCharLimit = 64;
   absl::InlinedVector<char, 4> chars(kCharLimit);
-  hipError_t res =
-      hipDeviceGetName(chars.begin(), kCharLimit - 1, device);
+  hipError_t res = hipDeviceGetName(chars.begin(), kCharLimit - 1, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to get device name for " << device << ": "
                << ToString(res);
@@ -367,8 +364,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 
 /* static */ bool GpuDriver::FuncSetCacheConfig(hipFunction_t function,
                                                 hipFuncCache_t cache_config) {
-  hipError_t res =
-      hipFuncSetCacheConfig(function, cache_config);
+  hipError_t res = hipFuncSetCacheConfig(function, cache_config);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to set ROCM kernel cache config. kernel: " << function
                << ", config: " << cache_config << ", result: " << ToString(res);
@@ -382,8 +378,7 @@ bool DeviceOptionsToContextFlags(const DeviceOptions& device_options,
 GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   hipSharedMemConfig shared_mem_config;
   ScopedActivateContext activation{context};
-  hipError_t result =
-      hipDeviceGetSharedMemConfig(&shared_mem_config);
+  hipError_t result = hipDeviceGetSharedMemConfig(&shared_mem_config);
   if (result != hipSuccess) {
     LOG(ERROR) << "failed to get ROCM device shared memory config. "
                << "Context device ID: " << context->device_ordinal()
@@ -398,8 +393,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ port::Status GpuDriver::ContextSetSharedMemConfig(
     GpuContext* context, hipSharedMemConfig shared_mem_config) {
   ScopedActivateContext activation{context};
-  hipError_t result =
-      hipDeviceSetSharedMemConfig(shared_mem_config);
+  hipError_t result = hipDeviceSetSharedMemConfig(shared_mem_config);
   if (result != hipSuccess) {
     LOG(ERROR) << "failed to set ROCM device shared memory config. "
                << "Context device ID: " << context->device_ordinal()
@@ -459,8 +453,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
         ScopedActivateContext activation{context};
         void* hsaco_data = const_cast<char*>(hsaco_contents);
 
-        hipError_t res =
-            hipModuleLoadData(module, hsaco_data);
+        hipError_t res = hipModuleLoadData(module, hsaco_data);
 
         if (res != hipSuccess) {
           LOG(ERROR) << "failed to load HSACO: " << ToString(res);
@@ -501,8 +494,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     LOG(ERROR) << "failed to memset memory";
     return false;
   }
-  hipError_t res = hipMemset(pointer, static_cast<int>(value),
-                                               uint32_count * 4);
+  hipError_t res =
+      hipMemset(pointer, static_cast<int>(value), uint32_count * 4);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to memset memory: " << ToString(res);
     return false;
@@ -516,8 +509,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                      size_t uint32_count,
                                                      GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res =
-      hipMemsetAsync(location, value, uint32_count, stream);
+  hipError_t res = hipMemsetAsync(location, value, uint32_count, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;
@@ -542,8 +534,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     LOG(ERROR) << "failed to memset memory";
     return false;
   }
-  hipError_t res = hipMemsetAsync(pointer, value,
-                                                    uint32_count * 4, stream);
+  hipError_t res = hipMemsetAsync(pointer, value, uint32_count * 4, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to enqueue async memset operation: " << ToString(res);
     return false;
@@ -556,8 +547,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                GpuStreamHandle stream,
                                                StreamCallback callback,
                                                void* data) {
-  hipError_t res = hipStreamAddCallback(
-      stream, (hipStreamCallback_t)callback, data, 0 /* = flags */);
+  hipError_t res = hipStreamAddCallback(stream, (hipStreamCallback_t)callback,
+                                        data, 0 /* = flags */);
   if (res != hipSuccess) {
     LOG(ERROR) << "unable to add host callback: " << ToString(res);
     return false;
@@ -571,8 +562,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                hipFunction_t* function) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && kernel_name != nullptr);
-  hipError_t res =
-      hipModuleGetFunction(function, module, kernel_name);
+  hipError_t res = hipModuleGetFunction(function, module, kernel_name);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to get kernel \"" << kernel_name
                << "\" from module: " << ToString(res);
@@ -590,8 +580,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activated{context};
   CHECK(module != nullptr && symbol_name != nullptr &&
         (dptr != nullptr || bytes != nullptr));
-  hipError_t res =
-      hipModuleGetGlobal(dptr, bytes, module, symbol_name);
+  hipError_t res = hipModuleGetGlobal(dptr, bytes, module, symbol_name);
   if (res != hipSuccess) {
     // symbol may not be found in the current module, but it may reside in
     // another module.
@@ -697,8 +686,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = hipHostMalloc(
-      &host_mem, bytes, hipHostMallocPortable);
+  hipError_t res = hipHostMalloc(&host_mem, bytes, hipHostMallocPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to alloc " << bytes
                << " bytes on host: " << ToString(res);
@@ -720,8 +708,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                           uint64 bytes) {
   ScopedActivateContext activation{context};
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = hipHostRegister(location, bytes,
-                                                     hipHostRegisterPortable);
+  hipError_t res = hipHostRegister(location, bytes, hipHostRegisterPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "error registering host memory at " << location << ": "
                << ToString(res);
@@ -817,8 +804,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     LOG(ERROR) << "failed to synchronize the stop event: " << ToString(res);
     return false;
   }
-  res =
-      hipEventElapsedTime(elapsed_milliseconds, start, stop);
+  res = hipEventElapsedTime(elapsed_milliseconds, start, stop);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to get elapsed time between events: "
                << ToString(res);
@@ -832,8 +818,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                GpuStreamHandle stream,
                                                GpuEventHandle event) {
   ScopedActivateContext activation{context};
-  hipError_t res =
-      hipStreamWaitEvent(stream, event, 0 /* = flags */);
+  hipError_t res = hipStreamWaitEvent(stream, event, 0 /* = flags */);
   if (res != hipSuccess) {
     LOG(ERROR) << "could not wait stream on event: " << ToString(res);
     return false;
@@ -905,8 +890,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
     GpuContext* context, hipDeviceptr_t gpu_dst, const void* host_src,
     uint64 size) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemcpyHtoD(
-      gpu_dst, const_cast<void*>(host_src), size);
+  hipError_t res = hipMemcpyHtoD(gpu_dst, const_cast<void*>(host_src), size);
   if (res != hipSuccess) {
     return port::InternalError(port::Printf(
         "failed to synchronous memcpy from host to device: %s; GPU dst: %p;"
@@ -940,8 +924,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res =
-      hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
+  hipError_t res = hipMemcpyDtoHAsync(host_dst, gpu_src, size, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from device to host: %s; host dst: %p; "
@@ -961,8 +944,8 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t res = hipMemcpyHtoDAsync(
-      gpu_dst, const_cast<void*>(host_src), size, stream);
+  hipError_t res =
+      hipMemcpyHtoDAsync(gpu_dst, const_cast<void*>(host_src), size, stream);
   if (res != hipSuccess) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from host to device: %s; GPU dst: %p; "
@@ -981,8 +964,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                                    uint64 size,
                                                    GpuStreamHandle stream) {
   ScopedActivateContext activation{context};
-  hipError_t result =
-      hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
+  hipError_t result = hipMemcpyDtoDAsync(gpu_dst, gpu_src, size, stream);
   if (result != hipSuccess) {
     LOG(ERROR) << port::Printf(
         "failed to enqueue async memcpy from device to device: %s"
@@ -1102,8 +1084,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
 /* static */ port::StatusOr<hipDevice_t> GpuDriver::GetPointerDevice(
     hipDeviceptr_t pointer) {
   hipPointerAttribute_t pointerAttributes;
-  hipError_t result =
-      hipPointerGetAttributes(&pointerAttributes, pointer);
+  hipError_t result = hipPointerGetAttributes(&pointerAttributes, pointer);
   if (result != hipSuccess) {
     return port::Status{
         port::error::INTERNAL,
@@ -1141,8 +1122,7 @@ template <typename T>
 static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
                                             hipDeviceAttribute_t attribute) {
   int value = -1;
-  hipError_t result =
-      hipDeviceGetAttribute(&value, attribute, device);
+  hipError_t result = hipDeviceGetAttribute(&value, attribute, device);
   if (result != hipSuccess) {
     return port::Status{
         port::error::NOT_FOUND,
@@ -1196,24 +1176,22 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 /* static */ bool GpuDriver::GetGridLimits(int* x, int* y, int* z,
                                            hipDevice_t device) {
   int value;
-  hipError_t res = hipDeviceGetAttribute(
-      &value, hipDeviceAttributeMaxGridDimX, device);
+  hipError_t res =
+      hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimX, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query max grid dim x: " << ToString(res);
     return false;
   }
   *x = value;
 
-  res = hipDeviceGetAttribute(
-      &value, hipDeviceAttributeMaxGridDimY, device);
+  res = hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimY, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query max grid dim y: " << ToString(res);
     return false;
   }
   *y = value;
 
-  res = hipDeviceGetAttribute(
-      &value, hipDeviceAttributeMaxGridDimZ, device);
+  res = hipDeviceGetAttribute(&value, hipDeviceAttributeMaxGridDimZ, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query max grid dim z: " << ToString(res);
     return false;
@@ -1234,8 +1212,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
 
 /* static */ bool GpuDriver::GetDeviceProperties(
     hipDeviceProp_t* device_properties, int device_ordinal) {
-  hipError_t res = hipGetDeviceProperties(device_properties,
-                                                            device_ordinal);
+  hipError_t res = hipGetDeviceProperties(device_properties, device_ordinal);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query device properties: " << ToString(res);
     return false;
@@ -1297,8 +1274,7 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   static const int kBufferSize = 64;
   absl::InlinedVector<char, 4> chars(kBufferSize);
   chars[kBufferSize - 1] = '\0';
-  hipError_t res = hipDeviceGetPCIBusId(
-      chars.begin(), kBufferSize - 1, device);
+  hipError_t res = hipDeviceGetPCIBusId(chars.begin(), kBufferSize - 1, device);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to query PCI bus id for device: " << ToString(res);
     return pci_bus_id;
@@ -1331,8 +1307,8 @@ static port::StatusOr<T> GetSimpleAttribute(hipDevice_t device,
   }
 
   ScopedActivateContext activated{from};
-  hipError_t result = hipDeviceEnablePeerAccess(
-      to->device_ordinal(), 0 /* = flags */);
+  hipError_t result =
+      hipDeviceEnablePeerAccess(to->device_ordinal(), 0 /* = flags */);
   if (result != hipSuccess && result != hipErrorPeerAccessAlreadyEnabled) {
     return port::Status{
         port::error::INTERNAL,

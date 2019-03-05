@@ -41,7 +41,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocFftPlugin);
 
 namespace wrap {
 
-#if  defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING)
+#if defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING)
 
 // This macro wraps a global identifier, given by __name, in a callable
 // structure that loads the DLL symbol out of the DSO handle in a thread-safe
