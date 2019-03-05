@@ -31,19 +31,17 @@ And, of course: we would love to have your feedback! If you experience any snags
 
 ## Bug Fixes and Other Changes
 
-* `tf.contrib`:
-  * Remove `tf.contrib.timeseries` dependency on TF distributions.
 * `tf.estimator`
-  * Use tf.compat.v1.estimator.inputs instead of tf.estimator.inputs in Estimator
-  * Replace contrib references with tf.estimator.experimental.* for apis in early_s in Estimator
+  * Use `tf.compat.v1.estimator.inputs` instead of `tf.estimator.inputs` in Estimator.
+  * Replace contrib references with `tf.estimator.experimental.*` for apis in `early_stopping.py` in Estimator.
 * Keras & Python API
   * Added top-k to precision and recall to keras metrics.
   * Adding public APIs for `cumsum` and `cumprod` keras backend functions.
-  * Minor change to SavedModels exported from Keras using tf.keras.experimental.export. (SignatureDef key for evaluation mode is now "eval" instead of "test"). This will be reverted back to "test" in the near future.
-  * Add v2 module aliases for losses and metrics: `tf.losses = tf.keras.losses` & `tf.metrics = tf.keras.metrics` GITHUB_PR_OR_BUG=tf_only
-  * Add v2 module aliases for optimizers: `tf.optimizers = tf.keras.optimizers` GITHUB_PR_OR_BUG=tf_only
+  * Minor change to SavedModels exported from Keras using `tf.keras.experimental.export`. (SignatureDef key for evaluation mode is now "eval" instead of "test"). This will be reverted back to "test" in the near future.
+  * Add v2 module aliases for losses and metrics: `tf.losses = tf.keras.losses` & `tf.metrics = tf.keras.metrics`
+  * Add v2 module aliases for optimizers: `tf.optimizers = tf.keras.optimizers`
   * `tf.keras.experimental.export` renamed to `tf.keras.experimental.export_saved_model`
-  * Add v2 module aliases for initializers: tf.initializers = tf.keras.initializers GITHUB_PR_OR_BUG=tf_only
+  * Add v2 module aliases for initializers: tf.initializers = tf.keras.initializers
   * Add `tf.keras.layers.AbstractRNNCell` as the preferred implementation of RNN cell for TF v2. User can use it to implement RNN cell with custom behavior.
   * Keras training and validation curves are shown on the same plot.
   * Disable `run_eagerly` and distribution strategy if there are symbolic tensors added to the model using `add_metric` or `add_loss`.
@@ -70,17 +68,17 @@ And, of course: we would love to have your feedback! If you experience any snags
   * Add CompositeTensor base class.
   * Malformed gif images could result in an access out of bounds in the color palette of the frame. This has been fixed now
   * Add templates and interfaces for creating lookup tables
-  * Tensor::UnsafeCopyFromInternal deprecated in favor Tensor::BitcastFrom
+  * `Tensor::UnsafeCopyFromInternal` deprecated in favor `Tensor::BitcastFrom`.
   * In `map_vectorization` optimization, reduce the degree of parallelism in the vectorized map node.
-  * Add variant wrapper for `absl::string_view`
+  * Add variant wrapper for `absl::string_view`.
   * Post-training quantization tool supports quantizing weights shared by multiple operations. The models made with versions of this tool will use INT8 types for weights and will only be executable interpreters from this version onwards.
   * Wraps losses passed to the `compile` API (strings and v1 losses) which are not instances of v2 `Loss` class in `LossWrapper` class. => All losses will now use `SUM_OVER_BATCH_SIZE` reduction as default.
   * Add OpKernels for some stateless maps
-  * Add v2 APIs for AUCCurve and AUCSummationMethod enums. #tf-metrics-convergence
-  * Add v2 APIs for AUCCurve and AUCSummationMethod enums. #tf-metrics-convergence
+  * Add v2 APIs for AUCCurve and AUCSummationMethod enums.
+  * Add v2 APIs for AUCCurve and AUCSummationMethod enums.
   * Allow non-Tensors through v2 losses.
-  * Add v2 sparse categorical crossentropy metric. GITHUB_PR_OR_BUG=b/123431691
-  * DType is no longer convertible to an int. Use dtype.as_datatype_enum instead of int(dtype) to get the same result.
+  * Add v2 sparse categorical crossentropy metric.
+  * `DType` is no longer convertible to an int. Use `dtype.as_datatype_enum` instead of `int(dtype)` to get the same result.
   * Support both binary and -1/1 label input in v2 hinge and squared hinge losses.
   * Bug fix: loss and gradients should now more reliably be correctly scaled w.r.t. the global batch size when using a tf.distribute.Strategy.
   * Added LinearOperator.adjoint and LinearOperator.H (alias).
@@ -94,19 +92,18 @@ And, of course: we would love to have your feedback! If you experience any snags
   * SignatureDef util functions have been deprecated.
   * Update Fingerprint64Map to use aliases
   * Add legacy string flat hash map op kernels
-  * Add support for passing list of lists to the `metrics` param in Keras `compile. GITHUB_PR_OR_BUG=b/123431691
-  * Internal change. BEGIN_PUBLIC Internal change.
+  * Add support for passing list of lists to the `metrics` param in Keras `compile.
   * Keras training and validation curves are shown on the same plot.
   * Fix: `model.add_loss(symbolic_tensor)` should work in ambient eager.
-  * Adding `clear_losses` API to be able to clear losses at the end of forward pass in a custom training loop in eager. GITHUB_PR_OR_BUG=b/123431691
-  * Add support for `add_metric` in the graph function mode. GITHUB_PR_OR_BUG=tf_only
-  * Adding `clear_losses` API to be able to clear losses at the end of forward pass in a custom training loop in eager. GITHUB_PR_OR_BUG=b/123431691
-  * Updating cosine similarity loss - removed the negate sign from cosine similarity. GITHUB_PR_OR_BUG=b/123431691
+  * Adding `clear_losses` API to be able to clear losses at the end of forward pass in a custom training loop in eager.
+  * Add support for `add_metric` in the graph function mode.
+  * Adding `clear_losses` API to be able to clear losses at the end of forward pass in a custom training loop in eager.
+  * Updating cosine similarity loss - removed the negate sign from cosine similarity.
   * TF 2.0 - Update metric name to always reflect what the user has given in compile. Affects following cases 1. When name is given as 'accuracy'/'crossentropy' 2. When an aliased function name is used eg. 'mse' 3. Removing the `weighted` prefix from weighted metric names.
-  * Workaround for compiler bug(?)
+  * Workaround for compiler bug.
   * Changed default for gradient accumulation for TPU embeddings to true.
   * Adds summary trace API for collecting graph and profile information.
-  * Support for multi-host ncclAllReduce in Distribution Strategy.
+  * Support for multi-host `ncclAllReduce` in Distribution Strategy.
   * Enable `tf.distribute.experimental.MultiWorkerMirroredStrategy` working in eager mode.
   * `image.resize` now considers proper pixel centers and has new kernels (incl. anti-aliasing).
 
