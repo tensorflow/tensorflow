@@ -157,6 +157,10 @@ tf_module {
     argspec: "args=[\'value\', \'size\', \'seed\', \'name\'], varargs=None, keywords=None, defaults=[\'None\', \'None\'], "
   }
   member_method {
+    name: "random_flip"
+    argspec: "args=[\'image\', \'flip_index\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
     name: "random_flip_left_right"
     argspec: "args=[\'image\', \'seed\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -206,7 +210,7 @@ tf_module {
   }
   member_method {
     name: "rot90"
-    argspec: "args=[\'image\', \'k\', \'name\'], varargs=None, keywords=None, defaults=[\'1\', \'None\'], "
+    argspec: "args=[\'image\', \'k\', \'name\', \'axes\'], varargs=None, keywords=None, defaults=[\'1\', \'None\', \'None\'], "
   }
   member_method {
     name: "sample_distorted_bounding_box"
