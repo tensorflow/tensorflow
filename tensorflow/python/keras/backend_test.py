@@ -1348,6 +1348,17 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     self.assertEqual(mean.get_shape().as_list(), [3,])
     self.assertEqual(var.get_shape().as_list(), [3,])
 
+  def test_dropout(self):
+    inputs = array_ops.ones((200, 200))
+    outputs = keras.backend.dropout(inputs, 0.2)
+    outputs_val = keras.backend.eval(outputs)
+    self.assertEqual(np.min(outputs_val), 0)
+    self.assertAllClose(np.count_nonzero(outputs_val), 32000, atol=1000)
+    # Test noise shape
+    outputs = keras.backend.dropout(inputs, 0.2, noise_shape=(200, 1))
+    outputs_val = keras.backend.eval(outputs)
+    self.assertAllClose(outputs_val[2, :], outputs_val[3, :], atol=1e-5)
+
 
 @test_util.run_all_in_graph_and_eager_modes
 class TestCTC(test.TestCase):
