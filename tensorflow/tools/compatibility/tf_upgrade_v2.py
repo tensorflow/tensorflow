@@ -92,6 +92,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.extract_image_patches": {
             "ksizes": "sizes",
         },
+        "tf.image.resize": {
+            "align_corners": None,
+        },
+        "tf.image.resize_images": {
+            "align_corners": None,
+        },
         "tf.extract_image_patches": {
             "ksizes": "sizes",
         },
@@ -225,11 +231,9 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.max_pool": {
             "value": "input"
         },
-
         "tf.nn.avg_pool": {
             "value": "input"
         },
-
         "tf.nn.avg_pool2d": {
             "value": "input"
         },
@@ -1293,6 +1297,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             metrics_comment,
         "tf.metrics.true_positives_at_thresholds":
             metrics_comment,
+        "tf.get_variable":
+            (ast_edits.WARNING,
+             "<function name> returns ResourceVariables by default in 2.0, "
+             "which have well-defined semantics and are stricter about shapes. "
+             "You can disable this behavior by passing use_resource=False, or "
+             "by calling tf.compat.v1.disable_resource_variables().")
     }
 
     # Warnings that are emitted only if a specific arg is found.
@@ -1382,6 +1392,46 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
                 "argument; instead name scoping should be used. This call site "
                 "specifies a family argument so it cannot be converted safely.")
         },
+        "tf.image.resize": {
+            ("align_corners",
+             3): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize."),
+        },
+        "tf.image.resize_bilinear": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bilinear."),
+        },
+        "tf.image.resize_area": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_area."),
+        },
+        "tf.image.resize_bicubic": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_bicubic."),
+        },
+        "tf.image.resize_nearest_neighbor": {
+            ("align_corners",
+             2): (ast_edits.WARNING,
+                  "align_corners is not supported by tf.image.resize, the new "
+                  "default transformation is close to what v1 provided. If you "
+                  "require exactly the same transformation as before, use "
+                  "compat.v1.image.resize_nearest_neighbor."),
+        },
     }
 
     # Specially handled functions
@@ -1419,6 +1469,7 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.image.resize_nearest_neighbor": _image_resize_transformer,
         "tf.nn.fractional_avg_pool": _pool_seed_transformer,
         "tf.nn.fractional_max_pool": _pool_seed_transformer,
+        "tf.name_scope": _name_scope_transformer,
         "tf.device": functools.partial(
             _rename_if_arg_found_transformer, arg_name="device_name",
             arg_ok_predicate=_is_ast_str, remove_if_ok=False,
@@ -1761,7 +1812,12 @@ def _image_resize_transformer(parent, node, full_name, name, logs):
     pos_arg = ast.keyword(arg="align_corners",
                           value=node.args[-1])
     node.args = node.args[:-1]
-    node.keywords.append(pos_arg)
+
+  new_keywords = []
+  for kw in node.keywords:
+    if kw.arg != "align_corners":
+      new_keywords.append(kw)
+  node.keywords = new_keywords
 
   # Python3 ast requires the args for the Attribute, but codegen will mess up
   # the arg order if we just set them to 0.
@@ -1915,6 +1971,7 @@ def _add_loss_reduction_transformer(parent, node, full_name, name, logs):
       % (full_name or name, default_value)))
   return node
 
+
 def _add_uniform_scaling_initializer_transformer(
     parent, node, full_name, name, logs):
   """Updates references to uniform_unit_scaling_initializer.
@@ -1944,3 +2001,40 @@ def _add_uniform_scaling_initializer_transformer(
   node.func.attr = "VarianceScaling"
   return node
 
+
+def _name_scope_transformer(parent, node, full_name, name, logs):
+  """Fix name scope invocation to use 'default_name' and omit 'values' args."""
+
+  name_found, name = ast_edits.get_arg_value(node, "name", 0)
+  default_found, default_name = ast_edits.get_arg_value(node, "default_name", 1)
+
+  # If an actual name was given...
+  if name_found and pasta.dump(name) != "None":
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "`name` passed to `name_scope`. Because you may be re-entering"
+                 " an existing scope, it is not safe to convert automatically, "
+                 " the v2 name_scope does not support re-entering scopes by"
+                 " name.\n"))
+    # Rename to compat.v1
+    new_name = "tf.compat.v1.name_scope"
+    logs.append((ast_edits.INFO, node.func.lineno, node.func.col_offset,
+                 "Renamed %r to %r" % (full_name, new_name)))
+    new_name_node = ast_edits.full_name_node(new_name, node.func.ctx)
+    ast.copy_location(new_name_node, node.func)
+    pasta.ast_utils.replace_child(node, node.func, new_name_node)
+    return node
+
+  if default_found:
+    # New name scope doesn't have name, but it has a default name. We use
+    # name=default_name, and values can be dropped (it's only for
+    # error reporting and useless outside of graph mode).
+    logs.append((ast_edits.INFO, node.lineno, node.col_offset,
+                 "Using default_name as name in call to name_scope.\n"))
+    # Remove all args other than name
+    node.args = []
+    node.keywords = [ast.keyword(arg="name", value=default_name)]
+    return node
+
+  logs.append((ast_edits.ERROR, node.lineno, node.col_offset,
+               "name_scope call with neither name nor default_name cannot be "
+               "converted properly."))

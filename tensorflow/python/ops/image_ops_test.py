@@ -2225,11 +2225,22 @@ class SelectDistortedCropBoxTest(test_util.TensorFlowTestCase):
       bbox_for_drawing = self.evaluate(bbox_for_drawing)
 
 
-class ResizeImagesTest(test_util.TensorFlowTestCase):
+class ResizeImagesV2Test(test_util.TensorFlowTestCase):
 
-  OPTIONS = [
+  METHODS = [
       image_ops.ResizeMethod.BILINEAR, image_ops.ResizeMethod.NEAREST_NEIGHBOR,
-      image_ops.ResizeMethod.BICUBIC, image_ops.ResizeMethod.AREA
+      image_ops.ResizeMethod.BICUBIC, image_ops.ResizeMethod.AREA,
+      image_ops.ResizeMethod.LANCZOS3, image_ops.ResizeMethod.LANCZOS5,
+      image_ops.ResizeMethod.GAUSSIAN, image_ops.ResizeMethod.MITCHELLCUBIC
+  ]
+
+  # Some resize methods, such as Gaussian, are non-interpolating in that they
+  # change the image even if there is no scale change, for some test, we only
+  # check the value on the value preserving methods.
+  INTERPOLATING_METHODS = [
+      image_ops.ResizeMethod.BILINEAR, image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+      image_ops.ResizeMethod.BICUBIC, image_ops.ResizeMethod.AREA,
+      image_ops.ResizeMethod.LANCZOS3, image_ops.ResizeMethod.LANCZOS5
   ]
 
   TYPES = [
@@ -2240,24 +2251,25 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
   def _assertShapeInference(self, pre_shape, size, post_shape):
     # Try single image resize
     single_image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
-    y = image_ops.resize_images(single_image, size)
+    y = image_ops.resize_images_v2(single_image, size)
     self.assertEqual(y.get_shape().as_list(), post_shape)
     # Try batch images resize with known batch size
     images = array_ops.placeholder(dtypes.float32, shape=[99] + pre_shape)
-    y = image_ops.resize_images(images, size)
+    y = image_ops.resize_images_v2(images, size)
     self.assertEqual(y.get_shape().as_list(), [99] + post_shape)
     # Try batch images resize with unknown batch size
     images = array_ops.placeholder(dtypes.float32, shape=[None] + pre_shape)
-    y = image_ops.resize_images(images, size)
+    y = image_ops.resize_images_v2(images, size)
     self.assertEqual(y.get_shape().as_list(), [None] + post_shape)
 
-  def shouldRunOnGPU(self, opt, nptype):
-    if (opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR and
+  def shouldRunOnGPU(self, method, nptype):
+    if (method == image_ops.ResizeMethod.NEAREST_NEIGHBOR and
         nptype in [np.float32, np.float64]):
       return True
     else:
       return False
 
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
   @test_util.run_deprecated_v1
   def testNoOp(self):
     img_shape = [1, 6, 4, 1]
@@ -2274,21 +2286,23 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     for nptype in self.TYPES:
       img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
-      for opt in self.OPTIONS:
-        with self.cached_session(use_gpu=True) as sess:
+      for method in self.METHODS:
+        with self.cached_session(use_gpu=True):
           image = constant_op.constant(img_np, shape=img_shape)
-          y = image_ops.resize_images(image, [target_height, target_width], opt)
+          y = image_ops.resize_images_v2(image, [target_height, target_width],
+                                         method)
           yshape = array_ops.shape(y)
           resized, newshape = self.evaluate([y, yshape])
           self.assertAllEqual(img_shape, newshape)
-          self.assertAllClose(resized, img_np, atol=1e-5)
+          if method in self.INTERPOLATING_METHODS:
+            self.assertAllClose(resized, img_np, atol=1e-5)
 
       # Resizing with a single image must leave the shape unchanged also.
       with self.cached_session(use_gpu=True):
         img_single = img_np.reshape(single_shape)
         image = constant_op.constant(img_single, shape=single_shape)
-        y = image_ops.resize_images(image, [target_height, target_width],
-                                    self.OPTIONS[0])
+        y = image_ops.resize_images_v2(image, [target_height, target_width],
+                                       self.METHODS[0])
         yshape = array_ops.shape(y)
         newshape = self.evaluate(yshape)
         self.assertAllEqual(single_shape, newshape)
@@ -2307,67 +2321,69 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
-    for opt in self.OPTIONS:
+    for method in self.METHODS:
       with self.cached_session(use_gpu=True) as sess:
         image = constant_op.constant(img_np, shape=img_shape)
-        y = image_ops.resize_images(image, new_size, opt)
+        y = image_ops.resize_images_v2(image, new_size, method)
         yshape = array_ops.shape(y)
         resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
         self.assertAllEqual(img_shape, newshape)
-        self.assertAllClose(resized, img_np, atol=1e-5)
+        if method in self.INTERPOLATING_METHODS:
+          self.assertAllClose(resized, img_np, atol=1e-5)
 
-    # Resizing with a single image must leave the shape unchanged also.
-    with self.cached_session(use_gpu=True):
-      img_single = img_np.reshape(single_shape)
-      image = constant_op.constant(img_single, shape=single_shape)
-      y = image_ops.resize_images(image, new_size, self.OPTIONS[0])
-      yshape = array_ops.shape(y)
-      resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
-      self.assertAllEqual(single_shape, newshape)
-      self.assertAllClose(resized, img_single, atol=1e-5)
+      # Resizing with a single image must leave the shape unchanged also.
+      with self.cached_session(use_gpu=True):
+        img_single = img_np.reshape(single_shape)
+        image = constant_op.constant(img_single, shape=single_shape)
+        y = image_ops.resize_images_v2(image, new_size, self.METHODS[0])
+        yshape = array_ops.shape(y)
+        resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
+        self.assertAllEqual(single_shape, newshape)
+        if method in self.INTERPOLATING_METHODS:
+          self.assertAllClose(resized, img_single, atol=1e-5)
 
     # Incorrect shape.
     with self.assertRaises(ValueError):
       new_size = constant_op.constant(4)
-      _ = image_ops.resize_images(image, new_size,
-                                  image_ops.ResizeMethod.BILINEAR)
+      _ = image_ops.resize_images_v2(image, new_size,
+                                     image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
       new_size = constant_op.constant([4])
-      _ = image_ops.resize_images(image, new_size,
-                                  image_ops.ResizeMethod.BILINEAR)
+      _ = image_ops.resize_images_v2(image, new_size,
+                                     image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
       new_size = constant_op.constant([1, 2, 3])
-      _ = image_ops.resize_images(image, new_size,
-                                  image_ops.ResizeMethod.BILINEAR)
+      _ = image_ops.resize_images_v2(image, new_size,
+                                     image_ops.ResizeMethod.BILINEAR)
 
     # Incorrect dtypes.
     with self.assertRaises(ValueError):
       new_size = constant_op.constant([6.0, 4])
-      _ = image_ops.resize_images(image, new_size,
-                                  image_ops.ResizeMethod.BILINEAR)
+      _ = image_ops.resize_images_v2(image, new_size,
+                                     image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
-      _ = image_ops.resize_images(image, [6, 4.0],
-                                  image_ops.ResizeMethod.BILINEAR)
+      _ = image_ops.resize_images_v2(image, [6, 4.0],
+                                     image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
-      _ = image_ops.resize_images(image, [None, 4],
-                                  image_ops.ResizeMethod.BILINEAR)
+      _ = image_ops.resize_images_v2(image, [None, 4],
+                                     image_ops.ResizeMethod.BILINEAR)
     with self.assertRaises(ValueError):
-      _ = image_ops.resize_images(image, [6, None],
-                                  image_ops.ResizeMethod.BILINEAR)
+      _ = image_ops.resize_images_v2(image, [6, None],
+                                     image_ops.ResizeMethod.BILINEAR)
 
   @test_util.run_deprecated_v1
   def testReturnDtype(self):
-    target_shapes = [[6, 4], [3, 2], [
-        array_ops.placeholder(dtypes.int32),
-        array_ops.placeholder(dtypes.int32)
-    ]]
+    target_shapes = [[6, 4], [3, 2],
+                     [
+                         array_ops.placeholder(dtypes.int32),
+                         array_ops.placeholder(dtypes.int32)
+                     ]]
     for nptype in self.TYPES:
       image = array_ops.placeholder(nptype, shape=[1, 6, 4, 1])
-      for opt in self.OPTIONS:
+      for method in self.METHODS:
         for target_shape in target_shapes:
-          y = image_ops.resize_images(image, target_shape, opt)
-          if (opt == image_ops.ResizeMethod.NEAREST_NEIGHBOR or
-              target_shape == image.shape[1:3]):
+          y = image_ops.resize_images_v2(image, target_shape, method)
+          if method == image_ops.ResizeMethod.NEAREST_NEIGHBOR:
             expected_dtype = image.dtype
           else:
             expected_dtype = dtypes.float32
@@ -2390,10 +2406,506 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
 
     img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
 
-    for opt in self.OPTIONS:
+    for method in self.METHODS:
+      with self.cached_session():
+        image = constant_op.constant(img_np, shape=img_shape)
+        y = image_ops.resize_images_v2(image, [height, width], method)
+        yshape = array_ops.shape(y)
+        resized, newshape = self.evaluate([y, yshape])
+        self.assertAllEqual(img_shape, newshape)
+        if method in self.INTERPOLATING_METHODS:
+          self.assertAllClose(resized, img_np, atol=1e-5)
+
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  def testResizeDown(self):
+    # This test is also conducted with int8, so 127 is the maximum
+    # value that can be used.
+    data = [
+        127, 127, 64, 64, 127, 127, 64, 64, 64, 64, 127, 127, 64, 64, 127, 127,
+        50, 50, 100, 100, 50, 50, 100, 100
+    ]
+    expected_data = [127, 64, 64, 127, 50, 100]
+    target_height = 3
+    target_width = 2
+
+    # Test out 3-D and 4-D image shapes.
+    img_shapes = [[1, 6, 4, 1], [6, 4, 1]]
+    target_shapes = [[1, target_height, target_width, 1],
+                     [target_height, target_width, 1]]
+
+    for target_shape, img_shape in zip(target_shapes, img_shapes):
+
+      for nptype in self.TYPES:
+        img_np = np.array(data, dtype=nptype).reshape(img_shape)
+
+        for method in self.METHODS:
+          if test.is_gpu_available() and self.shouldRunOnGPU(method, nptype):
+            with self.cached_session(use_gpu=True):
+              image = constant_op.constant(img_np, shape=img_shape)
+              y = image_ops.resize_images_v2(
+                  image, [target_height, target_width], method)
+              expected = np.array(expected_data).reshape(target_shape)
+              resized = self.evaluate(y)
+              self.assertAllClose(resized, expected, atol=1e-5)
+
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  def testResizeUp(self):
+    img_shape = [1, 3, 2, 1]
+    data = [64, 32, 32, 64, 50, 100]
+    target_height = 6
+    target_width = 4
+    expected_data = {}
+    expected_data[image_ops.ResizeMethod.BILINEAR] = [
+        64.0, 56.0, 40.0, 32.0, 56.0, 52.0, 44.0, 40.0, 40.0, 44.0, 52.0, 56.0,
+        36.5, 45.625, 63.875, 73.0, 45.5, 56.875, 79.625, 91.0, 50.0, 62.5,
+        87.5, 100.0
+    ]
+    expected_data[image_ops.ResizeMethod.NEAREST_NEIGHBOR] = [
+        64.0, 64.0, 32.0, 32.0, 64.0, 64.0, 32.0, 32.0, 32.0, 32.0, 64.0, 64.0,
+        32.0, 32.0, 64.0, 64.0, 50.0, 50.0, 100.0, 100.0, 50.0, 50.0, 100.0,
+        100.0
+    ]
+    expected_data[image_ops.ResizeMethod.AREA] = [
+        64.0, 64.0, 32.0, 32.0, 64.0, 64.0, 32.0, 32.0, 32.0, 32.0, 64.0, 64.0,
+        32.0, 32.0, 64.0, 64.0, 50.0, 50.0, 100.0, 100.0, 50.0, 50.0, 100.0,
+        100.0
+    ]
+    expected_data[image_ops.ResizeMethod.LANCZOS3] = [
+        75.8294, 59.6281, 38.4313, 22.23, 60.6851, 52.0037, 40.6454, 31.964,
+        35.8344, 41.0779, 47.9383, 53.1818, 24.6968, 43.0769, 67.1244, 85.5045,
+        35.7939, 56.4713, 83.5243, 104.2017, 44.8138, 65.1949, 91.8603, 112.2413
+    ]
+    expected_data[image_ops.ResizeMethod.LANCZOS5] = [
+        77.5699, 60.0223, 40.6694, 23.1219, 61.8253, 51.2369, 39.5593, 28.9709,
+        35.7438, 40.8875, 46.5604, 51.7041, 21.5942, 43.5299, 67.7223, 89.658,
+        32.1213, 56.784, 83.984, 108.6467, 44.5802, 66.183, 90.0082, 111.6109
+    ]
+    expected_data[image_ops.ResizeMethod.GAUSSIAN] = [
+        61.1087, 54.6926, 41.3074, 34.8913, 54.6926, 51.4168, 44.5832, 41.3074,
+        41.696, 45.2456, 52.6508, 56.2004, 39.4273, 47.0526, 62.9602, 70.5855,
+        47.3008, 57.3042, 78.173, 88.1764, 51.4771, 62.3638, 85.0752, 95.9619
+    ]
+    expected_data[image_ops.ResizeMethod.BICUBIC] = [
+        70.1453, 59.0252, 36.9748, 25.8547, 59.3195, 53.3386, 41.4789, 35.4981,
+        36.383, 41.285, 51.0051, 55.9071, 30.2232, 42.151, 65.8032, 77.731,
+        41.6492, 55.823, 83.9288, 98.1026, 47.0363, 62.2744, 92.4903, 107.7284
+    ]
+    expected_data[image_ops.ResizeMethod.MITCHELLCUBIC] = [
+        66.0382, 56.6079, 39.3921, 29.9618, 56.7255, 51.9603, 43.2611, 38.4959,
+        39.1828, 43.4664, 51.2864, 55.57, 34.6287, 45.1812, 64.4458, 74.9983,
+        43.8523, 56.8078, 80.4594, 93.4149, 48.9943, 63.026, 88.6422, 102.6739
+    ]
+    for nptype in self.TYPES:
+      for method in expected_data:
+        with self.cached_session(use_gpu=True):
+          img_np = np.array(data, dtype=nptype).reshape(img_shape)
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images_v2(image, [target_height, target_width],
+                                         method)
+          resized = self.evaluate(y)
+          expected = np.array(expected_data[method]).reshape(
+              [1, target_height, target_width, 1])
+          self.assertAllClose(resized, expected, atol=1e-04)
+
+  @test_util.disable_xla("TODO(jflynn): Figure out why this fails.")
+  def testLegacyBicubicMethodsMatchNewMethods(self):
+    img_shape = [1, 3, 2, 1]
+    data = [64, 32, 32, 64, 50, 100]
+    target_height = 6
+    target_width = 4
+    methods_to_test = ((gen_image_ops.resize_bilinear, "triangle"),
+                       (gen_image_ops.resize_bicubic, "keyscubic"))
+    for legacy_method, new_method in methods_to_test:
+      with self.cached_session(use_gpu=True):
+        img_np = np.array(data, dtype=np.float32).reshape(img_shape)
+        image = constant_op.constant(img_np, shape=img_shape)
+        legacy_result = legacy_method(
+            image,
+            constant_op.constant([target_height, target_width],
+                                 dtype=dtypes.int32),
+            half_pixel_centers=True)
+        scale = (
+            constant_op.constant([target_height, target_width],
+                                 dtype=dtypes.float32) /
+            math_ops.cast(array_ops.shape(image)[1:3], dtype=dtypes.float32))
+        new_result = gen_image_ops.scale_and_translate(
+            image,
+            constant_op.constant([target_height, target_width],
+                                 dtype=dtypes.int32),
+            scale,
+            array_ops.zeros([2]),
+            kernel_type=new_method,
+            antialias=False)
+        self.assertAllClose(
+            self.evaluate(legacy_result), self.evaluate(new_result), atol=1e-04)
+
+  def testResizeDownArea(self):
+    img_shape = [1, 6, 6, 1]
+    data = [
+        128, 64, 32, 16, 8, 4, 4, 8, 16, 32, 64, 128, 128, 64, 32, 16, 8, 4, 5,
+        10, 15, 20, 25, 30, 30, 25, 20, 15, 10, 5, 5, 10, 15, 20, 25, 30
+    ]
+    img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
+
+    target_height = 4
+    target_width = 4
+    expected_data = [
+        73, 33, 23, 39, 73, 33, 23, 39, 14, 16, 19, 21, 14, 16, 19, 21
+    ]
+
+    with self.cached_session(use_gpu=True):
+      image = constant_op.constant(img_np, shape=img_shape)
+      y = image_ops.resize_images_v2(image, [target_height, target_width],
+                                     image_ops.ResizeMethod.AREA)
+      expected = np.array(expected_data).reshape(
+          [1, target_height, target_width, 1])
+      resized = self.evaluate(y)
+      self.assertAllClose(resized, expected, atol=1)
+
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  def testCompareNearestNeighbor(self):
+    if test.is_gpu_available():
+      input_shape = [1, 5, 6, 3]
+      target_height = 8
+      target_width = 12
+      for nptype in [np.float32, np.float64]:
+        img_np = np.arange(
+            0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
+        with self.cached_session(use_gpu=True):
+          image = constant_op.constant(img_np, shape=input_shape)
+          new_size = constant_op.constant([target_height, target_width])
+          out_op = image_ops.resize_images_v2(
+              image, new_size, image_ops.ResizeMethod.NEAREST_NEIGHBOR)
+          gpu_val = self.evaluate(out_op)
+        with self.cached_session(use_gpu=False):
+          image = constant_op.constant(img_np, shape=input_shape)
+          new_size = constant_op.constant([target_height, target_width])
+          out_op = image_ops.resize_images_v2(
+              image, new_size, image_ops.ResizeMethod.NEAREST_NEIGHBOR)
+          cpu_val = self.evaluate(out_op)
+        self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
+
+  def testCompareBilinear(self):
+    if test.is_gpu_available():
+      input_shape = [1, 5, 6, 3]
+      target_height = 8
+      target_width = 12
+      for nptype in [np.float32, np.float64]:
+        img_np = np.arange(
+            0, np.prod(input_shape), dtype=nptype).reshape(input_shape)
+        value = {}
+        for use_gpu in [True, False]:
+          with self.cached_session(use_gpu=use_gpu):
+            image = constant_op.constant(img_np, shape=input_shape)
+            new_size = constant_op.constant([target_height, target_width])
+            out_op = image_ops.resize_images(image, new_size,
+                                             image_ops.ResizeMethod.BILINEAR)
+            value[use_gpu] = self.evaluate(out_op)
+        self.assertAllClose(value[True], value[False], rtol=1e-5, atol=1e-5)
+
+  @test_util.run_deprecated_v1
+  def testShapeInference(self):
+    self._assertShapeInference([50, 60, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([55, 66, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([59, 69, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([50, 69, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([59, 60, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, 60, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, 66, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, 69, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([50, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([55, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([59, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([None, None, 3], [55, 66], [55, 66, 3])
+    self._assertShapeInference([50, 60, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([55, 66, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([59, 69, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([50, 69, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([59, 60, None], [55, 66], [55, 66, None])
+    self._assertShapeInference([None, None, None], [55, 66], [55, 66, None])
+
+  @test_util.run_deprecated_v1
+  def testNameScope(self):
+    with self.cached_session(use_gpu=True):
+      single_image = array_ops.placeholder(dtypes.float32, shape=[50, 60, 3])
+      y = image_ops.resize_images(single_image, [55, 66])
+      self.assertTrue(y.op.name.startswith("resize"))
+
+  def _ResizeImageCall(self, x, max_h, max_w, preserve_aspect_ratio,
+                       use_tensor_inputs):
+    if use_tensor_inputs:
+      target_max = ops.convert_to_tensor([max_h, max_w])
+      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
+      feed_dict = {x_tensor: x}
+    else:
+      target_max = [max_h, max_w]
+      x_tensor = x
+      feed_dict = {}
+
+    y = image_ops.resize_images(
+        x_tensor, target_max, preserve_aspect_ratio=preserve_aspect_ratio)
+
+    with self.cached_session(use_gpu=True):
+      return y.eval(feed_dict=feed_dict)
+
+  def _assertResizeEqual(self,
+                         x,
+                         x_shape,
+                         y,
+                         y_shape,
+                         preserve_aspect_ratio=True,
+                         use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._ResizeImageCall(x, target_height, target_width,
+                                   preserve_aspect_ratio, use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertResizeCheckShape(self,
+                              x,
+                              x_shape,
+                              target_shape,
+                              y_shape,
+                              preserve_aspect_ratio=True,
+                              use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width = target_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.zeros(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._ResizeImageCall(x, target_height, target_width,
+                                   preserve_aspect_ratio, use_tensor_inputs)
+      self.assertShapeEqual(y, ops.convert_to_tensor(y_tf))
+
+  @test_util.run_deprecated_v1
+  def testPreserveAspectRatioMultipleImages(self):
+    x_shape = [10, 100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(
+        x, x_shape, [250, 250], [10, 250, 250, 10], preserve_aspect_ratio=False)
+
+  @test_util.run_deprecated_v1
+  def testPreserveAspectRatioNoOp(self):
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeEqual(x, x_shape, x, x_shape)
+
+  @test_util.run_deprecated_v1
+  def testPreserveAspectRatioSmaller(self):
+    x_shape = [100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [75, 50], [50, 50, 10])
+
+  @test_util.run_deprecated_v1
+  def testPreserveAspectRatioSmallerMultipleImages(self):
+    x_shape = [10, 100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [75, 50], [10, 50, 50, 10])
+
+  @test_util.run_deprecated_v1
+  def testPreserveAspectRatioLarger(self):
+    x_shape = [100, 100, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [150, 200], [150, 150, 10])
+
+  @test_util.run_deprecated_v1
+  def testPreserveAspectRatioSameRatio(self):
+    x_shape = [1920, 1080, 3]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [3840, 2160], [3840, 2160, 3])
+
+  @test_util.run_deprecated_v1
+  def testPreserveAspectRatioSquare(self):
+    x_shape = [299, 299, 3]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
+
+
+class ResizeImagesTest(test_util.TensorFlowTestCase):
+
+  METHODS = [
+      image_ops.ResizeMethodV1.BILINEAR,
+      image_ops.ResizeMethodV1.NEAREST_NEIGHBOR,
+      image_ops.ResizeMethodV1.BICUBIC, image_ops.ResizeMethodV1.AREA
+  ]
+
+  TYPES = [
+      np.uint8, np.int8, np.uint16, np.int16, np.int32, np.int64, np.float16,
+      np.float32, np.float64
+  ]
+
+  def _assertShapeInference(self, pre_shape, size, post_shape):
+    # Try single image resize
+    single_image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.resize_images(single_image, size)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
+    # Try batch images resize with known batch size
+    images = array_ops.placeholder(dtypes.float32, shape=[99] + pre_shape)
+    y = image_ops.resize_images(images, size)
+    self.assertEqual(y.get_shape().as_list(), [99] + post_shape)
+    # Try batch images resize with unknown batch size
+    images = array_ops.placeholder(dtypes.float32, shape=[None] + pre_shape)
+    y = image_ops.resize_images(images, size)
+    self.assertEqual(y.get_shape().as_list(), [None] + post_shape)
+
+  def shouldRunOnGPU(self, method, nptype):
+    if (method == image_ops.ResizeMethodV1.NEAREST_NEIGHBOR and
+        nptype in [np.float32, np.float64]):
+      return True
+    else:
+      return False
+
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.run_deprecated_v1
+  def testNoOp(self):
+    img_shape = [1, 6, 4, 1]
+    single_shape = [6, 4, 1]
+    # This test is also conducted with int8, so 127 is the maximum
+    # value that can be used.
+    data = [
+        127, 127, 64, 64, 127, 127, 64, 64, 64, 64, 127, 127, 64, 64, 127, 127,
+        50, 50, 100, 100, 50, 50, 100, 100
+    ]
+    target_height = 6
+    target_width = 4
+
+    for nptype in self.TYPES:
+      img_np = np.array(data, dtype=nptype).reshape(img_shape)
+
+      for method in self.METHODS:
+        with self.cached_session(use_gpu=True) as sess:
+          image = constant_op.constant(img_np, shape=img_shape)
+          y = image_ops.resize_images(image, [target_height, target_width],
+                                      method)
+          yshape = array_ops.shape(y)
+          resized, newshape = self.evaluate([y, yshape])
+          self.assertAllEqual(img_shape, newshape)
+          self.assertAllClose(resized, img_np, atol=1e-5)
+
+      # Resizing with a single image must leave the shape unchanged also.
+      with self.cached_session(use_gpu=True):
+        img_single = img_np.reshape(single_shape)
+        image = constant_op.constant(img_single, shape=single_shape)
+        y = image_ops.resize_images(image, [target_height, target_width],
+                                    self.METHODS[0])
+        yshape = array_ops.shape(y)
+        newshape = self.evaluate(yshape)
+        self.assertAllEqual(single_shape, newshape)
+
+  @test_util.run_deprecated_v1
+  def testTensorArguments(self):
+    img_shape = [1, 6, 4, 1]
+    single_shape = [6, 4, 1]
+    # This test is also conducted with int8, so 127 is the maximum
+    # value that can be used.
+    data = [
+        127, 127, 64, 64, 127, 127, 64, 64, 64, 64, 127, 127, 64, 64, 127, 127,
+        50, 50, 100, 100, 50, 50, 100, 100
+    ]
+    new_size = array_ops.placeholder(dtypes.int32, shape=(2))
+
+    img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
+
+    for method in self.METHODS:
+      with self.cached_session(use_gpu=True) as sess:
+        image = constant_op.constant(img_np, shape=img_shape)
+        y = image_ops.resize_images(image, new_size, method)
+        yshape = array_ops.shape(y)
+        resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
+        self.assertAllEqual(img_shape, newshape)
+        self.assertAllClose(resized, img_np, atol=1e-5)
+
+    # Resizing with a single image must leave the shape unchanged also.
+    with self.cached_session(use_gpu=True):
+      img_single = img_np.reshape(single_shape)
+      image = constant_op.constant(img_single, shape=single_shape)
+      y = image_ops.resize_images(image, new_size, self.METHODS[0])
+      yshape = array_ops.shape(y)
+      resized, newshape = sess.run([y, yshape], {new_size: [6, 4]})
+      self.assertAllEqual(single_shape, newshape)
+      self.assertAllClose(resized, img_single, atol=1e-5)
+
+    # Incorrect shape.
+    with self.assertRaises(ValueError):
+      new_size = constant_op.constant(4)
+      _ = image_ops.resize_images(image, new_size,
+                                  image_ops.ResizeMethodV1.BILINEAR)
+    with self.assertRaises(ValueError):
+      new_size = constant_op.constant([4])
+      _ = image_ops.resize_images(image, new_size,
+                                  image_ops.ResizeMethodV1.BILINEAR)
+    with self.assertRaises(ValueError):
+      new_size = constant_op.constant([1, 2, 3])
+      _ = image_ops.resize_images(image, new_size,
+                                  image_ops.ResizeMethodV1.BILINEAR)
+
+    # Incorrect dtypes.
+    with self.assertRaises(ValueError):
+      new_size = constant_op.constant([6.0, 4])
+      _ = image_ops.resize_images(image, new_size,
+                                  image_ops.ResizeMethodV1.BILINEAR)
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(image, [6, 4.0],
+                                  image_ops.ResizeMethodV1.BILINEAR)
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(image, [None, 4],
+                                  image_ops.ResizeMethodV1.BILINEAR)
+    with self.assertRaises(ValueError):
+      _ = image_ops.resize_images(image, [6, None],
+                                  image_ops.ResizeMethodV1.BILINEAR)
+
+  @test_util.run_deprecated_v1
+  def testReturnDtype(self):
+    target_shapes = [[6, 4], [3, 2], [
+        array_ops.placeholder(dtypes.int32),
+        array_ops.placeholder(dtypes.int32)
+    ]]
+    for nptype in self.TYPES:
+      image = array_ops.placeholder(nptype, shape=[1, 6, 4, 1])
+      for method in self.METHODS:
+        for target_shape in target_shapes:
+          y = image_ops.resize_images(image, target_shape, method)
+          if (method == image_ops.ResizeMethodV1.NEAREST_NEIGHBOR or
+              target_shape == image.shape[1:3]):
+            expected_dtype = image.dtype
+          else:
+            expected_dtype = dtypes.float32
+          self.assertEqual(y.dtype, expected_dtype)
+
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  def testSumTensor(self):
+    img_shape = [1, 6, 4, 1]
+    # This test is also conducted with int8, so 127 is the maximum
+    # value that can be used.
+    data = [
+        127, 127, 64, 64, 127, 127, 64, 64, 64, 64, 127, 127, 64, 64, 127, 127,
+        50, 50, 100, 100, 50, 50, 100, 100
+    ]
+    # Test size where width is specified as a tensor which is a sum
+    # of two tensors.
+    width_1 = constant_op.constant(1)
+    width_2 = constant_op.constant(3)
+    width = math_ops.add(width_1, width_2)
+    height = constant_op.constant(6)
+
+    img_np = np.array(data, dtype=np.uint8).reshape(img_shape)
+
+    for method in self.METHODS:
       with self.cached_session() as sess:
         image = constant_op.constant(img_np, shape=img_shape)
-        y = image_ops.resize_images(image, [height, width], opt)
+        y = image_ops.resize_images(image, [height, width], method)
         yshape = array_ops.shape(y)
         resized, newshape = self.evaluate([y, yshape])
         self.assertAllEqual(img_shape, newshape)
@@ -2421,12 +2933,12 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
       for nptype in self.TYPES:
         img_np = np.array(data, dtype=nptype).reshape(img_shape)
 
-        for opt in self.OPTIONS:
-          if test.is_gpu_available() and self.shouldRunOnGPU(opt, nptype):
+        for method in self.METHODS:
+          if test.is_gpu_available() and self.shouldRunOnGPU(method, nptype):
             with self.cached_session(use_gpu=True):
               image = constant_op.constant(img_np, shape=img_shape)
               y = image_ops.resize_images(image, [target_height, target_width],
-                                          opt)
+                                          method)
               expected = np.array(expected_data).reshape(target_shape)
               resized = self.evaluate(y)
               self.assertAllClose(resized, expected, atol=1e-5)
@@ -2438,34 +2950,35 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     target_height = 6
     target_width = 4
     expected_data = {}
-    expected_data[image_ops.ResizeMethod.BILINEAR] = [
+    expected_data[image_ops.ResizeMethodV1.BILINEAR] = [
         64.0, 48.0, 32.0, 32.0, 48.0, 48.0, 48.0, 48.0, 32.0, 48.0, 64.0, 64.0,
         41.0, 61.5, 82.0, 82.0, 50.0, 75.0, 100.0, 100.0, 50.0, 75.0, 100.0,
         100.0
     ]
-    expected_data[image_ops.ResizeMethod.NEAREST_NEIGHBOR] = [
+    expected_data[image_ops.ResizeMethodV1.NEAREST_NEIGHBOR] = [
         64.0, 64.0, 32.0, 32.0, 64.0, 64.0, 32.0, 32.0, 32.0, 32.0, 64.0, 64.0,
         32.0, 32.0, 64.0, 64.0, 50.0, 50.0, 100.0, 100.0, 50.0, 50.0, 100.0,
         100.0
     ]
-    expected_data[image_ops.ResizeMethod.AREA] = [
+    expected_data[image_ops.ResizeMethodV1.AREA] = [
         64.0, 64.0, 32.0, 32.0, 64.0, 64.0, 32.0, 32.0, 32.0, 32.0, 64.0, 64.0,
         32.0, 32.0, 64.0, 64.0, 50.0, 50.0, 100.0, 100.0, 50.0, 50.0, 100.0,
         100.0
     ]
 
     for nptype in self.TYPES:
-      for opt in [
-          image_ops.ResizeMethod.BILINEAR,
-          image_ops.ResizeMethod.NEAREST_NEIGHBOR, image_ops.ResizeMethod.AREA
+      for method in [
+          image_ops.ResizeMethodV1.BILINEAR,
+          image_ops.ResizeMethodV1.NEAREST_NEIGHBOR,
+          image_ops.ResizeMethodV1.AREA
       ]:
         with self.cached_session(use_gpu=True):
           img_np = np.array(data, dtype=nptype).reshape(img_shape)
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(
-              image, [target_height, target_width], opt, align_corners=False)
+              image, [target_height, target_width], method, align_corners=False)
           resized = self.evaluate(y)
-          expected = np.array(expected_data[opt]).reshape(
+          expected = np.array(expected_data[method]).reshape(
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-05)
 
@@ -2475,33 +2988,34 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     target_height = 5
     target_width = 4
     expected_data = {}
-    expected_data[image_ops.ResizeMethod.BILINEAR] = [
+    expected_data[image_ops.ResizeMethodV1.BILINEAR] = [
         6.0, 5.0, 4.0, 3.0, 4.5, 4.5, 4.5, 4.5, 3.0, 4.0, 5.0, 6.0, 4.5, 5.5,
         6.5, 7.5, 6.0, 7.0, 8.0, 9.0
     ]
-    expected_data[image_ops.ResizeMethod.NEAREST_NEIGHBOR] = [
+    expected_data[image_ops.ResizeMethodV1.NEAREST_NEIGHBOR] = [
         6.0, 6.0, 3.0, 3.0, 3.0, 3.0, 6.0, 6.0, 3.0, 3.0, 6.0, 6.0, 6.0, 6.0,
         9.0, 9.0, 6.0, 6.0, 9.0, 9.0
     ]
-    # TODO(b/37749740): Improve alignment of ResizeMethod.AREA when
+    # TODO(b/37749740): Improve alignment of ResizeMethodV1.AREA when
     # align_corners=True.
-    expected_data[image_ops.ResizeMethod.AREA] = [
+    expected_data[image_ops.ResizeMethodV1.AREA] = [
         6.0, 6.0, 6.0, 3.0, 6.0, 6.0, 6.0, 3.0, 3.0, 3.0, 3.0, 6.0, 3.0, 3.0,
         3.0, 6.0, 6.0, 6.0, 6.0, 9.0
     ]
 
     for nptype in self.TYPES:
-      for opt in [
-          image_ops.ResizeMethod.BILINEAR,
-          image_ops.ResizeMethod.NEAREST_NEIGHBOR, image_ops.ResizeMethod.AREA
+      for method in [
+          image_ops.ResizeMethodV1.BILINEAR,
+          image_ops.ResizeMethodV1.NEAREST_NEIGHBOR,
+          image_ops.ResizeMethodV1.AREA
       ]:
         with self.cached_session(use_gpu=True):
           img_np = np.array(data, dtype=nptype).reshape(img_shape)
           image = constant_op.constant(img_np, shape=img_shape)
           y = image_ops.resize_images(
-              image, [target_height, target_width], opt, align_corners=True)
+              image, [target_height, target_width], method, align_corners=True)
           resized = self.evaluate(y)
-          expected = np.array(expected_data[opt]).reshape(
+          expected = np.array(expected_data[method]).reshape(
               [1, target_height, target_width, 1])
           self.assertAllClose(resized, expected, atol=1e-05)
 
@@ -2526,7 +3040,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True):
       image = constant_op.constant(img_np, shape=img_shape)
       y = image_ops.resize_images(image, [target_height, target_width],
-                                  image_ops.ResizeMethod.BICUBIC)
+                                  image_ops.ResizeMethodV1.BICUBIC)
       resized = self.evaluate(y)
       expected = np.array(expected_data).reshape(
           [1, target_height, target_width, 1])
@@ -2549,7 +3063,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     with self.cached_session(use_gpu=True):
       image = constant_op.constant(img_np, shape=img_shape)
       y = image_ops.resize_images(image, [target_height, target_width],
-                                  image_ops.ResizeMethod.AREA)
+                                  image_ops.ResizeMethodV1.AREA)
       expected = np.array(expected_data).reshape(
           [1, target_height, target_width, 1])
       resized = self.evaluate(y)
@@ -2571,7 +3085,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
             out_op = image_ops.resize_images(
                 image,
                 new_size,
-                image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+                image_ops.ResizeMethodV1.NEAREST_NEIGHBOR,
                 align_corners=align_corners)
             gpu_val = self.evaluate(out_op)
           with self.cached_session(use_gpu=False):
@@ -2580,7 +3094,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
             out_op = image_ops.resize_images(
                 image,
                 new_size,
-                image_ops.ResizeMethod.NEAREST_NEIGHBOR,
+                image_ops.ResizeMethodV1.NEAREST_NEIGHBOR,
                 align_corners=align_corners)
             cpu_val = self.evaluate(out_op)
           self.assertAllClose(cpu_val, gpu_val, rtol=1e-5, atol=1e-5)
@@ -2602,7 +3116,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
               out_op = image_ops.resize_images(
                   image,
                   new_size,
-                  image_ops.ResizeMethod.BILINEAR,
+                  image_ops.ResizeMethodV1.BILINEAR,
                   align_corners=align_corners)
               value[use_gpu] = self.evaluate(out_op)
           self.assertAllClose(value[True], value[False], rtol=1e-5, atol=1e-5)
@@ -2730,7 +3244,7 @@ class ResizeImagesTest(test_util.TensorFlowTestCase):
     self._assertResizeCheckShape(x, x_shape, [320, 320], [320, 320, 3])
 
 
-class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
+class ResizeImageWithPadV1Test(test_util.TensorFlowTestCase):
 
   def _ResizeImageWithPad(self, x, target_height, target_width,
                           use_tensor_inputs):
@@ -2743,8 +3257,8 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
       x_tensor = x
       feed_dict = {}
 
-    y = image_ops.resize_image_with_pad(x_tensor, target_height,
-                                        target_width)
+    y = image_ops.resize_image_with_pad_v1(x_tensor, target_height,
+                                           target_width)
     if not use_tensor_inputs:
       self.assertTrue(y.get_shape().is_fully_defined())
 
@@ -2789,7 +3303,7 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
 
   def _assertShapeInference(self, pre_shape, height, width, post_shape):
     image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
-    y = image_ops.resize_image_with_pad(image, height, width)
+    y = image_ops.resize_image_with_pad_v1(image, height, width)
     self.assertEqual(y.get_shape().as_list(), post_shape)
 
   @test_util.run_deprecated_v1
@@ -2823,6 +3337,107 @@ class ResizeImageWithPadTest(test_util.TensorFlowTestCase):
     x_shape = [2, 4, 1]
 
     y = [1, 3]
+    y_shape = [1, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+
+class ResizeImageWithPadV2Test(test_util.TensorFlowTestCase):
+
+  def _ResizeImageWithPad(self, x, target_height, target_width,
+                          use_tensor_inputs):
+    if use_tensor_inputs:
+      target_height = ops.convert_to_tensor(target_height)
+      target_width = ops.convert_to_tensor(target_width)
+      x_tensor = array_ops.placeholder(x.dtype, shape=[None] * x.ndim)
+      feed_dict = {x_tensor: x}
+    else:
+      x_tensor = x
+      feed_dict = {}
+
+    y = image_ops.resize_image_with_pad_v2(x_tensor, target_height,
+                                           target_width)
+    if not use_tensor_inputs:
+      self.assertTrue(y.get_shape().is_fully_defined())
+
+    with self.cached_session(use_gpu=True):
+      return y.eval(feed_dict=feed_dict)
+
+  def _assertReturns(self,
+                     x,
+                     x_shape,
+                     y,
+                     y_shape,
+                     use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    target_height, target_width, _ = y_shape
+    x = np.array(x).reshape(x_shape)
+    y = np.array(y).reshape(y_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      y_tf = self._ResizeImageWithPad(x, target_height, target_width,
+                                      use_tensor_inputs)
+      self.assertAllClose(y, y_tf)
+
+  def _assertRaises(self,
+                    x,
+                    x_shape,
+                    target_height,
+                    target_width,
+                    err_msg,
+                    use_tensor_inputs_options=None):
+    use_tensor_inputs_options = use_tensor_inputs_options or [False, True]
+    x = np.array(x).reshape(x_shape)
+
+    for use_tensor_inputs in use_tensor_inputs_options:
+      try:
+        self._ResizeImageWithPad(x, target_height, target_width,
+                                 use_tensor_inputs)
+      except Exception as e:  # pylint: disable=broad-except
+        if err_msg not in str(e):
+          raise
+      else:
+        raise AssertionError("Exception not raised: %s" % err_msg)
+
+  def _assertShapeInference(self, pre_shape, height, width, post_shape):
+    image = array_ops.placeholder(dtypes.float32, shape=pre_shape)
+    y = image_ops.resize_image_with_pad_v1(image, height, width)
+    self.assertEqual(y.get_shape().as_list(), post_shape)
+
+
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.run_deprecated_v1
+  def testNoOp(self):
+    x_shape = [10, 10, 10]
+    x = np.random.uniform(size=x_shape)
+
+    self._assertReturns(x, x_shape, x, x_shape)
+
+  @test_util.disable_xla("b/124289666")  # align_corners=False unimplemented
+  @test_util.run_deprecated_v1
+  def testPad(self):
+    # Reduce vertical dimension
+    x = [1, 2, 3, 4, 5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [0, 3.5, 5.5, 0]
+    y_shape = [1, 4, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+    # Reduce horizontal dimension
+    x = [1, 2, 3, 4, 5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [3.5, 5.5, 0, 0]
+    y_shape = [2, 2, 1]
+
+    self._assertReturns(x, x_shape, y, y_shape)
+
+    x = [1, 2, 3, 4, 5, 6, 7, 8]
+    x_shape = [2, 4, 1]
+
+    y = [3.5, 5.5]
     y_shape = [1, 2, 1]
 
     self._assertReturns(x, x_shape, y, y_shape)

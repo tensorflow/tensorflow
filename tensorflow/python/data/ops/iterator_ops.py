@@ -540,13 +540,13 @@ class EagerIterator(trackable.Trackable):
       self._flat_output_types = self._structure._flat_types
       self._flat_output_shapes = self._structure._flat_shapes
       with ops.colocate_with(ds_variant):
-        self._resource = gen_dataset_ops.anonymous_iterator(
+        self._iterator_resource = gen_dataset_ops.anonymous_iterator(
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
-        gen_dataset_ops.make_iterator(ds_variant, self._resource)
+        gen_dataset_ops.make_iterator(ds_variant, self._iterator_resource)
         # Delete the resource when this object is deleted
         self._resource_deleter = resource_variable_ops.EagerResourceDeleter(
-            handle=self._resource, handle_device=self._device)
+            handle=self._iterator_resource, handle_device=self._device)
       # pylint: enable=protected-access
 
   def __iter__(self):
@@ -572,7 +572,7 @@ class EagerIterator(trackable.Trackable):
         # to a background thread, and can achieve a small constant performance
         # boost by invoking the iterator synchronously.
         ret = gen_dataset_ops.iterator_get_next_sync(
-            self._resource,
+            self._iterator_resource,
             output_types=self._flat_output_types,
             output_shapes=self._flat_output_shapes)
 
@@ -646,7 +646,7 @@ class EagerIterator(trackable.Trackable):
   def _gather_saveables_for_checkpoint(self):
 
     def _saveable_factory(name):
-      return _IteratorSaveable(self._resource, name)
+      return _IteratorSaveable(self._iterator_resource, name)
 
     return {"ITERATOR": _saveable_factory}
 

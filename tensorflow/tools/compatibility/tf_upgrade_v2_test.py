@@ -517,7 +517,6 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     _, report, errors, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
 
-
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "
             "False, False, name=\"foo\")\n")
@@ -1133,9 +1132,10 @@ tf.print('abc')
   def testImageResizeExtraPositionalArgs(self):
     for method in ["bilinear", "area", "bicubic", "nearest_neighbor"]:
       text = "tf.image.resize_%s(i, s, a, p)" % method
-      expected_text = ["tf.image.resize(i, s, ", "align_corners=a, ",
-                       "preserve_aspect_ratio=p, ",
-                       "method=tf.image.ResizeMethod.%s)" % method.upper()]
+      expected_text = [
+          "tf.image.resize(i, s, ", "preserve_aspect_ratio=p, ",
+          "method=tf.image.ResizeMethod.%s)" % method.upper()
+      ]
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       for s in expected_text:
         self.assertIn(s, new_text)
@@ -1383,6 +1383,28 @@ def _log_prob(self, x):
         "scale=0.5, distribution=\"uniform\")")
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected_text, new_text)
+
+  def test_name_scope(self):
+    text = "tf.name_scope(None, default_name, [some, values])"
+    expected_text = "tf.name_scope(name=default_name)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.name_scope(default_name=default_name, values=stuff)"
+    expected_text = "tf.name_scope(name=default_name)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.name_scope(name=n, default_name=d, values=s)"
+    expected_text = "tf.compat.v1.name_scope(name=n, default_name=d, values=s)"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    self.assertIn("`name` passed to `name_scope`", report)
+
+    text = "tf.name_scope(name=None, values=stuff)"
+    _, _, errors, _ = self._upgrade(text)
+    self.assertIn("name_scope call with neither name nor default_name",
+                  errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

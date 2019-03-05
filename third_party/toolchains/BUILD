@@ -39,25 +39,6 @@ platform(
         """ % container_digests["ubuntu16.04"],
 )
 
-# Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda9.0-cudnn7-ubuntu14.04.
-platform(
-    name = "rbe_cuda9.0-cudnn7-ubuntu14.04",
-    constraint_values = [
-        "@bazel_tools//platforms:x86_64",
-        "@bazel_tools//platforms:linux",
-    ],
-    remote_execution_properties = """
-        properties: {
-            name: "container-image"
-            value:"docker://gcr.io/tensorflow-testing/nosla-cuda9.0-cudnn7-ubuntu14.04@%s"
-        }
-        properties: {
-            name: "Pool"
-            value: "default"
-        }
-        """ % container_digests["cuda9.0-cudnn7-ubuntu14.04"],
-)
-
 # Built with //tensorflow/tools/ci_build/Dockerfile.rbe.cuda10.0-cudnn7-ubuntu14.04.
 platform(
     name = "rbe_cuda10.0-cudnn7-ubuntu14.04",

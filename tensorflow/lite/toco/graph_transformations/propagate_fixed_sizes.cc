@@ -1707,11 +1707,16 @@ void ProcessSqueezeOperator(Model* model, SqueezeOperator* op) {
   const std::vector<int>& input_dims = input_array.shape().dims();
   std::vector<int> output_dims;
 
-  for (int i = 0; i < input_dims.size(); ++i) {
+  std::vector<int> squeeze_dims;
+  const int input_num_dims = input_dims.size();
+  for (int i : op->squeeze_dims) {
+    squeeze_dims.push_back(i < 0 ? i + input_num_dims : i);
+  }
+  for (int i = 0; i < input_num_dims; ++i) {
     if (input_dims[i] != 1 ||
-        (!op->squeeze_dims.empty() &&
-         std::find(op->squeeze_dims.begin(), op->squeeze_dims.end(), i) ==
-             op->squeeze_dims.end())) {
+        (!squeeze_dims.empty() &&
+         std::find(squeeze_dims.begin(), squeeze_dims.end(), i) ==
+             squeeze_dims.end())) {
       output_dims.push_back(input_dims[i]);
     }
   }

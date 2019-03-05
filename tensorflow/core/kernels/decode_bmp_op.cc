@@ -142,7 +142,7 @@ class DecodeBmpOp : public OpKernel {
   }
 
   uint8* Decode(const uint8* input, const int row_size, uint8* const output,
-                const int width, const int height, const int channles,
+                const int width, const int height, const int channels,
                 bool top_down);
 
  private:

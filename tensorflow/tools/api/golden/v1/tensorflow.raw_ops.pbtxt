@@ -1029,6 +1029,10 @@ tf_module {
     argspec: "args=[\'input_dataset\', \'transformations\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
+    name: "ExperimentalAutoShardDataset"
+    argspec: "args=[\'input_dataset\', \'num_workers\', \'index\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "ExperimentalBytesProducedStatsDataset"
     argspec: "args=[\'input_dataset\', \'tag\', \'output_types\', \'output_shapes\'], varargs=None, keywords=None, defaults=None"
   }
@@ -1966,7 +1970,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGradGradWithArgmax"
-    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MaxPoolGradV2"
@@ -1974,7 +1978,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolGradWithArgmax"
-    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'grad\', \'argmax\', \'ksize\', \'strides\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MaxPoolV2"
@@ -1982,7 +1986,7 @@ tf_module {
   }
   member_method {
     name: "MaxPoolWithArgmax"
-    argspec: "args=[\'input\', \'ksize\', \'strides\', \'Targmax\', \'padding\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'input\', \'ksize\', \'strides\', \'Targmax\', \'padding\', \'include_batch_in_index\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "Maximum"
@@ -3142,11 +3146,11 @@ tf_module {
   }
   member_method {
     name: "ScaleAndTranslate"
-    argspec: "args=[\'images\', \'size\', \'scale\', \'translation\', \'kernel_type\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'images\', \'size\', \'scale\', \'translation\', \'kernel_type\', \'antialias\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ScaleAndTranslateGrad"
-    argspec: "args=[\'grads\', \'original_image\', \'scale\', \'translation\', \'kernel_type\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'grads\', \'original_image\', \'scale\', \'translation\', \'kernel_type\', \'antialias\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "ScatterAdd"

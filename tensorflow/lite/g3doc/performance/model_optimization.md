@@ -80,7 +80,7 @@ Pixel&nbsp;2 devices using a single big core. As the toolkit improves, so will t
 
 ## Choice of quantization tool
 
-As a starting point, check if the models in [hosted models](../models/hosted.md) can work for
+As a starting point, check if the models in [hosted models](../guide/hosted_models.md) can work for
 your application. If not, we recommend that users start with the [post-training quantization tool](post_training_quantization.md)
 since this is broadly applicable and does not require training data. For cases where the accuracy
 and latency targets are not met, or hardware accelerator support is important, [quantization-aware

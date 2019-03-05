@@ -68,7 +68,6 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = [
-        ":test_utils",
         ":trt_allocator",
         ":trt_conversion",
         ":trt_logging",
@@ -248,7 +247,6 @@ tf_cuda_library(
     ],
     deps = [
         ":segment",
-        ":test_utils",
         ":trt_allocator",
         ":trt_plugins",
         ":trt_logging",
@@ -435,11 +433,11 @@ cc_library(
 )
 
 cc_library(
-    name = "test_utils",
-    srcs = ["utils/test_utils.cc"],
-    hdrs = ["utils/test_utils.h"],
-    deps = [
-        "//tensorflow/core:lib_proto_parsing",
-        "@com_googlesource_code_re2//:re2",
-    ],
+    name = "py_utils",
+    srcs = ["utils/py_utils.cc"],
+    hdrs = ["utils/py_utils.h"],
+    copts = tf_copts(),
+    deps = if_tensorrt([
+        "@local_config_tensorrt//:tensorrt",
+    ]),
 )
