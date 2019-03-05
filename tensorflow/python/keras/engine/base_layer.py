@@ -851,7 +851,8 @@ class Layer(trackable.Trackable):
 
       # We will not raise this error in the foll use case for the sake of
       # consistency as name in provided in the metric constructor.
-      # model.add_metric(metrics.Mean(name='my_metric')(outputs))
+      # mean = metrics.Mean(name='my_metric')
+      # model.add_metric(mean(outputs))
       raise ValueError('Please provide a name for your metric like '
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
