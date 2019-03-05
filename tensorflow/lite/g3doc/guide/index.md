@@ -118,7 +118,7 @@ TensorFlow Lite provides:
       to all first-party and third-party apps.
 
     Also see the complete list of
-    [TensorFlow Lite's supported models](https://github.com/tensorflow/tensorflow/blob/master/tensorflow/lite/g3doc/models.md),
+    [TensorFlow Lite's supported models](hosted_models.md),
     including the model sizes, performance numbers, and downloadable model files.
 
 - Quantized versions of the MobileNet model, which runs faster than the
