@@ -37958,13 +37958,6 @@ op {
     }
   }
   attr {
-    name: "include_batch_in_index"
-    type: "bool"
-    default_value {
-      b: false
-    }
-  }
-  attr {
     name: "Targmax"
     type: "type"
     allowed_values {
@@ -38665,13 +38658,6 @@ op {
         s: "SAME"
         s: "VALID"
       }
-    }
-  }
-  attr {
-    name: "include_batch_in_index"
-    type: "bool"
-    default_value {
-      b: false
     }
   }
   attr {
@@ -39282,13 +39268,6 @@ op {
         s: "SAME"
         s: "VALID"
       }
-    }
-  }
-  attr {
-    name: "include_batch_in_index"
-    type: "bool"
-    default_value {
-      b: false
     }
   }
   attr {
