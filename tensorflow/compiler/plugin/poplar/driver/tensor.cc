@@ -561,10 +561,10 @@ StatusOr<poplar::Tensor> AddNormScaleTensor(
   }
 
   poplar::Tensor acts = outputs[layout_output_idx];
-  auto pair = ShuffleNormInputToPoplar(acts, feature_dimension);
+  auto shuffled = ShuffleNormInputToPoplar(acts, feature_dimension);
 
   TF_ASSIGN_OR_RETURN(acts,
-                      ReversePathTransform(graph, pair.first, forward_path));
+                      ReversePathTransform(graph, shuffled, forward_path));
 
   return poplin::createNormGamma(graph, acts);
 }
@@ -584,10 +584,10 @@ StatusOr<poplar::Tensor> AddNormOffsetTensor(
   }
 
   poplar::Tensor acts = outputs[layout_output_idx];
-  auto pair = ShuffleNormInputToPoplar(acts, feature_dimension);
+  auto shuffled = ShuffleNormInputToPoplar(acts, feature_dimension);
 
   TF_ASSIGN_OR_RETURN(acts,
-                      ReversePathTransform(graph, pair.first, forward_path));
+                      ReversePathTransform(graph, shuffled, forward_path));
 
   return poplin::createNormBeta(graph, acts);
 }

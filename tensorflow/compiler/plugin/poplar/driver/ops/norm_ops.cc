@@ -18,37 +18,14 @@ namespace pe = popops::expr;
 namespace xla {
 namespace poplarplugin {
 
-std::pair<poplar::Tensor, std::vector<std::size_t>> ShuffleNormInputToPoplar(
-    const poplar::Tensor& input, const unsigned feature_dimension) {
-  std::vector<std::size_t> non_broadcast_dims;
-  poplar::Tensor input_shuffled;
-  if (input.rank() == 4) {
-    input_shuffled = input.dimShufflePartial({feature_dimension}, {1});
-  } else {
-    const unsigned final_dim = input.rank() - 1;
-    input_shuffled = input.dimShufflePartial({feature_dimension}, {final_dim});
-    non_broadcast_dims = input_shuffled.shape();
-    non_broadcast_dims.pop_back();
-
-    std::size_t count = input.numElements() / input.dim(feature_dimension);
-    input_shuffled = input_shuffled.reshapePartial(0, final_dim, {count});
-  }
-  return {input_shuffled, non_broadcast_dims};
+poplar::Tensor ShuffleNormInputToPoplar(const poplar::Tensor& input,
+                                        const unsigned feature_dimension) {
+  return input.dimShufflePartial({feature_dimension}, {1});
 }
 
-poplar::Tensor ShuffleNormOutputToTensorflow(
-    const poplar::Tensor& output, const unsigned feature_dimension,
-    const std::vector<std::size_t>& non_broadcast_dims) {
-  poplar::Tensor output_shuffled;
-  if (output.rank() == 4) {
-    output_shuffled = output.dimShufflePartial({1}, {feature_dimension});
-  } else {
-    output_shuffled = output.reshapePartial(0, 1, {non_broadcast_dims});
-    const unsigned final_dim = output_shuffled.rank() - 1;
-    output_shuffled =
-        output_shuffled.dimShufflePartial({final_dim}, {feature_dimension});
-  }
-  return output_shuffled;
+poplar::Tensor ShuffleNormOutputToTensorflow(const poplar::Tensor& output,
+                                             const unsigned feature_dimension) {
+  return output.dimShufflePartial({1}, {feature_dimension});
 }
 
 StatusOr<poplar::program::Program> CreateBatchNormInf(
@@ -93,9 +70,7 @@ StatusOr<poplar::program::Program> CreateNormInference(
     return seq;
   }
 
-  std::vector<std::size_t> non_broadcast_dims;
-  poplar::Tensor operand_view;
-  std::tie(operand_view, non_broadcast_dims) =
+  poplar::Tensor operand_view =
       ShuffleNormInputToPoplar(operand, feature_dimension);
 
   auto out = norm_graph_caching::DoCachedNormInference(
@@ -103,8 +78,7 @@ StatusOr<poplar::program::Program> CreateNormInference(
       variance_or_inv_std_dev, epsilon, optional_num_groups,
       GetShardingDeviceId(inst), seq, GetDebugName(inst));
 
-  out =
-      ShuffleNormOutputToTensorflow(out, feature_dimension, non_broadcast_dims);
+  out = ShuffleNormOutputToTensorflow(out, feature_dimension);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
 
@@ -154,9 +128,7 @@ StatusOr<poplar::program::Program> CreateNormTraining(
     return seq;
   }
 
-  std::vector<std::size_t> non_broadcast_dims;
-  poplar::Tensor operand_view;
-  std::tie(operand_view, non_broadcast_dims) =
+  poplar::Tensor operand_view =
       ShuffleNormInputToPoplar(operand, feature_dimension);
 
   poplar::Tensor out, mean, variance_or_inv_std_dev;
@@ -166,8 +138,7 @@ StatusOr<poplar::program::Program> CreateNormTraining(
           optional_num_groups, GetShardingDeviceId(inst), seq,
           GetDebugName(inst));
 
-  out =
-      ShuffleNormOutputToTensorflow(out, feature_dimension, non_broadcast_dims);
+  out = ShuffleNormOutputToTensorflow(out, feature_dimension);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, mean));
@@ -227,12 +198,9 @@ StatusOr<poplar::program::Program> CreateNormGrad(
   }
 
   // Reshape the input
-  std::vector<std::size_t> non_broadcast_dims;
-
-  poplar::Tensor operand_view, grad_output_view;
-  std::tie(operand_view, non_broadcast_dims) =
+  poplar::Tensor operand_view =
       ShuffleNormInputToPoplar(operand, feature_dimension);
-  std::tie(grad_output_view, non_broadcast_dims) =
+  poplar::Tensor grad_output_view =
       ShuffleNormInputToPoplar(grad_output, feature_dimension);
 
   poplar::Tensor operand_grad, scale_grad, offset_grad;
@@ -244,8 +212,7 @@ StatusOr<poplar::program::Program> CreateNormGrad(
           optional_num_groups, GetShardingDeviceId(inst), seq,
           GetDebugName(inst));
 
-  operand_grad = ShuffleNormOutputToTensorflow(operand_grad, feature_dimension,
-                                               non_broadcast_dims);
+  operand_grad = ShuffleNormOutputToTensorflow(operand_grad, feature_dimension);
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, operand_grad));
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 1, scale_grad));
@@ -278,10 +245,7 @@ StatusOr<poplar::program::Program> CreateNormStatistics(
   }
 
   // Reshape the input
-  std::vector<std::size_t> non_broadcast_dims;
-
-  poplar::Tensor operand_view, grad_output_view;
-  std::tie(operand_view, non_broadcast_dims) =
+  poplar::Tensor operand_view =
       ShuffleNormInputToPoplar(operand, feature_dimension);
 
   poplar::Tensor mean, variance_or_inv_std_dev;

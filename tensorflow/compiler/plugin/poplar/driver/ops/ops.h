@@ -298,12 +298,11 @@ StatusOr<poplar::program::Program> CreatePaddingReduceWindow(
 StatusOr<poplar::program::Program> CreateSort(CompilerResources& res,
                                               const HloInstruction* inst,
                                               TensorMap& tensor_map);
-std::pair<poplar::Tensor, std::vector<std::size_t>> ShuffleNormInputToPoplar(
-    const poplar::Tensor& input, const unsigned feature_dimension);
+poplar::Tensor ShuffleNormInputToPoplar(const poplar::Tensor& input,
+                                        const unsigned feature_dimension);
 
-poplar::Tensor ShuffleNormOutputToTensorflow(
-    const poplar::Tensor& output, const unsigned feature_dimension,
-    const std::vector<std::size_t>& non_broadcast_dims);
+poplar::Tensor ShuffleNormOutputToTensorflow(const poplar::Tensor& output,
+                                             const unsigned feature_dimension);
 
 StatusOr<poplar::program::Program> CreateBatchNormInf(
     CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map);
