@@ -116,42 +116,33 @@ VariablesAndOps = collections.namedtuple(
 )
 
 
-# TODO(shizhiw): Factor `use_gradient_accumulation` and
-# `pipeline_execution_with_tensor_core` out of `_OptimizationParameters`.
 class _OptimizationParameters(object):
   """Parameters common to all optimizations."""
 
-  def __init__(self, learning_rate, use_gradient_accumulation,
-               pipeline_execution_with_tensor_core):
+  def __init__(self, learning_rate, use_gradient_accumulation):
     self.learning_rate = learning_rate
     self.use_gradient_accumulation = use_gradient_accumulation
-    self.pipeline_execution_with_tensor_core = (
-        pipeline_execution_with_tensor_core)
 
 
 class AdagradParameters(_OptimizationParameters):
   """Optimization parameters for Adagrad."""
 
-  def __init__(self, learning_rate, initial_accumulator,
-               use_gradient_accumulation=False,
-               pipeline_execution_with_tensor_core=True):
+  def __init__(self, learning_rate, initial_accumulator=0.1,
+               use_gradient_accumulation=True):
     """Optimization parameters for Adagrad.
 
     Args:
       learning_rate: used for updating embedding table.
       initial_accumulator: initial accumulator for Adagrad.
-      use_gradient_accumulation: setting this to `True` makes embedding
-         gradients calculation more accurate but slower. Please see
-         `optimization_parameters.proto` for details.
-         for details.
-      pipeline_execution_with_tensor_core: setting this to `True` makes training
-        faster, but trained model will be different if step N and step N+1
-        involve the same set of embedding ID. Please see
-        `tpu_embedding_configuration.proto` for details.
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
+        `optimization_parameters.proto` for details.
+        for details.
     """
     super(AdagradParameters, self).__init__(learning_rate,
-                                            use_gradient_accumulation,
-                                            pipeline_execution_with_tensor_core)
+                                            use_gradient_accumulation)
+    if initial_accumulator <= 0:
+      raise ValueError('Adagrad initial_accumulator must be positive')
     self.initial_accumulator = initial_accumulator
 
 
@@ -164,8 +155,7 @@ class AdamParameters(_OptimizationParameters):
                epsilon=1e-08,
                lazy_adam=True,
                sum_inside_sqrt=True,
-               use_gradient_accumulation=False,
-               pipeline_execution_with_tensor_core=True):
+               use_gradient_accumulation=True):
     """Optimization parameters for Adam.
 
     Args:
@@ -179,18 +169,23 @@ class AdamParameters(_OptimizationParameters):
         Please see `optimization_parameters.proto` for details.
       sum_inside_sqrt: This improves training speed. Please see
         `optimization_parameters.proto` for details.
-      use_gradient_accumulation: setting this to `True` makes embedding
-        gradients calculation more accurate but slower. Please see
+      use_gradient_accumulation: setting this to `False` makes embedding
+        gradients calculation less accurate but faster. Please see
         `optimization_parameters.proto` for details.
         for details.
-      pipeline_execution_with_tensor_core: setting this to `True` makes training
-        faster, but trained model will be different if step N and step N+1
-        involve the same set of embedding ID. Please see
-        `tpu_embedding_configuration.proto` for details.
     """
     super(AdamParameters, self).__init__(learning_rate,
-                                         use_gradient_accumulation,
-                                         pipeline_execution_with_tensor_core)
+                                         use_gradient_accumulation)
+    if beta1 < 0. or beta1 >= 1.:
+      raise ValueError('beta1 must be between 0. and 1; got {}.'.format(beta1))
+    if beta2 < 0. or beta2 >= 1.:
+      raise ValueError('beta2 must be between 0. and 1; got {}.'.format(beta2))
+    if epsilon <= 0.:
+      raise ValueError('epsilon must be positive; got {}.'.format(epsilon))
+    if not use_gradient_accumulation and not lazy_adam:
+      raise ValueError(
+          'When disabling Lazy Adam, gradient accumulation must be used.')
+
     self.beta1 = beta1
     self.beta2 = beta2
     self.epsilon = epsilon
@@ -203,20 +198,11 @@ class StochasticGradientDescentParameters(_OptimizationParameters):
 
   Args:
     learning_rate: a floating point value. The learning rate.
-    use_gradient_accumulation: setting this to `True` makes embedding
-      gradients calculation more accurate but slower. Please see
-         `optimization_parameters.proto` for details.
-    pipeline_execution_with_tensor_core: setting this to `True` makes training
-      faster, but trained model will be different if step N and step N+1
-      involve the same set of embedding ID. Please see
-      `tpu_embedding_configuration.proto` for details.
-    """
+  """
 
-  def __init__(self, learning_rate, use_gradient_accumulation=False,
-               pipeline_execution_with_tensor_core=True):
+  def __init__(self, learning_rate):
     super(StochasticGradientDescentParameters, self).__init__(
-        learning_rate, use_gradient_accumulation,
-        pipeline_execution_with_tensor_core)
+        learning_rate, False)
 
 
 class TPUEmbedding(object):
@@ -309,7 +295,8 @@ class TPUEmbedding(object):
                mode,
                master,
                optimization_parameters=None,
-               cluster_def=None):
+               cluster_def=None,
+               pipeline_execution_with_tensor_core=True):
     """API for using TPU for embedding lookups.
 
     Args:
@@ -326,6 +313,10 @@ class TPUEmbedding(object):
         `Stochasticgradientdescentparameters`. Must be set in training and must
         be `None` in inference.
       cluster_def: A ClusterDef object describing the TPU cluster.
+      pipeline_execution_with_tensor_core: setting this to `True` makes training
+        faster, but trained model will be different if step N and step N+1
+        involve the same set of embedding ID. Please see
+        `tpu_embedding_configuration.proto` for details.
 
     Raises:
       ValueError: if any input is invalid.
@@ -384,6 +375,8 @@ class TPUEmbedding(object):
     # on get_slot().
     self._optimizer_handler = _get_optimization_handler(
         self._optimization_parameters)
+    self._pipeline_execution_with_tensor_core = (
+        pipeline_execution_with_tensor_core)
 
     self._config_proto = self._create_config_proto()
 
@@ -483,7 +476,7 @@ class TPUEmbedding(object):
     config_proto.num_tensor_cores = self._num_cores
     config_proto.sharding_strategy = elc.TPUEmbeddingConfiguration.DIV_DEFAULT
     config_proto.pipeline_execution_with_tensor_core = (
-        self._optimization_parameters.pipeline_execution_with_tensor_core)
+        self._pipeline_execution_with_tensor_core)
 
     return config_proto
 
@@ -940,8 +933,7 @@ class _AdamHandler(_OptimizerHandler):
                   table_name=table,
                   num_shards=num_hosts,
                   shard_id=host_id))
-
-      load_op_list.append(load_parameters_op)
+        load_op_list.append(load_parameters_op)
       return load_op_list
 
     def retrieve_ops_fn():

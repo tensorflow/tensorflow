@@ -21,6 +21,10 @@ from __future__ import print_function
 from tensorflow.core.framework import graph_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import meta_graph_pb2
+from tensorflow.python.eager import function
+from tensorflow.python.framework import func_graph
+from tensorflow.python.framework import importer
+from tensorflow.python.framework import ops
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.grappler import tf_optimizer
 from tensorflow.python.platform import tf_logging as logging
@@ -55,6 +59,64 @@ def _run_inline_graph_optimization(func):
   return tf_optimizer.OptimizeGraph(config, meta_graph)
 
 
+def _get_tensors_from_graph(graph, tensors):
+  """Gets the Tensors in `graph` with the name of the tensors in `tensors`.
+
+  Args:
+    graph: TensorFlow Graph.
+    tensors: List of Tensors.
+
+  Returns:
+    List of Tensors.
+  """
+  new_tensors = []
+  for orig_tensor in tensors:
+    new_tensor = graph.get_tensor_by_name(orig_tensor.name)
+    if new_tensor.shape.rank is None:
+      new_tensor.set_shape(orig_tensor.shape)
+    new_tensors.append(new_tensor)
+  return new_tensors
+
+
+def _construct_concrete_function(input_func, graph_def):
+  """Creates a ConcreteFunction from the input function and frozen graph.
+
+  Args:
+    input_func: ConcreteFunction.
+    graph_def: TensorFlow GraphDef.
+
+  Returns:
+    ConcreteFunction containing the graph_def.
+  """
+  output_graph = func_graph.FuncGraph(input_func.graph.name)
+  with output_graph.as_default():
+    importer.import_graph_def(graph_def, name="")
+    output_graph.inputs = _get_tensors_from_graph(output_graph,
+                                                  input_func.inputs)
+    output_graph.outputs = _get_tensors_from_graph(output_graph,
+                                                   input_func.outputs)
+
+  output_graph.structured_outputs = input_func.graph.structured_outputs
+  output_graph.structured_input_signature = (
+      input_func.graph.structured_input_signature)
+
+  # Create the ConcreteFunction and add it to the global context.
+  output_func = function.ConcreteFunction(output_graph)
+  output_func.add_to_graph()
+
+  # Inject the captured inputs into the ConcreteFunction.
+  output_func._captured_inputs = input_func.captured_inputs  # pylint: disable=protected-access
+  output_func.graph.variables = input_func.graph.variables
+
+  output_func._arg_keywords = input_func._arg_keywords  # pylint: disable=protected-access
+  output_func._num_position_args = input_func._num_positional_args  # pylint: disable=protected-access
+
+  # Register the gradients in the current root context.
+  with ops.init_scope():
+    output_func._register_gradient()  # pylint: disable=protected-access
+  return output_func
+
+
 def convert_variables_to_constants_v2(func):
   """Replaces all the variables in a graph with constants of the same values.
 
@@ -71,7 +133,7 @@ def convert_variables_to_constants_v2(func):
     func: ConcreteFunction.
 
   Returns:
-    GraphDef containing a simplified version of the original.
+    ConcreteFunction containing a simplified version of the original.
   """
   # TODO(nupurgarg): Replace ResourceGather with Gather.
   # TODO(nupurgarg): Change attr for Variables in control flow and functions.
@@ -145,4 +207,5 @@ def convert_variables_to_constants_v2(func):
       output_node.CopyFrom(input_node)
 
   logging.info("Converted %d variables to const ops.", how_many_converted)
-  return output_graph_def
+  # TODO(b/126613403): Use wrap_function.function_from_graph_def.
+  return _construct_concrete_function(func, output_graph_def)

@@ -33,6 +33,7 @@ from tensorflow.core.framework import attr_value_pb2
 from tensorflow.core.lib.core import error_codes_pb2
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import common_shapes
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import device as framework_device_lib
@@ -1880,7 +1881,6 @@ class SessionTest(test_util.TensorFlowTestCase):
       squared_eval = sess.partial_run(partial_run, squared_tensor)
       self.assertAllClose(np2 * np2, squared_eval)
 
-  @test_util.run_v1_only('b/120545219')
   def testDefaultLogDevicePlacement(self):
 
     class CaptureStderr(str):
@@ -1916,19 +1916,26 @@ class SessionTest(test_util.TensorFlowTestCase):
       def __str__(self):
         return self._output
 
-    # Passing the config to the server, but not the session should still result
-    # in logging device placement.
-    config = config_pb2.ConfigProto(log_device_placement=True)
-    server = server_lib.Server.create_local_server(config=config)
-    a = constant_op.constant(1)
-    b = constant_op.constant(2)
-    c = a + b
-    with session.Session(server.target) as sess:
+    if context.executing_eagerly():
+      context.set_log_device_placement(True)
       with CaptureStderr() as log:
-        sess.run(c)
-      # Ensure that we did log device placement.
-      self.assertTrue('/job:local/replica:0/task:0/device:CPU:0' in str(log),
-                      str(log))
+        a = constant_op.constant(1)
+        b = constant_op.constant(2)
+        c = a + b
+    else:
+      # Passing the config to the server, but not the session should still
+      # result in logging device placement.
+      config = config_pb2.ConfigProto(log_device_placement=True)
+      server = server_lib.Server.create_local_server(config=config)
+      a = constant_op.constant(1)
+      b = constant_op.constant(2)
+      c = a + b
+      with session.Session(server.target) as sess:
+        with CaptureStderr() as log:
+          sess.run(c)
+
+    # Ensure that we did log device placement.
+    self.assertTrue('/replica:0/task:0/device:CPU:0' in str(log), str(log))
 
   @test_util.run_v1_only('b/120545219')
   def testLocalMasterSessionTimeout(self):

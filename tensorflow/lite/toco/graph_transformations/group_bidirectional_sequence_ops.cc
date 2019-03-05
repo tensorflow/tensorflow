@@ -70,7 +70,8 @@ bool MatchDynamicBidirectionalSequenceOutputs(Operator* op, const Model& model,
     return false;
   }
 
-  if (reverse_output->type != OperatorType::kReverseV2) {
+  if (reverse_output->type != OperatorType::kReverseV2 &&
+      reverse_output->type != OperatorType::kReverseSequence) {
     return false;
   }
 
@@ -117,7 +118,8 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
   if (is_dynamic_rnn) {
     // For dynamic bidirectional sequence ops, bw_sequence will have a reverse
     // op.
-    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2) {
+    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2 &&
+        first_bw_sequence_op_input->type != OperatorType::kReverseSequence) {
       return false;
     }
 
@@ -135,7 +137,7 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
     }
 
     // fw_lstm & bw_lstm should point to the same input, but reversed sequence.
-    for (int i = 0; i < first_fw_sequence_op_input->inputs.size(); ++i) {
+    for (size_t i = 0; i < first_fw_sequence_op_input->inputs.size(); ++i) {
       if (first_fw_sequence_op_input->inputs[i] !=
           first_bw_sequence_op_input
               ->inputs[first_fw_sequence_op_input->inputs.size() - i - 1]) {
@@ -296,7 +298,7 @@ void RewireBidirectionalSequenceSequenceOpsConnections(
   }
   string cur_fw_input = input_array_name;
   string cur_bw_input = input_array_name;
-  for (int i = 0; i < bidirectional_sequence_ops.size(); ++i) {
+  for (size_t i = 0; i < bidirectional_sequence_ops.size(); ++i) {
     DeleteArrayIfUsedOnce(bidirectional_sequence_ops[i]->inputs[0], model);
     bidirectional_sequence_ops[i]->inputs[0] = cur_fw_input;
     if (i != 0) {
@@ -329,7 +331,7 @@ void RewireFinalUnpackOutputs(const UnpackOperator& original_unpack_operator,
   (*final_unpack_operator)->axis = original_unpack_operator.axis;
   (*final_unpack_operator)->num = original_unpack_operator.num;
 
-  for (int i = 0; i < original_unpack_operator.outputs.size(); ++i) {
+  for (size_t i = 0; i < original_unpack_operator.outputs.size(); ++i) {
     const string& output_array_name = original_unpack_operator.outputs[i];
     const string& final_unpack_output_array_name = AvailableArrayName(
         *model, "bidirectional_sequence_unpack_" + std::to_string(i));

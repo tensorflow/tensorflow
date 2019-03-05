@@ -466,7 +466,7 @@ class MklConvOp : public OpKernel {
                 errors::InvalidArgument("filter must be 4-dimensional: ",
                                         filter.shape().DebugString()));
 
-    for (int i = 0; i < 3; i++) {
+    for (int i = 0; i < 3; ++i) {
       OP_REQUIRES(
           context,
           FastBoundsCheck(filter.dim_size(i), std::numeric_limits<int>::max()),
@@ -860,6 +860,9 @@ class MklConvOp : public OpKernel {
 
   explicit MklConvOp(OpKernelConstruction* context) : OpKernel(context) {
     OP_REQUIRES_OK(context, context->GetAttr("dilations", &dilations_));
+    if (context->HasAttr("padding_list")) {
+      OP_REQUIRES_OK(context, context->GetAttr("padding_list", &padding_list_));
+    }
     OP_REQUIRES_OK(context, context->GetAttr("strides", &strides_));
     string data_format;
     OP_REQUIRES_OK(context, context->GetAttr("data_format", &data_format));
@@ -938,9 +941,19 @@ class MklConvOp : public OpKernel {
           dilations, strides;
       memory::dims dst_dims_tf_order, dst_dims_mkl_order;
 
-      // If pad with conv2d fusion is enabled
-      if (fuse_pad_) {
-        PadWithConvFusion(context, padding_left, padding_right);
+      // For Quantized-Conv2D and Pad fusion, we get padding from the
+      // `padding_list` attribute. Otherwise, we get it from one of the inputs.
+      bool quantized_pad_enabled = false;
+      for (auto const& padding_val : padding_list_) {
+        if (padding_val) {
+          quantized_pad_enabled = true;
+          break;
+        }
+      }
+
+      if (fuse_pad_ || quantized_pad_enabled) {
+        PadWithConvFusion(context, padding_left, padding_right,
+                          quantized_pad_enabled);
       }
 
       // Get shapes of input tensors in MKL-DNN order
@@ -951,7 +964,8 @@ class MklConvOp : public OpKernel {
       conv_utl.GetConvFwdSizesInMklOrder(
           src_tf_shape, filter_tf_shape, &src_dims, &filter_dims, &strides,
           &dilations, &dst_dims_tf_order, &dst_dims_mkl_order, &padding_left,
-          &padding_right, fuse_pad_, is_depthwise);
+          &padding_right, (fuse_pad_ || quantized_pad_enabled), is_depthwise);
+
       if (!context->status().ok()) return;
 
       // Check for corner case - if there is nothing to compute, return.
@@ -1151,16 +1165,20 @@ class MklConvOp : public OpKernel {
   }
 
   void PadWithConvFusion(OpKernelContext* context, memory::dims& padding_left,
-                         memory::dims& padding_right) {
+                         memory::dims& padding_right,
+                         bool quantized_pad_enabled) {
     const Tensor& paddings_tf = MklGetInput(context, input_index_pad_);
-    OP_REQUIRES(context, paddings_tf.dims() == 2,
-                errors::InvalidArgument("paddings must be 2-dimensional: ",
-                                        paddings_tf.shape().DebugString()));
-
-    // Flatten tensor to get individual paddings.
-    Tpadding* paddings = static_cast<Tpadding*>(
-        const_cast<Tpadding*>(paddings_tf.flat<Tpadding>().data()));
-
+    Tpadding* paddings = nullptr;
+    if (quantized_pad_enabled) {
+      paddings = padding_list_.data();
+    } else {
+      OP_REQUIRES(context, paddings_tf.dims() == 2,
+                  errors::InvalidArgument("paddings must be 2-dimensional: ",
+                                          paddings_tf.shape().DebugString()));
+      // Flatten tensor to get individual paddings.
+      paddings = static_cast<Tpadding*>(
+          const_cast<Tpadding*>(paddings_tf.flat<Tpadding>().data()));
+    }
     // If the data format is NHWC, indices 0, 1, 6 and 7 of paddings(_tf)
     // will be zero.
     // Example:
@@ -1186,8 +1204,7 @@ class MklConvOp : public OpKernel {
       pad_left = paddings[6];
       pad_right = paddings[7];
     }
-
-    // Create padding arrays for MKL DNN convolutions.
+    // Create padding arrays for MKL-DNN convolutions.
     // MKL-DNN uses asymetric padding.
     padding_left = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
     padding_right = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
@@ -1264,6 +1281,7 @@ class MklConvOp : public OpKernel {
  private:
   std::vector<int32> strides_;
   std::vector<int32> dilations_;
+  std::vector<Tpadding> padding_list_;
   bool is_filter_const_;
   mutex mu_;
   Padding padding_;
@@ -1825,7 +1843,7 @@ class MklQuantizedConv2DSumReluOp
 };
 
 // INT8 kernel registration
-// Register NoOp kernel for QunatizedConv2D for qint8 filter
+// Register NoOp kernel for QuantizedConv2D for qint8 filter
 REGISTER_KERNEL_BUILDER(Name("QuantizedConv2D")
                             .Device(DEVICE_CPU)
                             .TypeConstraint<quint8>("Tinput")
@@ -1840,7 +1858,7 @@ REGISTER_KERNEL_BUILDER(Name("QuantizedConv2DAndRequantize")
                             .TypeConstraint<qint8>("out_type"),
                         NoOp);
 
-// Register a templatized implementation of MklQuntizedConv2D.
+// Register a templatized implementation of MklQuantizedConv2D.
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2D")
         .Device(DEVICE_CPU)
@@ -2029,17 +2047,40 @@ REGISTER_KERNEL_BUILDER(
         .Device(DEVICE_CPU)
         .TypeConstraint<quint8>("Tinput")
         .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, quint8, true>);
+
 REGISTER_KERNEL_BUILDER(
     Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
         .Device(DEVICE_CPU)
         .TypeConstraint<quint8>("Tinput")
         .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<qint32>("Tbias")
         .TypeConstraint<quint8>("out_type")
         .Label(mkl_op_registry::kMklQuantizedOpLabel),
     MklQuantizedConv2DSumReluOp<CPUDevice, qint32, quint8, qint8, true>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, quint8, true>);
+
+REGISTER_KERNEL_BUILDER(
+    Name("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
+        .Device(DEVICE_CPU)
+        .TypeConstraint<quint8>("Tinput")
+        .TypeConstraint<qint8>("Tfilter")
+        .TypeConstraint<float>("Tbias")
+        .TypeConstraint<quint8>("out_type")
+        .Label(mkl_op_registry::kMklQuantizedOpLabel),
+    MklQuantizedConv2DSumReluOp<CPUDevice, float, quint8, qint8, true>);
 #endif  // INTEL_MKL_ML
 
 // Register 2D operations

@@ -588,11 +588,26 @@ Status LayoutAssignment::AddMandatoryConstraints(
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           body_layout.result_shape(), instruction, 0));
     } else if (instruction->opcode() == HloOpcode::kConditional) {
-      // The layout of the branch computations must match, and must
-      // be the layout of the kConditional instruction.
-      ComputationLayout& branch0_computation_layout =
-          FindOrDie(computation_layouts_, instruction->branch_computation(0));
-      for (int j = 0; j < instruction->branch_count(); ++j) {
+      // Find the conditional branch with the most instructions and force all
+      // other computations to match that layout. A potentially better decison
+      // could count the number FLOPs or how constrained the layouts are.
+      int64 largest_branch = 0;
+      int64 largest_instruction_count =
+          instruction->branch_computation(0)->instruction_count();
+      for (int j = 1; j < instruction->branch_count(); ++j) {
+        const int64 instruction_count =
+            instruction->branch_computation(j)->instruction_count();
+        if (instruction_count > largest_instruction_count) {
+          largest_branch = j;
+          largest_instruction_count = instruction_count;
+        }
+      }
+      ComputationLayout& best_branch_computation_layout =
+          FindOrDie(computation_layouts_,
+                    instruction->branch_computation(largest_branch));
+      for (int k = 0; k < instruction->branch_count(); ++k) {
+        // Visit the best branch first.
+        int j = (k + largest_branch) % instruction->branch_count();
         TF_RET_CHECK(instruction->branch_computation(j)->num_parameters() == 1);
         ComputationLayout& branch_computation_layout =
             FindOrDie(computation_layouts_, instruction->branch_computation(j));
@@ -600,23 +615,24 @@ Status LayoutAssignment::AddMandatoryConstraints(
         DCHECK(ShapeUtil::Compatible(
             instruction->operand(j + 1)->shape(),
             branch_computation_layout.parameter_shape(0)));
-        if (branch0_computation_layout.result_layout() !=
+        if (best_branch_computation_layout.result_layout() !=
             branch_computation_layout.result_layout()) {
-          // We assign layouts in DFS fashion, so the br_0 and br_j
-          // computations might have negotiated a different layout. But for the
-          // case instruction POV the layout must match, so we run again
-          // on the br_j computation, this time with proper computation layout.
+          // We assign layouts in DFS fashion, so the largest_branch and current
+          // branch computations might have negotiated a different layout. But
+          // for the case instruction POV the layout must match, so we run again
+          // on the branch j computation, this time with proper computation
+          // layout.
           VLOG(2) << "Reset %conditional branch " << j
                   << " computation result layout: branch_computation="
                   << instruction->branch_computation(j)->name()
                   << " case=" << instruction->name() << " shape="
-                  << branch0_computation_layout.result_layout().ToString();
+                  << best_branch_computation_layout.result_layout().ToString();
           *branch_computation_layout.mutable_result_layout() =
-              branch0_computation_layout.result_layout();
+              best_branch_computation_layout.result_layout();
         }
-        if (j == 0) {
+        if (k == 0) {
           TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
-              branch0_computation_layout.result_shape(), instruction));
+              best_branch_computation_layout.result_shape(), instruction));
         }
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
             branch_computation_layout.parameter_shape(0), instruction, j + 1,
@@ -1007,16 +1023,6 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     Shape operand_shape = operand->shape();
     *operand_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(operand_shape);
-    if (ShapeUtil::ReshapeIsBitcast(operand_shape, output_shape_with_layout)) {
-      return absl::make_unique<Layout>(operand_shape.layout());
-    }
-    if (operand_shape.rank() == output_shape.rank()) {
-      *operand_shape.mutable_layout() = output_layout;
-      if (ShapeUtil::ReshapeIsBitcast(operand_shape,
-                                      output_shape_with_layout)) {
-        return absl::make_unique<Layout>(output_layout);
-      }
-    }
     auto aligned_operand_shape =
         ShapeUtil::AlignLayouts(output_shape_with_layout, operand_shape);
     if (aligned_operand_shape) {
@@ -1078,16 +1084,6 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     Shape output_shape = user->shape();
     *output_shape.mutable_layout() =
         LayoutUtil::GetDefaultLayoutForShape(output_shape);
-    if (ShapeUtil::ReshapeIsBitcast(output_shape, operand_shape_with_layout)) {
-      return absl::make_unique<Layout>(output_shape.layout());
-    }
-    if (operand->shape().rank() == output_shape.rank()) {
-      *output_shape.mutable_layout() = operand_layout;
-      if (ShapeUtil::ReshapeIsBitcast(output_shape,
-                                      operand_shape_with_layout)) {
-        return absl::make_unique<Layout>(operand_layout);
-      }
-    }
     auto aligned_user_shape =
         ShapeUtil::AlignLayouts(operand_shape_with_layout, output_shape);
     if (aligned_user_shape) {

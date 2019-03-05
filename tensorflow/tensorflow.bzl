@@ -158,6 +158,12 @@ def if_emscripten(a):
         "//conditions:default": [],
     })
 
+def if_macos(a):
+    return select({
+        clean_dep("//tensorflow:macos"): a,
+        "//conditions:default": [],
+    })
+
 def if_ios(a):
     return select({
         clean_dep("//tensorflow:ios"): a,
@@ -213,12 +219,6 @@ def if_not_windows_cuda(a):
 def if_linux_x86_64(a):
     return select({
         clean_dep("//tensorflow:linux_x86_64"): a,
-        "//conditions:default": [],
-    })
-
-def if_darwin(a):
-    return select({
-        clean_dep("//tensorflow:darwin"): a,
         "//conditions:default": [],
     })
 
@@ -295,7 +295,7 @@ def tf_copts(android_optimization_level_override = "-O2", is_external = False):
         }) +
         select({
             clean_dep("//tensorflow:android"): android_copts,
-            clean_dep("//tensorflow:darwin"): [],
+            clean_dep("//tensorflow:macos"): [],
             clean_dep("//tensorflow:windows"): get_win_copts(is_external),
             clean_dep("//tensorflow:ios"): ["-std=c++11"],
             clean_dep("//tensorflow:no_lgpl_deps"): ["-D__TENSORFLOW_NO_LGPL_DEPS__", "-pthread"],
@@ -367,7 +367,7 @@ def _rpath_linkopts(name):
     # directory in the tensorflow/ tree.
     levels_to_root = native.package_name().count("/") + name.count("/")
     return select({
-        clean_dep("//tensorflow:darwin"): [
+        clean_dep("//tensorflow:macos"): [
             "-Wl,%s" % (_make_search_paths("@loader_path", levels_to_root),),
         ],
         clean_dep("//tensorflow:windows"): [],
@@ -438,7 +438,7 @@ def tf_cc_shared_object(
             linkshared = 1,
             data = data,
             linkopts = linkopts + _rpath_linkopts(name_os) + select({
-                clean_dep("//tensorflow:darwin"): [
+                clean_dep("//tensorflow:macos"): [
                     "-Wl,-install_name,@rpath/" + name_os.split("/")[-1],
                 ],
                 clean_dep("//tensorflow:windows"): [],
@@ -454,7 +454,7 @@ def tf_cc_shared_object(
             name = name,
             srcs = select({
                 "//tensorflow:windows": [":%s.dll" % name],
-                "//tensorflow:darwin": [":lib%s.dylib" % name],
+                "//tensorflow:macos": [":lib%s.dylib" % name],
                 "//conditions:default": [":lib%s.so" % name],
             }),
             visibility = visibility,
@@ -509,7 +509,7 @@ def tf_cc_binary(
             name = name,
             srcs = select({
                 "//tensorflow:windows": [":%s.dll" % name],
-                "//tensorflow:darwin": [":lib%s.dylib" % name],
+                "//tensorflow:macos": [":lib%s.dylib" % name],
                 "//conditions:default": [":lib%s.so" % name],
             }),
             visibility = visibility,
@@ -845,7 +845,7 @@ def tf_cc_test(
                 "-pie",
             ],
             clean_dep("//tensorflow:windows"): [],
-            clean_dep("//tensorflow:darwin"): [
+            clean_dep("//tensorflow:macos"): [
                 "-lm",
             ],
             "//conditions:default": [
@@ -867,7 +867,7 @@ def tf_cc_test(
             # cc_tests with ".so"s in srcs incorrectly link on Darwin unless
             # linkstatic=1 (https://github.com/bazelbuild/bazel/issues/3450).
             # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:darwin"): 1,
+            clean_dep("//tensorflow:macos"): 1,
             "//conditions:default": 0,
         }),
         nocopts = nocopts,
@@ -944,7 +944,7 @@ def tf_cuda_cc_test(
         linkopts = linkopts,
         linkstatic = select({
             # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:darwin"): 1,
+            clean_dep("//tensorflow:macos"): 1,
             "@local_config_cuda//cuda:using_nvcc": 1,
             "@local_config_cuda//cuda:using_clang": 1,
             "//conditions:default": 0,
@@ -992,7 +992,7 @@ def tf_cuda_only_cc_test(
             # cc_tests with ".so"s in srcs incorrectly link on Darwin
             # unless linkstatic=1.
             # TODO(allenl): Remove Mac static linking when Bazel 0.6 is out.
-            clean_dep("//tensorflow:darwin"): 1,
+            clean_dep("//tensorflow:macos"): 1,
             "//conditions:default": 0,
         }),
         tags = tags,
@@ -1638,7 +1638,7 @@ def tf_custom_op_library(name, srcs = [], gpu_srcs = [], deps = [], linkopts = [
                 "-lm",
             ],
             clean_dep("//tensorflow:windows"): [],
-            clean_dep("//tensorflow:darwin"): [],
+            clean_dep("//tensorflow:macos"): [],
         }),
         **kwargs
     )
@@ -1684,7 +1684,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "global:": "global:\n     init_%s;\n     PyInit_*;" % (mod_name),
+                "global:": "global:\n     init_%s;\n     _init_%s;\n     PyInit_*;\n     _PyInit_*;" % (mod_name, mod_name),
             },
             is_executable = False,
         )
@@ -1693,7 +1693,7 @@ def _append_init_to_versionscript_impl(ctx):
             template = ctx.file.template_file,
             output = ctx.outputs.versionscript,
             substitutions = {
-                "*tensorflow*": "*tensorflow*\ninit_%s\nPyInit_*\n" % (mod_name),
+                "*tensorflow*": "*tensorflow*\ninit_%s\n_init_%s\nPyInit_*\n_PyInit_*\n" % (mod_name, mod_name),
             },
             is_executable = False,
         )

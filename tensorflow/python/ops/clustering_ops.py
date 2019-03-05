@@ -286,7 +286,7 @@ class KMeans(object):
       - update_in_steps: numbers of steps left before we sync
             cluster_centers_updated back to cluster_centers.
     """
-    init_value = array_ops.constant([], dtype=dtypes.float32)
+    init_value = array_ops.placeholder_with_default([], shape=None)
     cluster_centers = variable_scope.variable(
         init_value, name=CLUSTERS_VAR_NAME, validate_shape=False)
     cluster_centers_initialized = variable_scope.variable(

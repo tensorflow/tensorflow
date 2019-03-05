@@ -39,6 +39,7 @@ from tensorflow.python.framework import tensor_spec
 from tensorflow.python.framework import tensor_util
 from tensorflow.python.framework import test_util
 from tensorflow.python.keras.engine.sequential import Sequential
+from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.layers.core import Activation
 from tensorflow.python.keras.layers.core import Dense
 from tensorflow.python.lib.io import tf_record
@@ -962,7 +963,7 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
          Activation('relu', name='my_relu')])
     event = self.keras_model(name='my_name', data=model, step=1)
     first_val = event.summary.value[0]
-    self.assertEqual(model.to_json(), first_val.tensor.string_val[0])
+    self.assertEqual(model.to_json(), first_val.tensor.string_val[0].decode())
 
   @test_util.run_v2_only
   def testKerasModel_usesDefaultStep(self):
@@ -976,6 +977,40 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     finally:
       # Reset to default state for other tests.
       summary_ops.set_step(None)
+
+  @test_util.run_v2_only
+  def testKerasModel_subclass(self):
+
+    class SimpleSubclass(Model):
+
+      def __init__(self):
+        super(SimpleSubclass, self).__init__(name='subclass')
+        self.dense = Dense(10, input_shape=(100,))
+        self.activation = Activation('relu', name='my_relu')
+
+      def call(self, inputs):
+        x = self.dense(inputs)
+        return self.activation(x)
+
+    model = SimpleSubclass()
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      self.assertFalse(
+          summary_ops.keras_model(name='my_name', data=model, step=1))
+      self.assertRegexpMatches(
+          str(mock_log.call_args), 'Model failed to serialize as JSON.')
+
+  @test_util.run_v2_only
+  def testKerasModel_otherExceptions(self):
+    model = Sequential()
+
+    with test.mock.patch.object(model, 'to_json') as mock_to_json:
+      with test.mock.patch.object(logging, 'warn') as mock_log:
+        mock_to_json.side_effect = Exception('oops')
+        self.assertFalse(
+            summary_ops.keras_model(name='my_name', data=model, step=1))
+        self.assertRegexpMatches(
+            str(mock_log.call_args),
+            'Model failed to serialize as JSON. Ignoring... oops')
 
   @test_util.run_v2_only
   def testTrace(self):
@@ -1008,6 +1043,14 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
       self.assertRegexpMatches(
+          str(mock_log.call_args), 'Cannot enable trace inside a tf.function.')
+
+  @test_util.run_v2_only
+  def testTrace_cannotEnableTraceInGraphMode(self):
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      with context.graph_mode():
+        summary_ops.trace_on(graph=True, profiler=False)
+      self.assertRegexpMatches(
           str(mock_log.call_args), 'Must enable trace in eager mode.')
 
   @test_util.run_v2_only
@@ -1029,6 +1072,15 @@ class SummaryOpsTest(test_util.TensorFlowTestCase):
 
     with test.mock.patch.object(logging, 'warn') as mock_log:
       f()
+      self.assertRegexpMatches(
+          str(mock_log.call_args),
+          'Cannot export trace inside a tf.function.')
+
+  @test_util.run_v2_only
+  def testTrace_cannotExportTraceInGraphMode(self):
+    with test.mock.patch.object(logging, 'warn') as mock_log:
+      with context.graph_mode():
+        summary_ops.trace_export(name='foo', step=1)
       self.assertRegexpMatches(
           str(mock_log.call_args),
           'Can only export trace while executing eagerly.')

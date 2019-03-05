@@ -288,8 +288,8 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
-def all_strategy_combinations_minus_default():
-  strategy_minus_default_combinations = combinations.combine(
+def all_strategy_minus_default_and_tpu_combinations():
+  return combinations.combine(
       distribution=[
           combinations.one_device_strategy,
           combinations.one_device_strategy_gpu,
@@ -298,7 +298,11 @@ def all_strategy_combinations_minus_default():
           combinations.core_mirrored_strategy_with_gpu_and_cpu,
           combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph', 'eager'])
-  return strategy_minus_default_combinations + tpu_strategy_combinations()
+
+
+def all_strategy_combinations_minus_default():
+  return (all_strategy_minus_default_and_tpu_combinations() +
+          tpu_strategy_combinations())
 
 
 def strategy_and_optimizer_combinations():

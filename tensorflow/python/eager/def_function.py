@@ -280,7 +280,6 @@ class Function(object):
         argspec has keyword arguments.
     """
     self._python_function = python_function
-    self._input_signature = input_signature
     # TODO(vbardiovsky): Both _stateful_fn and _stateless_fn are populating the
     # same FunctionSpec. Consider removing it from both and passing in instead.
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
@@ -319,14 +318,17 @@ class Function(object):
 
     # TODO(mdan): Pipe self._experimental_autograph_options through.
     return function_lib.defun(
-        tf_decorator.make_decorator(self._python_function, wrapped_fn),
-        input_signature=self._input_signature,
+        tf_decorator.make_decorator(
+            self._python_function,
+            wrapped_fn,
+            decorator_argspec=self._function_spec.fullargspec),
+        input_signature=self.input_signature,
         autograph=self._autograph,
         experimental_autograph_options=self._experimental_autograph_options)
 
   def _canonicalize_function_inputs(self, args, kwds):
     """Canonicalize the inputs to the Python function."""
-    if self._input_signature is None or args or kwds:
+    if self.input_signature is None or args or kwds:
       return self._function_spec.canonicalize_function_inputs(*args, **kwds)  # pylint: disable=protected-access
     # If an input signature is defined, we may need to fetch a concrete function
     # without any inputs specified. In this case args and kwds should be ignored
@@ -402,12 +404,12 @@ class Function(object):
 
     self._python_function = decorator(self._python_function)
     self._function_spec = function_lib.FunctionSpec.from_function_and_signature(
-        self._python_function, self._input_signature)
+        self._python_function, self.input_signature)
 
   def __call__(self, *args, **kwds):
+    """Calls the graph function."""
     if RUN_FUNCTIONS_EAGERLY:
       return self._python_function(*args, **kwds)
-    """Calls the graph function."""
     if self._created_variables:
       # In this case we have created variables on the first call, so we run the
       # defunned version which is guaranteed to never create variables.
@@ -504,7 +506,7 @@ class Function(object):
 
   @property
   def input_signature(self):
-    return self._input_signature
+    return self._function_spec.input_signature
 
   @property
   def function_spec(self):
@@ -574,7 +576,7 @@ class Function(object):
     Returns:
       A list of instances of `Function`.
     """
-    if self._input_signature is not None:
+    if self.input_signature is not None:
       self.get_concrete_function()
     concrete_functions = []
     # pylint: disable=protected-access

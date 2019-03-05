@@ -50,6 +50,7 @@ from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
+from tensorflow.python.framework import dtypes
 
 try:
   import scipy.sparse as scipy_sparse  # pylint: disable=g-import-not-at-top
@@ -558,6 +559,21 @@ class TrainingTest(keras_parameterized.TestCase):
     self.assertEqual(1, len(model.losses))
 
   @keras_parameterized.run_all_keras_modes
+  def test_custom_mapping_in_config(self):
+
+    class MyModel(keras.Model):
+
+      def call(self, inputs):
+        return inputs
+
+      def get_config(self):
+        self.a = {}
+        return {'a': self.a}
+
+    model = MyModel()
+    self.assertIn('{"a": {}}', model.to_json())
+
+  @keras_parameterized.run_all_keras_modes
   def test_training_on_sparse_data_with_dense_placeholders(self):
     # TODO(kaftan) Test seems to not work, file ticket
     if testing_utils.should_run_eagerly() and context.executing_eagerly():
@@ -1029,6 +1045,26 @@ class TrainingTest(keras_parameterized.TestCase):
 
     model(array_ops.ones((1, 1)))
     self.assertEqual(len(model.losses), 3)  # Losses are reset upon __call__.
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_layer_with_variable_output(self):
+
+    class VariableOutputLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.v = self.add_weight('output_var', shape=(2, 5), initializer='ones')
+
+      def call(self, inputs):
+        return self.v
+
+    model = testing_utils.get_model_from_layers(
+        [VariableOutputLayer(), keras.layers.Dense(1)], input_shape=(10,))
+    # TODO(omalleyt): Make this work with `run_eagerly=True`.
+    model.compile('sgd', 'mse', run_eagerly=False)
+    model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=5)
+
+    self.assertLen(model.trainable_variables, 3)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
@@ -2799,7 +2835,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     class TestModel(keras.models.Model):
 
       def call(self, inputs, training=None, mask=None):
-        return math_ops.to_float(inputs['id'])
+        return math_ops.cast(inputs['id'], dtype=dtypes.float32)
 
     model = TestModel()
     model.compile(
@@ -2826,7 +2862,7 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     class TestModel(keras.models.Model):
 
       def call(self, inputs, training=None, mask=None):
-        return math_ops.to_float(inputs['id'])
+        return math_ops.cast(inputs['id'], dtype=dtypes.float32)
 
     model = TestModel()
     model.compile(

@@ -836,6 +836,20 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "stateful_random_ops_test",
+    size = "small",
+    srcs = ["stateful_random_ops_test.py"],
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:standard_ops",
+        "//tensorflow/python:stateful_random_ops",
+    ],
+)
+
+tf_xla_py_test(
     name = "stateless_random_ops_test",
     size = "small",
     srcs = ["stateless_random_ops_test.py"],
@@ -1076,6 +1090,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:nn_ops",
     ],
+    shard_count = 5,
 )
 
 cuda_py_test(
@@ -1110,7 +1125,6 @@ cc_library(
         "//tensorflow/core:tensorflow_opensource",
         "//tensorflow/core:test",
         "//tensorflow/core:testlib",
-        "//tensorflow/core/kernels:ops_util",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",

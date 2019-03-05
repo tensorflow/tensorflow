@@ -47,6 +47,7 @@ py_library(
         ":cli_test_utils",
         ":debug_py",
         ":grpc_debug_test_server",
+        ":grpc_tensorflow_server",
         ":offline_analyzer_lib",
         ":session_debug_testlib",
         ":source_remote",
@@ -109,6 +110,26 @@ py_library(
     name = "debug_utils",
     srcs = ["lib/debug_utils.py"],
     srcs_version = "PY2AND3",
+)
+
+py_binary(
+    name = "grpc_tensorflow_server",
+    srcs = ["lib/grpc_tensorflow_server.py"],
+    srcs_version = "PY2AND3",
+    deps = [":grpc_tensorflow_server_lib"],
+)
+
+py_library(
+    name = "grpc_tensorflow_server_lib",
+    srcs = [
+        "lib/grpc_tensorflow_server.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+    ],
 )
 
 py_library(
@@ -1103,7 +1124,7 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
+    data = [":grpc_tensorflow_server"],
     grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.

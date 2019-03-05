@@ -94,7 +94,7 @@ inline void ConvPerChannel(
                   // [-128, 127]), which is [-32512, 32512]. log2(32512)
                   // = 14.98, which means we can accumulate at least 2^16
                   // multiplications without overflow. The accumulator is
-                  // applied to a filter so the accumation logic will hold as
+                  // applied to a filter so the accumulation logic will hold as
                   // long as the filter size (filter_y * filter_x * in_channel)
                   // does not exceed 2^16, which is the case in all the models
                   // we have seen so far.
