@@ -21,11 +21,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/strings/str_join.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/kernels/internal/strided_slice_logic.h"
 #include "tensorflow/lite/toco/graph_transformations/graph_transformations.h"
 #include "tensorflow/lite/toco/model.h"
 #include "tensorflow/lite/toco/tooling_util.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -1081,6 +1081,18 @@ void ProcessUnidirectionalSequenceLstmOperator(
 
   // TODO(renjieliu): check the inputs, as well as all kinds of weights.
   const auto& input_array = model->GetArray(op->inputs[0]);
+
+  constexpr int kInputActivationStateTensor = 18;
+  constexpr int kInputCellStateTensor = 19;
+
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
+  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
+
   // Yield until input dims have been resolved.
   if (!input_array.has_shape()) {
     return;
@@ -1095,12 +1107,6 @@ void ProcessUnidirectionalSequenceLstmOperator(
   if (!recurrent_to_output_weights_array.has_shape()) {
     return;
   }
-
-  constexpr int kInputActivationStateTensor = 18;
-  constexpr int kInputCellStateTensor = 19;
-  // b(115961645): This is a hack to work around.
-  model->GetArray(op->inputs[kInputActivationStateTensor]).buffer.reset();
-  model->GetArray(op->inputs[kInputCellStateTensor]).buffer.reset();
 
   const auto& output_weights_shape = recurrent_to_output_weights_array.shape();
   const int output_size = output_weights_shape.dims(1);
@@ -1122,6 +1128,14 @@ void ProcessUnidirectionalSequenceRnnOperator(
     return;
   }
 
+  constexpr int kHiddenStateTensor = 4;
+  // TFlite intepreter does not support array which is variable and contains a
+  // buffer (see b/115961645 for more discussion).
+  // The follow block remove buffer from the array to work around the
+  // restriction, as a consequence, downstream applications should not
+  // read lstm state as input to other operations.
+  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
+
   // TODO(renjieliu): check the inputs, as well as all kinds of weights.
   const auto& input_array = model->GetArray(op->inputs[0]);
   // Yield until input dims have been resolved.
@@ -1137,10 +1151,6 @@ void ProcessUnidirectionalSequenceRnnOperator(
   if (!bias_array.has_shape()) {
     return;
   }
-
-  constexpr int kHiddenStateTensor = 4;
-  // b(115961645): This is a hack to work around.
-  model->GetArray(op->inputs[kHiddenStateTensor]).buffer.reset();
 
   const auto& bias_shape = bias_array.shape();
   const int output_size = bias_shape.dims(0);
