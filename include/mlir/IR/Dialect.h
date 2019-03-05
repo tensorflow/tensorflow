@@ -103,7 +103,7 @@ public:
 
   /// Verify an attribute from this dialect on the given function. Returns true
   /// if the verification failed, false otherwise.
-  virtual bool verifyFunctionAttribute(const Function *, Attribute) {
+  virtual bool verifyFunctionAttribute(const Function *, NamedAttribute) {
     return false;
   }
 
@@ -111,13 +111,13 @@ public:
   /// the given function. Returns true if the verification failed, false
   /// otherwise.
   virtual bool verifyFunctionArgAttribute(const Function *, unsigned argIndex,
-                                          Attribute) {
+                                          NamedAttribute) {
     return false;
   }
 
   /// Verify an attribute from this dialect on the given instruction. Returns
   /// true if the verification failed, false otherwise.
-  virtual bool verifyInstructionAttribute(const Instruction *, Attribute) {
+  virtual bool verifyInstructionAttribute(const Instruction *, NamedAttribute) {
     return false;
   }
 

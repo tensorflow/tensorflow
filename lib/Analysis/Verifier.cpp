@@ -154,7 +154,7 @@ bool FuncVerifier::verify() {
 
     // Verify this attribute with the defining dialect.
     if (auto *dialect = getDialectForAttribute(attr, fn))
-      if (dialect->verifyFunctionAttribute(&fn, attr.second))
+      if (dialect->verifyFunctionAttribute(&fn, attr))
         return true;
   }
 
@@ -177,7 +177,7 @@ bool FuncVerifier::verify() {
 
       // Verify this attribute with the defining dialect.
       if (auto *dialect = getDialectForAttribute(attr, fn))
-        if (dialect->verifyFunctionArgAttribute(&fn, i, attr.second))
+        if (dialect->verifyFunctionArgAttribute(&fn, i, attr))
           return true;
     }
   }
@@ -301,7 +301,7 @@ bool FuncVerifier::verifyOperation(const Instruction &op) {
     if (!attr.first.strref().contains('.'))
       continue;
     if (auto *dialect = getDialectForAttribute(attr, op))
-      if (dialect->verifyInstructionAttribute(&op, attr.second))
+      if (dialect->verifyInstructionAttribute(&op, attr))
         return true;
   }
 
