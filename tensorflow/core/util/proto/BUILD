@@ -85,3 +85,14 @@ tf_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "decode.h",
+        "descriptors.h",
+        "descriptor_pool_registry.h",
+        "proto_utils.h",
+    ],
+    visibility = ["//visibility:public"],
+)

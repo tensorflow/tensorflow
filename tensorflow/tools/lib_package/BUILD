@@ -225,8 +225,8 @@ pkg_tar(
         ":profiler_coreheaders",
         ":public_coreheaders",
         ":summary_coreheaders",
-        # ":tpu_coreheaders",
-        # ":util_coreheaders",
+        ":tpu_coreheaders",
+        ":util_coreheaders",
     ],
 )
 
@@ -938,6 +938,57 @@ pkg_tar(
         "//tensorflow/core/tpu:headers",
     ],
     package_dir = "tpu",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "util_coreheaders",
+    srcs = [
+        "//tensorflow/core:util_headers",
+    ],
+    package_dir = "util",
+    tags = ["manual"],
+    deps = [
+        ":util_ctc_coreheaders",
+        ":util_proto_coreheaders",
+        ":util_sparse_coreheaders",
+        ":util_tensor_bundle_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "util_ctc_coreheaders",
+    srcs = [
+        "//tensorflow/core/util/ctc:headers",
+    ],
+    package_dir = "ctc",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "util_proto_coreheaders",
+    srcs = [
+        "//tensorflow/core/util/proto:headers",
+    ],
+    package_dir = "proto",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "util_sparse_coreheaders",
+    srcs = [
+        "//tensorflow/core:util_sparse_headers",
+    ],
+    package_dir = "sparse",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "util_tensor_bundle_coreheaders",
+    srcs = [
+        "//tensorflow/core/util/tensor_bundle:headers",
+    ],
+    package_dir = "tensor_bundle",
     tags = ["manual"],
 )
 

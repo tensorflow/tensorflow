@@ -46,3 +46,13 @@ tf_cc_test(
         "//tensorflow/core:testlib",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "call_container.h",
+        "rpc_factory.h",
+        "rpc_factory_registry.h",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -80,3 +80,12 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "naming.h",
+        "tensor_bundle.h",
+    ],
+    visibility = ["//visibility:public"],
+)

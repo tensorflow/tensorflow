@@ -92,3 +92,16 @@ cc_library(
         "ctc_loss_util.h",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "ctc_beam_entry.h",
+        "ctc_beam_scorer.h",
+        "ctc_beam_search.h",
+        "ctc_decoder.h",
+        "ctc_loss_calculator.h",
+        "ctc_loss_util.h",
+    ],
+    visibility = ["//visibility:public"],
+)
