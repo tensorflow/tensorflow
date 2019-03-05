@@ -497,7 +497,7 @@ class CheckpointingTests(parameterized.TestCase, test.TestCase):
         with ops.Graph().as_default():
           model = MyModel()
           optimizer = adam.Adam(0.001)
-          root = trackable_utils.Checkpoint(
+          root = trackable_utils.CheckpointV1(
               optimizer=optimizer, model=model)
           input_value = constant_op.constant([[3.]])
           with backprop.GradientTape() as tape:
@@ -1509,9 +1509,9 @@ class CheckpointCompatibilityTests(test.TestCase):
     with context.graph_mode():
       save_graph = ops.Graph()
       with save_graph.as_default(), self.session(
-          graph=save_graph) as session:
+          graph=save_graph):
         root = self._initialized_model()
-        save_path = root.save(session=session, file_prefix=checkpoint_prefix)
+        save_path = root.save(file_prefix=checkpoint_prefix)
     with context.eager_mode():
       root = self._initialized_model()
       self._set_sentinels(root)
