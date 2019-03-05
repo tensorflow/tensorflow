@@ -48,6 +48,7 @@ from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint:
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
@@ -1813,7 +1814,10 @@ class Layer(trackable.Trackable):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value):
-      if isinstance(val, tf_variables.Variable):
+      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
+      # no longer return True for isinstance Variable checks.
+      if (isinstance(val, tf_variables.Variable) and
+          not isinstance(val, resource_variable_ops._UnreadVariable)):  # pylint: disable=protected-access
         # Users may add extra weights/variables
         # simply by assigning them to attributes (invalid for graph networks)
         if not hasattr(self, '_trainable_weights'):
