@@ -82,6 +82,9 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
     ],
+    tags = [
+        "no_gpu",  # b/127001953
+    ],
 )
 
 tf_py_test(
@@ -242,7 +245,10 @@ tf_py_test(
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_gpu",  # b/127001953
+        "no_windows",
+    ],
 )
 
 tf_py_test(
@@ -2742,7 +2748,7 @@ cuda_py_test(
     ],
     shard_count = 2,
     tags = [
-        "no_gpu",  #  Flaky: b/80127739
+        "no_gpu",  #  Flaky: b/80127739, b/127001953
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -3006,6 +3012,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
     ],
+    tags = ["no_windows"],  # b/126916429
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3164,6 +3171,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],  # b/126916429
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3521,6 +3529,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(
