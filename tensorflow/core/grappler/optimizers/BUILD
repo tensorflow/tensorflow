@@ -524,6 +524,46 @@ tf_cuda_cc_test(
 )
 
 cc_library(
+    name = "auto_mixed_precision",
+    srcs = ["auto_mixed_precision.cc"],
+    hdrs = [
+        "auto_mixed_precision.h",
+        "auto_mixed_precision_lists.h",
+    ],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":custom_graph_optimizer_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core/grappler:devices",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler:utils",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/costs:virtual_placer",
+        "//tensorflow/core/grappler/utils:frame",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "auto_mixed_precision_test",
+    srcs = ["auto_mixed_precision_test.cc"],
+    deps = [
+        ":auto_mixed_precision",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/grappler/clusters:single_machine",
+        "//tensorflow/core/grappler/clusters:virtual_cluster",
+        "//tensorflow/core/grappler/utils:grappler_test",
+    ],
+)
+
+cc_library(
     name = "meta_optimizer",
     srcs = ["meta_optimizer.cc"],
     hdrs = [
@@ -531,6 +571,7 @@ cc_library(
     ],
     visibility = ["//visibility:public"],
     deps = [
+        ":auto_mixed_precision",
         ":arithmetic_optimizer",
         ":auto_parallel",
         ":constant_folding",

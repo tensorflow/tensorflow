@@ -6096,6 +6096,32 @@ tf_py_test(
     ],
 )
 
+cuda_py_test(
+    name = "auto_mixed_precision_test",
+    size = "small",
+    srcs = [
+        "grappler/auto_mixed_precision_test.py",
+    ],
+    additional_deps = [
+        ":client_testlib",
+        ":framework_for_generated_wrappers",
+        ":array_ops",
+        ":constant_op",
+        ":dtypes",
+        ":math_ops",
+        ":nn",
+        ":ops",
+        ":random_ops",
+        ":control_flow_ops",
+        ":training",
+        "//third_party/py/numpy",
+        "//tensorflow/core:protos_all_py",
+    ],
+    tags = [
+        "grappler",
+    ],
+)
+
 tf_gen_op_wrapper_private_py(
     name = "nccl_ops_gen",
     visibility = ["//tensorflow:internal"],
