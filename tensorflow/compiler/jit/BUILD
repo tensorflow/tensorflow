@@ -168,7 +168,6 @@ cc_library(
         ":xla_tensor",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -283,7 +282,6 @@ cc_library(
     hdrs = ["xla_compilation_cache.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
@@ -417,7 +415,6 @@ cc_library(
     hdrs = ["shape_inference.h"],
     deps = [
         ":shape_inference_helpers",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -527,7 +524,6 @@ cc_library(
         "//tensorflow/cc:scope_internal",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/ops:xla_ops",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",

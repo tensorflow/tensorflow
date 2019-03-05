@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/jit/mark_for_compilation_pass.h"
 #include "tensorflow/compiler/jit/shape_inference_helpers.h"
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/common_runtime/function.h"
 #include "tensorflow/core/common_runtime/optimization_registry.h"
@@ -50,6 +49,7 @@ limitations under the License.
 #include "tensorflow/core/public/session_options.h"
 #include "tensorflow/core/public/version.h"
 #include "tensorflow/core/util/device_name_utils.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -1124,10 +1124,9 @@ Status Encapsulator::Subgraph::BuildFunctionDef(
 
   if (VLOG_IS_ON(1)) {
     VLOG(2) << "Build function def " << name;
-    dump_graph::DumpGraphToFile(absl::StrCat("encapsulate_fdef_graph_", name),
-                                *graph_, library);
-    dump_graph::DumpFunctionDefToFile(absl::StrCat("encapsulate_fdef_", name),
-                                      fdef);
+    DumpGraphToFile(absl::StrCat("encapsulate_fdef_graph_", name), *graph_,
+                    library);
+    DumpFunctionDefToFile(absl::StrCat("encapsulate_fdef_", name), fdef);
   }
 
   const FunctionDef* original_fdef = library->Find(name);
@@ -1190,11 +1189,10 @@ Status Encapsulator::Subgraph::ReplaceFunctionDef(
 
   if (VLOG_IS_ON(1)) {
     VLOG(2) << "Replace function def " << name;
-    dump_graph::DumpGraphToFile(
-        absl::StrCat("replace_encapsulate_fdef_graph_", name), *graph_,
-        library);
-    dump_graph::DumpFunctionDefToFile(
-        absl::StrCat("replace_encapsulate_fdef_", name), fdef);
+    DumpGraphToFile(absl::StrCat("replace_encapsulate_fdef_graph_", name),
+                    *graph_, library);
+    DumpFunctionDefToFile(absl::StrCat("replace_encapsulate_fdef_", name),
+                          fdef);
   }
 
   TF_RETURN_IF_ERROR(library->ReplaceFunction(name, fdef));
@@ -1556,7 +1554,7 @@ Status Encapsulator::SplitIntoSubgraphs(FunctionLibraryDefinition* library) {
   if (VLOG_IS_ON(1)) {
     // Dump subgraphs.
     for (auto& entry : subgraphs_) {
-      dump_graph::DumpGraphToFile(
+      DumpGraphToFile(
           absl::StrCat("encapsulate_subgraphs_subgraph_", entry.first),
           *entry.second.GetGraph(), library);
     }
@@ -2398,8 +2396,7 @@ Status Encapsulator::GetShapeInfoForOutsideCompilationSends(
       &node_images, library));
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("pruned_graph_for_shape_inference",
-                                *pruned_graph, library);
+    DumpGraphToFile("pruned_graph_for_shape_inference", *pruned_graph, library);
   }
 
   for (auto& subgraph_entry : subgraphs_) {
@@ -2530,8 +2527,8 @@ Status EncapsulateSubgraphsPass::Run(
     const GraphOptimizationPassOptions& options) {
   VLOG(1) << "EncapsulateSubgraphsPass::Run";
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("encapsulate_subgraphs_before", **options.graph,
-                                options.flib_def);
+    DumpGraphToFile("encapsulate_subgraphs_before", **options.graph,
+                    options.flib_def);
   }
 
   std::unique_ptr<Graph> graph_out;
@@ -2641,8 +2638,8 @@ Status EncapsulateSubgraphsPass::Run(
       "EncapsulateSubgraphsPass failed");
 
   if (VLOG_IS_ON(1)) {
-    dump_graph::DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
-                                options.flib_def);
+    DumpGraphToFile("encapsulate_subgraphs_after", *graph_out,
+                    options.flib_def);
   }
 
   *options.graph = std::move(graph_out);
