@@ -4689,7 +4689,7 @@ tf_py_test(
     ],
     grpc_enabled = True,
     tags = [
-        "no_gpu",
+        "no_gpu",  # b/127001953
         "no_pip_gpu",  # testInteractivePlacePrunedGraph fails on invalid assumption about GPU ops.
         "no_windows",
     ],
