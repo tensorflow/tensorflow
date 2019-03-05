@@ -4073,12 +4073,9 @@ def dropout(x, level, noise_shape=None, seed=None):
   Returns:
       A tensor.
   """
-  retain_prob = 1. - level
   if seed is None:
     seed = np.random.randint(10e6)
-  # the dummy 1. works around a TF bug
-  # (float32_ref vs. float32 incompatibility)
-  return nn.dropout(x * 1., retain_prob, noise_shape, seed=seed)
+  return nn.dropout_v2(x, rate=level, noise_shape=noise_shape, seed=seed)
 
 
 @keras_export('keras.backend.l2_normalize')

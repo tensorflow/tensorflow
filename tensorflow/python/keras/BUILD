@@ -1310,6 +1310,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
+    shard_count = 4,
 )
 
 tf_py_test(
