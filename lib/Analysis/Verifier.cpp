@@ -145,12 +145,8 @@ bool FuncVerifier::verify() {
 
     /// Check that the attribute is a dialect attribute, i.e. contains a '.' for
     /// the namespace.
-    if (!attr.first.strref().contains('.')) {
-      // TODO: Remove the remaining usages of non dialect attributes on
-      // functions and then enable this check.
-      // return failure("functions may only have dialect attributes", fn);
-      continue;
-    }
+    if (!attr.first.strref().contains('.'))
+      return failure("functions may only have dialect attributes", fn);
 
     // Verify this attribute with the defining dialect.
     if (auto *dialect = getDialectForAttribute(attr, fn))

@@ -188,9 +188,9 @@ void OpEmitter::emitAttrGetters() {
     // Determine the name of the attribute getter. The name matches the
     // attribute name excluding dialect prefix.
     StringRef getter = name;
-    auto it = getter.rfind('$');
-    if (it != StringRef::npos)
-      getter = getter.substr(it + 1);
+    auto it = getter.split('.');
+    if (!it.second.empty())
+      getter = it.second;
 
     // Emit the derived attribute body.
     if (attr.isDerivedAttr()) {
@@ -279,7 +279,7 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
     os << ", ";
     if (attr.isOptional())
       os << "/*optional*/";
-    os << attr.getStorageType() << ' ' << namedAttr.getName();
+    os << attr.getStorageType() << ' ' << namedAttr.name;
   }
 
   os << ") {\n";
@@ -333,10 +333,10 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
     if (!namedAttr.attr.isDerivedAttr()) {
       bool emitNotNullCheck = namedAttr.attr.isOptional();
       if (emitNotNullCheck) {
-        OUT(4) << formatv("if ({0}) ", namedAttr.getName()) << "{\n";
+        OUT(4) << formatv("if ({0}) ", namedAttr.name) << "{\n";
       }
-      OUT(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
-                        namedAttr.getName());
+      OUT(4) << formatv("result->addAttribute(\"{0}\", {1});\n",
+                        namedAttr.getName(), namedAttr.name);
       if (emitNotNullCheck) {
         OUT(4) << "}\n";
       }

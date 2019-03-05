@@ -26,7 +26,7 @@ std::string tblgen::NamedAttribute::getName() const {
   auto split = name.split("__");
   if (split.second.empty())
     return name;
-  return llvm::join_items("$", split.first, split.second);
+  return llvm::join_items(".", split.first, split.second);
 }
 
 bool tblgen::Value::hasPredicate() const {
