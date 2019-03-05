@@ -82,6 +82,7 @@ def tflite_jni_linkopts_unstripped():
         "//tensorflow:android": [
             "-Wl,--gc-sections",  # Eliminate unused code and data.
             "-Wl,--as-needed",  # Don't link unused libs.
+            "-latomic", # Non Android builds don't work with libatomic
         ],
         "//conditions:default": [],
     })
@@ -99,7 +100,7 @@ def tflite_jni_linkopts():
     """Defines linker flags to reduce size of TFLite binary with JNI."""
     return tflite_jni_linkopts_unstripped() + select({
         "//tensorflow:android": [
-            "-latomic",
+            "-latomic", "-s", # Omit symbol table, for all non debug builds.
         ],
         "//tensorflow:debug": [],
         "//conditions:default": [
