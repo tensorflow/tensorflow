@@ -1854,7 +1854,7 @@ tf_module {
   }
   member_method {
     name: "MapDefun"
-    argspec: "args=[\'arguments\', \'captured_inputs\', \'output_types\', \'output_shapes\', \'f\'], varargs=None, keywords=None, defaults=None"
+    argspec: "args=[\'arguments\', \'captured_inputs\', \'output_types\', \'output_shapes\', \'f\', \'max_intra_op_parallelism\'], varargs=None, keywords=None, defaults=None"
   }
   member_method {
     name: "MapIncompleteSize"

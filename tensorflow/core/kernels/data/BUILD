@@ -780,6 +780,7 @@ tf_kernel_library(
     name = "map_defun_op",
     srcs = ["map_defun_op.cc"],
     deps = [
+        ":dataset_utils",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:functional_ops_op_lib",
