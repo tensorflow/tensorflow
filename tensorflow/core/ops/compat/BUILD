@@ -57,3 +57,11 @@ tf_cc_binary(
         "//tensorflow/core:lib",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "op_compatibility_lib.h",
+    ],
+    visibility = ["//visibility:public"],
+)

@@ -5613,6 +5613,14 @@ filegroup(
 )
 
 filegroup(
+    name = "ops_headers",
+    srcs = [
+        "lib/wav/wav_io.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "platform_headers",
     srcs = [
         "platform/abi.h",
@@ -5692,6 +5700,27 @@ filegroup(
         "platform/default/strong_hash.h",
         "platform/default/thread_annotations.h",
         "platform/default/tracing_impl.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "platform_posix_headers",
+    srcs = [
+        "platform/posix/error.h",
+        "platform/posix/posix_file_system.h",
+        "platform/posix/subprocess.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "platform_profile_utils_headers",
+    srcs = [
+        "platform/profile_utils/android_armv7a_cpu_utils_helper.h",
+        "platform/profile_utils/clock_cycle_profiler.h",
+        "platform/profile_utils/cpu_utils.h",
+        "platform/profile_utils/i_cpu_utils_helper.h",
     ],
     visibility = ["//visibility:public"],
 )

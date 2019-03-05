@@ -61,3 +61,11 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "hadoop_file_system.h",
+    ],
+    visibility = ["//visibility:public"],
+)

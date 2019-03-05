@@ -106,3 +106,13 @@ tf_cc_test(
         "@aws",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "aws_crypto.h",
+        "aws_logging.h",
+        "s3_file_system.h",
+    ],
+    visibility = ["//visibility:public"],
+)

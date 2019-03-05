@@ -220,10 +220,10 @@ pkg_tar(
         ":kernels_coreheaders",
         ":lib_coreheaders",
         ":nccl_coreheaders",
-        # ":ops_coreheaders",
+        ":ops_coreheaders",
         ":platform_coreheaders",
-        # ":profiler_coreheaders",
         # ":protobuf_coreheaders",
+        # ":profiler_coreheaders",
         ":public_coreheaders",
         # ":summary_coreheaders",
         # ":tpu_coreheaders",
@@ -723,6 +723,24 @@ pkg_tar(
 )
 
 pkg_tar(
+    name = "ops_coreheaders",
+    package_dir = "ops",
+    tags = ["manual"],
+    deps = [
+        ":ops_compat_headers",
+    ],
+)
+
+pkg_tar(
+    name = "ops_compat_headers",
+    srcs = [
+        "//tensorflow/core/ops/compat:headers",
+    ],
+    package_dir = "compat",
+    tags = ["manual"],
+)
+
+pkg_tar(
     name = "platform_coreheaders",
     srcs = [
         "//tensorflow/core:platform_headers",
@@ -730,9 +748,23 @@ pkg_tar(
     package_dir = "platform",
     tags = ["manual"],
     deps = [
+        ":platform_cloud_coreheaders",
         ":platform_default_coreheaders",
+        ":platform_hadoop_coreheaders",
+        ":platform_posix_coreheaders",
+        ":platform_profile_utils_coreheaders",
+        ":platform_s3_coreheaders",
         ":platform_windows_coreheaders",
     ],
+)
+
+pkg_tar(
+    name = "platform_cloud_coreheaders",
+    srcs = [
+        "//tensorflow/core/platform/cloud:headers",
+    ],
+    package_dir = "cloud",
+    tags = ["manual"],
 )
 
 pkg_tar(
@@ -741,6 +773,42 @@ pkg_tar(
         "//tensorflow/core:platform_default_headers",
     ],
     package_dir = "default",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "platform_hadoop_coreheaders",
+    srcs = [
+        "//tensorflow/core/platform/hadoop:headers",
+    ],
+    package_dir = "hadoop",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "platform_posix_coreheaders",
+    srcs = [
+        "//tensorflow/core:platform_posix_headers",
+    ],
+    package_dir = "posix",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "platform_profile_utils_coreheaders",
+    srcs = [
+        "//tensorflow/core:platform_profile_utils_headers",
+    ],
+    package_dir = "profile_utils",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "platform_s3_coreheaders",
+    srcs = [
+        "//tensorflow/core/platform/s3:headers",
+    ],
+    package_dir = "s3",
     tags = ["manual"],
 )
 

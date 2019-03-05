@@ -448,3 +448,29 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "auth_provider.h",
+		"compute_engine_metadata_client.h",
+		"compute_engine_zone_provider.h",
+		"curl_http_request.h",
+		"expiring_lru_cache.h",
+		"file_block_cache.h",
+		"gcs_dns_cache.h",
+		"gcs_file_system.h",
+		"gcs_throttle.h",
+		"google_auth_provider.h",
+		"http_request.h",
+		"http_request_fake.h",
+		"now_seconds_env.h",
+		"oauth_client.h",
+		"ram_file_block_cache.h",
+		"retrying_file_system.h",
+		"retrying_utils.h",
+		"time_util.h",
+		"zone_provider.h",
+    ],
+    visibility = ["//visibility:public"],
+)
