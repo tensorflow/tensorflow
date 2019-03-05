@@ -266,4 +266,5 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     shard_count = 4,
+    tags = ["no_oss"],
 )
