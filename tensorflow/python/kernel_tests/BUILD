@@ -932,7 +932,6 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -1001,7 +1000,6 @@ tf_py_test(
         "//tensorflow/python:sparse_grad",
         "//tensorflow/python:sparse_ops",
     ],
-    tags = ["no_windows"],
 )
 
 tf_py_test(
@@ -3013,6 +3011,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
     ],
+    tags = ["no_windows"],  # b/126916429
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3171,6 +3170,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],  # b/126916429
     xla_enable_strict_auto_jit = True,
 )
 
