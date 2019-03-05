@@ -1821,10 +1821,10 @@ func @should_fuse_live_out_writer(%arg0 : memref<10xf32>) -> memref<10xf32> {
 #map = (d0, d1) -> (d0 * 16 + d1)
 
 // CHECK-LABEL: slice_tile
-func @slice_tile(%arg1: memref<32x8xf32>, %arg2: memref<32x8xf32>, %0 : f32) -> memref<32x8xf32> {
+func @slice_tile(%arg0: memref<128x8xf32>, %arg1: memref<32x8xf32>, %0 : f32) -> memref<32x8xf32> {
   for %i0 = 0 to 32 {
     for %i1 = 0 to 8 {
-      store %0, %arg2[%i0, %i1] : memref<32x8xf32>
+      store %0, %arg1[%i0, %i1] : memref<32x8xf32>
     }
   }
   for %i = 0 to 2 {
@@ -1832,19 +1832,19 @@ func @slice_tile(%arg1: memref<32x8xf32>, %arg2: memref<32x8xf32>, %0 : f32) -> 
       for %k = 0 to 8 {
         for %kk = 0 to 16 {
           %1 = affine.apply #map(%k, %kk)
-          %2 = load %arg1[%1, %j] : memref<32x8xf32>
+          %2 = load %arg0[%1, %j] : memref<128x8xf32>
           %3 = "foo"(%2) : (f32) -> f32
         }
         for %ii = 0 to 16 {
           %6 = affine.apply #map(%i, %ii)
-          %7 = load %arg2[%6, %j] : memref<32x8xf32>
+          %7 = load %arg1[%6, %j] : memref<32x8xf32>
           %8 = addf %7, %7 : f32
-          store %8, %arg2[%6, %j] : memref<32x8xf32>
+          store %8, %arg1[%6, %j] : memref<32x8xf32>
         }
       }
     }
   }
-  return %arg2 : memref<32x8xf32>
+  return %arg1 : memref<32x8xf32>
 }
 // CHECK:       for %i0 = 0 to 2 {
 // CHECK-NEXT:    for %i1 = 0 to 8 {
@@ -1854,7 +1854,7 @@ func @slice_tile(%arg1: memref<32x8xf32>, %arg2: memref<32x8xf32>, %0 : f32) -> 
 // CHECK-NEXT:      for %i3 = 0 to 8 {
 // CHECK-NEXT:        for %i4 = 0 to 16 {
 // CHECK-NEXT:          %0 = affine.apply #map{{[0-9]+}}(%i3, %i4)
-// CHECK-NEXT:          %1 = load %arg0[%0, %i1] : memref<32x8xf32>
+// CHECK-NEXT:          %1 = load %arg0[%0, %i1] : memref<128x8xf32>
 // CHECK-NEXT:          %2 = "foo"(%1) : (f32) -> f32
 // CHECK-NEXT:        }
 // CHECK-NEXT:        for %i5 = 0 to 16 {
