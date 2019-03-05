@@ -24,8 +24,10 @@ upper_tabs:
         path: /lite/guide/android
       - title: "iOS quickstart"
         path: /lite/guide/ios
-      - title: "TensorFlow Lite FAQ"
+      - title: "FAQ"
         path: /lite/guide/faq
+      - title: "Roadmap"
+        path: /lite/guide/roadmap
 
       - heading: "Convert a model"
       - title: "TensorFlow Lite converter"
