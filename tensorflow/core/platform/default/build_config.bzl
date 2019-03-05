@@ -546,7 +546,10 @@ def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 
 def tf_protos_all_impl():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return [
+        "//tensorflow/core:autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+    ]
 
 def tf_protos_all():
     return if_static(

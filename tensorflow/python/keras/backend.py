@@ -4834,6 +4834,7 @@ def local_conv(inputs,
   return permute_dimensions(output, permutation)
 
 
+@keras_export('keras.backend.local_conv1d')
 def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
   """Apply 1D conv with un-shared weights.
 
@@ -4868,6 +4869,7 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
                     data_format)
 
 
+@keras_export('keras.backend.local_conv2d')
 def local_conv2d(inputs,
                  kernel,
                  kernel_size,

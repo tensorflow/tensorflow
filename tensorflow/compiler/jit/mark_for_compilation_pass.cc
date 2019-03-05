@@ -632,30 +632,6 @@ Status FindCompilationCandidates(
   return Status::OK();
 }
 
-// Determine the global jit level which is ON if either the
-// GraphOptimizationPassOptions has the jit ON, or if the --tf_xla_auto_jit flag
-// is true.
-OptimizerOptions::GlobalJitLevel GetGlobalJitLevel(
-    const GraphOptimizationPassOptions& options) {
-  OptimizerOptions::GlobalJitLevel global_jit_level =
-      options.session_options->config.graph_options()
-          .optimizer_options()
-          .global_jit_level();
-  if (global_jit_level == OptimizerOptions::DEFAULT) {
-    // To set compilation to be on by default, change the following line.
-    global_jit_level = OptimizerOptions::OFF;
-  }
-  MarkForCompilationPassFlags* flags = GetMarkForCompilationPassFlags();
-  if (flags->tf_xla_auto_jit == -1 ||
-      (1 <= flags->tf_xla_auto_jit && flags->tf_xla_auto_jit <= 2)) {
-    // If the flag tf_xla_auto_jit is a valid, non-zero setting, it overrides
-    // the setting in ConfigProto.
-    global_jit_level =
-        static_cast<OptimizerOptions::GlobalJitLevel>(flags->tf_xla_auto_jit);
-  }
-  return global_jit_level;
-}
-
 struct Cluster {
   // Identifies the node that represents this cluster in the cycle detection
   // graph.

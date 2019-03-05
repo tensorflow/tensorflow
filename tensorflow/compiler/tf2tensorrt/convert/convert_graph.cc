@@ -29,7 +29,6 @@ limitations under the License.
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
 #include "tensorflow/compiler/tf2tensorrt/plugin/trt_plugin_factory.h"
 #include "tensorflow/compiler/tf2tensorrt/segment/segment.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
 #include "tensorflow/compiler/tf2tensorrt/utils/trt_resources.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id.h"
 #include "tensorflow/core/common_runtime/gpu/gpu_id_manager.h"
@@ -415,7 +414,6 @@ Status CreateTRTNode(const ConversionParams& params,
                      nvinfer1::IGpuAllocator* alloc,
                      std::vector<Node*>* engine_nodes) {
   const auto& info = infos.at(pos);
-  TRT_RETURN_IF_TEST_VALUE(StrCat(info.engine_name, ":CreateTRTNode"), "fail");
   std::vector<TensorShapeProto> output_shape_protos;
   std::vector<TensorShapeProto> input_shape_protos;
   std::vector<PartialTensorShape> input_shapes;

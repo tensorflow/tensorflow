@@ -94,9 +94,6 @@ class DistributionTestBase(test.TestCase):
       l = core.Dense(1, use_bias=False)
 
       def loss(x):
-        # TODO(josh11b): What if this constant was instead a captured
-        # value?  Would it need to be a value that has been passed
-        # through d.broadcast()?
         y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
         return y * y
       # TODO(isaprykin): Extract implicit_grad+get_filtered_grad_fn into a
@@ -107,7 +104,7 @@ class DistributionTestBase(test.TestCase):
       def update(v, g):
         return v.assign_sub(0.2 * g)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""
@@ -152,9 +149,6 @@ class DistributionTestBase(test.TestCase):
       l = core.Dense(1, use_bias=False)
 
       def loss(x):
-        # TODO(josh11b): What if this constant was instead a captured
-        # value?  Would it need to be a value that has been passed
-        # through d.broadcast()?
         y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
         return y * y
 
@@ -163,7 +157,7 @@ class DistributionTestBase(test.TestCase):
       def update(v, g):
         return v.assign_sub(learning_rate * g)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""

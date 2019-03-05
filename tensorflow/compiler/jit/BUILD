@@ -491,6 +491,7 @@ cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_ops_pass.cc",
+        "clone_constants_for_better_clustering.cc",
         "deadness_analysis.cc",
         "deadness_analysis_internal.h",
         "encapsulate_subgraphs_pass.cc",
@@ -503,6 +504,7 @@ cc_library(
     ],
     hdrs = [
         "build_xla_ops_pass.h",
+        "clone_constants_for_better_clustering.h",
         "deadness_analysis.h",
         "encapsulate_subgraphs_pass.h",
         "encapsulate_xla_computations_pass.h",
@@ -542,6 +544,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -557,9 +560,11 @@ cc_library(
     srcs = ["xla_cluster_util.cc"],
     hdrs = ["xla_cluster_util.h"],
     deps = [
+        ":flags",
         ":resource_operation_safety_analysis",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core:graph",
@@ -625,6 +630,7 @@ tf_cc_test(
     size = "small",
     srcs = [
         "build_xla_ops_pass_test.cc",
+        "clone_constants_for_better_clustering_test.cc",
         "compilation_passes_test_main.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",

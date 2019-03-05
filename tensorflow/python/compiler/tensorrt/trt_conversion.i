@@ -65,7 +65,6 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 %{
 #include "tensorflow/compiler/tf2tensorrt/convert/convert_graph.h"
 #include "tensorflow/compiler/tf2tensorrt/convert/utils.h"
-#include "tensorflow/compiler/tf2tensorrt/utils/test_utils.h"
 %}
 
 %ignoreall
@@ -73,10 +72,6 @@ _LIST_OUTPUT_TYPEMAP(int, PyLong_FromLong);
 %unignore get_linked_tensorrt_version;
 %unignore get_loaded_tensorrt_version;
 %unignore is_tensorrt_enabled;
-%unignore enable_test_value;
-%unignore clear_test_values;
-%unignore add_test_value;
-%unignore get_test_value;
 
 %{
 
@@ -108,42 +103,10 @@ bool is_tensorrt_enabled() {
   return tensorflow::tensorrt::IsGoogleTensorRTEnabled();
 }
 
-void enable_test_value() {
-  tensorflow::tensorrt::test::EnableTestValue();
-}
-
-#if PY_MAJOR_VERSION < 3
-#define TRT_PY_TO_CPP_STRING PyString_AsString
-#define TRT_CPP_TO_PY_STRING PyString_FromString
-#else
-#define TRT_PY_TO_CPP_STRING PyUnicode_AsUTF8
-#define TRT_CPP_TO_PY_STRING PyUnicode_FromString
-#endif
-
-void clear_test_values(PyObject* pattern) {
-  tensorflow::tensorrt::test::ClearTestValues(
-      string(TRT_PY_TO_CPP_STRING(pattern)));
-}
-
-void add_test_value(PyObject* label, PyObject* value) {
-  tensorflow::tensorrt::test::AddTestValue(
-      string(TRT_PY_TO_CPP_STRING(label)), string(TRT_PY_TO_CPP_STRING(value)));
-}
-
-PyObject* get_test_value(PyObject* label) {
-  string value = tensorflow::tensorrt::test::GetTestValue(
-      string(TRT_PY_TO_CPP_STRING(label)));
-  return TRT_CPP_TO_PY_STRING(value.c_str());
-}
-
 %}
 
 version_struct get_linked_tensorrt_version();
 version_struct get_loaded_tensorrt_version();
 bool is_tensorrt_enabled();
-void enable_test_value();
-void clear_test_values(PyObject* pattern);
-void add_test_value(PyObject* label, PyObject* value);
-PyObject* get_test_value(PyObject* label);
 
 %unignoreall

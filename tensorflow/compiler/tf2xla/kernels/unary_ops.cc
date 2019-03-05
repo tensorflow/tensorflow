@@ -116,54 +116,8 @@ XLAJIT_MAKE_UNARY(Real, xla::Real(x));
 XLAJIT_MAKE_UNARY(Imag, xla::Imag(x));
 XLAJIT_MAKE_UNARY(Erf, xla::Erf(x));
 XLAJIT_MAKE_UNARY(Erfc, xla::Erfc(x));
-
-#undef XLAJIT_MAKE_UNARY
-
-class LgammaOp : public XlaOpKernel {
- public:
-  explicit LgammaOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Calculate lgamma using the Lanczos approximation
-  // (https://en.wikipedia.org/wiki/Lanczos_approximation).
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp input = ctx->Input(0);
-    xla::PrimitiveType input_type = ctx->input_xla_type(0);
-
-    if (input_type == xla::F16 || input_type == xla::BF16) {
-      // The approximation works better with at least 32-bits of accuracy.
-      xla::XlaOp input_f32 = xla::ConvertElementType(input, xla::F32);
-      xla::XlaOp result_f32 = xla::Lgamma(input_f32);
-      xla::XlaOp result_x16 = xla::ConvertElementType(result_f32, input_type);
-      ctx->SetOutput(0, result_x16);
-    } else {
-      xla::XlaOp result = xla::Lgamma(input);
-      ctx->SetOutput(0, result);
-    }
-  }
-};  // namespace
-REGISTER_XLA_OP(Name("Lgamma"), LgammaOp);
-
-class DigammaOp : public XlaOpKernel {
- public:
-  explicit DigammaOp(OpKernelConstruction* ctx) : XlaOpKernel(ctx) {}
-  // Calculate lgamma using the Lanczos approximation
-  // (https://en.wikipedia.org/wiki/Lanczos_approximation).
-  void Compile(XlaOpKernelContext* ctx) override {
-    xla::XlaOp input = ctx->Input(0);
-    xla::PrimitiveType input_type = ctx->input_xla_type(0);
-
-    if (input_type == xla::F16 || input_type == xla::BF16) {
-      // The approximation works better with at least 32-bits of accuracy.
-      xla::XlaOp input_f32 = xla::ConvertElementType(input, xla::F32);
-      xla::XlaOp result_f32 = xla::Digamma(input_f32);
-      xla::XlaOp result_x16 = xla::ConvertElementType(result_f32, input_type);
-      ctx->SetOutput(0, result_x16);
-    } else {
-      xla::XlaOp result = xla::Digamma(input);
-      ctx->SetOutput(0, result);
-    }
-  }
-};  // namespace
-REGISTER_XLA_OP(Name("Digamma"), DigammaOp);
+XLAJIT_MAKE_UNARY(Lgamma, xla::Lgamma(x));
+XLAJIT_MAKE_UNARY(Digamma, xla::Digamma(x));
 
 }  // namespace
 }  // namespace tensorflow

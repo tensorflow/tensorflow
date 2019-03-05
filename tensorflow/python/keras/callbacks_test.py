@@ -1118,6 +1118,25 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
         })
 
+  def test_TensorBoard_no_spurious_event_files(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[tb_cbk])
+
+    events_file_run_basenames = set()
+    for (dirpath, dirnames, filenames) in os.walk(self.logdir):
+      del dirnames  # unused
+      if any(fn.startswith('events.out.') for fn in filenames):
+        events_file_run_basenames.add(os.path.basename(dirpath))
+    self.assertEqual(events_file_run_basenames, {'train'})
+
   def test_TensorBoard_batch_metrics(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
