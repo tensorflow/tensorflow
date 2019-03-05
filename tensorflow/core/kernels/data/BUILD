@@ -480,7 +480,6 @@ tf_cc_test(
     name = "sparse_tensor_slice_dataset_op_test",
     size = "small",
     srcs = ["sparse_tensor_slice_dataset_op_test.cc"],
-    tags = ["noasan"],  # TODO(b/125441500): Re-enable after fixing.
     deps = [
         ":dataset_test_base",
         ":dataset_utils",
@@ -521,7 +520,6 @@ tf_cc_test(
     name = "tensor_slice_dataset_op_test",
     size = "small",
     srcs = ["tensor_slice_dataset_op_test.cc"],
-    tags = ["noasan"],  # TODO(b/125441500): Re-enable after fixing.
     deps = [
         ":dataset_test_base",
         ":dataset_utils",
