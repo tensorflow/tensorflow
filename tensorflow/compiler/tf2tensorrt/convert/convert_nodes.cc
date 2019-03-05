@@ -360,12 +360,41 @@ Status Converter::GetTrtBroadcastShape(
   return Status::OK();
 }
 
+inline bool DimsEqual(const nvinfer1::Dims& dim_l,
+                      const nvinfer1::Dims& dim_r) {
+  if (dim_l.nbDims != dim_r.nbDims) {
+    return false;
+  }
+  for (int i = 0; i < dim_l.nbDims; i++) {
+    if (dim_l.d[i] != dim_r.d[i]) {
+      return false;
+    }
+  }
+  return true;
+}
+
 nvinfer1::ITensor* Converter::CreateConstantLayer(
     const TRT_ShapedWeights& weights, const nvinfer1::Dims& dims) {
   // Check if we have already created a constant for this particular weight.
   const auto iter = weights_to_const_layers_.find(weights.GetValues());
   if (iter != weights_to_const_layers_.end()) {
-    return iter->second;
+    if (DimsEqual(iter->second->getDimensions(), dims)) {
+      return iter->second;
+    } else {
+      // Reshape if dims don't match.
+      const nvinfer1::ITensor* reshaped_constant = nullptr;
+      Status status = PrepareTensorForShape(TRT_TensorOrWeights(iter->second),
+                                            dims, &reshaped_constant);
+      if (status.ok()) {
+        return const_cast<nvinfer1::ITensor*>(reshaped_constant);
+      } else {
+        // Reshape failed for some reason. We will just build a new constant
+        // from scratch in this case.
+        VLOG(1) << "Could not reshape cached constant, creating new "
+                   "IConstantLayer. Reason: "
+                << status.error_message();
+      }
+    }
   }
   nvinfer1::Weights trt_weights = weights.GetTrtWeights();
   nvinfer1::IConstantLayer* layer = network()->addConstant(dims, trt_weights);
@@ -435,19 +464,6 @@ Status ConvertAxis(int tf_axis, int trt_nb_dims, absl::string_view node_name,
   // Remove batch dimension.
   *trt_axis = tf_axis - 1;
   return Status::OK();
-}
-
-inline bool DimsEqual(const nvinfer1::Dims& dim_l,
-                      const nvinfer1::Dims& dim_r) {
-  if (dim_l.nbDims != dim_r.nbDims) {
-    return false;
-  }
-  for (int i = 0; i < dim_l.nbDims; i++) {
-    if (dim_l.d[i] != dim_r.d[i]) {
-      return false;
-    }
-  }
-  return true;
 }
 
 bool AllLengthsEqual(const std::vector<std::vector<int>>& inputs) {
@@ -3493,8 +3509,8 @@ Status ConvertConcat(OpConverterParams* params) {
       AllowDataTypes(*params, {DataType::DT_FLOAT, DataType::DT_HALF}));
   TFAttrs attrs(node_def);
   if (inputs.size() < 3) {
-     return errors::InvalidArgument(
-        "ConcatV2 expects at least 3 inputs, at ", node_def.name());
+    return errors::InvalidArgument("ConcatV2 expects at least 3 inputs, at ",
+                                   node_def.name());
   }
   // Get number of tensor inputs.
   const int num_inputs = attrs.get<int>("N");
@@ -3505,9 +3521,8 @@ Status ConvertConcat(OpConverterParams* params) {
   }
   // Get axis.
   if (!inputs.at(num_inputs).is_weights()) {
-    return errors::Unimplemented(
-        "The input \"axis\" for ", node_def.op(), " must be a constant, at ",
-        node_def.name());
+    return errors::Unimplemented("The input \"axis\" for ", node_def.op(),
+                                 " must be a constant, at ", node_def.name());
   }
   auto index_type = attrs.get<DataType>("Tidx");
   int tf_axis = 0;
@@ -3516,22 +3531,22 @@ Status ConvertConcat(OpConverterParams* params) {
   if (index_type == DataType::DT_INT32) {
     auto axis = inputs.at(num_inputs).weights().GetSpan<int>();
     if (axis.size() != 1) {
-      return errors::InvalidArgument(
-        "Axis for GatherV2 must be a scalar, at ", node_def.name());
+      return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
+                                     node_def.name());
     }
     tf_axis = axis[0];
   } else if (index_type == DataType::DT_INT64) {
     auto axis = inputs.at(num_inputs).weights().GetSpan<int64>();
     if (axis.size() != 1) {
-      return errors::InvalidArgument(
-        "Axis for GatherV2 must be a scalar, at ", node_def.name());
+      return errors::InvalidArgument("Axis for GatherV2 must be a scalar, at ",
+                                     node_def.name());
     }
     tf_axis = static_cast<int>(axis[0]);
   }
   int trt_axis = 0;
   auto dim = inputs.at(0).GetTrtDims();
-  TF_RETURN_IF_ERROR(ConvertAxis(tf_axis, dim.nbDims,
-                                 node_def.name(), &trt_axis));
+  TF_RETURN_IF_ERROR(
+      ConvertAxis(tf_axis, dim.nbDims, node_def.name(), &trt_axis));
   // Check that dimensions match on non-concatenate axis.
   for (int i = 0; i < num_inputs; i++) {
     auto dim_i = inputs.at(i).GetTrtDims();

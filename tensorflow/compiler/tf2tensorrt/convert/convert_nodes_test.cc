@@ -187,12 +187,10 @@ bool TrtShapedWeightsEquals(const TRT_ShapedWeights& lhs,
 
 // Used for input and expected output values for tests which operate at multiple
 // precisions.
-template <typename T>
-std::vector<T> ConvertVector(std::vector<int> values) {
-  std::vector<T> output(values.size());
-  for (int i = 0; i < output.size(); ++i) {
-    output[i] = T(values[i]);
-  }
+template <typename InputT, typename OutputT>
+std::vector<OutputT> ConvertVector(const std::vector<InputT>& values) {
+  std::vector<OutputT> output(values.size());
+  std::copy(values.begin(), values.end(), output.begin());
   return output;
 }
 
@@ -988,6 +986,24 @@ TEST_F(ConverterTest, CreateConstantLayer) {
         << "Expected " << DebugString(TfDataTypeToTrt(dtype)) << " vs. actual "
         << DebugString(tensor->getType());
     ExpectTrtDimsEqualsArray({3, 10}, tensor->getDimensions());
+  }
+
+  {
+    // Test caching.
+    TRT_ShapedWeights weights =
+        weight_store_->GetTempWeights(DT_FLOAT, GetTestDims({1, 2, 3}));
+    nvinfer1::ITensor* tensor =
+        converter_->CreateConstantLayer(weights, GetTestDims({1, 2, 3}));
+    nvinfer1::ITensor* tensor_copy =
+        converter_->CreateConstantLayer(weights, GetTestDims({1, 2, 3}));
+    nvinfer1::ITensor* tensor_diff_shape =
+        converter_->CreateConstantLayer(weights, GetTestDims({6}));
+    ASSERT_NE(nullptr, tensor);
+    ASSERT_NE(tensor, tensor_diff_shape);
+    ASSERT_EQ(tensor, tensor_copy);
+    ExpectTrtDimsEqualsArray({1, 2, 3}, tensor->getDimensions());
+    ExpectTrtDimsEqualsArray({1, 2, 3}, tensor_copy->getDimensions());
+    ExpectTrtDimsEqualsArray({6}, tensor_diff_shape->getDimensions());
   }
 }
 
@@ -3687,9 +3703,8 @@ auto get_concat_nodedef = [](DataType dtype, int num_inputs) -> NodeDef {
     values.push_back(ops::Placeholder(s.WithOpName(input_name), dtype));
   }
   auto axis = ops::Placeholder(s.WithOpName("axis"), DT_INT32);
-  auto concat =
-      ops::Concat(s.WithOpName("my_concat"),
-                  gtl::ArraySlice<Input>(values), axis);
+  auto concat = ops::Concat(s.WithOpName("my_concat"),
+                            gtl::ArraySlice<Input>(values), axis);
   return concat.operation.node()->def();
 };
 
@@ -3770,7 +3785,7 @@ void TestConvertConcat(OpConverterTest* test) {
       if (ok_params[i].input_is_weight[j]) {
         test->AddTestWeights<CType>(
             input_name, ok_params[i].input_shapes[j],
-            ConvertVector<CType>(ok_params[i].input_values[j]));
+            ConvertVector<int, CType>(ok_params[i].input_values[j]));
       } else {
         test->AddTestTensor(input_name, ok_params[i].input_shapes[j]);
       }
@@ -3787,18 +3802,18 @@ void TestConvertConcat(OpConverterTest* test) {
     DataVec input_data;
     for (int j = 0; j < num_inputs; ++j) {
       if (!ok_params[i].input_is_weight[j]) {
-        input_data.push_back(
-            {StrCat("values_", j), test::AsTensor<CType>(ConvertVector<CType>(
-                                       ok_params[i].input_values[j]))});
+        input_data.push_back({StrCat("values_", j),
+                              test::AsTensor<CType>(ConvertVector<int, CType>(
+                                  ok_params[i].input_values[j]))});
       }
     }
     DataVec output_data{
         {"my_concat",
          ConstructTensor<CType>(ok_params[i].expected_output.size())}};
     test->BuildAndRun(input_data, &output_data);
-    EXPECT_THAT(
-        GetSpanForData<CType>(output_data[0]),
-        ElementsAreArray(ConvertVector<CType>(ok_params[i].expected_output)));
+    EXPECT_THAT(GetSpanForData<CType>(output_data[0]),
+                ElementsAreArray(
+                    ConvertVector<int, CType>(ok_params[i].expected_output)));
   }
 }
 
