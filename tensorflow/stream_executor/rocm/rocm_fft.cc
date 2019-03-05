@@ -21,7 +21,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
+#if  !(defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING))
+  #include "tensorflow/stream_executor/platform/dso_loader.h"
+#endif 
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -39,7 +41,8 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocFftPlugin);
 
 namespace wrap {
 
-#ifdef PLATFORM_GOOGLE
+#if  defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING)
+
 // This macro wraps a global identifier, given by __name, in a callable
 // structure that loads the DLL symbol out of the DSO handle in a thread-safe
 // manner on first use. This dynamic loading technique is used to avoid DSO

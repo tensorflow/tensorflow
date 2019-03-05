@@ -30,7 +30,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/status.h"
 #include "tensorflow/stream_executor/lib/status_macros.h"
 #include "tensorflow/stream_executor/lib/stringprintf.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
+#if !(defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING))
+  #include "tensorflow/stream_executor/platform/dso_loader.h"
+#endif 
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/platform/port.h"
 #include "tensorflow/stream_executor/plugin_registry.h"
@@ -50,7 +52,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kRocBlasPlugin);
 
 namespace wrap {
 
-#ifdef PLATFORM_GOOGLE
+#if defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING)
 #define STREAM_EXECUTOR_ROCBLAS_WRAP(__name)                       \
   struct WrapperShim__##__name {                                   \
     static const char* kName;                                      \

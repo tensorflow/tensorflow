@@ -19,7 +19,9 @@ limitations under the License.
 #include "tensorflow/stream_executor/lib/env.h"
 #include "tensorflow/stream_executor/lib/initialize.h"
 #include "tensorflow/stream_executor/lib/status.h"
-#include "tensorflow/stream_executor/platform/dso_loader.h"
+#if !(defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING))
+  #include "tensorflow/stream_executor/platform/dso_loader.h"
+#endif 
 #include "tensorflow/stream_executor/platform/logging.h"
 #include "tensorflow/stream_executor/rng.h"
 #include "tensorflow/stream_executor/rocm/rocm_activation.h"
@@ -61,7 +63,7 @@ PLUGIN_REGISTRY_DEFINE_PLUGIN_ID(kGpuRandPlugin);
 
 namespace wrap {
 
-#ifdef PLATFORM_GOOGLE
+#if defined(PLATFORM_GOOGLE) || defined(TENSORFLOW_ROCM_USE_DYNAMIC_LINKING)
 
 #define STREAM_EXECUTOR_HIPRAND_WRAP(__name)                        \
   struct WrapperShim__##__name {                                    \
