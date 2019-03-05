@@ -107,7 +107,7 @@ class TfLiteRNNCell(rnn_cell_impl.LayerRNNCell):
     input_depth = inputs_shape[-1]
 
     def add_variable_wrapped(name, shape, initializer, index):
-      var = self.add_variable(name, shape=shape, initializer=initializer)
+      var = self.add_weight(name, shape=shape, initializer=initializer)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
 
@@ -308,7 +308,7 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     bias_shape = [self._num_units]
 
     def add_variable_wrapped(name, shape, initializer, index, partitioner):
-      var = self.add_variable(
+      var = self.add_weight(
           name, shape=shape, initializer=initializer, partitioner=partitioner)
       return self._tflite_wrapper.add_input(
           var, name=name, index_override=index)
