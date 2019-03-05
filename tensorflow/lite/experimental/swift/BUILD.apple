@@ -14,7 +14,6 @@ MINIMUM_OS_VERSION = "9.0"
 # Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
 DEFAULT_TAGS = [
     "apple",
-    "manual",
 ]
 
 swift_library(
