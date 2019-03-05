@@ -825,10 +825,11 @@ class Layer(trackable.Trackable):
       value: Metric tensor.
       aggregation: Sample-wise metric reduction function. If `aggregation=None`,
         it indicates that the metric tensor provided has been aggregated
-        already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
-        y_pred))`. If aggregation='mean', the given metric tensor will be
-        sample-wise reduced using `mean` function. eg, `model.add_metric(
-        tf.reduce_sum(outputs), name='output_mean', aggregation='mean')`.
+        already. eg, `bin_acc = BinaryAccuracy(name='acc')` followed by
+        `model.add_metric(bin_acc(y_true, y_pred))`. If aggregation='mean', the
+        given metric tensor will be sample-wise reduced using `mean` function.
+        eg, `model.add_metric(tf.reduce_sum(outputs), name='output_mean',
+        aggregation='mean')`.
       name: String metric name.
 
     Raises:
