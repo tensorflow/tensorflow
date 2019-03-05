@@ -1761,6 +1761,14 @@ class ComputationBuilder(object):
     return self._client.TriangularSolve(a, b, left_side, lower, unit_diagonal,
                                         transpose)
 
+  def Eigh(self, a, full_matrices=True):
+    """Enqueues a symmetric/Hermitian eigendecomposition."""
+    return self._client.Eigh(a, full_matrices)
+
+  def SVD(self, a):
+    """Enqueues a singular value decomposition."""
+    return self._client.SVD(a)
+
   def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
     """Enqueues a Gather operation onto the computation."""
     return self._client.Gather(a, start_indices, dimension_numbers, slice_sizes)
