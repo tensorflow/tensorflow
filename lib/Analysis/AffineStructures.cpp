@@ -1230,28 +1230,59 @@ static bool detectAsMod(const FlatAffineConstraints &cst, unsigned pos,
     // id_n should have coeff 1 or -1.
     if (std::abs(cst.atEq(r, pos)) != 1)
       continue;
-    for (unsigned c = 0, f = cst.getNumDimAndSymbolIds(); c < f; c++) {
-      // The coeff of the quotient should be -divisor if the coefficient of
-      // the pos^th identifier is -1, and divisor if the latter is -1.
-      if (cst.atEq(r, c) * cst.atEq(r, pos) == divisor) {
+    // constant term should be 0.
+    if (cst.atEq(r, cst.getNumCols() - 1) != 0)
+      continue;
+    unsigned c, f;
+    int quotientSign = 1, dividendSign = 1;
+    for (c = 0, f = cst.getNumDimAndSymbolIds(); c < f; c++) {
+      if (c == pos)
+        continue;
+      // The coefficient of the quotient should be +/-divisor.
+      // TODO(bondhugula): could be extended to detect an affine function for
+      // the quotient (i.e., the coeff could be a non-zero multiple of divisor).
+      int64_t v = cst.atEq(r, c) * cst.atEq(r, pos);
+      if (v == divisor || v == -divisor) {
         seenQuotient++;
         quotientPos = c;
-      } else if (cst.atEq(r, c) * cst.atEq(r, pos) == -1) {
+        quotientSign = v > 0 ? 1 : -1;
+      }
+      // The coefficient of the dividend should be +/-1.
+      // TODO(bondhugula): could be extended to detect an affine function of
+      // the other identifiers as the dividend.
+      else if (v == -1 || v == 1) {
         seenDividend++;
         dividendPos = c;
+        dividendSign = v < 0 ? 1 : -1;
+      } else if (cst.atEq(r, c) != 0) {
+        // Cannot be inferred as a mod since the constraint has a coefficient
+        // for an identifier that's neither a unit nor the divisor (see TODOs
+        // above).
+        break;
       }
     }
-    // We are looking for exactly one identifier as part of the dividend.
-    // TODO(bondhugula): could be extended to cover multiple ones in the
-    // dividend to detect mod of an affine function of identifiers.
+    if (c < f)
+      // Cannot be inferred as a mod since the constraint has a coefficient for
+      // an identifier that's neither a unit nor the divisor (see TODOs above).
+      continue;
+
+    // We are looking for exactly one identifier as the dividend.
     if (seenDividend == 1 && seenQuotient >= 1) {
       if (!(*memo)[dividendPos])
         return false;
       // Successfully detected a mod.
-      (*memo)[pos] = (*memo)[dividendPos] % divisor;
+      (*memo)[pos] = (*memo)[dividendPos] % divisor * dividendSign;
+      auto ub = cst.getConstantUpperBound(dividendPos);
+      if (ub.hasValue() && ub.getValue() < divisor)
+        // The mod can be optimized away.
+        (*memo)[pos] = (*memo)[dividendPos] * dividendSign;
+      else
+        (*memo)[pos] = (*memo)[dividendPos] % divisor * dividendSign;
+
       if (seenQuotient == 1 && !(*memo)[quotientPos])
         // Successfully detected a floordiv as well.
-        (*memo)[quotientPos] = (*memo)[dividendPos].floorDiv(divisor);
+        (*memo)[quotientPos] =
+            (*memo)[dividendPos].floorDiv(divisor) * quotientSign;
       return true;
     }
   }
@@ -1467,7 +1498,8 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
   // Basic simplification.
   normalizeConstraintsByGCD();
 
-  LLVM_DEBUG(llvm::dbgs() << "getSliceBounds on:\n");
+  LLVM_DEBUG(llvm::dbgs() << "getSliceBounds for first " << num
+                          << " identifiers\n");
   LLVM_DEBUG(dump());
 
   // Record computed/detected identifiers.
@@ -1574,7 +1606,7 @@ void FlatAffineConstraints::getSliceBounds(unsigned num, MLIRContext *context,
       lbMap = AffineMap::get(numMapDims, numMapSymbols, expr, {});
       ubMap = AffineMap::get(numMapDims, numMapSymbols, expr + 1, {});
     } else {
-      // TODO(bondhugula): Whenever there have local identifiers in the
+      // TODO(bondhugula): Whenever there are local identifiers in the
       // dependence constraints, we'll conservatively over-approximate, since we
       // don't always explicitly compute them above (in the while loop).
       if (getNumLocalIds() == 0) {

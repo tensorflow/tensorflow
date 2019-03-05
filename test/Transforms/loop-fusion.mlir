@@ -2099,3 +2099,153 @@ func @should_not_slice_past_slice_barrier() {
 // CHECK-NEXT:   }
   return
 }
+
+// -----
+
+#map0 = (d0, d1) -> (d0 * 16 + d1)
+func @fuse_across_dim_mismatch(%arg0: memref<4x4x16x1xf32>, %arg1: memref<144x9xf32>, %arg2: memref<9xf32>) {
+  %1 = alloc() : memref<144x4xf32>
+  %2 = constant 0.0 : f32
+  for %i2 = 0 to 9 {
+    for %i3 = 0 to 4 {
+      for %i5 = 0 to 16 {
+        %7 = affine.apply #map0(%i2, %i5)
+        store %2, %1[%7, %i3] : memref<144x4xf32>
+      }
+    }
+  }
+  for %i6 = 0 to 9 {
+    for %i7 = 0 to 9 {
+      for %i8 = 0 to 4 {
+        for %i10 = 0 to 16 {
+          %10 = affine.apply #map0(%i6, %i10)
+          %11 = load %1[%10, %i8] : memref<144x4xf32>
+        }
+      }
+    }
+  }
+  return
+}
+// MAXIMAL:      #map4 = (d0, d1) -> (d0 * 16 + d1)
+// MAXIMAL-NEXT: #map5 = (d0, d1, d2, d3, d4) -> (d0 * -16 - d1 + d3)
+// MAXIMAL-NEXT: #map6 = (d0, d1, d2, d3, d4) -> (-d2 + d4)
+// MAXIMAL-LABEL: func @fuse_across_dim_mismatch
+// MAXIMAL:        %0 = alloc() : memref<1x1xf32>
+// MAXIMAL:        for %i0 = 0 to 9 {
+// MAXIMAL-NEXT:    for %i1 = 0 to 9 {
+// MAXIMAL-NEXT:      for %i2 = 0 to 4 {
+// MAXIMAL-NEXT:        for %i3 = 0 to 16 {
+// MAXIMAL-NEXT:          %1 = affine.apply #map4(%i0, %i3)
+// MAXIMAL-NEXT:          %2 = affine.apply #map5(%i0, %i3, %i2, %1, %i2)
+// MAXIMAL-NEXT:          %3 = affine.apply #map6(%i0, %i3, %i2, %1, %i2)
+// MAXIMAL-NEXT:          store %cst, %0[%2, %3] : memref<1x1xf32>
+// MAXIMAL-NEXT:          %4 = affine.apply #map4(%i0, %i3)
+// MAXIMAL-NEXT:          %5 = affine.apply #map5(%i0, %i3, %i2, %4, %i2)
+// MAXIMAL-NEXT:          %6 = affine.apply #map6(%i0, %i3, %i2, %4, %i2)
+// MAXIMAL-NEXT:          %7 = load %0[%5, %6] : memref<1x1xf32>
+// MAXIMAL-NEXT:        }
+// MAXIMAL-NEXT:      }
+// MAXIMAL-NEXT:    }
+// MAXIMAL-NEXT:  }
+
+// -----
+
+#map3 = (d0, d1) -> ((d0 * 72 + d1) floordiv 2304)
+#map4 = (d0, d1) -> (((d0 * 72 + d1) mod 2304) floordiv 1152)
+#map5 = (d0, d1) -> (((((d0 * 72 + d1) mod 2304) mod 1152) floordiv 9) floordiv 8)
+#map6 = (d0, d1) -> (((((d0 * 72 + d1) mod 2304) mod 1152) mod 9) floordiv 3)
+#map7 = (d0, d1) -> (((((d0 * 72 + d1) mod 2304) mod 1152) mod 9) mod 3)
+#map10 = (d0, d1) -> (d0 * 16 + d1)
+#map11 = (d0, d1) -> (d0 * 16 + d1)
+#map12 = (d0, d1) -> (d0 * 16 - d1 + 15)
+func @fuse_across_varying_dims_complex() {
+  %c0 = constant 0 : index
+  %0 = alloc() : memref<2x2x3x3x16x1xf32>
+  %1 = alloc() : memref<64x9xf32>
+  %2 = alloc() : memref<144x4xf32>
+  for %i0 = 0 to 64 {
+    for %i1 = 0 to 9 {
+      %4 = affine.apply #map3(%i0, %i1)
+      %5 = affine.apply #map4(%i0, %i1)
+      %6 = affine.apply #map5(%i0, %i1)
+      %7 = affine.apply #map6(%i0, %i1)
+      %8 = affine.apply #map7(%i0, %i1)
+      %9 = load %0[%4, %5, %7, %8, %6, %c0] : memref<2x2x3x3x16x1xf32>
+      store %9, %1[%i0, %i1] : memref<64x9xf32>
+    }
+  }
+  for %i2 = 0 to 9 {
+    for %i3 = 0 to 4 {
+      for %i4 = 0 to 16 {
+        %10 = affine.apply #map10(%i3, %i4)
+        %11 = load %1[%10, %i2] : memref<64x9xf32>
+      }
+      for %i5 = 0 to 16 {
+        %13 = "bar"() : () -> f32
+        %14 = affine.apply #map11(%i2, %i5)
+        store %13, %2[%14, %i3] : memref<144x4xf32>
+      }
+    }
+  }
+  for %i6 = 0 to 9 {
+    for %i7 = 0 to 9 {
+      for %i8 = 0 to 4 {
+        for %i9 = 0 to 16 {
+          %15 = affine.apply #map12(%i8, %i9)
+          %16 = load %1[%15, %i7] : memref<64x9xf32>
+        }
+      }
+    }
+  }
+  return
+}
+// MAXIMAL:      #map5 = (d0, d1) -> ((d0 * 72 + d1) floordiv 2304)
+// MAXIMAL-NEXT: #map6 = (d0, d1) -> (((d0 * 72 + d1) mod 2304) floordiv 1152)
+// MAXIMAL-NEXT: #map7 = (d0, d1) -> (((((d0 * 72 + d1) mod 2304) mod 1152) floordiv 9) floordiv 8)
+// MAXIMAL-NEXT: #map8 = (d0, d1) -> (((((d0 * 72 + d1) mod 2304) mod 1152) mod 9) floordiv 3)
+// MAXIMAL-NEXT: #map9 = (d0, d1) -> (((((d0 * 72 + d1) mod 2304) mod 1152) mod 9) mod 3)
+// MAXIMAL-NEXT: #map10 = (d0, d1, d2) -> (d1)
+// MAXIMAL-NEXT: #map11 = (d0, d1, d2) -> (-d0 + d2)
+// MAXIMAL-NEXT: #map12 = (d0, d1) -> (d0 * 16 + d1)
+// MAXIMAL-NEXT: #map13 = (d0, d1) -> (d0 * 16 - d1 + 15)
+// MAXIMAL-LABEL: func @fuse_across_dim_mismatch
+// MAXIMAL-NEXT:  %0 = alloc() : memref<64x1xf32>
+// MAXIMAL-NEXT:  %c0 = constant 0 : index
+// MAXIMAL-NEXT:  %1 = alloc() : memref<2x2x3x3x16x1xf32>
+// MAXIMAL-NEXT:  %2 = alloc() : memref<144x4xf32>
+// MAXIMAL-NEXT:  for %i0 = 0 to 9 {
+// MAXIMAL-NEXT:    for %i1 = 0 to 9 {
+// MAXIMAL-NEXT:      for %i2 = 0 to 4 {
+// MAXIMAL-NEXT:        for %i3 = 0 to 16 {
+// MAXIMAL-NEXT:          for %i4 = 0 to 64 {
+// MAXIMAL-NEXT:            %3 = affine.apply #map5(%i4, %i0)
+// MAXIMAL-NEXT:            %4 = affine.apply #map6(%i4, %i0)
+// MAXIMAL-NEXT:            %5 = affine.apply #map7(%i4, %i0)
+// MAXIMAL-NEXT:            %6 = affine.apply #map8(%i4, %i0)
+// MAXIMAL-NEXT:            %7 = affine.apply #map9(%i4, %i0)
+// MAXIMAL-NEXT:            %8 = load %1[%3, %4, %6, %7, %5, %c0] : memref<2x2x3x3x16x1xf32>
+// MAXIMAL-NEXT:            %9 = affine.apply #map10(%i0, %i4, %i0)
+// MAXIMAL-NEXT:            %10 = affine.apply #map11(%i0, %i4, %i0)
+// MAXIMAL-NEXT:            store %8, %0[%9, %10] : memref<64x1xf32>
+// MAXIMAL-NEXT:          }
+// MAXIMAL-NEXT:          for %i5 = 0 to 4 {
+// MAXIMAL-NEXT:            for %i6 = 0 to 16 {
+// MAXIMAL-NEXT:              %11 = affine.apply #map12(%i5, %i6)
+// MAXIMAL-NEXT:              %12 = affine.apply #map10(%i0, %11, %i0)
+// MAXIMAL-NEXT:              %13 = affine.apply #map11(%i0, %11, %i0)
+// MAXIMAL-NEXT:              %14 = load %0[%12, %13] : memref<64x1xf32>
+// MAXIMAL-NEXT:            }
+// MAXIMAL-NEXT:            for %i7 = 0 to 16 {
+// MAXIMAL-NEXT:              %15 = "bar"() : () -> f32
+// MAXIMAL-NEXT:              %16 = affine.apply #map12(%i0, %i7)
+// MAXIMAL-NEXT:              store %15, %2[%16, %i5] : memref<144x4xf32>
+// MAXIMAL-NEXT:            }
+// MAXIMAL-NEXT:          }
+// MAXIMAL-NEXT:          %17 = affine.apply #map13(%i2, %i3)
+// MAXIMAL-NEXT:          %18 = affine.apply #map10(%i0, %17, %i0)
+// MAXIMAL-NEXT:          %19 = affine.apply #map11(%i0, %17, %i0)
+// MAXIMAL-NEXT:          %20 = load %0[%18, %19] : memref<64x1xf32>
+// MAXIMAL-NEXT:        }
+// MAXIMAL-NEXT:      }
+// MAXIMAL-NEXT:    }
+// MAXIMAL-NEXT:  }
