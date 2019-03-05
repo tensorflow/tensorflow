@@ -34,7 +34,7 @@ choice. It also discusses some [known limitations](#known-limitations), the
 
 To convert a TensorFlow model to a TensorFlow Lite model with TensorFlow ops,
 use the `target_ops` argument in the
-[TensorFlow Lite converter](../convert/index.md). The
+[TensorFlow Lite converter](../convert/). The
 following values are valid options for `target_ops`:
 
 *   `TFLITE_BUILTINS` - Converts models using TensorFlow Lite builtin ops.

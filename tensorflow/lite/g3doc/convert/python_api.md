@@ -241,8 +241,8 @@ interpreter.allocate_tensors()
 In order to run the latest version of the TensorFlow Lite Converter Python API,
 either install the nightly build with
 [pip](https://www.tensorflow.org/install/pip) (recommended) or
-[Docker](https://www.tensorflow.org/install/docker.md), or
-[build the pip package from source](https://www.tensorflow.org/install/source.md).
+[Docker](https://www.tensorflow.org/install/docker), or
+[build the pip package from source](https://www.tensorflow.org/install/source).
 
 ### Converting models from TensorFlow 1.12 <a name="pre_tensorflow_1.12"></a>
 
