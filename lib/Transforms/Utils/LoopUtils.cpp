@@ -528,7 +528,7 @@ stripmineSink(OpPointer<AffineForOp> forOp, uint64_t factor,
   augmentMapAndBounds(&b, forOp->getInductionVar(), &lbMap, &lbOperands);
 
   // Upper-bound map creation.
-  auto ubMap = forOp->getLowerBoundMap();
+  auto ubMap = forOp->getUpperBoundMap();
   SmallVector<Value *, 4> ubOperands(forOp->getUpperBoundOperands());
   augmentMapAndBounds(&b, forOp->getInductionVar(), &ubMap, &ubOperands,
                       /*offset=*/scaledStep);

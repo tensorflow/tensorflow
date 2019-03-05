@@ -21,8 +21,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_LIB_EDSC_TYPES_H_
-#define MLIR_LIB_EDSC_TYPES_H_
+#ifndef MLIR_EDSC_TYPES_H_
+#define MLIR_EDSC_TYPES_H_
 
 #include "mlir-c/Core.h"
 #include "mlir/IR/OperationSupport.h"
@@ -745,4 +745,4 @@ inline MinExpr Min(llvm::ArrayRef<Expr> args) { return MinExpr(args); }
 } // namespace edsc
 } // namespace mlir
 
-#endif // MLIR_LIB_EDSC_TYPES_H_
+#endif // MLIR_EDSC_TYPES_H_

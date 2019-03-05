@@ -27,8 +27,8 @@
 //
 //===----------------------------------------------------------------------===//
 
-#ifndef MLIR_LIB_EDSC_MLIREMITTER_H_
-#define MLIR_LIB_EDSC_MLIREMITTER_H_
+#ifndef MLIR_EDSC_MLIREMITTER_H_
+#define MLIR_EDSC_MLIREMITTER_H_
 
 #include <tuple>
 #include <utility>
@@ -185,4 +185,4 @@ private:
 } // namespace edsc
 } // namespace mlir
 
-#endif // MLIR_LIB_EDSC_MLIREMITTER_H_
+#endif // MLIR_EDSC_MLIREMITTER_H_
