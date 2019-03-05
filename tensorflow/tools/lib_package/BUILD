@@ -219,7 +219,7 @@ pkg_tar(
         ":grappler_coreheaders",
         ":kernels_coreheaders",
         ":lib_coreheaders",
-        # ":nccl_coreheaders",
+        ":nccl_coreheaders",
         # ":ops_coreheaders",
         ":platform_coreheaders",
         # ":profiler_coreheaders",
@@ -229,8 +229,6 @@ pkg_tar(
         # ":tpu_coreheaders",
         # ":user_ops_coreheaders",
         # ":util_coreheaders",
-        # ":lib_core_coreheaders",
-        # ":lib_strings_coreheaders",
     ],
 )
 
@@ -712,6 +710,15 @@ pkg_tar(
         "//tensorflow/core:lib_strings_headers",
     ],
     package_dir = "wav",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "nccl_coreheaders",
+    srcs = [
+        "//tensorflow/core/nccl:headers",
+    ],
+    package_dir = "nccl",
     tags = ["manual"],
 )
 

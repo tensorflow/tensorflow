@@ -54,3 +54,11 @@ tf_cuda_cc_test(
         "//tensorflow/core:cuda",
     ]),
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "nccl_manager.h",
+    ],
+    visibility = ["//visibility:public"],
+)
