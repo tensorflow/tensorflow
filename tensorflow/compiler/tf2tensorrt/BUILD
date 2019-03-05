@@ -431,3 +431,13 @@ cc_library(
         "//tensorflow/core:lib_proto_parsing",
     ],
 )
+
+cc_library(
+    name = "py_utils",
+    srcs = ["utils/py_utils.cc"],
+    hdrs = ["utils/py_utils.h"],
+    copts = tf_copts(),
+    deps = if_tensorrt([
+        "@local_config_tensorrt//:tensorrt",
+    ]),
+)
