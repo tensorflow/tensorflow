@@ -276,8 +276,10 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
     const auto &attr = namedAttr.attr;
     if (attr.isDerivedAttr())
       break;
-    os << ", /*optional*/" << attr.getStorageType() << ' '
-       << namedAttr.getName();
+    os << ", ";
+    if (attr.isOptional())
+      os << "/*optional*/";
+    os << attr.getStorageType() << ' ' << namedAttr.getName();
   }
 
   os << ") {\n";
@@ -331,12 +333,12 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
     if (!namedAttr.attr.isDerivedAttr()) {
       bool emitNotNullCheck = namedAttr.attr.isOptional();
       if (emitNotNullCheck) {
-        OUT(4) << formatv("if ({0}) {\n", namedAttr.getName());
+        OUT(4) << formatv("if ({0}) ", namedAttr.getName()) << "{\n";
       }
       OUT(4) << formatv("result->addAttribute(\"{0}\", {0});\n",
                         namedAttr.getName());
       if (emitNotNullCheck) {
-        OUT(4) << formatv("}\n");
+        OUT(4) << "}\n";
       }
     }
   }

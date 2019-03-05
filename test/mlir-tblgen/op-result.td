@@ -29,4 +29,3 @@ def VariadicResultOp : Op<"variadic_op", []> {
 // CHECK: void build(Builder *builder, OperationState *result, Type x, ArrayRef<Type> y)
 // CHECK:   result->addTypes({x});
 // CHECK:   result->addTypes(y);
-           
