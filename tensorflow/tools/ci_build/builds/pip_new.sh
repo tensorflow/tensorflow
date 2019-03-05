@@ -169,7 +169,7 @@ check_python_pip_version() {
   # Retrieve only the version numbers of the python & pip in use currently.
   PYTHON_VER_IN_USE=$(python --version 2>&1)
   PYTHON_VER_IN_USE=${PYTHON_VER_IN_USE:7:3}
-  PIP_VER_IN_USE=$(pip --version)
+  PIP_VER_IN_USE=$(${PIP_BIN_PATH} --version)
   PIP_VER_IN_USE=${PIP_VER_IN_USE:${#PIP_VER_IN_USE}-4:3}
 
   # If only major versions are applied, drop minor versions.
@@ -663,10 +663,10 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
-      pip show auditwheel
+      ${PIP_BIN_PATH} show auditwheel
       set +e
-      pip install auditwheel==1.5.0
-      sudo pip install auditwheel==1.5.0
+      ${PIP_BIN_PATH} install auditwheel==1.5.0
+      sudo ${PIP_BIN_PATH} install auditwheel==1.5.0
       set -e
       auditwheel --version
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
