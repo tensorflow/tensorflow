@@ -156,10 +156,6 @@ class RestoredFunction(def_function.Function):
     super(RestoredFunction, self).__init__(
         python_function, name, autograph=False)
     self._concrete_functions = concrete_functions
-    # This does not propagate to stateful and stateless functions of the
-    # RestoredFunction, which will have seen only defunned
-    # restored_function_body(*args, **kwargs). That's why we have to
-    # canonicalize inputs inside restored_function_body.
     self._function_spec = function_spec
 
   def _list_all_concrete_functions_for_serialization(self):
@@ -187,15 +183,9 @@ def recreate_function(saved_function, concrete_functions):
 
   def restored_function_body(*args, **kwargs):
     """Calls a restored function."""
-    # TODO(allenl): Functions saved with input_signatures should revive with
-    # input_signatures.
-    try:
-      canonicalized_inputs = function_spec.canonicalize_function_inputs(
-          *args, **kwargs)
-    except ValueError as e:
-      raise ValueError(
-          "Cannot canonicalize input args %r and kwargs %r. Error: %r." %
-          (args, kwargs, e))
+    # This is the format of function.graph.structured_input_signature. At this
+    # point, the args and kwargs have already been canonicalized.
+    inputs = (args, kwargs)
 
     # First try to find a concrete function that can be called without input
     # conversions. This allows one to pick a more specific trace in case there
@@ -203,19 +193,17 @@ def recreate_function(saved_function, concrete_functions):
     for allow_conversion in [False, True]:
       for function_name in saved_function.concrete_functions:
         function = concrete_functions[function_name]
-        if _concrete_function_callable_with(function,
-                                            canonicalized_inputs,
-                                            allow_conversion):
-          return _call_concrete_function(function, canonicalized_inputs)
+        if _concrete_function_callable_with(function, inputs, allow_conversion):
+          return _call_concrete_function(function, inputs)
 
     available_signatures = [
         concrete_functions[function_name].graph.structured_input_signature
         for function_name in saved_function.concrete_functions
     ]
     raise ValueError(
-        "Could not find matching function to call for canonicalized inputs %r. "
+        "Could not find matching function to call for inputs %r. "
         "Only existing signatures are %r."
-        % (canonicalized_inputs, available_signatures))
+        % (inputs, available_signatures))
 
   concrete_function_objects = []
   for concrete_function_name in saved_function.concrete_functions:

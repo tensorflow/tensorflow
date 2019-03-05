@@ -20,10 +20,6 @@ tf_class {
     argspec: "args=[\'self\', \'tpu_cluster_resolver\', \'steps_per_run\', \'device_assignment\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'None\'], "
   }
   member_method {
-    name: "broadcast"
-    argspec: "args=[\'self\', \'tensor\'], varargs=None, keywords=None, defaults=None"
-  }
-  member_method {
     name: "colocate_vars_with"
     argspec: "args=[\'self\', \'colocate_with_variable\'], varargs=None, keywords=None, defaults=None"
   }

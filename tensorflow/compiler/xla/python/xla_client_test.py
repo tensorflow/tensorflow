@@ -582,7 +582,7 @@ class SingleOpTest(ComputationTest):
       for src_dtype, dst_dtype in itertools.product(xla_types, xla_types):
         _ConvertAndTest(x, src_dtype, dst_dtype, xla_types[dst_dtype])
 
-  # TODO(b/123523486): re-enable when shape check is resolved
+  # TODO(b/123523486) implement AllToAll on CPU
   def DISABLED_testAllToAllOneReplica(self):
     samples = [
         NumpyArrayF32([97.0]),

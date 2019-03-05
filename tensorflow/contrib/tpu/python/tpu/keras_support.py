@@ -63,6 +63,7 @@ from tensorflow.contrib.tpu.python.tpu import tpu_optimizer
 from tensorflow.contrib.tpu.python.tpu import tpu_system_metadata as tpu_system_metadata_lib
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf.tpu import compilation_result_pb2 as tpu_compilation_result
+from tensorflow.python import tf2
 from tensorflow.python.client import session as tf_session
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import iterator_ops
@@ -200,13 +201,22 @@ class TPUDistributionStrategy(object):
         removed in future once the model replication functionality is mature
         enough. If `False` (default behavior), the system automatically finds
         the best configuration, in terms of number of TPU cores, for the model
-        replication, typically using all avaiable TPU cores. If overwrites as
+        replication, typically using all available TPU cores. If overwrites as
         `True`, force the model replication using single core, i.e., no
         replication.
     Raises:
       Exception: No TPU Found on the given worker.
     """
-
+    if tf2.enabled():
+      raise RuntimeError(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
+    else:
+      logging.warning(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
     if tpu_cluster_resolver is None:
       tpu_cluster_resolver = tpu_cluster_resolver_lib.TPUClusterResolver('')
 
@@ -1373,7 +1383,16 @@ class KerasTPUModel(models.Model):
         outputs=cpu_model.outputs,
         name=cpu_model.name,
     )
-
+    if tf2.enabled():
+      raise RuntimeError(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
+    else:
+      logging.warning(
+          'Keras support is now deprecated in support of TPU Strategy. '
+          'Please follow the distribution strategy guide on tensorflow.org '
+          'to migrate to the 2.0 supported version.')
     # Create a mapping from numpy arrays to infeed managers.
     # Note: uses a list of tuples instead of a map because numpy arrays are
     # not hashable.

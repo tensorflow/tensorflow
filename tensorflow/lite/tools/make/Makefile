@@ -1,3 +1,7 @@
+# Make uses /bin/sh by default, which is incompatible with the bashisms seen
+# below.
+SHELL := /bin/bash
+
 # Find where we're running from, so we can store generated files here.
 ifeq ($(origin MAKEFILE_DIR), undefined)
 	MAKEFILE_DIR := $(shell dirname $(realpath $(lastword $(MAKEFILE_LIST))))

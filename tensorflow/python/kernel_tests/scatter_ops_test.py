@@ -179,7 +179,7 @@ class ScatterTest(test.TestCase):
             np_scatter = _TF_OPS_TO_NUMPY[tf_scatter]
           np_scatter(new, indices, updates)
           # Scatter via tensorflow
-          ref = variables.VariableV1(old)
+          ref = variables.VariableV1(old, use_resource=False)
           ref.initializer.run()
           tf_scatter(ref, indices, updates).eval()
           self.assertAllClose(ref.eval(), new)
@@ -327,7 +327,7 @@ class ScatterTest(test.TestCase):
       updates = np.array([-3, -4, -5]).astype(np.float32)
       if not test.is_gpu_available():
         with self.session(use_gpu=False):
-          ref = variables.VariableV1(params)
+          ref = variables.VariableV1(params, use_resource=False)
           ref.initializer.run()
 
           # Indices all in range, no problem.

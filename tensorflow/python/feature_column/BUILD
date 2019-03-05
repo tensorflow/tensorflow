@@ -23,6 +23,7 @@ py_library(
     srcs = ["feature_column.py"],
     srcs_version = "PY2AND3",
     deps = [
+        ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -57,6 +58,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column",
+        ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:control_flow_ops",
@@ -172,6 +174,7 @@ py_library(
     srcs_version = "PY2AND3",
     deps = [
         ":feature_column_v2",
+        ":utils",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:check_ops",
         "//tensorflow/python:dtypes",
@@ -181,6 +184,19 @@ py_library(
         "//tensorflow/python:sparse_ops",
         "//tensorflow/python:tensor_shape",
         "//tensorflow/python:variable_scope",
+    ],
+)
+
+py_library(
+    name = "utils",
+    srcs = ["utils.py"],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:util",
     ],
 )
 

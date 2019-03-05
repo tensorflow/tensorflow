@@ -1761,7 +1761,7 @@ tf_cc_test(
     size = "small",
     srcs = ["slice_op_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2688,7 +2688,7 @@ tf_cc_tests(
         "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2918,7 +2918,7 @@ tf_kernel_library(
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
     linkopts = select({
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
@@ -3554,7 +3554,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["scan_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -3577,7 +3577,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["reduction_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -6312,6 +6312,29 @@ tf_cc_test(
     srcs = ["quantized_conv_ops_test.cc"],
     tags = ["nomsan"],  # http://b/32242946
     deps = [
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
+tf_cc_test_mkl(
+    name = "mkl_quantized_conv_ops_test",
+    size = "small",
+    srcs = ["mkl_quantized_conv_ops_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
+    deps = [
+        ":mkl_conv_op",
+        ":mkl_input_conversion_op",
         ":ops_testutil",
         ":ops_util",
         ":quantization_utils",

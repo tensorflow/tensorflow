@@ -168,20 +168,7 @@ def do_not_convert(run_as=RunMode.GRAPH, return_dtypes=None):
 
 
 def _call_unconverted(f, args, kwargs):
-  """Calls the original function without converting with AutoGraph.
-
-  Args typically include `self`, as required by the conversion process.
-  When conversion is skipped, `self` is not necessary, because the
-  original bound method is being executed. This code removes it.
-
-  Args:
-    f: the original function for which conversion was requested.
-    args: positional arguments for f May or may not include self.
-    kwargs: keyword arguments for f
-
-  Returns:
-    The return value of f(*args, **kwargs).
-  """
+  """Calls the original function without converting with AutoGraph."""
   if inspect_utils.istfmethodtarget(f):
     return f.__self__.call(args, kwargs)
 
@@ -295,24 +282,7 @@ def converted_call(f, owner, options, args, kwargs):
 
       # TODO(b/119246461): This may be more elegantly handled using __get__?
       if f_self is not None:
-        # If this is a method call, it may or may not include self.
-        #
-        # Example when self is included:
-        #   converted_call(to_graph(foo.bar), foo)
-        #
-        # Example when self is not included:
-        #   super(...).foo(args)
-        #
-        if owner is not None and (not args or args[0] is not owner):
-          effective_args = (owner,) + args
-        else:
-          # When the owner is not specified, use the result of
-          # inspect_utils.getmethodclass.
-          # TODO(b/119246461): Make sure an owner is always specified.
-          if not args or args[0] is not f_self:
-            effective_args = (f_self,) + args
-          else:
-            effective_args = (f_self,) + args[1:]
+        effective_args = (f_self,) + args
         partial_types = (f_self,)
       else:
         effective_args = args
@@ -336,6 +306,7 @@ def converted_call(f, owner, options, args, kwargs):
       partial_types = (f.__class__,)
 
     else:
+      target_entity = f
       raise NotImplementedError('unknown callable type "%s"' % type(f))
 
     arg_values = tf_inspect.getcallargs(arg_map_target, *args, **kwargs)
