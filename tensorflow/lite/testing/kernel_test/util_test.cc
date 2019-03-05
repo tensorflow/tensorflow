@@ -18,7 +18,6 @@ limitations under the License.
 #include <memory>
 
 #include <gmock/gmock.h>
-#include "testing/base/public/googletest.h"
 #include <gtest/gtest.h>
 #include "tensorflow/lite/testing/tflite_driver.h"
 
@@ -29,10 +28,10 @@ namespace {
 
 TEST(UtilTest, SimpleE2ETest) {
   TestOptions options;
-  options.tflite_model = "third_party/tensorflow/lite/testdata/add.bin";
+  options.tflite_model = "tensorflow/lite/testdata/add.bin";
   options.read_input_from_file =
-      "third_party/tensorflow/lite/testdata/test_input.csv";
-  options.dump_output_to_file = FLAGS_test_tmpdir + "/test_out.csv";
+      "tensorflow/lite/testdata/test_input.csv";
+  options.dump_output_to_file = TmpDir() + "/test_out.csv";
   options.kernel_type = "REFERENCE";
   std::unique_ptr<TestRunner> runner(new TfLiteDriver(false, "", true));
   RunKernelTest(options, runner.get());

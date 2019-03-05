@@ -17,6 +17,9 @@ limitations under the License.
 
 #include <fstream>
 
+#if defined(PLATFORM_GOOGLE) || defined(PLATFORM_GOOGLE_ANDROID)
+#include "tensorflow/core/platform/google/build_config/googletest.h"
+#endif
 #include "tensorflow/core/util/command_line_flags.h"
 #include "tensorflow/lite/c/c_api_internal.h"
 #include "tensorflow/lite/testing/kernel_test/input_generator.h"
@@ -25,6 +28,24 @@ limitations under the License.
 
 namespace tflite {
 namespace testing {
+
+#if defined(PLATFORM_GOOGLE)
+string TmpDir() { return FLAGS_test_tmpdir; }
+#else
+string TmpDir() {
+  // 'bazel test' sets TEST_TMPDIR
+  const char* env = getenv("TEST_TMPDIR");
+  if (env && env[0] != '\0') {
+    return env;
+  }
+  env = getenv("TMPDIR");
+  if (env && env[0] != '\0') {
+    return env;
+  }
+  return "/tmp";
+}
+#endif
+
 namespace kernel_test {
 
 struct TestOptions {
