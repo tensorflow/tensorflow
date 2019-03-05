@@ -349,13 +349,10 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignement");
-    // TODO(b/117156505): When the bug is fixed, the CPU backend should not
-    // produce layout changing elementwise operations. We will then pass
-    // LayoutAssignment::InstructionCanChangeLayout to the HLO verifier to
-    // enable stricter verification.
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
-        /*allow_mixed_precision=*/false);
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
