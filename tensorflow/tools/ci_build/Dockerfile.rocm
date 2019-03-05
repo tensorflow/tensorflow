@@ -73,6 +73,11 @@ ENV PATH="$OPENCL_ROOT/bin:${PATH}"
 # Add target file to help determine which device(s) to build for
 RUN bash -c 'echo -e "gfx803\ngfx900\ngfx906" >> /opt/rocm/bin/target.lst'
 
+# Workadround : build HIP from source that has HIP PR 933 merge
+RUN cd $HOME && git clone https://github.com/ROCm-Developer-Tools/HIP.git
+RUN cd $HOME/HIP && git checkout -b master-PR933-merge 23de66bc7e51c80b8254e0fbc91bf75605d86968
+RUN cd $HOME/HIP && mkdir build && cd build && cmake .. && make package -j$(nproc) && dpkg -i *.deb
+
 # Copy and run the install scripts.
 COPY install/*.sh /install/
 ARG DEBIAN_FRONTEND=noninteractive
