@@ -72,7 +72,7 @@ And, of course: we would love to have your feedback! If you experience any snags
   * Add templates and interfaces for creating lookup tables
   * Tensor::UnsafeCopyFromInternal deprecated in favor Tensor::BitcastFrom
   * In `map_vectorization` optimization, reduce the degree of parallelism in the vectorized map node.
-  * Add variant wrapper for absl::string_view
+  * Add variant wrapper for `absl::string_view`
   * Post-training quantization tool supports quantizing weights shared by multiple operations. The models made with versions of this tool will use INT8 types for weights and will only be executable interpreters from this version onwards.
   * Wraps losses passed to the `compile` API (strings and v1 losses) which are not instances of v2 `Loss` class in `LossWrapper` class. => All losses will now use `SUM_OVER_BATCH_SIZE` reduction as default.
   * Add OpKernels for some stateless maps
@@ -90,7 +90,7 @@ And, of course: we would love to have your feedback! If you experience any snags
   * The behavior of `tf.gather` is now correct when axis=None and batch_dims<0.
   * Add `tf.linalg.tridiagonal_solve` op.
   * Add opkernel templates for common table operations.
-  * Fix issue: Callbacks do not log values in eager mode when a deferred build model is used.
+  * Fix callbacks do not log values in eager mode when a deferred build model is used.
   * SignatureDef util functions have been deprecated.
   * Update Fingerprint64Map to use aliases
   * Add legacy string flat hash map op kernels
