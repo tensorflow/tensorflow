@@ -826,10 +826,11 @@ class Layer(trackable.Trackable):
       value: Metric tensor.
       aggregation: Sample-wise metric reduction function. If `aggregation=None`,
         it indicates that the metric tensor provided has been aggregated
-        already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
-        y_pred))`. If aggregation='mean', the given metric tensor will be
-        sample-wise reduced using `mean` function. eg, `model.add_metric(
-        tf.reduce_sum(outputs), name='output_mean', aggregation='mean')`.
+        already. eg, `bin_acc = BinaryAccuracy(name='acc')` followed by
+        `model.add_metric(bin_acc(y_true, y_pred))`. If aggregation='mean', the
+        given metric tensor will be sample-wise reduced using `mean` function.
+        eg, `model.add_metric(tf.reduce_sum(outputs), name='output_mean',
+        aggregation='mean')`.
       name: String metric name.
 
     Raises:
@@ -851,7 +852,8 @@ class Layer(trackable.Trackable):
 
       # We will not raise this error in the foll use case for the sake of
       # consistency as name in provided in the metric constructor.
-      # model.add_metric(metrics.Mean(name='my_metric')(outputs))
+      # mean = metrics.Mean(name='my_metric')
+      # model.add_metric(mean(outputs))
       raise ValueError('Please provide a name for your metric like '
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
