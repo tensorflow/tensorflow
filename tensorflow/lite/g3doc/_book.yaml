@@ -78,6 +78,13 @@ upper_tabs:
       - title: "Build for Raspberry Pi"
         path: /lite/guide/build_rpi
 
+      - heading: "Microcontroller"
+      - title: "Overview"
+        path: /lite/guide/microcontroller
+      - title: "TensorFlow Codelab"
+        path: https://g.co/codelabs/sparkfunTF
+        status: external
+
     - name: "Examples"
       contents:
       - title: "Examples"
