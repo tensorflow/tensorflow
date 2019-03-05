@@ -659,7 +659,11 @@ class ScopedConvolutionDescriptor {
                    &CheckedNarrowing<int64, int>);
     std::transform(padding64.cbegin(), padding64.cend(), padding.begin(),
                    &CheckedNarrowing<int64, int>);
-    std::vector<int> upscale(convolution_descriptor.ndims(), 1);
+
+    std::vector<int> upscale(convolution_descriptor.ndims());
+    const auto& dilations64 = convolution_descriptor.dilations();
+    std::transform(dilations64.cbegin(), dilations64.cend(), upscale.begin(),
+                   &CheckedNarrowing<int64, int>);
 
     status = wrap::miopenInitConvolutionDescriptor(
         handle_, miopenConvolution, padding[0], padding[1], strides[0],
