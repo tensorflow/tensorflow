@@ -255,7 +255,6 @@ def _eager_mode_decorator(f, *args, **kwargs):
   with backprop.GradientTape() as tape:
     result, grad_fn = f(*args, **kwargs)
   all_inputs = list(args) + list(kwargs.values())
-  arg_count = len(all_inputs)
   # The variables that grad_fn needs to return gradients for are the set of
   # variables used that are *not* part of the inputs.
   variables = [v for v in set(tape.watched_variables()) if v not in all_inputs]
@@ -269,6 +268,9 @@ def _eager_mode_decorator(f, *args, **kwargs):
   # TODO(apassos) consider removing the identity below.
   flat_result = [gen_array_ops.identity(x) for x in flat_result]
 
+  input_tensors = [ops.convert_to_tensor(x) for x
+                   in list(args) + list(variables)]
+  arg_count = len(args)
   def actual_grad_fn(*result_grads):
     """Custom grad fn wrapper."""
     if variables:
@@ -286,8 +288,6 @@ def _eager_mode_decorator(f, *args, **kwargs):
           "gradients but returned", len(flat_grads), "instead.")
     return nest.flatten(input_grads) + variable_grads
 
-  input_tensors = [ops.convert_to_tensor(x) for x
-                   in list(args) + list(variables)]
   tape_lib.record_operation(f.__name__, flat_result, input_tensors,
                             actual_grad_fn)
   flat_result = list(flat_result)
