@@ -493,11 +493,29 @@ bazel-bin/tensorflow/tools/compatibility/update/generate_v2_reorders_map
     ]
     for c in classes:
       ns = "tf.estimator." + c
-      text = ns + "(a, b)"
+      text = ns + "()"
+      expected_text = ns + "(loss_reduction=tf.compat.v1.losses.Reduction.SUM)"
+      _, report, errors, new_text = self._upgrade(text)
+      self.assertEqual(expected_text, new_text)
+
+      text = ns + "(loss_reduction=TEST)"
+      expected_text = ns + "(loss_reduction=TEST)"
       _, report, errors, new_text = self._upgrade(text)
       self.assertEqual(text, new_text)
-      self.assertIn("%s requires manual check" % ns, errors[0])
-      self.assertIn("loss_reduction has been changed", report)
+    text = "tf.estimator.BaselineClassifier(m, c, w, v, o, c, lr)"
+    expected_text = (
+        "tf.estimator.BaselineClassifier(" +
+        "model_dir=m, n_classes=c, weight_column=w, label_vocabulary=v, "
+        "optimizer=o, config=c, loss_reduction=lr)")
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.estimator.BaselineClassifier(model_dir=model_dir)"
+    expected_text = ("tf.estimator.BaselineClassifier(" +
+                     "model_dir=model_dir, "
+                     "loss_reduction=tf.compat.v1.losses.Reduction.SUM)")
+    _, report, errors, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
 
   def testExtractGlimpse(self):
     text = ("tf.image.extract_glimpse(x, size, off, False, "
@@ -1114,9 +1132,10 @@ tf.print('abc')
   def testImageResizeExtraPositionalArgs(self):
     for method in ["bilinear", "area", "bicubic", "nearest_neighbor"]:
       text = "tf.image.resize_%s(i, s, a, p)" % method
-      expected_text = ["tf.image.resize(i, s, ", "align_corners=a, ",
-                       "preserve_aspect_ratio=p, ",
-                       "method=tf.image.ResizeMethod.%s)" % method.upper()]
+      expected_text = [
+          "tf.image.resize(i, s, ", "preserve_aspect_ratio=p, ",
+          "method=tf.image.ResizeMethod.%s)" % method.upper()
+      ]
       _, unused_report, unused_errors, new_text = self._upgrade(text)
       for s in expected_text:
         self.assertIn(s, new_text)
@@ -1213,6 +1232,13 @@ def _log_prob(self, x):
   def test_contrib_framework_argsort(self):
     text = "tf.contrib.framework.argsort"
     expected = "tf.argsort"
+    # pylint: enable=line-too-long
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected, new_text)
+
+  def test_contrib_rnn_cell(self):
+    text = "tf.contrib.rnn.RNNCell"
+    expected = "tf.compat.v1.nn.rnn_cell.RNNCell"
     # pylint: enable=line-too-long
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
@@ -1342,6 +1368,43 @@ def _log_prob(self, x):
     expected = "tf.compat.v2.saved_model.load('/tmp/blah')"
     _, _, _, new_text = self._upgrade(text)
     self.assertEqual(expected, new_text)
+
+  def test_uniform_unit_scaling_initializer(self):
+    text = "tf.uniform_unit_scaling_initializer(0.5)"
+    expected_text = (
+        "tf.keras.initializers.VarianceScaling(" +
+        "scale=0.5, distribution=\"uniform\")")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.initializers.uniform_unit_scaling(0.5)"
+    expected_text = (
+        "tf.keras.initializers.VarianceScaling(" +
+        "scale=0.5, distribution=\"uniform\")")
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+  def test_name_scope(self):
+    text = "tf.name_scope(None, default_name, [some, values])"
+    expected_text = "tf.name_scope(name=default_name)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.name_scope(default_name=default_name, values=stuff)"
+    expected_text = "tf.name_scope(name=default_name)"
+    _, _, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+
+    text = "tf.name_scope(name=n, default_name=d, values=s)"
+    expected_text = "tf.compat.v1.name_scope(name=n, default_name=d, values=s)"
+    _, report, _, new_text = self._upgrade(text)
+    self.assertEqual(expected_text, new_text)
+    self.assertIn("`name` passed to `name_scope`", report)
+
+    text = "tf.name_scope(name=None, values=stuff)"
+    _, _, errors, _ = self._upgrade(text)
+    self.assertIn("name_scope call with neither name nor default_name",
+                  errors[0])
 
 
 class TestUpgradeFiles(test_util.TensorFlowTestCase):

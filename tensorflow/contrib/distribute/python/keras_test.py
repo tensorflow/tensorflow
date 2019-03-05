@@ -288,8 +288,8 @@ def all_strategy_combinations():
   return strategy_minus_tpu_combinations() + tpu_strategy_combinations()
 
 
-def all_strategy_combinations_minus_default():
-  strategy_minus_default_combinations = combinations.combine(
+def all_strategy_minus_default_and_tpu_combinations():
+  return combinations.combine(
       distribution=[
           combinations.one_device_strategy,
           combinations.one_device_strategy_gpu,
@@ -298,7 +298,11 @@ def all_strategy_combinations_minus_default():
           combinations.core_mirrored_strategy_with_gpu_and_cpu,
           combinations.core_mirrored_strategy_with_two_gpus],
       mode=['graph', 'eager'])
-  return strategy_minus_default_combinations + tpu_strategy_combinations()
+
+
+def all_strategy_combinations_minus_default():
+  return (all_strategy_minus_default_and_tpu_combinations() +
+          tpu_strategy_combinations())
 
 
 def strategy_and_optimizer_combinations():
@@ -723,14 +727,22 @@ class TestDistributionStrategyWithNumpyArrays(test.TestCase,
       inputs = np.zeros((10, 3), dtype=np.float32)
 
       # As sample size is 10, we batch by 4 so that the last batch is
-      # a partial batch. Also `fit()` using numpy array as inputs without
+      # a partial batch. Also `predict()` using numpy array as inputs without
       # distribution strategy uses entire sample as a single batch. As so,
       # we remove parameters `batch_size` and `steps`.
+      predict_ground_truth = cpu_model.predict(inputs)
       cpu_model.set_weights(model_with_ds_strategy.get_weights())
       self.assertAllClose(
           model_with_ds_strategy.predict(inputs, batch_size=4, steps=3),
-          cpu_model.predict(inputs),
-          atol=1e-5, rtol=1e-5)
+          predict_ground_truth,
+          atol=1e-5,
+          rtol=1e-5)
+      # Test that `steps` is inferred correctly when final partial batch exists.
+      self.assertAllClose(
+          model_with_ds_strategy.predict(inputs, batch_size=4),
+          predict_ground_truth,
+          atol=1e-5,
+          rtol=1e-5)
 
   @combinations.generate(tpu_strategy_combinations())
   def test_predict_multi_output_model_with_partial_batch(

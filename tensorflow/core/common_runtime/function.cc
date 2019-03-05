@@ -684,7 +684,6 @@ Status FunctionLibraryRuntimeImpl::Instantiate(
     }
   }
 
-  Status s;
   const FunctionLibraryDefinition* lib_def =
       options.overlay_lib ? options.overlay_lib : base_lib_def_;
   FunctionBody* fbody = nullptr;
@@ -1390,45 +1389,79 @@ bool RemoveListArrayConverter(Graph* g) {
   return removed_any;
 }
 
-// Returns true iff the function '*fbody' can be inlined at 'node'
-// based on the type signature of 'node' and 'fbody'.
-static bool ValidateInlining(const Node* node, const FunctionBody* fbody) {
-  if (static_cast<size_t>(node->num_inputs()) != fbody->arg_types.size()) {
-    return false;
+namespace {
+
+Status ValidateNoInline(const FunctionBody* fbody) {
+  const auto attr = AttrSlice(&fbody->fdef.attr());
+  bool noinline = false;
+  if (GetNodeAttr(attr, kNoInlineAttr, &noinline).ok() && noinline) {
+    return errors::InvalidArgument(
+        "Can't inline function marked with '_noinline'");
   }
-  if (static_cast<size_t>(node->num_inputs()) != fbody->arg_nodes.size()) {
-    return false;
-  }
-  if (static_cast<size_t>(node->num_outputs()) != fbody->ret_types.size()) {
-    return false;
-  }
-  if (static_cast<size_t>(node->num_outputs()) != fbody->ret_nodes.size()) {
-    return false;
-  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ValidateInlining(const Node* node, const FunctionBody* fbody,
+                        const InlineFunctionBodyOptions& options) {
   // TODO(ezhulenev): Currently common_runtime function inlining can't guarantee
   // that all side-effectful ops will be executed after inlining. See Grappler
   // function_optimizer for details. Unify all function inlining mechanism.
   // Do not inline if `!fbody->control_ret_nodes.empty()`.
+
+  const auto num_node_inputs = static_cast<size_t>(node->num_inputs());
+  const auto num_node_outputs = static_cast<size_t>(node->num_outputs());
+
+  if (num_node_inputs != fbody->arg_types.size() ||
+      num_node_inputs != fbody->arg_nodes.size()) {
+    return errors::InvalidArgument(
+        "Node inputs do not match function arguments: inputs=", num_node_inputs,
+        " arg_types=", fbody->arg_types.size(),
+        " arg_nodes=", fbody->arg_nodes.size());
+  }
+
+  if (num_node_outputs != fbody->ret_types.size() ||
+      num_node_outputs != fbody->ret_nodes.size()) {
+    return errors::InvalidArgument(
+        "Node outputs do not match function returns: outputs=",
+        num_node_outputs, " ret_types=", fbody->ret_types.size(),
+        " ret_nodes=", fbody->ret_nodes.size());
+  }
+
   for (int i = 0; i < node->num_inputs(); ++i) {
-    if (node->input_type(i) != fbody->arg_types[i]) return false;
+    if (node->input_type(i) != fbody->arg_types[i]) {
+      return errors::InvalidArgument(
+          "Node input type doesn't match function argument type: ",
+          node->input_type(i), " != ", fbody->arg_types[i], " @ index=", i);
+    }
   }
   for (int i = 0; i < node->num_outputs(); ++i) {
-    if (node->output_type(i) != fbody->ret_types[i]) return false;
+    if (node->output_type(i) != fbody->ret_types[i]) {
+      return errors::InvalidArgument(
+          "Node output type doesn't match function return type: ",
+          node->output_type(i), " != ", fbody->ret_types[i], " @ index=", i);
+    }
   }
-  return true;
+
+  if (!options.ignore_noinline) {
+    TF_RETURN_IF_ERROR(ValidateNoInline(fbody));
+  }
+
+  return Status::OK();
 }
 
-// Given a "caller" in graph "g", which is a function call of a function
-// to "fbody". Replaces the "caller" with fbody->graph and connects
-// edges properly. "override_device" specifies whether inlining should replace
-// explicitly specified devices inside fbody with the callee's device.
-void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
-                        Node* caller, const FunctionBody* fbody,
-                        bool override_device) {
-  if (!ValidateInlining(caller, fbody)) {
-    LOG(WARNING) << "Inlining mismatch: " << caller->DebugString() << " vs. "
+Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
+                          Node* caller, const FunctionBody* fbody,
+                          const InlineFunctionBodyOptions& options) {
+  VLOG(3) << "Inline function call: " << SummarizeNode(*caller);
+  VLOG(4) << "Inlined function definition: " << DebugString(fbody->fdef);
+
+  Status validation = ValidateInlining(caller, fbody, options);
+  if (!validation.ok()) {
+    LOG(WARNING) << "Inlining mismatch: " << SummarizeNode(*caller) << " vs. "
                  << DebugString(fbody->graph);
-    return;
+    return errors::Internal("Inlining mismatch: ", validation.error_message());
   }
 
   // Input edges. For data edges coming into "caller", we first compute the
@@ -1460,7 +1493,7 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    if (override_device || ndef.device().empty()) {
+    if (options.override_device || ndef.device().empty()) {
       ndef.set_device(caller->def().device());
     }
     for (auto& attr : *ndef.mutable_attr()) {
@@ -1470,6 +1503,9 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
       }
     }
     Node* clone = g->AddNode(ndef, &s);
+    if (options.override_device && !caller->assigned_device_name().empty()) {
+      clone->set_assigned_device_name(caller->assigned_device_name());
+    }
     TF_CHECK_OK(s);
     node_map[n->id()] = clone;
 
@@ -1582,37 +1618,55 @@ void InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
     }
   }
   g->RemoveNode(caller);  // 'caller' is replaced with inlined nodes.
+
+  return Status::OK();
 }
 
-bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
+bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
+                           const InlineFunctionBodyOptions& options) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
+
   const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
+
   for (Node* node : graph->nodes()) {
-    VLOG(3) << "Expanding " << node->DebugString();
-    bool noinline;
-    if (fld->GetAttr(*node, kNoInlineAttr, &noinline).ok() && noinline) {
-      VLOG(3) << "noinline: " << node->DebugString();
+    // Skip nodes that are not function calls or SymbolicGradient calls.
+    if (fld->Find(node->type_string()) == nullptr &&
+        node->type_string() != FunctionLibraryDefinition::kGradientOp) {
       continue;
     }
+    // Skip function calls that marked noinline.
+    bool noinline;
+    if (fld->GetAttr(*node, kNoInlineAttr, &noinline).ok() && noinline) {
+      VLOG(3) << "noinline: " << SummarizeNode(*node);
+      continue;
+    }
+
     FunctionLibraryRuntime::Handle handle;
     Status s = lib->Instantiate(node->type_string(), node->attrs(), &handle);
     if (!s.ok()) {
-      // Either "node" is a primitive op, or the instantiation failed.
-      if (errors::IsNotFound(s)) {
-        VLOG(3) << "ExpandInlineFunctions " << s;
-      } else {
-        LOG(ERROR) << "ExpandInlineFunctions " << s;
-      }
+      LOG(ERROR) << "Failed to instantiate a function:  " << s.error_message();
       continue;
     }
     const FunctionBody* fbody = lib->GetFunctionBody(handle);
     CHECK_NOTNULL(fbody);
-    candidates.push_back({node, fbody});
+    candidates.emplace_back(node, fbody);
   }
+
+  bool inlined_any = false;
   for (const auto& p : candidates) {
-    InlineFunctionBody(*fld, graph, p.first, p.second);
+    Status inlined =
+        InlineFunctionBody(*fld, graph, p.first, p.second, options);
+    if (inlined.ok()) {
+      inlined_any = true;
+    } else {
+      VLOG(3) << "Failed to inline function call: node=" << p.first->name()
+              << " error=" << inlined.error_message();
+    }
   }
-  return !candidates.empty();
+
+  // TODO(ezhulenev): Release handles for inlined function calls.
+
+  return inlined_any;
 }
 
 string NewName(const Node* n, bool pretty) {

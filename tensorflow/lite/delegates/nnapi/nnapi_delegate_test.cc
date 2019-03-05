@@ -62,6 +62,9 @@ class SingleOpModelWithNNAPI : public SingleOpModel {
       case TensorType_UINT8:
         QuantizeAndPopulate<uint8_t>(index, data);
         break;
+      case TensorType_INT8:
+        QuantizeAndPopulate<int8_t>(index, data);
+        break;
       default:
         FAIL() << "Type not supported: " << type;
         break;
@@ -1016,8 +1019,9 @@ TEST(NNAPIDelegate, ConcatenationFourInputsQuantizedMixedRange) {
 
 class DequantizeOpModel : public SingleOpModelWithNNAPI {
  public:
-  DequantizeOpModel(std::initializer_list<int> shape, float min, float max) {
-    input_ = AddInput({TensorType_UINT8, shape, min, max});
+  DequantizeOpModel(TensorType inputType, std::initializer_list<int> shape,
+                    float min, float max) {
+    input_ = AddInput({inputType, shape, min, max});
     output_ = AddOutput({TensorType_FLOAT32, shape});
     SetBuiltinOp(BuiltinOperator_DEQUANTIZE, BuiltinOptions_DequantizeOptions,
                  CreateDequantizeOptions(builder_).Union());
@@ -1025,7 +1029,8 @@ class DequantizeOpModel : public SingleOpModelWithNNAPI {
     BuildInterpreter({GetShape(input_)});
   }
 
-  void SetInput(std::initializer_list<uint8_t> data) {
+  template <typename T>
+  void SetInput(std::initializer_list<T> data) {
     PopulateTensor(input_, data);
   }
 
@@ -1036,14 +1041,25 @@ class DequantizeOpModel : public SingleOpModelWithNNAPI {
   int output_;
 };
 
-TEST(NNAPIDelegate, DequantizeFourDimensional) {
-  DequantizeOpModel m({2, 5}, -63.5, 64);
+TEST(NNAPIDelegate, DequantizeFourDimensionalUint8) {
+  DequantizeOpModel m(TensorType_UINT8, {2, 5}, -63.5, 64);
 
-  m.SetInput({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
+  m.SetInput<uint8_t>({0, 1, 2, 3, 4, 251, 252, 253, 254, 255});
   m.Invoke();
   EXPECT_THAT(m.GetOutput(),
               ElementsAreArray(ArrayFloatNear(
                   {-63.5, -63, -62.5, -62, -61.5, 62, 62.5, 63, 63.5, 64})));
+}
+
+TEST(NNAPIDelegate, DequantizeFourDimensionalInt8Symm) {
+  // [-64, 63.5] -> scale=0.5, zero_point=0 for INT8
+  DequantizeOpModel m(TensorType_INT8, {2, 5}, -64, 63.5);
+
+  m.SetInput<int8_t>({-128, -127, -126, -125, -124, 123, 124, 125, 126, 127});
+  m.Invoke();
+  EXPECT_THAT(m.GetOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  {-64, -63.5, -63, -62.5, -62, 61.5, 62, 62.5, 63, 63.5})));
 }
 
 class FloorOpModel : public SingleOpModelWithNNAPI {

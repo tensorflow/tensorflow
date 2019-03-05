@@ -61,13 +61,12 @@ from tensorflow.python.util import tf_inspect
 FORWARD_FUNCTION_ATTRIBUTE_NAME = "forward_function_name"
 BACKWARD_FUNCTION_ATTRIBUTE_NAME = "backward_function_name"
 
-class CacheKey(
-    collections.namedtuple("CacheKey", [
-        "input_signature", "parent_graph", "device_functions",
-        "colocation_stack", "uses_xla"])):
 
-  def replace(self, *args, **kwargs):
-    return self._replace(*args, **kwargs)
+CacheKey = collections.namedtuple("CacheKey", [
+    "input_signature", "parent_graph", "device_functions",
+    "colocation_stack", "uses_xla"])
+
+CacheKey.replace = CacheKey._replace  # pylint: disable=protected-access
 
 
 def _flat_shape_list(*params):
@@ -85,47 +84,80 @@ def _flat_shape_list(*params):
           for x in nest.flatten(params)]
 
 
-def _compatible_shapes(flat_x, flat_y):
-  """Check if lists of TensorShapes contain compatible shapes.
+def _shape_less_specific_than(relaxed, to_check):
+  """Checks if `relaxed` is less specific than `to_check`.
+
+  This is an asymmetric check, unlike `TensorShape.is_compatible_with`. If
+  `to_check` has a dimension with an undefined shape, `relaxed` must also have
+  an undefined shape for that dimension.
 
   Args:
-    flat_x: List of TensorShape or None.
-    flat_y: List of TensorShape or None.
+    relaxed: A `TensorShape` to check against.
+    to_check: A second `TensorShape`.
+
+  Returns:
+    True if `to_check` represents a set of shapes which is a subset of
+    `relaxed`'s shapes and False otherwise.
+  """
+  if to_check.dims is not None and relaxed.dims is not None:
+    if to_check.rank != relaxed.rank:
+      return False
+    for check_dim, relaxed_dim in zip(to_check.dims, relaxed.dims):
+      if check_dim.value is None and relaxed_dim.value is not None:
+        return False
+      if not relaxed_dim.is_compatible_with(check_dim):
+        return False
+  return True
+
+
+def _compatible_shapes(flat_relaxed, flat_to_check):
+  """Check if lists of TensorShapes contain compatible shapes.
+
+  Checks that each `flat_relaxed` shape covers a superset of the shapes of the
+  corresponding `flat_to_check` shape.
+
+  Args:
+    flat_relaxed: List of TensorShape or None.
+    flat_to_check: List of TensorShape or None.
 
   Returns:
     A python bool.
 
   Raises:
-    RuntimeError: if `len(flat_x) != len(flat_y)`.
-    RuntimeError: if `flat_x[i] is None != flat_y[i] is None` for any `i`.
+    RuntimeError:
+      if `len(flat_relaxed) != len(flat_to_check)`.
+    RuntimeError:
+      if `flat_relaxed[i] is None != flat_to_check[i] is None` for any `i`.
   """
-  if len(flat_x) != len(flat_y):
+
+  if len(flat_relaxed) != len(flat_to_check):
     raise RuntimeError("Expected shape lists of identical lengths, but saw: "
-                       "%s and %s" % (flat_x, flat_y))
-  def is_compatible(x, y):
+                       "%s and %s" % (flat_relaxed, flat_to_check))
+  def is_compatible(relaxed, to_check):
     """Internal help function.
 
     Args:
-      x: TensorShape or None.
-      y: TensorShape or None.
+      relaxed: TensorShape or None.
+      to_check: TensorShape or None.
 
     Returns:
       Python bool.
 
     Raises:
-      RuntimeError: If `x is None != y is None`.
+      RuntimeError: If `relaxed is None != to_check is None`.
     """
     # If both x and y are None, there is no shape to compare.  Otherwise check
     # if they are compatible with each other.  Either way, both input signatures
     # must have have Tensors in the same entries.  If not, raise an assertion
     # error.
-    if x is None != y is None:
+    if relaxed is None != to_check is None:
       raise RuntimeError(
           "Expected signature type matches between flattened input shapes "
           "%s and %s; but saw that (%s is None) != (%s is None)"
-          % (flat_x, flat_y, x, y))
-    return x is None or x.is_compatible_with(y)
-  return all(is_compatible(x, y) for x, y in zip(flat_x, flat_y))
+          % (flat_relaxed, flat_to_check, relaxed, to_check))
+    return relaxed is None or _shape_less_specific_than(relaxed, to_check)
+  return all(is_compatible(relaxed, to_check)
+             for relaxed, to_check in zip(flat_relaxed, flat_to_check))
 
 
 def _common_shape(x, y):
@@ -144,7 +176,9 @@ def _common_shape(x, y):
     return tensor_shape.TensorShape(None)
   dims = []
   for dim_x, dim_y in zip(x.dims, y.dims):
-    if dim_x != dim_y or tensor_shape.dimension_value(dim_x) is None:
+    if (dim_x != dim_y
+        or tensor_shape.dimension_value(dim_x) is None
+        or tensor_shape.dimension_value(dim_y) is None):
       dims.append(None)
     else:
       dims.append(tensor_shape.dimension_value(dim_x))
@@ -318,6 +352,7 @@ class _EagerDefinedFunction(object):
     self._num_outputs = len(self.signature.output_arg)
     self._output_types = [o.type for o in self.signature.output_arg]
     self._output_shapes = [o.shape for o in outputs]
+    self._control_captures = graph.control_captures
     self._func_graph_outputs = outputs
     self.grad_func_name = None
     self.python_grad_func = None
@@ -386,13 +421,14 @@ class _EagerDefinedFunction(object):
       g = ops.get_default_graph()
       self.add_to_graph(g)
       signature = self.signature
-      op = g.create_op(
-          signature.name,
-          [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
-          tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
-          op_def=signature,
-          name="FunctionCall",
-          compute_shapes=False)
+      with ops.control_dependencies(self._control_captures):
+        op = g.create_op(
+            signature.name,
+            [ops.internal_convert_to_tensor(x, ctx=ctx) for x in args],
+            tuple(dtypes_module.DType(x.type) for x in signature.output_arg),
+            op_def=signature,
+            name="FunctionCall",
+            compute_shapes=False)
       outputs = op.outputs
       if not outputs:
         return op
@@ -405,13 +441,14 @@ class _EagerDefinedFunction(object):
       # creates `PartitionedCallOp` kernels by default, or remove the previous
       # branch if a TPU kernel is registered for `PartitionedCall`.
       with _InterpolateFunctionError(self):
-        outputs = functional_ops.partitioned_call(
-            args=args,
-            f=self,
-            tout=self._output_types,
-            executing_eagerly=executing_eagerly,
-            config=config,
-            executor_type=executor_type)
+        with ops.control_dependencies(self._control_captures):
+          outputs = functional_ops.partitioned_call(
+              args=args,
+              f=self,
+              tout=self._output_types,
+              executing_eagerly=executing_eagerly,
+              config=config,
+              executor_type=executor_type)
 
     if executing_eagerly:
       return outputs
@@ -1556,7 +1593,8 @@ class Function(object):
           rank_only_cache_key, None)
 
       if (relaxed_arg_function is not None
-          and _compatible_shapes(relaxed_arg_shapes, arg_shapes)):
+          and _compatible_shapes(flat_relaxed=relaxed_arg_shapes,
+                                 flat_to_check=arg_shapes)):
         return relaxed_arg_function, args, kwargs
 
       if relaxed_arg_shapes is None:
@@ -2016,13 +2054,23 @@ def defun_with_attributes(func=None,
 
 
 # When a method is bound to objects of this type, it allows AutoGraph to
-# recover a weak reference the original method's self pointer. This uses the
-# mechanism from pyct.inspect_utils.getmethodclass.
+# recover a weak reference the original method's self pointer, so that it can
+# execute it consistent with class_method_to_instance_method's
+# bound_method_wrapper.
 # TODO(b/119246461): This is not pretty. Use a descriptor instead?
-class _WeakrefSelf(object):
+class TfMethodTarget(object):
+  """Binding target for methods replaced by function and defun."""
 
-  def __init__(self, target):
-    self.ag_self_weakref__ = target
+  def __init__(self, target, original_python_function):
+    self.weakrefself_target__ = target
+    self.weakrefself_func__ = weakref.ref(original_python_function)
+
+  @property
+  def target(self):
+    return self.weakrefself_target__()
+
+  def call(self, args, kwargs):
+    return self.weakrefself_func__()(*args, **kwargs)
 
 
 def class_method_to_instance_method(original_function, instance):
@@ -2031,8 +2079,9 @@ def class_method_to_instance_method(original_function, instance):
 
   # Note: while we could bind to a weakref proxy instead, that causes the
   # bound method to be unhashable.
-  bound_method = types_lib.MethodType(original_function.python_function,
-                                      _WeakrefSelf(weak_instance))
+  bound_method = types_lib.MethodType(
+      original_function.python_function,
+      TfMethodTarget(weak_instance, original_function.python_function))
 
   # original_function is expected to be of one of the two `Function` types
   # (defined either in function.py or def_function.py).
@@ -2050,6 +2099,7 @@ def class_method_to_instance_method(original_function, instance):
 
     if wrapped_fn is strong_bound_method_wrapper.__original_wrapped__:
       # If __wrapped__ was not replaced, then call original_function.
+      # TODO(mdan): For better consistency, use the wrapper's call().
       wrapped_fn = original_function.python_function
       if tf_inspect.ismethod(wrapped_fn):
         wrapped_fn = six.get_unbound_function(wrapped_fn)

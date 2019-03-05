@@ -167,7 +167,8 @@ enum class OperatorType : uint8 {
   kBidirectionalSequenceRnn,
   kGatherNd,
   kWhere,
-  kElu
+  kElu,
+  kReverseSequence
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -2029,6 +2030,19 @@ struct MirrorPadOperator : Operator {
   MirrorPadOperator() : Operator(OperatorType::kMirrorPad) {}
   // mode is either SYMMETRIC or REFLECT.
   MirrorPadMode mode;
+};
+
+// ReverseSequence operator:
+//
+// Inputs:
+// Inputs[0]: required: the input array.
+// Inputs[1]: required: the lengths of the elements to be reversed.
+//
+// TensorFlow equivalent: tf.reverse_sequence.
+struct ReverseSequenceOperator : Operator {
+  ReverseSequenceOperator() : Operator(OperatorType::kReverseSequence) {}
+  int seq_dim;
+  int batch_dim = 0;
 };
 
 // Unique Operator:

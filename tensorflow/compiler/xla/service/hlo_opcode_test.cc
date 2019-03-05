@@ -59,6 +59,7 @@ TEST(HloOpcodeTest, OpcodeProperties) {
       case HloOpcode::kAllToAll:
       case HloOpcode::kCall:
       case HloOpcode::kConcatenate:
+      case HloOpcode::kConditional:
       case HloOpcode::kCustomCall:
       case HloOpcode::kDynamicSlice:
       case HloOpcode::kDynamicUpdateSlice:

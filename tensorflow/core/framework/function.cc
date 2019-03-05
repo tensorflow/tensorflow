@@ -917,6 +917,12 @@ string Canonicalize(const string& funcname, AttrSlice attrs,
   if (!executor_type.empty()) {
     entries.push_back(strings::StrCat(kExecutorAttr, "=", executor_type));
   }
+  string config_proto_serialized;
+  options.config_proto.SerializeToString(&config_proto_serialized);
+  if (!config_proto_serialized.empty()) {
+    entries.push_back(strings::StrCat(
+        "_config_proto", "=", str_util::CEscape(config_proto_serialized)));
+  }
   std::sort(entries.begin(), entries.end());
   return strings::StrCat(funcname, "[", str_util::Join(entries, ","), "]");
 }

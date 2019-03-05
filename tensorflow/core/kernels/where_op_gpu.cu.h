@@ -324,9 +324,10 @@ struct Where<GPUDevice, NDIM, T, TIndex> {
         CalculateStrides<TIndex, T, NDIM>(input);
     const TIndex output_rows = output.dimension(0);
     CudaLaunchConfig config = GetCudaLaunchConfig(output_rows, d);
-    CudaLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
-                     config.block_count, config.thread_per_block, 0, d.stream(),
-                     output_rows, strides, output.data());
+    TF_CHECK_OK(CudaLaunchKernel(PropagateWhereIndicesKernel<NDIM, TIndex>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), output_rows, strides,
+                                 output.data()));
 
     return Status::OK();
   }

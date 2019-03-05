@@ -568,6 +568,7 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
   // TODO(iga): Thread other relevant options from SessionOptions.
   SessionOptions session_options;
   session_options.env = flr->env();
+  session_options.config = options.config_proto;
   optimization_options.session_options = &session_options;
   optimization_options.graph = &graph;
   optimization_options.flib_def = &data->overlay_lib_;
@@ -578,6 +579,12 @@ Status ProcessFunctionLibraryRuntime::InstantiateMultiDevice(
       OptimizationPassRegistry::PRE_PLACEMENT, optimization_options));
 
   DumpGraph("Before calling Placer", graph.get());
+  // TODO(b/124993244): Smartly merge options in nested defuns, and raise
+  // exceptions/warnings in case where nested function call options are ignored.
+  // TODO(b/125933502): Currently config proto in function call options is not
+  // respected by placer, because placer and config proto has different default
+  // behaviors (allowing soft placement by default, vs. not allowing it). Pass
+  // config proto with appropriate default values to placer here.
   Placer placer(graph.get(), &device_set, nullptr, /* No session options */
                 flr->device() /* Default device */);
   TF_RETURN_IF_ERROR(placer.Run());

@@ -61,12 +61,13 @@ namespace xla {
   V(kBroadcast, "broadcast", 1)                                        \
   V(kCall, "call", kHloOpcodeIsVariadic)                               \
   V(kCeil, "ceil", 1)                                                  \
+  V(kCholesky, "cholesky", 1)                                          \
   V(kClamp, "clamp", 3)                                                \
   V(kCollectivePermute, "collective-permute", 1)                       \
   V(kClz, "count-leading-zeros", 1)                                    \
   V(kComplex, "complex", 2)                                            \
   V(kConcatenate, "concatenate", kHloOpcodeIsVariadic)                 \
-  V(kConditional, "conditional", 3)                                    \
+  V(kConditional, "conditional", kHloOpcodeIsVariadic)                 \
   V(kConstant, "constant", 0)                                          \
   V(kConvert, "convert", 1)                                            \
   V(kConvolution, "convolution", 2)                                    \

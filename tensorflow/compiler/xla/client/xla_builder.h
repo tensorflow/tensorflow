@@ -303,14 +303,17 @@ class XlaBuilder {
     input_output_aliases_.push_back({output_index, param_number, param_index});
   }
 
- private:
   // Describes an input/output alias as inserted by the SetUpAlias() API.
   struct InputOutputAlias {
+    // Specifies the index of the aliased buffer in the result tuple.
     ShapeIndex output_index;
+    // Specifies the parameter containing the buffer to be aliased.
     int64 param_number;
+    // Specifies the index of the aliased buffer in the parameter
     ShapeIndex param_index;
   };
 
+ private:
   // Build helper which takes the id of the root operation..
   StatusOr<XlaComputation> Build(int64 root_id, bool remove_dynamic_dimensions);
 
@@ -528,6 +531,10 @@ class XlaBuilder {
                     const XlaComputation& true_computation,
                     const XlaOp& false_operand,
                     const XlaComputation& false_computation);
+
+  XlaOp Conditional(const XlaOp& branch_index,
+                    absl::Span<const XlaComputation* const> branch_computations,
+                    absl::Span<const XlaOp> branch_operands);
 
   XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                         const int mantissa_bits);
@@ -801,6 +808,7 @@ class XlaBuilder {
   friend XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                                bool unit_diagonal,
                                TriangularSolveOptions::Transpose transpose_a);
+  friend XlaOp Cholesky(XlaOp a, bool lower);
   friend XlaOp Infeed(XlaBuilder* builder, const Shape& shape,
                       const string& config);
   friend void Outfeed(const XlaOp& operand, const Shape& shape_with_layout,
@@ -945,6 +953,10 @@ class XlaBuilder {
                            const XlaComputation& true_computation,
                            const XlaOp& false_operand,
                            const XlaComputation& false_computation);
+  friend XlaOp Conditional(
+      const XlaOp& branch_index,
+      absl::Span<const XlaComputation* const> branch_computations,
+      absl::Span<const XlaOp> branch_operands);
   friend XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,
                                const int mantissa_bits);
   friend XlaOp Gather(const XlaOp& input, const XlaOp& start_indices,
@@ -1342,8 +1354,7 @@ XlaOp Fft(const XlaOp& operand, FftType fft_type,
 // * `left_side` is a boolean, indicating whether to solve a system of the form
 //   op(a) * x = b (true) or x * op(a) = b (false).
 // * `lower` is a boolean, indicating whether the argument `a` is
-// lower-triangular
-//   (true) or upper-triangular (false).
+//   lower-triangular (true) or upper-triangular (false).
 // * If `unit_diagonal` is true, the diagonal elements of `a` are assumed to be
 //   1 and not accessed.
 // * `transpose_a` indicates which function `op` we use to transform the tensor
@@ -1351,6 +1362,20 @@ XlaOp Fft(const XlaOp& operand, FftType fft_type,
 XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
                       bool unit_diagonal,
                       TriangularSolveOptions::Transpose transpose_a);
+
+// Computes the Cholesky decompositions of a batch of symmetric (Hermitian)
+// positive definite matrices.
+// `a` must be a (batched) square matrix; i.e., it must have rank >= 2 with the
+// two minor dimensions equal.
+// If `lower` is true, the data from the lower triangle is used; if false, the
+// upper triangle is used. The input data in the other triangle of the input
+// does not affect the output. Returns the output in the same lower/uppper
+// triangle. The data returned in the other output triangle is arbitrary and
+// implementation-defined.
+//
+// The value returned if `a` is not Hermitian positive definite is
+// implementation-defined.
+XlaOp Cholesky(XlaOp a, bool lower);
 
 // Enqueues an infeed instruction onto the computation, which writes data of
 // the given shape to the infeed buffer of the device.
@@ -1761,6 +1786,15 @@ XlaOp Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                   const XlaComputation& true_computation,
                   const XlaOp& false_operand,
                   const XlaComputation& false_computation);
+
+// Enqueues either a predicated (if/else) or indexed (switch/case/default)
+// conditional node onto the computation. N >= 1 branch_computations and
+// branch_operands are matched by index. branch_index selects the branch that
+// will be executed. Out of range branch_index uses the N-1'th
+// branch_computation as default.
+XlaOp Conditional(const XlaOp& branch_index,
+                  absl::Span<const XlaComputation* const> branch_computations,
+                  absl::Span<const XlaOp> branch_operands);
 
 // Enqueues a ReducePrecision node onto the computation.
 XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,

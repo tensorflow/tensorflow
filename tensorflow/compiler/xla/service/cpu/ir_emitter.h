@@ -118,6 +118,23 @@ class IrEmitter : public DfsHloVisitorWithDefault,
       const HloMapInstruction& map_instr,
       absl::Span<llvm::Value* const> elemental_operands,
       absl::string_view name);
+  // Emit code to emit the element at `index` for a reduce window instruction.
+  StatusOr<llvm::Value*> EmitElementalReduceWindow(
+      const HloReduceWindowInstruction* reduce_window,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::IrArray::Index& index);
+  // Emit code to emit the element at `index` for a convolution instruction.
+  StatusOr<llvm::Value*> EmitElementalConvolution(
+      const HloConvolutionInstruction* convolution,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::ElementGenerator& kernel_generator,
+      const llvm_ir::IrArray::Index& index);
+  // Emit code to emit the element at `index` for a reduce instruction.
+  StatusOr<llvm::Value*> EmitElementalReduce(
+      const HloReduceInstruction* reduce,
+      const llvm_ir::ElementGenerator& input_generator,
+      const llvm_ir::ElementGenerator& initial_value_generator,
+      const llvm_ir::IrArray::Index& index);
 
  protected:
   //
@@ -127,6 +144,7 @@ class IrEmitter : public DfsHloVisitorWithDefault,
   // special in some way are handled explicitly in HandleFoo methods.
   Status DefaultAction(HloInstruction* hlo) override;
 
+  Status HandleAllToAll(HloInstruction* instruction) override;
   Status HandleBitcast(HloInstruction* bitcast) override;
   Status HandleConstant(HloInstruction* constant) override;
   Status HandleCopy(HloInstruction* copy) override;
@@ -525,17 +543,6 @@ class IrEmitter : public DfsHloVisitorWithDefault,
 
   // Returns the number of bytes within the shape.
   int64 ByteSizeOf(const Shape& shape) const;
-
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForMap(
-      HloMapInstruction* map, const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduceWindow(
-      HloReduceWindowInstruction* reduce_window,
-      const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForConvolution(
-      HloConvolutionInstruction* convolution,
-      const llvm_ir::IrArray::Index& index);
-  StatusOr<llvm::Value*> EmitTargetElementLoopBodyForReduce(
-      HloReduceInstruction* reduce, const llvm_ir::IrArray::Index& index);
 
   enum class XfeedKind {
     kInfeed,

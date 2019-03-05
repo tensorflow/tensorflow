@@ -126,6 +126,7 @@ bool IsAlwaysDuplicable(const HloInstruction& instruction) {
     case HloOpcode::kBatchNormInference:
     case HloOpcode::kBatchNormTraining:
     case HloOpcode::kCall:
+    case HloOpcode::kCholesky:
     case HloOpcode::kConditional:
     case HloOpcode::kConvolution:
     case HloOpcode::kAllReduce:

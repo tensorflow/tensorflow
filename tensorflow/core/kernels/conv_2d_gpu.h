@@ -437,10 +437,10 @@ struct TransformFilter<GPUDevice, T, int, NDIMS> {
     CHECK(dst_filter_format == FORMAT_OIHW)
         << "Unsupported output layout: " << ToString(dst_filter_format);
 
-    CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>, config.block_count,
-                     config.thread_per_block, 0, d.stream(),
-                     config.virtual_thread_count, in.data(), combined_dims,
-                     out.data());
+    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), config.virtual_thread_count,
+                                 in.data(), combined_dims, out.data()));
   }
 };
 
@@ -459,10 +459,10 @@ struct ReverseTransformFilter<GPUDevice, T, NDIMS> {
       combined_dims[2] *= in.dimension(i);
     }
     CudaLaunchConfig config = GetCudaLaunchConfig(out.size(), d);
-    CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>, config.block_count,
-                     config.thread_per_block, 0, d.stream(),
-                     config.virtual_thread_count, in.data(), combined_dims,
-                     out.data());
+    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), config.virtual_thread_count,
+                                 in.data(), combined_dims, out.data()));
   }
 };
 
@@ -490,15 +490,15 @@ struct PadInput<GPUDevice, T, int, NDIMS> {
     const Dimension<NDIMS - 2> padding_left_dim(padding_left);
 
     if (format == FORMAT_NHWC) {
-      CudaLaunchKernel(PadInputCustomKernelNHWC<T, NDIMS>, config.block_count,
-                       config.thread_per_block, 0, d.stream(),
-                       config.virtual_thread_count, in.data(), input_dims,
-                       out.data(), output_dims, padding_left_dim);
+      TF_CHECK_OK(CudaLaunchKernel(
+          PadInputCustomKernelNHWC<T, NDIMS>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
     } else if (format == FORMAT_NCHW) {
-      CudaLaunchKernel(PadInputCustomKernelNCHW<T, NDIMS>, config.block_count,
-                       config.thread_per_block, 0, d.stream(),
-                       config.virtual_thread_count, in.data(), input_dims,
-                       out.data(), output_dims, padding_left_dim);
+      TF_CHECK_OK(CudaLaunchKernel(
+          PadInputCustomKernelNCHW<T, NDIMS>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          in.data(), input_dims, out.data(), output_dims, padding_left_dim));
     } else {
       LOG(FATAL) << "Invalid data format: " << format;
     }
@@ -607,17 +607,17 @@ void LaunchBatchNarrowMatrixTransposeKernel(
     const T* input, const Dimension<3>& input_dims, T* output) {
   constexpr int NumThreads = TileLongSide;
   if (tile_size_i <= TileLongSide && tile_size_j <= TileShortSide) {
-    CudaLaunchKernel(
+    TF_CHECK_OK(CudaLaunchKernel(
         SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileLongSide,
                                               TileShortSide>,
         total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
-        output);
+        output));
   } else {
-    CudaLaunchKernel(
+    TF_CHECK_OK(CudaLaunchKernel(
         SwapDimension1And2InTensor3UsingTiles<T, NumThreads, TileShortSide,
                                               TileLongSide>,
         total_tiles_count, NumThreads, 0, d.stream(), input, input_dims,
-        output);
+        output));
   }
 }
 
@@ -919,11 +919,11 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
     int total_tiles_count = input_dims_in_tiles[0] * input_dims_in_tiles[1] *
                             input_dims_in_tiles[2];
 
-    CudaLaunchKernel(
+    TF_CHECK_OK(CudaLaunchKernel(
         SwapDimension1And2InTensor3UsingTiles<T, kNumThreads, kTileSize,
                                               kTileSize, conjugate>,
         total_tiles_count, kNumThreads, 0, d.stream(), input, input_dims,
-        output);
+        output));
 
   } else if (narrow_matrix) {
     SwapDimension1And2InTensor3WithNarrowMatrices<T, conjugate>(
@@ -931,9 +931,10 @@ void RunSwapDimension1And2InTensor3(const GPUDevice& d, const T* input,
   } else {
     int total_element_count = input_dims[0] * input_dims[1] * input_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_element_count, d);
-    CudaLaunchKernel(ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>,
-                     config.block_count, config.thread_per_block, 0, d.stream(),
-                     config.virtual_thread_count, input, input_dims, output);
+    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 0, 2, 1, conjugate>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), config.virtual_thread_count, input,
+                                 input_dims, output));
   }
 }
 
@@ -963,9 +964,10 @@ struct SwapDimension0And2InTensor3<GPUDevice, T, conjugate> {
                                static_cast<int>(combined_dims[2])};
     size_t total_size = combined_dims[0] * combined_dims[1] * combined_dims[2];
     CudaLaunchConfig config = GetCudaLaunchConfig(total_size, d);
-    CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
-                     config.block_count, config.thread_per_block, 0, d.stream(),
-                     config.virtual_thread_count, in, input_dims, out);
+    TF_CHECK_OK(CudaLaunchKernel(ShuffleInTensor3Simple<T, 2, 1, 0, conjugate>,
+                                 config.block_count, config.thread_per_block, 0,
+                                 d.stream(), config.virtual_thread_count, in,
+                                 input_dims, out));
   }
 };
 

@@ -129,11 +129,23 @@ class MathTypedTest : public MathTest {
 
     XlaBuilder b(TestName());
     auto x = AddParam(LiteralUtil::CreateR1<T>({-inf}), &b);
-    ConstantR1<T>(&b, {-inf});
     ConcatInDim(
         &b, {Sqrt(x), Pow(x, ScalarLike(x, 0.5)), Pow(x, ScalarLike(x, 0.3))},
         0);
     std::vector<T> expected = {nan, inf, inf};
+    ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
+  }
+
+  void TestErfEdgeCases() {
+    SetFastMathDisabled(true);
+
+    XlaBuilder b(TestName());
+    auto x = AddParam(LiteralUtil::CreateR1<T>({T{-1}, T{1}, T{0}}), &b);
+    ErfInv(x);
+
+    const T inf(std::numeric_limits<float>::infinity());
+    std::vector<T> expected = {-inf, inf, T{0}};
+
     ComputeAndCompareR1<T>(&b, expected, {}, error_spec_);
   }
 };
@@ -154,6 +166,7 @@ XLA_TYPED_TEST(MathTypedTest, IsNegZero) { this->TestIsNegZero(); }
 XLA_TYPED_TEST(MathTypedTest, SqrtPowInequivalence) {
   this->TestSqrtPowInequivalence();
 }
+XLA_TYPED_TEST(MathTypedTest, ErfInvEdgeCases) { this->TestErfEdgeCases(); }
 
 // Check that certain ops only support real, floating-point inputs.
 //

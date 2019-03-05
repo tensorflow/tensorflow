@@ -212,6 +212,7 @@ cc_test(
     name = "string_util_test",
     size = "small",
     srcs = ["string_util_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -229,6 +230,7 @@ cc_test(
     name = "interpreter_test",
     size = "small",
     srcs = ["interpreter_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -250,6 +252,7 @@ cc_test(
     name = "graph_info_test",
     size = "small",
     srcs = ["graph_info_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -265,6 +268,7 @@ cc_test(
     name = "simple_memory_arena_test",
     size = "small",
     srcs = ["simple_memory_arena_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -329,6 +333,7 @@ cc_test(
     name = "mutable_op_resolver_test",
     size = "small",
     srcs = ["mutable_op_resolver_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -353,6 +358,7 @@ cc_test(
     name = "util_test",
     size = "small",
     srcs = ["util_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     tags = [
         "tflite_not_portable_ios",  # TODO(b/117786830)
     ],
@@ -406,7 +412,7 @@ cc_test(
 tflite_cc_shared_object(
     name = "libtensorflowlite.so",
     linkopts = select({
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/lite:tflite_exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflowlite.so",
         ],

@@ -63,8 +63,7 @@ enum ContextDevicePlacementPolicy {
   // Silently copy the tensor, which has a performance cost since the operation
   // will be blocked till the copy completes. This is the default policy.
   DEVICE_PLACEMENT_SILENT = 2,
-  // Default placement policy which silently copies int32 tensors but not other
-  // dtypes.
+  // Placement policy which silently copies int32 tensors but not other dtypes.
   DEVICE_PLACEMENT_SILENT_FOR_INT32 = 3,
 };
 

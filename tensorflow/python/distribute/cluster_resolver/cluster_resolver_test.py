@@ -18,10 +18,12 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+from tensorflow.python import eager
 from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver import ClusterResolver
 from tensorflow.python.distribute.cluster_resolver import SimpleClusterResolver
 from tensorflow.python.distribute.cluster_resolver import UnionClusterResolver
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 
@@ -40,10 +42,13 @@ class MockBaseClusterResolver(ClusterResolver):
     return ""
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class BaseClusterResolverTest(test.TestCase):
 
+  @mock.patch.object(eager.context, "list_devices")
   @mock.patch.object(session.BaseSession, "list_devices")
-  def testNumAcceleratorsSuccess(self, mock_list_devices):
+  def testNumAcceleratorsSuccess(self, mock_list_devices,
+                                 mock_eager_list_devices):
     device_names = [
         "/job:worker/task:0/device:GPU:0",
         "/job:worker/task:0/device:GPU:1",
@@ -51,16 +56,19 @@ class BaseClusterResolverTest(test.TestCase):
         "/job:worker/task:0/device:GPU:3",
     ]
     device_list = [
-        session._DeviceAttributes(
-            name, "GPU", 1024, 0) for name in device_names
+        session._DeviceAttributes(name, "GPU", 1024, 0)
+        for name in device_names
     ]
+    mock_eager_list_devices.return_value = device_names
     mock_list_devices.return_value = device_list
 
     resolver = MockBaseClusterResolver()
     self.assertEqual(resolver.num_accelerators(), {"GPU": 4})
 
+  @mock.patch.object(eager.context, "list_devices")
   @mock.patch.object(session.BaseSession, "list_devices")
-  def testNumAcceleratorsMultiDeviceSuccess(self, mock_list_devices):
+  def testNumAcceleratorsMultiDeviceSuccess(self, mock_list_devices,
+                                            mock_eager_list_devices):
     device_names = [
         "/job:worker/task:0/device:TPU:0",
         "/job:worker/task:0/device:TPU:1",
@@ -72,13 +80,43 @@ class BaseClusterResolverTest(test.TestCase):
         "/job:worker/task:0/device:GPU:3",
     ]
     device_list = [
-        session._DeviceAttributes(
-            name, name[26:29], 1024, 0) for name in device_names
+        session._DeviceAttributes(name, name[26:29], 1024, 0)
+        for name in device_names
     ]
+    mock_eager_list_devices.return_value = device_names
     mock_list_devices.return_value = device_list
 
     resolver = MockBaseClusterResolver()
     self.assertEqual(resolver.num_accelerators(), {"TPU": 4, "GPU": 4})
+
+  @mock.patch.object(eager.context, "list_devices")
+  @mock.patch.object(session.BaseSession, "list_devices")
+  def testNumAcceleratorsFilterTasks(self, mock_list_devices,
+                                     mock_eager_list_devices):
+    device_names = [
+        "/job:worker1/task:0/device:TPU:0",
+        "/job:worker1/task:0/device:TPU:1",
+        "/job:worker1/task:0/device:GPU:0",
+        "/job:worker1/task:0/device:GPU:1",
+        "/job:worker2/task:1/device:TPU:2",
+        "/job:worker2/task:2/device:TPU:3",
+        "/job:worker2/task:3/device:GPU:2",
+        "/job:worker2/task:4/device:GPU:3",
+    ]
+    device_list = [
+        session._DeviceAttributes(name, name[27:30], 1024, 0)
+        for name in device_names
+    ]
+    mock_eager_list_devices.return_value = device_names
+    mock_list_devices.return_value = device_list
+
+    resolver = MockBaseClusterResolver()
+    self.assertEqual(resolver.num_accelerators(task_type="worker1", task_id=0),
+                     {"TPU": 2, "GPU": 2})
+    self.assertEqual(resolver.num_accelerators(task_type="worker2", task_id=3),
+                     {"GPU": 1})
+    self.assertEqual(resolver.num_accelerators(task_type="worker2", task_id=4),
+                     {"GPU": 1})
 
 
 class UnionClusterResolverTest(test.TestCase):

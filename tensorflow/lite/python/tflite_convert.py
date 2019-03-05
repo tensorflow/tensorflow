@@ -25,6 +25,7 @@ import sys
 from tensorflow.lite.python import lite
 from tensorflow.lite.python import lite_constants
 from tensorflow.lite.toco import toco_flags_pb2 as _toco_flags_pb2
+from tensorflow.python import tf2
 from tensorflow.python.platform import app
 
 
@@ -258,6 +259,11 @@ def _check_flags(flags, unparsed):
 
 def run_main(_):
   """Main in toco_convert.py."""
+  if tf2.enabled():
+    raise ValueError("tflite_convert is currently unsupported in 2.0. "
+                     "Please use the Python API "
+                     "tf.lite.TFLiteConverter.from_concrete_function().")
+
   parser = argparse.ArgumentParser(
       description=("Command line tool to run TensorFlow Lite Optimizing "
                    "Converter (TOCO)."))

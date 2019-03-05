@@ -221,7 +221,7 @@ TEST_F(TensorSliceDatasetOpTest, DatasetName) {
                              &tensor_slice_dataset));
   core::ScopedUnref scored_unref(tensor_slice_dataset);
 
-  EXPECT_EQ(tensor_slice_dataset->name(), kOpName);
+  EXPECT_EQ(tensor_slice_dataset->type_string(), kOpName);
 }
 
 struct DatasetOutputDtypesTest : TensorSliceDatasetOpTest,

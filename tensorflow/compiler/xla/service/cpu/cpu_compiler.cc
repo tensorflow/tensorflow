@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
@@ -257,6 +258,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<MapInliner>();
 
+  pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
@@ -316,6 +318,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       },
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+
+  pipeline.AddPass<CpuLayoutAssignment>(
+      module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
+
   pipeline.AddPass<CpuInstructionFusion>();
 
   pipeline.AddPass<ScatterExpander>();
@@ -323,10 +330,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
-
-  pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
   return pipeline.Run(module).status();
 }
 
@@ -346,13 +349,10 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignement");
-    // TODO(b/117156505): When the bug is fixed, the CPU backend should not
-    // produce layout changing elementwise operations. We will then pass
-    // LayoutAssignment::InstructionCanChangeLayout to the HLO verifier to
-    // enable stricter verification.
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
-        /*allow_mixed_precision=*/false);
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);

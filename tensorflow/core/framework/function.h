@@ -31,6 +31,7 @@ limitations under the License.
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/mutex.h"
 #include "tensorflow/core/platform/protobuf.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 
@@ -563,6 +564,11 @@ class FunctionLibraryRuntime {
     // instantiation time, rather than on the first run. This can be used to
     // surface errors earlier.
     bool create_kernels_eagerly = false;
+
+    // This interface is EXPERIMENTAL and subject to change.
+    //
+    // Instantiates the function with the provided config_proto.
+    ConfigProto config_proto;
 
     // If provided, this optimization function will be invoked before
     // the placer for multi-device functions.

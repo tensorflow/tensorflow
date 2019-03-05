@@ -23,9 +23,11 @@ import os
 import six
 from six.moves.urllib.error import URLError
 
+from tensorflow.python import eager
 from tensorflow.python.client import session
 from tensorflow.python.distribute.cluster_resolver import TPUClusterResolver
 from tensorflow.python.framework import errors
+from tensorflow.python.framework import test_util
 from tensorflow.python.platform import test
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
@@ -88,6 +90,7 @@ def mock_not_running_in_gce_urlopen(cls, *args, **kwargs):
   raise URLError(reason='Host does not exist.')
 
 
+@test_util.run_all_in_graph_and_eager_modes
 class TPUClusterResolverTest(test.TestCase):
 
   def _verifyClusterSpecEquality(self, cluster_spec, expected_proto):
@@ -207,29 +210,6 @@ class TPUClusterResolverTest(test.TestCase):
     """
     self._verifyClusterSpecEquality(actual_cluster_spec, expected_proto)
     self.assertEqual(resolver.master(), 'grpc://10.1.2.3:8470')
-
-  @mock.patch.object(TPUClusterResolver,
-                     '_requestComputeMetadata',
-                     mock_request_compute_metadata)
-  def testUnhealthyCloudTpu(self):
-    tpu_map = {
-        'projects/test-project/locations/us-central1-c/nodes/test-tpu-1': {
-            'ipAddress': '10.1.2.3',
-            'port': '8470',
-            'health': 'UNHEALTHY'
-        }
-    }
-
-    resolver = TPUClusterResolver(
-        project=None,
-        zone=None,
-        tpu='test-tpu-1',
-        coordinator_name=None,
-        credentials=None,
-        service=self.mock_service_client(tpu_map=tpu_map))
-
-    with self.assertRaises(RuntimeError):
-      resolver.cluster_spec()
 
   @mock.patch.object(TPUClusterResolver,
                      '_requestComputeMetadata',
@@ -639,11 +619,13 @@ class TPUClusterResolverTest(test.TestCase):
       TPUClusterResolver._verify_and_return_same_core_count(
           {0: [0], 1: [1, 2]})
 
+  @mock.patch.object(eager.context, 'list_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
   @mock.patch.object(TPUClusterResolver,
                      '_isRunningInGCE',
                      mock_is_not_running_in_gce)
-  def testNumAcceleratorsSuccess(self, mock_list_devices):
+  def testNumAcceleratorsSuccess(self, mock_list_devices,
+                                 mock_eager_list_devices):
     device_names = [
         '/job:tpu_worker/task:0/device:TPU:0',
         '/job:tpu_worker/task:1/device:TPU:1',
@@ -658,18 +640,23 @@ class TPUClusterResolverTest(test.TestCase):
         session._DeviceAttributes(
             name, 'TPU', 1024, 0) for name in device_names
     ]
+    mock_eager_list_devices.return_value = device_names
     mock_list_devices.return_value = device_list
 
     resolver = TPUClusterResolver(tpu='')
     self.assertEqual(resolver.num_accelerators(), {'TPU': 2})
 
+  @mock.patch.object(eager.context, 'list_devices')
   @mock.patch.object(session.BaseSession, 'list_devices')
   @mock.patch.object(TPUClusterResolver,
                      '_isRunningInGCE',
                      mock_is_not_running_in_gce)
-  def testNumAcceleratorsRetryFailure(self, mock_list_devices):
+  def testNumAcceleratorsRetryFailure(self, mock_list_devices,
+                                      mock_eager_list_devices):
     resolver = TPUClusterResolver(tpu='')
     mock_list_devices.side_effect = errors.DeadlineExceededError(
+        None, None, 'timeout')
+    mock_eager_list_devices.side_effect = errors.DeadlineExceededError(
         None, None, 'timeout')
     with self.assertRaises(RuntimeError):
       resolver.num_accelerators()

@@ -234,7 +234,7 @@ class OpHint(object):
           and OpHint.AGGREGATE_STACK.
           Note, aggregate is only valid if tag is specified.
         index_override: Specify what input/output index should this be in the
-          final stub. i.e. add(arg0, index=1); add(arg1, index=0) wil make the
+          final stub. i.e. add(arg0, index=1); add(arg1, index=0) will make the
           final stub be as stub_func(inputs[arg1, arg0], outputs=[]) rather than
           the default call order based ordering.
 
@@ -1140,7 +1140,6 @@ def _get_correct_mapping(original_index, nodes):
   return original_index
 
 
-@_tf_export("lite.convert_op_hints_to_stubs")
 def _convert_op_hints_to_stubs_helper(
     graph_def, write_callback=lambda sess, graph_def: None):
   """Converts a graph_def to a new graph_def where all op hints are stubbed.
@@ -1248,6 +1247,7 @@ def find_all_hinted_output_nodes(session=None, graph_def=None):
   return hinted_outputs_nodes
 
 
+@_tf_export("lite.experimental.convert_op_hints_to_stubs")
 def convert_op_hints_to_stubs(session=None,
                               graph_def=None,
                               write_callback=lambda graph_def, comments: None):

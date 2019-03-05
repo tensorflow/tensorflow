@@ -267,8 +267,8 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
       for (int64 index : target_param_index) {
         param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
       }
-      param_shape_ptr->set_dynamic_dimension(target_dim_num,
-                                             /*is_dynamic=*/true);
+      // TODO(b/121223198): Set `is_dynamic` to the parameter shape when XLA
+      // backend can handle dynamic dimensions.
       *instr.mutable_shape() = param_shape.ToProto();
     }
   }
@@ -1880,32 +1880,46 @@ XlaOp XlaBuilder::Conditional(const XlaOp& predicate, const XlaOp& true_operand,
                               const XlaComputation& true_computation,
                               const XlaOp& false_operand,
                               const XlaComputation& false_computation) {
+  // The index of true_computation must be 0 and that of false computation
+  // must be 1.
+  return Conditional(predicate, {&true_computation, &false_computation},
+                     {true_operand, false_operand});
+}
+
+XlaOp XlaBuilder::Conditional(
+    const XlaOp& branch_index,
+    absl::Span<const XlaComputation* const> branch_computations,
+    absl::Span<const XlaOp> branch_operands) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
 
-    TF_ASSIGN_OR_RETURN(const Shape& predicate_shape, GetShape(predicate));
-    TF_ASSIGN_OR_RETURN(const Shape& true_operand_shape,
-                        GetShape(true_operand));
-    TF_ASSIGN_OR_RETURN(const ProgramShape& true_computation_shape,
-                        true_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(const Shape& false_operand_shape,
-                        GetShape(false_operand));
-    TF_ASSIGN_OR_RETURN(const ProgramShape& false_computation_shape,
-                        false_computation.GetProgramShape());
-    TF_ASSIGN_OR_RETURN(
-        Shape shape,
-        ShapeInference::InferConditionalShape(
-            predicate_shape, true_operand_shape, false_operand_shape,
-            true_computation_shape, false_computation_shape));
+    TF_ASSIGN_OR_RETURN(const Shape& branch_index_shape,
+                        GetShape(branch_index));
+    std::vector<Shape> branch_operand_shapes(branch_operands.size());
+    std::vector<ProgramShape> branch_computation_shapes(
+        branch_computations.size());
+    for (int j = 0; j < branch_operands.size(); ++j) {
+      TF_ASSIGN_OR_RETURN(branch_operand_shapes[j],
+                          GetShape(branch_operands[j]));
+      TF_ASSIGN_OR_RETURN(branch_computation_shapes[j],
+                          branch_computations[j]->GetProgramShape());
+    }
+    TF_ASSIGN_OR_RETURN(const Shape shape,
+                        ShapeInference::InferConditionalShape(
+                            branch_index_shape, branch_computation_shapes,
+                            branch_operand_shapes));
     *instr.mutable_shape() = shape.ToProto();
 
-    // The index of true_computation must be 0 and that of false computation
-    // must be 1.
-    AddCalledComputation(true_computation, &instr);
-    AddCalledComputation(false_computation, &instr);
+    for (const XlaComputation* branch_computation : branch_computations) {
+      AddCalledComputation(*branch_computation, &instr);
+    }
 
+    std::vector<XlaOp> operands(1, branch_index);
+    for (const XlaOp branch_operand : branch_operands) {
+      operands.emplace_back(branch_operand);
+    }
     return AddInstruction(std::move(instr), HloOpcode::kConditional,
-                          {predicate, true_operand, false_operand});
+                          absl::MakeSpan(operands));
   });
 }
 
@@ -3022,6 +3036,21 @@ XlaOp TriangularSolve(XlaOp a, XlaOp b, bool left_side, bool lower,
   });
 }
 
+XlaOp Cholesky(XlaOp a, bool lower) {
+  XlaBuilder* builder = a.builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    HloInstructionProto instr;
+    TF_ASSIGN_OR_RETURN(const Shape& a_shape, builder->GetShape(a));
+    xla::CholeskyOptions& options = *instr.mutable_cholesky_options();
+    options.set_lower(lower);
+    TF_ASSIGN_OR_RETURN(Shape shape,
+                        ShapeInference::InferCholeskyShape(a_shape));
+    *instr.mutable_shape() = shape.ToProto();
+
+    return builder->AddInstruction(std::move(instr), HloOpcode::kCholesky, {a});
+  });
+}
+
 XlaOp Infeed(XlaBuilder* builder, const Shape& shape, const string& config) {
   return builder->Infeed(shape, config);
 }
@@ -3364,6 +3393,13 @@ XlaOp Conditional(const XlaOp& predicate, const XlaOp& true_operand,
   return predicate.builder()->Conditional(predicate, true_operand,
                                           true_computation, false_operand,
                                           false_computation);
+}
+
+XlaOp Conditional(const XlaOp& branch_index,
+                  absl::Span<const XlaComputation* const> branch_computations,
+                  absl::Span<const XlaOp> branch_operands) {
+  return branch_index.builder()->Conditional(branch_index, branch_computations,
+                                             branch_operands);
 }
 
 XlaOp ReducePrecision(const XlaOp& operand, const int exponent_bits,

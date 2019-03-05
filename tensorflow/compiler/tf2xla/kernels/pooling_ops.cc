@@ -30,7 +30,6 @@ limitations under the License.
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/conv_grad_ops.h"
 #include "tensorflow/core/kernels/pooling_ops_common.h"
 
 namespace tensorflow {

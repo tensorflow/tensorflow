@@ -112,6 +112,31 @@ void PopulateWithFloatingPointData(Literal* literal, std::minstd_rand0* engine,
   }
 }
 
+template <typename ComplexT>
+void PopulateWithComplexData(Literal* result, std::minstd_rand0* engine,
+                             bool no_duplicates) {
+  using InnerFloatT = typename ComplexT::value_type;
+  CHECK(engine != nullptr);
+  CHECK_EQ(result->shape().element_type(),
+           primitive_util::NativeToPrimitiveType<ComplexT>());
+  Shape floating_point_shape = ShapeUtil::ChangeElementType(
+      result->shape(), primitive_util::NativeToPrimitiveType<InnerFloatT>());
+  Literal real_lit(floating_point_shape);
+  Literal imaginary_lit(floating_point_shape);
+
+  PopulateWithFloatingPointData<InnerFloatT>(&real_lit, engine, no_duplicates);
+  PopulateWithFloatingPointData<InnerFloatT>(&imaginary_lit, engine,
+                                             no_duplicates);
+
+  absl::Span<const InnerFloatT> real_data = real_lit.data<InnerFloatT>();
+  absl::Span<const InnerFloatT> imaginary_data =
+      imaginary_lit.data<InnerFloatT>();
+  absl::Span<ComplexT> result_data = result->data<ComplexT>();
+  for (int i = 0; i < real_lit.data<InnerFloatT>().size(); i++) {
+    result_data[i] = ComplexT(real_data[i], imaginary_data[i]);
+  }
+}
+
 template <>
 void PopulateWithFloatingPointData<half>(Literal* literal,
                                          std::minstd_rand0* engine,
@@ -219,6 +244,12 @@ StatusOr<Literal> MakeFakeLiteralInternal(const Shape& shape,
       break;
     case U64:
       PopulateWithRandomIntegralData<uint64>(&literal, engine, no_duplicates);
+      break;
+    case C64:
+      PopulateWithComplexData<complex64>(&literal, engine, no_duplicates);
+      break;
+    case C128:
+      PopulateWithComplexData<complex128>(&literal, engine, no_duplicates);
       break;
     case PRED: {
       std::uniform_int_distribution<int> generator(0, 1);

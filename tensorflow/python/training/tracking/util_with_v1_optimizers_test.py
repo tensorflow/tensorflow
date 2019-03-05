@@ -870,12 +870,9 @@ class CheckpointCompatibilityTests(test.TestCase):
       if context.executing_eagerly():
         self._check_sentinels(root)
       if context.executing_eagerly():
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_consumed()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_existing_objects_matched()
-        with self.assertRaisesRegexp(AssertionError, "OBJECT_CONFIG_JSON"):
-          status.assert_nontrivial_match()
+        status.assert_consumed()
+        status.assert_existing_objects_matched()
+        status.assert_nontrivial_match()
       else:
         # When graph building, we haven't read any keys, so we don't know
         # whether the restore will be complete.

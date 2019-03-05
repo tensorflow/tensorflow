@@ -194,7 +194,7 @@ TEST_F(SparseTensorSliceDatasetOpTest, DatasetName) {
       CreateDataset(dataset_kernel.get(), dataset_kernel_ctx.get(), &dataset));
   core::ScopedUnref scoped_unref(dataset);
 
-  EXPECT_EQ(dataset->name(), kOpName);
+  EXPECT_EQ(dataset->type_string(), kOpName);
 }
 
 struct DatasetOutputDtypesTest : SparseTensorSliceDatasetOpTest,

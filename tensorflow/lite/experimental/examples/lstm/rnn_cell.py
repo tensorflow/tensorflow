@@ -291,10 +291,15 @@ class TFLiteLSTMCell(rnn_cell_impl.LayerRNNCell):
     Raises:
       ValueError: if the inputs_shape is invalid.
     """
-    if len(inputs_shape) != 2 or inputs_shape[1].value is None:
+    if len(inputs_shape) != 2:
+      raise ValueError(
+          "inputs_shape must be 2-dimensional, saw shape: %s" % inputs_shape)
+    input_depth = (
+        inputs_shape[1]
+        if isinstance(inputs_shape[1], int) else inputs_shape[1].value)
+    if input_depth is None:
       raise ValueError("Invalid inputs_shape, saw shape: %s" % inputs_shape)
 
-    input_depth = inputs_shape[1].value
     maybe_partitioner = (
         partitioned_variables.fixed_size_partitioner(self._num_unit_shards)
         if self._num_unit_shards is not None else None)

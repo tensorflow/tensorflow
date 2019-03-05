@@ -28,12 +28,10 @@ from __future__ import print_function
 
 from absl import app
 from absl import flags
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.examples.saved_model.integration_tests import mnist_util
 from tensorflow.examples.saved_model.integration_tests import util
-from tensorflow.python.saved_model import load as svmd_load
-tf.saved_model.load = svmd_load.load
 
 FLAGS = flags.FLAGS
 
@@ -92,7 +90,7 @@ def main(argv):
   arguments = {}
   if FLAGS.dropout_rate is not None:
     arguments['dropout_rate'] = FLAGS.dropout_rate
-  feature_extractor = util.CustomLayer(obj, output_shape=[128],
+  feature_extractor = util.CustomLayer(obj, output_shape=[10],
                                        trainable=FLAGS.retrain,
                                        arguments=arguments)
 
@@ -120,5 +118,5 @@ def main(argv):
 
 
 if __name__ == '__main__':
-  # tf.enable_v2_behavior()
+  tf.enable_v2_behavior()
   app.run(main)

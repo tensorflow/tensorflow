@@ -21,6 +21,7 @@ limitations under the License.
 #include "tensorflow/core/framework/cancellation.h"
 #include "tensorflow/core/framework/function_handle_cache.h"
 #include "tensorflow/core/framework/stats_aggregator.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/gtl/optional.h"
 #include "tensorflow/core/lib/random/random.h"
 #include "tensorflow/core/lib/strings/strcat.h"
@@ -446,12 +447,14 @@ void InstantiatedCapturedFunction::RunAsync(
           s = frame->ConsumeRetvals(rets);
         }
         delete frame;
-
+        // TODO(shivaniagrawal): add the dataset name containing this function,
+        // make it dataset()->node_name() + captured_func_->func().name().
         if (stats_aggregator) {
+          string prefix_with_func_name = strings::StrCat(
+              str_util::Split(prefix, "::", str_util::SkipEmpty()).back(),
+              "::", captured_func_->func().name());
           stats_aggregator->AddToHistogram(
-              strings::StrCat(
-                  str_util::Split(prefix, "::", str_util::SkipEmpty()).back(),
-                  "::", captured_func_->func().name(), "::execution_time"),
+              stats_utils::ExecutionTimeHistogramName(prefix_with_func_name),
               {static_cast<float>(stats_collector->processing_time())});
         }
         if (model) {

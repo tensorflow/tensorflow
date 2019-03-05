@@ -371,12 +371,12 @@ struct CropAndResize<GPUDevice, T> {
 
     if (total_count > 0) {
       CudaLaunchConfig config = GetCudaLaunchConfig(total_count, d);
-      CropAndResizeKernel<<<config.block_count, config.thread_per_block, 0,
-                            d.stream()>>>(
-          config.virtual_thread_count, image.data(), boxes.data(),
-          box_ind.data(), num_boxes, batch, image_height, image_width,
-          crop_height, crop_width, depth, method, extrapolation_value,
-          crops.data());
+      TF_CHECK_OK(CudaLaunchKernel(
+          CropAndResizeKernel<T>, config.block_count, config.thread_per_block,
+          0, d.stream(), config.virtual_thread_count, image.data(),
+          boxes.data(), box_ind.data(), num_boxes, batch, image_height,
+          image_width, crop_height, crop_width, depth, method,
+          extrapolation_value, crops.data()));
     }
     return d.ok();
   }
@@ -406,9 +406,9 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = batch * image_height * image_width * depth;
     if (total_count > 0) {
       config = GetCudaLaunchConfig(total_count, d);
-      CudaLaunchKernel(SetZero<T>, config.block_count, config.thread_per_block,
-                       0, d.stream(), config.virtual_thread_count,
-                       grads_image.data());
+      TF_CHECK_OK(CudaLaunchKernel(
+          SetZero<T>, config.block_count, config.thread_per_block, 0,
+          d.stream(), config.virtual_thread_count, grads_image.data()));
     }
 
     // Configurate interpolation method.
@@ -421,11 +421,12 @@ struct CropAndResizeBackpropImage<GPUDevice, T> {
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
       config = GetCudaLaunchConfig(total_count, d);
-      CropAndResizeBackpropImageKernel<<<
-          config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          config.virtual_thread_count, grads.data(), boxes.data(),
-          box_ind.data(), num_boxes, batch, image_height, image_width,
-          crop_height, crop_width, depth, grads_image.data(), method);
+      TF_CHECK_OK(CudaLaunchKernel(
+          CropAndResizeBackpropImageKernel<T>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          grads.data(), boxes.data(), box_ind.data(), num_boxes, batch,
+          image_height, image_width, crop_height, crop_width, depth,
+          grads_image.data(), method));
     }
     return d.ok();
   }
@@ -455,20 +456,21 @@ struct CropAndResizeBackpropBoxes<GPUDevice, T> {
     total_count = num_boxes * 4;
     if (total_count > 0) {
       config = GetCudaLaunchConfig(total_count, d);
-      CudaLaunchKernel(SetZero<float>, config.block_count,
-                       config.thread_per_block, 0, d.stream(),
-                       config.virtual_thread_count, grads_boxes.data());
+      TF_CHECK_OK(CudaLaunchKernel(
+          SetZero<float>, config.block_count, config.thread_per_block, 0,
+          d.stream(), config.virtual_thread_count, grads_boxes.data()));
     }
 
     // Accumulate.
     total_count = num_boxes * crop_height * crop_width * depth;
     if (total_count > 0) {
       config = GetCudaLaunchConfig(total_count, d);
-      CropAndResizeBackpropBoxesKernel<<<
-          config.block_count, config.thread_per_block, 0, d.stream()>>>(
-          config.virtual_thread_count, grads.data(), image.data(), boxes.data(),
-          box_ind.data(), num_boxes, batch, image_height, image_width,
-          crop_height, crop_width, depth, grads_boxes.data());
+      TF_CHECK_OK(CudaLaunchKernel(
+          CropAndResizeBackpropBoxesKernel<T>, config.block_count,
+          config.thread_per_block, 0, d.stream(), config.virtual_thread_count,
+          grads.data(), image.data(), boxes.data(), box_ind.data(), num_boxes,
+          batch, image_height, image_width, crop_height, crop_width, depth,
+          grads_boxes.data()));
     }
     return d.ok();
   }

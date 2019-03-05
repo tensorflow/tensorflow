@@ -24,8 +24,10 @@ import numpy as np
 from tensorflow.python.data.experimental.ops import error_ops
 from tensorflow.python.data.kernel_tests import test_base
 from tensorflow.python.data.ops import dataset_ops
+from tensorflow.python.data.ops import readers
 from tensorflow.python.framework import errors
 from tensorflow.python.framework import test_util
+from tensorflow.python.lib.io import python_io
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import io_ops
 from tensorflow.python.platform import test
@@ -97,6 +99,30 @@ class IgnoreErrorsTest(test_base.DatasetTestBase):
     get_next = self.getNext(dataset)
     for filename in filenames[1:]:
       self.assertEqual(compat.as_bytes(filename), self.evaluate(get_next()))
+    with self.assertRaises(errors.OutOfRangeError):
+      self.evaluate(get_next())
+
+  def testTFRecordDatasetIgnoreError(self):
+    filenames = []
+    for i in range(5):
+      fn = os.path.join(self.get_temp_dir(), "tf_record.%d.txt" % i)
+      filenames.append(fn)
+      writer = python_io.TFRecordWriter(fn)
+      for j in range(10):
+        writer.write(b"record")
+      writer.close()
+      # Append corrupted data
+      with open(fn, "a") as f:
+        f.write("corrupted data")
+
+    dataset = readers.TFRecordDataset(filenames).apply(
+        error_ops.ignore_errors())
+    get_next = self.getNext(dataset)
+
+    # All of the files are present.
+    for filename in filenames:
+      for j in range(10):
+        self.assertEqual(b"record", self.evaluate(get_next()))
     with self.assertRaises(errors.OutOfRangeError):
       self.evaluate(get_next())
 

@@ -20,6 +20,7 @@ from __future__ import print_function
 
 from tensorflow.python.autograph.operators import py_builtins
 from tensorflow.python.autograph.operators import special_values
+from tensorflow.python.ops import data_flow_ops
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import constant_op
 from tensorflow.python.framework import tensor_util
@@ -177,7 +178,9 @@ def while_stmt(test, body, init_state, extra_deps, opts=None):
   # TODO(mdan): Consider adding a generic mechanism for dynamic dispatch.
   # That could be something as simple as a collection of dispatch rules, with
   # some prioritization.
-  if any(tensor_util.is_tensor(v) for v in nest.flatten(extra_deps)):
+  if any(
+      tensor_util.is_tensor(v) or isinstance(v, data_flow_ops.QueueBase)
+      for v in nest.flatten(extra_deps)):
     # Check for undefined symbols and report an error. This prevents the error
     # from propagating into the TF runtime. We have more information here and
     # can provide a clearer error message.

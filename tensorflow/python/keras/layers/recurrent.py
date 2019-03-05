@@ -19,6 +19,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import collections
 import uuid
 
 import numpy as np
@@ -62,19 +63,19 @@ class StackedRNNCells(Layer):
   Used to implement efficient stacked RNNs.
 
   Arguments:
-      cells: List of RNN cell instances.
+    cells: List of RNN cell instances.
 
   Examples:
 
   ```python
-      cells = [
-          keras.layers.LSTMCell(output_dim),
-          keras.layers.LSTMCell(output_dim),
-          keras.layers.LSTMCell(output_dim),
-      ]
+  cells = [
+      keras.layers.LSTMCell(output_dim),
+      keras.layers.LSTMCell(output_dim),
+      keras.layers.LSTMCell(output_dim),
+  ]
 
-      inputs = keras.Input((timesteps, input_dim))
-      x = keras.layers.RNN(cells)(inputs)
+  inputs = keras.Input((timesteps, input_dim))
+  x = keras.layers.RNN(cells)(inputs)
   ```
   """
 
@@ -137,6 +138,9 @@ class StackedRNNCells(Layer):
     new_nested_states = []
     for cell, states in zip(self.cells, nested_states):
       states = states if nest.is_sequence(states) else [states]
+      # TF cell does not wrap the state into list when there is only one state.
+      is_tf_rnn_cell = getattr(cell, '_is_tf_rnn_cell', None) is not None
+      states = states[0] if len(states) == 1 and is_tf_rnn_cell else states
       if generic_utils.has_arg(cell.call, 'constants'):
         inputs, states = cell.call(inputs, states, constants=constants,
                                    **kwargs)
@@ -188,74 +192,6 @@ class StackedRNNCells(Layer):
           deserialize_layer(cell_config, custom_objects=custom_objects))
     return cls(cells, **config)
 
-  @property
-  def trainable_weights(self):
-    if not self.trainable:
-      return []
-    weights = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        weights += cell.trainable_weights
-    return weights
-
-  @property
-  def non_trainable_weights(self):
-    weights = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        weights += cell.non_trainable_weights
-    if not self.trainable:
-      trainable_weights = []
-      for cell in self.cells:
-        if isinstance(cell, Layer):
-          trainable_weights += cell.trainable_weights
-      return trainable_weights + weights
-    return weights
-
-  def get_weights(self):
-    """Retrieves the weights of the model.
-
-    Returns:
-        A flat list of Numpy arrays.
-    """
-    weights = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        weights += cell.weights
-    return K.batch_get_value(weights)
-
-  def set_weights(self, weights):
-    """Sets the weights of the model.
-
-    Arguments:
-        weights: A list of Numpy arrays with shapes and types matching
-            the output of `model.get_weights()`.
-    """
-    tuples = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        num_param = len(cell.weights)
-        weights = weights[:num_param]
-        for sw, w in zip(cell.weights, weights):
-          tuples.append((sw, w))
-        weights = weights[num_param:]
-    K.batch_set_value(tuples)
-
-  @property
-  def losses(self):
-    losses = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        losses += cell.losses
-    return losses + self._losses
-
-  @property
-  def updates(self):
-    updates = []
-    for cell in self.cells:
-      if isinstance(cell, Layer):
-        updates += cell.updates
-    return updates + self._updates
 
 
 @keras_export('keras.layers.RNN')
@@ -263,186 +199,194 @@ class RNN(Layer):
   """Base class for recurrent layers.
 
   Arguments:
-      cell: A RNN cell instance or a list of RNN cell instances.
-          A RNN cell is a class that has:
-          - a `call(input_at_t, states_at_t)` method, returning
-              `(output_at_t, states_at_t_plus_1)`. The call method of the
-              cell can also take the optional argument `constants`, see
-              section "Note on passing external constants" below.
-          - a `state_size` attribute. This can be a single integer
-              (single state) in which case it is the size of the recurrent
-              state. This can also be a list/tuple of integers (one size per
-              state).
-              The `state_size` can also be TensorShape or tuple/list of
-              TensorShape, to represent high dimension state.
-          - a `output_size` attribute. This can be a single integer or a
-              TensorShape, which represent the shape of the output. For backward
-              compatible reason, if this attribute is not available for the
-              cell, the value will be inferred by the first element of the
-              `state_size`.
-          - a `get_initial_state(inputs=None, batch_size=None, dtype=None)`
-              method that creates a tensor meant to be fed to `call()` as the
-              initial state, if user didn't specify any initial state via other
-              means. The returned initial state should be in shape of
-              [batch, cell.state_size]. Cell might choose to create zero filled
-              tensor, or with other values based on the cell implementations.
-              `inputs` is the input tensor to the RNN layer, which should
-              contain the batch size as its shape[0], and also dtype. Note that
-              the shape[0] might be None during the graph construction. Either
-              the `inputs` or the pair of `batch` and `dtype `are provided.
-              `batch` is a scalar tensor that represent the batch size
-              of the input. `dtype` is `tf.dtype` that represent the dtype of
-              the input.
-              For backward compatible reason, if this method is not implemented
-              by the cell, RNN layer will create a zero filled tensors with the
-              size of [batch, cell.state_size].
-          In the case that `cell` is a list of RNN cell instances, the cells
-          will be stacked on after the other in the RNN, implementing an
-          efficient stacked RNN.
-      return_sequences: Boolean. Whether to return the last output
-          in the output sequence, or the full sequence.
-      return_state: Boolean. Whether to return the last state
-          in addition to the output.
-      go_backwards: Boolean (default False).
-          If True, process the input sequence backwards and return the
-          reversed sequence.
-      stateful: Boolean (default False). If True, the last state
-          for each sample at index i in a batch will be used as initial
-          state for the sample of index i in the following batch.
-      unroll: Boolean (default False).
-          If True, the network will be unrolled,
-          else a symbolic loop will be used.
-          Unrolling can speed-up a RNN,
-          although it tends to be more memory-intensive.
-          Unrolling is only suitable for short sequences.
-      input_dim: dimensionality of the input (integer or tuple of integers).
-          This argument (or alternatively, the keyword argument `input_shape`)
-          is required when using this layer as the first layer in a model.
-      input_length: Length of input sequences, to be specified
-          when it is constant.
-          This argument is required if you are going to connect
-          `Flatten` then `Dense` layers upstream
-          (without it, the shape of the dense outputs cannot be computed).
-          Note that if the recurrent layer is not the first layer
-          in your model, you would need to specify the input length
-          at the level of the first layer
-          (e.g. via the `input_shape` argument)
-      time_major: The shape format of the `inputs` and `outputs` tensors.
-          If True, the inputs and outputs will be in shape
-          `(timesteps, batch, ...)`, whereas in the False case, it will be
-          `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
-          efficient because it avoids transposes at the beginning and end of the
-          RNN calculation. However, most TensorFlow data is batch-major, so by
-          default this function accepts input and emits output in batch-major
-          form.
+    cell: A RNN cell instance or a list of RNN cell instances.
+      A RNN cell is a class that has:
+      - A `call(input_at_t, states_at_t)` method, returning
+        `(output_at_t, states_at_t_plus_1)`. The call method of the
+        cell can also take the optional argument `constants`, see
+        section "Note on passing external constants" below.
+      - A `state_size` attribute. This can be a single integer
+        (single state) in which case it is the size of the recurrent
+        state. This can also be a list/tuple of integers (one size per
+        state).
+        The `state_size` can also be TensorShape or tuple/list of
+        TensorShape, to represent high dimension state.
+      - A `output_size` attribute. This can be a single integer or a
+        TensorShape, which represent the shape of the output. For backward
+        compatible reason, if this attribute is not available for the
+        cell, the value will be inferred by the first element of the
+        `state_size`.
+      - A `get_initial_state(inputs=None, batch_size=None, dtype=None)`
+        method that creates a tensor meant to be fed to `call()` as the
+        initial state, if user didn't specify any initial state via other
+        means. The returned initial state should be in shape of
+        [batch, cell.state_size]. Cell might choose to create zero filled
+        tensor, or with other values based on the cell implementations.
+        `inputs` is the input tensor to the RNN layer, which should
+        contain the batch size as its shape[0], and also dtype. Note that
+        the shape[0] might be None during the graph construction. Either
+        the `inputs` or the pair of `batch` and `dtype `are provided.
+        `batch` is a scalar tensor that represent the batch size
+        of the input. `dtype` is `tf.dtype` that represent the dtype of
+        the input.
+        For backward compatible reason, if this method is not implemented
+        by the cell, RNN layer will create a zero filled tensors with the
+        size of [batch, cell.state_size].
+      In the case that `cell` is a list of RNN cell instances, the cells
+      will be stacked on after the other in the RNN, implementing an
+      efficient stacked RNN.
+    return_sequences: Boolean. Whether to return the last output
+      in the output sequence, or the full sequence.
+    return_state: Boolean. Whether to return the last state
+      in addition to the output.
+    go_backwards: Boolean (default False).
+      If True, process the input sequence backwards and return the
+      reversed sequence.
+    stateful: Boolean (default False). If True, the last state
+      for each sample at index i in a batch will be used as initial
+      state for the sample of index i in the following batch.
+    unroll: Boolean (default False).
+      If True, the network will be unrolled, else a symbolic loop will be used.
+      Unrolling can speed-up a RNN,
+      although it tends to be more memory-intensive.
+      Unrolling is only suitable for short sequences.
+    input_dim: dimensionality of the input (integer or tuple of integers).
+      This argument (or alternatively, the keyword argument `input_shape`)
+      is required when using this layer as the first layer in a model.
+    input_length: Length of input sequences, to be specified
+      when it is constant.
+      This argument is required if you are going to connect
+      `Flatten` then `Dense` layers upstream
+      (without it, the shape of the dense outputs cannot be computed).
+      Note that if the recurrent layer is not the first layer
+      in your model, you would need to specify the input length
+      at the level of the first layer (e.g. via the `input_shape` argument).
+    time_major: The shape format of the `inputs` and `outputs` tensors.
+        If True, the inputs and outputs will be in shape
+        `(timesteps, batch, ...)`, whereas in the False case, it will be
+        `(batch, timesteps, ...)`. Using `time_major = True` is a bit more
+        efficient because it avoids transposes at the beginning and end of the
+        RNN calculation. However, most TensorFlow data is batch-major, so by
+        default this function accepts input and emits output in batch-major
+        form.
+
+  Call arguments:
+    inputs: Input tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is for use with cells that use dropout.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
+    constants: List of constant tensors to be passed to the cell at each
+      timestep.
 
   Input shape:
-      N-D tensor with shape `(batch_size, timesteps, ...)` or
-      `(timesteps, batch_size, ...)` when time_major is True.
+    N-D tensor with shape `(batch_size, timesteps, ...)` or
+    `(timesteps, batch_size, ...)` when time_major is True.
 
   Output shape:
-      - if `return_state`: a list of tensors. The first tensor is
-          the output. The remaining tensors are the last states,
-          each with shape `(batch_size, state_size)`, where `state_size` could
-          be a high dimension tensor shape.
-      - if `return_sequences`: N-D tensor with shape
-          `(batch_size, timesteps, output_size)`, where `output_size` could
-          be a high dimension tensor shape, or
-          `(timesteps, batch_size, output_size)` when `time_major` is True.
-      - else, N-D tensor with shape `(batch_size, output_size)`, where
-          `output_size` could be a high dimension tensor shape.
+    - If `return_state`: a list of tensors. The first tensor is
+      the output. The remaining tensors are the last states,
+      each with shape `(batch_size, state_size)`, where `state_size` could
+      be a high dimension tensor shape.
+    - If `return_sequences`: N-D tensor with shape
+      `(batch_size, timesteps, output_size)`, where `output_size` could
+      be a high dimension tensor shape, or
+      `(timesteps, batch_size, output_size)` when `time_major` is True.
+    - Else, N-D tensor with shape `(batch_size, output_size)`, where
+      `output_size` could be a high dimension tensor shape.
 
-  # Masking
-      This layer supports masking for input data with a variable number
-      of timesteps. To introduce masks to your data,
-      use an [Embedding](embeddings.md) layer with the `mask_zero` parameter
-      set to `True`.
+  Masking:
+    This layer supports masking for input data with a variable number
+    of timesteps. To introduce masks to your data,
+    use an [Embedding](embeddings.md) layer with the `mask_zero` parameter
+    set to `True`.
 
-  # Note on using statefulness in RNNs
-      You can set RNN layers to be 'stateful', which means that the states
-      computed for the samples in one batch will be reused as initial states
-      for the samples in the next batch. This assumes a one-to-one mapping
-      between samples in different successive batches.
+  Note on using statefulness in RNNs:
+    You can set RNN layers to be 'stateful', which means that the states
+    computed for the samples in one batch will be reused as initial states
+    for the samples in the next batch. This assumes a one-to-one mapping
+    between samples in different successive batches.
 
-      To enable statefulness:
-          - specify `stateful=True` in the layer constructor.
-          - specify a fixed batch size for your model, by passing
-              if sequential model:
-                `batch_input_shape=(...)` to the first layer in your model.
-              else for functional model with 1 or more Input layers:
-                `batch_shape=(...)` to all the first layers in your model.
-              This is the expected shape of your inputs
-              *including the batch size*.
-              It should be a tuple of integers, e.g. `(32, 10, 100)`.
-          - specify `shuffle=False` when calling fit().
+    To enable statefulness:
+      - Specify `stateful=True` in the layer constructor.
+      - Specify a fixed batch size for your model, by passing
+        If sequential model:
+          `batch_input_shape=(...)` to the first layer in your model.
+        Else for functional model with 1 or more Input layers:
+          `batch_shape=(...)` to all the first layers in your model.
+        This is the expected shape of your inputs
+        *including the batch size*.
+        It should be a tuple of integers, e.g. `(32, 10, 100)`.
+      - Specify `shuffle=False` when calling fit().
 
-      To reset the states of your model, call `.reset_states()` on either
-      a specific layer, or on your entire model.
+    To reset the states of your model, call `.reset_states()` on either
+    a specific layer, or on your entire model.
 
-  # Note on specifying the initial state of RNNs
-      You can specify the initial state of RNN layers symbolically by
-      calling them with the keyword argument `initial_state`. The value of
-      `initial_state` should be a tensor or list of tensors representing
-      the initial state of the RNN layer.
+  Note on specifying the initial state of RNNs:
+    You can specify the initial state of RNN layers symbolically by
+    calling them with the keyword argument `initial_state`. The value of
+    `initial_state` should be a tensor or list of tensors representing
+    the initial state of the RNN layer.
 
-      You can specify the initial state of RNN layers numerically by
-      calling `reset_states` with the keyword argument `states`. The value of
-      `states` should be a numpy array or list of numpy arrays representing
-      the initial state of the RNN layer.
+    You can specify the initial state of RNN layers numerically by
+    calling `reset_states` with the keyword argument `states`. The value of
+    `states` should be a numpy array or list of numpy arrays representing
+    the initial state of the RNN layer.
 
-  # Note on passing external constants to RNNs
-      You can pass "external" constants to the cell using the `constants`
-      keyword argument of `RNN.__call__` (as well as `RNN.call`) method. This
-      requires that the `cell.call` method accepts the same keyword argument
-      `constants`. Such constants can be used to condition the cell
-      transformation on additional static inputs (not changing over time),
-      a.k.a. an attention mechanism.
+  Note on passing external constants to RNNs:
+    You can pass "external" constants to the cell using the `constants`
+    keyword argument of `RNN.__call__` (as well as `RNN.call`) method. This
+    requires that the `cell.call` method accepts the same keyword argument
+    `constants`. Such constants can be used to condition the cell
+    transformation on additional static inputs (not changing over time),
+    a.k.a. an attention mechanism.
 
   Examples:
 
   ```python
-      # First, let's define a RNN Cell, as a layer subclass.
+  # First, let's define a RNN Cell, as a layer subclass.
 
-      class MinimalRNNCell(keras.layers.Layer):
+  class MinimalRNNCell(keras.layers.Layer):
 
-          def __init__(self, units, **kwargs):
-              self.units = units
-              self.state_size = units
-              super(MinimalRNNCell, self).__init__(**kwargs)
+      def __init__(self, units, **kwargs):
+          self.units = units
+          self.state_size = units
+          super(MinimalRNNCell, self).__init__(**kwargs)
 
-          def build(self, input_shape):
-              self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
-                                            initializer='uniform',
-                                            name='kernel')
-              self.recurrent_kernel = self.add_weight(
-                  shape=(self.units, self.units),
-                  initializer='uniform',
-                  name='recurrent_kernel')
-              self.built = True
+      def build(self, input_shape):
+          self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                        initializer='uniform',
+                                        name='kernel')
+          self.recurrent_kernel = self.add_weight(
+              shape=(self.units, self.units),
+              initializer='uniform',
+              name='recurrent_kernel')
+          self.built = True
 
-          def call(self, inputs, states):
-              prev_output = states[0]
-              h = K.dot(inputs, self.kernel)
-              output = h + K.dot(prev_output, self.recurrent_kernel)
-              return output, [output]
+      def call(self, inputs, states):
+          prev_output = states[0]
+          h = K.dot(inputs, self.kernel)
+          output = h + K.dot(prev_output, self.recurrent_kernel)
+          return output, [output]
 
-      # Let's use this cell in a RNN layer:
+  # Let's use this cell in a RNN layer:
 
-      cell = MinimalRNNCell(32)
-      x = keras.Input((None, 5))
-      layer = RNN(cell)
-      y = layer(x)
+  cell = MinimalRNNCell(32)
+  x = keras.Input((None, 5))
+  layer = RNN(cell)
+  y = layer(x)
 
-      # Here's how to use the cell to build a stacked RNN:
+  # Here's how to use the cell to build a stacked RNN:
 
-      cells = [MinimalRNNCell(32), MinimalRNNCell(64)]
-      x = keras.Input((None, 5))
-      layer = RNN(cells)
-      y = layer(x)
+  cells = [MinimalRNNCell(32), MinimalRNNCell(64)]
+  x = keras.Input((None, 5))
+  layer = RNN(cells)
+  y = layer(x)
   ```
   """
-
-  _setattr_tracking = False
 
   def __init__(self,
                cell,
@@ -468,8 +412,6 @@ class RNN(Layer):
     self.zero_output_for_mask = kwargs.pop('zero_output_for_mask', False)
     super(RNN, self).__init__(**kwargs)
     self.cell = cell
-    if isinstance(cell, trackable.Trackable):
-      self._track_trackable(self.cell, name='cell')
     self.return_sequences = return_sequences
     self.return_state = return_state
     self.go_backwards = go_backwards
@@ -495,6 +437,9 @@ class RNN(Layer):
     return self._states
 
   @states.setter
+  # Automatic tracking catches "self._states" which adds an extra weight and
+  # breaks HDF5 checkpoints.
+  @trackable.no_automatic_dependency_tracking
   def states(self, states):
     self._states = states
 
@@ -655,7 +600,7 @@ class RNN(Layer):
     Args:
       cell_state_sizes: list, the `state_size` attribute from the cell.
       init_state_specs: list, the `state_spec` from the initial_state that is
-        passed in call()
+        passed in `call()`.
 
     Raises:
       ValueError: When initial state spec is not compatible with the state size.
@@ -858,7 +803,8 @@ class RNN(Layer):
     # input shape: `(samples, time (padded with zeros), input_dim)`
     # note that the .build() method of subclasses MUST define
     # self.input_spec and self.state_spec with complete input shapes.
-    if isinstance(inputs, list):
+    if (isinstance(inputs, collections.Sequence)
+        and not isinstance(inputs, tuple)):
       # get initial_state from full input spec
       # as they could be copied to multiple GPU.
       if self._num_constants is None:
@@ -975,70 +921,262 @@ class RNN(Layer):
     layer._num_constants = num_constants
     return layer
 
-  @property
-  def trainable_weights(self):
-    if not self.trainable:
-      return []
-    if isinstance(self.cell, Layer):
-      return self.cell.trainable_weights
-    return []
+
+@keras_export('keras.layers.AbstractRNNCell')
+class AbstractRNNCell(Layer):
+  """Abstract object representing an RNN cell.
+
+  This is the base class for implementing RNN cells with custom behavior.
+
+  Every `RNNCell` must have the properties below and implement `call` with
+  the signature `(output, next_state) = call(input, state)`.
+
+  Examples:
+
+  ```python
+    class MinimalRNNCell(AbstractRNNCell):
+
+      def __init__(self, units, **kwargs):
+        self.units = units
+        super(MinimalRNNCell, self).__init__(**kwargs)
+
+      @property
+      def state_size(self):
+        return self.units
+
+      def build(self, input_shape):
+        self.kernel = self.add_weight(shape=(input_shape[-1], self.units),
+                                      initializer='uniform',
+                                      name='kernel')
+        self.recurrent_kernel = self.add_weight(
+            shape=(self.units, self.units),
+            initializer='uniform',
+            name='recurrent_kernel')
+        self.built = True
+
+      def call(self, inputs, states):
+        prev_output = states[0]
+        h = K.dot(inputs, self.kernel)
+        output = h + K.dot(prev_output, self.recurrent_kernel)
+        return output, output
+  ```
+
+  This definition of cell differs from the definition used in the literature.
+  In the literature, 'cell' refers to an object with a single scalar output.
+  This definition refers to a horizontal array of such units.
+
+  An RNN cell, in the most abstract setting, is anything that has
+  a state and performs some operation that takes a matrix of inputs.
+  This operation results in an output matrix with `self.output_size` columns.
+  If `self.state_size` is an integer, this operation also results in a new
+  state matrix with `self.state_size` columns.  If `self.state_size` is a
+  (possibly nested tuple of) TensorShape object(s), then it should return a
+  matching structure of Tensors having shape `[batch_size].concatenate(s)`
+  for each `s` in `self.batch_size`.
+  """
+
+  def call(self, inputs, states):
+    """The function that contains the logic for one RNN step calculation.
+
+    Args:
+      inputs: the input tensor, which is a slide from the overall RNN input by
+        the time dimension (usually the second dimension).
+      states: the state tensor from previous step, which has the same shape
+        as `(batch, state_size)`. In the case of timestep 0, it will be the
+        initial state user specified, or zero filled tensor otherwise.
+
+    Returns:
+      A tuple of two tensors:
+        1. output tensor for the current timestep, with size `output_size`.
+        2. state tensor for next step, which has the shape of `state_size`.
+    """
+    raise NotImplementedError('Abstract method')
 
   @property
-  def non_trainable_weights(self):
-    if isinstance(self.cell, Layer):
-      if not self.trainable:
-        return self.cell.weights
-      return self.cell.non_trainable_weights
-    return []
+  def state_size(self):
+    """size(s) of state(s) used by this cell.
+
+    It can be represented by an Integer, a TensorShape or a tuple of Integers
+    or TensorShapes.
+    """
+    raise NotImplementedError('Abstract method')
 
   @property
-  def losses(self):
-    layer_losses = super(RNN, self).losses
-    if isinstance(self.cell, Layer):
-      return self.cell.losses + layer_losses
-    return layer_losses
+  def output_size(self):
+    """Integer or TensorShape: size of outputs produced by this cell."""
+    raise NotImplementedError('Abstract method')
 
-  @property
-  def updates(self):
-    updates = []
-    if isinstance(self.cell, Layer):
-      updates += self.cell.updates
-    return updates + self._updates
+  def get_initial_state(self, inputs=None, batch_size=None, dtype=None):
+    return _generate_zero_filled_state_for_cell(self, inputs, batch_size, dtype)
+
+
+class DropoutRNNCellMixin(object):
+  """Object that hold dropout related fields for RNN Cell.
+
+  This class is not a standalone RNN cell. It suppose to be used with a RNN cell
+  by multiple inheritance. Any cell that mix with class should have following
+  fields:
+    dropout: a float number within range [0, 1). The ratio that the input
+      tensor need to dropout.
+    recurrent_dropout: a float number within range [0, 1). The ratio that the
+      recurrent state weights need to dropout.
+  This object will create and cache created dropout masks, and reuse them for
+  the incoming data, so that the same mask is used for every batch input.
+  """
+
+  def __init__(self, *args, **kwargs):
+    # Note that the following two masks will be used in "graph function" mode,
+    # e.g. these masks are symbolic tensors. In eager mode, the `eager_*_mask`
+    # tensors will be generated differently than in the "graph function" case,
+    # and they will be cached.
+    # Also note that in graph mode, we still cache those masks only because the
+    # RNN could be created with `unroll=True`. In that case, the `cell.call()`
+    # function will be invoked multiple times, and we want to ensure same mask
+    # is used every time.
+    self._dropout_mask = None
+    self._recurrent_dropout_mask = None
+    self._eager_dropout_mask = None
+    self._eager_recurrent_dropout_mask = None
+    super(DropoutRNNCellMixin, self).__init__(*args, **kwargs)
+
+  def reset_dropout_mask(self):
+    """Reset the cached dropout masks if any.
+
+    This is important for the RNN layer to invoke this in it call() method so
+    that the cached mask is cleared before calling the cell.call(). The mask
+    should be cached across the timestep within the same batch, but shouldn't
+    be cached between batches. Otherwise it will introduce unreasonable bias
+    against certain index of data within the batch.
+    """
+    self._dropout_mask = None
+    self._eager_dropout_mask = None
+
+  def reset_recurrent_dropout_mask(self):
+    """Reset the cached recurrent dropout masks if any.
+
+    This is important for the RNN layer to invoke this in it call() method so
+    that the cached mask is cleared before calling the cell.call(). The mask
+    should be cached across the timestep within the same batch, but shouldn't
+    be cached between batches. Otherwise it will introduce unreasonable bias
+    against certain index of data within the batch.
+    """
+    self._recurrent_dropout_mask = None
+    self._eager_recurrent_dropout_mask = None
+
+  def get_dropout_mask_for_cell(self, inputs, training, count=1):
+    """Get the dropout mask for RNN cell's input.
+
+    It will create mask based on context if there isn't any existing cached
+    mask. If a new mask is generated, it will update the cache in the cell.
+
+    Args:
+      inputs: the input tensor whose shape will be used to generate dropout
+        mask.
+      training: boolean tensor, whether its in training mode, dropout will be
+        ignored in non-training mode.
+      count: int, how many dropout mask will be generated. It is useful for cell
+        that has internal weights fused together.
+    Returns:
+      List of mask tensor, generated or cached mask based on context.
+    """
+    if self.dropout == 0:
+      return None
+    if (not context.executing_eagerly() and self._dropout_mask is None
+        or context.executing_eagerly() and self._eager_dropout_mask is None):
+      # Generate new mask and cache it based on context.
+      dp_mask = _generate_dropout_mask(
+          array_ops.ones_like(inputs),
+          self.dropout,
+          training=training,
+          count=count)
+      if context.executing_eagerly():
+        self._eager_dropout_mask = dp_mask
+      else:
+        self._dropout_mask = dp_mask
+    else:
+      # Reuse the existing mask.
+      dp_mask = (self._eager_dropout_mask
+                 if context.executing_eagerly() else self._dropout_mask)
+    return dp_mask
+
+  def get_recurrent_dropout_mask_for_cell(self, inputs, training, count=1):
+    """Get the recurrent dropout mask for RNN cell.
+
+    It will create mask based on context if there isn't any existing cached
+    mask. If a new mask is generated, it will update the cache in the cell.
+
+    Args:
+      inputs: the input tensor whose shape will be used to generate dropout
+        mask.
+      training: boolean tensor, whether its in training mode, dropout will be
+        ignored in non-training mode.
+      count: int, how many dropout mask will be generated. It is useful for cell
+        that has internal weights fused together.
+    Returns:
+      List of mask tensor, generated or cached mask based on context.
+    """
+    if self.recurrent_dropout == 0:
+      return None
+    if (not context.executing_eagerly() and self._recurrent_dropout_mask is None
+        or context.executing_eagerly()
+        and self._eager_recurrent_dropout_mask is None):
+      # Generate new mask and cache it based on context.
+      rec_dp_mask = _generate_dropout_mask(
+          array_ops.ones_like(inputs),
+          self.recurrent_dropout,
+          training=training,
+          count=count)
+      if context.executing_eagerly():
+        self._eager_recurrent_dropout_mask = rec_dp_mask
+      else:
+        self._recurrent_dropout_mask = rec_dp_mask
+    else:
+      # Reuse the existing mask.
+      rec_dp_mask = (self._eager_recurrent_dropout_mask
+                     if context.executing_eagerly()
+                     else self._recurrent_dropout_mask)
+    return rec_dp_mask
 
 
 @keras_export('keras.layers.SimpleRNNCell')
-class SimpleRNNCell(Layer):
+class SimpleRNNCell(DropoutRNNCellMixin, Layer):
   """Cell class for SimpleRNN.
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          Default: hyperbolic tangent (`tanh`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs.
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state.
-      bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      Default: hyperbolic tangent (`tanh`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix, used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+
+  Call arguments:
+    inputs: A 2D tensor.
+    states: List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
   """
 
   def __init__(self,
@@ -1078,8 +1216,6 @@ class SimpleRNNCell(Layer):
     self.recurrent_dropout = min(1., max(0., recurrent_dropout))
     self.state_size = self.units
     self.output_size = self.units
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -1108,20 +1244,9 @@ class SimpleRNNCell(Layer):
 
   def call(self, inputs, states, training=None):
     prev_output = states[0]
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(prev_output),
-          self.recurrent_dropout,
-          training=training)
-
-    dp_mask = self._dropout_mask
-    rec_dp_mask = self._recurrent_dropout_mask
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        prev_output, training)
 
     if dp_mask is not None:
       h = K.dot(inputs * dp_mask, self.kernel)
@@ -1181,52 +1306,63 @@ class SimpleRNN(RNN):
   """Fully-connected RNN where the output is to be fed back to input.
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          Default: hyperbolic tangent (`tanh`).
-          If you pass None, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs.
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state.
-      bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation")..
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
-      return_sequences: Boolean. Whether to return the last output
-          in the output sequence, or the full sequence.
-      return_state: Boolean. Whether to return the last state
-          in addition to the output.
-      go_backwards: Boolean (default False).
-          If True, process the input sequence backwards and return the
-          reversed sequence.
-      stateful: Boolean (default False). If True, the last state
-          for each sample at index i in a batch will be used as initial
-          state for the sample of index i in the following batch.
-      unroll: Boolean (default False).
-          If True, the network will be unrolled,
-          else a symbolic loop will be used.
-          Unrolling can speed-up a RNN,
-          although it tends to be more memory-intensive.
-          Unrolling is only suitable for short sequences.
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      Default: hyperbolic tangent (`tanh`).
+      If you pass None, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix,
+      used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    activity_regularizer: Regularizer function applied to
+      the output of the layer (its "activation")..
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    return_sequences: Boolean. Whether to return the last output
+      in the output sequence, or the full sequence.
+    return_state: Boolean. Whether to return the last state
+      in addition to the output.
+    go_backwards: Boolean (default False).
+      If True, process the input sequence backwards and return the
+      reversed sequence.
+    stateful: Boolean (default False). If True, the last state
+      for each sample at index i in a batch will be used as initial
+      state for the sample of index i in the following batch.
+    unroll: Boolean (default False).
+      If True, the network will be unrolled,
+      else a symbolic loop will be used.
+      Unrolling can speed-up a RNN,
+      although it tends to be more memory-intensive.
+      Unrolling is only suitable for short sequences.
+
+  Call arguments:
+    inputs: A 3D tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is only relevant if `dropout` or
+      `recurrent_dropout` is used.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
   """
 
   def __init__(self,
@@ -1283,8 +1419,8 @@ class SimpleRNN(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell._dropout_mask = None
-    self.cell._recurrent_dropout_mask = None
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(SimpleRNN, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -1389,52 +1525,58 @@ class SimpleRNN(RNN):
 
 
 @keras_export('keras.layers.GRUCell')
-class GRUCell(Layer):
+class GRUCell(DropoutRNNCellMixin, Layer):
   """Cell class for the GRU layer.
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          Default: hyperbolic tangent (`tanh`).
-          If you pass None, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      recurrent_activation: Activation function to use
-          for the recurrent step.
-          Default: hard sigmoid (`hard_sigmoid`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs.
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state.
-      bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
-      implementation: Implementation mode, either 1 or 2.
-          Mode 1 will structure its operations as a larger number of
-          smaller dot products and additions, whereas mode 2 will
-          batch them into fewer, larger operations. These modes will
-          have different performance profiles on different hardware and
-          for different applications.
-      reset_after: GRU convention (whether to apply reset gate after or
-          before matrix multiplication). False = "before" (default),
-          True = "after" (CuDNN compatible).
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      Default: hyperbolic tangent (`tanh`).
+      If you pass None, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use
+      for the recurrent step.
+      Default: hard sigmoid (`hard_sigmoid`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix,
+      used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of
+      smaller dot products and additions, whereas mode 2 will
+      batch them into fewer, larger operations. These modes will
+      have different performance profiles on different hardware and
+      for different applications.
+    reset_after: GRU convention (whether to apply reset gate after or
+      before matrix multiplication). False = "before" (default),
+      True = "after" (CuDNN compatible).
+
+  Call arguments:
+    inputs: A 2D tensor.
+    states: List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
   """
 
   def __init__(self,
@@ -1480,8 +1622,6 @@ class GRUCell(Layer):
     self.reset_after = reset_after
     self.state_size = self.units
     self.output_size = self.units
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -1520,24 +1660,9 @@ class GRUCell(Layer):
   def call(self, inputs, states, training=None):
     h_tm1 = states[0]  # previous memory
 
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=3)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(h_tm1),
-          self.recurrent_dropout,
-          training=training,
-          count=3)
-
-    # dropout matrices for input units
-    dp_mask = self._dropout_mask
-    # dropout matrices for recurrent units
-    rec_dp_mask = self._recurrent_dropout_mask
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        h_tm1, training, count=3)
 
     if self.use_bias:
       if not self.reset_after:
@@ -1683,67 +1808,76 @@ class GRU(RNN):
   `recurrent_activation='sigmoid'`.
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          Default: hyperbolic tangent (`tanh`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      recurrent_activation: Activation function to use
-          for the recurrent step.
-          Default: hard sigmoid (`hard_sigmoid`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs.
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state.
-      bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation")..
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
-      implementation: Implementation mode, either 1 or 2.
-          Mode 1 will structure its operations as a larger number of
-          smaller dot products and additions, whereas mode 2 will
-          batch them into fewer, larger operations. These modes will
-          have different performance profiles on different hardware and
-          for different applications.
-      return_sequences: Boolean. Whether to return the last output
-          in the output sequence, or the full sequence.
-      return_state: Boolean. Whether to return the last state
-          in addition to the output.
-      go_backwards: Boolean (default False).
-          If True, process the input sequence backwards and return the
-          reversed sequence.
-      stateful: Boolean (default False). If True, the last state
-          for each sample at index i in a batch will be used as initial
-          state for the sample of index i in the following batch.
-      unroll: Boolean (default False).
-          If True, the network will be unrolled,
-          else a symbolic loop will be used.
-          Unrolling can speed-up a RNN,
-          although it tends to be more memory-intensive.
-          Unrolling is only suitable for short sequences.
-      reset_after: GRU convention (whether to apply reset gate after or
-          before matrix multiplication). False = "before" (default),
-          True = "after" (CuDNN compatible).
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      Default: hyperbolic tangent (`tanh`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use
+      for the recurrent step.
+      Default: hard sigmoid (`hard_sigmoid`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix, used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    activity_regularizer: Regularizer function applied to
+      the output of the layer (its "activation")..
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of
+      smaller dot products and additions, whereas mode 2 will
+      batch them into fewer, larger operations. These modes will
+      have different performance profiles on different hardware and
+      for different applications.
+    return_sequences: Boolean. Whether to return the last output
+      in the output sequence, or the full sequence.
+    return_state: Boolean. Whether to return the last state
+      in addition to the output.
+    go_backwards: Boolean (default False).
+      If True, process the input sequence backwards and return the
+      reversed sequence.
+    stateful: Boolean (default False). If True, the last state
+      for each sample at index i in a batch will be used as initial
+      state for the sample of index i in the following batch.
+    unroll: Boolean (default False).
+      If True, the network will be unrolled,
+      else a symbolic loop will be used.
+      Unrolling can speed-up a RNN,
+      although it tends to be more memory-intensive.
+      Unrolling is only suitable for short sequences.
+    reset_after: GRU convention (whether to apply reset gate after or
+      before matrix multiplication). False = "before" (default),
+      True = "after" (CuDNN compatible).
 
+  Call arguments:
+    inputs: A 3D tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is only relevant if `dropout` or
+      `recurrent_dropout` is used.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
   """
 
   def __init__(self,
@@ -1805,8 +1939,8 @@ class GRU(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell._dropout_mask = None
-    self.cell._recurrent_dropout_mask = None
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(GRU, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -1929,98 +2063,107 @@ class GRU(RNN):
 
 
 @keras_export('keras.layers.GRU', v1=[])
-class UnifiedGRU(GRU):
+class UnifiedGRU(DropoutRNNCellMixin, GRU):
   """Gated Recurrent Unit - Cho et al. 2014.
 
-  `UnifiedGRU` unifies the implementations between standard `GRU` layer and
-  `CuDNNGRU` layer. Based on available runtime hardware and constraints,
-  `UnifiedGRU` will choose different implementations to maximize the
-  performance. For instance, if GPU is available and all the parameters meet the
-  requirement of CuDNN kernel, `UnifiedGRU` will use CuDNN kernel for the
-  calculation. The requirements to use CuDNN kernel are:
+  Based on available runtime hardware and constraints, this layer
+  will choose different implementations (cuDNN-based or pure-TensorFlow)
+  to maximize the performance. If a GPU is available and all
+  the arguments to the layer meet the requirement of the CuDNN kernel
+  (see below for details), the layer will use a fast cuDNN implementation.
 
-    1. `activation` == 'tanh'
-    2. `recurrent_activation` == 'sigmoid'
-    3. `recurrent_dropout` == 0
-    4. `unroll` is False
-    5. `use_bias` is True
-    6. `reset_after` is True
-    7. Use masking in previous layers.
+  The requirements to use the cuDNN implementation are:
 
-  There are two variants. The default one is based on
+  1. `activation` == 'tanh'
+  2. `recurrent_activation` == 'sigmoid'
+  3. `recurrent_dropout` == 0
+  4. `unroll` is False
+  5. `use_bias` is True
+  6. `reset_after` is True
+  7. No use of masking.
+
+  There are two variants of the GRU implementation. The default one is based on
   [v3](https://arxiv.org/abs/1406.1078v3) and has reset gate applied to hidden
   state before matrix multiplication. The other one is based on
   [original](https://arxiv.org/abs/1406.1078v1) and has the order reversed.
 
   The second variant is compatible with CuDNNGRU (GPU-only) and allows
   inference on CPU. Thus it has separate biases for `kernel` and
-  `recurrent_kernel`. Use `'reset_after'=True` and
+  `recurrent_kernel`. To use this variant, set `'reset_after'=True` and
   `recurrent_activation='sigmoid'`.
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          Default: hyperbolic tangent (`tanh`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      recurrent_activation: Activation function to use
-          for the recurrent step.
-          Default: sigmoid (`sigmoid`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs.
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state.
-      bias_initializer: Initializer for the bias vector.
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation")..
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
-      implementation: Implementation mode, either 1 or 2.
-          Mode 1 will structure its operations as a larger number of
-          smaller dot products and additions, whereas mode 2 will
-          batch them into fewer, larger operations. These modes will
-          have different performance profiles on different hardware and
-          for different applications.
-      return_sequences: Boolean. Whether to return the last output
-          in the output sequence, or the full sequence.
-      return_state: Boolean. Whether to return the last state
-          in addition to the output.
-      go_backwards: Boolean (default False).
-          If True, process the input sequence backwards and return the
-          reversed sequence.
-      stateful: Boolean (default False). If True, the last state
-          for each sample at index i in a batch will be used as initial
-          state for the sample of index i in the following batch.
-      unroll: Boolean (default False).
-          If True, the network will be unrolled,
-          else a symbolic loop will be used.
-          Unrolling can speed-up a RNN,
-          although it tends to be more memory-intensive.
-          Unrolling is only suitable for short sequences.
-      reset_after: GRU convention (whether to apply reset gate after or
-          before matrix multiplication). False = "before",
-          True = "after" (default and CuDNN compatible).
-  """
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      Default: hyperbolic tangent (`tanh`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use
+      for the recurrent step.
+      Default: sigmoid (`sigmoid`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+       weights matrix,
+       used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    activity_regularizer: Regularizer function applied to
+      the output of the layer (its "activation")..
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of
+      smaller dot products and additions, whereas mode 2 will
+      batch them into fewer, larger operations. These modes will
+      have different performance profiles on different hardware and
+      for different applications.
+    return_sequences: Boolean. Whether to return the last output
+      in the output sequence, or the full sequence.
+    return_state: Boolean. Whether to return the last state
+      in addition to the output.
+    go_backwards: Boolean (default False).
+      If True, process the input sequence backwards and return the
+      reversed sequence.
+    stateful: Boolean (default False). If True, the last state
+      for each sample at index i in a batch will be used as initial
+      state for the sample of index i in the following batch.
+    unroll: Boolean (default False).
+      If True, the network will be unrolled,
+      else a symbolic loop will be used.
+      Unrolling can speed-up a RNN,
+      although it tends to be more memory-intensive.
+      Unrolling is only suitable for short sequences.
+    reset_after: GRU convention (whether to apply reset gate after or
+      before matrix multiplication). False = "before",
+      True = "after" (default and CuDNN compatible).
 
-  _setattr_tracking = False  # TODO(allenl): Figure out why this is needed.
+  Call arguments:
+    inputs: A 3D tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is only relevant if `dropout` or
+      `recurrent_dropout` is used.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
+  """
 
   def __init__(self,
                units,
@@ -2078,7 +2221,6 @@ class UnifiedGRU(GRU):
         time_major=time_major,
         reset_after=reset_after,
         **kwargs)
-    self._dropout_mask = None
     # CuDNN uses following setting by default and not configurable.
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
@@ -2098,8 +2240,6 @@ class UnifiedGRU(GRU):
     if mask is not None or not self.could_use_cudnn:
       # CuDNN does not support masking, fall back to use the normal GRU.
       kwargs = {'training': training}
-      self.cell._dropout_mask = None
-      self.cell._recurrent_dropout_mask = None
 
       def step(cell_inputs, cell_states):
         return self.cell.call(cell_inputs, cell_states, **kwargs)
@@ -2131,7 +2271,7 @@ class UnifiedGRU(GRU):
       output = last_output
 
     if self.return_state:
-      return [output] + states
+      return [output] + list(states)
     elif self._return_runtime:
       return output, runtime
     else:
@@ -2144,15 +2284,11 @@ class UnifiedGRU(GRU):
     if self.go_backwards:
       # Reverse time axis.
       inputs = K.reverse(inputs, 0 if self.time_major else 1)
-    if 0 < self.dropout < 1:
-      if self._dropout_mask is None:
-        self._dropout_mask = _generate_dropout_mask(
-            array_ops.ones_like(inputs),
-            self.dropout,
-            training=training,
-            count=3)
 
-      inputs *= self._dropout_mask[0]
+    self.reset_dropout_mask()
+    dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=3)
+    if dropout_mask is not None:
+      inputs *= dropout_mask[0]
     if ops.executing_eagerly_outside_functions():
       # Under eager context, the device placement is already known. Prefer the
       # GPU implementation when GPU is available.
@@ -2210,7 +2346,7 @@ def standard_gru(inputs, init_h, kernel, recurrent_kernel, bias, activation,
   counterpart. The RNN step logic has been simplified, eg dropout and mask is
   removed since CuDNN implementation does not support that.
 
-  Args:
+  Arguments:
     inputs: input tensor of GRU layer.
     init_h: initial state tensor for the cell output.
     kernel: weights for cell kernel.
@@ -2313,54 +2449,61 @@ def cudnn_gru(inputs, init_h, kernel, recurrent_kernel, bias, time_major):
 
 
 @keras_export('keras.layers.LSTMCell')
-class LSTMCell(Layer):
+class LSTMCell(DropoutRNNCellMixin, Layer):
   """Cell class for the LSTM layer.
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          Default: hyperbolic tangent (`tanh`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      recurrent_activation: Activation function to use
-          for the recurrent step.
-          Default: hard sigmoid (`hard_sigmoid`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs.
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state.
-      bias_initializer: Initializer for the bias vector.
-      unit_forget_bias: Boolean.
-          If True, add 1 to the bias of the forget gate at initialization.
-          Setting it to true will also force `bias_initializer="zeros"`.
-          This is recommended in [Jozefowicz et
-            al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
-      implementation: Implementation mode, either 1 or 2.
-          Mode 1 will structure its operations as a larger number of
-          smaller dot products and additions, whereas mode 2 will
-          batch them into fewer, larger operations. These modes will
-          have different performance profiles on different hardware and
-          for different applications.
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      Default: hyperbolic tangent (`tanh`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use
+      for the recurrent step.
+      Default: hard sigmoid (`hard_sigmoid`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs.
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix,
+      used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    unit_forget_bias: Boolean.
+      If True, add 1 to the bias of the forget gate at initialization.
+      Setting it to true will also force `bias_initializer="zeros"`.
+      This is recommended in [Jozefowicz et
+        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of
+      smaller dot products and additions, whereas mode 2 will
+      batch them into fewer, larger operations. These modes will
+      have different performance profiles on different hardware and
+      for different applications.
+
+  Call arguments:
+    inputs: A 2D tensor.
+    states: List of state tensors corresponding to the previous timestep.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. Only relevant when `dropout` or
+      `recurrent_dropout` is used.
   """
 
   def __init__(self,
@@ -2406,8 +2549,6 @@ class LSTMCell(Layer):
     self.implementation = implementation
     self.state_size = [self.units, self.units]
     self.output_size = self.units
-    self._dropout_mask = None
-    self._recurrent_dropout_mask = None
 
   @tf_utils.shape_type_conversion
   def build(self, input_shape):
@@ -2470,27 +2611,12 @@ class LSTMCell(Layer):
     return c, o
 
   def call(self, inputs, states, training=None):
-    if 0 < self.dropout < 1 and self._dropout_mask is None:
-      self._dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(inputs),
-          self.dropout,
-          training=training,
-          count=4)
-    if (0 < self.recurrent_dropout < 1 and
-        self._recurrent_dropout_mask is None):
-      self._recurrent_dropout_mask = _generate_dropout_mask(
-          array_ops.ones_like(states[0]),
-          self.recurrent_dropout,
-          training=training,
-          count=4)
-
-    # dropout matrices for input units
-    dp_mask = self._dropout_mask
-    # dropout matrices for recurrent units
-    rec_dp_mask = self._recurrent_dropout_mask
-
     h_tm1 = states[0]  # previous memory state
     c_tm1 = states[1]  # previous carry state
+
+    dp_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
+    rec_dp_mask = self.get_recurrent_dropout_mask_for_cell(
+        h_tm1, training, count=4)
 
     if self.implementation == 1:
       if 0 < self.dropout < 1.:
@@ -2602,28 +2728,26 @@ class PeepholeLSTMCell(LSTMCell):
 
   From [Gers et al.](http://www.jmlr.org/papers/volume3/gers02a/gers02a.pdf):
 
-    "We find that LSTM augmented by 'peephole connections' from its internal
-    cells to its multiplicative gates can learn the fine distinction between
-    sequences of spikes spaced either 50 or 49 time steps apart without the help
-    of any short training exemplars."
+  "We find that LSTM augmented by 'peephole connections' from its internal
+  cells to its multiplicative gates can learn the fine distinction between
+  sequences of spikes spaced either 50 or 49 time steps apart without the help
+  of any short training exemplars."
 
   The peephole implementation is based on:
 
-    https://research.google.com/pubs/archive/43905.pdf
-
-  Hasim Sak, Andrew Senior, and Francoise Beaufays.
-  "Long short-term memory recurrent neural network architectures for
-   large scale acoustic modeling." INTERSPEECH, 2014.
+  [Long short-term memory recurrent neural network architectures for
+   large scale acoustic modeling.
+  ](https://research.google.com/pubs/archive/43905.pdf)
 
   Example:
 
   ```python
-      # Create 2 PeepholeLSTMCells
-      peephole_lstm_cells = [PeepholeLSTMCell(size) for size in [128, 256]]
-      # Create a layer composed sequentially of the peephole LSTM cells.
-      layer = RNN(peephole_lstm_cells)
-      input = keras.Input((timesteps, input_dim))
-      output = layer(input)
+  # Create 2 PeepholeLSTMCells
+  peephole_lstm_cells = [PeepholeLSTMCell(size) for size in [128, 256]]
+  # Create a layer composed sequentially of the peephole LSTM cells.
+  layer = RNN(peephole_lstm_cells)
+  input = keras.Input((timesteps, input_dim))
+  output = layer(input)
   ```
   """
 
@@ -2680,69 +2804,79 @@ class LSTM(RNN):
   `tf.keras.layers.CuDNNLSTM` for better performance on GPU.
 
   Arguments:
-      units: Positive integer, dimensionality of the output space.
-      activation: Activation function to use.
-          Default: hyperbolic tangent (`tanh`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      recurrent_activation: Activation function to use
-          for the recurrent step.
-          Default: hard sigmoid (`hard_sigmoid`).
-          If you pass `None`, no activation is applied
-          (ie. "linear" activation: `a(x) = x`).
-      use_bias: Boolean, whether the layer uses a bias vector.
-      kernel_initializer: Initializer for the `kernel` weights matrix,
-          used for the linear transformation of the inputs..
-      recurrent_initializer: Initializer for the `recurrent_kernel`
-          weights matrix,
-          used for the linear transformation of the recurrent state..
-      bias_initializer: Initializer for the bias vector.
-      unit_forget_bias: Boolean.
-          If True, add 1 to the bias of the forget gate at initialization.
-          Setting it to true will also force `bias_initializer="zeros"`.
-          This is recommended in [Jozefowicz et
-            al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
-      kernel_regularizer: Regularizer function applied to
-          the `kernel` weights matrix.
-      recurrent_regularizer: Regularizer function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_regularizer: Regularizer function applied to the bias vector.
-      activity_regularizer: Regularizer function applied to
-          the output of the layer (its "activation")..
-      kernel_constraint: Constraint function applied to
-          the `kernel` weights matrix.
-      recurrent_constraint: Constraint function applied to
-          the `recurrent_kernel` weights matrix.
-      bias_constraint: Constraint function applied to the bias vector.
-      dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the inputs.
-      recurrent_dropout: Float between 0 and 1.
-          Fraction of the units to drop for
-          the linear transformation of the recurrent state.
-      implementation: Implementation mode, either 1 or 2.
-          Mode 1 will structure its operations as a larger number of
-          smaller dot products and additions, whereas mode 2 will
-          batch them into fewer, larger operations. These modes will
-          have different performance profiles on different hardware and
-          for different applications.
-      return_sequences: Boolean. Whether to return the last output.
-          in the output sequence, or the full sequence.
-      return_state: Boolean. Whether to return the last state
-          in addition to the output.
-      go_backwards: Boolean (default False).
-          If True, process the input sequence backwards and return the
-          reversed sequence.
-      stateful: Boolean (default False). If True, the last state
-          for each sample at index i in a batch will be used as initial
-          state for the sample of index i in the following batch.
-      unroll: Boolean (default False).
-          If True, the network will be unrolled,
-          else a symbolic loop will be used.
-          Unrolling can speed-up a RNN,
-          although it tends to be more memory-intensive.
-          Unrolling is only suitable for short sequences.
+    units: Positive integer, dimensionality of the output space.
+    activation: Activation function to use.
+      Default: hyperbolic tangent (`tanh`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    recurrent_activation: Activation function to use
+      for the recurrent step.
+      Default: hard sigmoid (`hard_sigmoid`).
+      If you pass `None`, no activation is applied
+      (ie. "linear" activation: `a(x) = x`).
+    use_bias: Boolean, whether the layer uses a bias vector.
+    kernel_initializer: Initializer for the `kernel` weights matrix,
+      used for the linear transformation of the inputs..
+    recurrent_initializer: Initializer for the `recurrent_kernel`
+      weights matrix,
+      used for the linear transformation of the recurrent state.
+    bias_initializer: Initializer for the bias vector.
+    unit_forget_bias: Boolean.
+      If True, add 1 to the bias of the forget gate at initialization.
+      Setting it to true will also force `bias_initializer="zeros"`.
+      This is recommended in [Jozefowicz et
+        al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
+    kernel_regularizer: Regularizer function applied to
+      the `kernel` weights matrix.
+    recurrent_regularizer: Regularizer function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_regularizer: Regularizer function applied to the bias vector.
+    activity_regularizer: Regularizer function applied to
+      the output of the layer (its "activation")..
+    kernel_constraint: Constraint function applied to
+      the `kernel` weights matrix.
+    recurrent_constraint: Constraint function applied to
+      the `recurrent_kernel` weights matrix.
+    bias_constraint: Constraint function applied to the bias vector.
+    dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the inputs.
+    recurrent_dropout: Float between 0 and 1.
+      Fraction of the units to drop for
+      the linear transformation of the recurrent state.
+    implementation: Implementation mode, either 1 or 2.
+      Mode 1 will structure its operations as a larger number of
+      smaller dot products and additions, whereas mode 2 will
+      batch them into fewer, larger operations. These modes will
+      have different performance profiles on different hardware and
+      for different applications.
+    return_sequences: Boolean. Whether to return the last output.
+      in the output sequence, or the full sequence.
+    return_state: Boolean. Whether to return the last state
+      in addition to the output.
+    go_backwards: Boolean (default False).
+      If True, process the input sequence backwards and return the
+      reversed sequence.
+    stateful: Boolean (default False). If True, the last state
+      for each sample at index i in a batch will be used as initial
+      state for the sample of index i in the following batch.
+    unroll: Boolean (default False).
+      If True, the network will be unrolled,
+      else a symbolic loop will be used.
+      Unrolling can speed-up a RNN,
+      although it tends to be more memory-intensive.
+      Unrolling is only suitable for short sequences.
 
+  Call arguments:
+    inputs: A 3D tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is only relevant if `dropout` or
+      `recurrent_dropout` is used.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
   """
 
   def __init__(self,
@@ -2808,8 +2942,8 @@ class LSTM(RNN):
     self.input_spec = [InputSpec(ndim=3)]
 
   def call(self, inputs, mask=None, training=None, initial_state=None):
-    self.cell._dropout_mask = None
-    self.cell._recurrent_dropout_mask = None
+    self.cell.reset_dropout_mask()
+    self.cell.reset_recurrent_dropout_mask()
     return super(LSTM, self).call(
         inputs, mask=mask, training=training, initial_state=initial_state)
 
@@ -2932,15 +3066,23 @@ class LSTM(RNN):
 
 
 @keras_export('keras.layers.LSTM', v1=[])
-class UnifiedLSTM(LSTM):
+class UnifiedLSTM(DropoutRNNCellMixin, LSTM):
   """Long Short-Term Memory layer - Hochreiter 1997.
 
-  `UnifiedLSTM` unifies the implementations between standard `LSTM` layer and
-  `CuDNNLSTM` layer. Based on available runtime hardware and constrains,
-  `UnifiedLSTM` will choose different implementations to maximize the
-  performance. For instance, if GPU is available and all the parameters meet the
-  requirement of CuDNN kernel, `UnifiedLSTM` will use CuDNN kernel for the
-  calculation.
+  Based on available runtime hardware and constraints, this layer
+  will choose different implementations (cuDNN-based or pure-TensorFlow)
+  to maximize the performance. If a GPU is available and all
+  the arguments to the layer meet the requirement of the CuDNN kernel
+  (see below for details), the layer will use a fast cuDNN implementation.
+
+  The requirements to use the cuDNN implementation are:
+
+  1. `activation` == 'tanh'
+  2. `recurrent_activation` == 'sigmoid'
+  3. `recurrent_dropout` == 0
+  4. `unroll` is False
+  5. `use_bias` is True
+  7. No use of masking.
 
   Arguments:
     units: Positive integer, dimensionality of the output space.
@@ -2959,7 +3101,7 @@ class UnifiedLSTM(LSTM):
     unit_forget_bias: Boolean. If True, add 1 to the bias of the forget gate at
       initialization. Setting it to true will also force
       `bias_initializer="zeros"`. This is recommended in [Jozefowicz et
-          al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf)
+          al.](http://www.jmlr.org/proceedings/papers/v37/jozefowicz15.pdf).
     kernel_regularizer: Regularizer function applied to the `kernel` weights
       matrix.
     recurrent_regularizer: Regularizer function applied to the
@@ -2994,6 +3136,17 @@ class UnifiedLSTM(LSTM):
       a symbolic loop will be used. Unrolling can speed-up a RNN, although it
       tends to be more memory-intensive. Unrolling is only suitable for short
       sequences.
+
+  Call arguments:
+    inputs: A 3D tensor.
+    mask: Binary tensor of shape `(samples, timesteps)` indicating whether
+      a given timestep should be masked.
+    training: Python boolean indicating whether the layer should behave in
+      training mode or in inference mode. This argument is passed to the cell
+      when calling it. This is only relevant if `dropout` or
+      `recurrent_dropout` is used.
+    initial_state: List of initial state tensors to be passed to the first
+      call of the cell.
   """
 
   def __init__(self,
@@ -3056,7 +3209,6 @@ class UnifiedLSTM(LSTM):
     self.state_spec = [
         InputSpec(shape=(None, dim)) for dim in (self.units, self.units)
     ]
-    self._dropout_mask = None
     self.could_use_cudnn = (
         activation == 'tanh' and recurrent_activation == 'sigmoid' and
         recurrent_dropout == 0 and not unroll and use_bias)
@@ -3100,15 +3252,10 @@ class UnifiedLSTM(LSTM):
         # Reverse time axis.
         inputs = K.reverse(inputs, 0 if self.time_major else 1)
 
-      if 0 < self.dropout < 1:
-        if self._dropout_mask is None:
-          self._dropout_mask = _generate_dropout_mask(
-              array_ops.ones_like(inputs),
-              self.dropout,
-              training=training,
-              count=4)
-
-        inputs *= self._dropout_mask[0]
+      self.reset_dropout_mask()
+      dropout_mask = self.get_dropout_mask_for_cell(inputs, training, count=4)
+      if dropout_mask is not None:
+        inputs *= dropout_mask[0]
 
       if ops.executing_eagerly_outside_functions():
         # Under eager context, the device placement is already known. Prefer the
@@ -3158,7 +3305,7 @@ class UnifiedLSTM(LSTM):
       output = last_output
 
     if self.return_state:
-      return [output] + states
+      return [output] + list(states)
     elif self.return_runtime:
       return output, runtime
     else:
@@ -3321,19 +3468,19 @@ def _standardize_args(
   `constants` are lists of tensors (or None).
 
   Arguments:
-      inputs: Tensor or list/tuple of tensors. which may include constants
-        and initial states. In that case `num_constant` must be specified.
-      initial_state: Tensor or list of tensors or None, initial states.
-      constants: Tensor or list of tensors or None, constant tensors.
-      num_constants: Expected number of constants (if constants are passed as
-        part of the `inputs` list.
-      num_inputs: Expected number of real input tensors (exclude initial_states
-        and constants).
+    inputs: Tensor or list/tuple of tensors. which may include constants
+      and initial states. In that case `num_constant` must be specified.
+    initial_state: Tensor or list of tensors or None, initial states.
+    constants: Tensor or list of tensors or None, constant tensors.
+    num_constants: Expected number of constants (if constants are passed as
+      part of the `inputs` list.
+    num_inputs: Expected number of real input tensors (exclude initial_states
+      and constants).
 
   Returns:
-      inputs: Single tensor or tuple of tensors.
-      initial_state: List of tensors or None.
-      constants: List of tensors or None.
+    inputs: Single tensor or tuple of tensors.
+    initial_state: List of tensors or None.
+    constants: List of tensors or None.
   """
   if isinstance(inputs, list):
     # There are several situations here:
@@ -3420,3 +3567,4 @@ def _runtime(runtime_name):
   with ops.device('/cpu:0'):
     return constant_op.constant(
         runtime_name, dtype=dtypes.string, name='runtime')
+
