@@ -225,11 +225,10 @@ def _get_estimator_spec(
     gan_auxiliary_loss=None):
   """Get the EstimatorSpec for the current mode."""
   if mode == model_fn_lib.ModeKeys.PREDICT:
+    predictions = gan_model.generator_inputs
+    predictions["generated_data"] = gan_model.generated_data
     estimator_spec = model_fn_lib.EstimatorSpec(
-        mode=mode, predictions={
-          "generated_data": gan_model.generated_data,
-          "generator_input": gan_model.generator_inputs
-        })
+        mode=mode, predictions=predictions)
   else:
     if gan_auxiliary_loss is None:
       gan_loss = tfgan_tuples.GANLoss(
