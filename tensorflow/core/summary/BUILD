@@ -136,3 +136,14 @@ tf_cc_binary(
         "//tensorflow/core/lib/db:sqlite",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "schema.h",
+        "summary_converter.h",
+        "summary_db_writer.h",
+        "summary_file_writer.h",
+    ],
+    visibility = ["//visibility:public"],
+)

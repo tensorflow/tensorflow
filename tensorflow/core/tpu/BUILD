@@ -28,3 +28,12 @@ cc_library(
         "//tensorflow/core/protobuf/tpu:tpu_embedding_output_layout_proto_cc",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "tpu_embedding_optimization_parameters_utils.h",
+        "tpu_embedding_output_layout_utils.h",
+    ],
+    visibility = ["//visibility:public"],
+)

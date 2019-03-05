@@ -224,7 +224,7 @@ pkg_tar(
         ":platform_coreheaders",
         ":profiler_coreheaders",
         ":public_coreheaders",
-        # ":summary_coreheaders",
+        ":summary_coreheaders",
         # ":tpu_coreheaders",
         # ":util_coreheaders",
     ],
@@ -920,6 +920,24 @@ pkg_tar(
         "//tensorflow/core:public_headers",
     ],
     package_dir = "public",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "summary_coreheaders",
+    srcs = [
+        "//tensorflow/core/summary:headers",
+    ],
+    package_dir = "summary",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "tpu_coreheaders",
+    srcs = [
+        "//tensorflow/core/tpu:headers",
+    ],
+    package_dir = "tpu",
     tags = ["manual"],
 )
 
