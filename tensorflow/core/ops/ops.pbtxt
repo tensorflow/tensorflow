@@ -17823,6 +17823,13 @@ op {
     name: "f"
     type: "func"
   }
+  attr {
+    name: "max_intra_op_parallelism"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
 }
 op {
   name: "MapIncompleteSize"
