@@ -1299,18 +1299,18 @@ class Function(object):
     return self._function_spec
 
   @property
-  def _input_signature(self):
+  def input_signature(self):
     """Returns the input signature."""
-    return self._function_spec.input_signature  # pylint: disable=protected-access
+    return self._function_spec.input_signature
 
   @property
-  def _flat_input_signature(self):
+  def flat_input_signature(self):
     """Returns the flattened input signature."""
-    return self._function_spec.flat_input_signature  # pylint: disable=protected-access
+    return self._function_spec.flat_input_signature
 
   def _get_concrete_function_internal_garbage_collected(self, *args, **kwargs):
     """Returns a concrete function which cleans up its graph function."""
-    if self._input_signature:
+    if self.input_signature:
       args, kwargs = None, None
     graph_function, _, _ = self._maybe_define_function(args, kwargs)
     return graph_function
@@ -1333,14 +1333,14 @@ class Function(object):
       *args: inputs to specialize on.
       **kwargs: inputs to specialize on.
     """
-    if self._input_signature:
+    if self.input_signature:
       if kwargs:
         raise ValueError("Cannot define a TensorFlow function from a Python "
                          "function with keyword arguments when "
                          "input_signature is provided.")
       if args:
         # If args are provided, they must match the input signature.
-        if not is_same_structure(self._input_signature, args):
+        if not is_same_structure(self.input_signature, args):
           raise ValueError("Structure of Python function inputs does not match "
                            "input_signature.")
         flat_inputs = nest.flatten(args)
@@ -1350,14 +1350,14 @@ class Function(object):
                            "the Python function must be Tensors or "
                            "tf.TensorSpec objects.")
         if any(not spec.is_compatible_with(other)
-               for spec, other in zip(self._flat_input_signature, flat_inputs)):
+               for spec, other in zip(self.flat_input_signature, flat_inputs)):
           raise ValueError("Python inputs incompatible with input_signature: "
                            "inputs (%s), input_signature (%s)" %
-                           (str(args), str(self._input_signature)))
+                           (str(args), str(self.input_signature)))
       args, kwargs = None, None
     graph_function, args, kwargs = self._maybe_define_function(args, kwargs)
-    if self._input_signature:
-      args = self._input_signature
+    if self.input_signature:
+      args = self.input_signature
       kwargs = {}
     seen_names = set()
     captured = frozenset(graph_function.graph.internal_captures)
@@ -1433,14 +1433,14 @@ class Function(object):
 
   def _cache_key(self, args, kwargs, include_tensor_ranks_only=False):
     """Computes the cache key given inputs and execution context."""
-    if self._input_signature is None:
+    if self.input_signature is None:
       inputs = (args, kwargs) if kwargs else args
       input_signature = pywrap_tensorflow.TFE_Py_EncodeArg(
           inputs, include_tensor_ranks_only)
     else:
       del args, kwargs
       assert not include_tensor_ranks_only
-      input_signature = self._flat_input_signature
+      input_signature = self.flat_input_signature
 
     ctx = context.context()
 
@@ -1487,10 +1487,10 @@ class Function(object):
 
   def _create_graph_function(self, args, kwargs, override_flat_arg_shapes=None):
     """Create a `ConcreteFunction` from `args` and `kwargs`."""
-    if self._input_signature is None:
+    if self.input_signature is None:
       arglen = len(args)
     else:
-      arglen = len(self._input_signature)
+      arglen = len(self.input_signature)
     base_arg_names = self._function_spec.arg_names[:arglen]
     num_missing_args = arglen - len(self._function_spec.arg_names)
     missing_arg_names = [self._function_spec.vararg_name] * num_missing_args
@@ -1506,7 +1506,7 @@ class Function(object):
             self._python_function,
             args,
             kwargs,
-            self._input_signature,
+            self.input_signature,
             autograph=self._autograph,
             autograph_options=self._autograph_options,
             arg_names=arg_names,
@@ -1545,7 +1545,7 @@ class Function(object):
       RuntimeError: If there's an internal bug (inconsistency) in handling
         shape relaxation retracing.
     """
-    if self._input_signature is None or args is not None or kwargs is not None:
+    if self.input_signature is None or args is not None or kwargs is not None:
       args, kwargs = self._function_spec.canonicalize_function_inputs(
           *args, **kwargs)
     cache_key = self._cache_key(args, kwargs)
@@ -1575,7 +1575,7 @@ class Function(object):
       # If there's a provided input signature, or XLA is being used, or
       # there's no cache miss for this calling context so far, go ahead and
       # build the function and bypass shape relaxation retracing.
-      if (self._input_signature is not None
+      if (self.input_signature is not None
           or cache_key.uses_xla
           or call_context_key not in self._function_cache.missed):
         self._function_cache.missed.add(call_context_key)
@@ -2090,7 +2090,7 @@ def class_method_to_instance_method(original_function, instance):
   # (defined either in function.py or def_function.py).
   assert hasattr(original_function, "_name")
   assert hasattr(original_function, "_autograph")
-  assert hasattr(original_function, "_input_signature")
+  assert hasattr(original_function, "_function_spec")
   assert hasattr(original_function, "python_function")
 
   weak_bound_method_wrapper = None
@@ -2122,7 +2122,7 @@ def class_method_to_instance_method(original_function, instance):
       tf_decorator.make_decorator(bound_method, bound_method_wrapper),
       name=original_function._name,
       autograph=original_function._autograph,
-      input_signature=original_function._input_signature)
+      input_signature=original_function.input_signature)
   # pylint: enable=protected-access
 
   # And we wrap the function with tf_decorator so inspection works correctly
