@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -13,33 +13,21 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_UTILS_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_UTILS_H_
-
-#include <memory>
-
-#include "tensorflow/core/lib/core/status.h"
+#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_PY_UTILS_H_
+#define TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_PY_UTILS_H_
 
 namespace tensorflow {
 namespace tensorrt {
 
-template <typename T>
-struct TrtDestroyer {
-  void operator()(T* t) {
-    if (t) t->destroy();
-  }
-};
+bool IsGoogleTensorRTEnabled();
 
-template <typename T>
-using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
+// Return compile time TensorRT library version information {Maj, Min, Patch}.
+void GetLinkedTensorRTVersion(int* major, int* minor, int* patch);
 
-enum class TrtPrecisionMode { FP32, FP16, INT8 };
-
-Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
-
-Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
+// Return runtime time TensorRT library version information {Maj, Min, Patch}.
+void GetLoadedTensorRTVersion(int* major, int* minor, int* patch);
 
 }  // namespace tensorrt
 }  // namespace tensorflow
 
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_CONVERT_UTILS_H_
+#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_UTILS_PY_UTILS_H_

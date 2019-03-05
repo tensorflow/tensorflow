@@ -65,21 +65,6 @@ namespace convert {
 using absl::StrAppend;
 using absl::StrCat;
 
-// Returns compiled TRT version information {Maj, Min, Patch}
-std::vector<int> GetLinkedTensorRTVersion() {
-  return {NV_TENSORRT_MAJOR, NV_TENSORRT_MINOR, NV_TENSORRT_PATCH};
-}
-
-// Returns loaded TRT library version {Maj, Min, Patch}
-std::vector<int> GetLoadedTensorRTVersion() {
-  int ver = getInferLibVersion();
-  int ver_major = ver / 1000;
-  ver = ver - ver_major * 1000;
-  int ver_minor = ver / 100;
-  int ver_patch = ver - ver_minor * 100;
-  return {ver_major, ver_minor, ver_patch};
-}
-
 TrtCandidateSelector::TrtCandidateSelector(
     const grappler::GraphProperties& graph_properties,
     TrtPrecisionMode precision_mode)
