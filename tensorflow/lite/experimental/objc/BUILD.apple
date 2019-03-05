@@ -57,7 +57,6 @@ TEST_COPTS = RELEASE_COPTS + [
 # Default tags for filtering targets. Targets in this file are restricted to Apple platforms.
 DEFAULT_TAGS = [
     "apple",
-    "manual",
 ]
 
 objc_library(
