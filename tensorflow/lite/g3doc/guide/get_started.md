@@ -54,7 +54,7 @@ both floating point and quantized inference.
 ### Train a custom model
 
 A developer may choose to train a custom model using Tensorflow (see the
-[TensorFlow tutorials](../tutorials/) for examples of building and training
+[TensorFlow tutorials](https://www.tensorflow.org/tutorials/) for examples of building and training
 models). If you have already written a model, the first step is to export this
 to a `tf.GraphDef` file. This is required because some formats do not store the
 model structure outside the code, and we must communicate with other parts of
@@ -154,7 +154,7 @@ the arguments for specifying the output nodes for inference in the
 
 ### Full converter reference
 
-The [TensorFlow Lite Converter](../convert.md) can be
+The [TensorFlow Lite Converter](../convert/index.md) can be
 [Python](../convert/python_api.md) or from the
 [command line](../convert/cmdline_examples.md). This allows you to integrate the
 conversion step into the model design workflow, ensuring the model is easy to
