@@ -279,18 +279,18 @@ class BackendLinearAlgebraTest(test.TestCase):
     x = keras.backend.ones(shape=(2, 3))
     y = keras.backend.ones(shape=(3, 4))
     xy = keras.backend.dot(x, y)
-    self.assertEqual(xy.get_shape().as_list(), [2, 4])
+    self.assertEqual(xy.shape.as_list(), [2, 4])
 
     x = keras.backend.ones(shape=(32, 28, 3))
     y = keras.backend.ones(shape=(3, 4))
     xy = keras.backend.dot(x, y)
-    self.assertEqual(xy.get_shape().as_list(), [32, 28, 4])
+    self.assertEqual(xy.shape.as_list(), [32, 28, 4])
 
   def test_batch_dot(self):
     x = keras.backend.ones(shape=(32, 20, 1))
     y = keras.backend.ones(shape=(32, 30, 20))
     xy = keras.backend.batch_dot(x, y, axes=[1, 2])
-    self.assertEqual(xy.get_shape().as_list(), [32, 1, 30])
+    self.assertEqual(xy.shape.as_list(), [32, 1, 30])
 
     # TODO(fchollet): insufficiently tested.
 
@@ -448,7 +448,7 @@ class BackendShapeOpsTest(test.TestCase):
     a = keras.backend.variable(np.ones((1, 2, 3)))
     b = keras.backend.variable(np.ones((1, 2, 2)))
     y = keras.backend.concatenate([a, b], axis=-1)
-    self.assertEqual(y.get_shape().as_list(), [1, 2, 5])
+    self.assertEqual(y.shape.as_list(), [1, 2, 5])
 
   def test_permute_dimensions(self):
     compare_single_input_op_to_numpy(keras.backend.permute_dimensions,
@@ -466,7 +466,7 @@ class BackendShapeOpsTest(test.TestCase):
                                     height_factor,
                                     width_factor,
                                     data_format)
-    self.assertEqual(y.get_shape().as_list(), [1, 4, 4, 3])
+    self.assertEqual(y.shape.as_list(), [1, 4, 4, 3])
 
     data_format = 'channels_first'
     x = keras.backend.variable(np.ones((1, 3, 2, 2)))
@@ -474,7 +474,7 @@ class BackendShapeOpsTest(test.TestCase):
                                     height_factor,
                                     width_factor,
                                     data_format)
-    self.assertEqual(y.get_shape().as_list(), [1, 3, 4, 4])
+    self.assertEqual(y.shape.as_list(), [1, 3, 4, 4])
 
     # Invalid use:
     with self.assertRaises(ValueError):
@@ -494,7 +494,7 @@ class BackendShapeOpsTest(test.TestCase):
                                      height_factor,
                                      width_factor,
                                      data_format)
-    self.assertEqual(y.get_shape().as_list(), [1, 4, 4, 4, 3])
+    self.assertEqual(y.shape.as_list(), [1, 4, 4, 4, 3])
 
     data_format = 'channels_first'
     x = keras.backend.variable(np.ones((1, 3, 2, 2, 2)))
@@ -503,7 +503,7 @@ class BackendShapeOpsTest(test.TestCase):
                                      height_factor,
                                      width_factor,
                                      data_format)
-    self.assertEqual(y.get_shape().as_list(), [1, 3, 4, 4, 4])
+    self.assertEqual(y.shape.as_list(), [1, 3, 4, 4, 4])
 
     # Invalid use:
     with self.assertRaises(ValueError):
@@ -516,18 +516,18 @@ class BackendShapeOpsTest(test.TestCase):
   def test_repeat_elements(self):
     x = keras.backend.variable(np.ones((1, 3, 2)))
     y = keras.backend.repeat_elements(x, 3, axis=1)
-    self.assertEqual(y.get_shape().as_list(), [1, 9, 2])
+    self.assertEqual(y.shape.as_list(), [1, 9, 2])
 
     # Use with a dynamic axis:
     if not context.executing_eagerly():
       x = keras.backend.placeholder(shape=(2, None, 2))
       y = keras.backend.repeat_elements(x, 3, axis=1)
-      self.assertEqual(y.get_shape().as_list(), [2, None, 2])
+      self.assertEqual(y.shape.as_list(), [2, None, 2])
 
   def test_repeat(self):
     x = keras.backend.variable(np.ones((1, 3)))
     y = keras.backend.repeat(x, 2)
-    self.assertEqual(y.get_shape().as_list(), [1, 2, 3])
+    self.assertEqual(y.shape.as_list(), [1, 2, 3])
 
   def test_flatten(self):
     compare_single_input_op_to_numpy(keras.backend.flatten,
@@ -685,30 +685,30 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     y = keras.backend.pool2d(x, (2, 2), strides=(1, 1),
                              padding='valid', data_format='channels_first',
                              pool_mode='max')
-    self.assertEqual(y.get_shape().as_list(), [10, 3, 9, 9])
+    self.assertEqual(y.shape.as_list(), [10, 3, 9, 9])
 
     y = keras.backend.pool2d(x, (2, 2), strides=(1, 1),
                              padding='valid', data_format='channels_first',
                              pool_mode='avg')
-    self.assertEqual(y.get_shape().as_list(), [10, 3, 9, 9])
+    self.assertEqual(y.shape.as_list(), [10, 3, 9, 9])
 
     val = np.random.random((10, 10, 10, 3))
     x = keras.backend.variable(val)
     y = keras.backend.pool2d(x, (2, 2), strides=(1, 1),
                              padding='valid', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 9, 9, 3])
+    self.assertEqual(y.shape.as_list(), [10, 9, 9, 3])
 
     val = np.random.random((10, 10, 10, 3))
     x = keras.backend.variable(val)
     y = keras.backend.pool2d(x, (2, 2), strides=(1, 1),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 10, 10, 3])
+    self.assertEqual(y.shape.as_list(), [10, 10, 10, 3])
 
     val = np.random.random((10, 10, 10, 3))
     x = keras.backend.variable(val)
     y = keras.backend.pool2d(x, (2, 2), strides=(2, 2),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 5, 3])
+    self.assertEqual(y.shape.as_list(), [10, 5, 5, 3])
 
     with self.assertRaises(ValueError):
       y = keras.backend.pool2d(x, (2, 2), strides=(2, 2),
@@ -729,30 +729,30 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(1, 1, 1),
                              padding='valid', data_format='channels_first',
                              pool_mode='max')
-    self.assertEqual(y.get_shape().as_list(), [10, 3, 9, 9, 9])
+    self.assertEqual(y.shape.as_list(), [10, 3, 9, 9, 9])
 
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(1, 1, 1),
                              padding='valid', data_format='channels_first',
                              pool_mode='avg')
-    self.assertEqual(y.get_shape().as_list(), [10, 3, 9, 9, 9])
+    self.assertEqual(y.shape.as_list(), [10, 3, 9, 9, 9])
 
     val = np.random.random((10, 10, 10, 10, 3))
     x = keras.backend.variable(val)
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(1, 1, 1),
                              padding='valid', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 9, 9, 9, 3])
+    self.assertEqual(y.shape.as_list(), [10, 9, 9, 9, 3])
 
     val = np.random.random((10, 10, 10, 10, 3))
     x = keras.backend.variable(val)
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(1, 1, 1),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 10, 10, 10, 3])
+    self.assertEqual(y.shape.as_list(), [10, 10, 10, 10, 3])
 
     val = np.random.random((10, 10, 10, 10, 3))
     x = keras.backend.variable(val)
     y = keras.backend.pool3d(x, (2, 2, 2), strides=(2, 2, 2),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 5, 5, 3])
+    self.assertEqual(y.shape.as_list(), [10, 5, 5, 5, 3])
 
   def test_conv1d(self):
     val = np.random.random((10, 4, 10))
@@ -761,25 +761,25 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     k = keras.backend.variable(kernel_val)
     y = keras.backend.conv1d(x, k, strides=(1,),
                              padding='valid', data_format='channels_first')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 8])
+    self.assertEqual(y.shape.as_list(), [10, 5, 8])
 
     val = np.random.random((10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv1d(x, k, strides=(1,),
                              padding='valid', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 8, 5])
+    self.assertEqual(y.shape.as_list(), [10, 8, 5])
 
     val = np.random.random((10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv1d(x, k, strides=(1,),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 10, 5])
+    self.assertEqual(y.shape.as_list(), [10, 10, 5])
 
     val = np.random.random((10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv1d(x, k, strides=(2,),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 5])
+    self.assertEqual(y.shape.as_list(), [10, 5, 5])
 
   def test_local_conv_channels_dim(self):
     filters = 3
@@ -899,25 +899,25 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     k = keras.backend.variable(kernel_val)
     y = keras.backend.conv2d(x, k,
                              padding='valid', data_format='channels_first')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 8, 8])
+    self.assertEqual(y.shape.as_list(), [10, 5, 8, 8])
 
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv2d(x, k, strides=(1, 1),
                              padding='valid', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 8, 8, 5])
+    self.assertEqual(y.shape.as_list(), [10, 8, 8, 5])
 
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv2d(x, k, strides=(1, 1),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 10, 10, 5])
+    self.assertEqual(y.shape.as_list(), [10, 10, 10, 5])
 
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv2d(x, k, strides=(2, 2),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 5, 5])
+    self.assertEqual(y.shape.as_list(), [10, 5, 5, 5])
     with self.assertRaises(ValueError):
       y = keras.backend.conv2d(x, k, (2, 2),
                                padding='other', data_format='channels_last')
@@ -936,25 +936,25 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     pk = keras.backend.variable(pointwise_kernel_val)
     y = keras.backend.separable_conv2d(
         x, dk, pk, padding='valid', data_format='channels_first')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 8, 8])
+    self.assertEqual(y.shape.as_list(), [10, 5, 8, 8])
 
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.separable_conv2d(
         x, dk, pk, strides=(1, 1), padding='valid', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 8, 8, 5])
+    self.assertEqual(y.shape.as_list(), [10, 8, 8, 5])
 
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.separable_conv2d(
         x, dk, pk, strides=(1, 1), padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 10, 10, 5])
+    self.assertEqual(y.shape.as_list(), [10, 10, 10, 5])
 
     val = np.random.random((10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.separable_conv2d(
         x, dk, pk, strides=(2, 2), padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 5, 5])
+    self.assertEqual(y.shape.as_list(), [10, 5, 5, 5])
     with self.assertRaises(ValueError):
       y = keras.backend.separable_conv2d(
           x, dk, pk, (2, 2), padding='other', data_format='channels_last')
@@ -971,25 +971,25 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     k = keras.backend.variable(kernel_val)
     y = keras.backend.conv3d(x, k,
                              padding='valid', data_format='channels_first')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 8, 8, 8])
+    self.assertEqual(y.shape.as_list(), [10, 5, 8, 8, 8])
 
     val = np.random.random((10, 10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv3d(x, k, strides=(1, 1, 1),
                              padding='valid', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 8, 8, 8, 5])
+    self.assertEqual(y.shape.as_list(), [10, 8, 8, 8, 5])
 
     val = np.random.random((10, 10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv3d(x, k, strides=(1, 1, 1),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 10, 10, 10, 5])
+    self.assertEqual(y.shape.as_list(), [10, 10, 10, 10, 5])
 
     val = np.random.random((10, 10, 10, 10, 4))
     x = keras.backend.variable(val)
     y = keras.backend.conv3d(x, k, strides=(2, 2, 2),
                              padding='same', data_format='channels_last')
-    self.assertEqual(y.get_shape().as_list(), [10, 5, 5, 5, 5])
+    self.assertEqual(y.shape.as_list(), [10, 5, 5, 5, 5])
     with self.assertRaises(ValueError):
       y = keras.backend.conv3d(x, k, (2, 2, 2),
                                padding='other', data_format='channels_last')
@@ -1049,13 +1049,11 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                                            initial_states,
                                                            **kwargs)
       # check static shape inference
-      self.assertEqual(last_output.get_shape().as_list(),
-                       [num_samples, output_dim])
-      self.assertEqual(outputs.get_shape().as_list(),
+      self.assertEqual(last_output.shape.as_list(), [num_samples, output_dim])
+      self.assertEqual(outputs.shape.as_list(),
                        [num_samples, timesteps, output_dim])
       for state in new_states:
-        self.assertEqual(state.get_shape().as_list(),
-                         [num_samples, output_dim])
+        self.assertEqual(state.shape.as_list(), [num_samples, output_dim])
 
       last_output_list[i].append(keras.backend.eval(last_output))
       outputs_list[i].append(keras.backend.eval(outputs))
@@ -1147,16 +1145,14 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
                                                            initial_states,
                                                            **kwargs)
       # check static shape inference
-      self.assertEqual(last_output.get_shape().as_list(),
-                       [num_samples, output_dim])
-      self.assertEqual(outputs.get_shape().as_list(),
+      self.assertEqual(last_output.shape.as_list(), [num_samples, output_dim])
+      self.assertEqual(outputs.shape.as_list(),
                        [num_samples, timesteps, output_dim])
       # for state in new_states:
-      #   self.assertEqual(state.get_shape().as_list(),
+      #   self.assertEqual(state.shape.as_list(),
       #                     [num_samples, output_dim])
-      self.assertEqual(new_states[0].get_shape().as_list(),
-                       [num_samples, output_dim])
-      self.assertEqual(new_states[1].get_shape().as_list(),
+      self.assertEqual(new_states[0].shape.as_list(), [num_samples, output_dim])
+      self.assertEqual(new_states[1].shape.as_list(),
                        [num_samples, 2 * output_dim])
 
       last_output_list[i].append(keras.backend.eval(last_output))
@@ -1328,25 +1324,37 @@ class BackendNNOpsTest(test.TestCase, parameterized.TestCase):
     beta = keras.backend.variable(b_val)
     normed, mean, var = keras.backend.normalize_batch_in_training(
         x, gamma, beta, reduction_axes, epsilon=1e-3)
-    self.assertEqual(normed.get_shape().as_list(), [10, 3, 10, 10])
-    self.assertEqual(mean.get_shape().as_list(), [3,])
-    self.assertEqual(var.get_shape().as_list(), [3,])
+    self.assertEqual(normed.shape.as_list(), [10, 3, 10, 10])
+    self.assertEqual(mean.shape.as_list(), [
+        3,
+    ])
+    self.assertEqual(var.shape.as_list(), [
+        3,
+    ])
 
     # case: gamma=None
     gamma = None
     normed, mean, var = keras.backend.normalize_batch_in_training(
         x, gamma, beta, reduction_axes, epsilon=1e-3)
-    self.assertEqual(normed.get_shape().as_list(), [10, 3, 10, 10])
-    self.assertEqual(mean.get_shape().as_list(), [3,])
-    self.assertEqual(var.get_shape().as_list(), [3,])
+    self.assertEqual(normed.shape.as_list(), [10, 3, 10, 10])
+    self.assertEqual(mean.shape.as_list(), [
+        3,
+    ])
+    self.assertEqual(var.shape.as_list(), [
+        3,
+    ])
 
     # case: beta=None
     beta = None
     normed, mean, var = keras.backend.normalize_batch_in_training(
         x, gamma, beta, reduction_axes, epsilon=1e-3)
-    self.assertEqual(normed.get_shape().as_list(), [10, 3, 10, 10])
-    self.assertEqual(mean.get_shape().as_list(), [3,])
-    self.assertEqual(var.get_shape().as_list(), [3,])
+    self.assertEqual(normed.shape.as_list(), [10, 3, 10, 10])
+    self.assertEqual(mean.shape.as_list(), [
+        3,
+    ])
+    self.assertEqual(var.shape.as_list(), [
+        3,
+    ])
 
   def test_dropout(self):
     inputs = array_ops.ones((200, 200))
@@ -1716,9 +1724,9 @@ class BackendGraphTests(test.TestCase):
 
   def test_placeholder(self):
     x = keras.backend.placeholder(shape=(3, 4))
-    self.assertEqual(x.get_shape().as_list(), [3, 4])
+    self.assertEqual(x.shape.as_list(), [3, 4])
     x = keras.backend.placeholder(shape=(3, 4), sparse=True)
-    self.assertEqual(x.get_shape().as_list(), [3, 4])
+    self.assertEqual(x.shape.as_list(), [3, 4])
 
   @test_util.run_deprecated_v1
   def test_batch_normalization(self):
