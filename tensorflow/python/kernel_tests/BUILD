@@ -3348,7 +3348,7 @@ cuda_py_test(
         "no_rocm",  # flaky test
         "no_windows",
     ],
-    # TODO(kuny): Add xla_enable_strict_auto_jit = True after b/124377352 is fixed.
+    # b/127344411: xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3385,7 +3385,7 @@ cuda_py_test(
         "no_oss",  # b/117185141.
         "nomsan",  # TODO(b/117236102): Re-enable in msan build.
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/127344411: xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(
@@ -3405,7 +3405,7 @@ cuda_py_test(
         "no_windows_gpu",
         "nomsan",
     ],
-    xla_enable_strict_auto_jit = True,
+    # b/127344411: xla_enable_strict_auto_jit = True,
 )
 
 cuda_py_test(

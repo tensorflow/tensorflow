@@ -247,12 +247,23 @@ tf_xla_py_test(
     name = "self_adjoint_eig_op_test",
     size = "medium",
     srcs = ["self_adjoint_eig_op_test.py"],
-    # TODO(kuny): remove it after b/124377352 is fixed.
-    disabled_backends = [
-        "cpu",
-        "gpu",
-        "cpu_ondemand",
+    tags = ["optonly"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:map_fn",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+        "//tensorflow/python:training",
+        "@absl_py//absl/testing:parameterized",
     ],
+)
+
+tf_xla_py_test(
+    name = "svd_op_test",
+    size = "medium",
+    srcs = ["svd_op_test.py"],
     tags = ["optonly"],
     deps = [
         ":xla_test",
