@@ -318,6 +318,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       },
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+
+  pipeline.AddPass<CpuLayoutAssignment>(
+      module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
+
   pipeline.AddPass<CpuInstructionFusion>();
 
   pipeline.AddPass<ScatterExpander>();
@@ -325,10 +330,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
-
-  pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
   return pipeline.Run(module).status();
 }
 
