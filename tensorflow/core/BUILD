@@ -5421,6 +5421,14 @@ filegroup(
 )
 
 filegroup(
+    name = "lib_bfloat16_headers",
+    srcs = [
+        "lib/bfloat16/bfloat16.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "lib_core_headers",
     srcs = [
         "lib/core/arena.h",
@@ -5441,6 +5449,146 @@ filegroup(
 )
 
 filegroup(
+    name = "lib_gif_headers",
+    srcs = [
+        "lib/gif/gif_io.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_gtl_headers",
+    srcs = [
+        "lib/gtl/array_slice.h",
+        "lib/gtl/cleanup.h",
+        "lib/gtl/compactptrset.h",
+        "lib/gtl/edit_distance.h",
+        "lib/gtl/flatmap.h",
+        "lib/gtl/flatrep.h",
+        "lib/gtl/flatset.h",
+        "lib/gtl/inlined_vector.h",
+        "lib/gtl/int_type.h",
+        "lib/gtl/iterator_range.h",
+        "lib/gtl/manual_constructor.h",
+        "lib/gtl/map_util.h",
+        "lib/gtl/optional.h",
+        "lib/gtl/priority_queue_util.h",
+        "lib/gtl/stl_util.h",
+        "lib/gtl/top_n.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_hash_headers",
+    srcs = [
+        "lib/hash/crc32c.h",
+        "lib/hash/hash.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_histogram_headers",
+    srcs = [
+        "lib/histogram/histogram.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_io_headers",
+    srcs = [
+        "lib/io/block.h",
+        "lib/io/block_builder.h",
+        "lib/io/buffered_inputstream.h",
+        "lib/io/compression.h",
+        "lib/io/format.h",
+        "lib/io/inputbuffer.h",
+        "lib/io/inputstream_interface.h",
+        "lib/io/iterator.h",
+        "lib/io/path.h",
+        "lib/io/proto_encode_helper.h",
+        "lib/io/random_inputstream.h",
+        "lib/io/record_reader.h",
+        "lib/io/record_writer.h",
+        "lib/io/table.h",
+        "lib/io/table_builder.h",
+        "lib/io/table_options.h",
+        "lib/io/two_level_iterator.h",
+        "lib/io/zlib_compression_options.h",
+        "lib/io/zlib_inputstream.h",
+        "lib/io/zlib_outputbuffer.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_io_snappy_headers",
+    srcs = [
+        "lib/io/snappy/snappy_inputbuffer.h",
+        "lib/io/snappy/snappy_outputbuffer.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_jpeg_headers",
+    srcs = [
+        "lib/jpeg/jpeg_handle.h",
+        "lib/jpeg/jpeg_mem.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_math_headers",
+    srcs = [
+        "lib/math/math_util.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_monitoring_headers",
+    srcs = [
+        "lib/monitoring/collected_metrics.h",
+        "lib/monitoring/collection_registry.h",
+        "lib/monitoring/counter.h",
+        "lib/monitoring/gauge.h",
+        "lib/monitoring/metric_def.h",
+        "lib/monitoring/mobile_counter.h",
+        "lib/monitoring/mobile_gauge.h",
+        "lib/monitoring/mobile_sampler.h",
+        "lib/monitoring/sampler.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_png_headers",
+    srcs = [
+        "lib/png/png_io.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
+    name = "lib_random_headers",
+    srcs = [
+        "lib/random/distribution_sampler.h",
+        "lib/random/exact_uniform_int.h",
+        "lib/random/philox_random.h",
+        "lib/random/philox_random_test_utils.h",
+        "lib/random/random.h",
+        "lib/random/random_distributions.h",
+        "lib/random/simple_philox.h",
+        "lib/random/weighted_picker.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "lib_strings_headers",
     srcs = [
         "lib/strings/base64.h",
@@ -5456,21 +5604,13 @@ filegroup(
     visibility = ["//visibility:public"],
 )
 
-# filegroup(
-#     name = "lib_int32_headers",
-#     srcs = [
-#         "lib/strings/base64.h",
-#         "lib/strings/numbers.h",
-#         "lib/strings/ordered_code.h",
-#         "lib/strings/proto_serialization.h",
-#         "lib/strings/proto_text_util.h",
-#         "lib/strings/scanner.h",
-#         "lib/strings/str_util.h",
-#         "lib/strings/strcat.h",
-#         "lib/strings/stringprintf.h",
-#     ],
-#     visibility = ["//visibility:public"],
-# )
+filegroup(
+    name = "lib_wav_headers",
+    srcs = [
+        "lib/wav/wav_io.h",
+    ],
+    visibility = ["//visibility:public"],
+)
 
 filegroup(
     name = "platform_headers",

@@ -218,7 +218,7 @@ pkg_tar(
         ":graph_coreheaders",
         ":grappler_coreheaders",
         ":kernels_coreheaders",
-        # ":lib_coreheaders",
+        ":lib_coreheaders",
         # ":nccl_coreheaders",
         # ":ops_coreheaders",
         ":platform_coreheaders",
@@ -546,11 +546,154 @@ pkg_tar(
 )
 
 pkg_tar(
+    name = "lib_coreheaders",
+    package_dir = "lib",
+    tags = ["manual"],
+    deps = [
+        ":lib_bfloat16_coreheaders",
+        ":lib_core_coreheaders",
+        ":lib_db_coreheaders",
+        ":lib_gif_coreheaders",
+        ":lib_gtl_coreheaders",
+        ":lib_hash_coreheaders",
+        ":lib_histogram_coreheaders",
+        ":lib_io_coreheaders",
+        ":lib_jpeg_coreheaders",
+        ":lib_math_coreheaders",
+        ":lib_monitoring_coreheaders",
+        ":lib_png_coreheaders",
+        ":lib_random_coreheaders",
+        ":lib_strings_coreheaders",
+        ":lib_wav_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "lib_bfloat16_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_bfloat16_headers",
+    ],
+    package_dir = "bfloat16",
+    tags = ["manual"],
+)
+
+pkg_tar(
     name = "lib_core_coreheaders",
     srcs = [
         "//tensorflow/core:lib_core_headers",
     ],
-    package_dir = "lib/core",
+    package_dir = "core",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_db_coreheaders",
+    srcs = [
+        "//tensorflow/core/lib/db:headers",
+    ],
+    package_dir = "db",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_gif_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_gif_headers",
+    ],
+    package_dir = "gif",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_gtl_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_gtl_headers",
+    ],
+    package_dir = "gtl",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_hash_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_hash_headers",
+    ],
+    package_dir = "hash",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_histogram_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_histogram_headers",
+    ],
+    package_dir = "histogram",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_io_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_io_headers",
+    ],
+    package_dir = "io",
+    tags = ["manual"],
+    deps = [
+        ":lib_io_snappy_coreheaders",
+    ],
+)
+
+pkg_tar(
+    name = "lib_io_snappy_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_io_snappy_headers",
+    ],
+    package_dir = "snappy",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_jpeg_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_jpeg_headers",
+    ],
+    package_dir = "jpeg",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_math_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_math_headers",
+    ],
+    package_dir = "math",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_monitoring_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_monitoring_headers",
+    ],
+    package_dir = "monitoring",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_png_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_png_headers",
+    ],
+    package_dir = "png",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_random_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_random_headers",
+    ],
+    package_dir = "random",
     tags = ["manual"],
 )
 
@@ -559,7 +702,16 @@ pkg_tar(
     srcs = [
         "//tensorflow/core:lib_strings_headers",
     ],
-    package_dir = "lib/strings",
+    package_dir = "strings",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "lib_wav_coreheaders",
+    srcs = [
+        "//tensorflow/core:lib_strings_headers",
+    ],
+    package_dir = "wav",
     tags = ["manual"],
 )
 
@@ -640,25 +792,6 @@ pkg_tar(
     tags = ["manual"],
     deps = [":common_deps"],
 )
-
-# pkg_tar(
-#     name = "corelib",
-#     srcs = select({
-#         "//tensorflow:windows": [
-#             "//tensorflow:tensorflow_cc.dll",
-#             "//tensorflow:tensorflow_cc_dll_import_lib",
-#         ],
-#         "//conditions:default": ["//tensorflow:libtensorflow_cc.so"],
-#     }),
-#     package_dir = "lib",
-#     # Mark as "manual" till
-#     # https://github.com/bazelbuild/bazel/issues/2352
-#     # and https://github.com/bazelbuild/bazel/issues/1580
-#     # are resolved, otherwise these rules break when built
-#     # with Python 3.
-#     tags = ["manual"],
-#     deps = [":common_deps"],
-# )
 
 pkg_tar(
     name = "clicenses",

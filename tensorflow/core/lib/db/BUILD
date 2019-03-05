@@ -43,3 +43,11 @@ tf_cc_test(
         "//tensorflow/core:test_main",
     ],
 )
+
+filegroup(
+    name = "headers",
+    srcs = [
+        "sqlite.h",
+    ],
+    visibility = ["//visibility:public"],
+)
