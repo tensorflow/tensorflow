@@ -255,7 +255,7 @@ getTileableBands(Function *f,
 
 void LoopTiling::runOnFunction() {
   std::vector<SmallVector<OpPointer<AffineForOp>, 6>> bands;
-  getTileableBands(&getFunction(), &bands);
+  getTileableBands(getFunction(), &bands);
 
   for (auto &band : bands) {
     // Set up tile sizes; fill missing tile sizes at the end with default tile

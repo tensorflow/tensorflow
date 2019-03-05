@@ -42,7 +42,7 @@ FunctionPassBase *mlir::createLoopParallelismDetectionPass() {
 
 // Walks the function and marks all parallel 'for' ops with an attribute.
 void LoopParallelismDetection::runOnFunction() {
-  Function *f = &getFunction();
+  Function *f = getFunction();
   FuncBuilder b(f);
   f->walk<AffineForOp>([&](OpPointer<AffineForOp> forOp) {
     forOp->getInstruction()->setAttr("parallel",

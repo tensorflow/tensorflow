@@ -2202,7 +2202,7 @@ void LoopFusion::runOnFunction() {
   }
 
   MemRefDependenceGraph g;
-  if (g.init(&getFunction()))
+  if (g.init(getFunction()))
     GreedyFusion(&g, localBufSizeThreshold, fastMemorySpace).run();
 }
 

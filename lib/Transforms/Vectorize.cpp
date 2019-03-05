@@ -1262,7 +1262,7 @@ void Vectorize::runOnFunction() {
   // Thread-safe RAII local context, BumpPtrAllocator freed on exit.
   NestedPatternContext mlContext;
 
-  Function *f = &getFunction();
+  Function *f = getFunction();
   for (auto &pat : makePatterns()) {
     LLVM_DEBUG(dbgs() << "\n******************************************");
     LLVM_DEBUG(dbgs() << "\n******************************************");

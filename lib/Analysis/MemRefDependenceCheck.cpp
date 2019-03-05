@@ -113,7 +113,7 @@ static void checkDependences(ArrayRef<Instruction *> loadsAndStores) {
 void MemRefDependenceCheck::runOnFunction() {
   // Collect the loads and stores within the function.
   loadsAndStores.clear();
-  getFunction().walk([&](Instruction *inst) {
+  getFunction()->walk([&](Instruction *inst) {
     if (inst->isa<LoadOp>() || inst->isa<StoreOp>())
       loadsAndStores.push_back(inst);
   });

@@ -754,7 +754,7 @@ uint64_t DmaGeneration::runOnBlock(Block::iterator begin, Block::iterator end) {
 }
 
 void DmaGeneration::runOnFunction() {
-  Function *f = &getFunction();
+  Function *f = getFunction();
   FuncBuilder topBuilder(f);
   zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
 

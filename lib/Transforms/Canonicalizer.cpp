@@ -40,16 +40,16 @@ struct Canonicalizer : public FunctionPass<Canonicalizer> {
 
 void Canonicalizer::runOnFunction() {
   OwningRewritePatternList patterns;
-  auto &func = getFunction();
+  auto *func = getFunction();
 
   // TODO: Instead of adding all known patterns from the whole system lazily add
   // and cache the canonicalization patterns for ops we see in practice when
   // building the worklist.  For now, we just grab everything.
-  auto *context = func.getContext();
+  auto *context = func->getContext();
   for (auto *op : context->getRegisteredOperations())
     op->getCanonicalizationPatterns(patterns, context);
 
-  applyPatternsGreedily(&func, std::move(patterns));
+  applyPatternsGreedily(func, std::move(patterns));
 }
 
 /// Create a Canonicalizer pass.

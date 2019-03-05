@@ -146,7 +146,7 @@ void PipelineDataTransfer::runOnFunction() {
   // deleted and replaced by a prologue, a new steady-state loop and an
   // epilogue).
   forOps.clear();
-  getFunction().walkPostOrder<AffineForOp>(
+  getFunction()->walkPostOrder<AffineForOp>(
       [&](OpPointer<AffineForOp> forOp) { forOps.push_back(forOp); });
   for (auto forOp : forOps)
     runOnAffineForOp(forOp);

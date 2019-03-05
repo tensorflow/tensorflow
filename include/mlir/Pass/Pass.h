@@ -100,8 +100,8 @@ protected:
   virtual void runOnFunction() = 0;
 
   /// Return the current function being transformed.
-  Function &getFunction() {
-    return *getPassState().irAndPassFailed.getPointer();
+  Function *getFunction() {
+    return getPassState().irAndPassFailed.getPointer();
   }
 
   /// Returns the current pass state.

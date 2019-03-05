@@ -91,7 +91,7 @@ void LoopUnrollAndJam::runOnFunction() {
   // Currently, just the outermost loop from the first loop nest is
   // unroll-and-jammed by this pass. However, runOnAffineForOp can be called on
   // any for operation.
-  auto &entryBlock = getFunction().front();
+  auto &entryBlock = getFunction()->front();
   if (auto forOp = entryBlock.front().dyn_cast<AffineForOp>())
     runOnAffineForOp(forOp);
 }

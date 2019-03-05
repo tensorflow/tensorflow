@@ -733,7 +733,7 @@ void MaterializeVectorsPass::runOnFunction() {
   NestedPatternContext mlContext;
 
   // TODO(ntv): Check to see if this supports arbitrary top-level code.
-  Function *f = &getFunction();
+  Function *f = getFunction();
   if (f->getBlocks().size() != 1)
     return;
 

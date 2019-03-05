@@ -426,7 +426,7 @@ public:
 struct LowerVectorTransfersPass
     : public FunctionPass<LowerVectorTransfersPass> {
   void runOnFunction() {
-    Function *f = &getFunction();
+    Function *f = getFunction();
     applyMLPatternsGreedily<VectorTransferExpander<VectorTransferReadOp>,
                             VectorTransferExpander<VectorTransferWriteOp>>(f);
   }
