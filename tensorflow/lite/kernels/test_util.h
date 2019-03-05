@@ -250,6 +250,7 @@ class SingleOpModel {
   // Build the interpreter for this model. Also, resize and allocate all
   // tensors given the shapes of the inputs.
   void BuildInterpreter(std::vector<std::vector<int>> input_shapes,
+                        int num_threads = -1,
                         bool allow_fp32_relax_to_fp16 = false);
 
   // Executes inference, asserting success.

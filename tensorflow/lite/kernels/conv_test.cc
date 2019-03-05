@@ -45,7 +45,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
       const TensorData& filter, const TensorData& output, int stride_width = 2,
       int stride_height = 2, enum Padding padding = Padding_VALID,
       enum ActivationFunctionType activation = ActivationFunctionType_NONE,
-      int dilation_width_factor = 1, int dilation_height_factor = 1) {
+      int dilation_width_factor = 1, int dilation_height_factor = 1,
+      int num_threads = -1) {
     input_ = AddInput(input);
     filter_ = AddInput(filter);
 
@@ -97,7 +98,8 @@ class BaseConvolutionOpModel : public SingleOpModel {
 
     resolver_ = absl::make_unique<SingleOpResolver>(BuiltinOperator_CONV_2D,
                                                     registration);
-    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)});
+    BuildInterpreter({GetShape(input_), GetShape(filter_), GetShape(bias_)},
+                     num_threads);
   }
 
  protected:
@@ -142,6 +144,37 @@ TEST_P(ConvolutionOpTest, SimpleTestFloat32) {
   ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
                        {TensorType_FLOAT32, {3, 2, 2, 1}},
                        {TensorType_FLOAT32, {}});
+
+  m.SetInput({
+      // First batch
+      1, 1, 1, 1,  // row = 1
+      2, 2, 2, 2,  // row = 2
+      // Second batch
+      1, 2, 3, 4,  // row = 1
+      1, 2, 3, 4,  // row = 2
+  });
+  m.SetFilter({
+      1, 2, 3, 4,    // first 2x2 filter
+      -1, 1, -1, 1,  // second 2x2 filter
+      -1, -1, 1, 1,  // third 2x2 filter
+  });
+  m.SetBias({1, 2, 3});
+
+  m.Invoke();
+
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({
+                                 18, 2, 5,  // first batch, left
+                                 18, 2, 5,  // first batch, right
+                                 17, 4, 3,  // second batch, left
+                                 37, 4, 3,  // second batch, right
+                             }));
+}
+
+TEST_P(ConvolutionOpTest, SimpleTestFloat32NumThread1) {
+  ConvolutionOpModel m(GetRegistration(), {TensorType_FLOAT32, {2, 2, 4, 1}},
+                       {TensorType_FLOAT32, {3, 2, 2, 1}},
+                       {TensorType_FLOAT32, {}}, 2, 2, Padding_VALID,
+                       ActivationFunctionType_NONE, 1, 1, 1);
 
   m.SetInput({
       // First batch
