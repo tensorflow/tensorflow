@@ -179,6 +179,7 @@ tf_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
+    tags = ["no_windows_gpu"],
 )
 
 tf_py_test(
