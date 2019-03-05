@@ -5,7 +5,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import contextlib
+import fnmatch
+import json as js
 import numpy as np
+import re
 
 from tensorflow.core.framework import summary_pb2
 from tensorflow.core.framework import attr_value_pb2
@@ -16,11 +20,6 @@ from tensorflow.compiler.xla import xla_data_pb2
 from tensorflow.python.client import session as session_lib
 from tensorflow.python.framework import ops
 from tensorflow.python.summary.summary import tensor_summary
-
-import contextlib
-import fnmatch
-import json
-import re
 
 @contextlib.contextmanager
 def ipu_session(compilation_trace=True, io_trace=False, execution_trace=True,
@@ -87,7 +86,6 @@ def get_compute_sets_from_report(report):
   cs = [x.split(":")[1].strip() for x in cs]
   cs = [x.split()[0] for x in cs]
   return cs
-
 
 def get_maximum_tile_size_from_events(report):
   print(report)
@@ -165,6 +163,20 @@ def extract_all_strings_from_event_trace(events):
       pass
   return result
 
+def get_compute_sets_from_json_report(event):
+  if event.type == IpuTraceEvent.COMPILE_END:
+    rep = js.loads(event.compile_end.compilation_report.decode('utf-8'))
+    return rep['computeSets']['names']
+  else:
+    return []
+
+def get_all_global_exchange_from_json_report(event):
+  if event.type == IpuTraceEvent.COMPILE_END:
+    rep = js.loads(event.compile_end.compilation_report.decode('utf-8'))
+    return [p['name'] for p in rep['programs'] if p['type'] == 'GlobalExchange']
+  else:
+    return []
+
 def extract_all_types_from_event_trace(events):
   result = []
   for e in events:
@@ -194,7 +206,7 @@ def extract_all_io_events(events):
     if evt.type in [IpuTraceEvent.HOST_TO_DEVICE_TRANSFER,
                     IpuTraceEvent.DEVICE_TO_HOST_TRANSFER]:
       try:
-        payload = json.loads(evt.data_transfer.data_transfer.decode('utf-8'))
+        payload = js.loads(evt.data_transfer.data_transfer.decode('utf-8'))
         for t in payload["tensors"]:
           result += [(evt.type, t["name"])]
       except UnicodeDecodeError:

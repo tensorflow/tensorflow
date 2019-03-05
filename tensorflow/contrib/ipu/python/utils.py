@@ -629,7 +629,7 @@ def extract_execution_state_timing_list_from_events(events):
         pass
   return result
 
-def extract_xla_graph_from_compilation_event(evt):
+def extract_graphviz_from_compilation_event(evt):
   """Return the final optimized XLA graph from a COMPILE_BEGIN event.
   :param evt: An IpuTraceEvent which is of type COMPILE_BEGIN.
   :return: A DOT file string of the main XLA computation.

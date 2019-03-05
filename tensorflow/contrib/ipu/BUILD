@@ -157,6 +157,7 @@ tf_py_test(
     additional_deps = [
         ":ipu",
         "//tensorflow:tensorflow_py",
+        "//tensorflow/compiler/plugin/poplar:test_utils_py",
         "//tensorflow/contrib/compiler:xla",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:framework",

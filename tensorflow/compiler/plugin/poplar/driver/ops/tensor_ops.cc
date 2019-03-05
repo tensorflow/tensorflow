@@ -344,7 +344,8 @@ StatusOr<poplar::program::Program> CreateInterIpuCopy(
   }
 
   out =
-      poputil::copyToIpu(res.main_graph, out, seq, sharding.GetUniqueDevice());
+      poputil::copyToIpu(res.main_graph, out, seq, sharding.GetUniqueDevice(),
+                         GetDebugName(inst));
 
   TF_CHECK_OK(AddOutputTensor(tensor_map, inst, 0, out));
   return seq;

@@ -246,9 +246,7 @@ void ConfigurePoplarXFeedManager(const InfeedInfos& infeed_infos,
 }  // namespace
 
 static std::string SerializeComputationToGraphDef(const HloComputation& comp) {
-  std::string buffer =
-      hlo_graph_dumper::DumpGraph(comp, "main_computation", {}, nullptr, true);
-  return buffer;
+  return hlo_graph_dumper::HloComputationToDotGraph(comp, {});
 }
 
 StatusOr<std::unique_ptr<HloModule>> PoplarCompiler::RunHloPasses(

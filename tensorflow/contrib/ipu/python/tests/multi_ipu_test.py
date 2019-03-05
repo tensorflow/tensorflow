@@ -2,12 +2,15 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import numpy as np
 import json
+import networkx as nx
+import numpy as np
 import re
+import tempfile
 
 from tensorflow.compiler.plugin.poplar.ops import gen_ipu_ops
 from tensorflow.compiler.plugin.poplar.driver.trace_pb2 import IpuTraceEvent
+from tensorflow.compiler.plugin.poplar.tests import test_utils as tu
 from tensorflow.contrib.ipu import ipu_compiler
 from tensorflow.contrib import ipu
 from tensorflow.core.protobuf import config_pb2
@@ -248,27 +251,19 @@ class MultiIpuTest(test_util.TensorFlowTestCase):
       rep = sess.run(report)
 
       num_compiles = 0
-      dot_graph = None
+      ge_list = []
       evts = ipu.utils.extract_all_events(rep)
       for evt in evts:
-        if evt.type == IpuTraceEvent.COMPILE_BEGIN:
-          dot_graph = ipu.utils.extract_xla_graph_from_compilation_event(evt)
         if evt.type == IpuTraceEvent.COMPILE_END:
           num_compiles = num_compiles + 1
+          ge_list = tu.get_all_global_exchange_from_json_report(evt)
 
       self.assertEqual(num_compiles, 1)
 
-      # There is 1 inter-ipu copy and it copies something 'data' shaped
-      n_inter_ipu_copies = 0
-      for n in dot_graph.node:
-        if n.op == 'HloCustomCall':
-          a = n.attr.get('custom_call_target')
-          s = n.attr.get('_output_shapes').list.shape[0]
-          if a.s == b'inter_ipu_copy':
-            n_inter_ipu_copies = n_inter_ipu_copies + 1
-            self.assertEqual([int(i.size) for i in s.dim], [1, 32, 32, 8])
+      # There is 1 piece of global exchange (aprt from progId)
+      wl = ['progIdCopy/GlobalPreAll', '*_to_/custom-call/GlobalPreAll']
+      self.assertTrue(tu.check_all_compute_sets_and_list(ge_list, wl))
 
-      self.assertEqual(n_inter_ipu_copies, 1)
 
 if __name__ == "__main__":
     googletest.main()
