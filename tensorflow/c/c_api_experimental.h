@@ -294,12 +294,11 @@ TF_CAPI_EXPORT extern void TFE_DeleteTraceContext(TFE_TraceContext* trace_ctx);
 
 // Symbolically executes `op`, by adding a corresponding node to the graph
 // associated with `trace_ctx`. This graph node outputs a set of symbolic
-// tensors in `retvals` and `num_retvals`.
-TF_CAPI_EXPORT extern void TFE_AddEagerOpToGraph(TFE_Op* op,
-                                                 TFE_TraceContext* trace_ctx,
-                                                 TFE_TensorHandle** retvals,
-                                                 int* num_retvals,
-                                                 TF_Status* status);
+// tensors in `retvals` and `num_retvals`. Returns the corresponding graph
+// operation on success, otherwise returns nullptr.
+TF_CAPI_EXPORT extern TF_Operation* TFE_AddEagerOpToGraph(
+    TFE_Op* op, TFE_TraceContext* trace_ctx, TFE_TensorHandle** retvals,
+    int* num_retvals, TF_Status* status);
 
 // Finalizes the trace graph and its inputs, and returns the number of inputs.
 // After this call, the next two APIs can be called to iterate over the input

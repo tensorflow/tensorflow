@@ -111,6 +111,7 @@ cc_library(
     ],
     deps = [
         "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels/internal:quantization_util",
         "//tensorflow/lite/kernels/internal:round",
     ],
 )
@@ -151,6 +152,7 @@ cc_library(
     srcs = [
         "activations.cc",
         "add.cc",
+        "add_n.cc",
         "arg_min_max.cc",
         "audio_spectrogram.cc",
         "basic_rnn.cc",
@@ -178,9 +180,10 @@ cc_library(
         "floor_mod.cc",
         "fully_connected.cc",
         "gather.cc",
+        "gather_nd.cc",
         "hashtable_lookup.cc",
+        "if.cc",
         "l2norm.cc",
-        "layer_norm_lstm.cc",
         "local_response_norm.cc",
         "logical.cc",
         "lsh_projection.cc",
@@ -196,12 +199,13 @@ cc_library(
         "pooling.cc",
         "pow.cc",
         "range.cc",
+        "rank.cc",
         "reduce.cc",
-        "relu1.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
         "reverse.cc",
+        "reverse_sequence.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -224,6 +228,8 @@ cc_library(
         "unidirectional_sequence_rnn.cc",
         "unique.cc",
         "unpack.cc",
+        "where.cc",
+        "while.cc",
         "zeros_like.cc",
     ],
     hdrs = [
@@ -332,19 +338,6 @@ tf_cc_test(
 )
 
 tf_cc_test(
-    name = "relu1_test",
-    size = "small",
-    srcs = ["relu1_test.cc"],
-    deps = [
-        ":builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
-    ],
-)
-
-tf_cc_test(
     name = "activations_test",
     size = "small",
     srcs = ["activations_test.cc"],
@@ -364,6 +357,18 @@ tf_cc_test(
         ":builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "add_n_test",
+    size = "small",
+    srcs = ["add_n_test.cc"],
+    deps = [
+        ":builtin_ops",
+        ":test_util",
+        "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest",
     ],
 )
@@ -716,6 +721,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "gather_nd_test",
+    size = "small",
+    srcs = ["gather_nd_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "topk_v2_test",
     size = "small",
     srcs = ["topk_v2_test.cc"],
@@ -874,19 +892,6 @@ tf_cc_test(
         "//tensorflow/lite:string_util",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
-    ],
-)
-
-tf_cc_test(
-    name = "layer_norm_lstm_test",
-    size = "small",
-    srcs = ["layer_norm_lstm_test.cc"],
-    deps = [
-        ":builtin_ops",
-        "//tensorflow/lite:framework",
-        "//tensorflow/lite/kernels:test_util",
-        "@com_google_googletest//:gtest",
-        "@flatbuffers",
     ],
 )
 
@@ -1095,6 +1100,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "rank_test",
+    size = "small",
+    srcs = ["rank_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "pow_test",
     size = "small",
     srcs = ["pow_test.cc"],
@@ -1172,6 +1190,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "where_test",
+    size = "small",
+    srcs = ["where_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "zeros_like_test",
     size = "small",
     srcs = ["zeros_like_test.cc"],
@@ -1216,9 +1247,44 @@ tf_cc_test(
     srcs = ["squared_difference_test.cc"],
     deps = [
         ":builtin_ops",
+        "//tensorflow/lite:builtin_op_data",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "if_test",
+    size = "small",
+    srcs = ["if_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
+        ":subgraph_test_util",
+        ":test_util",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "while_test",
+    size = "small",
+    srcs = ["while_test.cc"],
+    tags = ["tflite_not_portable_ios"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
+        ":subgraph_test_util",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
     ],
 )
 
@@ -1279,5 +1345,45 @@ tf_cc_test(
         ":test_util",
         "//tensorflow/lite:framework",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_library(
+    name = "subgraph_test_util",
+    testonly = 1,
+    srcs = ["subgraph_test_util.cc"],
+    hdrs = ["subgraph_test_util.h"],
+    deps = [
+        ":builtin_ops",
+        ":kernel_util",
+        ":test_util",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "@com_google_googletest//:gtest",
+        "@flatbuffers",
+    ],
+)
+
+tf_cc_test(
+    name = "subgraph_test_util_test",
+    size = "small",
+    srcs = ["subgraph_test_util_test.cc"],
+    deps = [
+        ":subgraph_test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "reverse_sequence_test",
+    size = "small",
+    srcs = ["reverse_sequence_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
     ],
 )

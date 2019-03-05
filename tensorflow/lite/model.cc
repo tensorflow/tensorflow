@@ -246,11 +246,11 @@ class MallocDataAllocator : public BuiltinDataAllocator {
 
 TfLiteStatus InterpreterBuilder::ParseNodes(
     const flatbuffers::Vector<flatbuffers::Offset<Operator>>* operators,
-    Interpreter* interpreter) {
+    Subgraph* subgraph) {
   TfLiteStatus status = kTfLiteOk;
 
   // Reduce the number of redundant allocations
-  interpreter->ReserveNodes(operators->Length());
+  subgraph->ReserveNodes(operators->Length());
 
   for (int i = 0; i < operators->Length(); ++i) {
     const auto* op = operators->Get(i);
@@ -280,7 +280,7 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
     }
 
     if (op->custom_options()) {
-      interpreter->AddNodeWithParameters(
+      subgraph->AddNodeWithParameters(
           FlatBufferIntArrayToVector(op->inputs()),
           FlatBufferIntArrayToVector(op->outputs()),
           reinterpret_cast<const char*>(op->custom_options()->data()),
@@ -290,10 +290,9 @@ TfLiteStatus InterpreterBuilder::ParseNodes(
       MallocDataAllocator malloc_allocator;
       TF_LITE_ENSURE_STATUS(ParseOpData(op, op_type, error_reporter_,
                                         &malloc_allocator, &builtin_data));
-      interpreter->AddNodeWithParameters(
-          FlatBufferIntArrayToVector(op->inputs()),
-          FlatBufferIntArrayToVector(op->outputs()), nullptr, 0, builtin_data,
-          registration);
+      subgraph->AddNodeWithParameters(FlatBufferIntArrayToVector(op->inputs()),
+                                      FlatBufferIntArrayToVector(op->outputs()),
+                                      nullptr, 0, builtin_data, registration);
     }
   }
 
@@ -353,11 +352,11 @@ TfLiteStatus InterpreterBuilder::ParseQuantization(
 TfLiteStatus InterpreterBuilder::ParseTensors(
     const flatbuffers::Vector<flatbuffers::Offset<Buffer>>* buffers,
     const flatbuffers::Vector<flatbuffers::Offset<Tensor>>* tensors,
-    Interpreter* interpreter) {
+    Subgraph* subgraph) {
   TfLiteStatus status = kTfLiteOk;
 
   // A little helper to get the names of inputs and outputs. Note that they
-  // must outlive the interpreter.
+  // must outlive the subgraph.
   auto get_name = [](const tflite::Tensor* t) -> const char* {
     auto name = t->name();
     if (name) return name->c_str();
@@ -418,7 +417,7 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
 
-      if (interpreter->SetTensorParametersReadOnly(
+      if (subgraph->SetTensorParametersReadOnly(
               i, type, get_name(tensor), dims, quantization, buffer_ptr,
               buffer_size, allocation_) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
@@ -426,9 +425,9 @@ TfLiteStatus InterpreterBuilder::ParseTensors(
         status = kTfLiteError;
       }
     } else {
-      if (interpreter->SetTensorParametersReadWrite(i, type, get_name(tensor),
-                                                    dims, quantization,
-                                                    is_variable) != kTfLiteOk) {
+      if (subgraph->SetTensorParametersReadWrite(i, type, get_name(tensor),
+                                                 dims, quantization,
+                                                 is_variable) != kTfLiteOk) {
         error_reporter_->Report("Tensor %d is invalidly specified in schema.\n",
                                 i);
         status = kTfLiteError;
@@ -510,42 +509,56 @@ TfLiteStatus InterpreterBuilder::operator()(
   // Construct interpreter with correct number of tensors and operators.
   auto* subgraphs = model_->subgraphs();
   auto* buffers = model_->buffers();
-  if (subgraphs->size() != 1) {
-    error_reporter_->Report("Only 1 subgraph is currently supported.\n");
+
+  if (subgraphs->size() == 0) {
+    error_reporter_->Report("No subgraph in the model.\n");
     return cleanup_and_error();
   }
-  const tflite::SubGraph* subgraph = (*subgraphs)[0];
-  auto operators = subgraph->operators();
-  auto tensors = subgraph->tensors();
-  if (!operators || !tensors || !buffers) {
-    error_reporter_->Report(
-        "Did not get operators, tensors, or buffers in input flat buffer.\n");
-    return cleanup_and_error();
-  }
+
   interpreter->reset(new Interpreter(error_reporter_));
-  if ((**interpreter).AddTensors(tensors->Length()) != kTfLiteOk) {
-    return cleanup_and_error();
+  (*interpreter)->SetNumThreads(num_threads);
+  if (subgraphs->Length() > 1) {
+    (*interpreter)->AddSubgraphs(subgraphs->Length() - 1);
   }
-  // Set num threads
-  (**interpreter).SetNumThreads(num_threads);
-  // Parse inputs/outputs
-  (**interpreter).SetInputs(FlatBufferIntArrayToVector(subgraph->inputs()));
-  (**interpreter).SetOutputs(FlatBufferIntArrayToVector(subgraph->outputs()));
 
-  // Finally setup nodes and tensors
-  if (ParseNodes(operators, interpreter->get()) != kTfLiteOk)
-    return cleanup_and_error();
-  if (ParseTensors(buffers, tensors, interpreter->get()) != kTfLiteOk)
-    return cleanup_and_error();
-
-  std::vector<int> variables;
-  for (int i = 0; i < (*interpreter)->tensors_size(); ++i) {
-    auto* tensor = (*interpreter)->tensor(i);
-    if (tensor->is_variable) {
-      variables.push_back(i);
+  for (int subgraph_index = 0; subgraph_index < subgraphs->Length();
+       ++subgraph_index) {
+    const tflite::SubGraph* subgraph = (*subgraphs)[subgraph_index];
+    tflite::Subgraph* modified_subgraph =
+        (*interpreter)->subgraph(subgraph_index);
+    auto operators = subgraph->operators();
+    auto tensors = subgraph->tensors();
+    if (!operators || !tensors || !buffers) {
+      error_reporter_->Report(
+          "Did not get operators, tensors, or buffers in subgraph %d.\n",
+          subgraph_index);
+      return cleanup_and_error();
     }
+    if (modified_subgraph->AddTensors(tensors->Length()) != kTfLiteOk) {
+      return cleanup_and_error();
+    }
+    // Set num threads
+    // Parse inputs/outputs
+    modified_subgraph->SetInputs(
+        FlatBufferIntArrayToVector(subgraph->inputs()));
+    modified_subgraph->SetOutputs(
+        FlatBufferIntArrayToVector(subgraph->outputs()));
+
+    // Finally setup nodes and tensors
+    if (ParseNodes(operators, modified_subgraph) != kTfLiteOk)
+      return cleanup_and_error();
+    if (ParseTensors(buffers, tensors, modified_subgraph) != kTfLiteOk)
+      return cleanup_and_error();
+
+    std::vector<int> variables;
+    for (int i = 0; i < modified_subgraph->tensors_size(); ++i) {
+      auto* tensor = modified_subgraph->tensor(i);
+      if (tensor->is_variable) {
+        variables.push_back(i);
+      }
+    }
+    modified_subgraph->SetVariables(std::move(variables));
   }
-  (**interpreter).SetVariables(std::move(variables));
 
   if (ApplyDelegates(interpreter->get()) != kTfLiteOk)
     return cleanup_and_error();

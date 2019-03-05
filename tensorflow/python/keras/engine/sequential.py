@@ -21,25 +21,21 @@ from __future__ import print_function
 
 import copy
 
-from tensorflow.python.eager import context
-from tensorflow.python.framework import ops
 from tensorflow.python.keras import layers as layer_module
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.engine import input_layer
+from tensorflow.python.keras.engine import training
 from tensorflow.python.keras.engine import training_utils
-from tensorflow.python.keras.engine.input_layer import Input
-from tensorflow.python.keras.engine.input_layer import InputLayer
-from tensorflow.python.keras.engine.network import Network
-from tensorflow.python.keras.engine.training import Model
 from tensorflow.python.keras.utils import layer_utils
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.checkpointable import base as checkpointable
+from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.util import nest
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import keras_export
 
 
 @keras_export('keras.models.Sequential', 'keras.Sequential')
-class Sequential(Model):
+class Sequential(training.Model):
   """Linear stack of layers.
 
   Arguments:
@@ -97,7 +93,7 @@ class Sequential(Model):
   ```
   """
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def __init__(self, layers=None, name=None):
     super(Sequential, self).__init__(name=name)
     self.supports_masking = True
@@ -116,10 +112,10 @@ class Sequential(Model):
     # Historically, `sequential.layers` only returns layers that were added
     # via `add`, and omits the auto-generated `InputLayer` that comes at the
     # bottom of the stack.
-    # `CheckpointableBase` manages the `_layers` attributes and does filtering
+    # `Trackable` manages the `_layers` attributes and does filtering
     # over it.
     layers = super(Sequential, self).layers
-    if layers and isinstance(layers[0], InputLayer):
+    if layers and isinstance(layers[0], input_layer.InputLayer):
       return layers[1:]
     return layers[:]
 
@@ -127,7 +123,7 @@ class Sequential(Model):
   def dynamic(self):
     return any(layer.dynamic for layer in self.layers)
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def add(self, layer):
     """Adds a layer instance on top of the layer stack.
 
@@ -142,6 +138,14 @@ class Sequential(Model):
             multiple output tensors, or is already connected
             somewhere else (forbidden in `Sequential` models).
     """
+    # If we are passed a Keras tensor created by keras.Input(), we can extract
+    # the input layer from its keras history and use that without any loss of
+    # generality.
+    if hasattr(layer, '_keras_history'):
+      origin_layer = layer._keras_history[0]
+      if isinstance(origin_layer, input_layer.InputLayer):
+        layer = origin_layer
+
     if not isinstance(layer, base_layer.Layer):
       raise TypeError('The added layer must be '
                       'an instance of class Layer. '
@@ -149,7 +153,7 @@ class Sequential(Model):
     self.built = False
     set_inputs = False
     if not self._layers:
-      if isinstance(layer, InputLayer):
+      if isinstance(layer, input_layer.InputLayer):
         # Corner case where the user passes an InputLayer layer via `add`.
         assert len(nest.flatten(layer._inbound_nodes[-1].output_tensors)) == 1
         set_inputs = True
@@ -157,10 +161,8 @@ class Sequential(Model):
         batch_shape, dtype = training_utils.get_input_shape_and_dtype(layer)
         if batch_shape:
           # Instantiate an input layer.
-          x = Input(
-              batch_shape=batch_shape,
-              dtype=dtype,
-              name=layer.name + '_input')
+          x = input_layer.Input(
+              batch_shape=batch_shape, dtype=dtype, name=layer.name + '_input')
           # This will build the current layer
           # and create the node connecting the current layer
           # to the input layer we just created.
@@ -199,7 +201,7 @@ class Sequential(Model):
 
     self._layer_call_argspecs[layer] = tf_inspect.getfullargspec(layer.call)
 
-  @checkpointable.no_automatic_dependency_tracking
+  @trackable.no_automatic_dependency_tracking
   def pop(self):
     """Removes the last layer in the model.
 
@@ -233,17 +235,11 @@ class Sequential(Model):
       super(Sequential, self).build(input_shape)
     self.built = True
 
-  def call(self, inputs, training=None, mask=None):
+  def call(self, inputs, training=None, mask=None):  # pylint: disable=redefined-outer-name
     if self._is_graph_network:
+      if not self.built:
+        self._init_graph_network(self.inputs, self.outputs, name=self.name)
       return super(Sequential, self).call(inputs, training=training, mask=mask)
-
-    outputs, _ = self._call_and_compute_mask(
-        inputs, training=training, mask=mask)
-    return outputs
-
-  def _call_and_compute_mask(self, inputs, training=None, mask=None):
-    if not self.built and self._is_graph_network:
-      self._init_graph_network(self.inputs, self.outputs, name=self.name)
 
     outputs = inputs  # handle the corner case where self.layers is empty
     for layer in self.layers:
@@ -257,35 +253,13 @@ class Sequential(Model):
       if 'training' in argspec:
         kwargs['training'] = training
 
-      if isinstance(layer, Network) and layer._compute_output_and_mask_jointly:
-        outputs, mask = layer._call_and_compute_mask(inputs, **kwargs)
-      else:
-        if not layer.built:
-          # Build layer if applicable.
-          with ops.name_scope(layer._name_scope()):
-            layer._maybe_build(inputs)
-          layer.built = True
-        if layer.supports_masking:
-          mask = layer.compute_mask(inputs, mask)
-        else:
-          mask = None
-
-        if context.executing_eagerly():
-          # __call__ handles activity regularization.
-          outputs = layer(inputs, **kwargs)
-        elif layer.dynamic:
-          outputs = layer._symbolic_call(inputs)
-          layer._handle_activity_regularization(inputs, outputs)
-        else:
-          outputs = layer.call(inputs, **kwargs)
-          layer._handle_activity_regularization(inputs, outputs)
-
-      if not context.executing_eagerly():
-        outputs._keras_mask = mask
+      outputs = layer(inputs, **kwargs)
 
       # `outputs` will be the inputs to the next layer.
       inputs = outputs
-    return outputs, mask
+      mask = outputs._keras_mask
+
+    return outputs
 
   def compute_output_shape(self, input_shape):
     shape = input_shape
@@ -294,8 +268,11 @@ class Sequential(Model):
     return shape
 
   def compute_mask(self, inputs, mask):
-    _, mask = self._call_and_compute_mask(inputs, mask=mask)
-    return mask
+    # TODO(omalleyt): b/123540974 This function is not really safe to call
+    # by itself because it will duplicate any updates and losses in graph
+    # mode by `call`ing the Layers again.
+    outputs = self.call(inputs, mask=mask)
+    return outputs._keras_mask
 
   def predict_proba(self, x, batch_size=32, verbose=0):
     """Generates class probability predictions for the input samples.

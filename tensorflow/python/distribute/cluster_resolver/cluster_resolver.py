@@ -20,11 +20,18 @@ from __future__ import print_function
 
 import abc
 
+import collections
+import re
 import six
 
 from tensorflow.python.client import session
+from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util.tf_export import tf_export
+
+
+DEVICE_TYPE_REGEX = re.compile('.*device:([^:]+).*')
 
 
 def format_master_url(master, rpc_layer=None):
@@ -35,13 +42,27 @@ def format_master_url(master, rpc_layer=None):
 
 
 def get_accelerator_devices(master, config_proto):
-  # TODO(frankchn): Add support for eager mode as well as graph mode.
-  with ops.Graph().as_default():
-    with session.Session(master, config=config_proto) as s:
-      devices = s.list_devices()
-  return devices
+  """Returns accelerator devices given a master and a configuration."""
+  if context.executing_eagerly():
+    device_names = context.list_devices()  # list_devices returns list(string)
+    devices = []
+    for name in device_names:
+      device_type = 'GPU'  # default device type is GPU
+      device_match = DEVICE_TYPE_REGEX.match(name)
+      if device_match:
+        device_type = device_match.group(1)
+      if device_type == 'CPU' or device_type == 'XLA_CPU':  # Filter CPUs
+        continue
+      devices.append(session._DeviceAttributes(name, device_type, 0, 0))  # pylint: disable=protected-access
+    return devices
+  else:
+    with ops.Graph().as_default():
+      with session.Session(master, config=config_proto) as s:
+        devices = s.list_devices()
+    return devices
 
 
+@tf_export('distribute.cluster_resolver.ClusterResolver')
 @six.add_metaclass(abc.ABCMeta)
 class ClusterResolver(object):
   """Abstract class for all implementations of ClusterResolvers.
@@ -104,17 +125,14 @@ class ClusterResolver(object):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     """Returns the number of accelerator cores per worker.
 
     This returns the number of accelerator cores (such as GPUs and TPUs)
-    available per worker. If workers only has CPU cores available, then this
-    should return 0. This method will query the master for this information
-    if it is not otherwise known.
+    available per worker.
 
-    Optionally, we allow callers to specify the task_type, task_id, and
-    rpc_layer, if they want to target a specific TensorFlow process to query
+    Optionally, we allow callers to specify the task_type, and task_id, for
+    if they want to target a specific TensorFlow process to query
     the number of accelerators. This is to support heterogenous environments,
     where the number of accelerators cores per host is different.
 
@@ -123,26 +141,49 @@ class ClusterResolver(object):
         want to query.
       task_id: (Optional) The index of the TensorFlow task of the machine we
         want to query.
-      accelerator_type: (Optional) The type of accelerator we are trying to
-        query (defaults to 'GPU').
       config_proto: (Optional) Configuration for starting a new session to
         query how many accelerator cores it has.
+
+    Returns:
+      A map of accelerator types to number of cores.
     """
     master = self.master(task_type, task_id)
     devices = get_accelerator_devices(master, config_proto)
-    return sum(1 for d in devices if d.device_type == accelerator_type)
+    mapping = collections.defaultdict(int)
+    for device in devices:
+      if task_type is not None and task_id is not None:
+        job_path = '/job:%s' % task_type
+        task_path = '/task:%s' % task_id
+        if job_path not in device.name or task_path not in device.name:
+          continue
+      mapping[device.device_type] += 1
+    return mapping
 
-  @abc.abstractproperty
+  @property
   def environment(self):
-    """Returns the current environment which TensorFlow is running in."""
-    raise NotImplementedError()
+    """Returns the current environment which TensorFlow is running in.
+
+    There are two possible return values, "google" (when TensorFlow is running
+    in a Google-internal environment) or an empty string (when TensorFlow is
+    running elsewhere).
+
+    If you are implementing a ClusterResolver that works in both the Google
+    environment and the open-source world (for instance, a TPU ClusterResolver
+    or similar), you will have to return the appropriate string depending on the
+    environment, which you will have to detect.
+
+    Otherwise, if you are implementing a ClusterResolver that will only work
+    in open-source TensorFlow, you do not need to implement this property.
+    """
+    return ''
 
 
+@tf_export('distribute.cluster_resolver.SimpleClusterResolver')
 class SimpleClusterResolver(ClusterResolver):
   """Simple implementation of ClusterResolver that accepts a ClusterSpec."""
 
   def __init__(self, cluster_spec, master='', task_type=None, task_id=None,
-               environment='', num_accelerators=0,
+               environment='', num_accelerators=None,
                rpc_layer=None):
     """Creates a SimpleClusterResolver from a ClusterSpec."""
     super(SimpleClusterResolver, self).__init__()
@@ -150,6 +191,7 @@ class SimpleClusterResolver(ClusterResolver):
     self._task_type = task_type
     self._task_id = task_id
     self._environment = environment
+
     self._num_accelerators = num_accelerators
     self._rpc_layer = rpc_layer
 
@@ -209,23 +251,23 @@ class SimpleClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     """Returns the number of accelerator cores per worker.
 
     The SimpleClusterResolver does not do automatic detection of accelerators,
     so a TensorFlow session will never be created, and thus all arguments are
-    unused and we simply return whatever was passed in when this object was
-    initialized.
+    unused and we simply assume that the type of accelerator is a GPU and return
+    the value in provided to us in the constructor.
 
     Args:
       task_type: Unused.
       task_id: Unused.
-      accelerator_type: Unused.
       config_proto: Unused.
     """
     # Unused
-    del task_type, task_id, accelerator_type, config_proto
+    del task_type, task_id, config_proto
+    if self._num_accelerators is None:
+      return {}
     return self._num_accelerators
 
   @property
@@ -237,6 +279,7 @@ class SimpleClusterResolver(ClusterResolver):
     self._rpc_layer = rpc_layer
 
 
+@tf_export('distribute.cluster_resolver.UnionResolver')
 class UnionClusterResolver(ClusterResolver):
   """Performs a union on underlying ClusterResolvers.
 
@@ -400,10 +443,9 @@ class UnionClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='GPU',
                        config_proto=None):
     return self._cluster_resolvers[0].num_accelerators(
-        task_type, task_id, accelerator_type, config_proto)
+        task_type, task_id, config_proto)
 
   @property
   def rpc_layer(self):

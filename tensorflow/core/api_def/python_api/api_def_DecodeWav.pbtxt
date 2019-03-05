@@ -1,4 +1,6 @@
 op {
   graph_op_name: "DecodeWav"
-  visibility: HIDDEN
+  endpoint {
+    name: "audio.decode_wav"
+  }
 }

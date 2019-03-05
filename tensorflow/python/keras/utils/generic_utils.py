@@ -392,7 +392,7 @@ class Progbar(object):
 
       if self.target is not None:
         numdigits = int(np.log10(self.target)) + 1
-        bar = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
+        bar = ('%' + str(numdigits) + 'd/%d [') % (current, self.target)
         prog = float(current) / self.target
         prog_width = int(self.width * prog)
         if prog_width > 0:
@@ -572,11 +572,8 @@ def to_snake_case(name):
   return 'private' + insecure
 
 
-def is_all_none(iterable_or_element):
-  if not isinstance(iterable_or_element, (list, tuple)):
-    iterable = [iterable_or_element]
-  else:
-    iterable = iterable_or_element
+def is_all_none(structure):
+  iterable = nest.flatten(structure)
   # We cannot use Python's `any` because the iterable may return Tensors.
   for element in iterable:
     if element is not None:

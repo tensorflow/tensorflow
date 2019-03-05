@@ -113,11 +113,14 @@ class Feature(enum.Enum):
   Attributes:
     ALL: Enable all features.
     AUTO_CONTROL_DEPS: Insert of control dependencies in the generated code.
-    DECORATORS: Allow decorators in local functions. Note that special
-      decorators, like `tf.function`, are allowed regardless of this toggle.
+    ASSERT_STATEMENTS: Convert Tensor-dependent assert statements to tf.Assert.
+    BUILTIN_FUNCTIONS: Convert builtin functions applied to Tensors to
+      their TF counterparts.
     ERROR_REWRITING: Rewrite errors that occur in the generated code to
       indicate the source code to which the failing code corresponds.
     LISTS: Convert list idioms, like initializers, slices, append, etc.
+    LOGICAL_EXPRESSIONS: Convert data-dependent logical expressions applied to
+      Tensors to their TF counterparts.
     NAME_SCOPES: Insert name scopes that name ops according to context, like the
       function they were defined in.
   """
@@ -125,8 +128,11 @@ class Feature(enum.Enum):
   ALL = 'ALL'
 
   AUTO_CONTROL_DEPS = 'AUTO_CONTROL_DEPS'
+  ASSERT_STATEMENTS = 'ASSERT_STATEMENTS'
+  BUILTIN_FUNCTIONS = 'BUILTIN_FUNCTIONS'
   ERROR_REWRITING = 'ERROR_REWRITING'
   LISTS = 'LISTS'
+  LOGICAL_EXPRESSIONS = 'LOGICAL_EXPRESSIONS'
   NAME_SCOPES = 'NAME_SCOPES'
 
   @classmethod
@@ -227,8 +233,7 @@ class ConversionOptions(object):
     """
 
     def as_qualified_name(o):
-      name = inspect_utils.getqualifiedname(
-          ctx.info.namespace, o, max_depth=1)
+      name = inspect_utils.getqualifiedname(ctx.info.namespace, o, max_depth=1)
       if not name:
         if isinstance(o, weakref.ref):
           # `o` might already be a weak reference, if this object was
@@ -246,9 +251,7 @@ class ConversionOptions(object):
 
     def list_of_features(values):
       return parser.parse_expression('({})'.format(', '.join(
-          'ag__.{}'.format(v)
-          for v in Feature.__members__.values()
-          if v in values)))
+          'ag__.{}'.format(str(v)) for v in values)))
 
     if internal_convert_user_code is None:
       internal_convert_user_code = self.internal_convert_user_code

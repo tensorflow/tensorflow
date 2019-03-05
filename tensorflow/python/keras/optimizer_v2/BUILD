@@ -25,6 +25,7 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":learning_rate_schedule",
         "//tensorflow/python:control_flow_ops",
         "//tensorflow/python:distribute",
         "//tensorflow/python:framework",
@@ -36,6 +37,21 @@ py_library(
         "//tensorflow/python/distribute:reduce_util",
         "//tensorflow/python/distribute:values",
         "//tensorflow/python/keras:backend_config",
+    ],
+)
+
+py_library(
+    name = "learning_rate_schedule",
+    srcs = [
+        "learning_rate_schedule.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:random_ops",
+        "//tensorflow/python/keras:generic_utils",
     ],
 )
 
@@ -178,6 +194,7 @@ py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
+        "no_gpu",  # b/127001953
         "no_windows",
     ],
     deps = [
@@ -193,6 +210,20 @@ py_test(
         "//tensorflow/python:variables",
         "//tensorflow/python/eager:def_function",
         "//tensorflow/python/keras",
+        "@absl_py//absl/testing:parameterized",
+    ],
+)
+
+py_test(
+    name = "learning_rate_schedule_test",
+    size = "medium",
+    srcs = ["learning_rate_schedule_test.py"],
+    shard_count = 4,
+    deps = [
+        ":optimizer_v2",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/keras",
+        "//third_party/py/numpy",
         "@absl_py//absl/testing:parameterized",
     ],
 )

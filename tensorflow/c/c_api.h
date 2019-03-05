@@ -549,6 +549,10 @@ TF_CAPI_EXPORT extern void TF_SetAttrTypeList(TF_OperationDescription* desc,
                                               const char* attr_name,
                                               const TF_DataType* values,
                                               int num_values);
+TF_CAPI_EXPORT extern void TF_SetAttrPlaceholder(TF_OperationDescription* desc,
+                                                 const char* attr_name,
+                                                 const char* placeholder);
+
 // Set a 'func' attribute to the specified name.
 // `value` must point to a string of length `length` bytes.
 TF_CAPI_EXPORT extern void TF_SetAttrFuncName(TF_OperationDescription* desc,
@@ -1310,6 +1314,28 @@ TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunction(
     int noutputs, const TF_Output* outputs, const char* const* output_names,
     const TF_FunctionOptions* opts, const char* description, TF_Status* status);
 
+// Similar to TF_GraphToFunction but allows specifying control outputs of the
+// function.
+//
+//  The arguments of TF_GraphToFunction have the same meaning, but the new
+//  arguments are as follows:
+//
+//    ncontrol_outputs: Number of control outputs of the function.
+//    control_outputs: vector of TF_Operation objects to be marked as control
+//      outputs of the function. Operations marked as control outputs are
+//      guaranteed to execute.
+//    control_output_names: Optional. If not nullptr, vector of strings, one
+//      per control output, with their names to be added to the function's
+//      OpDef.
+TF_CAPI_EXPORT extern TF_Function* TF_GraphToFunctionWithControlOutputs(
+    const TF_Graph* fn_body, const char* fn_name,
+    unsigned char append_hash_to_fn_name, int num_opers,
+    const TF_Operation* const* opers, int ninputs, const TF_Output* inputs,
+    int noutputs, const TF_Output* outputs, const char* const* output_names,
+    int ncontrol_outputs, const TF_Operation* const* control_outputs,
+    const char* const* control_output_names, const TF_FunctionOptions* opts,
+    const char* description, TF_Status* status);
+
 // Returns the name of the graph function.
 // The return value points to memory that is only usable until the next
 // mutation to *func.
@@ -1742,6 +1768,14 @@ TF_CAPI_EXPORT extern const char* TF_ServerTarget(TF_Server* server);
 // Destroy an in-process TensorFlow server, frees memory. If server is running
 // it will be stopped and joined.
 TF_CAPI_EXPORT extern void TF_DeleteServer(TF_Server* server);
+
+// Register a listener method that processes printed messages.
+//
+// If any listeners are registered, the print operator will call all listeners
+// with the printed messages and immediately return without writing to the
+// logs.
+TF_CAPI_EXPORT extern void TF_RegisterLogListener(
+    void (*listener)(const char*));
 
 #ifdef __cplusplus
 } /* end extern "C" */

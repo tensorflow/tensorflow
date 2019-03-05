@@ -297,7 +297,7 @@ StatusOr<bool> DotDecomposer::Run(HloModule* module) {
       const DotDimensionNumbers& dnums = instruction->dot_dimension_numbers();
       // A dot it not canonical if there are more than one contracting
       // dimension.
-      if (dnums.lhs_contracting_dimensions_size() > 1) {
+      if (dnums.lhs_contracting_dimensions_size() != 1) {
         non_canonical_dots.push_back(instruction);
         continue;
       }

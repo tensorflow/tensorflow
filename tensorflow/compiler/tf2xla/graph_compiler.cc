@@ -19,7 +19,6 @@ limitations under the License.
 #include <numeric>
 #include <vector>
 #include "tensorflow/compiler/tf2xla/const_analysis.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/literal_util.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
@@ -46,6 +45,7 @@ limitations under the License.
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/public/version.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 
@@ -56,9 +56,9 @@ Status PrepareArguments(XlaOpKernelContext* ctx, Graph* graph,
   auto client = ctx->compiler()->client();
   std::vector<bool> arg_must_be_compile_time_constant(expressions.size());
 
-  TF_RETURN_IF_ERROR(
-      BackwardsConstAnalysis(*graph, &arg_must_be_compile_time_constant,
-                             /*compile_time_const_nodes=*/nullptr));
+  TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
+      *graph, &arg_must_be_compile_time_constant,
+      /*compile_time_const_nodes=*/nullptr, ctx->function_library()));
 
   args->resize(expressions.size());
   for (int i = 0; i < args->size(); ++i) {
@@ -284,6 +284,7 @@ void GraphCompiler::PartiallySetupParams(OpKernelContext::Params* params) {
   params->inputs = &tensor_inputs_;
   params->step_container = step_container_;
   params->resource_manager = device_->resource_manager();
+  params->function_library = flib_;
 }
 
 }  // namespace tensorflow

@@ -97,6 +97,24 @@ class SymmetricQuantizedPoolingOpModel : public BasePoolingOpModel {
   }
 };
 
+// Replicate each entry in a vector n times along depth (innermost dimension).
+// The values are incremented by delta, creating ramps offset by each input
+// value. This is used to create simple and predicatable variation.
+std::vector<float> ReplicateDepthRamp(const std::vector<float>& image_plane,
+                                      int n, float delta) {
+  const int size = image_plane.size();
+  std::vector<float> ramped_data(n * size);
+  // The input is treated as a 1-D even if logically it is multi-dimensional.
+  for (int input_index = 0; input_index < size; ++input_index) {
+    for (int depth = 0; depth < n; ++depth) {
+      ramped_data[n * input_index + depth] =
+          image_plane[input_index] + depth * delta;
+    }
+  }
+
+  return ramped_data;
+}
+
 TEST(FloatPoolingOpTest, AveragePool) {
   FloatPoolingOpModel m(BuiltinOperator_AVERAGE_POOL_2D,
                         /*input=*/{TensorType_FLOAT32, {1, 2, 4, 1}},
@@ -145,6 +163,31 @@ TEST(QuantizedPoolingOpTest, AveragePoolImageSize16) {
 
   EXPECT_THAT(m.GetOutput(), ::testing::ElementsAre(255));
   EXPECT_THAT(m.GetDequantizedOutput(), ElementsAreArray(ArrayFloatNear({16})));
+}
+
+TEST(QuantizedPoolingOpTest, AveragePoolLargeDepth) {
+  // Test with a larger depth that is not a multiple of the tranche size, or of
+  // any register-oriented multiples such as 8 and 16.
+  constexpr int depth = 1999;  // Prime number.
+  QuantizedPoolingOpModel m(
+      BuiltinOperator_AVERAGE_POOL_2D,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, depth}, 0, 15.9375},
+      /*filter_width=*/2, /*filter_height=*/2,
+      /*output=*/{TensorType_UINT8, {}, 0, 15.9375});
+
+  std::vector<float> input_image_plane({
+      0.f, 6.f, 2.f, 4.f,   //
+      3.f, 2.f, 10.f, 7.f,  //
+  });
+  std::vector<float> output_image_plane({2.75f, 5.75f});
+
+  m.SetInput(ReplicateDepthRamp(input_image_plane, depth, 1.f / 512.f));
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  ReplicateDepthRamp(output_image_plane, depth, 1.f / 512.f),
+                  1. / 32.f)));
 }
 
 // Test quantized AveragePool with int8 input and output. The input is the same
@@ -204,7 +247,7 @@ TEST(FloatPoolingOpTest, MaxPool) {
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({6, 10}));
 }
 
-TEST(QuantizedPoolingOpTest, MaxPool) {
+TEST(QuantizedUInt8PoolingOpTest, MaxPool) {
   // Choose the input ranges carefully so that the dequantized output matches
   // the results of the float model above.
   QuantizedPoolingOpModel m(
@@ -221,6 +264,50 @@ TEST(QuantizedPoolingOpTest, MaxPool) {
   EXPECT_THAT(m.GetDequantizedOutput(),
               ElementsAreArray(ArrayFloatNear({6, 10})));
   EXPECT_THAT(m.GetOutput(), ElementsAreArray({96, 160}));
+}
+
+TEST(QuantizedPoolingOpTest, MaxPoolLargeDepth) {
+  // Test with a larger depth that is not a multiple of the tranche size, or of
+  // any register-oriented multiples such as 8 and 16.
+  constexpr int depth = 1999;  // Prime number.
+  QuantizedPoolingOpModel m(
+      BuiltinOperator_MAX_POOL_2D,
+      /*input=*/{TensorType_UINT8, {1, 2, 4, depth}, 0, 15.9375},
+      /*filter_width=*/2, /*filter_height=*/2,
+      /*output=*/{TensorType_UINT8, {}, 0, 15.9375});
+
+  std::vector<float> input_image_plane({
+      0.f, 6.f, 2.f, 4.f,   //
+      3.f, 2.f, 10.f, 7.f,  //
+  });
+  std::vector<float> output_image_plane({6.f, 10.f});
+
+  m.SetInput(ReplicateDepthRamp(input_image_plane, depth, 1.f / 512.f));
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear(
+                  ReplicateDepthRamp(output_image_plane, depth, 1.f / 512.f),
+                  1. / 32.f)));
+}
+
+TEST(QuantizedInt8PoolingOpTest, MaxPool) {
+  // Choose the input ranges carefully so that the dequantized output matches
+  // the results of the float model above.
+  SymmetricQuantizedPoolingOpModel m(
+      BuiltinOperator_MAX_POOL_2D,
+      /*input=*/{TensorType_INT8, {1, 2, 4, 1}, 0, 15.9375},
+      /*filter_width=*/2, /*filter_height=*/2,
+      /*output=*/{TensorType_INT8, {}, 0, 15.9375});
+  m.SetInput({
+      0, -6, 2, 4,   //
+      3, 2, -10, 7,  //
+  });
+  m.Invoke();
+
+  EXPECT_THAT(m.GetDequantizedOutput(),
+              ElementsAreArray(ArrayFloatNear({3, 7})));
+  EXPECT_THAT(m.GetOutput(), ElementsAreArray({-80, -16}));
 }
 
 TEST(FloatPoolingOpTest, L2Pool) {

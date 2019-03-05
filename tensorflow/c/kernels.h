@@ -137,15 +137,6 @@ TF_CAPI_EXPORT extern void TF_OpKernelConstruction_GetAttrType(
     TF_OpKernelConstruction* ctx, const char* attr_name, TF_DataType* val,
     TF_Status* status);
 
-// Interprets the named kernel context attribute as a TF_DataType and places it
-// into *val. *status is set to TF_OK.
-//
-// If the attribute could not be found or could not be interpreted as
-// TF_DataType, *status is populated with an error.
-TF_CAPI_EXPORT extern void TF_OpKernelContext_GetAttrType(
-    TF_OpKernelContext* ctx, const char* attr_name, TF_DataType* val,
-    TF_Status* status);
-
 #ifdef __cplusplus
 } /* end extern "C" */
 #endif

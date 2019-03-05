@@ -15,6 +15,7 @@ limitations under the License.
 
 #include "tensorflow/compiler/tf2xla/tf2xla_util.h"
 
+#include <functional>
 #include <queue>
 #include <random>
 #include <set>
@@ -122,7 +123,12 @@ Status ReplaceArgUsageWithConstNode(
 
   for (const auto& iter : const_input_index_to_node) {
     int arg_index = iter.first;
-    Node* const_node = g->CopyNode(iter.second);
+    NodeDef const_def = iter.second->def();
+    const_def.set_name(g->NewName(const_def.name()));
+    Status s;
+    Node* const_node = g->AddNode(const_def, &s);
+    TF_RETURN_IF_ERROR(s);
+
     Node* arg_node = arg_nodes[arg_index];
 
     // Collect all usages of the _Arg node.
@@ -265,6 +271,13 @@ Status PropagateConstIntoWhileNode(Graph* g, Node* while_node,
     }
 
     // Check if i-th retval's input comes from i-th arg directly.
+    // For resource variable input of While nodes, TF2XLA convention is to place
+    // them at the end of all inputs (after all data inputs), and *not* return
+    // them. So number of While node inputs might be larger than number of its
+    // outputs.
+    if (i >= body_func->signature().output_arg_size()) {
+      continue;
+    }
     const OpDef_ArgDef& output_arg = body_func->signature().output_arg(i);
     auto output_arg_input = body_func->ret().find(output_arg.name());
     if (output_arg_input == body_func->ret().end()) {
@@ -543,7 +556,9 @@ uint32 GetXLARandomSeed() {
   // after an overflow. When seeded with zero, some XLA backends
   // can return all zeros instead of random numbers.
   static std::atomic<uint32> counter(InitialRandomSeed());
-  return counter.fetch_add(2);
+  uint32 seed = counter.fetch_add(2);
+  std::srand(seed);
+  return std::rand() | 1;
 }
 
 // TODO(b/77601805): add tests for associated function related stuff.

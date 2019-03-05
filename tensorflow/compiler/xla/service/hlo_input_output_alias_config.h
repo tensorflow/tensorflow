@@ -56,7 +56,8 @@ class HloInputOutputAliasConfig {
 
   HloInputOutputAliasConfig() = default;
 
-  explicit HloInputOutputAliasConfig(Shape shape) : alias_(shape) {}
+  explicit HloInputOutputAliasConfig(Shape output_shape)
+      : alias_(output_shape) {}
 
   virtual ~HloInputOutputAliasConfig() = default;
 

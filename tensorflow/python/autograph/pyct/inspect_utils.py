@@ -31,7 +31,7 @@ from tensorflow.python.util import tf_inspect
 
 # These functions test negative for isinstance(*, types.BuiltinFunctionType)
 # and inspect.isbuiltin, and are generally not visible in globals().
-# TODO(mdan): Find a more generic way to test this - just enumerate __builtin__?
+# TODO(mdan): Remove this.
 SPECIAL_BUILTINS = {
     'dict': dict,
     'enumerate': enumerate,
@@ -42,6 +42,7 @@ SPECIAL_BUILTINS = {
     'print': print,
     'range': range,
     'tuple': tuple,
+    'type': type,
     'zip': zip
 }
 
@@ -73,7 +74,7 @@ def isnamedtuple(f):
 
 def isbuiltin(f):
   """Returns True if the argument is a built-in function."""
-  if f in SPECIAL_BUILTINS.values():
+  if f in six.moves.builtins.__dict__.values():
     return True
   if isinstance(f, types.BuiltinFunctionType):
     return True
@@ -124,6 +125,10 @@ def getqualifiedname(namespace, object_, max_depth=5, visited=None):
   """
   if visited is None:
     visited = set()
+
+  # Copy the dict to avoid "changed size error" during concurrent invocations.
+  # TODO(mdan): This is on the hot path. Can we avoid the copy?
+  namespace = dict(namespace)
 
   for name in namespace:
     # The value may be referenced by more than one symbol, case in which
@@ -186,9 +191,12 @@ def getdefiningclass(m, owner_class):
   return owner_class
 
 
-def isweakrefself(m):
-  """Tests whether an object is a "weakref self" wrapper, see getmethodself."""
-  return hasattr(m, '__self__') and hasattr(m.__self__, 'ag_self_weakref__')
+def istfmethodtarget(m):
+  """Tests whether an object is a `function.TfMethodTarget`."""
+  # See eager.function.TfMethodTarget for more details.
+  return (hasattr(m, '__self__') and
+          hasattr(m.__self__, 'weakrefself_target__') and
+          hasattr(m.__self__, 'weakrefself_func__'))
 
 
 def getmethodself(m):
@@ -201,8 +209,8 @@ def getmethodself(m):
   # A fallback allowing methods to be actually bound to a type different
   # than __self__. This is useful when a strong reference from the method
   # to the object is not desired, for example when caching is involved.
-  if isweakrefself(m):
-    return m.__self__.ag_self_weakref__()
+  if istfmethodtarget(m):
+    return m.__self__.target
 
   return m.__self__
 

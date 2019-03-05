@@ -91,11 +91,11 @@ def create_test_objects(cluster_spec=None,
           cluster_spec=multi_worker_util.normalize_cluster_spec(cluster_spec),
           task_type=task_type,
           task_id=task_id,
-          num_accelerators=num_gpus)
+          num_accelerators={'GPU': num_gpus})
       target = 'grpc://' + cluster_spec[WORKER][task_id]
     else:
       cluster_resolver = SimpleClusterResolver(
-          ClusterSpec({}), num_accelerators=num_gpus)
+          ClusterSpec({}), num_accelerators={'GPU': num_gpus})
       target = ''
 
     distribution = MockCoreParameterServerStrategy(cluster_resolver)
@@ -514,7 +514,7 @@ class ParameterServerStrategyTestBase(
       def update(v, g):
         return v.assign_sub(0.05 * g, use_locking=True)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""
@@ -571,6 +571,7 @@ class ParameterServerStrategyTestBase(
                               num_gpus,
                               input_fn,
                               expected_values,
+                              test_reinitialize=True,
                               use_core_strategy=False):
     distribution, master_target, config = self._get_test_objects(
         task_type, task_id, num_gpus, use_core_strategy=use_core_strategy)
@@ -594,13 +595,14 @@ class ParameterServerStrategyTestBase(
                   for r in range(len(devices))])
 
       # After re-initializing the iterator, should be able to iterate again.
-      sess.run(iterator.initialize())
+      if test_reinitialize:
+        sess.run(iterator.initialize())
 
-      for expected_value in expected_values:
-        next_element = iterator.get_next()
-        computed_value = sess.run([values.select_replica(r, next_element)
-                                   for r in range(len(devices))])
-        self.assertEqual(expected_value, computed_value)
+        for expected_value in expected_values:
+          next_element = iterator.get_next()
+          computed_value = sess.run([values.select_replica(r, next_element)
+                                     for r in range(len(devices))])
+          self.assertEqual(expected_value, computed_value)
 
 
 class ParameterServerStrategyTest(
@@ -694,22 +696,31 @@ class ParameterServerStrategyTest(
   def testMinimizeLossGraphLocal(self, num_gpus, use_core_strategy):
     self._test_minimize_loss_graph(None, None, num_gpus, use_core_strategy)
 
+  # TODO(b/124344198): Re-enable after fixing this flaky test.
   # TODO(priyag): Refactor this and other multi worker tests.
   @combinations.generate(
       combinations.combine(
           mode=['graph'],
           num_gpus=[1, 2],
           required_gpus=1,
-          use_core_strategy=[True, False]))
-  def testMakeInputFnIteratorDistributed(self, num_gpus, use_core_strategy):
+          use_core_strategy=[True, False],
+          use_dataset=[True, False]))
+  def DISABLED_testMakeInputFnIteratorDistributed(
+      self, num_gpus, use_core_strategy, use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    if use_dataset:
+      fn = lambda: dataset_ops.Dataset.range(100)
+    else:
+      def fn():
+        dataset = dataset_ops.Dataset.range(100)
+        it = dataset.make_one_shot_iterator()
+        return it.get_next
     expected_values = [[i+j for j in range(num_gpus)]
                        for i in range(0, 100, num_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
-        dataset_fn,
+        fn,
         expected_num_replicas_in_sync=num_gpus,
         expected_num_input_pipelines=3,
         expected_input_pipeline_id=1)  # because task_id = 1
@@ -719,23 +730,33 @@ class ParameterServerStrategyTest(
         num_gpus,
         input_fn,
         expected_values,
+        test_reinitialize=use_dataset,
         use_core_strategy=use_core_strategy)
 
+  # TODO(b/124344198): Re-enable after fixing this flaky test.
   @combinations.generate(
       combinations.combine(
           mode=['graph'],
           num_gpus=[1, 2],
           required_gpus=1,
-          use_core_strategy=[True, False]))
-  def testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy):
+          use_core_strategy=[True, False],
+          use_dataset=[True, False]))
+  def DISABLED_testMakeInputFnIteratorLocal(self, num_gpus, use_core_strategy,
+                                            use_dataset):
     if context.num_gpus() < num_gpus:
       self.skipTest('Not enough GPUs')
-    dataset_fn = lambda: dataset_ops.Dataset.range(100)
+    if use_dataset:
+      fn = lambda: dataset_ops.Dataset.range(100)
+    else:
+      def fn():
+        dataset = dataset_ops.Dataset.range(100)
+        it = dataset.make_one_shot_iterator()
+        return it.get_next
     expected_values = [[i+j for j in range(num_gpus)]
                        for i in range(0, 100, num_gpus)]
 
     input_fn = self._input_fn_to_test_input_context(
-        dataset_fn,
+        fn,
         expected_num_replicas_in_sync=num_gpus,
         expected_num_input_pipelines=1,
         expected_input_pipeline_id=0)  # only one worker and pipeline for local.
@@ -745,6 +766,7 @@ class ParameterServerStrategyTest(
         num_gpus,
         input_fn,
         expected_values,
+        test_reinitialize=use_dataset,
         use_core_strategy=use_core_strategy)
 
   @combinations.generate(

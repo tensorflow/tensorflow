@@ -406,6 +406,10 @@ REGISTER_OP("FuncAttr")
     .Attr("f: func")
     .SetShapeFn(shape_inference::UnknownShape);
 
+REGISTER_OP("FuncListAttr")
+    .Attr("f: list(func)")
+    .SetShapeFn(shape_inference::UnknownShape);
+
 REGISTER_OP("Simple")
     .Input("a: int32")
     .Output("out: float")

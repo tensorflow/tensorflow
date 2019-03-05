@@ -228,6 +228,21 @@ TEST(GraphUtilsTest, GetInputNode) {
   EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
 }
 
+TEST(GraphUtilsTest, GetIthInputNode) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+
+  NodeDef* node1 = AddNode("", "A", {}, {}, &graph);
+  NodeDef* node2 = AddNode("", "A", {}, {}, &graph);
+  NodeDef* node3 = AddNode("", "A", {node1->name(), node2->name()}, {}, &graph);
+
+  EXPECT_EQ(GetInputNode(*node3, graph), node1);
+  EXPECT_EQ(GetInputNode(*node3, graph, 1), node2);
+  EXPECT_EQ(GetInputNode(*node3, graph, 0), node1);
+  EXPECT_EQ(GetInputNode(*node3, graph, 2), nullptr);
+  EXPECT_EQ(GetInputNode(*node1, graph), nullptr);
+}
+
 TEST(GraphUtilsTest, EnsureNodeNamesUnique) {
   Graph g(OpRegistry::Global());
 
@@ -253,6 +268,40 @@ TEST(GraphUtilsTest, EnsureNodeNamesUnique) {
   EXPECT_NE(const_0->name(), const_1->name());
   EXPECT_NE(const_1->name(), const_2->name());
   EXPECT_NE(const_0->name(), const_2->name());
+}
+
+TEST(GraphUtilsTest, TestFindSinkNodeStandard) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+
+  AddNode("node1", "Identity", {}, {}, &graph);
+  AddNode("node2", "Identity", {"node1"}, {}, &graph);
+  NodeDef* node3 = AddNode("node3", "Identity", {"node2"}, {}, &graph);
+
+  NodeDef sink_node;
+  TF_EXPECT_OK(FindSinkNode(graph_def, &sink_node));
+  EXPECT_EQ(sink_node.name(), node3->name());
+}
+
+TEST(GraphUtilsTest, TestFindSinkNodeNoSingleSink) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+
+  AddNode("node1", "Identity", {}, {}, &graph);
+  AddNode("node2", "Identity", {}, {}, &graph);
+
+  NodeDef sink_node;
+  Status s = FindSinkNode(graph_def, &sink_node);
+  EXPECT_FALSE(s.ok());
+}
+
+TEST(GraphUtilsTest, TestFindSinkNodeGraphDefEmpty) {
+  GraphDef graph_def;
+  MutableGraphView graph(&graph_def);
+
+  NodeDef sink_node;
+  Status s = FindSinkNode(graph_def, &sink_node);
+  EXPECT_FALSE(s.ok());
 }
 
 }  // namespace

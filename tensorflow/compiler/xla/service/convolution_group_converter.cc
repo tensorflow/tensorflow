@@ -215,81 +215,15 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
   };
 
   int64 input_batch_dimension = dim_numbers.input_batch_dimension();
-  int64 input_feature_dimension = dim_numbers.input_feature_dimension();
   int64 output_batch_dimension = dim_numbers.output_batch_dimension();
   int64 output_feature_dimension = dim_numbers.output_feature_dimension();
-  int64 kernel_input_feature_dimension =
-      dim_numbers.kernel_input_feature_dimension();
 
   int64 input_batch = activation->shape().dimensions(input_batch_dimension);
 
   // We are not yet supporting batch_group of sizes greater than 1.
   TF_RET_CHECK(input_batch == batch_group_count);
 
-  if (is_cost_viable_(convolution)) {
-    // Add a dimension to the activation, and reshape.
-    Shape reshaped_activation_shape = activation->shape();
-    ShapeUtil::AppendMajorDimension(1, &reshaped_activation_shape);
-
-    activation = add(
-        HloInstruction::CreateReshape(reshaped_activation_shape, activation));
-
-    // Add a dimension to the filter, and reshape.
-    Shape reshaped_filter_shape = filter->shape();
-    ShapeUtil::AppendMajorDimension(1, &reshaped_filter_shape);
-
-    filter = add(HloInstruction::CreateReshape(reshaped_filter_shape, filter));
-
-    int64 new_spatial_dim = reshaped_activation_shape.dimensions().size() - 1;
-
-    Shape new_output_shape = convolution->shape();
-    ShapeUtil::AppendMajorDimension(1, &new_output_shape);
-
-    int64 input_feature =
-        activation->shape().dimensions(input_feature_dimension);
-
-    // The code below edits convolution dimension numbers. Please refer to
-    // conv_op_helpers.cc to find how the dimensions were set up originally.
-
-    // Effectively, the new input batch becomes 1, and so does the kernel
-    // input feature. The original input batch now becomes a spatial dimension.
-    // The output batch (remember that the output is the new kernel for in
-    // backprop) becomes a spatial dimension too.
-
-    dim_numbers.set_input_batch_dimension(new_spatial_dim);
-    dim_numbers.set_input_feature_dimension(input_batch_dimension);
-    dim_numbers.set_kernel_input_feature_dimension(new_spatial_dim);
-
-    dim_numbers.add_input_spatial_dimensions(input_feature_dimension);
-    dim_numbers.add_kernel_spatial_dimensions(kernel_input_feature_dimension);
-
-    dim_numbers.add_output_spatial_dimensions(output_batch_dimension);
-    dim_numbers.set_output_batch_dimension(new_spatial_dim);
-
-    // Add window for the new spatial dimension.
-    Window new_window = convolution->window();
-    auto* dim = new_window.add_dimensions();
-    dim->set_window_dilation(1);
-    dim->set_base_dilation(1);
-    dim->set_stride(1);
-    dim->set_size(input_feature);
-
-    auto new_convolution = add(HloInstruction::CreateConvolve(
-        new_output_shape, activation, filter,
-        /*feature_group_count=*/batch_group_count, /*batch_group_count=*/1,
-        new_window, dim_numbers, convolution->precision_config()));
-
-    // Delete the extra spatial dimension, and reshape.
-    Shape reshaped_convolution_shape = ShapeUtil::DeleteDimension(
-        new_spatial_dim - 1, new_convolution->shape());
-    auto reshaped_convolution = HloInstruction::CreateReshape(
-        reshaped_convolution_shape, new_convolution);
-
-    TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
-        convolution, std::move(reshaped_convolution)));
-
-    changed_ = true;
-  } else {
+  if (!is_cost_viable_(convolution) || filter_expansion_) {
     // We first obtain the expanded the filter (which is the convolution
     // output). The batch dimension is the expanded one (which originally
     // represents kernel input feature dimension). We mask the filter to zero
@@ -375,6 +309,7 @@ Status ConvolutionVisitor::HandleBatchGroupCount(HloInstruction* convolution) {
 
     TF_RETURN_IF_ERROR(computation_->ReplaceWithNewInstruction(
         convolution, std::move(reduce_window_converted)));
+    changed_ = true;
   }
 
   return Status::OK();

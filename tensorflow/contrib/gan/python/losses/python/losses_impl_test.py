@@ -403,7 +403,9 @@ class _PenaltyTest(object):
   def test_all_correct(self):
     loss = self._penalty_fn(**self._kwargs)
     self.assertEqual(self._expected_dtype, loss.dtype)
-    self.assertEqual(self._expected_op_name, loss.op.name)
+    # NOTE: Op names will change, it is inappropriate to include them in tests.
+    # See go/tf-breaking-change.
+    # self.assertEqual(self._expected_op_name, loss.op.name)
     with self.cached_session():
       variables.global_variables_initializer().run()
       self.assertAlmostEqual(self._expected_loss, loss.eval(), 6)

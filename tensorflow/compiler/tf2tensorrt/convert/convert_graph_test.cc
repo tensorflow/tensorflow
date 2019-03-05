@@ -75,7 +75,7 @@ TEST(TrtCandidateSelector, Basics) {
                                          feed, const_1, matmul_attrs);
 
   // Unsupported op.
-  auto unsupported_op = ops::Sin(s.WithOpName("sin"), feed);
+  auto unsupported_op = ops::Erf(s.WithOpName("sin"), feed);
 
   // Incompatible input.
   auto incompatible_feed = ops::Placeholder(s.WithOpName("feed"), DT_DOUBLE);
@@ -98,7 +98,8 @@ TEST(TrtCandidateSelector, Basics) {
   grappler::GraphProperties graph_properties(item);
   TF_EXPECT_OK(graph_properties.InferStatically(true));
 
-  for (const int precision_mode : {FP32MODE, INT8MODE}) {
+  for (const TrtPrecisionMode precision_mode :
+       {TrtPrecisionMode::FP32, TrtPrecisionMode::INT8}) {
     TrtCandidateSelector selector(graph_properties, precision_mode);
     TF_EXPECT_OK(selector.IsTensorRTCandidate(matmul.operation.node()));
     ExpectStatus(
@@ -107,13 +108,13 @@ TEST(TrtCandidateSelector, Basics) {
         "transpose_a is not supported for TensorRT FullyConnected "
         "(op: MatMul), at: incompatible_matmul");
     ExpectStatus(selector.IsTensorRTCandidate(unsupported_op.operation.node()),
-                 error::UNIMPLEMENTED, "Op type Sin is not supported");
+                 error::UNIMPLEMENTED, "Op type Erf is not supported");
     ExpectStatus(
         selector.IsTensorRTCandidate(
             matmul_with_incompatible_input.operation.node()),
         error::INTERNAL,
         "Failed to convert input with index 0 to a TRT_TensorOrWeights");
-    if (precision_mode == INT8MODE) {
+    if (precision_mode == TrtPrecisionMode::INT8) {
       TF_EXPECT_OK(selector.IsTensorRTCandidate(quantize.operation.node()));
     } else {
       ExpectStatus(selector.IsTensorRTCandidate(quantize.operation.node()),

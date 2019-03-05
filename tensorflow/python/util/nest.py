@@ -39,6 +39,7 @@ import collections as _collections
 import six as _six
 
 from tensorflow.python import pywrap_tensorflow as _pywrap_tensorflow
+from tensorflow.python.util.tf_export import tf_export
 
 
 _SHALLOW_TREE_HAS_INVALID_KEYS = (
@@ -78,7 +79,7 @@ def _get_attrs_items(obj):
 def _sorted(dict_):
   """Returns a sorted list of the dict keys, with error if keys not sortable."""
   try:
-    return sorted(_six.iterkeys(dict_))
+    return sorted(dict_)
   except TypeError:
     raise TypeError("nest only supports dicts with sortable keys.")
 
@@ -123,7 +124,7 @@ def _sequence_like(instance, args):
     # ordered and plain dicts (e.g., flattening a dict but using a
     # corresponding `OrderedDict` to pack it back).
     result = dict(zip(_sorted(instance), args))
-    return type(instance)((key, result[key]) for key in _six.iterkeys(instance))
+    return type(instance)((key, result[key]) for key in instance)
   elif _is_namedtuple(instance) or _is_attrs(instance):
     return type(instance)(*args)
   elif _is_composite_tensor(instance):
@@ -183,8 +184,52 @@ is_sequence = _pywrap_tensorflow.IsSequence
 is_sequence_or_composite = _pywrap_tensorflow.IsSequenceOrComposite
 
 
-# See the swig file (util.i) for documentation.
-flatten = _pywrap_tensorflow.Flatten
+@tf_export("nest.is_nested")
+def is_nested(seq):
+  """Returns true if its input is a collections.Sequence (except strings).
+
+  Args:
+    seq: an input sequence.
+
+  Returns:
+    True if the sequence is a not a string and is a collections.Sequence or a
+    dict.
+  """
+  return is_sequence(seq)
+
+
+@tf_export("nest.flatten")
+def flatten(structure, expand_composites=False):
+  """Returns a flat list from a given nested structure.
+
+  If nest is not a sequence, tuple, or dict, then returns a single-element list:
+  [nest].
+
+  In the case of dict instances, the sequence consists of the values, sorted by
+  key to ensure deterministic behavior. This is true also for OrderedDict
+  instances: their sequence order is ignored, the sorting order of keys is used
+  instead. The same convention is followed in pack_sequence_as. This correctly
+  repacks dicts and OrderedDicts after they have been flattened, and also allows
+  flattening an OrderedDict and then repacking it back using a corresponding
+  plain dict, or vice-versa. Dictionaries with non-sortable keys cannot be
+  flattened.
+
+  Users must not modify any collections used in nest while this function is
+  running.
+
+  Args:
+    structure: an arbitrarily nested structure or a scalar object. Note, numpy
+      arrays are considered scalars.
+    expand_composites: If true, then composite tensors such as tf.SparseTensor
+       and tf.RaggedTensor are expanded into their component tensors.
+
+  Returns:
+    A Python list, the flattened version of the input.
+
+  Raises:
+    TypeError: The nest is or contains a dict with non-sortable keys.
+  """
+  return _pywrap_tensorflow.Flatten(structure, expand_composites)
 
 
 # See the swig file (util.i) for documentation.
@@ -203,6 +248,7 @@ class _DotString(object):
 _DOT = _DotString()
 
 
+@tf_export("nest.assert_same_structure")
 def assert_same_structure(nest1, nest2, check_types=True,
                           expand_composites=False):
   """Asserts that two structures are nested in the same way.
@@ -226,7 +272,7 @@ def assert_same_structure(nest1, nest2, check_types=True,
         size. Note that namedtuples with identical name and fields are always
         considered to have the same shallow structure. Two types will also be
         considered the same if they are both list subtypes (which allows "list"
-        and "_ListWrapper" from checkpointable dependency tracking to compare
+        and "_ListWrapper" from trackable dependency tracking to compare
         equal).
     expand_composites: If true, then composite tensors such as `tf.SparseTensor`
         and `tf.RaggedTensor` are expanded into their component tensors.
@@ -276,8 +322,8 @@ def flatten_dict_items(dictionary):
 
   Raises:
     TypeError: If the input is not a dictionary.
-    ValueError: If any key and value have not the same structure, or if keys are
-      not unique.
+    ValueError: If any key and value do not have the same structure layout, or
+    if keys are not unique.
   """
   if not isinstance(dictionary, (dict, _collections.Mapping)):
     raise TypeError("input must be a dictionary")
@@ -337,6 +383,7 @@ def _packed_nest_with_indices(structure, flat, index, is_seq):
   return index, packed
 
 
+@tf_export("nest.pack_sequence_as")
 def pack_sequence_as(structure, flat_sequence, expand_composites=False):
   """Returns a given flattened sequence packed into a given structure.
 
@@ -394,12 +441,13 @@ def pack_sequence_as(structure, flat_sequence, expand_composites=False):
   return _sequence_like(structure, packed)
 
 
+@tf_export("nest.map_structure")
 def map_structure(func, *structure, **kwargs):
   """Applies `func` to each entry in `structure` and returns a new structure.
 
   Applies `func(x[0], x[1], ...)` where x[i] is an entry in
   `structure[i]`.  All structures in `structure` must have the same arity,
-  and the return value will contain the results in the same structure.
+  and the return value will contain results with the same structure layout.
 
   Args:
     func: A callable that accepts as many arguments as there are structures.
@@ -465,9 +513,9 @@ def map_structure_with_paths(func, *structure, **kwargs):
   Applies `func(path, x[0], x[1], ..., **kwargs)` where x[i] is an entry in
   `structure[i]` and `path` is the common path to x[i] in the structures.  All
   structures in `structure` must have the same arity, and the return value will
-  contain the results in the same structure. Special kwarg `check_types`
-  determines whether the types of iterables within the structure must be the
-  same-- see **kwargs definition below.
+  contain the results with the same structure layout. Special kwarg
+  `check_types` determines whether the types of iterables within the structure
+  must be the same-- see **kwargs definition below.
 
   Args:
     func: A callable with the signature func(path, *values, **kwargs) that is
@@ -592,7 +640,7 @@ def assert_shallow_structure(shallow_tree, input_tree, check_types=True):
   The following code will not raise an exception:
   ```python
     shallow_tree = ["a", "b"]
-    input_tree = ["c", ["d", "e"]]
+    input_tree = ["c", ["d", "e"], "f"]
     assert_shallow_structure(shallow_tree, input_tree)
   ```
 
@@ -666,8 +714,8 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True):
   of the nested structure. We achieve this by specifying a shallow structure,
   `shallow_tree`, we wish to flatten up to.
 
-  The input, `input_tree`, can be thought of as having the same structure as
-  `shallow_tree`, but with leaf nodes that are themselves tree structures.
+  The input, `input_tree`, can be thought of as having the same structure layout
+  as `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
   Examples:
 
@@ -727,6 +775,100 @@ def flatten_up_to(shallow_tree, input_tree, check_types=True):
   return list(v for _, v in _yield_flat_up_to(shallow_tree, input_tree))
 
 
+def flatten_with_tuple_paths_up_to(shallow_tree, input_tree, check_types=True):
+  """Flattens `input_tree` up to `shallow_tree`.
+
+  Any further depth in structure in `input_tree` is retained as elements in the
+  partially flattened output.
+
+  Returns a list of (path, value) pairs, where value a leaf node in the
+  flattened tree, and path is the tuple path of that leaf in input_tree.
+
+  If `shallow_tree` and `input_tree` are not sequences, this returns a
+  single-element list: `[((), input_tree)]`.
+
+  Use Case:
+
+  Sometimes we may wish to partially flatten a nested sequence, retaining some
+  of the nested structure. We achieve this by specifying a shallow structure,
+  `shallow_tree`, we wish to flatten up to.
+
+  The input, `input_tree`, can be thought of as having the same structure layout
+  as `shallow_tree`, but with leaf nodes that are themselves tree structures.
+
+  Examples:
+
+  ```python
+  input_tree = [[[2, 2], [3, 3]], [[4, 9], [5, 5]]]
+  shallow_tree = [[True, True], [False, True]]
+
+  flattened_input_tree = flatten_with_tuple_paths_up_to(shallow_tree,
+                                                        input_tree)
+  flattened_shallow_tree = flatten_with_tuple_paths_up_to(shallow_tree,
+                                                          shallow_tree)
+
+  # Output is:
+  # [((0, 0), [2, 2]),
+  #  ((0, 1), [3, 3]),
+  #  ((1, 0), [4, 9]),
+  #  ((1, 1), [5, 5])]
+  #
+  # [((0, 0), True),
+  #  ((0, 1), True),
+  #  ((1, 0), False),
+  #  ((1, 1), True)]
+  ```
+
+  ```python
+  input_tree = [[('a', 1), [('b', 2), [('c', 3), [('d', 4)]]]]]
+  shallow_tree = [['level_1', ['level_2', ['level_3', ['level_4']]]]]
+
+  input_tree_flattened_as_shallow_tree = flatten_up_to(shallow_tree, input_tree)
+  input_tree_flattened = flatten(input_tree)
+
+  # Output is:
+  # [((0, 0), ('a', 1)),
+  #  ((0, 1, 0), ('b', 2)),
+  #  ((0, 1, 1, 0), ('c', 3)),
+  #  ((0, 1, 1, 1), ('d', 4))]
+  # ['a', 1, 'b', 2, 'c', 3, 'd', 4]
+  ```
+
+  Non-Sequence Edge Cases:
+
+  ```python
+  flatten_with_tuple_paths_up_to(0, 0)  # Output: [(), 0]
+
+  flatten_with_tuple_paths_up_to(0, [0, 1, 2])  # Output: [(), [0, 1, 2]]
+
+  flatten_with_tuple_paths_up_to([0, 1, 2], 0)  # Output: TypeError
+
+  flatten_with_tuple_paths_up_to([0, 1, 2], [0, 1, 2])
+  # Output: [((0,) 0), ((1,), 1), ((2,), 2)]
+  ```
+
+  Args:
+    shallow_tree: a possibly pruned structure of input_tree.
+    input_tree: an arbitrarily nested structure or a scalar object.
+      Note, numpy arrays are considered scalars.
+    check_types: bool. If True, check that each node in shallow_tree has the
+      same type as the corresponding node in input_tree.
+
+  Returns:
+    A Python list, the partially flattened version of `input_tree` according to
+    the structure of `shallow_tree`.
+
+  Raises:
+    TypeError: If `shallow_tree` is a sequence but `input_tree` is not.
+    TypeError: If the sequence types of `shallow_tree` are different from
+      `input_tree`.
+    ValueError: If the sequence lengths of `shallow_tree` are different from
+      `input_tree`.
+  """
+  assert_shallow_structure(shallow_tree, input_tree, check_types=check_types)
+  return list(_yield_flat_up_to(shallow_tree, input_tree))
+
+
 def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
   """Applies a function or op to a number of partially flattened inputs.
 
@@ -739,13 +881,21 @@ def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
   achieve this by specifying a shallow structure, `shallow_tree` we wish to
   flatten up to.
 
-  The `inputs`, can be thought of as having the same structure as
+  The `inputs`, can be thought of as having the same structure layout as
   `shallow_tree`, but with leaf nodes that are themselves tree structures.
 
   This function therefore will return something with the same base structure as
   `shallow_tree`.
 
   Examples:
+
+  ```python
+  shallow_tree = [None, None]
+  inp_val = [1, 2, 3]
+  out = map_structure_up_to(shallow_tree, lambda x: 2 * x, inp_val)
+
+  # Output is: [2, 4]
+  ```
 
   ```python
   ab_tuple = collections.namedtuple("ab_tuple", "a, b")
@@ -790,7 +940,7 @@ def map_structure_up_to(shallow_tree, func, *inputs, **kwargs):
       `input_tree`.
 
   Returns:
-    result of repeatedly applying `func`, with same structure as
+    result of repeatedly applying `func`, with the same structure layout as
     `shallow_tree`.
   """
   return map_structure_with_tuple_paths_up_to(
@@ -862,7 +1012,8 @@ def map_structure_with_tuple_paths_up_to(shallow_tree, func, *inputs, **kwargs):
       `input_tree`.
 
   Returns:
-    Result of repeatedly applying `func`. Has same structure as `shallow_tree`.
+    Result of repeatedly applying `func`. Has the same structure layout as
+    `shallow_tree`.
   """
   if not inputs:
     raise ValueError("Cannot map over no sequences")

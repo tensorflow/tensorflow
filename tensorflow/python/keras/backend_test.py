@@ -119,6 +119,12 @@ class BackendUtilsTest(test.TestCase):
           self.evaluate(variables.global_variables_initializer())
           sess.run(y, feed_dict={x: np.random.random((2, 3))})
 
+  def test_learning_phase_name(self):
+    with ops.name_scope('test_scope'):
+      # Test that outer name scopes do not affect the learning phase's name.
+      lp = keras.backend.symbolic_learning_phase()
+    self.assertEqual(lp.name, 'keras_learning_phase:0')
+
   def test_learning_phase_scope(self):
     initial_learning_phase = keras.backend.learning_phase()
     with keras.backend.learning_phase_scope(1):
@@ -1734,6 +1740,16 @@ class BackendGraphTests(test.TestCase):
     normed = keras.backend.batch_normalization(
         x, mean, var, beta, gamma, axis=1, epsilon=1e-3)
     self.assertEqual(normed.shape.as_list(), [10, 3, 5, 5])
+
+  def test_get_session_different_graphs(self):
+    with ops.Graph().as_default():
+      x = keras.backend.constant(1)
+      session = keras.backend.get_session()
+      self.assertIs(session, keras.backend.get_session((x,)))
+      self.assertIs(session, keras.backend.get_session())
+    with ops.Graph().as_default():
+      self.assertIs(session, keras.backend.get_session((x,)))
+      self.assertIsNot(session, keras.backend.get_session())
 
 
 if __name__ == '__main__':

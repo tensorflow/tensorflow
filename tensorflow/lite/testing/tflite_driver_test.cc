@@ -54,6 +54,8 @@ TEST(TfliteDriverTest, SimpleTest) {
   ASSERT_TRUE(runner->IsValid());
 
   ASSERT_TRUE(runner->CheckResults());
+  EXPECT_EQ(runner->ReadOutput(5), "0.101,0.202,0.303,0.404");
+  EXPECT_EQ(runner->ReadOutput(6), "0.011,0.022,0.033,0.044");
 }
 
 TEST(TfliteDriverTest, SingleAddOpTest) {
@@ -88,6 +90,8 @@ TEST(TfliteDriverTest, SingleAddOpTest) {
   ASSERT_TRUE(runner->IsValid());
 
   ASSERT_TRUE(runner->CheckResults());
+  EXPECT_EQ(runner->ReadOutput(5), "0.101,0.202,0.303,0.404");
+  EXPECT_EQ(runner->ReadOutput(6), "0.011,0.022,0.033,0.044");
 }
 
 }  // namespace

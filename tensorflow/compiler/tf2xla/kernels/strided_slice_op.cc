@@ -22,9 +22,9 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
+#include "tensorflow/core/framework/ops_util.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
-#include "tensorflow/core/kernels/ops_util.h"
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/mem.h"
 
@@ -291,7 +291,7 @@ class StridedSliceAssignOp : public XlaOpKernel {
     absl::InlinedVector<xla::XlaOp, 4> slice_begin;
     absl::InlinedVector<int64, 4> slice_dims;
     for (int i = 0; i < begin.size(); ++i) {
-      // TODO(phawkins): implement strides != 1
+      // TODO(b/121179231): implement strides != 1
       OP_REQUIRES(
           ctx, strides[i] == 1 || strides[i] == -1,
           errors::Unimplemented("Strides != 1 or -1 are not yet implemented"));

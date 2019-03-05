@@ -112,7 +112,8 @@ Status DynamicParameterBinding::Verify(const HloModule& module) const {
   return ForEachBinding([&](const DynamicParameter& dynamic_parameter,
                             const DynamicDimension& dynamic_dimension)
                             -> Status {
-    TF_RET_CHECK(dynamic_parameter.parameter_num < entry->num_parameters());
+    TF_RET_CHECK(dynamic_parameter.parameter_num >= 0 &&
+                 dynamic_parameter.parameter_num < entry->num_parameters());
     TF_RET_CHECK(dynamic_dimension.parameter_num < entry->num_parameters());
     TF_RET_CHECK(ShapeUtil::IndexIsValid(
         entry->parameter_instruction(dynamic_parameter.parameter_num)->shape(),

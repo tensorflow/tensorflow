@@ -127,17 +127,17 @@ py_library(
     srcs = ["one_device_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:math_ops",
-        "//tensorflow/python/distribute:distribute_lib",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
-        "@six_archive//:six",
+        "//tensorflow/python/distribute:one_device_strategy",
+    ],
+)
+
+cuda_py_test(
+    name = "one_device_strategy_test",
+    srcs = ["one_device_strategy_test.py"],
+    additional_deps = [
+        ":strategy_test_lib",
+        ":combinations",
+        "//tensorflow/python/eager:test",
     ],
 )
 
@@ -146,19 +146,9 @@ py_library(
     srcs = ["collective_all_reduce_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":mirrored_strategy",
-        "//tensorflow/core:protos_all_py",
-        "//tensorflow/python:array_ops",
-        "//tensorflow/python:collective_ops",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:training",
-        "//tensorflow/python/distribute:cross_device_ops",
-        "//tensorflow/python/distribute:cross_device_utils",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:multi_worker_util",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:values",
-        "//tensorflow/python/eager:context",
+        "//tensorflow/python/distribute:collective_all_reduce_strategy",
+        "//tensorflow/python/distribute:distribute_lib",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
     ],
 )
 
@@ -189,6 +179,7 @@ py_library(
     deps = [
         ":mirrored_strategy",
         ":one_device_strategy",
+        ":parameter_server_strategy",
         ":tpu_strategy",
         "//tensorflow/contrib/cluster_resolver:cluster_resolver_pip",
         "//tensorflow/contrib/optimizer_v2:training",
@@ -207,18 +198,6 @@ py_test(
     srcs = ["combinations_test.py"],
     deps = [
         ":combinations",
-        "//tensorflow/python/eager:test",
-    ],
-)
-
-py_test(
-    name = "one_device_strategy_test",
-    srcs = ["one_device_strategy_test.py"],
-    srcs_version = "PY2AND3",
-    deps = [
-        ":one_device_strategy",
-        ":strategy_test_lib",
-        "//tensorflow/python:framework_test_lib",
         "//tensorflow/python/eager:test",
     ],
 )
@@ -281,18 +260,8 @@ py_library(
     srcs = ["tpu_strategy.py"],
     visibility = ["//tensorflow:internal"],
     deps = [
-        ":one_device_strategy",
         "//tensorflow/contrib/tpu:tpu_lib",
-        "//tensorflow/python:constant_op",
-        "//tensorflow/python:control_flow_ops",
-        "//tensorflow/python:dtypes",
-        "//tensorflow/python:framework_ops",
-        "//tensorflow/python:tensor_util",
-        "//tensorflow/python:util",
-        "//tensorflow/python/distribute:input_lib",
-        "//tensorflow/python/distribute:numpy_dataset",
-        "//tensorflow/python/distribute:reduce_util",
-        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute:tpu_strategy",
     ],
 )
 
@@ -414,6 +383,7 @@ cuda_py_test(
     additional_deps = [
         ":keras_test_lib",
     ],
+    shard_count = 4,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # http://b/119349471
@@ -502,10 +472,10 @@ cuda_py_test(
     additional_deps = [
         ":combinations",
         ":monitor",
-        ":one_device_strategy",
         ":single_loss_example",
         "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
+        "//tensorflow/python/distribute:one_device_strategy",
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:test",
         "//tensorflow/python:framework_ops",
@@ -535,6 +505,7 @@ cuda_py_test(
     name = "cross_device_ops_test",
     srcs = ["cross_device_ops_test.py"],
     additional_deps = [
+        ":collective_all_reduce_strategy",
         ":combinations",
         ":multi_worker_test_base",
         ":mirrored_strategy",
@@ -558,6 +529,7 @@ py_library(
     srcs = [
         "keras_backward_compat_test.py",
         "keras_test.py",
+        "keras_utils_test.py",
     ],
     deps = [
         ":combinations",
@@ -576,8 +548,9 @@ py_library(
 distribute_py_test(
     name = "keras_test",
     srcs = ["keras_test.py"],
+    full_precision = True,
     main = "keras_test.py",
-    shard_count = 16,
+    shard_count = 32,
     tags = [
         "multi_and_single_gpu",
         "no_oss",  # TODO(b/117919883): Fix python error.
@@ -585,6 +558,24 @@ distribute_py_test(
         "notsan",
     ],
     deps = [
+        ":keras_test_lib",
+    ],
+)
+
+distribute_py_test(
+    name = "keras_utils_test",
+    srcs = ["keras_utils_test.py"],
+    full_precision = True,
+    main = "keras_utils_test.py",
+    shard_count = 32,
+    tags = [
+        "multi_and_single_gpu",
+        "no_oss",  # TODO(b/117919883): Fix python error.
+        "no_windows_gpu",
+        "notsan",
+    ],
+    deps = [
+        ":keras_test",
         ":keras_test_lib",
     ],
 )
@@ -800,6 +791,6 @@ tf_xla_py_test(
         ":tpu_strategy",
         "//tensorflow/compiler/tests:xla_test",
         "//tensorflow/python/eager:test",
-        "//tensorflow/python/training/checkpointable:util",
+        "//tensorflow/python/training/tracking:util",
     ],
 )

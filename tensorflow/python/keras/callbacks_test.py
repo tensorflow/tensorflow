@@ -23,21 +23,22 @@ import csv
 import os
 import re
 import shutil
-import tempfile
+import sys
 import threading
 import unittest
 
 from absl.testing import parameterized
 import numpy as np
 
-from tensorflow.core.framework import summary_pb2
 from tensorflow.python import keras
+from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.framework import random_seed
-from tensorflow.python.framework import test_util
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.ops import array_ops
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
 
 try:
@@ -218,173 +219,219 @@ class CallbackCountsTest(keras_parameterized.TestCase):
         })
 
 
-class KerasCallbacksTest(test.TestCase):
+class KerasCallbacksTest(keras_parameterized.TestCase):
 
+  def _get_model(self, input_shape=None):
+    layers = [
+        keras.layers.Dense(3, activation='relu'),
+        keras.layers.Dense(2, activation='softmax')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=input_shape)
+    model.compile(
+        loss='mse',
+        optimizer='rmsprop',
+        metrics=[keras.metrics.CategoricalAccuracy(name='my_acc')],
+        run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging(self):
+    model = self._get_model(input_shape=(3,))
+
+    x = array_ops.ones((50, 3))
+    y = array_ops.zeros((50, 2))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    expected_log = r'(.*- loss:.*- my_acc:.*)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(dataset, epochs=2, steps_per_epoch=10)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types(exclude_models='functional')
+  @keras_parameterized.run_all_keras_modes
+  def test_progbar_logging_deferred_model_build(self):
+    model = self._get_model()
+    self.assertFalse(model.built)
+
+    x = array_ops.ones((50, 3))
+    y = array_ops.zeros((50, 2))
+    dataset = dataset_ops.Dataset.from_tensor_slices((x, y)).batch(10)
+    expected_log = r'(.*- loss:.*- my_acc:.*)+'
+
+    with self.captureWritesToStream(sys.stdout) as printed:
+      model.fit(dataset, epochs=2, steps_per_epoch=10)
+      self.assertRegexpMatches(printed.contents(), expected_log)
+
+  @keras_parameterized.run_with_all_model_types
   def test_ModelCheckpoint(self):
     if h5py is None:
       return  # Skip test if models cannot be saved.
 
-    with self.cached_session():
-      np.random.seed(1337)
+    layers = [
+        keras.layers.Dense(NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'),
+        keras.layers.Dense(NUM_CLASSES, activation='softmax')
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10,))
+    model.compile(
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
+    temp_dir = self.get_temp_dir()
+    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
 
-      filepath = os.path.join(temp_dir, 'checkpoint.h5')
-      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-          train_samples=TRAIN_SAMPLES,
-          test_samples=TEST_SAMPLES,
-          input_shape=(INPUT_DIM,),
-          num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
-      # case 1
-      monitor = 'val_loss'
-      save_best_only = False
-      mode = 'auto'
+    filepath = os.path.join(temp_dir, 'checkpoint')
+    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
+        train_samples=TRAIN_SAMPLES,
+        test_samples=TEST_SAMPLES,
+        input_shape=(INPUT_DIM,),
+        num_classes=NUM_CLASSES)
+    y_test = keras.utils.to_categorical(y_test)
+    y_train = keras.utils.to_categorical(y_train)
+    # case 1
+    monitor = 'val_loss'
+    save_best_only = False
+    mode = 'auto'
 
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-      model.compile(
-          loss='categorical_crossentropy',
-          optimizer='rmsprop',
-          metrics=['accuracy'])
+    model = keras.models.Sequential()
+    model.add(
+        keras.layers.Dense(
+            NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
+    model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
+    model.compile(
+        loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # case 2
-      mode = 'min'
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    # case 2
+    mode = 'min'
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # case 3
-      mode = 'max'
-      monitor = 'val_acc'
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    # case 3
+    mode = 'max'
+    monitor = 'val_acc'
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # case 4
-      save_best_only = True
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      assert os.path.exists(filepath)
-      os.remove(filepath)
+    # case 4
+    save_best_only = True
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    assert os.path.exists(filepath)
+    os.remove(filepath)
 
-      # Case: metric not available.
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor='unknown',
-              save_best_only=True)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=1,
-          verbose=0)
-      # File won't be written.
-      assert not os.path.exists(filepath)
+    # Case: metric not available.
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor='unknown',
+            save_best_only=True)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=1,
+        verbose=0)
+    # File won't be written.
+    assert not os.path.exists(filepath)
 
-      # case 5
-      save_best_only = False
-      period = 2
-      mode = 'auto'
+    # case 5
+    save_best_only = False
+    period = 2
+    mode = 'auto'
 
-      filepath = os.path.join(temp_dir, 'checkpoint.{epoch:02d}.h5')
-      cbks = [
-          keras.callbacks.ModelCheckpoint(
-              filepath,
-              monitor=monitor,
-              save_best_only=save_best_only,
-              mode=mode,
-              period=period)
-      ]
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=4,
-          verbose=1)
-      assert os.path.exists(filepath.format(epoch=2))
-      assert os.path.exists(filepath.format(epoch=4))
-      os.remove(filepath.format(epoch=2))
-      os.remove(filepath.format(epoch=4))
-      assert not os.path.exists(filepath.format(epoch=1))
-      assert not os.path.exists(filepath.format(epoch=3))
+    filepath = os.path.join(temp_dir, 'checkpoint.{epoch:02d}.h5')
+    cbks = [
+        keras.callbacks.ModelCheckpoint(
+            filepath,
+            monitor=monitor,
+            save_best_only=save_best_only,
+            mode=mode,
+            period=period)
+    ]
+    model.fit(
+        x_train,
+        y_train,
+        batch_size=BATCH_SIZE,
+        validation_data=(x_test, y_test),
+        callbacks=cbks,
+        epochs=4,
+        verbose=1)
+    assert os.path.exists(filepath.format(epoch=2))
+    assert os.path.exists(filepath.format(epoch=4))
+    os.remove(filepath.format(epoch=2))
+    os.remove(filepath.format(epoch=4))
+    assert not os.path.exists(filepath.format(epoch=1))
+    assert not os.path.exists(filepath.format(epoch=3))
 
-      # Invalid use: this will raise a warning but not an Exception.
-      keras.callbacks.ModelCheckpoint(
-          filepath,
-          monitor=monitor,
-          save_best_only=save_best_only,
-          mode='unknown')
+    # Invalid use: this will raise a warning but not an Exception.
+    keras.callbacks.ModelCheckpoint(
+        filepath,
+        monitor=monitor,
+        save_best_only=save_best_only,
+        mode='unknown')
 
   def test_EarlyStopping(self):
     with self.cached_session():
@@ -399,9 +446,7 @@ class KerasCallbacksTest(test.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
       model.compile(
-          loss='categorical_crossentropy',
-          optimizer='rmsprop',
-          metrics=['accuracy'])
+          loss='categorical_crossentropy', optimizer='rmsprop', metrics=['acc'])
 
       cases = [
           ('max', 'val_acc'),
@@ -459,7 +504,7 @@ class KerasCallbacksTest(test.TestCase):
       model = testing_utils.get_small_sequential_mlp(
           num_hidden=1, num_classes=1, input_dim=1)
       model.compile(
-          optimizer='sgd', loss='binary_crossentropy', metrics=['accuracy'])
+          optimizer='sgd', loss='binary_crossentropy', metrics=['acc'])
 
       stopper = keras.callbacks.EarlyStopping(monitor='acc',
                                               baseline=baseline)
@@ -603,7 +648,7 @@ class KerasCallbacksTest(test.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=0)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -624,7 +669,7 @@ class KerasCallbacksTest(test.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=2)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
@@ -836,310 +881,6 @@ class KerasCallbacksTest(test.TestCase):
       self.assertEqual(len(loss), 1)
       self.assertEqual(loss[0], np.inf)
 
-  @test_util.run_deprecated_v1
-  def test_TensorBoard(self):
-    np.random.seed(1337)
-
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-
-    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-        train_samples=TRAIN_SAMPLES,
-        test_samples=TEST_SAMPLES,
-        input_shape=(INPUT_DIM,),
-        num_classes=NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
-
-    def data_generator(train):
-      if train:
-        max_batch_index = len(x_train) // BATCH_SIZE
-      else:
-        max_batch_index = len(x_test) // BATCH_SIZE
-      i = 0
-      while 1:
-        if train:
-          yield (x_train[i * BATCH_SIZE:(i + 1) * BATCH_SIZE],
-                 y_train[i * BATCH_SIZE:(i + 1) * BATCH_SIZE])
-        else:
-          yield (x_test[i * BATCH_SIZE:(i + 1) * BATCH_SIZE],
-                 y_test[i * BATCH_SIZE:(i + 1) * BATCH_SIZE])
-        i += 1
-        i %= max_batch_index
-
-    # case: Sequential
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      # non_trainable_weights: moving_variance, moving_mean
-      model.add(keras.layers.BatchNormalization())
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-      model.compile(
-          loss='categorical_crossentropy',
-          optimizer='sgd',
-          metrics=['accuracy'])
-      tsb = keras.callbacks.TensorBoard(
-          log_dir=temp_dir, histogram_freq=1, write_images=True,
-          write_grads=True, batch_size=5)
-      cbks = [tsb]
-
-      # fit with validation data
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=3,
-          verbose=0)
-
-      # fit with validation data and accuracy
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=2,
-          verbose=0)
-
-      # fit generator with validation data
-      model.fit_generator(
-          data_generator(True),
-          len(x_train),
-          epochs=2,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          verbose=0)
-
-      # fit generator without validation data
-      # histogram_freq must be zero
-      tsb.histogram_freq = 0
-      model.fit_generator(
-          data_generator(True),
-          len(x_train),
-          epochs=2,
-          callbacks=cbks,
-          verbose=0)
-
-      # fit generator with validation data and accuracy
-      tsb.histogram_freq = 1
-      model.fit_generator(
-          data_generator(True),
-          len(x_train),
-          epochs=2,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          verbose=0)
-
-      # fit generator without validation data and accuracy
-      tsb.histogram_freq = 0
-      model.fit_generator(
-          data_generator(True), len(x_train), epochs=2, callbacks=cbks)
-      assert os.path.exists(temp_dir)
-
-  @test_util.run_deprecated_v1
-  def test_TensorBoard_multi_input_output(self):
-    np.random.seed(1337)
-    tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
-
-    with self.cached_session():
-      filepath = os.path.join(tmpdir, 'logs')
-
-      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-          train_samples=TRAIN_SAMPLES,
-          test_samples=TEST_SAMPLES,
-          input_shape=(INPUT_DIM,),
-          num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
-
-      def data_generator(train):
-        if train:
-          max_batch_index = len(x_train) // BATCH_SIZE
-        else:
-          max_batch_index = len(x_test) // BATCH_SIZE
-        i = 0
-        while 1:
-          if train:
-            # simulate multi-input/output models
-            yield ([x_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2,
-                   [y_train[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2)
-          else:
-            yield ([x_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2,
-                   [y_test[i * BATCH_SIZE: (i + 1) * BATCH_SIZE]] * 2)
-          i += 1
-          i %= max_batch_index
-
-      inp1 = keras.Input((INPUT_DIM,))
-      inp2 = keras.Input((INPUT_DIM,))
-      inp = keras.layers.add([inp1, inp2])
-      hidden = keras.layers.Dense(2, activation='relu')(inp)
-      hidden = keras.layers.Dropout(0.1)(hidden)
-      output1 = keras.layers.Dense(NUM_CLASSES, activation='softmax')(hidden)
-      output2 = keras.layers.Dense(NUM_CLASSES, activation='softmax')(hidden)
-      model = keras.models.Model([inp1, inp2], [output1, output2])
-      model.compile(loss='categorical_crossentropy',
-                    optimizer='sgd',
-                    metrics=['accuracy'])
-
-      # we must generate new callbacks for each test, as they aren't stateless
-      def callbacks_factory(histogram_freq):
-        return [keras.callbacks.TensorBoard(log_dir=filepath,
-                                            histogram_freq=histogram_freq,
-                                            write_images=True, write_grads=True,
-                                            batch_size=5)]
-
-      # fit without validation data
-      model.fit([x_train] * 2, [y_train] * 2, batch_size=BATCH_SIZE,
-                callbacks=callbacks_factory(histogram_freq=0), epochs=3)
-
-      # fit with validation data and accuracy
-      model.fit([x_train] * 2, [y_train] * 2, batch_size=BATCH_SIZE,
-                validation_data=([x_test] * 2, [y_test] * 2),
-                callbacks=callbacks_factory(histogram_freq=1), epochs=2)
-
-      # fit generator without validation data
-      model.fit_generator(data_generator(True), len(x_train), epochs=2,
-                          callbacks=callbacks_factory(histogram_freq=0))
-
-      # fit generator with validation data and accuracy
-      model.fit_generator(data_generator(True), len(x_train), epochs=2,
-                          validation_data=([x_test] * 2, [y_test] * 2),
-                          callbacks=callbacks_factory(histogram_freq=1))
-      assert os.path.isdir(filepath)
-
-  @test_util.run_deprecated_v1
-  def test_Tensorboard_histogram_summaries_in_test_function(self):
-
-    class FileWriterStub(object):
-
-      def __init__(self, logdir, graph=None):
-        self.logdir = logdir
-        self.graph = graph
-        self.steps_seen = []
-
-      def add_summary(self, summary, global_step):
-        summary_obj = summary_pb2.Summary()
-
-        # ensure a valid Summary proto is being sent
-        if isinstance(summary, bytes):
-          summary_obj.ParseFromString(summary)
-        else:
-          assert isinstance(summary, summary_pb2.Summary)
-          summary_obj = summary
-
-        # keep track of steps seen for the merged_summary op,
-        # which contains the histogram summaries
-        if len(summary_obj.value) > 1:
-          self.steps_seen.append(global_step)
-
-      def flush(self):
-        pass
-
-      def close(self):
-        pass
-
-    def _init_writer(obj, _):
-      obj.writer = FileWriterStub(obj.log_dir)
-
-    np.random.seed(1337)
-    tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
-    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-        train_samples=TRAIN_SAMPLES,
-        test_samples=TEST_SAMPLES,
-        input_shape=(INPUT_DIM,),
-        num_classes=NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
-
-    with self.cached_session():
-      model = keras.models.Sequential()
-      model.add(
-          keras.layers.Dense(
-              NUM_HIDDEN, input_dim=INPUT_DIM, activation='relu'))
-      # non_trainable_weights: moving_variance, moving_mean
-      model.add(keras.layers.BatchNormalization())
-      model.add(keras.layers.Dense(NUM_CLASSES, activation='softmax'))
-      model.compile(
-          loss='categorical_crossentropy',
-          optimizer='sgd',
-          metrics=['accuracy'])
-      keras.callbacks.TensorBoard._init_writer = _init_writer
-      tsb = keras.callbacks.TensorBoard(
-          log_dir=tmpdir,
-          histogram_freq=1,
-          write_images=True,
-          write_grads=True,
-          batch_size=5)
-      cbks = [tsb]
-
-      # fit with validation data
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=3,
-          verbose=0)
-
-      self.assertAllEqual(tsb.writer.steps_seen, [0, 1, 2, 3, 4, 5])
-
-  @test_util.run_deprecated_v1
-  def test_Tensorboard_histogram_summaries_with_generator(self):
-    np.random.seed(1337)
-    tmpdir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, tmpdir, ignore_errors=True)
-
-    def generator():
-      x = np.random.randn(10, 100).astype(np.float32)
-      y = np.random.randn(10, 10).astype(np.float32)
-      while True:
-        yield x, y
-
-    with self.cached_session():
-      model = testing_utils.get_small_sequential_mlp(
-          num_hidden=10, num_classes=10, input_dim=100)
-      model.compile(
-          loss='categorical_crossentropy',
-          optimizer='sgd',
-          metrics=['accuracy'])
-      tsb = keras.callbacks.TensorBoard(
-          log_dir=tmpdir,
-          histogram_freq=1,
-          write_images=True,
-          write_grads=True,
-          batch_size=5)
-      cbks = [tsb]
-
-      # fit with validation generator
-      model.fit_generator(
-          generator(),
-          steps_per_epoch=2,
-          epochs=2,
-          validation_data=generator(),
-          validation_steps=2,
-          callbacks=cbks,
-          verbose=0)
-
-      with self.assertRaises(ValueError):
-        # fit with validation generator but no
-        # validation_steps
-        model.fit_generator(
-            generator(),
-            steps_per_epoch=2,
-            epochs=2,
-            validation_data=generator(),
-            callbacks=cbks,
-            verbose=0)
-
-      self.assertTrue(os.path.exists(tmpdir))
-
   @unittest.skipIf(
       os.name == 'nt',
       'use_multiprocessing=True does not work on windows properly.')
@@ -1187,209 +928,6 @@ class KerasCallbacksTest(test.TestCase):
       t.join()
       assert not t.is_alive()
 
-  def test_TensorBoard_with_ReduceLROnPlateau(self):
-    with self.cached_session():
-      temp_dir = self.get_temp_dir()
-      self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-
-      (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-          train_samples=TRAIN_SAMPLES,
-          test_samples=TEST_SAMPLES,
-          input_shape=(INPUT_DIM,),
-          num_classes=NUM_CLASSES)
-      y_test = keras.utils.to_categorical(y_test)
-      y_train = keras.utils.to_categorical(y_train)
-
-      model = testing_utils.get_small_sequential_mlp(
-          num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
-      model.compile(
-          loss='binary_crossentropy', optimizer='sgd', metrics=['accuracy'])
-
-      cbks = [
-          keras.callbacks.ReduceLROnPlateau(
-              monitor='val_loss', factor=0.5, patience=4, verbose=1),
-          keras.callbacks.TensorBoard(log_dir=temp_dir)
-      ]
-
-      model.fit(
-          x_train,
-          y_train,
-          batch_size=BATCH_SIZE,
-          validation_data=(x_test, y_test),
-          callbacks=cbks,
-          epochs=2,
-          verbose=0)
-
-      assert os.path.exists(temp_dir)
-
-  @test_util.run_deprecated_v1
-  def test_Tensorboard_batch_logging(self):
-
-    class FileWriterStub(object):
-
-      def __init__(self, logdir, graph=None):
-        self.logdir = logdir
-        self.graph = graph
-        self.batches_logged = []
-        self.summary_values = []
-        self.summary_tags = []
-
-      def add_summary(self, summary, step):
-        self.summary_values.append(summary.value[0].simple_value)
-        self.summary_tags.append(summary.value[0].tag)
-        self.batches_logged.append(step)
-
-      def flush(self):
-        pass
-
-      def close(self):
-        pass
-
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='batch')
-    tb_cbk.writer = FileWriterStub(temp_dir)
-
-    for batch in range(5):
-      tb_cbk.on_batch_end(batch, {'acc': batch})
-    self.assertEqual(tb_cbk.writer.batches_logged, [0, 1, 2, 3, 4])
-    self.assertEqual(tb_cbk.writer.summary_values, [0., 1., 2., 3., 4.])
-    self.assertEqual(tb_cbk.writer.summary_tags, ['batch_acc'] * 5)
-
-  @test_util.run_deprecated_v1
-  def test_Tensorboard_epoch_and_batch_logging(self):
-
-    class FileWriterStub(object):
-
-      def __init__(self, logdir, graph=None):
-        self.logdir = logdir
-        self.graph = graph
-
-      def add_summary(self, summary, step):
-        if 'batch_' in summary.value[0].tag:
-          self.batch_summary = (step, summary)
-        elif 'epoch_' in summary.value[0].tag:
-          self.epoch_summary = (step, summary)
-
-      def flush(self):
-        pass
-
-      def close(self):
-        pass
-
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='batch')
-    tb_cbk.writer = FileWriterStub(temp_dir)
-
-    tb_cbk.on_batch_end(0, {'acc': 5.0})
-    batch_step, batch_summary = tb_cbk.writer.batch_summary
-    self.assertEqual(batch_step, 0)
-    self.assertEqual(batch_summary.value[0].simple_value, 5.0)
-
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='epoch')
-    tb_cbk.writer = FileWriterStub(temp_dir)
-    tb_cbk.on_epoch_end(0, {'acc': 10.0})
-    epoch_step, epoch_summary = tb_cbk.writer.epoch_summary
-    self.assertEqual(epoch_step, 0)
-    self.assertEqual(epoch_summary.value[0].simple_value, 10.0)
-
-  @test_util.run_in_graph_and_eager_modes
-  def test_Tensorboard_eager(self):
-    temp_dir = tempfile.mkdtemp(dir=self.get_temp_dir())
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-
-    (x_train, y_train), (x_test, y_test) = testing_utils.get_test_data(
-        train_samples=TRAIN_SAMPLES,
-        test_samples=TEST_SAMPLES,
-        input_shape=(INPUT_DIM,),
-        num_classes=NUM_CLASSES)
-    y_test = keras.utils.to_categorical(y_test)
-    y_train = keras.utils.to_categorical(y_train)
-
-    model = testing_utils.get_small_sequential_mlp(
-        num_hidden=NUM_HIDDEN, num_classes=NUM_CLASSES, input_dim=INPUT_DIM)
-    model.compile(
-        loss='binary_crossentropy',
-        optimizer=adam.AdamOptimizer(0.01),
-        metrics=['accuracy'])
-
-    cbks = [keras.callbacks.TensorBoard(log_dir=temp_dir)]
-
-    model.fit(
-        x_train,
-        y_train,
-        batch_size=BATCH_SIZE,
-        validation_data=(x_test, y_test),
-        callbacks=cbks,
-        epochs=2,
-        verbose=0)
-
-    self.assertTrue(os.path.exists(temp_dir))
-
-  @test_util.run_deprecated_v1
-  def test_TensorBoard_update_freq(self):
-
-    class FileWriterStub(object):
-
-      def __init__(self, logdir, graph=None):
-        self.logdir = logdir
-        self.graph = graph
-        self.batch_summaries = []
-        self.epoch_summaries = []
-
-      def add_summary(self, summary, step):
-        if 'batch_' in summary.value[0].tag:
-          self.batch_summaries.append((step, summary))
-        elif 'epoch_' in summary.value[0].tag:
-          self.epoch_summaries.append((step, summary))
-
-      def flush(self):
-        pass
-
-      def close(self):
-        pass
-
-    temp_dir = self.get_temp_dir()
-    self.addCleanup(shutil.rmtree, temp_dir, ignore_errors=True)
-
-    # Epoch mode
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='epoch')
-    tb_cbk.writer = FileWriterStub(temp_dir)
-
-    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 1})
-    self.assertEqual(tb_cbk.writer.batch_summaries, [])
-    tb_cbk.on_epoch_end(0, {'acc': 10.0, 'size': 1})
-    self.assertEqual(len(tb_cbk.writer.epoch_summaries), 1)
-
-    # Batch mode
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq='batch')
-    tb_cbk.writer = FileWriterStub(temp_dir)
-
-    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 1})
-    self.assertEqual(len(tb_cbk.writer.batch_summaries), 1)
-    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 1})
-    self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
-    self.assertFalse(tb_cbk.writer.epoch_summaries)
-
-    # Integer mode
-    tb_cbk = keras.callbacks.TensorBoard(temp_dir, update_freq=20)
-    tb_cbk.writer = FileWriterStub(temp_dir)
-
-    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
-    self.assertFalse(tb_cbk.writer.batch_summaries)
-    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
-    self.assertEqual(len(tb_cbk.writer.batch_summaries), 1)
-    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
-    self.assertEqual(len(tb_cbk.writer.batch_summaries), 1)
-    tb_cbk.on_batch_end(0, {'acc': 5.0, 'size': 10})
-    self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
-    tb_cbk.on_batch_end(0, {'acc': 10.0, 'size': 10})
-    self.assertEqual(len(tb_cbk.writer.batch_summaries), 2)
-    self.assertFalse(tb_cbk.writer.epoch_summaries)
-
   def test_RemoteMonitorWithJsonPayload(self):
     if requests is None:
       self.skipTest('`requests` required to run this test')
@@ -1420,6 +958,434 @@ class KerasCallbacksTest(test.TestCase):
             validation_data=(x_test, y_test),
             callbacks=cbks,
             epochs=1)
+
+
+# A summary that was emitted during a test. Fields:
+#   logdir: str. The logdir of the FileWriter to which the summary was
+#     written.
+#   tag: str. The name of the summary.
+_ObservedSummary = collections.namedtuple('_ObservedSummary', ('logdir', 'tag'))
+
+
+class _SummaryFile(object):
+  """A record of summary tags and the files to which they were written.
+
+  Fields `scalars`, `images`, `histograms`, and `tensors` are sets
+  containing `_ObservedSummary` values.
+  """
+
+  def __init__(self):
+    self.scalars = set()
+    self.images = set()
+    self.histograms = set()
+    self.tensors = set()
+
+
+def list_summaries(logdir):
+  """Read all summaries under the logdir into a `_SummaryFile`.
+
+  Args:
+    logdir: A path to a directory that contains zero or more event
+      files, either as direct children or in transitive subdirectories.
+      Summaries in these events must only contain old-style scalars,
+      images, and histograms. Non-summary events, like `graph_def`s, are
+      ignored.
+
+  Returns:
+    A `_SummaryFile` object reflecting all summaries written to any
+    event files in the logdir or any of its descendant directories.
+
+  Raises:
+    ValueError: If an event file contains an summary of unexpected kind.
+  """
+  result = _SummaryFile()
+  for (dirpath, dirnames, filenames) in os.walk(logdir):
+    del dirnames  # unused
+    for filename in filenames:
+      if not filename.startswith('events.out.'):
+        continue
+      path = os.path.join(dirpath, filename)
+      for event in summary_iterator.summary_iterator(path):
+        if not event.summary:  # (e.g., it's a `graph_def` event)
+          continue
+        for value in event.summary.value:
+          tag = value.tag
+          # Case on the `value` rather than the summary metadata because
+          # the Keras callback uses `summary_ops_v2` to emit old-style
+          # summaries. See b/124535134.
+          kind = value.WhichOneof('value')
+          container = {
+              'simple_value': result.scalars,
+              'image': result.images,
+              'histo': result.histograms,
+              'tensor': result.tensors,
+          }.get(kind)
+          if container is None:
+            raise ValueError(
+                'Unexpected summary kind %r in event file %s:\n%r'
+                % (kind, path, event))
+          container.add(_ObservedSummary(logdir=dirpath, tag=tag))
+  return result
+
+
+@keras_parameterized.run_with_all_model_types
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class TestTensorBoardV2(keras_parameterized.TestCase):
+
+  def setUp(self):
+    super(TestTensorBoardV2, self).setUp()
+    self.logdir = os.path.join(self.get_temp_dir(), 'tb')
+    self.train_dir = os.path.join(self.logdir, 'train')
+    self.validation_dir = os.path.join(self.logdir, 'validation')
+
+  def _get_model(self):
+    layers = [
+        keras.layers.Conv2D(8, (3, 3)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1)
+    ]
+    model = testing_utils.get_model_from_layers(layers, input_shape=(10, 10, 1))
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  def test_TensorBoard_default_logdir(self):
+    """Regression test for cross-platform pathsep in default logdir."""
+    os.chdir(self.get_temp_dir())
+
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard()  # no logdir specified
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(logdir='.')
+    train_dir = os.path.join('.', 'logs', 'train')
+    validation_dir = os.path.join('.', 'logs', 'validation')
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=validation_dir, tag='epoch_loss'),
+        })
+
+  def test_TensorBoard_basic(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        })
+
+  def test_TensorBoard_across_invocations(self):
+    """Regression test for summary writer resource use-after-free.
+
+    See: <https://github.com/tensorflow/tensorflow/issues/25707>
+    """
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    for _ in (1, 2):
+      model.fit(
+          x,
+          y,
+          batch_size=2,
+          epochs=2,
+          validation_data=(x, y),
+          callbacks=[tb_cbk])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        })
+
+  def test_TensorBoard_no_spurious_event_files(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[tb_cbk])
+
+    events_file_run_basenames = set()
+    for (dirpath, dirnames, filenames) in os.walk(self.logdir):
+      del dirnames  # unused
+      if any(fn.startswith('events.out.') for fn in filenames):
+        events_file_run_basenames.add(os.path.basename(dirpath))
+    self.assertEqual(events_file_run_basenames, {'train'})
+
+  def test_TensorBoard_batch_metrics(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='batch_loss'),
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+
+  def test_TensorBoard_weight_histograms(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.histograms),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+        },
+    )
+
+  def test_TensorBoard_weight_images(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, write_images=True)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.scalars,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.histograms),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+        },
+    )
+    self.assertEqual(
+        self._strip_layer_names(summary_file.images),
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/1'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
+        },
+    )
+
+  def _strip_layer_names(self, summaries):
+    """Deduplicate summary names modulo layer prefix.
+
+    This removes the first slash-component of each tag name: for
+    instance, "foo/bar/baz" becomes "bar/baz".
+
+    Args:
+      summaries: A `set` of `_ObservedSummary` values.
+
+    Returns:
+      A new `set` of `_ObservedSummary` values with layer prefixes
+      removed.
+    """
+    result = set()
+    for summary in summaries:
+      if '/' not in summary.tag:
+        raise ValueError('tag has no layer name: %r' % summary.tag)
+      new_tag = summary.tag.split('/', 1)[1]
+      result.add(summary._replace(tag=new_tag))
+    return result
+
+  def test_TensorBoard_invalid_argument(self):
+    with self.assertRaisesRegexp(ValueError, 'Unrecognized arguments'):
+      keras.callbacks.TensorBoard(wwrite_images=True)
+
+
+# Note that this test specifies model_type explicitly.
+class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
+
+  def setUp(self):
+    super(TestTensorBoardV2NonParameterizedTest, self).setUp()
+    self.logdir = os.path.join(self.get_temp_dir(), 'tb')
+    self.train_dir = os.path.join(self.logdir, 'train')
+    self.validation_dir = os.path.join(self.logdir, 'validation')
+
+  def _get_seq_model(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3), input_shape=(10, 10, 1)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  def fitModelAndAssertKerasModelWritten(self, model):
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir,
+                                         write_graph=True,
+                                         profile_batch=0)
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='keras'),
+        },
+    )
+
+  def test_TensorBoard_writeSequentialModel_noInputShape(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensorBoard_writeSequentialModel_withInputShape(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3), input_shape=(10, 10, 1)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensoriBoard_writeModel(self):
+    inputs = keras.layers.Input([10, 10, 1])
+    x = keras.layers.Conv2D(8, (3, 3), activation='relu')(inputs)
+    x = keras.layers.Flatten()(x)
+    x = keras.layers.Dense(1)(x)
+    model = keras.models.Model(inputs=inputs, outputs=[x])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_TensorBoard_autoTrace(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=1, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
+        },
+    )
+
+  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=2, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
+        },
+    )
+
+  # TODO(b/126944683): Put parameterization in the class when graph is fixed.
+  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+  def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=10000, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    # Enabled trace only on the 10000th batch, thus it should be empty.
+    self.assertEmpty(summary_file.tensors)
 
 
 if __name__ == '__main__':

@@ -41,8 +41,8 @@ class CollectiveParamResolverLocalTest : public ::testing::Test {
     TF_CHECK_OK(DeviceFactory::AddDevices(options, task_name, &devices));
     device_mgr_.reset(new DeviceMgr(std::move(devices)));
     drl_.reset(new DeviceResolverLocal(device_mgr_.get()));
-    prl_.reset(new CollectiveParamResolverLocal(device_mgr_.get(), drl_.get(),
-                                                task_name));
+    prl_.reset(new CollectiveParamResolverLocal(cp, device_mgr_.get(),
+                                                drl_.get(), task_name));
   }
 
   void RunCompleteDefaultRanking(
@@ -175,7 +175,7 @@ TEST_F(CollectiveParamResolverLocalTest, CompleteParamsReduction1Task) {
     Env::Default()->SchedClosure([this, i, cp, &note, &statuses]() {
       prl_->CompleteParamsAsync(cp->instance.device_names[0], cp,
                                 nullptr /*CancellationManager*/,
-                                [this, &statuses, &note, i](const Status& s) {
+                                [&statuses, &note, i](const Status& s) {
                                   statuses[i] = s;
                                   note[i].Notify();
                                 });

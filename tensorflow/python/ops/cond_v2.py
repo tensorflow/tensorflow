@@ -35,7 +35,7 @@ from tensorflow.python.ops import control_flow_util_v2 as util
 from tensorflow.python.ops import gen_dataset_ops
 from tensorflow.python.ops import gen_functional_ops
 from tensorflow.python.ops import gen_resource_variable_ops
-from tensorflow.python.ops import gradients_impl
+from tensorflow.python.ops import gradients_util
 from tensorflow.python.ops import math_ops
 from tensorflow.python.util import nest
 
@@ -192,14 +192,16 @@ def _build_cond(pred, true_graph, false_graph, true_inputs, false_inputs,
                                    true_inputs, false_inputs)
 
   # Create the If op.
-  tensors = gen_functional_ops._if(  # pylint: disable=protected-access
-      pred,
-      cond_inputs, [t.dtype for t in true_graph.outputs],
-      util.create_new_tf_function(true_graph),
-      util.create_new_tf_function(false_graph),
-      output_shapes=_get_output_shapes(true_graph.outputs,
-                                       false_graph.outputs),
-      name=name)
+  with ops.control_dependencies(
+      list(true_graph.control_captures) + list(false_graph.control_captures)):
+    tensors = gen_functional_ops._if(  # pylint: disable=protected-access
+        pred,
+        cond_inputs, [t.dtype for t in true_graph.outputs],
+        util.create_new_tf_function(true_graph),
+        util.create_new_tf_function(false_graph),
+        output_shapes=_get_output_shapes(true_graph.outputs,
+                                         false_graph.outputs),
+        name=name)
 
   # TODO(b/110167197) this approach requires cond_v2 to have at least 1 output
   if_op = tensors[0].op
@@ -277,7 +279,7 @@ def _grad_fn(func_graph, grads):
   ys = []
   grad_ys = []
   for y, grad_y in zip(func_graph.outputs, grads):
-    if not gradients_impl.IsTrainable(y):
+    if not gradients_util.IsTrainable(y):
       continue
     ys.append(y)
     grad_ys.append(grad_y)
@@ -286,7 +288,7 @@ def _grad_fn(func_graph, grads):
   # func_graph in the current graph, which requires capturing tensors from
   # func_graph. The captured func_graph tensors are resolved to external tensors
   # in _resolve_grad_inputs.
-  result = gradients_impl._GradientsHelper(
+  result = gradients_util._GradientsHelper(
       ys, func_graph.inputs, grad_ys=grad_ys,
       src_graph=func_graph)
 

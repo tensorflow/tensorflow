@@ -94,9 +94,6 @@ class DistributionTestBase(test.TestCase):
       l = core.Dense(1, use_bias=False)
 
       def loss(x):
-        # TODO(josh11b): What if this constant was instead a captured
-        # value?  Would it need to be a value that has been passed
-        # through d.broadcast()?
         y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
         return y * y
       # TODO(isaprykin): Extract implicit_grad+get_filtered_grad_fn into a
@@ -107,7 +104,7 @@ class DistributionTestBase(test.TestCase):
       def update(v, g):
         return v.assign_sub(0.2 * g)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""
@@ -152,9 +149,6 @@ class DistributionTestBase(test.TestCase):
       l = core.Dense(1, use_bias=False)
 
       def loss(x):
-        # TODO(josh11b): What if this constant was instead a captured
-        # value?  Would it need to be a value that has been passed
-        # through d.broadcast()?
         y = array_ops.reshape(l(x), []) - constant_op.constant(1.)
         return y * y
 
@@ -163,7 +157,7 @@ class DistributionTestBase(test.TestCase):
       def update(v, g):
         return v.assign_sub(learning_rate * g)
 
-      one = d.broadcast(constant_op.constant([[1.]]))
+      one = constant_op.constant([[1.]])
 
       def step():
         """Perform one optimization step."""
@@ -224,7 +218,7 @@ class DistributionTestBase(test.TestCase):
         dist.extended.call_for_each_replica(_merge_call_merge_raises_fn)
 
   def _input_fn_to_test_input_context(self,
-                                      dataset_fn,
+                                      dataset_or_callable_fn,
                                       expected_num_replicas_in_sync,
                                       expected_num_input_pipelines,
                                       expected_input_pipeline_id):
@@ -248,12 +242,12 @@ class DistributionTestBase(test.TestCase):
         self.assertEqual(worker_id_counter[0], input_context.input_pipeline_id)
         worker_id_counter[0] += 1
 
-      return dataset_fn()
+      return dataset_or_callable_fn()
 
     return _input_fn
 
   def _test_input_fn_iterator(self, iterator, devices, expected_values,
-                              sess=None):
+                              sess=None, test_reinitialize=True):
     evaluate = lambda x: sess.run(x) if sess else self.evaluate(x)
     evaluate(iterator.initialize())
 
@@ -269,13 +263,14 @@ class DistributionTestBase(test.TestCase):
           [values.select_replica(r, next_element) for r in range(len(devices))])
 
     # After re-initializing the iterator, should be able to iterate again.
-    evaluate(iterator.initialize())
+    if test_reinitialize:
+      evaluate(iterator.initialize())
 
-    for expected_value in expected_values:
-      next_element = iterator.get_next()
-      computed_value = evaluate(
-          [values.select_replica(r, next_element) for r in range(len(devices))])
-      self.assertEqual(expected_value, computed_value)
+      for expected_value in expected_values:
+        next_element = iterator.get_next()
+        computed_value = evaluate([values.select_replica(r, next_element)
+                                   for r in range(len(devices))])
+        self.assertEqual(expected_value, computed_value)
 
   def _test_global_step_update(self, strategy):
     with strategy.scope():

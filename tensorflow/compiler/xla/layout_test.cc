@@ -38,10 +38,13 @@ TEST_F(LayoutTest, ToString) {
             "sparse{123}");
   EXPECT_EQ(Layout({4, 5, 6}).ToString(), "{4,5,6}");
   EXPECT_EQ(Layout({3, 2, 1, 0}, {Tile({42, 123}), Tile({4, 5})}).ToString(),
-            "{3,2,1,0}");
+            "{3,2,1,0:T(42,123)(4,5)}");
   EXPECT_EQ(
       Layout({1, 0}, {Tile({2, 55})}).set_element_size_in_bits(42).ToString(),
-      "{1,0}");
+      "{1,0:T(2,55)E(42)}");
+  EXPECT_EQ(
+      Layout({1, 0}, {Tile({-2, 55})}).set_element_size_in_bits(42).ToString(),
+      "{1,0:T(Invalid value -2,55)E(42)}");
 }
 
 TEST_F(LayoutTest, StreamOut) {
@@ -84,6 +87,15 @@ TEST_F(LayoutTest, Equality) {
             Layout().set_format(SPARSE).set_max_sparse_elements(42));
   EXPECT_NE(Layout().set_format(SPARSE).set_max_sparse_elements(42),
             Layout().set_format(SPARSE).set_max_sparse_elements(24));
+
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}, {Tile({42, 44})}), Layout({0, 1, 2})));
+  EXPECT_TRUE(Layout::Equal().IgnoreTiles()(Layout({0, 1, 2}, {Tile({42, 44})}),
+                                            Layout({0, 1, 2})));
+  EXPECT_FALSE(
+      Layout::Equal()(Layout({0, 1, 2}, {}, 32), Layout({0, 1, 2}, {}, 1)));
+  EXPECT_TRUE(Layout::Equal().IgnoreElementSize()(Layout({0, 1, 2}, {}, 32),
+                                                  Layout({0, 1, 2}, {}, 1)));
 }
 
 TEST_F(LayoutTest, LayoutToFromProto) {

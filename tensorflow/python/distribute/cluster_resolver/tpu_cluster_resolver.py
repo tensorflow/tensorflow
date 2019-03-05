@@ -34,6 +34,7 @@ from tensorflow.python.framework import errors
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 from tensorflow.python.util import compat
+from tensorflow.python.util.tf_export import tf_export
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
@@ -41,7 +42,6 @@ try:
   from oauth2client.client import GoogleCredentials  # pylint: disable=g-import-not-at-top
 except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
-
 
 _GKE_ENV_VARIABLE = 'KUBE_GOOGLE_CLOUD_TPU_ENDPOINTS'
 _ENDPOINTS_SEPARATOR = ','
@@ -56,38 +56,7 @@ DeviceDetails = collections.namedtuple(
     'DeviceDetails', ['device_map', 'total_cores'])
 
 
-def _get_device_dict_and_cores(devices):
-  """Returns a dict of hosts to cores and total cores given devices names.
-
-  Returns a namedtuple with two attributes:
-    device_map: A map of host_ids to a list of core_ids.
-    total_cores: The total number of cores within the TPU system.
-
-  Args:
-    devices: A list of devices returned by session.list_devices()
-  """
-  device_map = collections.defaultdict(list)
-  num_cores = 0
-  for device in devices:
-    match = _TPU_DEVICE_REGEX.match(device.name)
-    if match:
-      host_id = match.group('host_id')
-      core_id = match.group('core_id')
-      device_map[host_id].append(core_id)
-      num_cores += 1
-  return DeviceDetails(device_map, num_cores)
-
-
-def _verify_and_return_same_core_count(device_dict):
-  """Verifies that every device in device_dict has the same number of cores."""
-  num_cores_per_host_set = (
-      {len(core_ids) for core_ids in device_dict.values()})
-  if len(num_cores_per_host_set) != 1:
-    raise RuntimeError('TPU cores on each device is not the same. This '
-                       'should never happen. Devices: {}'.format(device_dict))
-  return num_cores_per_host_set.pop()
-
-
+@tf_export('distribute.cluster_resolver.TPUClusterResolver')
 class TPUClusterResolver(ClusterResolver):
   """Cluster Resolver for Google Cloud TPUs.
 
@@ -142,6 +111,38 @@ class TPUClusterResolver(ClusterResolver):
         self._tpu.startswith(compat.as_bytes('uptc://'))):
       return False
     return True
+
+  @staticmethod
+  def _get_device_dict_and_cores(devices):
+    """Returns a dict of hosts to cores and total cores given devices names.
+
+    Returns a namedtuple with two attributes:
+      device_map: A map of host_ids to a list of core_ids.
+      total_cores: The total number of cores within the TPU system.
+
+    Args:
+      devices: A list of devices returned by session.list_devices()
+    """
+    device_map = collections.defaultdict(list)
+    num_cores = 0
+    for device in devices:
+      match = _TPU_DEVICE_REGEX.match(device.name)
+      if match:
+        host_id = match.group('host_id')
+        core_id = match.group('core_id')
+        device_map[host_id].append(core_id)
+        num_cores += 1
+    return DeviceDetails(device_map, num_cores)
+
+  @staticmethod
+  def _verify_and_return_same_core_count(device_dict):
+    """Verifies that every device in device_dict has the same # of cores."""
+    num_cores_per_host_set = (
+        {len(core_ids) for core_ids in device_dict.values()})
+    if len(num_cores_per_host_set) != 1:
+      raise RuntimeError('TPU cores on each device is not the same. This '
+                         'should never happen. Devices: {}'.format(device_dict))
+    return num_cores_per_host_set.pop()
 
   @staticmethod
   def _inGke():
@@ -379,7 +380,7 @@ class TPUClusterResolver(ClusterResolver):
 
   def get_job_name(self):
     if (self._shouldResolve() or
-        self._tpu.startswith(compat.as_bytes('grpc://'))):
+        self._isRunningInGCE()):
       return self.task_type
 
   def cluster_spec(self):
@@ -418,10 +419,6 @@ class TPUClusterResolver(ClusterResolver):
         raise RuntimeError('TPU "%s" is not yet ready; state: "%s"' %
                            (compat.as_text(self._tpu), response['state']))
 
-      if 'health' in response and response['health'] != 'HEALTHY':
-        raise RuntimeError('TPU "%s" is unhealthy: "%s"' %
-                           (compat.as_text(self._tpu), response['health']))
-
       if 'networkEndpoints' in response:
         worker_list = [
             '%s:%s' % (endpoint['ipAddress'], endpoint['port'])
@@ -459,7 +456,6 @@ class TPUClusterResolver(ClusterResolver):
   def num_accelerators(self,
                        task_type=None,
                        task_id=None,
-                       accelerator_type='TPU',
                        config_proto=None):
     """Returns the number of TPU cores per worker.
 
@@ -470,7 +466,6 @@ class TPUClusterResolver(ClusterResolver):
     Args:
       task_type: Unused.
       task_id: Unused.
-      accelerator_type: Unused.
       config_proto: Used to create a connection to a TPU master in order to
         retrieve the system metadata.
 
@@ -482,7 +477,7 @@ class TPUClusterResolver(ClusterResolver):
     # TODO(b/120564445): Replace with standard library for retries.
     while True:
       try:
-        device_details = _get_device_dict_and_cores(
+        device_details = TPUClusterResolver._get_device_dict_and_cores(
             get_accelerator_devices(self.master(), config_proto=config_proto))
         break
       except errors.DeadlineExceededError:
@@ -497,8 +492,9 @@ class TPUClusterResolver(ClusterResolver):
           raise RuntimeError(error_message)
 
     if device_details.total_cores:
-      return _verify_and_return_same_core_count(device_details.device_map)
-    return 0
+      return {'TPU': TPUClusterResolver._verify_and_return_same_core_count(
+          device_details.device_map)}
+    return {'TPU': 0}
 
   @property
   def environment(self):

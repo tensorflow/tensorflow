@@ -2,6 +2,7 @@
 
 load(
     "//tensorflow:tensorflow.bzl",
+    "tf_binary_additional_srcs",
     "tf_cc_shared_object",
     "tf_cc_test",
 )
@@ -85,24 +86,27 @@ def tflite_jni_linkopts_unstripped():
         "//conditions:default": [],
     })
 
-def tflite_linkopts():
-    """Defines linker flags to reduce size of TFLite binary."""
-    return tflite_linkopts_unstripped() + select({
+def tflite_symbol_opts():
+    """Defines linker flags whether to include symbols or not."""
+    return select({
         "//tensorflow:android": [
-            "-s",  # Omit symbol table.
-        ],
-        "//conditions:default": [],
-    })
-
-def tflite_jni_linkopts():
-    """Defines linker flags to reduce size of TFLite binary with JNI."""
-    return tflite_jni_linkopts_unstripped() + select({
-        "//tensorflow:android": [
-            "-s",  # Omit symbol table.
             "-latomic",  # Required for some uses of ISO C++11 <atomic> in x86.
         ],
         "//conditions:default": [],
+    }) + select({
+        "//tensorflow:debug": [],
+        "//conditions:default": [
+            "-s",  # Omit symbol table, for all non debug builds
+        ],
     })
+
+def tflite_linkopts():
+    """Defines linker flags to reduce size of TFLite binary."""
+    return tflite_linkopts_unstripped() + tflite_symbol_opts()
+
+def tflite_jni_linkopts():
+    """Defines linker flags to reduce size of TFLite binary with JNI."""
+    return tflite_jni_linkopts_unstripped() + tflite_symbol_opts()
 
 def tflite_jni_binary(
         name,
@@ -157,7 +161,7 @@ def tf_to_tflite(name, src, options, out):
     """
 
     toco_cmdline = " ".join([
-        "//tensorflow/lite/toco:toco",
+        "$(location //tensorflow/lite/toco:toco)",
         "--input_format=TENSORFLOW_GRAPHDEF",
         "--output_format=TFLITE",
         ("--input_file=$(location %s)" % src),
@@ -168,7 +172,7 @@ def tf_to_tflite(name, src, options, out):
         srcs = [src],
         outs = [out],
         cmd = toco_cmdline,
-        tools = ["//tensorflow/lite/toco:toco"],
+        tools = ["//tensorflow/lite/toco:toco"] + tf_binary_additional_srcs(),
     )
 
 def tflite_to_json(name, src, out):
@@ -225,6 +229,7 @@ def generated_test_models():
     return [
         "abs",
         "add",
+        "add_n",
         "arg_min_max",
         "avg_pool",
         "batch_to_space_nd",
@@ -236,8 +241,10 @@ def generated_test_models():
         "conv2d_transpose",
         "conv_with_shared_weights",
         "conv_to_depthwiseconv_with_shared_weights",
+        "cos",
         "depthwiseconv",
         "div",
+        "elu",
         "equal",
         "exp",
         "expand_dims",
@@ -248,6 +255,7 @@ def generated_test_models():
         "fully_connected",
         "fused_batch_norm",
         "gather",
+        "gather_nd",
         "gather_with_constant",
         "global_batch_norm",
         "greater",
@@ -265,7 +273,7 @@ def generated_test_models():
         "logical_and",
         "logical_or",
         "logical_xor",
-        #"lstm", TODO(b/122889684): Resolve toco structured line parsing in oss.
+        "lstm",
         "max_pool",
         "maximum",
         "mean",
@@ -282,6 +290,7 @@ def generated_test_models():
         "prelu",
         "pow",
         "range",
+        "rank",
         "reduce_any",
         "reduce_max",
         "reduce_min",
@@ -291,6 +300,8 @@ def generated_test_models():
         "relu6",
         "reshape",
         "resize_bilinear",
+        "resolve_constant_strided_slice",
+        "reverse_sequence",
         "reverse_v2",
         "rsqrt",
         "shape",
@@ -309,7 +320,6 @@ def generated_test_models():
         "squeeze",
         "strided_slice",
         "strided_slice_1d_exhaustive",
-        "strided_slice_buggy",
         "sub",
         "tile",
         "topk",
@@ -444,10 +454,11 @@ def flex_dep(target_op_sets):
     else:
         return []
 
-def gen_model_coverage_test(model_name, data, failure_type, tags):
+def gen_model_coverage_test(src, model_name, data, failure_type, tags):
     """Generates Python test targets for testing TFLite models.
 
     Args:
+      src: Main source file.
       model_name: Name of the model to test (must be also listed in the 'data'
         dependencies)
       data: List of BUILD targets linking the data.
@@ -464,9 +475,9 @@ def gen_model_coverage_test(model_name, data, failure_type, tags):
         i = i + 1
         native.py_test(
             name = "model_coverage_test_%s_%s" % (model_name, target_op_sets.lower().replace(",", "_")),
-            srcs = ["model_coverage_test.py"],
+            srcs = [src],
+            main = src,
             size = "large",
-            main = "model_coverage_test.py",
             args = [
                 "--model_name=%s" % model_name,
                 "--target_ops=%s" % target_op_sets,

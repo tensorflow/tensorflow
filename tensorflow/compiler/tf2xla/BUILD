@@ -1,6 +1,6 @@
 licenses(["notice"])  # Apache 2.0
 
-load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test")
+load("//tensorflow:tensorflow.bzl", "tf_cc_binary", "tf_cc_test", "tf_cuda_cc_test")
 
 package_group(
     name = "internal",
@@ -24,7 +24,7 @@ package(
 )
 
 load("@local_config_cuda//cuda:build_defs.bzl", "if_cuda_is_configured")
-load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library")
+load("//tensorflow/compiler/xla:xla.bzl", "xla_proto_library", "xla_py_proto_library")
 
 cc_library(
     name = "tf2xla_supported_ops_lib",
@@ -60,6 +60,14 @@ xla_proto_library(
     ],
 )
 
+xla_py_proto_library(
+    name = "tf2xla_py",
+    has_services = False,
+    api_version = 2,
+    visibility = ["//visibility:public"],
+    deps = [":tf2xla_proto"],
+)
+
 xla_proto_library(
     name = "host_compute_metadata_proto",
     srcs = ["host_compute_metadata.proto"],
@@ -76,7 +84,6 @@ cc_library(
     visibility = ["//visibility:public"],
     deps = [
         ":common",
-        ":dump_graph",
         ":functionalize_control_flow",
         ":tf2xla_proto",
         ":tf2xla_util",
@@ -191,7 +198,6 @@ cc_library(
     visibility = [":friends"],
     deps = [
         ":common",
-        ":dump_graph",
         ":host_compute_metadata_proto",
         ":sharding_util",
         ":side_effect_util",
@@ -283,6 +289,7 @@ tf_cc_test(
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
     ],
 )
 
@@ -317,11 +324,13 @@ tf_cc_test(
         ":tf2xla_util",
         "//tensorflow/cc:cc_ops",
         "//tensorflow/cc:function_ops",
+        "//tensorflow/cc:functional_ops",
         "//tensorflow/cc:ops",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:ops",
         "//tensorflow/core:protos_all_cc",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
@@ -439,22 +448,6 @@ tf_cc_test(
 )
 
 cc_library(
-    name = "dump_graph",
-    srcs = [
-        "dump_graph.cc",
-    ],
-    hdrs = [
-        "dump_graph.h",
-    ],
-    deps = [
-        "//tensorflow/compiler/jit:flags",
-        "//tensorflow/core:framework",
-        "//tensorflow/core:graph",
-        "//tensorflow/core:protos_all_cc",
-    ],
-)
-
-cc_library(
     name = "functionalize_control_flow_util",
     srcs = [
         "functionalize_control_flow_util.cc",
@@ -485,7 +478,6 @@ cc_library(
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -513,7 +505,6 @@ cc_library(
         ":functionalize_while",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -550,7 +541,6 @@ cc_library(
         ":functionalize_control_flow_util",
         ":tf2xla_util",
         "//tensorflow/compiler/jit:union_find",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla/ops:xla_ops",
         "//tensorflow/compiler/xla:status_macros",
         "//tensorflow/core:core_cpu",
@@ -675,5 +665,27 @@ cc_library(
     deps = [
         "//tensorflow/core:core_cpu",
         "@com_google_absl//absl/strings",
+    ],
+)
+
+tf_cuda_cc_test(
+    name = "fused_batchnorm_reserve_space_test",
+    size = "medium",
+    srcs = ["fused_batchnorm_reserve_space_test.cc"],
+    deps = [
+        "//tensorflow/cc:cc_ops",
+        "//tensorflow/compiler/jit",
+        "//tensorflow/core:core_cpu",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:framework_internal",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:tensorflow",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+        "//tensorflow/core/kernels:ops_testutil",
+        "//tensorflow/core/kernels:ops_util",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )

@@ -109,16 +109,16 @@ ENTRY %Convolve1D1Window_0.v3 (input: f32[16,19,19,512]{3,2,1,0}, filter: f32[16
   auto computation = module->entry_computation();
   HloInstruction* root = computation->root_instruction();
   EXPECT_EQ(root->opcode(), HloOpcode::kConvolution);
-  auto cost_model = [](HloInstruction* conv) { return true; };
+  auto cost_model = [](HloInstruction* conv) { return false; };
   ConvolutionGroupConverter converter(cost_model, /*convert_batch_groups_only=*/
                                       true);
   ASSERT_TRUE(converter.Run(module.get()).ValueOrDie());
   root = computation->root_instruction();
-  // Make sure the convolution is converted to one with batch_group_count = 1.
-  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kConvolution);
-  EXPECT_EQ(root->operand(0)->batch_group_count(), 1);
-  // Verify that the convolution is replaced by a reshape.
-  EXPECT_EQ(root->opcode(), HloOpcode::kReshape);
+
+  // Verify that the convolution is replaced by a convert.
+  EXPECT_EQ(root->opcode(), HloOpcode::kConvert);
+  // Make sure the convert is being fed by a reduce window.
+  EXPECT_EQ(root->operand(0)->opcode(), HloOpcode::kReduceWindow);
 }
 
 }  // namespace

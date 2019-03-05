@@ -85,6 +85,24 @@ inline std::vector<float> Dequantize(const std::vector<T>& data, float scale,
 // the actual data is known. This mimics what happens in practice: quantization
 // parameters are calculated during training or post training..
 struct TensorData {
+  TensorData(TensorType type = TensorType_FLOAT32, std::vector<int> shape = {},
+             float min = 0.0f, float max = 0.0f, float scale = 0.0f,
+             int32_t zero_point = 0, bool per_channel_quantization = false,
+             std::vector<float> per_channel_quantization_scales = {},
+             std::vector<int64_t> per_channel_quantization_offsets = {},
+             int32_t channel_index = 0)
+      : type(type),
+        shape(shape),
+        min(min),
+        max(max),
+        scale(scale),
+        zero_point(zero_point),
+        per_channel_quantization(per_channel_quantization),
+        per_channel_quantization_scales(
+            std::move(per_channel_quantization_scales)),
+        per_channel_quantization_offsets(
+            std::move(per_channel_quantization_offsets)),
+        channel_index(channel_index) {}
   TensorType type;
   std::vector<int> shape;
   float min;
@@ -430,6 +448,17 @@ class SingleOpModel {
     // Update quantization params.
     t->params.scale = scaling_factor;
     t->params.zero_point = 0;
+    // Populate the new quantization params.
+    TfLiteQuantizationFree(&t->quantization);
+    t->quantization.type = kTfLiteAffineQuantization;
+    auto* affine_quantization = reinterpret_cast<TfLiteAffineQuantization*>(
+        malloc(sizeof(TfLiteAffineQuantization)));
+    affine_quantization->quantized_dimension = 0;
+    affine_quantization->scale = TfLiteFloatArrayCreate(1);
+    affine_quantization->zero_point = TfLiteIntArrayCreate(1);
+    affine_quantization->scale->data[0] = scaling_factor;
+    affine_quantization->zero_point->data[0] = 0;
+    t->quantization.params = affine_quantization;
     return q;
   }
 

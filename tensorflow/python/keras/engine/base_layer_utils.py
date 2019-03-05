@@ -18,16 +18,24 @@ from __future__ import division
 from __future__ import print_function
 
 import collections as collections_lib
+import threading
 import enum
 
+from tensorflow.python.eager import context
+from tensorflow.python.framework import auto_control_deps
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import backend
+from tensorflow.python.keras.utils import tf_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import control_flow_util
 from tensorflow.python.ops import init_ops
 from tensorflow.python.ops import init_ops_v2
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.util import nest
+from tensorflow.python.util import tf_contextlib
+
+_call_context = threading.local()
 
 
 class CallConvention(enum.Enum):
@@ -72,7 +80,7 @@ def make_variable(name,
   that has fewer constraints (`variable_scope.variable()`).
 
   In the longer term, it seems like a similar "default variable creator" method
-  should exist in `CheckpointableBase` instead. When this happens, we can get
+  should exist in `Trackable` instead. When this happens, we can get
   rid of this temporary solution.
 
   TODO(fchollet): remove this method when no longer needed.
@@ -119,9 +127,9 @@ def make_variable(name,
       variable_dtype = None
     else:
       # Instantiate initializer if provided initializer is a type object.
-      if isinstance(initializer, type(init_ops.Initializer)):
-        initializer = initializer(dtype=dtype)
-      elif isinstance(initializer, type(init_ops_v2.Initializer)):
+      if isinstance(
+          initializer,
+          (type(init_ops.Initializer), type(init_ops_v2.Initializer))):
         initializer = initializer()
       init_val = lambda: initializer(shape, dtype=dtype)
       variable_dtype = dtype.base_dtype
@@ -205,22 +213,16 @@ def collect_previous_mask(input_tensors):
   """Retrieves the output mask(s) of the previous node.
 
   Arguments:
-      input_tensors: A tensor or list of tensors.
+      input_tensors: An arbitrary structure of Tensors.
 
   Returns:
       A mask tensor or list of mask tensors.
   """
-  input_tensors = nest.flatten(input_tensors)
-  masks = []
-  for x in input_tensors:
-    if hasattr(x, '_keras_mask'):
-      mask = x._keras_mask  # pylint: disable=protected-access
-      masks.append(mask)
-    else:
-      masks.append(None)
-  if len(masks) == 1:
-    return masks[0]
-  return masks
+
+  def _collect_previous_mask(x):
+    return getattr(x, '_keras_mask', None)
+
+  return nest.map_structure(_collect_previous_mask, input_tensors)
 
 
 def have_all_keras_metadata(tensors):
@@ -283,7 +285,7 @@ def _create_keras_history_helper(tensors, processed_ops=None):
           # a constant (Variables currently have `Placeholder` op type
           # when originating from an eager context
           # so can't be supported.
-          constants[i] = backend.function([], [op_input])([])
+          constants[i] = backend.function([], op_input)([])
       processed_ops = _create_keras_history_helper(layer_inputs, processed_ops)
       name = op.name
       node_def = op.node_def.SerializeToString()
@@ -298,6 +300,11 @@ def _create_keras_history_helper(tensors, processed_ops=None):
 def needs_keras_history(tensors):
   """Check if any Tensors need to be wrapped in TensorFlowOpLayers.
 
+  This will never return True inside a sublayer, because sublayers
+  do not need to create Keras History. Otherwise, this returns True
+  if one or more of `tensors` originates from a `keras.Input` and
+  does not have `_keras_history` set.
+
   Arguments:
     tensors: An arbitrary nested structure of Tensors.
 
@@ -305,12 +312,17 @@ def needs_keras_history(tensors):
     Bool, whether at least one Tensor needs to be wrapped.
   """
   input_tensors = nest.flatten(tensors)
-  if all(
+  if is_in_call_context() or all(
       getattr(tensor, '_keras_history', None) is not None
       for tensor in input_tensors):
     # KerasHistory already set.
     return False
   return uses_keras_history(tensors)
+
+
+def is_in_call_context():
+  """Returns true if inside of a model/layer '__call__'."""
+  return getattr(_call_context, 'in_call', False)
 
 
 def uses_keras_history(tensors):
@@ -368,3 +380,166 @@ def mark_checked(tensors):
     tensor._keras_history_checked = True  # pylint: disable=protected-access
 
   nest.map_structure(_mark_checked, tensors)
+
+
+@tf_contextlib.contextmanager
+def call_context():
+  """Scope that marks when we are currently inside a Layer/Model's `call`."""
+  was_in_call = is_in_call_context()
+  _call_context.in_call = True
+  try:
+    yield
+  finally:
+    _call_context.in_call = was_in_call
+
+
+def training_arg_passed_to_call(argspec, args, kwargs):
+  """Returns whether a user passed the `training` argument in `__call__`."""
+  # `argspec.args` starts with ['self', 'inputs']
+  full_args = dict(zip(argspec.args[2:], args))
+  full_args.update(kwargs)
+  return 'training' in full_args
+
+
+class AutoAddUpdates(object):
+  """Automatically track stateful ops with `add_update`.
+
+  This context manager is used to automatically add stateful ops to a Layer
+  or Model's `.updates`. This ensures that stateful ops are run in the Keras
+  training loop. It also allows for these stateful ops to be disabled by
+  setting `trainable=False`.
+
+  Example:
+
+  ```
+  with AutoAddUpdates(layer, inputs) as auto_updates:
+    outputs = layer.call(inputs)
+    auto_updates.set_outputs(outputs)
+  ```
+
+  Attributes:
+    layer: Layer or Model instance to add the updates to.
+    inputs: The inputs to this Layer or Model, to be used for input-conditional
+      updates.
+    outputs: The outputs of this Layer or Model.
+  """
+
+  def __init__(self, layer, inputs):
+    self.layer = layer
+    self.inputs = inputs
+    self.outputs = []
+
+  def set_outputs(self, outputs):
+    if self.outputs:
+      raise RuntimeError('`set_outputs` should only be called once on an'
+                         '`AutoAddUpdates` instance.')
+    self.outputs = outputs
+
+  def __enter__(self):
+    # Only run in V2 Function mode.
+    if (context.executing_eagerly() or
+        not ops.executing_eagerly_outside_functions()):
+      return self
+
+    self._graph = ops.get_default_graph()
+    self._num_operations = len(self._graph.get_operations())
+    return self
+
+  def __exit__(self, error_type, unused_value, unused_traceback):
+    if error_type:
+      # Allow errors that occurred inside this context manager to pass through
+      # normally.
+      return
+
+    # Only run in V2 Function mode.
+    if (context.executing_eagerly() or
+        not ops.executing_eagerly_outside_functions()):
+      return
+
+    if (self._graph is not ops.get_default_graph() or
+        self._graph.name != 'keras_graph'):
+      # Only auto-track updates when the Keras Graph is the only one used.
+      return
+
+    new_operations = self._graph.get_operations()[self._num_operations:]
+    new_stateful_ops = set()
+
+    # pylint: disable=protected-access
+    for op in new_operations:
+      # While loop is not supported in general for automatic control
+      # dependencies.
+      if control_flow_util.IsInWhileLoop(op):
+        continue
+
+      # Track stateful ops via `add_update`.
+      is_stateful_op = (
+          op.type not in self._graph._registered_ops or
+          auto_control_deps.op_is_stateful(
+              self._graph._registered_ops[op.type]))
+
+      # Ignore ReadVariableOps as they are not needed to be run separately.
+      # This ensures existing Layers don't get extra updates.
+      if is_stateful_op and op.type != 'ReadVariableOp':
+        new_stateful_ops.add(op)
+
+    explicit_updates = set(
+        [u for u in self.layer._unfiltered_updates if not isinstance(u, tuple)])
+    # pylint: enable=protected-access
+
+    # Don't add updates that will already be run by virtue of being consumed by
+    # other stateful ops or by the Layer's outputs. This ensures that existing
+    # Layers like `BatchNormalization` continue to return the same values for
+    # `.update` calls.
+    minimum_ops = set()
+    targets = new_stateful_ops.union(
+        set(nest.flatten(self.outputs)), explicit_updates)
+    for op in new_stateful_ops:
+      # Scrub any ops that are consumed by the outputs or other stateful ops.
+      reachable = tf_utils.get_reachable_from_inputs(op)
+      if not (targets - {op}).intersection(reachable):
+        minimum_ops.add(op)
+    new_stateful_ops = minimum_ops
+
+    # Don't double-track updates added via explicitly calling `add_update`.
+    # Also don't double-track updates already tracked in sublayers.
+    new_stateful_ops = new_stateful_ops - explicit_updates
+
+    # Decide whether to track as input-conditional or unconditional.
+    input_reachable_ops = tf_utils.get_reachable_from_inputs(
+        self.inputs, targets=new_stateful_ops)
+    unconditional_updates = new_stateful_ops - input_reachable_ops
+    conditional_updates = new_stateful_ops - unconditional_updates
+
+    if unconditional_updates:
+      self.layer.add_update(list(unconditional_updates))
+    if conditional_updates:
+      self.layer.add_update(list(conditional_updates), inputs=self.inputs)
+
+
+def _get_var_read_dtype(input_list, should_cast):
+  """Gets the dtype that AutoCastVariables should be read in."""
+  if should_cast and input_list and input_list[0].dtype.is_floating:
+    return input_list[0].dtype.base_dtype
+  else:
+    return None
+
+
+def autocast_context_manager(input_list, should_cast):
+  """Returns a context manager to autocast AutoCastVariables.
+
+  Under this context manager, if `should_cast` is True, AutoCastVariables will
+  be casted. If `should_cast` is False, AutoCastVariables will not be casted,
+  which can be used to disable autocasting if nested under another
+  call to `autocast_context_manager`.
+
+  Args:
+    input_list: The inputs to the layer with the AutoCastVariables.
+    should_cast: Whether AutoCastVariables should be casted.
+
+  Returns:
+    A context manager to automatically cast AutoCastVariables.
+  """
+  var_read_dtype = _get_var_read_dtype(input_list, should_cast)
+  return ops.get_default_graph()._enable_auto_casting_variables(  # pylint: disable=protected-access
+      var_read_dtype)
+

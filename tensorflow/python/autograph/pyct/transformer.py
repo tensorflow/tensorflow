@@ -27,18 +27,6 @@ from tensorflow.python.autograph.pyct import pretty_printer
 from tensorflow.python.autograph.pyct import templates
 
 
-class AutoGraphParseError(SyntaxError):
-  """Error for graph construction errors from AutoGraph generated code."""
-
-  def __init__(self, error, origin_info):
-    file_path = origin_info.loc.filename
-    line_number = origin_info.loc.lineno
-    col_offset = origin_info.loc.col_offset
-    source_line = origin_info.source_code_line
-    super(AutoGraphParseError, self).__init__(
-        error, (file_path, line_number, col_offset, source_line))
-
-
 # TODO(znado): Use namedtuple.
 class Context(object):
   """Contains information about a source code transformation.
@@ -305,9 +293,15 @@ class Base(gast.NodeTransformer):
     return self._local_scope_state[-1].get(name, default)
 
   def debug_print(self, node):
-    """Helper method useful for debugging."""
+    """Helper method useful for debugging. Prints the AST."""
     if __debug__:
       print(pretty_printer.fmt(node))
+    return node
+
+  def debug_print_src(self, node):
+    """Helper method useful for debugging. Prints the AST as code."""
+    if __debug__:
+      print(compiler.ast_to_source(node))
     return node
 
   def create_assignment(self, target, expression):

@@ -159,7 +159,7 @@ class MapVectorizationBenchmark(test.Benchmark):
 
   def benchmarkCast(self):
     self._benchmark_helper(
-        lambda *args: [math_ops.cast(x, dtypes.float64) for x in args], "cast")
+        lambda *args: [math_ops.cast(x, dtypes.float32) for x in args], "cast")
 
   def benchmarkReshape(self):
     self._benchmark_helper(
@@ -191,7 +191,8 @@ class MapVectorizationBenchmark(test.Benchmark):
       base_dataset = base_dataset.repeat()
       input_size = [
           tuple(shape.as_list())
-          for shape in nest.flatten(base_dataset.output_shapes)
+          for shape in nest.flatten(
+              dataset_ops.get_legacy_output_shapes(base_dataset))
       ]
       self._compare(base_dataset, map_fn, batch_size, input_size, str_id)
 

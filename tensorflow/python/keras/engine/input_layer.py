@@ -123,6 +123,7 @@ class InputLayer(base_layer.Layer):
     # Create an input node to add to self.outbound_node
     # and set output_tensors' _keras_history.
     input_tensor._keras_history = (self, 0, 0)  # pylint: disable=protected-access
+    input_tensor._keras_mask = None
     base_layer.Node(
         self,
         inbound_layers=[],

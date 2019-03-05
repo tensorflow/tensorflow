@@ -13,7 +13,7 @@ tf_module {
     mtype: "<type \'type\'>"
   }
   member {
-    name: "CosineProximity"
+    name: "CosineSimilarity"
     mtype: "<type \'type\'>"
   }
   member {
@@ -30,10 +30,6 @@ tf_module {
   }
   member {
     name: "LogCosh"
-    mtype: "<type \'type\'>"
-  }
-  member {
-    name: "LogLoss"
     mtype: "<type \'type\'>"
   }
   member {
@@ -109,6 +105,10 @@ tf_module {
     argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
   }
   member_method {
+    name: "cosine_similarity"
+    argspec: "args=[\'y_true\', \'y_pred\', \'axis\'], varargs=None, keywords=None, defaults=[\'-1\'], "
+  }
+  member_method {
     name: "deserialize"
     argspec: "args=[\'name\', \'custom_objects\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
@@ -174,7 +174,7 @@ tf_module {
   }
   member_method {
     name: "sparse_categorical_crossentropy"
-    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\'], varargs=None, keywords=None, defaults=[\'False\'], "
+    argspec: "args=[\'y_true\', \'y_pred\', \'from_logits\', \'axis\'], varargs=None, keywords=None, defaults=[\'False\', \'-1\'], "
   }
   member_method {
     name: "squared_hinge"

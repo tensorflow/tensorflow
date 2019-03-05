@@ -46,6 +46,7 @@ REGISTER_OP("_MklFusedConv2D")
     .Attr("T: {float}")
     .Attr("num_args: int >= 0")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = false")
     .Attr(GetPaddingAttrString())
     .Attr(GetConvnetDataFormatAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
@@ -202,8 +203,10 @@ REGISTER_OP("_MklQuantizedConv2D")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -246,8 +249,10 @@ REGISTER_OP("_MklQuantizedConv2DAndRequantize")
     .Attr("out_type: quantizedtype = DT_QINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -290,8 +295,10 @@ REGISTER_OP("_MklQuantizedConv2DWithBias")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -338,8 +345,10 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndRequantize")
     .Attr("out_type: quantizedtype = DT_QINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -379,8 +388,10 @@ REGISTER_OP("_MklQuantizedConv2DAndRelu")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -423,8 +434,10 @@ REGISTER_OP("_MklQuantizedConv2DAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -467,8 +480,10 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndRelu")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -515,8 +530,10 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -562,8 +579,10 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndRelu")
     .Attr("out_type: quantizedtype = DT_QINT32")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -617,8 +636,10 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSumAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;
@@ -674,8 +695,10 @@ REGISTER_OP("_MklQuantizedConv2DWithBiasSignedSumAndReluAndRequantize")
     .Attr("out_type: quantizedtype = DT_QUINT8")
     .Attr("data_format: string = 'NHWC'")
     .Attr("strides: list(int)")
+    .Attr("is_filter_const: bool = true")
     .Attr(GetPaddingAttrString())
     .Attr("dilations: list(int) = [1, 1, 1, 1]")
+    .Attr("padding_list: list(int) = []")
     .SetShapeFn([](InferenceContext* c) {
       TF_RETURN_IF_ERROR(shape_inference::Conv2DShape(c));
       ShapeHandle unused;

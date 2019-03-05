@@ -20,6 +20,8 @@ from __future__ import print_function
 
 from tensorflow.python.distribute.cluster_resolver.cluster_resolver import ClusterResolver
 from tensorflow.python.training.server_lib import ClusterSpec
+from tensorflow.python.util.tf_export import tf_export
+
 
 _GOOGLE_API_CLIENT_INSTALLED = True
 try:
@@ -29,11 +31,8 @@ except ImportError:
   _GOOGLE_API_CLIENT_INSTALLED = False
 
 
-def _format_master_url(master, rpc_layer=None):
-  return '%s://%s' % (rpc_layer, master) if rpc_layer else master
-
-
-class GceClusterResolver(ClusterResolver):
+@tf_export('distribute.cluster_resolver.GCEClusterResolver')
+class GCEClusterResolver(ClusterResolver):
   """Cluster Resolver for Google Compute Engine.
 
   This is an implementation of cluster resolvers for the Google Compute Engine
@@ -53,9 +52,9 @@ class GceClusterResolver(ClusterResolver):
                rpc_layer='grpc',
                credentials='default',
                service=None):
-    """Creates a new GceClusterResolver object.
+    """Creates a new GCEClusterResolver object.
 
-    This takes in a few parameters and creates a GceClusterResolver project. It
+    This takes in a few parameters and creates a GCEClusterResolver project. It
     will then use these parameters to query the GCE API for the IP addresses of
     each instance in the instance group.
 
@@ -173,22 +172,12 @@ class GceClusterResolver(ClusterResolver):
   @task_type.setter
   def task_type(self, task_type):
     raise RuntimeError(
-        'You cannot reset the task_type of the GceClusterResolver after it has '
+        'You cannot reset the task_type of the GCEClusterResolver after it has '
         'been created.')
 
   @task_id.setter
   def task_id(self, task_id):
     self._task_id = task_id
-
-  @property
-  def environment(self):
-    """Returns the current environment which TensorFlow is running in.
-
-    For users in the GCE environment, the environment property is always an
-    empty string, and Google users will not use this ClusterResolver for running
-    on internal systems.
-    """
-    return ''
 
   @property
   def rpc_layer(self):

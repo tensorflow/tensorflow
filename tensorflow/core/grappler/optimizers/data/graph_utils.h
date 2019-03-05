@@ -108,6 +108,10 @@ int FindGraphNodeWithOp(StringPiece op, const GraphDef& graph);
 // Gets the 0th input to a node in the graph.
 NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph);
 
+// Gets the ith input to a node in the graph.
+NodeDef* GetInputNode(const NodeDef& node, const MutableGraphView& graph,
+                      int64 i);
+
 // Returns the list of indices of all nodes with the given op or empty list if
 // no such node exists.
 std::vector<int> FindAllGraphNodesWithOp(const string& op,
@@ -139,6 +143,9 @@ void ConcatAttributeList(const string& attribute_name, const NodeDef& first,
 // C++ API). Note that the nodes in the graph are identified by their id,
 // and renaming nodes does not mutate any edges.
 Status EnsureNodeNamesUnique(Graph* g);
+
+// Returns the sink node (i.e. last node) in the graph.
+Status FindSinkNode(const GraphDef& graph_def, NodeDef* sink_node);
 
 }  // namespace graph_utils
 }  // namespace grappler

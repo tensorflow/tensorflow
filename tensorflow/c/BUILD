@@ -59,6 +59,7 @@ tf_cuda_library(
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
+            "//tensorflow/core:lib_platform",
             "//tensorflow/core:op_gen_lib",
             "//tensorflow/core/distributed_runtime:server_lib",
         ],
@@ -67,6 +68,23 @@ tf_cuda_library(
 
 tf_cuda_library(
     name = "c_api",
+    hdrs = ["c_api.h"],
+    copts = tf_copts(),
+    visibility = ["//visibility:public"],
+    deps = [
+        ":c_api_no_xla",
+        ":c_api_internal",
+    ] + select({
+        "//tensorflow:with_xla_support": [
+            "//tensorflow/compiler/tf2xla:xla_compiler",
+            "//tensorflow/compiler/jit",
+        ],
+        "//conditions:default": [],
+    }),
+)
+
+tf_cuda_library(
+    name = "c_api_no_xla",
     srcs = [
         "c_api.cc",
         "c_api_function.cc",
@@ -75,14 +93,12 @@ tf_cuda_library(
         "c_api.h",
     ],
     copts = tf_copts(),
-    visibility = ["//visibility:public"],
-    deps = select({
+    visibility = ["//tensorflow/c:__subpackages__"],
+    deps = [":c_api_internal"] + select({
         "//tensorflow:android": [
-            ":c_api_internal",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api_internal",
             "//tensorflow/cc/saved_model:loader_lite",
             "//tensorflow/cc:gradients",
             "//tensorflow/cc:ops",
@@ -97,13 +113,8 @@ tf_cuda_library(
             "//tensorflow/core:lib",
             "//tensorflow/core:lib_internal",
             "//tensorflow/core/distributed_runtime:server_lib",
+            "//tensorflow/core/kernels:logging_ops",
         ],
-    }) + select({
-        "//tensorflow:with_xla_support": [
-            "//tensorflow/compiler/tf2xla:xla_compiler",
-            "//tensorflow/compiler/jit",
-        ],
-        "//conditions:default": [],
     }),
 )
 
@@ -156,8 +167,8 @@ tf_cuda_library(
     hdrs = ["tf_status_helper.h"],
     visibility = ["//visibility:public"],
     deps = [
-        ":c_api",
         ":c_api_internal",
+        ":c_api_no_xla",
         "//tensorflow/core:lib",
     ],
 )
@@ -213,13 +224,13 @@ tf_cuda_library(
     visibility = ["//visibility:public"],
     deps = select({
         "//tensorflow:android": [
-            ":c_api",
+            ":c_api_no_xla",
             ":c_api_internal",
             ":tf_status_helper",
             "//tensorflow/core:android_tensorflow_lib_lite",
         ],
         "//conditions:default": [
-            ":c_api",
+            ":c_api_no_xla",
             ":c_api_internal",
             ":tf_status_helper",
             "//tensorflow/core:framework",
@@ -271,7 +282,7 @@ tf_cuda_cc_test(
     ],
     kernels = [":test_op_kernel"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = [
@@ -300,9 +311,12 @@ tf_cuda_cc_test(
         "//tensorflow/core:lib",
         "//tensorflow/core:math_ops_op_lib",
         "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:no_op_op_lib",
         "//tensorflow/core:proto_text",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:sendrecv_ops_op_lib",
         "//tensorflow/core:spectral_ops_op_lib",
+        "//tensorflow/core:state_ops_op_lib",
         "//tensorflow/core:test",
         "//tensorflow/core:test_main",
         "//tensorflow/core/kernels:array",
@@ -317,7 +331,7 @@ tf_cc_test(
     srcs = ["c_api_experimental_test.cc"],
     data = ["testdata/tf_record"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     # We must ensure that the dependencies can be dynamically linked since
@@ -343,6 +357,7 @@ tf_cc_test(
     srcs = ["c_api_function_test.cc"],
     deps = [
         ":c_api",
+        ":c_api_internal",
         ":c_test_util",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
@@ -385,7 +400,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["env_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = ["noasan"],
@@ -406,7 +421,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["kernels_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     tags = ["noasan"],

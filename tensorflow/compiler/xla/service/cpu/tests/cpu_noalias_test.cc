@@ -75,8 +75,9 @@ TEST_F(CpuNoAliasTest, Concat) {
   // the buffers in the HLO module.  We'll inspect these loads to ensure that
   // they have the expected alias information.
   llvm::Module ir_module("test", context);
-  llvm::Function* func = llvm::cast<llvm::Function>(
-      ir_module.getOrInsertFunction("test_fn", llvm::Type::getVoidTy(context)));
+  llvm::Function* func = llvm::dyn_cast<llvm::Function>(
+      ir_module.getOrInsertFunction("test_fn", llvm::Type::getVoidTy(context))
+          .getCallee());
   llvm::BasicBlock* bb = llvm::BasicBlock::Create(context, "body", func);
   llvm::IRBuilder<> b(bb);
   auto* zero = llvm::ConstantInt::get(llvm::Type::getInt32Ty(context), 0);

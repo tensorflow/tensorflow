@@ -240,7 +240,7 @@ def freeze_graph_with_def_protos(input_graph_def,
 
 
 def _parse_input_graph_proto(input_graph, input_binary):
-  """Parser input tensorflow graph into GraphDef proto."""
+  """Parses input tensorflow graph into GraphDef proto."""
   if not gfile.Exists(input_graph):
     print("Input graph file '" + input_graph + "' does not exist!")
     return -1
@@ -255,7 +255,7 @@ def _parse_input_graph_proto(input_graph, input_binary):
 
 
 def _parse_input_meta_graph_proto(input_graph, input_binary):
-  """Parser input tensorflow graph into MetaGraphDef proto."""
+  """Parses input tensorflow graph into MetaGraphDef proto."""
   if not gfile.Exists(input_graph):
     print("Input meta graph file '" + input_graph + "' does not exist!")
     return -1
@@ -271,7 +271,7 @@ def _parse_input_meta_graph_proto(input_graph, input_binary):
 
 
 def _parse_input_saver_proto(input_saver, input_binary):
-  """Parser input tensorflow Saver into SaverDef proto."""
+  """Parses input tensorflow Saver into SaverDef proto."""
   if not gfile.Exists(input_saver):
     print("Input saver file '" + input_saver + "' does not exist!")
     return -1

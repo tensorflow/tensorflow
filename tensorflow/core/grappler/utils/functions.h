@@ -74,6 +74,12 @@ struct OutputArgExpansion {
   absl::InlinedVector<string, 1> output_nodes;
 };
 
+// A mapping from control output name to node name in function body graph.
+struct ControlOutput {
+  string output_name;
+  string node_name;
+};
+
 // FunctionDef uses different connectivity encoding for the function body nodes,
 // then a GraphDef (see function.proto for details). Input name in FunctionDef
 // can potentially represent a sequence of tensors (instead just one tensor in
@@ -161,6 +167,9 @@ class GrapplerFunctionItem : public GrapplerItem {
   const OutputArgExpansion& output(int i) const;
   const std::size_t output_size() const;
 
+  const std::vector<ControlOutput>& control_outputs() const;
+  const std::size_t control_output_size() const;
+
   const AttrSlice& func_attr() const;
   const GraphDef& function_body() const;
   GraphDef& mutable_function_body();
@@ -183,8 +192,9 @@ class GrapplerFunctionItem : public GrapplerItem {
                        AttrSlice func_attr,
                        std::vector<InputArgExpansion> input_arg_expansions,
                        std::vector<OutputArgExpansion> output_arg_expansions,
-                       std::vector<string> keep_nodes, int graph_def_version,
-                       bool is_stateful, GraphDef&& function_body);
+                       std::vector<ControlOutput> control_outputs,
+                       int graph_def_version, bool is_stateful,
+                       GraphDef&& function_body);
 
   string description_;
   AttrSlice func_attr_;  // Attributes specific to function definition that
@@ -192,6 +202,7 @@ class GrapplerFunctionItem : public GrapplerItem {
 
   std::vector<InputArgExpansion> input_arg_expansions_;
   std::vector<OutputArgExpansion> output_arg_expansions_;
+  std::vector<ControlOutput> control_outputs_;
 
   bool is_stateful_ = false;
 };
@@ -241,7 +252,7 @@ Status RemoveFunctionOutputs(const absl::flat_hash_set<int>& remove_outputs,
                              GrapplerFunctionItem* item,
                              std::vector<std::pair<int, int>>* output_mapping);
 
-// TODO(ezhulennev, b/120103818): Add RemoveFunctionInputs.
+// TODO(ezhulenev, b/120103818): Add RemoveFunctionInputs.
 
 // Make a GrapplerFunctionItem from the function definition and function
 // instantiation attributes (caller node attributes). Returns error if the given

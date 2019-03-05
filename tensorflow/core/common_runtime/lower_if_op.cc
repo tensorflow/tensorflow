@@ -85,6 +85,11 @@ class CondBuilder {
   Node* pivot_t_;
   Node* then_call_node_;
   Node* else_call_node_;
+  // Merge node that has inputs from [pivot_t, pivot_f] and control edges from
+  // [^then_call_node_, ^else_call_node_]. This node will guarantee that if
+  // then/else branch functions do not have outputs, they still will be executed
+  // for the side effects.
+  Node* branch_executed_node_;
   Graph* graph_;
   const FunctionLibraryDefinition& flib_;
   string name_;
@@ -178,18 +183,32 @@ Status CondBuilder::AddOutputs() {
   TF_RETURN_IF_ERROR(else_call_builder_.Finalize(graph_, &else_call_node_));
   graph_->AddControlEdge(pivot_f_, else_call_node_);
 
-  // Merge the outputs from the two branches.
+  // Add Merge node for each data output of the If node.
   std::vector<Node*> merges(then_call_node_->num_outputs());
   outputs_.resize(merges.size());
   for (int i = 0; i < then_call_node_->num_outputs(); ++i) {
     TF_RETURN_IF_ERROR(
-        NodeBuilder(graph_->NewName("merge"), "Merge", graph_->op_registry(),
+        NodeBuilder(graph_->NewName("output"), "Merge", graph_->op_registry(),
                     &debug_info_)
             .Input({NodeOut(then_call_node_, i), NodeOut(else_call_node_, i)})
             .Device(if_op_->requested_device())
             .Finalize(graph_, &merges[i]));
     outputs_[i] = NodeOut(merges[i], 0);
   }
+
+  // Add a Merge node that will be used as a control dependency source for the
+  // lowered output node. This Merge node will guarantee that lowered else/then
+  // function calls will be executed even if they do not have data outputs.
+  //
+  // Furthermore it will guarantee that all function side effects will be
+  // executed, if the function will be inlined into the graph. Having data
+  // outputs is not enough, because they might become unused after inlining.
+  TF_RETURN_IF_ERROR(NodeBuilder(graph_->NewName("branch_executed"), "Merge",
+                                 graph_->op_registry(), &debug_info_)
+                         .Input({pivot_t_, pivot_f_})
+                         .ControlInputs({then_call_node_, else_call_node_})
+                         .Device(if_op_->requested_device())
+                         .Finalize(graph_, &branch_executed_node_));
 
   TF_RETURN_IF_ERROR(BuildLoweredIfOutput());
 
@@ -203,11 +222,12 @@ Status CondBuilder::AddOutputs() {
       graph_->AddEdge(merges[e->src_output()], 0, e->dst(), e->dst_input());
     }
   }
+
   return Status::OK();
 }
 
-Status InlineCallInGraph(Node* n, const FunctionLibraryDefinition& flib,
-                         Graph* g) {
+Status InlineCallInGraph(const absl::string_view branch_name, Node* n,
+                         const FunctionLibraryDefinition& flib, Graph* g) {
   const FunctionDef* fdef = flib.Find(n->type_string());
   CHECK(fdef != nullptr);
   FunctionBody* fbody;
@@ -219,21 +239,42 @@ Status InlineCallInGraph(Node* n, const FunctionLibraryDefinition& flib,
                               &fbody));
   // TODO(jpienaar): Improve this interface to make the need to delete it
   // explicit.
-  InlineFunctionBody(g->flib_def(), g, n, fbody, false);
+  InlineFunctionBodyOptions inline_opts;
+  inline_opts.override_device = false;
+
+  Status can_inline_function_call = ValidateInlining(n, fbody, inline_opts);
+
+  if (can_inline_function_call.ok()) {
+    TF_RETURN_IF_ERROR(
+        InlineFunctionBody(g->flib_def(), g, n, fbody, inline_opts));
+  } else {
+    VLOG(4) << "Do not inline '" << branch_name << "' branch function call: "
+            << can_inline_function_call.error_message();
+  }
+
   delete fbody;
   return Status::OK();
 }
 
 Status CondBuilder::BuildLoweredIfOutput() {
-  // Build the identity node output.
-  NodeBuilder ib(name_, "IdentityN");
-  ib.Input(outputs_).Device(if_op_->requested_device());
+  // If outputs are empty, it means that we might have only output control
+  // edges. Furthermore it's illegal to have IdentityN with empty `T`.
+  // TODO(ezhulenev): `IdentityN` node will introduce redundant Send/Recv nodes
+  // if branch functions are multi-device.
+  NodeBuilder ib(name_, outputs_.empty() ? "NoOp" : "IdentityN");
+  if (!outputs_.empty()) ib.Input(outputs_);
+  ib.Device(if_op_->requested_device());
+  ib.ControlInput(branch_executed_node_);
   return ib.Finalize(graph_, &lowered_if_output_);
 }
 
 Status CondBuilder::InlineCallNodes() {
-  TF_RETURN_IF_ERROR(InlineCallInGraph(then_call_node_, flib_, graph_));
-  TF_RETURN_IF_ERROR(InlineCallInGraph(else_call_node_, flib_, graph_));
+  // TODO(ezhulenev): Function inlining of no-output produces a graph with
+  // undefined execution.
+  if (outputs_.empty()) return Status::OK();
+
+  TF_RETURN_IF_ERROR(InlineCallInGraph("then", then_call_node_, flib_, graph_));
+  TF_RETURN_IF_ERROR(InlineCallInGraph("else", else_call_node_, flib_, graph_));
   return Status::OK();
 }
 

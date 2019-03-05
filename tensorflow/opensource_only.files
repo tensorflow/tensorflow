@@ -60,12 +60,6 @@ tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
-tensorflow/third_party/toolchains/gpus/cuda/build_defs.bzl
-tensorflow/third_party/toolchains/gpus/cuda/BUILD
-tensorflow/third_party/toolchains/gpus/cuda/cuda/cuda_config.h
-tensorflow/third_party/toolchains/gpus/crosstool/BUILD
-tensorflow/third_party/toolchains/gpus/crosstool/CROSSTOOL
-tensorflow/third_party/toolchains/gpus/py/BUILD
 tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/CROSSTOOL.tpl
 tensorflow/third_party/toolchains/cpus/arm/BUILD
@@ -120,8 +114,8 @@ tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/src/FixedPoint/MatMatProdu
 tensorflow/third_party/eigen3/unsupported/Eigen/CXX11/ThreadPool
 tensorflow/third_party/eigen3/unsupported/Eigen/SpecialFunctions
 tensorflow/third_party/eigen3/unsupported/Eigen/MatrixFunctions
+tensorflow/third_party/eigen3/gpu_packet_math.patch
 tensorflow/third_party/eigen3/LICENSE
-tensorflow/third_party/eigen3/gebp_neon.patch
 tensorflow/third_party/eigen3/BUILD
 tensorflow/third_party/systemlibs/build_defs.bzl.tpl
 tensorflow/third_party/systemlibs/absl_py.BUILD
@@ -227,6 +221,7 @@ tensorflow/third_party/astor.BUILD
 tensorflow/third_party/grpc/BUILD
 tensorflow/third_party/curl.BUILD
 tensorflow/third_party/arm_neon_2_x86_sse.BUILD
+tensorflow/third_party/absl/BUILD
 tensorflow/third_party/png.BUILD
 tensorflow/third_party/googleapis.BUILD
 tensorflow/third_party/mpi_collectives/BUILD
@@ -246,5 +241,6 @@ tensorflow/third_party/eigen.BUILD
 tensorflow/stream_executor/build_defs.bzl
 tensorflow/api_template_v1.__init__.py
 tensorflow/compat_template_v1.__init__.py
+tensorflow/compat_template.__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/__init__.py

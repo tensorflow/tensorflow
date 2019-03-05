@@ -34,7 +34,6 @@ from tensorflow.python.ops import check_ops
 from tensorflow.python.ops import control_flow_ops
 from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn_ops
-from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.util import tf_decorator
 
@@ -100,7 +99,7 @@ def result_wrapper(result_fn):
     """Decorated function with merge_call."""
     replica_context = distribution_strategy_context.get_replica_context()
     if replica_context is None:  # if in cross replica context already
-      result_t = result_fn(*args)
+      result_t = array_ops.identity(result_fn(*args))
     else:
       # TODO(psv): Test distribution of metrics using different distribution
       # strategies.
@@ -111,7 +110,12 @@ def result_wrapper(result_fn):
       def merge_fn_wrapper(distribution, merge_fn, *args):
         # We will get `PerDevice` merge function. Taking the first one as all
         # are identical copies of the function that we had passed below.
-        return distribution.unwrap(merge_fn)[0](*args)
+        merged_result_fn = distribution.unwrap(merge_fn)[0](*args)
+
+        # Wrapping result in identity so that control dependency between
+        # update_op from `update_state` and result works in case result returns
+        # a tensor.
+        return array_ops.identity(merged_result_fn)
 
       # Wrapping result in merge_call. merge_call is used when we want to leave
       # replica mode and compute a value in cross replica mode.
@@ -161,14 +165,48 @@ class ConfusionMatrix(Enum):
 
 
 class AUCCurve(Enum):
+  """Type of AUC Curve (ROC or PR)."""
   ROC = 'ROC'
   PR = 'PR'
 
+  @staticmethod
+  def from_str(key):
+    if key in ('pr', 'PR'):
+      return AUCCurve.PR
+    elif key in ('roc', 'ROC'):
+      return AUCCurve.ROC
+    else:
+      raise ValueError('Invalid AUC curve value "%s".' % key)
+
 
 class AUCSummationMethod(Enum):
+  """Type of AUC summation method.
+
+  https://en.wikipedia.org/wiki/Riemann_sum)
+
+  Contains the following values:
+  * 'interpolation': Applies mid-point summation scheme for `ROC` curve. For
+    `PR` curve, interpolates (true/false) positives but not the ratio that is
+    precision (see Davis & Goadrich 2006 for details).
+  * 'minoring': Applies left summation for increasing intervals and right
+    summation for decreasing intervals.
+  * 'majoring': Applies right summation for increasing intervals and left
+    summation for decreasing intervals.
+  """
   INTERPOLATION = 'interpolation'
   MAJORING = 'majoring'
   MINORING = 'minoring'
+
+  @staticmethod
+  def from_str(key):
+    if key in ('interpolation', 'Interpolation'):
+      return AUCSummationMethod.INTERPOLATION
+    elif key in ('majoring', 'Majoring'):
+      return AUCSummationMethod.MAJORING
+    elif key in ('minoring', 'Minoring'):
+      return AUCSummationMethod.MINORING
+    else:
+      raise ValueError('Invalid AUC summation method value "%s".' % key)
 
 
 def update_confusion_matrix_variables(variables_to_update,
@@ -222,8 +260,8 @@ def update_confusion_matrix_variables(variables_to_update,
   """
   if variables_to_update is None:
     return
-  y_true = ops.convert_to_tensor(y_true)
-  y_pred = ops.convert_to_tensor(y_pred)
+  y_true = math_ops.cast(y_true, dtype=dtypes.float32)
+  y_pred = math_ops.cast(y_pred, dtype=dtypes.float32)
   y_pred.shape.assert_is_compatible_with(y_true.shape)
 
   if not any(
@@ -253,8 +291,7 @@ def update_confusion_matrix_variables(variables_to_update,
           message='predictions must be <= 1')
   ]):
     y_pred, y_true, sample_weight = squeeze_or_expand_dimensions(
-        math_ops.cast(y_pred, dtype=dtypes.float32),
-        math_ops.cast(y_true, dtype=dtypes.bool), sample_weight)
+        y_pred, y_true, sample_weight)
 
   if top_k is not None:
     y_pred = _filter_top_k(y_pred, top_k)
@@ -300,7 +337,7 @@ def update_confusion_matrix_variables(variables_to_update,
         math_ops.logical_and(label, pred), dtype=dtypes.float32)
     if weights is not None:
       label_and_pred *= weights
-    return state_ops.assign_add(var, math_ops.reduce_sum(label_and_pred, 1))
+    return var.assign_add(math_ops.reduce_sum(label_and_pred, 1))
 
   loop_vars = {
       ConfusionMatrix.TRUE_POSITIVES: (label_is_pos, pred_is_pos),

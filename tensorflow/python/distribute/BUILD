@@ -60,6 +60,7 @@ py_library(
         "//tensorflow/python:platform",
         "//tensorflow/python:resource_variable_ops",
         "//tensorflow/python/eager:context",
+        "//tensorflow/tools/docs:doc_controls",
         "@six_archive//:six",
     ],
 )
@@ -110,8 +111,11 @@ py_library(
     ],
     srcs_version = "PY2AND3",
     deps = [
+        ":cross_device_ops",
         ":distribute_lib",
         ":mirrored_strategy",
+        ":one_device_strategy",
+        "//tensorflow/python/distribute/experimental",
     ],
 )
 
@@ -138,7 +142,6 @@ py_library(
         "//tensorflow/python:variable_scope",
         "//tensorflow/python/data",
         "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
-        "//tensorflow/python/ops/losses",
         "//tensorflow/tools/docs:doc_controls",
     ],
 )
@@ -265,6 +268,47 @@ py_library(
 )
 
 py_library(
+    name = "one_device_strategy",
+    srcs = ["one_device_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":distribute_lib",
+        ":input_lib",
+        ":numpy_dataset",
+        ":reduce_util",
+        ":values",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python/eager:context",
+        "@six_archive//:six",
+    ],
+)
+
+py_library(
+    name = "collective_all_reduce_strategy",
+    srcs = ["collective_all_reduce_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":mirrored_strategy",
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:collective_ops",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:training",
+        "//tensorflow/python/distribute:cross_device_ops",
+        "//tensorflow/python/distribute:cross_device_utils",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:multi_worker_util",
+        "//tensorflow/python/distribute:numpy_dataset",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/distribute/cluster_resolver:cluster_resolver_lib",
+        "//tensorflow/python/eager:context",
+    ],
+)
+
+py_library(
     name = "multi_worker_util",
     srcs = [
         "multi_worker_util.py",
@@ -364,6 +408,26 @@ py_test(
     ],
 )
 
+py_library(
+    name = "tpu_strategy",
+    srcs = ["tpu_strategy.py"],
+    visibility = ["//tensorflow:internal"],
+    deps = [
+        ":one_device_strategy",
+        "//tensorflow/python:constant_op",
+        "//tensorflow/python:control_flow_ops",
+        "//tensorflow/python:dtypes",
+        "//tensorflow/python:framework_ops",
+        "//tensorflow/python:tensor_util",
+        "//tensorflow/python:util",
+        "//tensorflow/python/distribute:input_lib",
+        "//tensorflow/python/distribute:numpy_dataset",
+        "//tensorflow/python/distribute:reduce_util",
+        "//tensorflow/python/distribute:values",
+        "//tensorflow/python/tpu:tpu_lib",
+    ],
+)
+
 # Used only by estimator.
 py_library(
     name = "estimator_training",
@@ -417,7 +481,7 @@ py_library(
         "//tensorflow/python:training",
         "//tensorflow/python:util",
         "//tensorflow/python/eager:context",
-        "//tensorflow/python/training/checkpointable:base",
+        "//tensorflow/python/training/tracking:base",
         "@six_archive//:six",
     ],
 )

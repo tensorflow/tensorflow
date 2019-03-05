@@ -18,6 +18,7 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import json
 import math
 import os
 import numpy as np
@@ -34,15 +35,16 @@ from tensorflow.python.keras import metrics
 from tensorflow.python.keras import Model
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
+from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import variables
+from tensorflow.python.ops import weights_broadcast_ops
 from tensorflow.python.platform import test
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 @test_util.run_all_in_graph_and_eager_modes
 class KerasSumTest(test.TestCase):
 
-  @test_util.run_in_graph_and_eager_modes()
   def test_sum(self):
     m = metrics.Sum(name='my_sum')
 
@@ -130,7 +132,7 @@ class KerasSumTest(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
     m = metrics.Sum()
-    checkpoint = checkpointable_utils.Checkpoint(sum=m)
+    checkpoint = trackable_utils.Checkpoint(sum=m)
     self.evaluate(variables.variables_initializer(m.variables))
 
     # update state
@@ -148,7 +150,7 @@ class KerasSumTest(test.TestCase):
 
     # restore to a different checkpoint sum object
     restore_sum = metrics.Sum()
-    restore_checkpoint = checkpointable_utils.Checkpoint(sum=restore_sum)
+    restore_checkpoint = trackable_utils.Checkpoint(sum=restore_sum)
     status = restore_checkpoint.restore(save_path)
     restore_update = restore_sum(300.)
     status.assert_consumed().run_restore_ops()
@@ -266,7 +268,7 @@ class KerasMeanTest(test.TestCase):
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, 'ckpt')
     m = metrics.Mean()
-    checkpoint = checkpointable_utils.Checkpoint(mean=m)
+    checkpoint = trackable_utils.Checkpoint(mean=m)
     self.evaluate(variables.variables_initializer(m.variables))
 
     # update state
@@ -284,7 +286,7 @@ class KerasMeanTest(test.TestCase):
 
     # restore to a different checkpoint mean object
     restore_mean = metrics.Mean()
-    restore_checkpoint = checkpointable_utils.Checkpoint(mean=restore_mean)
+    restore_checkpoint = trackable_utils.Checkpoint(mean=restore_mean)
     status = restore_checkpoint.restore(save_path)
     restore_update = restore_mean(300.)
     status.assert_consumed().run_restore_ops()
@@ -297,10 +299,10 @@ class KerasMeanTest(test.TestCase):
 class KerasAccuracyTest(test.TestCase):
 
   def test_accuracy(self):
-    acc_obj = metrics.Accuracy(name='my acc')
+    acc_obj = metrics.Accuracy(name='my_acc')
 
     # check config
-    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertEqual(acc_obj.name, 'my_acc')
     self.assertTrue(acc_obj.stateful)
     self.assertEqual(len(acc_obj.variables), 2)
     self.assertEqual(acc_obj.dtype, dtypes.float32)
@@ -314,7 +316,7 @@ class KerasAccuracyTest(test.TestCase):
 
     # Check save and restore config
     a2 = metrics.Accuracy.from_config(acc_obj.get_config())
-    self.assertEqual(a2.name, 'my acc')
+    self.assertEqual(a2.name, 'my_acc')
     self.assertTrue(a2.stateful)
     self.assertEqual(len(a2.variables), 2)
     self.assertEqual(a2.dtype, dtypes.float32)
@@ -325,10 +327,10 @@ class KerasAccuracyTest(test.TestCase):
     self.assertAlmostEqual(result, 0.96, 2)  # 4.5/4.7
 
   def test_binary_accuracy(self):
-    acc_obj = metrics.BinaryAccuracy(name='my acc')
+    acc_obj = metrics.BinaryAccuracy(name='my_acc')
 
     # check config
-    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertEqual(acc_obj.name, 'my_acc')
     self.assertTrue(acc_obj.stateful)
     self.assertEqual(len(acc_obj.variables), 2)
     self.assertEqual(acc_obj.dtype, dtypes.float32)
@@ -364,10 +366,10 @@ class KerasAccuracyTest(test.TestCase):
     self.assertAlmostEqual(result, 0.5, 2)
 
   def test_categorical_accuracy(self):
-    acc_obj = metrics.CategoricalAccuracy(name='my acc')
+    acc_obj = metrics.CategoricalAccuracy(name='my_acc')
 
     # check config
-    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertEqual(acc_obj.name, 'my_acc')
     self.assertTrue(acc_obj.stateful)
     self.assertEqual(len(acc_obj.variables), 2)
     self.assertEqual(acc_obj.dtype, dtypes.float32)
@@ -387,10 +389,10 @@ class KerasAccuracyTest(test.TestCase):
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
   def test_sparse_categorical_accuracy(self):
-    acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
+    acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
 
     # check config
-    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertEqual(acc_obj.name, 'my_acc')
     self.assertTrue(acc_obj.stateful)
     self.assertEqual(len(acc_obj.variables), 2)
     self.assertEqual(acc_obj.dtype, dtypes.float32)
@@ -410,10 +412,10 @@ class KerasAccuracyTest(test.TestCase):
     self.assertAlmostEqual(result, 0.93, 2)  # 2.5/2.7
 
   def test_sparse_categorical_accuracy_mismatched_dims(self):
-    acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
+    acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
 
     # check config
-    self.assertEqual(acc_obj.name, 'my acc')
+    self.assertEqual(acc_obj.name, 'my_acc')
     self.assertTrue(acc_obj.stateful)
     self.assertEqual(len(acc_obj.variables), 2)
     self.assertEqual(acc_obj.dtype, dtypes.float32)
@@ -433,7 +435,7 @@ class KerasAccuracyTest(test.TestCase):
 
   def test_sparse_categorical_accuracy_mismatched_dims_dynamic(self):
     with context.graph_mode(), self.cached_session() as sess:
-      acc_obj = metrics.SparseCategoricalAccuracy(name='my acc')
+      acc_obj = metrics.SparseCategoricalAccuracy(name='my_acc')
       self.evaluate(variables.variables_initializer(acc_obj.variables))
 
       t = array_ops.placeholder(dtypes.float32)
@@ -452,7 +454,7 @@ class KerasAccuracyTest(test.TestCase):
 
 
 @test_util.run_all_in_graph_and_eager_modes
-class CosineProximityTest(test.TestCase):
+class CosineSimilarityTest(test.TestCase):
 
   def l2_norm(self, x, axis):
     epsilon = 1e-12
@@ -466,25 +468,25 @@ class CosineProximityTest(test.TestCase):
 
     y_true = self.l2_norm(self.np_y_true, axis)
     y_pred = self.l2_norm(self.np_y_pred, axis)
-    self.expected_loss = -np.sum(np.multiply(y_true, y_pred), axis=(axis,))
+    self.expected_loss = np.sum(np.multiply(y_true, y_pred), axis=(axis,))
 
     self.y_true = constant_op.constant(self.np_y_true)
     self.y_pred = constant_op.constant(self.np_y_pred)
 
   def test_config(self):
-    cosine_obj = metrics.CosineProximity(
+    cosine_obj = metrics.CosineSimilarity(
         axis=2, name='my_cos', dtype=dtypes.int32)
     self.assertEqual(cosine_obj.name, 'my_cos')
     self.assertEqual(cosine_obj._dtype, dtypes.int32)
 
     # Check save and restore config
-    cosine_obj2 = metrics.CosineProximity.from_config(cosine_obj.get_config())
+    cosine_obj2 = metrics.CosineSimilarity.from_config(cosine_obj.get_config())
     self.assertEqual(cosine_obj2.name, 'my_cos')
     self.assertEqual(cosine_obj2._dtype, dtypes.int32)
 
   def test_unweighted(self):
     self.setup()
-    cosine_obj = metrics.CosineProximity()
+    cosine_obj = metrics.CosineSimilarity()
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
@@ -492,7 +494,7 @@ class CosineProximityTest(test.TestCase):
 
   def test_weighted(self):
     self.setup()
-    cosine_obj = metrics.CosineProximity()
+    cosine_obj = metrics.CosineSimilarity()
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
     sample_weight = np.asarray([1.2, 3.4])
     loss = cosine_obj(
@@ -505,7 +507,7 @@ class CosineProximityTest(test.TestCase):
 
   def test_axis(self):
     self.setup(axis=1)
-    cosine_obj = metrics.CosineProximity(axis=1)
+    cosine_obj = metrics.CosineSimilarity(axis=1)
     self.evaluate(variables.variables_initializer(cosine_obj.variables))
     loss = cosine_obj(self.y_true, self.y_pred)
     expected_loss = np.mean(self.expected_loss)
@@ -684,26 +686,43 @@ class HingeTest(test.TestCase):
   def test_unweighted(self):
     hinge_obj = metrics.Hinge()
     self.evaluate(variables.variables_initializer(hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # metric = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #        = [0.6, 0.4125]
+    # reduced metric = (0.6 + 0.4125) / 2
 
     update_op = hinge_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = hinge_obj.result()
-    self.assertAllClose(0.65, result, atol=1e-5)
+    self.assertAllClose(0.506, result, atol=1e-3)
 
   def test_weighted(self):
     hinge_obj = metrics.Hinge()
     self.evaluate(variables.variables_initializer(hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    y_true = constant_op.constant([[-1, 1, -1, 1], [-1, -1, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    sample_weight = constant_op.constant([1.5, 2.])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # metric = [(0.7 + 0.8 + 0.9 + 0) / 4, (0.75 + 0 + 0.5 + 0.4) / 4]
+    #        = [0.6, 0.4125]
+    # weighted metric = [0.6 * 1.5, 0.4125 * 2]
+    # reduced metric = (0.6 * 1.5 + 0.4125 * 2) / (1.5 + 2)
+
     result = hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose(0.65714, self.evaluate(result), atol=1e-5)
+    self.assertAllClose(0.493, self.evaluate(result), atol=1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -722,26 +741,49 @@ class SquaredHingeTest(test.TestCase):
   def test_unweighted(self):
     sq_hinge_obj = metrics.SquaredHinge()
     self.evaluate(variables.variables_initializer(sq_hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
+    y_true = constant_op.constant([[0, 1, 0, 1], [0, 0, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true = [[-1, 1, -1, 1], [-1, -1, 1, 1]]
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # metric = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #        = [0.485, 0.2431]
+    # reduced metric = (0.485 + 0.2431) / 2
 
     update_op = sq_hinge_obj.update_state(y_true, y_pred)
     self.evaluate(update_op)
     result = sq_hinge_obj.result()
-    self.assertAllClose(0.65, result, atol=1e-5)
+    self.assertAllClose(0.364, result, atol=1e-3)
 
   def test_weighted(self):
     sq_hinge_obj = metrics.SquaredHinge()
     self.evaluate(variables.variables_initializer(sq_hinge_obj.variables))
-    y_true = constant_op.constant(((0, 1, 0, 1, 0), (0, 0, 1, 1, 1),
-                                   (1, 1, 1, 1, 0), (0, 0, 0, 0, 1)))
-    y_pred = constant_op.constant(((0, 0, 1, 1, 0), (1, 1, 1, 1, 1),
-                                   (0, 1, 0, 1, 0), (1, 1, 1, 1, 1)))
-    sample_weight = constant_op.constant((1., 1.5, 2., 2.5))
+    y_true = constant_op.constant([[-1, 1, -1, 1], [-1, -1, 1, 1]])
+    y_pred = constant_op.constant([[-0.3, 0.2, -0.1, 1.6],
+                                   [-0.25, -1., 0.5, 0.6]])
+    sample_weight = constant_op.constant([1.5, 2.])
+
+    # metric = max(0, 1-y_true * y_pred), where y_true is -1/1
+
+    # y_true * y_pred = [[0.3, 0.2, 0.1, 1.6], [0.25, 1, 0.5, 0.6]]
+    # 1 - y_true * y_pred = [[0.7, 0.8, 0.9, -0.6], [0.75, 0, 0.5, 0.4]]
+    # max(0, 1 - y_true * y_pred) = [[0.7, 0.8, 0.9, 0], [0.75, 0, 0.5, 0.4]]
+    # squared(max(0, 1 - y_true * y_pred)) = [[0.49, 0.64, 0.81, 0],
+    #                                         [0.5625, 0, 0.25, 0.16]]
+    # metric = [(0.49 + 0.64 + 0.81 + 0) / 4, (0.5625 + 0 + 0.25 + 0.16) / 4]
+    #        = [0.485, 0.2431]
+    # weighted metric = [0.485 * 1.5, 0.2431 * 2]
+    # reduced metric = (0.485 * 1.5 + 0.2431 * 2) / (1.5 + 2)
+
     result = sq_hinge_obj(y_true, y_pred, sample_weight=sample_weight)
-    self.assertAllClose(0.65714, self.evaluate(result), atol=1e-5)
+    self.assertAllClose(0.347, self.evaluate(result), atol=1e-3)
 
 
 @test_util.run_all_in_graph_and_eager_modes
@@ -1169,7 +1211,7 @@ class MeanIoUTest(test.TestCase):
     self.assertAllClose(self.evaluate(result), expected_result, atol=1e-3)
 
 
-class MeanTensorTest(keras_parameterized.TestCase):
+class MeanTensorTest(test.TestCase):
 
   @test_util.run_in_graph_and_eager_modes
   def test_config(self):
@@ -1245,7 +1287,7 @@ class MeanTensorTest(keras_parameterized.TestCase):
     self.assertAllClose(self.evaluate(m.count), [3, 1.4])
 
     # check weights expand
-    m = metrics.MeanTensor((2, 1), dtype=dtypes.float64)
+    m = metrics.MeanTensor(dtype=dtypes.float64)
     self.evaluate(variables.variables_initializer(m.variables))
     result_t = m([[1], [5]], sample_weight=[1, 0.2])
     self.assertAllClose(self.evaluate(result_t), [[1], [5]])
@@ -1561,6 +1603,219 @@ class CategoricalCrossentropyTest(test.TestCase):
     self.evaluate(variables.variables_initializer(cce_obj.variables))
     loss = cce_obj(y_true, logits)
     self.assertAllClose(self.evaluate(loss), 3.667, atol=1e-3)
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class SparseCategoricalCrossentropyTest(test.TestCase):
+
+  def test_config(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(
+        name='scce', dtype=dtypes.int32)
+    self.assertEqual(scce_obj.name, 'scce')
+    self.assertEqual(scce_obj.dtype, dtypes.int32)
+    old_config = scce_obj.get_config()
+    self.assertDictEqual(old_config, json.loads(json.dumps(old_config)))
+
+    # Check save and restore config
+    scce_obj2 = metrics.SparseCategoricalCrossentropy.from_config(old_config)
+    self.assertEqual(scce_obj2.name, 'scce')
+    self.assertEqual(scce_obj2.dtype, dtypes.int32)
+    new_config = scce_obj2.get_config()
+    self.assertDictEqual(old_config, new_config)
+
+  def test_unweighted(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    result = scce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # logits = log(y`) =  [[-2.9957, -0.0513, -16.1181],
+    #                      [-2.3026, -0.2231, -2.3026]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y = one_hot(y) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y * log(softmax), 1)
+
+    # exp(logits) = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # sum(exp(logits), axis=-1) = [1, 1]
+    # softmax = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # log(softmax) = [[-2.9957, -0.0513, -16.1181],
+    #                 [-2.3026, -0.2231, -2.3026]]
+    # y * log(softmax) = [[0, -0.0513, 0], [0, 0, -2.3026]]
+    # xent = [0.0513, 2.3026]
+    # Reduced xent = (0.0513 + 2.3026) / 2
+
+    self.assertAllClose(self.evaluate(result), 1.176, atol=1e-3)
+
+  def test_unweighted_from_logits(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    result = scce_obj(y_true, logits)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y_true = one_hot(y_true) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y_true * log(softmax), 1)
+
+    # exp(logits) = [[2.718, 8103.084, 1], [2.718, 2980.958, 2.718]]
+    # sum(exp(logits), axis=-1) = [8106.802, 2986.394]
+    # softmax = [[0.00033, 0.99954, 0.00012], [0.00091, 0.99817, 0.00091]]
+    # log(softmax) = [[-8.00045, -0.00045, -9.00045],
+    #                 [-7.00182, -0.00182, -7.00182]]
+    # y_true * log(softmax) = [[0, -0.00045, 0], [0, 0, -7.00182]]
+    # xent = [0.00045, 7.00182]
+    # Reduced xent = (0.00045 + 7.00182) / 2
+
+    self.assertAllClose(self.evaluate(result), 3.5011, atol=1e-3)
+
+  def test_weighted(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy()
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    y_pred = np.asarray([[0.05, 0.95, 0], [0.1, 0.8, 0.1]])
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = scce_obj(y_true, y_pred, sample_weight=sample_weight)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # logits = log(y`) =  [[-2.9957, -0.0513, -16.1181],
+    #                      [-2.3026, -0.2231, -2.3026]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y = one_hot(y) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y * log(softmax), 1)
+
+    # exp(logits) = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # sum(exp(logits), axis=-1) = [1, 1]
+    # softmax = [[0.05, 0.95, EPSILON], [0.1, 0.8, 0.1]]
+    # log(softmax) = [[-2.9957, -0.0513, -16.1181],
+    #                 [-2.3026, -0.2231, -2.3026]]
+    # y * log(softmax) = [[0, -0.0513, 0], [0, 0, -2.3026]]
+    # xent = [0.0513, 2.3026]
+    # Weighted xent = [0.051 * 1.5, 2.302 * 2.]
+    # Reduced xent = (0.051 * 1.5 + 2.302 * 2.) / 3.5
+
+    self.assertAllClose(self.evaluate(result), 1.338, atol=1e-3)
+
+  def test_weighted_from_logits(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(from_logits=True)
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    logits = np.asarray([[1, 9, 0], [1, 8, 1]], dtype=np.float32)
+    sample_weight = constant_op.constant([1.5, 2.])
+    result = scce_obj(y_true, logits, sample_weight=sample_weight)
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y_true = one_hot(y_true) = [[0, 1, 0], [0, 0, 1]]
+    # xent = -sum(y_true * log(softmax), 1)
+    # xent = [0.00045, 7.00182]
+    # weighted xent = [0.000675, 14.00364]
+    # Reduced xent = (0.000675 + 14.00364) / (1.5 + 2)
+
+    self.assertAllClose(self.evaluate(result), 4.0012, atol=1e-3)
+
+  def test_axis(self):
+    scce_obj = metrics.SparseCategoricalCrossentropy(axis=0)
+    self.evaluate(variables.variables_initializer(scce_obj.variables))
+
+    y_true = np.asarray([1, 2])
+    y_pred = np.asarray([[0.05, 0.1], [0.95, 0.8], [0, 0.1]])
+    result = scce_obj(y_true, y_pred)
+
+    # EPSILON = 1e-7, y = y_true, y` = y_pred
+    # y` = clip_ops.clip_by_value(output, EPSILON, 1. - EPSILON)
+    # y` = [[0.05, 0.1], [0.95, 0.8], [EPSILON, 0.1]]
+    # logits = log(y`) =  [[-2.9957, -2.3026],
+    #                      [-0.0513, -0.2231],
+    #                      [-16.1181, -2.3026]]
+
+    # softmax = exp(logits) / sum(exp(logits), axis=-1)
+    # y = one_hot(y) = [[0, 0], [1, 0], [0, 1]]
+    # xent = -sum(y * log(softmax), 1)
+
+    # exp(logits) = [[0.05, 0.1], [0.95, 0.8], [EPSILON, 0.1]]
+    # sum(exp(logits)) = [1, 1]
+    # softmax = [[0.05, 0.1], [0.95, 0.8], [EPSILON, 0.1]]
+    # log(softmax) = [[-2.9957, -2.3026],
+    #                 [-0.0513, -0.2231],
+    #                 [-16.1181, -2.3026]]
+    # y * log(softmax) = [[0, 0], [-0.0513, 0], [0, -2.3026]]
+    # xent = [0.0513, 2.3026]
+    # Reduced xent = (0.0513 + 2.3026) / 2
+
+    self.assertAllClose(self.evaluate(result), 1.176, atol=1e-3)
+
+
+class BinaryTruePositives(metrics.Metric):
+
+  def __init__(self, name='binary_true_positives', **kwargs):
+    super(BinaryTruePositives, self).__init__(name=name, **kwargs)
+    self.true_positives = self.add_weight(name='tp', initializer='zeros')
+
+  def update_state(self, y_true, y_pred, sample_weight=None):
+    y_true = math_ops.cast(y_true, dtypes.bool)
+    y_pred = math_ops.cast(y_pred, dtypes.bool)
+
+    values = math_ops.logical_and(
+        math_ops.equal(y_true, True), math_ops.equal(y_pred, True))
+    values = math_ops.cast(values, self.dtype)
+    if sample_weight is not None:
+      sample_weight = math_ops.cast(sample_weight, dtype=self.dtype)
+      sample_weight = weights_broadcast_ops.broadcast_weights(
+          sample_weight, values)
+      values = math_ops.multiply(values, sample_weight)
+    self.true_positives.assign_add(math_ops.reduce_sum(values))
+
+  def result(self):
+    return self.true_positives
+
+
+@test_util.run_all_in_graph_and_eager_modes
+class CustomMetricsTest(test.TestCase):
+
+  def test_config(self):
+    btp_obj = BinaryTruePositives(name='btp', dtype=dtypes.int32)
+    self.assertEqual(btp_obj.name, 'btp')
+    self.assertEqual(btp_obj.dtype, dtypes.int32)
+
+    # Check save and restore config
+    btp_obj2 = BinaryTruePositives.from_config(btp_obj.get_config())
+    self.assertEqual(btp_obj2.name, 'btp')
+    self.assertEqual(btp_obj2.dtype, dtypes.int32)
+
+  def test_unweighted(self):
+    btp_obj = BinaryTruePositives()
+    self.evaluate(variables.variables_initializer(btp_obj.variables))
+    y_true = constant_op.constant([[0, 0.9, 0, 1, 0], [0, 0, 1, 1, 1],
+                                   [1, 1, 1, 1, 0], [0, 0, 0, 0, 1.5]])
+    y_pred = constant_op.constant([[0, 0, 1, 5, 0], [1, 1, 1, 1, 1],
+                                   [0, 1, 0, 1, 0], [1, 10, 1, 1, 1]])
+
+    update_op = btp_obj.update_state(y_true, y_pred)
+    self.evaluate(update_op)
+    result = btp_obj.result()
+    self.assertEqual(7, self.evaluate(result))
+
+  def test_weighted(self):
+    btp_obj = BinaryTruePositives()
+    self.evaluate(variables.variables_initializer(btp_obj.variables))
+    y_true = constant_op.constant([[0, 0.9, 0, 1, 0], [0, 0, 1, 1, 1],
+                                   [1, 1, 1, 1, 0], [0, 0, 0, 0, 1.5]])
+    y_pred = constant_op.constant([[0, 0, 1, 5, 0], [1, 1, 1, 1, 1],
+                                   [0, 1, 0, 1, 0], [1, 10, 1, 1, 1]])
+    sample_weight = constant_op.constant([[1.], [1.5], [2.], [2.5]])
+    result = btp_obj(y_true, y_pred, sample_weight=sample_weight)
+    self.assertEqual(12, self.evaluate(result))
 
 
 def _get_model(compile_metrics):

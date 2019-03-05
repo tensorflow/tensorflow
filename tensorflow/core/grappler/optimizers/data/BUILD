@@ -6,6 +6,7 @@ load("//tensorflow/core:platform/default/build_config.bzl", "tf_protos_all")
 package(default_visibility = [
     "//tensorflow/core/grappler/optimizers/data:__subpackages__",
     "//tensorflow/core/kernels/data:__pkg__",
+    "//tensorflow/core/kernels/data/experimental:__pkg__",
 ])
 
 cc_library(
@@ -27,6 +28,27 @@ cc_library(
         ":shuffle_and_repeat_fusion",
         ":filter_with_random_uniform_fusion",
     ],
+)
+
+cc_library(
+    name = "auto_shard",
+    srcs = ["auto_shard.cc"],
+    hdrs = ["auto_shard.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler/utils:functions",
+    ] + tf_protos_all(),
+    alwayslink = 1,
 )
 
 cc_library(
@@ -578,6 +600,24 @@ cc_library(
 )
 
 cc_library(
+    name = "rebatch",
+    srcs = ["rebatch.cc"],
+    hdrs = ["rebatch.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "//tensorflow/core:framework",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core/grappler/utils:functions",
+        "//tensorflow/core:lib",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+cc_library(
     name = "noop_elimination",
     srcs = ["noop_elimination.cc"],
     hdrs = [
@@ -618,7 +658,7 @@ cc_library(
         "optimizer_base.h",
     ],
     deps = [
-        "//tensorflow/core:metrics",
+        "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core/grappler/optimizers:custom_graph_optimizer",
     ],
 )

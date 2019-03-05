@@ -761,8 +761,15 @@ TEST(AlignmentTest, AlignLayoutsWithTrivialDimensions) {
   auto aligned_shape = ShapeUtil::AlignLayouts(
       input, ShapeUtil::MakeShape(xla::F32, {1, 4, 1, 3, 2, 7, 5, 11, 1}));
   EXPECT_TRUE(aligned_shape);
-  EXPECT_THAT(aligned_shape.value().layout().minor_to_major(),
-              ElementsAre(6, 5, 4, 3, 1, 7, 0, 2, 8));
+  EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
+}
+
+TEST(AlignmentTest, AlignLayoutsWithAllTrivialDimensions) {
+  Shape input =
+      ShapeUtil::MakeShapeWithLayout(xla::F32, {1, 1, 1, 1}, {0, 1, 3, 2});
+  auto aligned_shape = ShapeUtil::AlignLayouts(
+      input, ShapeUtil::MakeShape(xla::F32, {1, 1, 1, 1, 1}));
+  EXPECT_TRUE(aligned_shape);
   EXPECT_TRUE(ShapeUtil::ReshapeIsBitcast(input, aligned_shape.value()));
 }
 

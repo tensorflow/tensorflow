@@ -499,6 +499,26 @@ class OpLevelCostEstimatorTest : public ::testing::Test {
   OpLevelCostEstimator estimator_;
 };
 
+TEST_F(OpLevelCostEstimatorTest, TestPersistentOpCosts) {
+  OpContext op_context;
+  SetCpuDevice(&op_context.op_info);
+  std::unordered_set<string> persisent_ops = {
+      "Const",       "Variable",       "VariableV2", "AutoReloadVariable",
+      "VarHandleOp", "ReadVariableOp",
+  };
+  // Minmum cost for all persistent ops.
+  for (const auto& op : persisent_ops) {
+    op_context.op_info.set_op(op);
+    auto cost = estimator_.PredictCosts(op_context);
+    EXPECT_EQ(Costs::Duration(0), cost.memory_time);
+    EXPECT_EQ(Costs::Duration(1), cost.compute_time);
+    EXPECT_EQ(Costs::Duration(1), cost.execution_time);
+    EXPECT_EQ(1, cost.num_ops_total);
+    EXPECT_FALSE(cost.inaccurate);
+    EXPECT_EQ(0, cost.num_ops_with_unknown_shapes);
+  }
+}
+
 TEST_F(OpLevelCostEstimatorTest, TestGatherCosts) {
   OpContext op_context;
   SetCpuDevice(&op_context.op_info);

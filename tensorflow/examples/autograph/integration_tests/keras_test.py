@@ -87,18 +87,16 @@ class KerasTest(tf.test.TestCase):
 
   @test_util.run_deprecated_v1
   def test_recursive_true(self):
-    with self.assertRaisesRegexp(NotImplementedError,
-                                 'Object conversion is not yet supported.'):
-      with tf.Graph().as_default():
-        model = CompoundModel()
-        model.build(tf.TensorShape((None, 10, 10, 1)))
-        init = tf.global_variables_initializer()
+    with tf.Graph().as_default():
+      model = CompoundModel()
+      model.build(tf.TensorShape((None, 10, 10, 1)))
+      init = tf.global_variables_initializer()
 
-        with tf.Session() as sess:
-          self.evaluate(init)
-          sample_input = tf.random_uniform((1, 10, 10, 1))
-          output = model(sample_input)  # pylint: disable=not-callable
-          self.assertEqual(self.evaluate(output).shape, (1, 3))
+      with tf.Session() as sess:
+        self.evaluate(init)
+        sample_input = tf.random_uniform((1, 10, 10, 1))
+        output = model(sample_input)  # pylint: disable=not-callable
+        self.assertEqual(self.evaluate(output).shape, (1, 3))
 
 
 if __name__ == '__main__':

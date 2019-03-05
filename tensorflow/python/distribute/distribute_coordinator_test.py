@@ -864,6 +864,9 @@ class StrategyConfigureTest(test.TestCase):
     cluster_spec = {"worker": ["localhost:0"]}
     tf_config = {"cluster": cluster_spec}
 
+    # Reset the saved Server state.
+    distribute_coordinator._thread_local = threading.local()  # pylint: disable=protected-access
+
     with test.mock.patch.dict("os.environ",
                               {"TF_CONFIG": json.dumps(tf_config)}):
       distribute_coordinator.run_distribute_coordinator(

@@ -182,8 +182,6 @@ class InputFunctionIterator(InputIteratorImpl):
     once on each worker.
 
     TODO(priyag): Add other replication modes.
-    TODO(priyag): Allow taking input function that returns a callable that
-    returns nest of tensors.
 
     Args:
       input_fn: Input function that returns a `tf.data.Dataset` object.
@@ -204,10 +202,14 @@ class InputFunctionIterator(InputIteratorImpl):
       worker = input_workers.worker_devices[i]
       with ops.device(worker):
         result = input_fn(ctx)
-        if not isinstance(result, dataset_ops.DatasetV2):
-          raise ValueError("input_fn must return a tf.data.Dataset.")
         devices = input_workers.compute_devices_for_worker(i)
-        iterator = _SingleWorkerDatasetIterator(result, worker, devices)
+        if isinstance(result, dataset_ops.DatasetV2):
+          iterator = _SingleWorkerDatasetIterator(result, worker, devices)
+        elif callable(result):
+          iterator = _SingleWorkerCallableIterator(result, worker, devices)
+        else:
+          raise ValueError(
+              "input_fn must return a tf.data.Dataset or a callable.")
         iterators.append(iterator)
 
     super(InputFunctionIterator, self).__init__(input_workers, iterators)
@@ -244,7 +246,7 @@ class DatasetIterator(InputIteratorImpl):
     """
     assert isinstance(input_workers, InputWorkers)
     if split_batch_by:
-      dataset = _split_dataset_batch(dataset, split_batch_by)
+      dataset = batching._RebatchDataset(dataset, split_batch_by)  # pylint: disable=protected-access
 
     iterators = []
     for i, worker in enumerate(input_workers.worker_devices):
@@ -253,9 +255,12 @@ class DatasetIterator(InputIteratorImpl):
         cloned_dataset = dataset
         if not context.executing_eagerly():
           cloned_dataset = input_ops._clone_dataset(dataset)  # pylint: disable=protected-access
+          cloned_dataset = cloned_dataset.with_options(dataset.options())
         iterator = _SingleWorkerDatasetIterator(cloned_dataset, worker,
                                                 worker_devices)
         iterators.append(iterator)
+
+    self._element_structure = dataset._element_structure  # pylint: disable=protected-access
 
     super(DatasetIterator, self).__init__(input_workers, iterators)
 
@@ -303,56 +308,74 @@ class _SingleWorkerDatasetIterator(object):
       A list of any initializer ops that should be run.
     """
     if context.executing_eagerly():
-      self._make_iterator()
+      self._iterator._eager_reset()  # pylint: disable=protected-access
       return []
     else:
       return [self._iterator.initializer]
 
   @property
   def output_classes(self):
-    return self._iterator.output_classes
+    return dataset_ops.get_legacy_output_classes(self._iterator)
 
   @property
   def output_shapes(self):
-    return self._iterator.output_shapes
+    return dataset_ops.get_legacy_output_shapes(self._iterator)
 
   @property
   def output_types(self):
-    return self._iterator.output_types
+    return dataset_ops.get_legacy_output_types(self._iterator)
 
 
-def _split_dataset_batch(dataset, split_batch_by):
-  """Divide a batch-ed dataset's batches into smaller batches."""
-  # TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+class _SingleWorkerCallableIterator(object):
+  """Iterator for a single tensor-returning callable."""
+
+  def __init__(self, fn, worker, devices):
+    self._fn = fn
+    self._worker = worker
+    self._devices = devices
+
+  def get_next_as_list(self, name=None):
+    """Get next element from the callable."""
+    del name
+    with ops.device(self._worker):
+      data_list = [self._fn() for _ in self._devices]
+      return data_list
+
+  def initialize(self):
+    # TODO(petebu) Should this throw an exception instead?
+    return []
+
+
+# TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+def _get_batched_dataset(d):
+  """Get the batched dataset from `d`."""
   # pylint: disable=protected-access
-  def _get_batch_dataset(d):
-    """Get the underlying batch dataset from the dataset object."""
-    if isinstance(d, dataset_ops.DatasetV1Adapter):
-      d = d._dataset
+  if isinstance(d, dataset_ops.DatasetV1Adapter):
+    d = d._dataset
 
-    if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
-      return d
-    elif isinstance(d, dataset_ops.PrefetchDataset):
-      return _get_batch_dataset(d._input_dataset)
-    raise ValueError(
-        "Unable to get batched dataset from the input dataset. `batch` "
-        "`map_and_batch` need to be the last operations on the dataset. "
-        "The batch operations can be followed by a prefetch.")
+  if isinstance(d, (dataset_ops.BatchDataset, batching._MapAndBatchDataset)):
+    return d
+  elif isinstance(d, (dataset_ops.PrefetchDataset,
+                      dataset_ops._OptionsDataset)):
+    return _get_batched_dataset(d._input_dataset)
 
-  batched_dataset = _get_batch_dataset(dataset)
-  if isinstance(batched_dataset, dataset_ops.BatchDataset):
-    batch_size = batched_dataset._batch_size
-    drop_remainder = batched_dataset._drop_remainder
-  elif isinstance(batched_dataset, batching._MapAndBatchDataset):
-    batch_size = batched_dataset._batch_size_t
-    drop_remainder = batched_dataset._drop_remainder_t
+  raise ValueError(
+      "Unable to get batched dataset from the input dataset. `batch` "
+      "`map_and_batch` need to be the last operations on the dataset. "
+      "The batch operations can be followed by a prefetch.")
 
-  prefetch_buffer = None
-  if isinstance(dataset, dataset_ops.PrefetchDataset):
-    prefetch_buffer = dataset._buffer_size
-  elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
-        and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
-    prefetch_buffer = dataset._dataset._buffer_size
+
+def _get_batched_dataset_attributes(d):
+  """Get `batch_size`, `drop_remainder` of dataset."""
+  # pylint: disable=protected-access
+  assert isinstance(d,
+                    (dataset_ops.BatchDataset, batching._MapAndBatchDataset))
+  if isinstance(d, dataset_ops.BatchDataset):
+    batch_size = d._batch_size
+    drop_remainder = d._drop_remainder
+  elif isinstance(d, batching._MapAndBatchDataset):
+    batch_size = d._batch_size_t
+    drop_remainder = d._drop_remainder_t
   # pylint: enable=protected-access
 
   if tensor_util.is_tensor(batch_size):
@@ -361,17 +384,29 @@ def _split_dataset_batch(dataset, split_batch_by):
   if tensor_util.is_tensor(drop_remainder):
     drop_remainder = tensor_util.constant_value(drop_remainder)
 
-  if batch_size % split_batch_by:
-    raise ValueError(
-        "Batch size %s cannot be sharded evenly across replicas %s" % (
-            batch_size, split_batch_by))
-  new_batch_size = batch_size // split_batch_by
+  return batch_size, drop_remainder
 
-  dataset = dataset.apply(batching.unbatch())
-  dataset = dataset.batch(new_batch_size, drop_remainder=drop_remainder)
-  if prefetch_buffer is not None:
-    dataset = dataset.prefetch(prefetch_buffer)
-  return dataset
+
+# TODO(sourabhbajaj): Remove this in lieu of distributed datasets
+def _get_dataset_attributes(dataset):
+  """Get the underlying attributes from the dataset object."""
+  # pylint: disable=protected-access
+
+  # First, get batch_size and drop_remainder from the dataset. We need
+  # to walk back the dataset creation process and find the batched version in
+  # order to get the attributes.
+  batched_dataset = _get_batched_dataset(dataset)
+  batch_size, drop_remainder = _get_batched_dataset_attributes(batched_dataset)
+
+  # Second, prefetch buffer should be get from the original dataset.
+  prefetch_buffer = None
+  if isinstance(dataset, dataset_ops.PrefetchDataset):
+    prefetch_buffer = dataset._buffer_size
+  elif (isinstance(dataset, dataset_ops.DatasetV1Adapter)
+        and isinstance(dataset._dataset, dataset_ops.PrefetchDataset)):
+    prefetch_buffer = dataset._dataset._buffer_size
+
+  return batch_size, drop_remainder, prefetch_buffer
 
 
 class MultiStepContext(object):
