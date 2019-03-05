@@ -1046,6 +1046,26 @@ class TrainingTest(keras_parameterized.TestCase):
     model(array_ops.ones((1, 1)))
     self.assertEqual(len(model.losses), 3)  # Losses are reset upon __call__.
 
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_layer_with_variable_output(self):
+
+    class VariableOutputLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.v = self.add_weight('output_var', shape=(2, 5), initializer='ones')
+
+      def call(self, inputs):
+        return self.v
+
+    model = testing_utils.get_model_from_layers(
+        [VariableOutputLayer(), keras.layers.Dense(1)], input_shape=(10,))
+    # TODO(omalleyt): Make this work with `run_eagerly=True`.
+    model.compile('sgd', 'mse', run_eagerly=False)
+    model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=5)
+
+    self.assertLen(model.trainable_variables, 3)
+
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
 
