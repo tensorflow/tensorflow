@@ -17,7 +17,7 @@ example</a>
 example</a>
 
 If you are using a platform other than Android or iOS, or you are already
-familiar with the <a href="../apis.md">TensorFlow Lite APIs</a>, you can
+familiar with the <a href="https://www.tensorflow.org/api_docs/python/tf/lite">TensorFlow Lite APIs</a>, you can
 download our starter object detection model and the accompanying labels.
 
 <a class="button button-primary" href="http://storage.googleapis.com/download.tensorflow.org/models/tflite/coco_ssd_mobilenet_v1_1.0_quant_2018_06_29.zip">Download

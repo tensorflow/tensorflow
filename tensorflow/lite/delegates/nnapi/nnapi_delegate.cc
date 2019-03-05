@@ -719,7 +719,16 @@ class NNAPIDelegateKernel {
         }
         break;
       case kTfLiteBuiltinDequantize:
-        if (version == 1) {
+        if (version == 1 || version == 2) {
+          const auto& input = context->tensors[node->inputs->data[0]];
+          const auto zero_point = input.params.zero_point;
+          // NN API supports int8 type since version 1.2 but only for symmetric
+          // quantization.
+          if (input.type == kTfLiteInt8 &&
+              (zero_point != 0 ||
+               android_sdk_version < kMinSdkVersionForNNAPI12)) {
+            return nullptr;
+          }
           return BasicMappingFn<ANEURALNETWORKS_DEQUANTIZE>;
         }
         break;

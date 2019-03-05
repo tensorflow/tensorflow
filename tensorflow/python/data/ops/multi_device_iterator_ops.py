@@ -331,8 +331,8 @@ class MultiDeviceIterator(object):
         ds = self._create_device_dataset(i)
         # Reset the device iterator resources with the new dataset.
         ds_variant = ds._variant_tensor
-        gen_dataset_ops.make_iterator(ds_variant,
-                                      self._device_iterators[i]._resource)
+        gen_dataset_ops.make_iterator(
+            ds_variant, self._device_iterators[i]._iterator_resource)
 
   @property
   def _element_structure(self):

@@ -77,7 +77,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     deps = [
-        "//tensorflow/compiler/tf2tensorrt:test_utils",
+        "//tensorflow/compiler/tf2tensorrt:py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_conversion",
         "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
         "//third_party/python_runtime:headers",

@@ -1389,7 +1389,22 @@ bool RemoveListArrayConverter(Graph* g) {
   return removed_any;
 }
 
-Status ValidateInlining(const Node* node, const FunctionBody* fbody) {
+namespace {
+
+Status ValidateNoInline(const FunctionBody* fbody) {
+  const auto attr = AttrSlice(&fbody->fdef.attr());
+  bool noinline = false;
+  if (GetNodeAttr(attr, kNoInlineAttr, &noinline).ok() && noinline) {
+    return errors::InvalidArgument(
+        "Can't inline function marked with '_noinline'");
+  }
+  return Status::OK();
+}
+
+}  // namespace
+
+Status ValidateInlining(const Node* node, const FunctionBody* fbody,
+                        const InlineFunctionBodyOptions& options) {
   // TODO(ezhulenev): Currently common_runtime function inlining can't guarantee
   // that all side-effectful ops will be executed after inlining. See Grappler
   // function_optimizer for details. Unify all function inlining mechanism.
@@ -1429,16 +1444,20 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody) {
     }
   }
 
+  if (!options.ignore_noinline) {
+    TF_RETURN_IF_ERROR(ValidateNoInline(fbody));
+  }
+
   return Status::OK();
 }
 
 Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           Node* caller, const FunctionBody* fbody,
-                          bool override_device) {
+                          const InlineFunctionBodyOptions& options) {
   VLOG(3) << "Inline function call: " << SummarizeNode(*caller);
   VLOG(4) << "Inlined function definition: " << DebugString(fbody->fdef);
 
-  Status validation = ValidateInlining(caller, fbody);
+  Status validation = ValidateInlining(caller, fbody, options);
   if (!validation.ok()) {
     LOG(WARNING) << "Inlining mismatch: " << SummarizeNode(*caller) << " vs. "
                  << DebugString(fbody->graph);
@@ -1474,7 +1493,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
   for (Node* n : fbody->graph->op_nodes()) {
     NodeDef ndef = n->def();
     ndef.set_name(strings::StrCat(caller->name(), "/", ndef.name()));
-    if (override_device || ndef.device().empty()) {
+    if (options.override_device || ndef.device().empty()) {
       ndef.set_device(caller->def().device());
     }
     for (auto& attr : *ndef.mutable_attr()) {
@@ -1484,7 +1503,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
       }
     }
     Node* clone = g->AddNode(ndef, &s);
-    if (override_device && !caller->assigned_device_name().empty()) {
+    if (options.override_device && !caller->assigned_device_name().empty()) {
       clone->set_assigned_device_name(caller->assigned_device_name());
     }
     TF_CHECK_OK(s);
@@ -1604,7 +1623,7 @@ Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
 }
 
 bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
-                           bool override_device) {
+                           const InlineFunctionBodyOptions& options) {
   std::vector<std::pair<Node*, const FunctionBody*>> candidates;
 
   const FunctionLibraryDefinition* fld = lib->GetFunctionLibraryDefinition();
@@ -1636,7 +1655,7 @@ bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
   bool inlined_any = false;
   for (const auto& p : candidates) {
     Status inlined =
-        InlineFunctionBody(*fld, graph, p.first, p.second, override_device);
+        InlineFunctionBody(*fld, graph, p.first, p.second, options);
     if (inlined.ok()) {
       inlined_any = true;
     } else {

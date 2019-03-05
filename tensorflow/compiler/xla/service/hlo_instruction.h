@@ -1797,6 +1797,10 @@ class HloInstruction {
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };
 
+// Explicit instantiations in hlo_instruction.cc.
+extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
+
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(
     const string& kind_name);

@@ -1,5 +1,4 @@
-#!/usr/bin/python
-# Copyright 2016 The TensorFlow Authors. All Rights Reserved.
+# Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -39,6 +38,7 @@ import sys
 from tensorflow.core.protobuf import config_pb2
 from tensorflow.core.protobuf import tensorflow_server_pb2
 from tensorflow.python.platform import app
+from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import server_lib
 
 
@@ -74,7 +74,7 @@ def parse_cluster_spec(cluster_spec, cluster, verbose=False):
     job_def.name = job_name
 
     if verbose:
-      print("Added job named \"%s\"" % job_name)
+      logging.info("Added job named \"%s\"", job_name)
 
     job_tasks = job_string.split("|")[1].split(";")
     for i in range(len(job_tasks)):
@@ -84,7 +84,8 @@ def parse_cluster_spec(cluster_spec, cluster, verbose=False):
       job_def.tasks[i] = job_tasks[i]
 
       if verbose:
-        print("  Added task \"%s\" to job \"%s\"" % (job_tasks[i], job_name))
+        logging.info("  Added task \"%s\" to job \"%s\"",
+                     job_tasks[i], job_name)
 
 
 def main(unused_args):

@@ -168,7 +168,6 @@ cc_library(
         ":xla_tensor",
         "//tensorflow/compiler/jit/ops:xla_ops",
         "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/tf2xla/kernels:xla_ops",
@@ -283,7 +282,6 @@ cc_library(
     hdrs = ["xla_compilation_cache.h"],
     deps = [
         "//tensorflow/compiler/tf2xla:common",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:xla_compiler",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/compiler/xla/client:client_library",
@@ -417,7 +415,6 @@ cc_library(
     hdrs = ["shape_inference.h"],
     deps = [
         ":shape_inference_helpers",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/xla:statusor",
         "//tensorflow/core:core_cpu_internal",
         "//tensorflow/core:framework",
@@ -491,6 +488,7 @@ cc_library(
     name = "compilation_passes",
     srcs = [
         "build_xla_ops_pass.cc",
+        "clone_constants_for_better_clustering.cc",
         "deadness_analysis.cc",
         "deadness_analysis_internal.h",
         "encapsulate_subgraphs_pass.cc",
@@ -503,6 +501,7 @@ cc_library(
     ],
     hdrs = [
         "build_xla_ops_pass.h",
+        "clone_constants_for_better_clustering.h",
         "deadness_analysis.h",
         "encapsulate_subgraphs_pass.h",
         "encapsulate_xla_computations_pass.h",
@@ -525,7 +524,6 @@ cc_library(
         "//tensorflow/cc:scope_internal",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/jit/ops:xla_ops",
-        "//tensorflow/compiler/tf2xla:dump_graph",
         "//tensorflow/compiler/tf2xla:resource_operation_table",
         "//tensorflow/compiler/tf2xla:side_effect_util",
         "//tensorflow/compiler/tf2xla:tf2xla_util",
@@ -542,6 +540,7 @@ cc_library(
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
         "//tensorflow/core:protos_all_cc",
+        "//tensorflow/stream_executor/lib",
         "@com_google_absl//absl/algorithm:container",
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
@@ -557,9 +556,11 @@ cc_library(
     srcs = ["xla_cluster_util.cc"],
     hdrs = ["xla_cluster_util.h"],
     deps = [
+        ":flags",
         ":resource_operation_safety_analysis",
         "//tensorflow/compiler/jit/graphcycles",
         "//tensorflow/compiler/xla:status_macros",
+        "//tensorflow/core:core_cpu",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_bounds_check",
         "//tensorflow/core:graph",
@@ -625,6 +626,7 @@ tf_cc_test(
     size = "small",
     srcs = [
         "build_xla_ops_pass_test.cc",
+        "clone_constants_for_better_clustering_test.cc",
         "compilation_passes_test_main.cc",
         "encapsulate_subgraphs_pass_test.cc",
         "encapsulate_xla_computations_pass_test.cc",

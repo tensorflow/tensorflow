@@ -37,6 +37,7 @@ tf_cc_test(
     data = [
         ":ops_history.v0.pbtxt",
         ":ops_history.v1.pbtxt",
+        ":ops_history.v2.pbtxt",
         "//tensorflow/core:ops/ops.pbtxt",
     ],
     deps = [

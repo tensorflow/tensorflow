@@ -481,7 +481,7 @@ class AttentionWrapperV2Test(test.TestCase, parameterized.TestCase):
         expected_final_alignment_history=expected_final_alignment_history,
         create_attention_kwargs=create_attention_kwargs)
 
-  def testBahdanauNormalized(self):
+  def DISABLED_testBahdanauNormalized(self):
     create_attention_mechanism = wrapper.BahdanauAttentionV2
     create_attention_kwargs = {"kernel_initializer": "ones", "normalize": True}
 
@@ -541,7 +541,7 @@ class AttentionWrapperV2Test(test.TestCase, parameterized.TestCase):
         expected_final_state,
         attention_mechanism_depth=9)
 
-  def testLuongScaled(self):
+  def DISABLED_testLuongScaled(self):
     create_attention_mechanism = wrapper.LuongAttentionV2
     create_attention_kwargs = {"scale": True}
 
@@ -604,7 +604,7 @@ class AttentionWrapperV2Test(test.TestCase, parameterized.TestCase):
         create_query_layer=True,
         create_attention_kwargs=create_attention_kwargs)
 
-  def testBahdanauMonotonicNotNormalized(self):
+  def DISABLED_testBahdanauMonotonicNotNormalized(self):
     create_attention_mechanism = wrapper.BahdanauMonotonicAttentionV2
     create_attention_kwargs = {"kernel_initializer": "ones"}
 
@@ -639,7 +639,7 @@ class AttentionWrapperV2Test(test.TestCase, parameterized.TestCase):
         create_query_layer=True,
         create_attention_kwargs=create_attention_kwargs)
 
-  def testBahdanauMonotonicNormalized(self):
+  def DISABLED_testBahdanauMonotonicNormalized(self):
     create_attention_mechanism = wrapper.BahdanauMonotonicAttentionV2
     create_attention_kwargs = {"kernel_initializer": "ones",
                                "normalize": True}
@@ -707,7 +707,7 @@ class AttentionWrapperV2Test(test.TestCase, parameterized.TestCase):
         alignment_history=True,
         expected_final_alignment_history=expected_final_alignment_history)
 
-  def testLuongMonotonicScaled(self):
+  def DISABLED_testLuongMonotonicScaled(self):
     create_attention_mechanism = wrapper.LuongMonotonicAttentionV2
     create_attention_kwargs = {"scale": True}
 

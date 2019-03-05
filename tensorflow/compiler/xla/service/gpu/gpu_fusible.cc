@@ -131,5 +131,51 @@ bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                              get_loop_shape(instr_2));
 }
 
+bool IsInputFusibleScatter(const HloInstruction& instr) {
+  if (instr.opcode() == HloOpcode::kScatter ||
+      (instr.opcode() == HloOpcode::kFusion &&
+       instr.fusion_kind() == HloInstruction::FusionKind::kInput &&
+       instr.fused_expression_root()->opcode() == HloOpcode::kScatter)) {
+    return true;
+  }
+  return false;
+}
+
+bool IsInputFusible(const HloInstruction& instr) {
+  // Input fusion only handles non-elemental reduction and scatter operations.
+  return IsInputFusibleReduction(instr) || IsInputFusibleScatter(instr);
+}
+
+bool IsLoopFusible(const HloInstruction& instr) {
+  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
+  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
+  // unfused GTE is an input to a kernel (including a fusion kernel), we
+  // compute the address of the GTE at the top of the kernel.  Often we know the
+  // address of the GTE result statically, so we can do this without chasing any
+  // pointers.
+  return (instr.IsElementwise() && instr.operand_count() > 0) ||
+         instr.opcode() == HloOpcode::kBitcast ||
+         instr.opcode() == HloOpcode::kBroadcast ||
+         instr.opcode() == HloOpcode::kConcatenate ||
+         instr.opcode() == HloOpcode::kDynamicSlice ||
+         instr.opcode() == HloOpcode::kDynamicUpdateSlice ||
+         (instr.opcode() == HloOpcode::kFusion &&
+          instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
+         instr.opcode() == HloOpcode::kGather ||
+         instr.opcode() == HloOpcode::kIota ||
+         instr.opcode() == HloOpcode::kPad ||
+         (instr.opcode() == HloOpcode::kReduce &&
+          !IsReductionToVector(instr)) ||
+         instr.opcode() == HloOpcode::kReduceWindow ||
+         instr.opcode() == HloOpcode::kReshape ||
+         instr.opcode() == HloOpcode::kReverse ||
+         instr.opcode() == HloOpcode::kSlice ||
+         instr.opcode() == HloOpcode::kTranspose;
+}
+
+bool IsFusible(const HloInstruction& instr) {
+  return IsInputFusible(instr) || IsLoopFusible(instr);
+}
+
 }  // namespace gpu
 }  // namespace xla

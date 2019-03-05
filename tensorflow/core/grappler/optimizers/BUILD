@@ -652,6 +652,7 @@ cc_library(
         "//tensorflow/core/grappler/utils:frame",
         "//tensorflow/core/grappler/utils:traversal",
         "@com_google_absl//absl/container:flat_hash_set",
+        "@com_google_absl//absl/strings",
     ],
 )
 

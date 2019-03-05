@@ -1948,7 +1948,8 @@ inline void Mean(const tflite::MeanParams& op_params,
     int depth_start = 0;
     for (int i = 0; i < capped_thread_count; ++i) {
       // Try to distribute the tasks as even as possible.
-      int depth_end = (output_depth - depth_start) / (capped_thread_count - i);
+      int depth_end = depth_start +
+                      (output_depth - depth_start) / (capped_thread_count - i);
       tasks[i] = new MeanWorkerTask(op_params, input_shape, input_data,
                                     input_zero_point, input_scale, output_shape,
                                     output_data, output_zero_point,

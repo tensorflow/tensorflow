@@ -7585,6 +7585,41 @@ func OptionalHasValue(scope *Scope, optional tf.Output) (has_value tf.Output) {
 	return op.Output(0)
 }
 
+// Deserializes a proto into the tree handle
+//
+// Arguments:
+//	tree_handle: Handle to the tree resource to be restored.
+//	tree_config: Serialied proto string of the boosted_trees.Tree proto.
+//
+// Returns the created operation.
+func TensorForestTreeDeserialize(scope *Scope, tree_handle tf.Output, tree_config tf.Output) (o *tf.Operation) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "TensorForestTreeDeserialize",
+		Input: []tf.Input{
+			tree_handle, tree_config,
+		},
+	}
+	return scope.AddOperation(opspec)
+}
+
+// Constructs an Optional variant from a tuple of tensors.
+func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "OptionalFromValue",
+		Input: []tf.Input{
+			tf.OutputList(components),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // Outputs a tensor containing the reduction across all input tensors.
 //
 // Outputs a tensor containing the reduction across all input tensors passed to ops
@@ -8238,37 +8273,6 @@ func LeakyReluGrad(scope *Scope, gradients tf.Output, features tf.Output, option
 	return op.Output(0)
 }
 
-// LeakyReluAttr is an optional argument to LeakyRelu.
-type LeakyReluAttr func(optionalAttr)
-
-// LeakyReluAlpha sets the optional alpha attribute to value.
-// If not specified, defaults to 0.2
-func LeakyReluAlpha(value float32) LeakyReluAttr {
-	return func(m optionalAttr) {
-		m["alpha"] = value
-	}
-}
-
-// Computes rectified linear: `max(features, features * alpha)`.
-func LeakyRelu(scope *Scope, features tf.Output, optional ...LeakyReluAttr) (activations tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "LeakyRelu",
-		Input: []tf.Input{
-			features,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Computes rectified linear 6: `min(max(features, 0), 6)`.
 func Relu6(scope *Scope, features tf.Output) (activations tf.Output) {
 	if scope.Err() != nil {
@@ -8573,6 +8577,19 @@ func MaxPoolGradGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output
 	return op.Output(0)
 }
 
+// MaxPoolGradWithArgmaxAttr is an optional argument to MaxPoolGradWithArgmax.
+type MaxPoolGradWithArgmaxAttr func(optionalAttr)
+
+// MaxPoolGradWithArgmaxIncludeBatchInIndex sets the optional include_batch_in_index attribute to value.
+//
+// value: Whether to include batch dimension in flattened index of `argmax`.
+// If not specified, defaults to false
+func MaxPoolGradWithArgmaxIncludeBatchInIndex(value bool) MaxPoolGradWithArgmaxAttr {
+	return func(m optionalAttr) {
+		m["include_batch_in_index"] = value
+	}
+}
+
 // Computes gradients of the maxpooling function.
 //
 // Arguments:
@@ -8586,11 +8603,14 @@ func MaxPoolGradGradV2(scope *Scope, orig_input tf.Output, orig_output tf.Output
 //	padding: The type of padding algorithm to use.
 //
 // Returns Gradients w.r.t. the input of `max_pool`.
-func MaxPoolGradWithArgmax(scope *Scope, input tf.Output, grad tf.Output, argmax tf.Output, ksize []int64, strides []int64, padding string) (output tf.Output) {
+func MaxPoolGradWithArgmax(scope *Scope, input tf.Output, grad tf.Output, argmax tf.Output, ksize []int64, strides []int64, padding string, optional ...MaxPoolGradWithArgmaxAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "MaxPoolGradWithArgmax",
 		Input: []tf.Input{
@@ -10930,6 +10950,185 @@ func Cross(scope *Scope, a tf.Output, b tf.Output) (product tf.Output) {
 	return op.Output(0)
 }
 
+// LeakyReluAttr is an optional argument to LeakyRelu.
+type LeakyReluAttr func(optionalAttr)
+
+// LeakyReluAlpha sets the optional alpha attribute to value.
+// If not specified, defaults to 0.2
+func LeakyReluAlpha(value float32) LeakyReluAttr {
+	return func(m optionalAttr) {
+		m["alpha"] = value
+	}
+}
+
+// Computes rectified linear: `max(features, features * alpha)`.
+func LeakyRelu(scope *Scope, features tf.Output, optional ...LeakyReluAttr) (activations tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "LeakyRelu",
+		Input: []tf.Input{
+			features,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Outputs random integers from a uniform distribution.
+//
+// The generated values are uniform integers in the range `[minval, maxval)`.
+// The lower bound `minval` is included in the range, while the upper bound
+// `maxval` is excluded.
+//
+// The random integers are slightly biased unless `maxval - minval` is an exact
+// power of two.  The bias is small for values of `maxval - minval` significantly
+// smaller than the range of the output (either `2^32` or `2^64`).
+//
+// Arguments:
+//	resource: The handle of the resource variable that stores the state of the RNG.
+//	algorithm: The RNG algorithm.
+//	shape: The shape of the output tensor.
+//	minval: Minimum value (inclusive, scalar).
+//	maxval: Maximum value (exclusive, scalar).
+//
+// Returns Random values with specified shape.
+func StatefulUniformInt(scope *Scope, resource tf.Output, algorithm tf.Output, shape tf.Output, minval tf.Output, maxval tf.Output) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "StatefulUniformInt",
+		Input: []tf.Input{
+			resource, algorithm, shape, minval, maxval,
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodeAndCropJpegAttr is an optional argument to DecodeAndCropJpeg.
+type DecodeAndCropJpegAttr func(optionalAttr)
+
+// DecodeAndCropJpegChannels sets the optional channels attribute to value.
+//
+// value: Number of color channels for the decoded image.
+// If not specified, defaults to 0
+func DecodeAndCropJpegChannels(value int64) DecodeAndCropJpegAttr {
+	return func(m optionalAttr) {
+		m["channels"] = value
+	}
+}
+
+// DecodeAndCropJpegRatio sets the optional ratio attribute to value.
+//
+// value: Downscaling ratio.
+// If not specified, defaults to 1
+func DecodeAndCropJpegRatio(value int64) DecodeAndCropJpegAttr {
+	return func(m optionalAttr) {
+		m["ratio"] = value
+	}
+}
+
+// DecodeAndCropJpegFancyUpscaling sets the optional fancy_upscaling attribute to value.
+//
+// value: If true use a slower but nicer upscaling of the
+// chroma planes (yuv420/422 only).
+// If not specified, defaults to true
+func DecodeAndCropJpegFancyUpscaling(value bool) DecodeAndCropJpegAttr {
+	return func(m optionalAttr) {
+		m["fancy_upscaling"] = value
+	}
+}
+
+// DecodeAndCropJpegTryRecoverTruncated sets the optional try_recover_truncated attribute to value.
+//
+// value: If true try to recover an image from truncated input.
+// If not specified, defaults to false
+func DecodeAndCropJpegTryRecoverTruncated(value bool) DecodeAndCropJpegAttr {
+	return func(m optionalAttr) {
+		m["try_recover_truncated"] = value
+	}
+}
+
+// DecodeAndCropJpegAcceptableFraction sets the optional acceptable_fraction attribute to value.
+//
+// value: The minimum required fraction of lines before a truncated
+// input is accepted.
+// If not specified, defaults to 1
+func DecodeAndCropJpegAcceptableFraction(value float32) DecodeAndCropJpegAttr {
+	return func(m optionalAttr) {
+		m["acceptable_fraction"] = value
+	}
+}
+
+// DecodeAndCropJpegDctMethod sets the optional dct_method attribute to value.
+//
+// value: string specifying a hint about the algorithm used for
+// decompression.  Defaults to "" which maps to a system-specific
+// default.  Currently valid values are ["INTEGER_FAST",
+// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
+// jpeg library changes to a version that does not have that specific
+// option.)
+// If not specified, defaults to ""
+func DecodeAndCropJpegDctMethod(value string) DecodeAndCropJpegAttr {
+	return func(m optionalAttr) {
+		m["dct_method"] = value
+	}
+}
+
+// Decode and Crop a JPEG-encoded image to a uint8 tensor.
+//
+// The attr `channels` indicates the desired number of color channels for the
+// decoded image.
+//
+// Accepted values are:
+//
+// *   0: Use the number of channels in the JPEG-encoded image.
+// *   1: output a grayscale image.
+// *   3: output an RGB image.
+//
+// If needed, the JPEG-encoded image is transformed to match the requested number
+// of color channels.
+//
+// The attr `ratio` allows downscaling the image by an integer factor during
+// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
+// downscaling the image later.
+//
+//
+// It is equivalent to a combination of decode and crop, but much faster by only
+// decoding partial jpeg image.
+//
+// Arguments:
+//	contents: 0-D.  The JPEG-encoded image.
+//	crop_window: 1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width].
+//
+// Returns 3-D with shape `[height, width, channels]`..
+func DecodeAndCropJpeg(scope *Scope, contents tf.Output, crop_window tf.Output, optional ...DecodeAndCropJpegAttr) (image tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeAndCropJpeg",
+		Input: []tf.Input{
+			contents, crop_window,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
 // StatefulStandardNormalV2Attr is an optional argument to StatefulStandardNormalV2.
 type StatefulStandardNormalV2Attr func(optionalAttr)
 
@@ -10963,6 +11162,48 @@ func StatefulStandardNormalV2(scope *Scope, resource tf.Output, algorithm tf.Out
 	}
 	opspec := tf.OpSpec{
 		Type: "StatefulStandardNormalV2",
+		Input: []tf.Input{
+			resource, algorithm, shape,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// StatefulUniformFullIntAttr is an optional argument to StatefulUniformFullInt.
+type StatefulUniformFullIntAttr func(optionalAttr)
+
+// StatefulUniformFullIntDtype sets the optional dtype attribute to value.
+//
+// value: The type of the output.
+// If not specified, defaults to DT_UINT64
+func StatefulUniformFullIntDtype(value tf.DataType) StatefulUniformFullIntAttr {
+	return func(m optionalAttr) {
+		m["dtype"] = value
+	}
+}
+
+// Outputs random integers from a uniform distribution.
+//
+// The generated values are uniform integers covering the whole range of `dtype`.
+//
+// Arguments:
+//	resource: The handle of the resource variable that stores the state of the RNG.
+//	algorithm: The RNG algorithm.
+//	shape: The shape of the output tensor.
+//
+// Returns Random values with specified shape.
+func StatefulUniformFullInt(scope *Scope, resource tf.Output, algorithm tf.Output, shape tf.Output, optional ...StatefulUniformFullIntAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "StatefulUniformFullInt",
 		Input: []tf.Input{
 			resource, algorithm, shape,
 		},
@@ -11068,11 +11309,22 @@ func MaxPoolWithArgmaxTargmax(value tf.DataType) MaxPoolWithArgmaxAttr {
 	}
 }
 
+// MaxPoolWithArgmaxIncludeBatchInIndex sets the optional include_batch_in_index attribute to value.
+//
+// value: Whether to include batch dimension in flattened index of `argmax`.
+// If not specified, defaults to false
+func MaxPoolWithArgmaxIncludeBatchInIndex(value bool) MaxPoolWithArgmaxAttr {
+	return func(m optionalAttr) {
+		m["include_batch_in_index"] = value
+	}
+}
+
 // Performs max pooling on the input and outputs both max values and indices.
 //
 // The indices in `argmax` are flattened, so that a maximum value at position
-// `[b, y, x, c]` becomes flattened index
-// `((b * height + y) * width + x) * channels + c`.
+// `[b, y, x, c]` becomes flattened index:
+// `(y * width + x) * channels + c` if `include_batch_in_index` is False;
+// `((b * height + y) * width + x) * channels + c` if `include_batch_in_index` is True.
 //
 // The indices returned are always in `[0, height) x [0, width)` before flattening,
 // even if padding is involved and the mathematically correct answer is outside
@@ -13641,122 +13893,6 @@ func SparseTensorDenseMatMul(scope *Scope, a_indices tf.Output, a_values tf.Outp
 		Type: "SparseTensorDenseMatMul",
 		Input: []tf.Input{
 			a_indices, a_values, a_shape, b,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DecodeAndCropJpegAttr is an optional argument to DecodeAndCropJpeg.
-type DecodeAndCropJpegAttr func(optionalAttr)
-
-// DecodeAndCropJpegChannels sets the optional channels attribute to value.
-//
-// value: Number of color channels for the decoded image.
-// If not specified, defaults to 0
-func DecodeAndCropJpegChannels(value int64) DecodeAndCropJpegAttr {
-	return func(m optionalAttr) {
-		m["channels"] = value
-	}
-}
-
-// DecodeAndCropJpegRatio sets the optional ratio attribute to value.
-//
-// value: Downscaling ratio.
-// If not specified, defaults to 1
-func DecodeAndCropJpegRatio(value int64) DecodeAndCropJpegAttr {
-	return func(m optionalAttr) {
-		m["ratio"] = value
-	}
-}
-
-// DecodeAndCropJpegFancyUpscaling sets the optional fancy_upscaling attribute to value.
-//
-// value: If true use a slower but nicer upscaling of the
-// chroma planes (yuv420/422 only).
-// If not specified, defaults to true
-func DecodeAndCropJpegFancyUpscaling(value bool) DecodeAndCropJpegAttr {
-	return func(m optionalAttr) {
-		m["fancy_upscaling"] = value
-	}
-}
-
-// DecodeAndCropJpegTryRecoverTruncated sets the optional try_recover_truncated attribute to value.
-//
-// value: If true try to recover an image from truncated input.
-// If not specified, defaults to false
-func DecodeAndCropJpegTryRecoverTruncated(value bool) DecodeAndCropJpegAttr {
-	return func(m optionalAttr) {
-		m["try_recover_truncated"] = value
-	}
-}
-
-// DecodeAndCropJpegAcceptableFraction sets the optional acceptable_fraction attribute to value.
-//
-// value: The minimum required fraction of lines before a truncated
-// input is accepted.
-// If not specified, defaults to 1
-func DecodeAndCropJpegAcceptableFraction(value float32) DecodeAndCropJpegAttr {
-	return func(m optionalAttr) {
-		m["acceptable_fraction"] = value
-	}
-}
-
-// DecodeAndCropJpegDctMethod sets the optional dct_method attribute to value.
-//
-// value: string specifying a hint about the algorithm used for
-// decompression.  Defaults to "" which maps to a system-specific
-// default.  Currently valid values are ["INTEGER_FAST",
-// "INTEGER_ACCURATE"].  The hint may be ignored (e.g., the internal
-// jpeg library changes to a version that does not have that specific
-// option.)
-// If not specified, defaults to ""
-func DecodeAndCropJpegDctMethod(value string) DecodeAndCropJpegAttr {
-	return func(m optionalAttr) {
-		m["dct_method"] = value
-	}
-}
-
-// Decode and Crop a JPEG-encoded image to a uint8 tensor.
-//
-// The attr `channels` indicates the desired number of color channels for the
-// decoded image.
-//
-// Accepted values are:
-//
-// *   0: Use the number of channels in the JPEG-encoded image.
-// *   1: output a grayscale image.
-// *   3: output an RGB image.
-//
-// If needed, the JPEG-encoded image is transformed to match the requested number
-// of color channels.
-//
-// The attr `ratio` allows downscaling the image by an integer factor during
-// decoding.  Allowed values are: 1, 2, 4, and 8.  This is much faster than
-// downscaling the image later.
-//
-//
-// It is equivalent to a combination of decode and crop, but much faster by only
-// decoding partial jpeg image.
-//
-// Arguments:
-//	contents: 0-D.  The JPEG-encoded image.
-//	crop_window: 1-D.  The crop window: [crop_y, crop_x, crop_height, crop_width].
-//
-// Returns 3-D with shape `[height, width, channels]`..
-func DecodeAndCropJpeg(scope *Scope, contents tf.Output, crop_window tf.Output, optional ...DecodeAndCropJpegAttr) (image tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeAndCropJpeg",
-		Input: []tf.Input{
-			contents, crop_window,
 		},
 		Attrs: attrs,
 	}
@@ -23295,6 +23431,19 @@ func Range(scope *Scope, start tf.Output, limit tf.Output, delta tf.Output) (out
 	return op.Output(0)
 }
 
+// MaxPoolGradGradWithArgmaxAttr is an optional argument to MaxPoolGradGradWithArgmax.
+type MaxPoolGradGradWithArgmaxAttr func(optionalAttr)
+
+// MaxPoolGradGradWithArgmaxIncludeBatchInIndex sets the optional include_batch_in_index attribute to value.
+//
+// value: Whether to include batch dimension in flattened index of `argmax`.
+// If not specified, defaults to false
+func MaxPoolGradGradWithArgmaxIncludeBatchInIndex(value bool) MaxPoolGradGradWithArgmaxAttr {
+	return func(m optionalAttr) {
+		m["include_batch_in_index"] = value
+	}
+}
+
 // Computes second-order gradients of the maxpooling function.
 //
 // Arguments:
@@ -23308,11 +23457,14 @@ func Range(scope *Scope, start tf.Output, limit tf.Output, delta tf.Output) (out
 //	padding: The type of padding algorithm to use.
 //
 // Returns Gradients of gradients w.r.t. the input of `max_pool`.
-func MaxPoolGradGradWithArgmax(scope *Scope, input tf.Output, grad tf.Output, argmax tf.Output, ksize []int64, strides []int64, padding string) (output tf.Output) {
+func MaxPoolGradGradWithArgmax(scope *Scope, input tf.Output, grad tf.Output, argmax tf.Output, ksize []int64, strides []int64, padding string, optional ...MaxPoolGradGradWithArgmaxAttr) (output tf.Output) {
 	if scope.Err() != nil {
 		return
 	}
 	attrs := map[string]interface{}{"ksize": ksize, "strides": strides, "padding": padding}
+	for _, a := range optional {
+		a(attrs)
+	}
 	opspec := tf.OpSpec{
 		Type: "MaxPoolGradGradWithArgmax",
 		Input: []tf.Input{
@@ -24144,201 +24296,6 @@ func DecodeCompressed(scope *Scope, bytes tf.Output, optional ...DecodeCompresse
 			bytes,
 		},
 		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// EnterAttr is an optional argument to Enter.
-type EnterAttr func(optionalAttr)
-
-// EnterIsConstant sets the optional is_constant attribute to value.
-//
-// value: If true, the output is constant within the child frame.
-// If not specified, defaults to false
-func EnterIsConstant(value bool) EnterAttr {
-	return func(m optionalAttr) {
-		m["is_constant"] = value
-	}
-}
-
-// EnterParallelIterations sets the optional parallel_iterations attribute to value.
-//
-// value: The number of iterations allowed to run in parallel.
-// If not specified, defaults to 10
-func EnterParallelIterations(value int64) EnterAttr {
-	return func(m optionalAttr) {
-		m["parallel_iterations"] = value
-	}
-}
-
-// Creates or finds a child frame, and makes `data` available to the child frame.
-//
-// This op is used together with `Exit` to create loops in the graph.
-// The unique `frame_name` is used by the `Executor` to identify frames. If
-// `is_constant` is true, `output` is a constant in the child frame; otherwise
-// it may be changed in the child frame. At most `parallel_iterations` iterations
-// are run in parallel in the child frame.
-//
-// Arguments:
-//	data: The tensor to be made available to the child frame.
-//	frame_name: The name of the child frame.
-//
-// Returns The same tensor as `data`.
-func Enter(scope *Scope, data tf.Output, frame_name string, optional ...EnterAttr) (output tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"frame_name": frame_name}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "Enter",
-		Input: []tf.Input{
-			data,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// TryRpcAttr is an optional argument to TryRpc.
-type TryRpcAttr func(optionalAttr)
-
-// TryRpcProtocol sets the optional protocol attribute to value.
-//
-// value: RPC protocol to use.  Empty string means use the default protocol.
-// Options include 'grpc'.
-// If not specified, defaults to ""
-func TryRpcProtocol(value string) TryRpcAttr {
-	return func(m optionalAttr) {
-		m["protocol"] = value
-	}
-}
-
-// TryRpcFailFast sets the optional fail_fast attribute to value.
-//
-// value: `boolean`. If `true` (default), then failures to connect
-// (i.e., the server does not immediately respond) cause an RPC failure.
-// If not specified, defaults to true
-func TryRpcFailFast(value bool) TryRpcAttr {
-	return func(m optionalAttr) {
-		m["fail_fast"] = value
-	}
-}
-
-// TryRpcTimeoutInMs sets the optional timeout_in_ms attribute to value.
-//
-// value: `int`. If `0` (default), then the kernel will run the RPC
-// request and only time out if the RPC deadline passes or the session times out.
-// If this value is greater than `0`, then the op will raise an exception if
-// the RPC takes longer than `timeout_in_ms`.
-// If not specified, defaults to 0
-func TryRpcTimeoutInMs(value int64) TryRpcAttr {
-	return func(m optionalAttr) {
-		m["timeout_in_ms"] = value
-	}
-}
-
-// Perform batches of RPC requests.
-//
-// This op asynchronously performs either a single RPC request, or a batch
-// of requests.  RPC requests are defined by three main parameters:
-//
-//   - `address` (the host+port or BNS address of the request)
-//   - `method` (the method name for the request)
-//   - `request` (the serialized proto string, or vector of strings,
-//      of the RPC request argument).
-//
-// For example, if you have an RPC service running on port localhost:2345,
-// and its interface is configured with the following proto declaration:
-//
-// ```
-// service MyService {
-//   rpc MyMethod(MyRequestProto) returns (MyResponseProto) {
-//   }
-// };
-// ```
-//
-// then call this op with arguments:
-//
-// ```
-// address = "localhost:2345"
-// method = "MyService/MyMethod"
-// ```
-//
-// The `request` tensor is a string tensor representing serialized `MyRequestProto`
-// strings; and the output string tensor `response` will have the same shape
-// and contain (upon successful completion) corresponding serialized
-// `MyResponseProto` strings.
-//
-// For example, to send a single, empty, `MyRequestProto`, call
-// this op with `request = ""`.  To send 5 **parallel** empty requests,
-// call this op with `request = ["", "", "", "", ""]`.
-//
-// More generally, one can create a batch of `MyRequestProto` serialized protos
-// from regular batched tensors using the `encode_proto` op, and convert
-// the response `MyResponseProto` serialized protos to batched tensors
-// using the `decode_proto` op.
-//
-// **NOTE** Working with serialized proto strings is faster than instantiating
-// actual proto objects in memory, so no performance degradation is expected
-// compared to writing custom kernels for this workflow.
-//
-// Unlike the standard `Rpc` op, if the connection fails or the remote worker
-// returns an error status, this op does **not** reraise the exception.
-// Instead, the `status_code` and `status_message` entry for the corresponding RPC
-// call is set with the error returned from the RPC call.  The `response` tensor
-// will contain valid response values for those minibatch entries whose RPCs did
-// not fail; the rest of the entries will have empty strings.
-//
-// Arguments:
-//	address: `0-D` or `1-D`.  The address (i.e. host_name:port) of the RPC server.
-// If this tensor has more than 1 element, then multiple parallel rpc requests
-// are sent.  This argument broadcasts with `method` and `request`.
-//	method: `0-D` or `1-D`.  The method address on the RPC server.
-// If this tensor has more than 1 element, then multiple parallel rpc requests
-// are sent.  This argument broadcasts with `address` and `request`.
-//	request: `0-D` or `1-D`.  Serialized proto strings: the rpc request argument.
-// If this tensor has more than 1 element, then multiple parallel rpc requests
-// are sent.  This argument broadcasts with `address` and `method`.
-//
-// Returns Same shape as `request`. Serialized proto strings: the rpc responses.Same shape as `request`.  Values correspond to tensorflow Status enum codes.Same shape as `request`.  Values correspond to Status messages
-// returned from the RPC calls.
-func TryRpc(scope *Scope, address tf.Output, method tf.Output, request tf.Output, optional ...TryRpcAttr) (response tf.Output, status_code tf.Output, status_message tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "TryRpc",
-		Input: []tf.Input{
-			address, method, request,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0), op.Output(1), op.Output(2)
-}
-
-// Add all input tensors element wise.
-//
-// Arguments:
-//	inputs: Must all be the same size and shape.
-func AddN(scope *Scope, inputs []tf.Output) (sum tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "AddN",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
@@ -27030,36 +26987,6 @@ func RestoreSlice(scope *Scope, file_pattern tf.Output, tensor_name tf.Output, s
 	return op.Output(0)
 }
 
-// Returns the element-wise sum of a list of tensors.
-//
-// `tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
-// wait for all of its inputs to be ready before beginning to sum. This can
-// save memory if inputs are ready at different times, since minimum temporary
-// storage is proportional to the output size rather than the inputs size.
-//
-// Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
-//
-// Returns a `Tensor` of same shape and type as the elements of `inputs`.
-//
-// Arguments:
-//	inputs: A list of `Tensor` objects, each with same shape and type.
-//	shape: Shape of elements of `inputs`.
-func AccumulateNV2(scope *Scope, inputs []tf.Output, shape tf.Shape) (sum tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"shape": shape}
-	opspec := tf.OpSpec{
-		Type: "AccumulateNV2",
-		Input: []tf.Input{
-			tf.OutputList(inputs),
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
 // Convert the quantized 'input' tensor into a lower-precision 'output', using the
 //
 // actual distribution of the values to maximize the usage of the lower bit depth
@@ -29011,6 +28938,231 @@ func QuantizeV2(scope *Scope, input tf.Output, min_range tf.Output, max_range tf
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// EnterAttr is an optional argument to Enter.
+type EnterAttr func(optionalAttr)
+
+// EnterIsConstant sets the optional is_constant attribute to value.
+//
+// value: If true, the output is constant within the child frame.
+// If not specified, defaults to false
+func EnterIsConstant(value bool) EnterAttr {
+	return func(m optionalAttr) {
+		m["is_constant"] = value
+	}
+}
+
+// EnterParallelIterations sets the optional parallel_iterations attribute to value.
+//
+// value: The number of iterations allowed to run in parallel.
+// If not specified, defaults to 10
+func EnterParallelIterations(value int64) EnterAttr {
+	return func(m optionalAttr) {
+		m["parallel_iterations"] = value
+	}
+}
+
+// Creates or finds a child frame, and makes `data` available to the child frame.
+//
+// This op is used together with `Exit` to create loops in the graph.
+// The unique `frame_name` is used by the `Executor` to identify frames. If
+// `is_constant` is true, `output` is a constant in the child frame; otherwise
+// it may be changed in the child frame. At most `parallel_iterations` iterations
+// are run in parallel in the child frame.
+//
+// Arguments:
+//	data: The tensor to be made available to the child frame.
+//	frame_name: The name of the child frame.
+//
+// Returns The same tensor as `data`.
+func Enter(scope *Scope, data tf.Output, frame_name string, optional ...EnterAttr) (output tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"frame_name": frame_name}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "Enter",
+		Input: []tf.Input{
+			data,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// TryRpcAttr is an optional argument to TryRpc.
+type TryRpcAttr func(optionalAttr)
+
+// TryRpcProtocol sets the optional protocol attribute to value.
+//
+// value: RPC protocol to use.  Empty string means use the default protocol.
+// Options include 'grpc'.
+// If not specified, defaults to ""
+func TryRpcProtocol(value string) TryRpcAttr {
+	return func(m optionalAttr) {
+		m["protocol"] = value
+	}
+}
+
+// TryRpcFailFast sets the optional fail_fast attribute to value.
+//
+// value: `boolean`. If `true` (default), then failures to connect
+// (i.e., the server does not immediately respond) cause an RPC failure.
+// If not specified, defaults to true
+func TryRpcFailFast(value bool) TryRpcAttr {
+	return func(m optionalAttr) {
+		m["fail_fast"] = value
+	}
+}
+
+// TryRpcTimeoutInMs sets the optional timeout_in_ms attribute to value.
+//
+// value: `int`. If `0` (default), then the kernel will run the RPC
+// request and only time out if the RPC deadline passes or the session times out.
+// If this value is greater than `0`, then the op will raise an exception if
+// the RPC takes longer than `timeout_in_ms`.
+// If not specified, defaults to 0
+func TryRpcTimeoutInMs(value int64) TryRpcAttr {
+	return func(m optionalAttr) {
+		m["timeout_in_ms"] = value
+	}
+}
+
+// Perform batches of RPC requests.
+//
+// This op asynchronously performs either a single RPC request, or a batch
+// of requests.  RPC requests are defined by three main parameters:
+//
+//   - `address` (the host+port or BNS address of the request)
+//   - `method` (the method name for the request)
+//   - `request` (the serialized proto string, or vector of strings,
+//      of the RPC request argument).
+//
+// For example, if you have an RPC service running on port localhost:2345,
+// and its interface is configured with the following proto declaration:
+//
+// ```
+// service MyService {
+//   rpc MyMethod(MyRequestProto) returns (MyResponseProto) {
+//   }
+// };
+// ```
+//
+// then call this op with arguments:
+//
+// ```
+// address = "localhost:2345"
+// method = "MyService/MyMethod"
+// ```
+//
+// The `request` tensor is a string tensor representing serialized `MyRequestProto`
+// strings; and the output string tensor `response` will have the same shape
+// and contain (upon successful completion) corresponding serialized
+// `MyResponseProto` strings.
+//
+// For example, to send a single, empty, `MyRequestProto`, call
+// this op with `request = ""`.  To send 5 **parallel** empty requests,
+// call this op with `request = ["", "", "", "", ""]`.
+//
+// More generally, one can create a batch of `MyRequestProto` serialized protos
+// from regular batched tensors using the `encode_proto` op, and convert
+// the response `MyResponseProto` serialized protos to batched tensors
+// using the `decode_proto` op.
+//
+// **NOTE** Working with serialized proto strings is faster than instantiating
+// actual proto objects in memory, so no performance degradation is expected
+// compared to writing custom kernels for this workflow.
+//
+// Unlike the standard `Rpc` op, if the connection fails or the remote worker
+// returns an error status, this op does **not** reraise the exception.
+// Instead, the `status_code` and `status_message` entry for the corresponding RPC
+// call is set with the error returned from the RPC call.  The `response` tensor
+// will contain valid response values for those minibatch entries whose RPCs did
+// not fail; the rest of the entries will have empty strings.
+//
+// Arguments:
+//	address: `0-D` or `1-D`.  The address (i.e. host_name:port) of the RPC server.
+// If this tensor has more than 1 element, then multiple parallel rpc requests
+// are sent.  This argument broadcasts with `method` and `request`.
+//	method: `0-D` or `1-D`.  The method address on the RPC server.
+// If this tensor has more than 1 element, then multiple parallel rpc requests
+// are sent.  This argument broadcasts with `address` and `request`.
+//	request: `0-D` or `1-D`.  Serialized proto strings: the rpc request argument.
+// If this tensor has more than 1 element, then multiple parallel rpc requests
+// are sent.  This argument broadcasts with `address` and `method`.
+//
+// Returns Same shape as `request`. Serialized proto strings: the rpc responses.Same shape as `request`.  Values correspond to tensorflow Status enum codes.Same shape as `request`.  Values correspond to Status messages
+// returned from the RPC calls.
+func TryRpc(scope *Scope, address tf.Output, method tf.Output, request tf.Output, optional ...TryRpcAttr) (response tf.Output, status_code tf.Output, status_message tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "TryRpc",
+		Input: []tf.Input{
+			address, method, request,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0), op.Output(1), op.Output(2)
+}
+
+// Add all input tensors element wise.
+//
+// Arguments:
+//	inputs: Must all be the same size and shape.
+func AddN(scope *Scope, inputs []tf.Output) (sum tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "AddN",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// Returns the element-wise sum of a list of tensors.
+//
+// `tf.accumulate_n_v2` performs the same operation as `tf.add_n`, but does not
+// wait for all of its inputs to be ready before beginning to sum. This can
+// save memory if inputs are ready at different times, since minimum temporary
+// storage is proportional to the output size rather than the inputs size.
+//
+// Unlike the original `accumulate_n`, `accumulate_n_v2` is differentiable.
+//
+// Returns a `Tensor` of same shape and type as the elements of `inputs`.
+//
+// Arguments:
+//	inputs: A list of `Tensor` objects, each with same shape and type.
+//	shape: Shape of elements of `inputs`.
+func AccumulateNV2(scope *Scope, inputs []tf.Output, shape tf.Shape) (sum tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"shape": shape}
+	opspec := tf.OpSpec{
+		Type: "AccumulateNV2",
+		Input: []tf.Input{
+			tf.OutputList(inputs),
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
 }
 
 // ComplexAbsAttr is an optional argument to ComplexAbs.
@@ -38114,6 +38266,145 @@ func EncodeProto(scope *Scope, sizes tf.Output, values []tf.Output, field_names 
 	return op.Output(0)
 }
 
+// Creates an Optional variant with no value.
+func OptionalNone(scope *Scope) (optional tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	opspec := tf.OpSpec{
+		Type: "OptionalNone",
+	}
+	op := scope.AddOperation(opspec)
+	return op.Output(0)
+}
+
+// DecodeProtoV2Attr is an optional argument to DecodeProtoV2.
+type DecodeProtoV2Attr func(optionalAttr)
+
+// DecodeProtoV2DescriptorSource sets the optional descriptor_source attribute to value.
+//
+// value: Either the special value `local://` or a path to a file containing
+// a serialized `FileDescriptorSet`.
+// If not specified, defaults to "local://"
+func DecodeProtoV2DescriptorSource(value string) DecodeProtoV2Attr {
+	return func(m optionalAttr) {
+		m["descriptor_source"] = value
+	}
+}
+
+// DecodeProtoV2MessageFormat sets the optional message_format attribute to value.
+//
+// value: Either `binary` or `text`.
+// If not specified, defaults to "binary"
+func DecodeProtoV2MessageFormat(value string) DecodeProtoV2Attr {
+	return func(m optionalAttr) {
+		m["message_format"] = value
+	}
+}
+
+// DecodeProtoV2Sanitize sets the optional sanitize attribute to value.
+//
+// value: Whether to sanitize the result or not.
+// If not specified, defaults to false
+func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
+	return func(m optionalAttr) {
+		m["sanitize"] = value
+	}
+}
+
+// The op extracts fields from a serialized protocol buffers message into tensors.
+//
+// The `decode_proto` op extracts fields from a serialized protocol buffers
+// message into tensors.  The fields in `field_names` are decoded and converted
+// to the corresponding `output_types` if possible.
+//
+// A `message_type` name must be provided to give context for the field
+// names. The actual message descriptor can be looked up either in the
+// linked-in descriptor pool or a filename provided by the caller using
+// the `descriptor_source` attribute.
+//
+// Each output tensor is a dense tensor. This means that it is padded to
+// hold the largest number of repeated elements seen in the input
+// minibatch. (The shape is also padded by one to prevent zero-sized
+// dimensions). The actual repeat counts for each example in the
+// minibatch can be found in the `sizes` output. In many cases the output
+// of `decode_proto` is fed immediately into tf.squeeze if missing values
+// are not a concern. When using tf.squeeze, always pass the squeeze
+// dimension explicitly to avoid surprises.
+//
+// For the most part, the mapping between Proto field types and
+// TensorFlow dtypes is straightforward. However, there are a few
+// special cases:
+//
+// - A proto field that contains a submessage or group can only be converted
+// to `DT_STRING` (the serialized submessage). This is to reduce the
+// complexity of the API. The resulting string can be used as input
+// to another instance of the decode_proto op.
+//
+// - TensorFlow lacks support for unsigned integers. The ops represent uint64
+// types as a `DT_INT64` with the same twos-complement bit pattern
+// (the obvious way). Unsigned int32 values can be represented exactly by
+// specifying type `DT_INT64`, or using twos-complement if the caller
+// specifies `DT_INT32` in the `output_types` attribute.
+//
+// The `descriptor_source` attribute selects a source of protocol
+// descriptors to consult when looking up `message_type`. This may be a
+// filename containing a serialized `FileDescriptorSet` message,
+// or the special value `local://`, in which case only descriptors linked
+// into the code will be searched; the filename can be on any filesystem
+// accessible to TensorFlow.
+//
+// You can build a `descriptor_source` file using the `--descriptor_set_out`
+// and `--include_imports` options to the protocol compiler `protoc`.
+//
+// The `local://` database only covers descriptors linked into the
+// code via C++ libraries, not Python imports. You can link in a proto descriptor
+// by creating a cc_library target with alwayslink=1.
+//
+// Both binary and text proto serializations are supported, and can be
+// chosen using the `format` attribute.
+//
+// Arguments:
+//	bytes: Tensor of serialized protos with shape `batch_shape`.
+//	message_type: Name of the proto message type to decode.
+//	field_names: List of strings containing proto field names. An extension field can be decoded
+// by using its full name, e.g. EXT_PACKAGE.EXT_FIELD_NAME.
+//	output_types: List of TF types to use for the respective field in field_names.
+//
+// Returns Tensor of int32 with shape `[batch_shape, len(field_names)]`.
+// Each entry is the number of values found for the corresponding field.
+// Optional fields may have 0 or 1 values.List of tensors containing values for the corresponding field.
+// `values[i]` has datatype `output_types[i]`
+// and shape `[batch_shape, max(sizes[...,i])]`.
+func DecodeProtoV2(scope *Scope, bytes tf.Output, message_type string, field_names []string, output_types []tf.DataType, optional ...DecodeProtoV2Attr) (sizes tf.Output, values []tf.Output) {
+	if scope.Err() != nil {
+		return
+	}
+	attrs := map[string]interface{}{"message_type": message_type, "field_names": field_names, "output_types": output_types}
+	for _, a := range optional {
+		a(attrs)
+	}
+	opspec := tf.OpSpec{
+		Type: "DecodeProtoV2",
+		Input: []tf.Input{
+			bytes,
+		},
+		Attrs: attrs,
+	}
+	op := scope.AddOperation(opspec)
+	if scope.Err() != nil {
+		return
+	}
+	var idx int
+	var err error
+	sizes = op.Output(idx)
+	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
+		scope.UpdateErr("DecodeProtoV2", err)
+		return
+	}
+	return sizes, values
+}
+
 // Creates a dataset that splits a SparseTensor into elements row-wise.
 func SparseTensorSliceDataset(scope *Scope, indices tf.Output, values tf.Output, dense_shape tf.Output) (handle tf.Output) {
 	if scope.Err() != nil {
@@ -38678,180 +38969,6 @@ func SerializeIterator(scope *Scope, resource_handle tf.Output) (serialized tf.O
 		Input: []tf.Input{
 			resource_handle,
 		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// Deserializes a proto into the tree handle
-//
-// Arguments:
-//	tree_handle: Handle to the tree resource to be restored.
-//	tree_config: Serialied proto string of the boosted_trees.Tree proto.
-//
-// Returns the created operation.
-func TensorForestTreeDeserialize(scope *Scope, tree_handle tf.Output, tree_config tf.Output) (o *tf.Operation) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "TensorForestTreeDeserialize",
-		Input: []tf.Input{
-			tree_handle, tree_config,
-		},
-	}
-	return scope.AddOperation(opspec)
-}
-
-// Constructs an Optional variant from a tuple of tensors.
-func OptionalFromValue(scope *Scope, components []tf.Output) (optional tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "OptionalFromValue",
-		Input: []tf.Input{
-			tf.OutputList(components),
-		},
-	}
-	op := scope.AddOperation(opspec)
-	return op.Output(0)
-}
-
-// DecodeProtoV2Attr is an optional argument to DecodeProtoV2.
-type DecodeProtoV2Attr func(optionalAttr)
-
-// DecodeProtoV2DescriptorSource sets the optional descriptor_source attribute to value.
-//
-// value: Either the special value `local://` or a path to a file containing
-// a serialized `FileDescriptorSet`.
-// If not specified, defaults to "local://"
-func DecodeProtoV2DescriptorSource(value string) DecodeProtoV2Attr {
-	return func(m optionalAttr) {
-		m["descriptor_source"] = value
-	}
-}
-
-// DecodeProtoV2MessageFormat sets the optional message_format attribute to value.
-//
-// value: Either `binary` or `text`.
-// If not specified, defaults to "binary"
-func DecodeProtoV2MessageFormat(value string) DecodeProtoV2Attr {
-	return func(m optionalAttr) {
-		m["message_format"] = value
-	}
-}
-
-// DecodeProtoV2Sanitize sets the optional sanitize attribute to value.
-//
-// value: Whether to sanitize the result or not.
-// If not specified, defaults to false
-func DecodeProtoV2Sanitize(value bool) DecodeProtoV2Attr {
-	return func(m optionalAttr) {
-		m["sanitize"] = value
-	}
-}
-
-// The op extracts fields from a serialized protocol buffers message into tensors.
-//
-// The `decode_proto` op extracts fields from a serialized protocol buffers
-// message into tensors.  The fields in `field_names` are decoded and converted
-// to the corresponding `output_types` if possible.
-//
-// A `message_type` name must be provided to give context for the field
-// names. The actual message descriptor can be looked up either in the
-// linked-in descriptor pool or a filename provided by the caller using
-// the `descriptor_source` attribute.
-//
-// Each output tensor is a dense tensor. This means that it is padded to
-// hold the largest number of repeated elements seen in the input
-// minibatch. (The shape is also padded by one to prevent zero-sized
-// dimensions). The actual repeat counts for each example in the
-// minibatch can be found in the `sizes` output. In many cases the output
-// of `decode_proto` is fed immediately into tf.squeeze if missing values
-// are not a concern. When using tf.squeeze, always pass the squeeze
-// dimension explicitly to avoid surprises.
-//
-// For the most part, the mapping between Proto field types and
-// TensorFlow dtypes is straightforward. However, there are a few
-// special cases:
-//
-// - A proto field that contains a submessage or group can only be converted
-// to `DT_STRING` (the serialized submessage). This is to reduce the
-// complexity of the API. The resulting string can be used as input
-// to another instance of the decode_proto op.
-//
-// - TensorFlow lacks support for unsigned integers. The ops represent uint64
-// types as a `DT_INT64` with the same twos-complement bit pattern
-// (the obvious way). Unsigned int32 values can be represented exactly by
-// specifying type `DT_INT64`, or using twos-complement if the caller
-// specifies `DT_INT32` in the `output_types` attribute.
-//
-// The `descriptor_source` attribute selects a source of protocol
-// descriptors to consult when looking up `message_type`. This may be a
-// filename containing a serialized `FileDescriptorSet` message,
-// or the special value `local://`, in which case only descriptors linked
-// into the code will be searched; the filename can be on any filesystem
-// accessible to TensorFlow.
-//
-// You can build a `descriptor_source` file using the `--descriptor_set_out`
-// and `--include_imports` options to the protocol compiler `protoc`.
-//
-// The `local://` database only covers descriptors linked into the
-// code via C++ libraries, not Python imports. You can link in a proto descriptor
-// by creating a cc_library target with alwayslink=1.
-//
-// Both binary and text proto serializations are supported, and can be
-// chosen using the `format` attribute.
-//
-// Arguments:
-//	bytes: Tensor of serialized protos with shape `batch_shape`.
-//	message_type: Name of the proto message type to decode.
-//	field_names: List of strings containing proto field names. An extension field can be decoded
-// by using its full name, e.g. EXT_PACKAGE.EXT_FIELD_NAME.
-//	output_types: List of TF types to use for the respective field in field_names.
-//
-// Returns Tensor of int32 with shape `[batch_shape, len(field_names)]`.
-// Each entry is the number of values found for the corresponding field.
-// Optional fields may have 0 or 1 values.List of tensors containing values for the corresponding field.
-// `values[i]` has datatype `output_types[i]`
-// and shape `[batch_shape, max(sizes[...,i])]`.
-func DecodeProtoV2(scope *Scope, bytes tf.Output, message_type string, field_names []string, output_types []tf.DataType, optional ...DecodeProtoV2Attr) (sizes tf.Output, values []tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	attrs := map[string]interface{}{"message_type": message_type, "field_names": field_names, "output_types": output_types}
-	for _, a := range optional {
-		a(attrs)
-	}
-	opspec := tf.OpSpec{
-		Type: "DecodeProtoV2",
-		Input: []tf.Input{
-			bytes,
-		},
-		Attrs: attrs,
-	}
-	op := scope.AddOperation(opspec)
-	if scope.Err() != nil {
-		return
-	}
-	var idx int
-	var err error
-	sizes = op.Output(idx)
-	if values, idx, err = makeOutputList(op, idx, "values"); err != nil {
-		scope.UpdateErr("DecodeProtoV2", err)
-		return
-	}
-	return sizes, values
-}
-
-// Creates an Optional variant with no value.
-func OptionalNone(scope *Scope) (optional tf.Output) {
-	if scope.Err() != nil {
-		return
-	}
-	opspec := tf.OpSpec{
-		Type: "OptionalNone",
 	}
 	op := scope.AddOperation(opspec)
 	return op.Output(0)
