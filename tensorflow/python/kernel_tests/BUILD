@@ -2231,7 +2231,10 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
     ],
     shard_count = 6,
-    tags = ["no_windows_gpu"],
+    tags = [
+        "no_oss",
+        "no_windows_gpu",
+    ],
     xla_enable_strict_auto_jit = True,
 )
 
