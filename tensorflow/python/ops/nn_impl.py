@@ -757,7 +757,7 @@ def separable_conv2d_v2(
 
 
 @tf_export(v1=["nn.sufficient_statistics"])
-def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None,
+def sufficient_statistics(x, axes, shift=None, keep_dims=None, name=None,
                           keepdims=None):
   """Calculate the sufficient statistics for the mean and variance of `x`.
 
@@ -786,6 +786,8 @@ def sufficient_statistics(x, axes, shift=None, keep_dims=False, name=None,
   axes = list(set(axes))
   keep_dims = deprecated_argument_lookup(
       "keepdims", keepdims, "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
   with ops.name_scope(name, "sufficient_statistics", [x, shift]):
     x = ops.convert_to_tensor(x, name="x")
     x_shape = x.get_shape()
@@ -877,7 +879,7 @@ def moments(
     axes,
     shift=None,  # pylint: disable=unused-argument
     name=None,
-    keep_dims=False,
+    keep_dims=None,
     keepdims=None):
   """Calculate the mean and variance of `x`.
 
@@ -908,6 +910,8 @@ def moments(
   """
   keep_dims = deprecated_argument_lookup(
       "keepdims", keepdims, "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
   with ops.name_scope(name, "moments", [x, axes]):
     # The dynamic range of fp16 is too limited to support the collection of
     # sufficient statistics. As a workaround we simply perform the operations
@@ -971,7 +975,7 @@ def moments_v2(
 
 
 @tf_export(v1=["nn.weighted_moments"])
-def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False,
+def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=None,
                      keepdims=None):
   """Returns the frequency-weighted mean and variance of `x`.
 
@@ -990,6 +994,8 @@ def weighted_moments(x, axes, frequency_weights, name=None, keep_dims=False,
   """
   keep_dims = deprecated_argument_lookup(
       "keepdims", keepdims, "keep_dims", keep_dims)
+  if keep_dims is None:
+    keep_dims = False
   with ops.name_scope(name, "weighted_moments", [x, frequency_weights, axes]):
     x = ops.convert_to_tensor(x, name="x")
     frequency_weights = ops.convert_to_tensor(

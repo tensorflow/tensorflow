@@ -167,6 +167,29 @@ py_test(
 )
 
 py_test(
+    name = "auto_shard_dataset_serialization_test",
+    size = "medium",
+    srcs = ["auto_shard_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python:sparse_tensor",
+        "//tensorflow/python/data/experimental/ops:distribute",
+        "//tensorflow/python/data/experimental/ops:interleave_ops",
+        "//tensorflow/python/data/experimental/ops:readers",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//third_party/py/numpy",
+    ],
+)
+
+py_test(
     name = "filter_dataset_serialization_test",
     size = "medium",
     srcs = ["filter_dataset_serialization_test.py"],
@@ -409,6 +432,24 @@ py_test(
 )
 
 py_test(
+    name = "rebatch_dataset_serialization_test",
+    size = "small",
+    srcs = ["rebatch_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/experimental/ops:batching",
+        "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
     name = "padded_batch_dataset_serialization_test",
     size = "medium",
     srcs = ["padded_batch_dataset_serialization_test.py"],
@@ -602,6 +643,24 @@ py_test(
         "//tensorflow/python:training",
         "//tensorflow/python/data/experimental/ops:iterator_ops",
         "//tensorflow/python/data/ops:dataset_ops",
+    ],
+)
+
+py_test(
+    name = "shard_dataset_serialization_test",
+    size = "medium",
+    srcs = ["shard_dataset_serialization_test.py"],
+    srcs_version = "PY2AND3",
+    tags = [
+        "no_oss",
+        "no_pip",
+        "no_windows",
+    ],
+    deps = [
+        ":dataset_serialization_test_base",
+        "//tensorflow/python:client_testlib",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "@absl_py//absl/testing:parameterized",
     ],
 )
 

@@ -23,6 +23,7 @@ limitations under the License.
 
 #include "tensorflow/core/framework/collective.h"
 #include "tensorflow/core/lib/gtl/flatmap.h"
+#include "tensorflow/core/protobuf/config.pb.h"
 
 namespace tensorflow {
 class CompleteGroupRequest;
@@ -36,7 +37,8 @@ class DeviceMgr;
 // group leader for param resolution in a multi-task context.
 class CollectiveParamResolverLocal : public ParamResolverInterface {
  public:
-  CollectiveParamResolverLocal(const DeviceMgr* dev_mgr,
+  CollectiveParamResolverLocal(const ConfigProto& config,
+                               const DeviceMgr* dev_mgr,
                                DeviceResolverInterface* dev_resolver,
                                const string& task_name);
 

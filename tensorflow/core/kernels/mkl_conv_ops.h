@@ -392,14 +392,24 @@ class MklDnnConvUtil {
     int64 pad_D1, pad_D2;
 
     if (is_conv2d) {
+      Padding padding_type;
+      if (pad_enabled) {
+        padding_type = Padding::EXPLICIT;
+        pad_top = static_cast<int64>((*pad_l)[0]);
+        pad_left = static_cast<int64>((*pad_l)[1]);
+        pad_bottom = static_cast<int64>((*pad_r)[0]);
+        pad_right = static_cast<int64>((*pad_r)[1]);
+      } else {
+        padding_type = padding_;
+      }
       OP_REQUIRES_OK(context_,
                      GetWindowedOutputSizeVerboseV2(
                          input_rows, filter_rows, dilation_rows, stride_rows,
-                         padding_, &out_rows, &pad_top, &pad_bottom));
+                         padding_type, &out_rows, &pad_top, &pad_bottom));
       OP_REQUIRES_OK(context_,
                      GetWindowedOutputSizeVerboseV2(
                          input_cols, filter_cols, dilation_cols, stride_cols,
-                         padding_, &out_cols, &pad_left, &pad_right));
+                         padding_type, &out_cols, &pad_left, &pad_right));
     } else {
       OP_REQUIRES_OK(context_, GetWindowedOutputSizeVerbose(
                                    input_planes, filter_planes, stride_planes,
@@ -413,25 +423,11 @@ class MklDnnConvUtil {
     }
 
     if (is_conv2d) {
-      // Conv + pad fusion is enabled only for 2D
+      // Conv + pad fusion is enabled only for 2D.
       // If pad_enabled, i.e., pad and conv op are fused, then
       // all pads are already passed from pad op through
-      // *pad_l and *pad_r
-      if (pad_enabled) {
-        pad_top = static_cast<int64>((*pad_l)[0]);
-        pad_left = static_cast<int64>((*pad_l)[1]);
-        pad_bottom = static_cast<int64>((*pad_r)[0]);
-        pad_right = static_cast<int64>((*pad_r)[1]);
-        // update the out_rows and out_cols based on all
-        // sides of the pads coming from pad op.
-        out_rows = out_rows + (pad_top + pad_bottom) / stride_rows;
-        out_cols = out_cols + (pad_left + pad_right) / stride_cols;
-      }
-      // Handle padding. MKL-DNN uses asymetric padding.
-      // But, if pad_enabled, i.e., pad and conv op are fused,
-      // then, *pad_l and *pad_r are already set from pad op.
-      // In that case they need not set here.
-      else {
+      // *pad_l and *pad_r and they don't need to be set here.
+      if (!pad_enabled) {
         *pad_l = {static_cast<int>(pad_top), static_cast<int>(pad_left)};
         *pad_r = {static_cast<int>(pad_bottom), static_cast<int>(pad_right)};
       }

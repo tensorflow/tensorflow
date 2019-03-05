@@ -54,10 +54,6 @@ Status AttrTypeMapForOp(const char* op_name, const AttrTypeMap** out,
 Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
                       TF_AttrType* out, unsigned char* is_list);
 
-// Looks for 'attr_name' in 'm' and sets 'out' and 'is_list'.
-Status AttrTypeByName(const AttrTypeMap& m, const string& attr_name,
-                      TF_AttrType* out, unsigned char* is_list);
-
 // KernelAndDevice::Init needs a NodeDef only to pass the attribute map through.
 // An AttrBuilder is a convenience class to help with that - providing a smaller
 // interface than NodeDefBuilder and avoiding expensive (unnecessary?) sanity
@@ -130,17 +126,11 @@ class AttrBuilder {
                          T&& value) const {
     DCHECK(!node_def_finalized_)
         << "Calling SetInAttrValueMap after BuildNodeDef.";
-    // Copied from NodeDefBuilder::Attr
-    const AttrValue* found = AttrSlice(m).Find(attr_name);
-    AttrValue attr_value;
-    if (found == nullptr) {
+    // If attribute is set more than once, its first value prevails
+    if (AttrSlice(m).Find(attr_name) == nullptr) {
+      AttrValue attr_value;
       SetAttrValue(value, &attr_value);
       m->insert(AttrValueMap::value_type(attr_name, attr_value));
-    } else {
-      // TODO(ashankar): Do what is done in
-      // NodeDefBuilder::CheckInconsistency(attr_name, *found, attr_value);
-      SetAttrValue(std::forward<T>(value), &attr_value);
-      (*m)[attr_name] = attr_value;
     }
   }
 

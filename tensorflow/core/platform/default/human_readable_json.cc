@@ -46,7 +46,7 @@ Status HumanReadableJsonToProto(const string& str, protobuf::Message* proto) {
   return errors::Internal("Cannot parse JSON protos on Android");
 #else
   proto->Clear();
-  auto status = google::protobuf::util::JsonStringToMessage(str, proto);
+  auto status = protobuf::util::JsonStringToMessage(str, proto);
   if (!status.ok()) {
     // Convert error_msg google::protobuf::StringPiece to
     // tensorflow::StringPiece.

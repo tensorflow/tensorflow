@@ -289,6 +289,30 @@ bool DeviceNameUtils::IsSpecification(const ParsedName& less_specific,
   return true;
 }
 
+void DeviceNameUtils::EnsureSpecification(ParsedName* more_specific,
+                                          const ParsedName& less_specific) {
+  if (less_specific.has_job) {
+    more_specific->has_job = true;
+    more_specific->job = less_specific.job;
+  }
+  if (less_specific.has_replica) {
+    more_specific->has_replica = true;
+    more_specific->replica = less_specific.replica;
+  }
+  if (less_specific.has_task) {
+    more_specific->has_task = true;
+    more_specific->task = less_specific.task;
+  }
+  if (less_specific.has_type) {
+    more_specific->has_type = true;
+    more_specific->type = less_specific.type;
+  }
+  if (less_specific.has_id) {
+    more_specific->has_id = true;
+    more_specific->id = less_specific.id;
+  }
+}
+
 /* static */
 bool DeviceNameUtils::IsCompleteSpecification(const ParsedName& pattern,
                                               const ParsedName& name) {

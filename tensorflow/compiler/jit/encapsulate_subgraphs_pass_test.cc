@@ -307,22 +307,6 @@ REGISTER_OP("XlaHostCompute")
     .Attr("shapes: list(shape) >= 0")
     .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
 
-REGISTER_OP("_XlaSendFromHost")
-    .Input("inputs: Tinputs")
-    .Input("dynamic_key: string")
-    .Attr("Tinputs: list(type) >= 0")
-    .Attr("key: string")
-    .Attr("device_ordinal: int")
-    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
-
-REGISTER_OP("_XlaRecvAtHost")
-    .Input("dynamic_key: string")
-    .Output("outputs: Toutputs")
-    .Attr("Toutputs: list(type) >= 0")
-    .Attr("key: string")
-    .Attr("device_ordinal: int")
-    .SetShapeFn(::tensorflow::shape_inference::UnknownShape);
-
 REGISTER_OP("InputTest")
     .Output("o: float")
     .SetShapeFn([](::tensorflow::shape_inference::InferenceContext* c) {

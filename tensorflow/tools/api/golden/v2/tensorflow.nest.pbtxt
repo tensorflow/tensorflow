@@ -9,6 +9,10 @@ tf_module {
     argspec: "args=[\'structure\', \'expand_composites\'], varargs=None, keywords=None, defaults=[\'False\'], "
   }
   member_method {
+    name: "is_nested"
+    argspec: "args=[\'seq\'], varargs=None, keywords=None, defaults=None"
+  }
+  member_method {
     name: "map_structure"
     argspec: "args=[\'func\'], varargs=structure, keywords=kwargs, defaults=None"
   }

@@ -122,6 +122,17 @@ REGISTER_KERNEL_BUILDER(Name("XRTReadLiteralAndRelease")
                             .HostMemory("literal"),
                         XRTReadLiteralOp<true, XRTGenericDeviceAccessor>);
 
+REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
+                            .Device(DEVICE_XLA_GPU)
+                            .HostMemory("handles")
+                            .HostMemory("tensors"),
+                        XRTReadToTensorOp<XRTGenericDeviceAccessor>);
+REGISTER_KERNEL_BUILDER(Name("XRTReadToTensor")
+                            .Device(DEVICE_XLA_CPU)
+                            .HostMemory("handles")
+                            .HostMemory("tensors"),
+                        XRTReadToTensorOp<XRTGenericDeviceAccessor>);
+
 REGISTER_KERNEL_BUILDER(Name("XRTReleaseAllocationHandle")
                             .Device(DEVICE_XLA_GPU)
                             .HostMemory("handle"),

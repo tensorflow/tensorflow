@@ -48,7 +48,7 @@ bool IsInputFusibleReduction(const HloInstruction& instr);
 
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
-// This function works for both, sibling and producer-conumser multi-output
+// This function works for both, sibling and producer-consumer multi-output
 // fusion.
 // So far, multi-output fusion is supported for loop fusions and reduce
 // input fusions only. It is up to the caller to ensure the instructions

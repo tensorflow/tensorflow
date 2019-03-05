@@ -64,7 +64,7 @@ class RangeDatasetOp : public DatasetOpKernel {
 
     const std::vector<PartialTensorShape>& output_shapes() const override {
       static std::vector<PartialTensorShape>* shapes =
-          new std::vector<PartialTensorShape>({{}});
+          new std::vector<PartialTensorShape>({PartialTensorShape({})});
       return *shapes;
     }
 

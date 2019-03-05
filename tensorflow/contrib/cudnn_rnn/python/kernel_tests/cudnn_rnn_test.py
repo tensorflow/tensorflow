@@ -58,7 +58,7 @@ from tensorflow.python.training import gradient_descent
 from tensorflow.python.training import momentum
 from tensorflow.python.training import rmsprop
 from tensorflow.python.training import saver as saver_lib
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import util as trackable_utils
 
 
 CUDNN_LSTM = cudnn_rnn_ops.CUDNN_LSTM
@@ -709,7 +709,7 @@ class CudnnRNNTestSaveRestore(test_util.TensorFlowTestCase):
     self._TestSaveRestoreHelper(CUDNN_RNN_RELU)
 
 
-class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
+class CudnnRNNTestSaveRestoreTrackable(test_util.TensorFlowTestCase):
 
   def _VerifyCheckpoint(
       self, checkpoint_path, compatible_cell_fn, cudnn_cell_fn,
@@ -718,7 +718,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     with ops.device("gpu:0"):
       cudnn_layer = cudnn_cell_fn()
-      cudnn_checkpoint = checkpointable_utils.Checkpoint(cell=cudnn_layer)
+      cudnn_checkpoint = trackable_utils.Checkpoint(cell=cudnn_layer)
       status = cudnn_checkpoint.restore(checkpoint_path)
       inputs = 3. * array_ops.ones([num_applications, num_layers, input_size],
                                    dtype=dtypes.float32)
@@ -726,7 +726,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
       status.run_restore_ops()
     second_save_path = cudnn_checkpoint.save(checkpoint_prefix)
     restore_layer = compatible_cell_fn()
-    restore_layer_checkpoint = checkpointable_utils.Checkpoint(
+    restore_layer_checkpoint = trackable_utils.Checkpoint(
         cell=restore_layer)
     status = restore_layer_checkpoint.restore(second_save_path)
     current_state = restore_layer.zero_state(1, dtypes.float32)
@@ -742,7 +742,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
     self.assertAllClose(self.evaluate(restore_layer_output),
                         self.evaluate(cudnn_output)[-1, -1:, ...])
 
-  def _CheckpointableSingleCellUnidirectionalTestTemplate(
+  def _TrackableSingleCellUnidirectionalTestTemplate(
       self, single_cell_fn, cudnn_cell_fn):
     # Single-layer cuDNN cells with object-based checkpointing should be
     # checkpoint compatible with either single CudnnCompatible cells or
@@ -759,7 +759,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
       value = np.random.normal(size=variable.shape)
       expected_values.append(value)
       self.evaluate(variable.assign(value))
-    save_checkpoint = checkpointable_utils.Checkpoint(cell=save_cell_layer)
+    save_checkpoint = trackable_utils.Checkpoint(cell=save_cell_layer)
     checkpoint_directory = self.get_temp_dir()
     checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
     first_save_path = save_checkpoint.save(checkpoint_prefix)
@@ -775,10 +775,10 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
   @test_util.run_in_graph_and_eager_modes
-  def testLSTMCheckpointableSingleLayer(self):
+  def testLSTMTrackableSingleLayer(self):
     num_units = 2
     direction = CUDNN_RNN_UNIDIRECTION
-    self._CheckpointableSingleCellUnidirectionalTestTemplate(
+    self._TrackableSingleCellUnidirectionalTestTemplate(
         single_cell_fn=functools.partial(
             cudnn_rnn_ops.CudnnCompatibleLSTMCell, num_units=num_units),
         cudnn_cell_fn=functools.partial(
@@ -788,19 +788,19 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
   @unittest.skipUnless(test.is_built_with_cuda(),
                        "Test only applicable when running on GPUs")
   @test_util.run_in_graph_and_eager_modes
-  def testGRUCheckpointableSingleLayer(self):
+  def testGRUTrackableSingleLayer(self):
     num_units = 2
     direction = CUDNN_RNN_UNIDIRECTION
     with self.assertRaises(NotImplementedError):
       # TODO(allenl): Implement object-based saving for GRUs and other cells.
-      self._CheckpointableSingleCellUnidirectionalTestTemplate(
+      self._TrackableSingleCellUnidirectionalTestTemplate(
           single_cell_fn=functools.partial(
               cudnn_rnn_ops.CudnnCompatibleGRUCell, num_units=num_units),
           cudnn_cell_fn=functools.partial(
               cudnn_rnn.CudnnGRU, num_layers=1, num_units=num_units,
               direction=direction, name="awesome_gru"))
 
-  def _CheckpointableMultiLayerTestTemplate(
+  def _TrackableMultiLayerTestTemplate(
       self, single_cell_fn, cudnn_cell_fn, num_layers):
 
     def _MultiCellFn():
@@ -819,7 +819,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
         value = np.random.normal(size=variable.shape)
         expected_values.append(value)
         self.evaluate(variable.assign(value))
-      save_checkpoint = checkpointable_utils.Checkpoint(cell=save_layer)
+      save_checkpoint = trackable_utils.Checkpoint(cell=save_layer)
       checkpoint_directory = self.get_temp_dir()
       checkpoint_prefix = os.path.join(checkpoint_directory, "ckpt")
       first_save_path = save_checkpoint.save(checkpoint_prefix)
@@ -837,7 +837,7 @@ class CudnnRNNTestSaveRestoreCheckpointable(test_util.TensorFlowTestCase):
     num_units = 2
     num_layers = 3
     direction = CUDNN_RNN_UNIDIRECTION
-    self._CheckpointableMultiLayerTestTemplate(
+    self._TrackableMultiLayerTestTemplate(
         single_cell_fn=functools.partial(
             cudnn_rnn_ops.CudnnCompatibleLSTMCell, num_units=num_units),
         cudnn_cell_fn=functools.partial(

@@ -98,6 +98,13 @@ class VariantTensorDataWriter : public IteratorStateWriter {
   std::vector<string> keys_;
 };
 
+// Adds the functions in `to_add` to `base`. If a function with a matching
+// signature already exists in `base`, replaces it with the function from
+// `to_add`.
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionLibraryDefinition& to_add);
+Status AddToFunctionLibrary(FunctionLibraryDefinition* base,
+                            const FunctionDefLibrary& to_add);
 }  // namespace data
 }  // namespace tensorflow
 

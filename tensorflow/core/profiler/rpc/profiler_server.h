@@ -15,10 +15,11 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVER_H_
 #define TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVER_H_
 
-#include "tensorflow/core/common_runtime/eager/context.h"
+#include "tensorflow/core/profiler/lib/profiler_session.h"
 
 namespace tensorflow {
-std::unique_ptr<Thread> StartProfilerServer(EagerContext* const eager_context,
-                                            int32 port);
+
+std::unique_ptr<Thread> StartProfilerServer(
+    ProfilerContext* const profiler_context, int32 port);
 }  // namespace tensorflow
 #endif  // TENSORFLOW_CORE_PROFILER_RPC_PROFILER_SERVER_H_

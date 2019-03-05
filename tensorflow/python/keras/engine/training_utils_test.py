@@ -25,7 +25,9 @@ import numpy as np
 from tensorflow.python.data.ops import dataset_ops
 from tensorflow.python.data.ops import readers
 from tensorflow.python.eager import context
+from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import tensor_util
+from tensorflow.python.keras import backend
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.engine import training_utils
@@ -45,10 +47,11 @@ class ModelInputsTest(test.TestCase):
     vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
     self.assertEqual(1, len(vals))
     self.assertTrue(tensor_util.is_tensor(vals[0]))
+    self.assertEqual(backend.floatx(), vals[0].dtype)
 
   def test_single_thing_eager(self):
     with context.eager_mode():
-      a = np.ones(10)
+      a = np.ones(10, dtype=np.int32)
       model_inputs = training_utils.ModelInputs(a)
       self.assertEqual(['input_1'], model_inputs.get_input_names())
       val = model_inputs.get_symbolic_inputs()
@@ -56,6 +59,7 @@ class ModelInputsTest(test.TestCase):
       vals = model_inputs.get_symbolic_inputs(return_single_as_list=True)
       self.assertEqual(1, len(vals))
       self.assertTrue(tf_utils.is_symbolic_tensor(vals[0]))
+      self.assertEqual(dtypes.int32, vals[0].dtype)
 
   def test_list(self):
     a = [np.ones(10), np.ones(20)]

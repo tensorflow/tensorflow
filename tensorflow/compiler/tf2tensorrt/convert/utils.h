@@ -33,16 +33,11 @@ struct TrtDestroyer {
 template <typename T>
 using TrtUniquePtrType = std::unique_ptr<T, TrtDestroyer<T>>;
 
-bool IsGoogleTensorRTEnabled();
+enum class TrtPrecisionMode { FP32, FP16, INT8 };
 
-// TODO(aaroey): use an enum instead.
-const int FP32MODE = 0;
-const int FP16MODE = 1;
-const int INT8MODE = 2;
+Status TrtPrecisionModeToName(TrtPrecisionMode mode, string* name);
 
-Status GetPrecisionModeName(const int precision_mode, string* name);
-
-Status GetPrecisionMode(const string& name, int* precision_mode);
+Status TrtPrecisionModeFromName(const string& name, TrtPrecisionMode* mode);
 
 }  // namespace tensorrt
 }  // namespace tensorflow

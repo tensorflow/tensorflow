@@ -111,6 +111,24 @@ class HloEvaluatorTest : public HloTestBase {
     EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
   }
 
+  void TestTernaryOp(HloOpcode opcode, Literal expected, Literal src0,
+                     Literal src1, Literal src2) {
+    HloComputation::Builder b(TestName());
+    auto operand0 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(src0)));
+    auto operand1 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(src1)));
+    auto operand2 =
+        b.AddInstruction(HloInstruction::CreateConstant(std::move(src2)));
+    b.AddInstruction(HloInstruction::CreateTernary(
+        expected.shape(), opcode, operand0, operand1, operand2));
+    m_->AddEntryComputation(b.Build());
+
+    Literal result = Evaluate();
+
+    EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+  }
+
  protected:
   explicit HloEvaluatorTest(bool use_bfloat16) : use_bfloat16_(use_bfloat16) {}
   HloEvaluator evaluator_;
@@ -148,6 +166,33 @@ TEST_P(HloEvaluatorBf16Test, DoesClamp) {
   Literal result = Evaluate();
 
   auto expected = LiteralUtil::CreateR2<float>({{0, 4}, {2, 4}});
+
+  EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
+}
+
+// Verifies that clamping of int64 does not cause loss of precision
+TEST_P(HloEvaluatorBf16Test, DoesClampInt64) {
+  auto ones = [](int bits) { return (int64{1} << bits) - 1; };
+
+  auto low =
+      LiteralUtil::CreateR2<int64>({{0, ones(54)}, {ones(54), ones(58)}});
+  auto value = LiteralUtil::CreateR2<int64>({{0, ones(56)}, {0, ones(58)}});
+  auto high = LiteralUtil::CreateR2<int64>(
+      {{ones(54), ones(55)}, {ones(56), ones(58)}});
+
+  Shape shape = low.shape();
+  HloComputation::Builder b(TestName());
+  auto c1 = b.AddInstruction(HloInstruction::CreateConstant(std::move(low)));
+  auto c2 = b.AddInstruction(HloInstruction::CreateConstant(std::move(value)));
+  auto c3 = b.AddInstruction(HloInstruction::CreateConstant(std::move(high)));
+  b.AddInstruction(
+      HloInstruction::CreateTernary(shape, HloOpcode::kClamp, c1, c2, c3));
+  m_->AddEntryComputation(b.Build());
+
+  Literal result = Evaluate();
+
+  auto expected =
+      LiteralUtil::CreateR2<int64>({{0, ones(55)}, {ones(54), ones(58)}});
 
   EXPECT_TRUE(LiteralTestUtil::Equal(expected, result));
 }
@@ -254,6 +299,20 @@ TEST_F(HloEvaluatorTest, DoesDivideInt64) {
   TestBinaryOp(HloOpcode::kDivide, std::move(expected), std::move(lhs),
                std::move(rhs));
 }
+
+TEST_F(HloEvaluatorTest, DoesClampS64) {
+  auto low = LiteralUtil::CreateR1<int64>(
+      {-8616761059752331528LL, 6780561065411491190LL, -8616761059752331528LL});
+  auto value = LiteralUtil::CreateR1<int64>(
+      {-6780561065411491190LL, 6780561065411491180LL, 4241131823772864090LL});
+  auto high = LiteralUtil::CreateR1<int64>(
+      {-6780561065411491180LL, 8616761059752331528LL, 3832151243857508051LL});
+  auto expected = LiteralUtil::CreateR1<int64>(
+      {-6780561065411491190LL, 6780561065411491190LL, 3832151243857508051LL});
+  TestTernaryOp(HloOpcode::kClamp, std::move(expected), std::move(low),
+                std::move(value), std::move(high));
+}
+
 TEST_P(HloEvaluatorBf16Test, DoesDivideDouble) {
   auto lhs = LiteralUtil::CreateR2<double>({{1.0, 0.0}, {-100.0, 4.0}});
   auto rhs = LiteralUtil::CreateR2<double>({{2.2, 4.0}, {4.0, 4.0}});

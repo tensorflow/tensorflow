@@ -368,6 +368,7 @@ StatusOr<std::vector<std::unique_ptr<Executable>>> Service::BuildExecutables(
     const HloModuleProto* proto = module_protos[i];
     const HloModuleConfig& config = *module_configs[i];
     TF_ASSIGN_OR_RETURN(auto module, CreateModuleFromProto(*proto, config));
+    TF_RETURN_IF_ERROR(MaybeDumpUnoptimizedHloModule(*module));
     module_group->push_back(std::move(module));
   }
 

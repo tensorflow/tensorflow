@@ -68,13 +68,14 @@ Status TensorResponse::InitFrom(RecvTensorResponse* response) {
   return s;
 }
 
-void TensorResponse::InitPartial(const RecvTensorResponse& response) {
+void TensorResponse::InitPartial(const RecvTensorResponse& response,
+                                 const AllocationAttributes& allocation_attr) {
   // Everything except content is present in *response.  Content will
   // arrive later; allocate a Tensor with appropriate storage for that
   // content.
   meta_ = response;
   TensorShape shape(meta_.tensor().tensor_shape());
-  Tensor t(allocator_, meta_.tensor().dtype(), shape);
+  Tensor t(allocator_, meta_.tensor().dtype(), shape, allocation_attr);
   tensor_ = std::move(t);
 }
 

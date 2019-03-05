@@ -141,8 +141,10 @@ class _CopyToDeviceDataset(dataset_ops.UnaryUnchangedStructureDataset):
       """
       with ops.device(self._source_device_string):
         iterator = iterator_ops.Iterator.from_string_handle(
-            string_handle, self.output_types, self.output_shapes,
-            self.output_classes)
+            string_handle,
+            dataset_ops.get_legacy_output_types(self),
+            dataset_ops.get_legacy_output_shapes(self),
+            dataset_ops.get_legacy_output_classes(self))
       return self._element_structure._to_tensor_list(iterator.get_next())  # pylint: disable=protected-access
 
     next_func_concrete = _next_func._get_concrete_function_internal()  # pylint: disable=protected-access

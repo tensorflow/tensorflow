@@ -33,7 +33,7 @@ from tensorflow.python.ops import rnn_cell_impl
 from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variable_scope as vs
 from tensorflow.python.training import saver
-from tensorflow.python.training.checkpointable import tracking as checkpointable_lib
+from tensorflow.python.training.tracking import tracking as trackable_lib
 
 CUDNN_RNN_UNIDIRECTION = "unidirectional"
 CUDNN_RNN_BIDIRECTION = "bidirectional"
@@ -737,13 +737,13 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
     return state_ops.assign(
         self._variables, opaque_params, validate_shape=False)
 
-  def _checkpointable_save(self, save_buffer):
+  def _trackable_save(self, save_buffer):
     weights, biases = self.format_converter.opaque_to_tf_canonical(
         self._variables)
     for name, tensor in zip(self._param_names, weights + biases):
       save_buffer[name] = array_ops.identity(tensor)
 
-  def _checkpointable_restore(self, restore_buffer):
+  def _trackable_restore(self, restore_buffer):
     tensors = [
         array_ops.identity(restore_buffer[name]) for name in self._param_names
     ]
@@ -752,26 +752,26 @@ class CudnnOpaqueParamsSaveable(saver.BaseSaverBuilder.SaveableObject):
         restored_shapes=None  # Unused
     )
 
-  def _add_checkpointable_dependencies(self, checkpointable, dtype):
-    """Add canonical weight dependencies to `checkpointable`.
+  def _add_trackable_dependencies(self, trackable, dtype):
+    """Add canonical weight dependencies to `trackable`.
 
     When saving or restoring, converts to or from the opaque buffer
     format. Weights are saved and loaded in the configuration expected by
     cuDNN-compatible cells.
 
     Args:
-      checkpointable: An object inheriting from `CheckpointableBase` to add
+      trackable: An object inheriting from `Trackable` to add
         dependencies too (typically the cuDNN `Layer`).
       dtype: The dtype for the canonical parameter Tensors.
     """
     split_dependencies = split_dependency.split_dependency(
         component_names=self._param_names,
         component_dtypes=(dtype,) * len(self._param_names),
-        fill_save_buffer_fn=self._checkpointable_save,
-        consume_restore_buffer_fn=self._checkpointable_restore)
-    self._checkpointable_track_params(checkpointable, split_dependencies)
+        fill_save_buffer_fn=self._trackable_save,
+        consume_restore_buffer_fn=self._trackable_restore)
+    self._trackable_track_params(trackable, split_dependencies)
 
-  def _checkpointable_track_params(self, checkpointable, params):
+  def _trackable_track_params(self, trackable, params):
     """Tracks parameters in a canonical configuration."""
     return  # NotImplementedError raised by the Layer.
 
@@ -819,7 +819,7 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
     tf_weights_names.append(prefix + "/kernel")
     tf_bias_names.append(prefix + "/bias")
 
-  def _checkpointable_track_params(self, checkpointable, params):
+  def _trackable_track_params(self, trackable, params):
     """Track parameters for compatibility with CudnnCompatibleLSTMCell."""
     biases = []
     weights = []
@@ -833,12 +833,12 @@ class CudnnLSTMSaveable(CudnnOpaqueParamsSaveable):
       # wrapping.
       kernel, = weights  # pylint: disable=unbalanced-tuple-unpacking
       bias, = biases  # pylint: disable=unbalanced-tuple-unpacking
-      checkpointable._track_checkpointable(kernel, name="kernel")  # pylint: disable=protected-access
-      checkpointable._track_checkpointable(bias, name="bias")  # pylint: disable=protected-access
+      trackable._track_trackable(kernel, name="kernel")  # pylint: disable=protected-access
+      trackable._track_trackable(bias, name="bias")  # pylint: disable=protected-access
     assert len(biases) == len(weights)
     for cell_index, (bias, kernel) in enumerate(zip(biases, weights)):
-      cell = checkpointable_lib.AutoCheckpointable()
-      checkpointable._track_checkpointable(cell, name="cell-%d" % cell_index)  # pylint: disable=protected-access
+      cell = trackable_lib.AutoTrackable()
+      trackable._track_trackable(cell, name="cell-%d" % cell_index)  # pylint: disable=protected-access
       cell.bias = bias
       cell.kernel = kernel
 

@@ -125,6 +125,10 @@ class SideEffectGuardTransformer(converter.Base):
     node.orelse = self._visit_and_reindent(node.orelse)
     return node
 
+  # TODO(b/123995141) Remove once ExceptionHandlers are in the CFG
+  def visit_ExceptHandler(self, node):
+    return node
+
   def visit_Expr(self, node):
     self.generic_visit(node)
     if isinstance(node.value, gast.Call):

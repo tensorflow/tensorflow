@@ -96,6 +96,19 @@ TEST(SelectOpTest, SelectUInt8) {
   EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
 }
 
+TEST(SelectOpTest, SelectInt8) {
+  SelectOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, {1, 1, 1, 4},
+                      TensorType_INT8);
+
+  model.PopulateTensor<bool>(model.input1(), {false, true, false, false});
+  model.PopulateTensor<int8_t>(model.input2(), {1, -2, 3, 4});
+  model.PopulateTensor<int8_t>(model.input3(), {5, 6, 7, -8});
+  model.Invoke();
+
+  EXPECT_THAT(model.GetOutput<int8_t>(), ElementsAreArray({5, -2, 7, -8}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({1, 1, 1, 4}));
+}
+
 TEST(SelectOpTest, SelectInt16) {
   SelectOpModel model({1, 1, 1, 4}, {1, 1, 1, 4}, {1, 1, 1, 4},
                       TensorType_INT16);

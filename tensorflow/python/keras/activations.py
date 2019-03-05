@@ -26,6 +26,19 @@ from tensorflow.python.ops import math_ops
 from tensorflow.python.ops import nn
 from tensorflow.python.util.tf_export import keras_export
 
+# b/123041942
+# In TF 2.x, if the `tf.nn.softmax` is used as an activation function in Keras
+# layers, it gets serialized as 'softmax_v2' instead of 'softmax' as the
+# internal method name is returned in serialization. This results in errors in
+# model exporting and loading as Keras can't find any activation function with
+# the name of `softmax_v2`.
+
+# This dict maps the activation function name from its v2 version to its
+# canonical name.
+_TF_ACTIVATIONS_V2 = {
+    'softmax_v2': 'softmax',
+}
+
 
 @keras_export('keras.activations.softmax')
 def softmax(x, axis=-1):
@@ -190,6 +203,8 @@ def linear(x):
 
 @keras_export('keras.activations.serialize')
 def serialize(activation):
+  if activation.__name__ in _TF_ACTIVATIONS_V2:
+    return _TF_ACTIVATIONS_V2[activation.__name__]
   return activation.__name__
 
 

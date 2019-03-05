@@ -30,10 +30,15 @@ namespace xla {
 // else.
 XlaOp IdentityMatrix(XlaBuilder* builder, PrimitiveType type, int64 m, int64 n);
 
-// Get the diagonals of the last two dimensions. If 'x' has shape
-// [..., M, N], then the output has shape [..., min(M, N)], containing the
-// diagonal elements (i.e., with indices [..., i, i]).
-XlaOp GetMatrixDiagonal(XlaOp x);
+// Get the diagonals of the last two dimensions. Use k>0 for diagonals above the
+// main diagonal, and k<0 for diagonals below the main diagonal.
+//
+// If 'x' has shape [..., M, N]
+//  If k >= 0: then the output has shape [..., min(M, N - k)], containing the
+//            diagonal elements (i.e., with indices [..., i, i + k]).
+//  If k < 0: then the output has shape [..., min(M + k, N)], containing the
+//            diagonal elements (i.e., with indices [..., i - k, i]).
+XlaOp GetMatrixDiagonal(XlaOp x, int k = 0);
 
 // Returns a lower-triangular mask, i.e., true below the `diagonal`-th diagonal
 // and false above that diagonal.

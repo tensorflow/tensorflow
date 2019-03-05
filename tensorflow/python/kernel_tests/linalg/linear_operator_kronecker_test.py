@@ -192,6 +192,23 @@ class SquareLinearOperatorKroneckerTest(
     with self.assertRaisesRegexp(ValueError, ">=1 operators"):
       kronecker.LinearOperatorKronecker([])
 
+  def test_kronecker_adjoint_type(self):
+    matrix = [[1., 0.], [0., 1.]]
+    operator = kronecker.LinearOperatorKronecker(
+        [
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+            linalg.LinearOperatorFullMatrix(
+                matrix, is_non_singular=True),
+        ],
+        is_non_singular=True,
+    )
+    adjoint = operator.adjoint()
+    self.assertIsInstance(
+        adjoint,
+        kronecker.LinearOperatorKronecker)
+    self.assertEqual(2, len(adjoint.operators))
+
   def test_kronecker_cholesky_type(self):
     matrix = [[1., 0.], [0., 1.]]
     operator = kronecker.LinearOperatorKronecker(

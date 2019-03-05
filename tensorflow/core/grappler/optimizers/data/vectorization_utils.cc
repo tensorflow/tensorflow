@@ -415,6 +415,10 @@ Status Vectorization::Initialize(const FunctionDef& outer_scope,
 // NodeBuilder
 Status Vectorization::StackTensor(WrappedTensor* unstacked,
                                   TensorDesc* result) {
+  if (unstacked->node->output_type(unstacked->output_index) == DT_VARIANT) {
+    // TODO(b/124069171): "ExpandDims" doesn't work with Variant tensors.
+    return errors::Unimplemented("Cannot stack tensor with Variant type.");
+  }
   // Note that all these nodes are necessary as the size of the batch may not be
   // constant.
   if (unstacked->stacked) {

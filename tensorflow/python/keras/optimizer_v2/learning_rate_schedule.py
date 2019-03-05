@@ -631,8 +631,7 @@ class CosineDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.experimental.CosineDecayRestarts",
-              v1=[])
+@keras_export("keras.experimental.CosineDecayRestarts")
 class CosineDecayRestarts(LearningRateSchedule):
   """A LearningRateSchedule that uses a cosine decay schedule with restarts."""
 
@@ -761,8 +760,7 @@ class CosineDecayRestarts(LearningRateSchedule):
     }
 
 
-@keras_export("keras.experimental.LinearCosineDecay",
-              v1=[])
+@keras_export("keras.experimental.LinearCosineDecay")
 class LinearCosineDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a linear cosine decay schedule."""
 
@@ -879,8 +877,7 @@ class LinearCosineDecay(LearningRateSchedule):
     }
 
 
-@keras_export("keras.experimental.NoisyLinearCosineDecay",
-              v1=[])
+@keras_export("keras.experimental.NoisyLinearCosineDecay")
 class NoisyLinearCosineDecay(LearningRateSchedule):
   """A LearningRateSchedule that uses a noisy linear cosine decay schedule."""
 

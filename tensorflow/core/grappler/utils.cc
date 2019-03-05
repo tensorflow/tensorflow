@@ -40,10 +40,21 @@ namespace tensorflow {
 namespace grappler {
 namespace {
 template <typename T>
-bool SafeSetScalarTensorValue(double value, Tensor* tensor) {
+bool SafeSetDoubleScalarTensorValue(double value, Tensor* tensor) {
   using RealType = typename Eigen::NumTraits<T>::Real;
   if (value > static_cast<double>(Eigen::NumTraits<RealType>::highest()) ||
       value < static_cast<double>(Eigen::NumTraits<RealType>::lowest())) {
+    return false;
+  }
+  tensor->flat<T>()(0) = static_cast<T>(value);
+  return true;
+}
+
+template <typename T>
+bool SafeSetIntScalarTensorValue(int value, Tensor* tensor) {
+  using RealType = typename Eigen::NumTraits<T>::Real;
+  if (value > static_cast<int>(Eigen::NumTraits<RealType>::highest()) ||
+      value < static_cast<int>(Eigen::NumTraits<RealType>::lowest())) {
     return false;
   }
   tensor->flat<T>()(0) = static_cast<T>(value);
@@ -410,35 +421,50 @@ void EraseNodesFromGraph(const std::set<string>& nodes_to_delete,
   EraseNodesFromGraphImpl(nodes_idx_to_delete, graph);
 }
 
-#define HANDLE_CASE(DTYPE)                                          \
-  case DTYPE:                                                       \
-    if (!SafeSetScalarTensorValue<EnumToDataType<DTYPE>::Type>(     \
-            static_cast<double>(value), tensor)) {                  \
-      return errors::InvalidArgument("Cannot store value ", value,  \
-                                     " in tensor of type " #DTYPE); \
-    }                                                               \
+#define HANDLE_DOUBLE_CASE(DTYPE)                                     \
+  case DTYPE:                                                         \
+    if (!SafeSetDoubleScalarTensorValue<EnumToDataType<DTYPE>::Type>( \
+            static_cast<double>(value), tensor)) {                    \
+      return errors::InvalidArgument("Cannot store value ", value,    \
+                                     " in tensor of type " #DTYPE);   \
+    }                                                                 \
+    break
+
+#define HANDLE_INT_CASE(DTYPE)                                               \
+  case DTYPE:                                                                \
+    if (!SafeSetIntScalarTensorValue<EnumToDataType<DTYPE>::Type>(value,     \
+                                                                  tensor)) { \
+      return errors::InvalidArgument("Cannot store value ", value,           \
+                                     " in tensor of type " #DTYPE);          \
+    }                                                                        \
     break
 
 Status SetTensorValue(DataType dtype, int value, Tensor* tensor) {
   // TODO(rmlarsen): Support more general shapes.
+  // TODO(lyandy): Change `value` to be int64 once int64 -> qint32 is supported.
   if (tensor->NumElements() != 1) {
     return errors::InvalidArgument(
         "Expected scalar tensor, got num_elements = ", tensor->NumElements());
   }
   switch (dtype) {
-    HANDLE_CASE(DT_HALF);
-    HANDLE_CASE(DT_BFLOAT16);
-    HANDLE_CASE(DT_BOOL);
-    HANDLE_CASE(DT_FLOAT);
-    HANDLE_CASE(DT_DOUBLE);
-    HANDLE_CASE(DT_UINT8);
-    HANDLE_CASE(DT_INT8);
-    HANDLE_CASE(DT_UINT16);
-    HANDLE_CASE(DT_INT16);
-    HANDLE_CASE(DT_INT32);
-    HANDLE_CASE(DT_INT64);
-    HANDLE_CASE(DT_COMPLEX64);
-    HANDLE_CASE(DT_COMPLEX128);
+    HANDLE_DOUBLE_CASE(DT_HALF);
+    HANDLE_DOUBLE_CASE(DT_BFLOAT16);
+    HANDLE_DOUBLE_CASE(DT_BOOL);
+    HANDLE_DOUBLE_CASE(DT_FLOAT);
+    HANDLE_DOUBLE_CASE(DT_DOUBLE);
+    HANDLE_DOUBLE_CASE(DT_UINT8);
+    HANDLE_DOUBLE_CASE(DT_INT8);
+    HANDLE_DOUBLE_CASE(DT_UINT16);
+    HANDLE_DOUBLE_CASE(DT_INT16);
+    HANDLE_DOUBLE_CASE(DT_INT32);
+    HANDLE_DOUBLE_CASE(DT_INT64);
+    HANDLE_DOUBLE_CASE(DT_COMPLEX64);
+    HANDLE_DOUBLE_CASE(DT_COMPLEX128);
+    HANDLE_INT_CASE(DT_QINT8);
+    HANDLE_INT_CASE(DT_QUINT8);
+    HANDLE_INT_CASE(DT_QINT16);
+    HANDLE_INT_CASE(DT_QUINT16);
+    HANDLE_INT_CASE(DT_QINT32);
     default:
       return errors::InvalidArgument("Unsupported type ",
                                      DataTypeString(dtype));

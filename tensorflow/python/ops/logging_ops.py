@@ -25,6 +25,7 @@ import sys
 
 import six
 
+from tensorflow.python import pywrap_tensorflow
 from tensorflow.python.framework import dtypes
 from tensorflow.python.framework import ops
 from tensorflow.python.framework import sparse_tensor
@@ -39,6 +40,14 @@ from tensorflow.python.platform import tf_logging
 from tensorflow.python.util import nest
 from tensorflow.python.util.deprecation import deprecated
 from tensorflow.python.util.tf_export import tf_export
+
+# Register printing to the cell output if we are in a Colab or Jupyter Notebook.
+try:
+  get_ipython()  # Exists in an ipython env like Jupyter or Colab
+  pywrap_tensorflow.TFE_Py_EnableInteractivePythonLogging()
+except NameError:
+  pass
+
 
 # The python wrapper for Assert is in control_flow_ops, as the Assert
 # call relies on certain conditionals for its dependencies.  Use
@@ -193,9 +202,8 @@ def print_v2(*inputs, **kwargs):
     (This prints "tensors: [0 1 2 ... 7 8 9] {2: [0 2 4 ... 14 16 18]}" to
     sys.stdout)
 
-  Note: This op is only partially compatible with Jupyter notebooks and colabs.
-    Because it prints to the C++ standard out / standard error, this will go
-    in the notebook kernel's console output, not in the notebook cell output.
+  Note: In Jupyter notebooks and colabs, this operator prints to the notebook
+    cell outputs. It will not write to the notebook kernel's console logs.
 
   Args:
     *inputs: Positional arguments that are the inputs to print. Inputs in the

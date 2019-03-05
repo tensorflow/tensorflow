@@ -375,7 +375,7 @@ class BucketBySequenceLengthTest(test_base.DatasetTestBase,
           bucket_batch_sizes=[2, 2, 2],
           bucket_boundaries=[0, 8],
           no_padding=no_padding))
-      shapes = dataset.output_shapes
+      shapes = dataset_ops.get_legacy_output_shapes(dataset)
       self.assertEqual([None, None], shapes[0].as_list())
       self.assertEqual([None], shapes[1].as_list())
 

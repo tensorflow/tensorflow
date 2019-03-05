@@ -64,7 +64,7 @@ class MirroredStrategyOptimizerV2Test(test.TestCase, parameterized.TestCase):
 
         def loss_fn():
           replica_id = _replica_id()
-          return math_ops.cast(replica_id + 1, dtype=dtypes.float32) * var
+          return math_ops.cast(replica_id + 1, dtype=dtypes.float32) * 0.5 * var
 
         train_op = optimizer.minimize(loss_fn, var_list=[var])
 

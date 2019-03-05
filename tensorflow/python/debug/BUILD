@@ -47,7 +47,8 @@ py_library(
         ":cli_test_utils",
         ":debug_py",
         ":grpc_debug_test_server",
-        ":offline_analyzer",
+        ":grpc_tensorflow_server",
+        ":offline_analyzer_lib",
         ":session_debug_testlib",
         ":source_remote",
     ] + if_not_windows([
@@ -109,6 +110,26 @@ py_library(
     name = "debug_utils",
     srcs = ["lib/debug_utils.py"],
     srcs_version = "PY2AND3",
+)
+
+py_binary(
+    name = "grpc_tensorflow_server",
+    srcs = ["lib/grpc_tensorflow_server.py"],
+    srcs_version = "PY2AND3",
+    deps = [":grpc_tensorflow_server_lib"],
+)
+
+py_library(
+    name = "grpc_tensorflow_server_lib",
+    srcs = [
+        "lib/grpc_tensorflow_server.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/core:protos_all_py",
+        "//tensorflow/python:platform",
+        "//tensorflow/python:training",
+    ],
 )
 
 py_library(
@@ -393,6 +414,13 @@ py_binary(
     name = "offline_analyzer",
     srcs = ["cli/offline_analyzer.py"],
     srcs_version = "PY2AND3",
+    deps = [":offline_analyzer_lib"],
+)
+
+py_library(
+    name = "offline_analyzer_lib",
+    srcs = ["cli/offline_analyzer.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":analyzer_cli",
         ":debug_data",
@@ -404,17 +432,24 @@ py_binary(
 py_library(
     name = "debug_examples",
     deps = [
-        ":debug_errors",
-        ":debug_fibonacci",
-        ":debug_keras",
+        ":debug_errors_lib",
+        ":debug_fibonacci_lib",
+        ":debug_keras_lib",
     ] + if_not_v2([
-        ":debug_mnist",
-        ":debug_tflearn_iris",
+        ":debug_mnist_lib",
+        ":debug_tflearn_iris_lib",
     ]),
 )
 
 py_binary(
     name = "debug_fibonacci",
+    srcs = ["examples/debug_fibonacci.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debug_fibonacci_lib"],
+)
+
+py_library(
+    name = "debug_fibonacci_lib",
     srcs = ["examples/debug_fibonacci.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -429,6 +464,13 @@ py_binary(
     name = "debug_errors",
     srcs = ["examples/debug_errors.py"],
     srcs_version = "PY2AND3",
+    deps = [":debug_errors_lib"],
+)
+
+py_library(
+    name = "debug_errors_lib",
+    srcs = ["examples/debug_errors.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -438,6 +480,13 @@ py_binary(
 
 py_binary(
     name = "debug_mnist",
+    srcs = ["examples/debug_mnist.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debug_mnist_lib"],
+)
+
+py_library(
+    name = "debug_mnist_lib",
     srcs = ["examples/debug_mnist.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -451,6 +500,13 @@ py_binary(
     name = "debug_tflearn_iris",
     srcs = ["examples/debug_tflearn_iris.py"],
     srcs_version = "PY2AND3",
+    deps = [":debug_tflearn_iris_lib"],
+)
+
+py_library(
+    name = "debug_tflearn_iris_lib",
+    srcs = ["examples/debug_tflearn_iris.py"],
+    srcs_version = "PY2AND3",
     deps = [
         ":debug_py",
         "//tensorflow:tensorflow_py",
@@ -460,6 +516,13 @@ py_binary(
 
 py_binary(
     name = "debug_keras",
+    srcs = ["examples/debug_keras.py"],
+    srcs_version = "PY2AND3",
+    deps = [":debug_keras_lib"],
+)
+
+py_library(
+    name = "debug_keras_lib",
     srcs = ["examples/debug_keras.py"],
     srcs_version = "PY2AND3",
     deps = [
@@ -527,6 +590,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -615,6 +679,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -774,6 +839,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["notsan"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -791,6 +857,7 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -808,6 +875,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["no_windows_gpu"],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -933,6 +1001,7 @@ cuda_py_test(
         "//tensorflow/python:variables",
     ],
     tags = ["no_windows"],  # TODO: needs investigation on Windows
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(
@@ -973,6 +1042,13 @@ cuda_py_test(
         "//tensorflow/python:training",
         "//tensorflow/python:variables",
     ],
+    tags = [
+        "manual",
+        "no_pip",
+        "no_windows",
+        "notap",
+    ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -1000,6 +1076,7 @@ cuda_py_test(
         "notsan",
         "oss_serial",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 cuda_py_test(
@@ -1025,6 +1102,7 @@ cuda_py_test(
         "optonly",  # Test flaky (b/80130873)
         "oss_serial",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 # TODO(cais): Run the test in OSS, perhaps through a sh_test.
@@ -1046,13 +1124,14 @@ cuda_py_test(
         "//tensorflow/python:platform_test",
         "//tensorflow/python:variables",
     ],
-    data = ["//tensorflow/tools/dist_test/server:grpc_tensorflow_server"],
+    data = [":grpc_tensorflow_server"],
     grpc_enabled = True,
     tags = [
         "no_oss",  # Incompatible with bazel_pip.
         "no_windows",
         "notsan",
     ],
+    xla_enable_strict_auto_jit = False,  # Node names are different with autojit
 )
 
 py_test(

@@ -552,5 +552,67 @@ TEST_F(HloVerifierTest, IotaNonArrayResult) {
               HasSubstr("does not support non-array result"));
 }
 
+static const char* const kMapOperandComputationMismatchHlo = R"(
+  HloModule MapOperandComputationMismatch
+
+  Computation {
+    param0 = f32[] parameter(0)
+    constant = f32[] constant(1)
+    ROOT add = f32[] add(param0, constant)
+  }
+
+  ENTRY kernelEntry {
+  param = f64[] parameter(0)
+  ROOT map = f32[] map(param), dimensions={}, to_apply=Computation
+})";
+
+TEST_F(HloVerifierTest, MapOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kMapOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(
+      status.error_message(),
+      HasSubstr(
+          "Shape mismatch between to_apply computation parameter and operand"));
+}
+
+TEST_F(HloVerifierTestAllowMixedPrecision, MapOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kMapOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
+static const char* const kReduceOperandComputationMismatchHlo = R"(
+  HloModule ReduceOperandComputationMismatch
+  computation {
+    x = f32[] parameter(0)
+    y = f32[] parameter(1)
+    ROOT add = f32[] add(x, y)
+  }
+
+  ENTRY kernelEntry {
+    arg0 = f16[64,64,224,224]{3,2,1,0} parameter(0)
+    constant = f16[] constant(0)
+    reduce = f16[64]{0} reduce(arg0, constant), dimensions={0,2,3}, to_apply=computation
+  })";
+
+TEST_F(HloVerifierTest, ReduceOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kReduceOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_FALSE(status.ok());
+  EXPECT_THAT(status.error_message(),
+              HasSubstr("Expected instruction to have shape equal to f32[64]"));
+}
+
+TEST_F(HloVerifierTestAllowMixedPrecision, ReduceOperandComputationMismatch) {
+  TF_ASSERT_OK_AND_ASSIGN(auto module,
+                          ParseHloString(kReduceOperandComputationMismatchHlo));
+  auto status = verifier().Run(module.get()).status();
+  ASSERT_TRUE(status.ok());
+}
+
 }  // namespace
 }  // namespace xla

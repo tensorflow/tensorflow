@@ -270,6 +270,11 @@ class IrBuilderMixin {
   }
 
   template <class... Args>
+  llvm::Value* FCmpUNO(Args&&... args) {
+    return mixin_builder()->CreateFCmpUNO(std::forward<Args>(args)...);
+  }
+
+  template <class... Args>
   llvm::Value* FDiv(Args&&... args) {
     return mixin_builder()->CreateFDiv(std::forward<Args>(args)...);
   }

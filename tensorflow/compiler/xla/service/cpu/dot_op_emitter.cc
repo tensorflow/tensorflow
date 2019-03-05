@@ -643,11 +643,13 @@ Status DotOpEmitter::EmitCallToRuntime() {
   llvm::Function* function = b_->GetInsertBlock()->getParent();
   llvm::Module* module = function->getParent();
 
-  llvm::Function* matmul_func = llvm::cast<llvm::Function>(
-      module->getOrInsertFunction(fn_name, matmul_type));
-  matmul_func->setCallingConv(llvm::CallingConv::C);
-  matmul_func->setDoesNotThrow();
-  matmul_func->setOnlyAccessesArgMemory();
+  llvm::FunctionCallee matmul_func =
+      module->getOrInsertFunction(fn_name, matmul_type);
+  if (auto* fn = llvm::dyn_cast<llvm::Function>(matmul_func.getCallee())) {
+    fn->setCallingConv(llvm::CallingConv::C);
+    fn->setDoesNotThrow();
+    fn->setOnlyAccessesArgMemory();
+  }
 
   // The Eigen runtime function expects column-major layout. If the matrices are
   // row major, then use the following identity to compute the product:
@@ -961,8 +963,8 @@ Status EmitBatchDotOperation(
   KernelSupportLibrary ksl(b);
 
   return ksl.ForWithStatus(
-      "bdot", /*start=*/0, /*end=*/batch_count, /*step=*/1,
-      [&](llvm::Value* indvar) {
+      llvm_ir::IrName(&dot, "bdot"), /*start=*/0, /*end=*/batch_count,
+      /*step=*/1, [&](llvm::Value* indvar) {
         DotDimensionNumbers adjusted_dim_numbers = dot.dot_dimension_numbers();
         adjusted_dim_numbers.clear_lhs_batch_dimensions();
         adjusted_dim_numbers.clear_rhs_batch_dimensions();

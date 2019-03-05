@@ -23,6 +23,7 @@ limitations under the License.
 #include <algorithm>
 #include <vector>
 
+#include "absl/base/dynamic_annotations.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
@@ -180,6 +181,80 @@ struct LaunchXsmmBackwardInputConvolution<CPUDevice, float> {
     bool success = functor::XsmmBkwInputConv2D<CPUDevice, float>()(
         context, desc, input_ptr, filter_ptr, output_ptr);
     return success;
+  }
+};
+#endif
+
+template <typename T>
+struct Conv2DCustomBackpropInputMatMulFunctor {
+  using MatrixMap = Eigen::Map<
+      Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+  using ConstMatrixMap = Eigen::Map<
+      const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>;
+
+  void operator()(OpKernelContext* ctx, const T* out_data, const T* filter_data,
+                  const int filter_total_size, const int output_image_size,
+                  const int dims_out_depth, T* im2col_buf) {
+    // Compute gradient into 'im2col_buf'.
+    MatrixMap C(im2col_buf, output_image_size, filter_total_size);
+
+    ConstMatrixMap A(out_data, output_image_size, dims_out_depth);
+    ConstMatrixMap B(filter_data, filter_total_size, dims_out_depth);
+
+    C.noalias() = A * B.transpose();
+  }
+};
+
+#if defined(TENSORFLOW_USE_MKLDNN_CONTRACTION_KERNEL)
+template <>
+struct Conv2DCustomBackpropInputMatMulFunctor<float> {
+  using T = float;
+
+  void operator()(OpKernelContext* ctx, const T* out_data, const T* filter_data,
+                  const int filter_total_size, const int output_image_size,
+                  const int dims_out_depth, T* im2col_buf) {
+    // Inputs are in RowMajor order, we "cheat" by swapping the LHS and RHS:
+    //   RowMajor: C   = A   * B
+    //   ColMajor: C^T = B^T * A^T
+    //
+    // Dimension names:
+    //   out_image_size    -> ois
+    //   filter_total_size -> fts
+    //   dims_out_depth    -> dod
+    //
+    // RowMajor:
+    //   im2col      = out_data    * filter_data^T
+    //   [ois x fts] = [ois x dod] * [fts x dod]^T
+    //
+    // ColMajor:
+    //   im2col^T    = filter_data *  out_data^T
+    //   [fts x ois] = [fts x dod] * [dod x ois]*
+
+    const int m = filter_total_size;
+    const int n = output_image_size;
+    const int k = dims_out_depth;  // contraction dim
+
+    const char transposeA = 'T';  // sgemm(A) == filter_data
+    const char transposeB = 'N';  // sgemm(B) == out_data
+
+    const int ldA = dims_out_depth;
+    const int ldB = dims_out_depth;
+    const int ldC = filter_total_size;
+
+    const float alpha = 1.0;
+    const float beta = 0.0;
+
+    // mkldnn_sgemm code can't be instrumented with msan.
+    ANNOTATE_MEMORY_IS_INITIALIZED(
+        im2col_buf, filter_total_size * output_image_size * sizeof(T));
+
+    mkldnn_status_t st =
+        mkldnn_sgemm(&transposeA, &transposeB, &m, &n, &k, &alpha, filter_data,
+                     &ldA, out_data, &ldB, &beta, im2col_buf, &ldC);
+
+    OP_REQUIRES(
+        ctx, st == 0,
+        errors::Internal("Failed to call mkldnn_sgemm. Error code: ", st));
   }
 };
 #endif
@@ -417,21 +492,14 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
         input_backprop_data += input_offset;
       }
     } else {
-      typedef Eigen::Map<
-          Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic, Eigen::RowMajor>>
-          MatrixMap;
-      typedef Eigen::Map<const Eigen::Matrix<T, Eigen::Dynamic, Eigen::Dynamic,
-                                             Eigen::RowMajor>>
-          ConstMatrixMap;
-
       for (int image_id = 0; image_id < dims.batch_size;
            image_id += shard_size) {
         const int shard_limit =
             std::min(static_cast<int>(shard_size),
                      static_cast<int>(dims.batch_size) - image_id);
 
-        auto shard = [&dims, &pad_top, &pad_left, &pad_bottom, &pad_right,
-                      &output_image_size, &filter_total_size,
+        auto shard = [&context, &dims, &pad_top, &pad_left, &pad_bottom,
+                      &pad_right, &output_image_size, &filter_total_size,
                       &input_backprop_data, &col_buffer_data,
                       &out_backprop_data, &filter_data, &input_offset,
                       &output_offset, &size_C](int64 start, int64 limit) {
@@ -440,13 +508,9 @@ class Conv2DCustomBackpropInputOp : public OpKernel {
             T* input_data = input_backprop_data + shard_id * input_offset;
             const T* out_data = out_backprop_data + shard_id * output_offset;
 
-            // Compute gradient into 'im2col_buf'.
-            MatrixMap C(im2col_buf, output_image_size, filter_total_size);
-
-            ConstMatrixMap A(out_data, output_image_size, dims.out_depth);
-            ConstMatrixMap B(filter_data, filter_total_size, dims.out_depth);
-
-            C.noalias() = A * B.transpose();
+            Conv2DCustomBackpropInputMatMulFunctor<T>()(
+                context, out_data, filter_data, filter_total_size,
+                output_image_size, dims.out_depth, im2col_buf);
 
             Col2im<T>(im2col_buf, dims.in_depth,
                       dims.spatial_dims[0].input_size,

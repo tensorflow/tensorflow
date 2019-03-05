@@ -18,6 +18,8 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import six
+
 from tensorflow.python.autograph.pyct import anno
 from tensorflow.python.autograph.pyct import cfg
 from tensorflow.python.autograph.pyct import parser
@@ -293,6 +295,24 @@ class DefinitionInfoTest(test.TestCase):
     self.assertSameDef(param, source)
     self.assertNotSameDef(source, target)
     self.assertSameDef(target, retval)
+
+  def test_comprehension_leaking(self):
+
+    def test_fn(a):
+      all(x for x in a)
+      return x  # pylint:disable=undefined-variable
+
+    node = self._parse_and_analyze(test_fn)
+    fn_body = node.body[0].body
+
+    listcomp_target = fn_body[0].value.args[0].generators[0].target
+    retval = fn_body[1].value
+
+    # Python2 leaks comprehension symbols. Python3 doesn't.
+    if six.PY2:
+      self.assertSameDef(retval, listcomp_target)
+    else:
+      self.assertHasDefs(retval, 0)
 
 
 if __name__ == '__main__':

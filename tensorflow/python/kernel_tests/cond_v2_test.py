@@ -85,6 +85,21 @@ class CondV2Test(test.TestCase):
     self._testCond(true_fn, false_fn, [x, y])
     self._testCond(true_fn, false_fn, [y])
 
+  def testExternalControlDependencies(self):
+    with ops.Graph().as_default(), self.test_session():
+      v = variables.Variable(1.0)
+      v.initializer.run()
+      op = v.assign_add(1.0)
+
+      def true_branch():
+        with ops.control_dependencies([op]):
+          return 1.0
+
+      cond_v2.cond_v2(array_ops.placeholder_with_default(False, None),
+                      true_branch,
+                      lambda: 2.0).eval()
+      self.assertAllEqual(self.evaluate(v), 2.0)
+
   @test_util.run_deprecated_v1
   def testMultipleOutputs(self):
     x = constant_op.constant(1.0, name="x")

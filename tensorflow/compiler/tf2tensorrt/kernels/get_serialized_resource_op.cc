@@ -13,9 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#ifndef TENSORFLOW_COMPILER_TF2TENSORRT_KERNELS_GET_SERIALIZED_RESOURCE_OP_H_
-#define TENSORFLOW_COMPILER_TF2TENSORRT_KERNELS_GET_SERIALIZED_RESOURCE_OP_H_
-
 #include <memory>
 #include <vector>
 
@@ -49,7 +46,7 @@ class GetSerializedResourceOp : public OpKernel {
     SerializableResourceBase* resource = nullptr;
     OP_REQUIRES_OK(context, context->resource_manager()->Lookup(
                                 container, resource_name, &resource));
-    ::tensorflow::core::ScopedUnref sc(resource);
+    core::ScopedUnref sc(resource);
 
     // Serialize the resource as output.
     string serialized_resource;
@@ -70,4 +67,3 @@ REGISTER_KERNEL_BUILDER(Name("GetSerializedResourceOp").Device(DEVICE_GPU),
 
 #endif  // GOOGLE_TENSORRT
 #endif  // GOOGLE_CUDA
-#endif  // TENSORFLOW_COMPILER_TF2TENSORRT_KERNELS_GET_SERIALIZED_RESOURCE_OP_H_

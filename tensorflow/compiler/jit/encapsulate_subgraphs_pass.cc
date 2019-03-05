@@ -2327,7 +2327,12 @@ Status Encapsulator::MakePrunedGraphCopyAndInline(
                                   return library->LookUpOpDef(op, sig);
                                 },
                                 &fbody));
-    InlineFunctionBody(*library, pruned_graph->get(), node, fbody);
+
+    InlineFunctionBodyOptions inline_opts;
+    inline_opts.override_device = false;
+
+    TF_RETURN_IF_ERROR(InlineFunctionBody(*library, pruned_graph->get(), node,
+                                          fbody, inline_opts));
     delete fbody;
   }
 
@@ -2575,8 +2580,9 @@ Status EncapsulateSubgraphsPass::Run(
 
         const int num_args = input_permutation->size();
         std::vector<bool> const_args(num_args);
-        TF_RETURN_IF_ERROR(BackwardsConstAnalysis(
-            **subgraph, &const_args, /*compile_time_const_nodes=*/nullptr));
+        TF_RETURN_IF_ERROR(
+            BackwardsConstAnalysis(**subgraph, &const_args,
+                                   /*compile_time_const_nodes=*/nullptr, flr));
 
         DataTypeVector arg_types(num_args);
         TF_RETURN_IF_ERROR(GetArgTypes(**subgraph, &arg_types));

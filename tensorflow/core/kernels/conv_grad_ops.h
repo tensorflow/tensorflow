@@ -222,7 +222,7 @@ struct ConvBackpropSpatialDimension {
   int64 stride;
   int64 dilation;
 
-  // The following fields are valid only if the padding is not EXPLICIT.
+  // Output size after scaling by the stride.
   int64 expanded_output_size;
 
   // Number of padding elements to be added before/after this dimension of
@@ -270,7 +270,7 @@ Status ConvBackpropComputeDimensionsV2(
     StringPiece label, int num_spatial_dims, const TensorShape& input_shape,
     const TensorShape& filter_shape, const TensorShape& out_backprop_shape,
     const gtl::ArraySlice<int32>& dilations, const std::vector<int32>& strides,
-    Padding padding, const std::vector<int64>& explicit_paddings,
+    Padding padding, absl::Span<const int64> explicit_paddings,
     TensorFormat data_format, ConvBackpropDimensions* dims);
 }  // namespace tensorflow
 

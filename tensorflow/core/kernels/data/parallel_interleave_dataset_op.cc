@@ -26,6 +26,7 @@ limitations under the License.
 #include "tensorflow/core/framework/types.h"
 #include "tensorflow/core/kernels/data/captured_function.h"
 #include "tensorflow/core/kernels/data/dataset_utils.h"
+#include "tensorflow/core/kernels/data/stats_utils.h"
 #include "tensorflow/core/lib/core/threadpool.h"
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/random/random.h"
@@ -211,9 +212,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
                 "data_parallel_interleave_worker_pool",
                 port::NumSchedulableCPUs() /* num_threads */,
                 false /* low_latency_hint */)) {
-        std::vector<string> components =
-            str_util::Split(params.prefix, "::", str_util::SkipEmpty());
-        key_prefix_ = components.back();
       }
 
       ~ParallelInterleaveIterator() override {
@@ -506,7 +504,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           const auto& stats_aggregator = ctx->stats_aggregator();
           if (stats_aggregator) {
             stats_aggregator->AddScalar(
-                strings::StrCat(key_prefix_, "::thread_utilization"),
+                stats_utils::ThreadUtilizationScalarName(
+                    dataset()->node_name()),
                 static_cast<float>(num_calls_) /
                     static_cast<float>(num_parallel_calls_->value));
           }
@@ -518,17 +517,15 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         if (!current_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-          current_elements_manager_ =
-              absl::WrapUnique<Thread>(ctx->env()->StartThread(
-                  {}, "tf_data_parallel_interleave_current",
-                  [this, new_ctx]() { CurrentElementsManager(new_ctx); }));
+          current_elements_manager_ = ctx->StartThread(
+              "tf_data_parallel_interleave_current",
+              [this, new_ctx]() { CurrentElementsManager(new_ctx); });
         }
         if (!future_elements_manager_) {
           auto new_ctx = std::make_shared<IteratorContext>(*ctx);
-          future_elements_manager_ =
-              absl::WrapUnique<Thread>(ctx->env()->StartThread(
-                  {}, "tf_data_parallel_interleave_future",
-                  [this, new_ctx]() { FutureElementsManager(new_ctx); }));
+          future_elements_manager_ = ctx->StartThread(
+              "tf_data_parallel_interleave_future",
+              [this, new_ctx]() { FutureElementsManager(new_ctx); });
         }
       }
 
@@ -567,7 +564,7 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
         const auto& stats_aggregator = ctx->stats_aggregator();
         if (stats_aggregator) {
           stats_aggregator->AddScalar(
-              strings::StrCat(key_prefix_, "::thread_utilization"),
+              stats_utils::ThreadUtilizationScalarName(dataset()->node_name()),
               static_cast<float>(num_calls_) /
                   static_cast<float>(num_parallel_calls_->value));
         }
@@ -620,7 +617,8 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
           const auto& stats_aggregator = ctx->stats_aggregator();
           if (stats_aggregator) {
             stats_aggregator->AddScalar(
-                strings::StrCat(key_prefix_, "::thread_utilization"),
+                stats_utils::ThreadUtilizationScalarName(
+                    dataset()->node_name()),
                 static_cast<float>(num_calls_) /
                     static_cast<float>(num_parallel_calls_->value));
           }
@@ -917,7 +915,6 @@ class ParallelInterleaveDatasetOp : public UnaryDatasetOpKernel {
 
       // Identifies whether background threads should be cancelled.
       bool cancelled_ GUARDED_BY(*mu_) = false;
-      string key_prefix_;
       std::unique_ptr<InstantiatedCapturedFunction> instantiated_captured_func_;
     };
 

@@ -218,7 +218,6 @@ cc_library(
         "//tensorflow/contrib/tensor_forest:stats_ops_op_lib",
         "//tensorflow/contrib/tensor_forest:tensor_forest_ops_op_lib",
         "//tensorflow/contrib/text:all_ops",
-        "//tensorflow/contrib/tpu:all_ops",
     ] + select({
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
