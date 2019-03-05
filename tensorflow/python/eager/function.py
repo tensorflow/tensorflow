@@ -2070,7 +2070,10 @@ class TfMethodTarget(object):
     return self.weakrefself_target__()
 
   def call(self, args, kwargs):
-    return self.weakrefself_func__()(*args, **kwargs)
+    wrapped_fn = self.weakrefself_func__()
+    if tf_inspect.ismethod(wrapped_fn):
+      wrapped_fn = six.get_unbound_function(wrapped_fn)
+    return wrapped_fn(self.weakrefself_target__(), *args, **kwargs)
 
 
 def class_method_to_instance_method(original_function, instance):
@@ -2105,9 +2108,10 @@ def class_method_to_instance_method(original_function, instance):
         wrapped_fn = six.get_unbound_function(wrapped_fn)
       return wrapped_fn(weak_instance(), *args, **kwargs)
 
-    # If __wrapped__ was replaced, then it is always an unbound function
-    # that takes self as first argument.
-    return wrapped_fn(weak_instance(), *args, **kwargs)
+    # If __wrapped__ was replaced, then it is always an unbound function.
+    # However, the replacer is still responsible for attaching self properly.
+    # TODO(mdan): Is it possible to do it here instead?
+    return wrapped_fn(*args, **kwargs)
   weak_bound_method_wrapper = weakref.ref(bound_method_wrapper)
 
   # pylint: disable=protected-access
