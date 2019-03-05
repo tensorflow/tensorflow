@@ -56,3 +56,4 @@ CumprodTest.test3D # Too long
 QuantizedOpsTest # No bfloat16
 DeuantizedOpsTest # No bfloat16
 ArrayElementwiseOpTest.ClampF32 # Incorrect NaN passing
+WhileTest.testNestedWhileLoopWithMaxItersFromOuterContext # badly constructed test
