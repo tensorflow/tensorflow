@@ -1,4 +1,4 @@
-# Converter command-line reference
+# Converter command line reference
 
 This page is complete reference of command-line flags used by the TensorFlow
 Lite Converter's command line starting from TensorFlow 1.9 up until the most

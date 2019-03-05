@@ -2765,6 +2765,38 @@ def make_squeeze_tests(zip_path):
       expected_tf_failures=12)
 
 
+def make_squeeze_transpose_tests(zip_path):
+  """Make a set of tests to do squeeze followed by transpose."""
+
+  test_parameters = [{
+      "dtype": [tf.int32, tf.float32, tf.int64],
+      "input_shape": [[1, 4, 10, 1]],
+      "axis": [[-1], [3]],
+  }]
+
+  def build_graph(parameters):
+    input_tensor = tf.placeholder(
+        dtype=parameters["dtype"],
+        name="input",
+        shape=parameters["input_shape"])
+    out = tf.squeeze(input_tensor, axis=parameters["axis"])
+    out = tf.transpose(out, perm=[1, 2])
+    return [input_tensor], [out]
+
+  def build_inputs(parameters, sess, inputs, outputs):
+    input_values = create_tensor_data(parameters["dtype"],
+                                      parameters["input_shape"])
+    return [input_values], sess.run(
+        outputs, feed_dict=dict(zip(inputs, [input_values])))
+
+  make_zip_of_tests(
+      zip_path,
+      test_parameters,
+      build_graph,
+      build_inputs,
+      expected_tf_failures=0)
+
+
 def _make_strided_slice_tests(zip_path, test_parameters,
                               expected_tf_failures=0):
   """Utility function to make strided_slice_tests based on parameters."""

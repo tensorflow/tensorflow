@@ -37,9 +37,9 @@
 #                        input tags for `--test_filter_tags` flag.
 #                          e.g. TF_TEST_FILTER_TAGS="no_pip,-nomac,no_oss"
 #   TF_TEST_TARGETS:     Bazel test targets.
-#                          e.g. TF_TEST_TARGETS="//tensorflow/contrib/... \
-#                               //tensorflow/... \
-#                               //tensorflow/python/..."
+#                          e.g. TF_TEST_TARGETS="//tensorflow/... \
+#                               -//tensorflow/contrib/... \
+#                               -//tensorflow/python/..."
 #   TF_PIP_TESTS:        PIP tests to run. If NOT specified, skips all tests.
 #                          e.g. TF_PIP_TESTS="test_pip_virtualenv_clean \
 #                               test_pip_virtualenv_clean \
@@ -169,7 +169,7 @@ check_python_pip_version() {
   # Retrieve only the version numbers of the python & pip in use currently.
   PYTHON_VER_IN_USE=$(python --version 2>&1)
   PYTHON_VER_IN_USE=${PYTHON_VER_IN_USE:7:3}
-  PIP_VER_IN_USE=$(pip --version)
+  PIP_VER_IN_USE=$(${PIP_BIN_PATH} --version)
   PIP_VER_IN_USE=${PIP_VER_IN_USE:${#PIP_VER_IN_USE}-4:3}
 
   # If only major versions are applied, drop minor versions.
@@ -207,9 +207,6 @@ PYTHON_VER=$(lowercase "${TF_PYTHON_VERSION}")
 if [[ -z "$PYTHON_BIN_PATH" ]]; then
   die "Error: PYTHON_BIN_PATH was not provided. Did you run configure?"
 fi
-# Get python version for configuring pip later in installation.
-PYTHON_VER_CFG=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f-2)
-echo "PYTHON_BIN_PATH: ${PYTHON_BIN_PATH} (version: ${PYTHON_VER_CFG})"
 
 # Default values for optional global variables in case they are not user
 # defined.
@@ -239,15 +236,15 @@ PIP_WHL_DIR=$(realpath "${PIP_WHL_DIR}") # Get absolute path
 WHL_PATH=""
 # Determine the major.minor versions of python being used (e.g., 2.7).
 # Useful for determining the directory of the local pip installation.
-PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -V 2>&1 | awk '{print $NF}' | cut -d. -f-2)
+PY_MAJOR_MINOR_VER=$(${PYTHON_BIN_PATH} -c "print(__import__('sys').version)" 2>&1 | awk '{ print $1 }' | head -n 1 | cut -c1-3)
+
 if [[ -z "${PY_MAJOR_MINOR_VER}" ]]; then
   die "ERROR: Unable to determine the major.minor version of Python."
 fi
 echo "Python binary path to be used in PIP install: ${PYTHON_BIN_PATH} "\
 "(Major.Minor version: ${PY_MAJOR_MINOR_VER})"
 PYTHON_BIN_PATH_INIT=${PYTHON_BIN_PATH}
-PIP_BIN_PATH="$(which pip${PYTHON_VER_CFG})"
-PIP_BIN_PATH_INIT=${PIP_BIN_PATH}
+PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
 
 # PIP packages
 INSTALL_EXTRA_PIP_PACKAGES=${TF_BUILD_INSTALL_EXTRA_PIP_PACKAGES}
@@ -450,7 +447,7 @@ install_tensorflow_pip() {
   fi
 
   # Set path to pip.
-  PIP_BIN_PATH="$(which pip${PYTHON_VER_CFG})"
+  PIP_BIN_PATH="$(which pip${PY_MAJOR_MINOR_VER})"
 
   # Print python and pip bin paths
   echo "PYTHON_BIN_PATH to be used to install the .whl: ${PYTHON_BIN_PATH}"
@@ -541,9 +538,15 @@ run_test_with_bazel() {
     BAZEL_PARALLEL_TEST_FLAGS="--local_test_jobs=1"
   fi
 
-  # TODO(hyey): Update test target after validation.
+  TEST_TARGETS_SYMLINK=""
+  for TARGET in ${BAZEL_TEST_TARGETS[@]}; do
+    TARGET_NEW=$(echo ${TARGET} | sed -e "s/\/\//\/\/${PIP_TEST_PREFIX}\//g")
+    TEST_TARGETS_SYMLINK+="${TARGET_NEW} "
+  done
+  echo "Test targets (symlink): ${TEST_TARGETS_SYMLINK}"
+
   # Run the test.
-  bazel test --build_tests_only ${BAZEL_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- //$PIP_TEST_PREFIX/tensorflow/python/...
+  bazel test --build_tests_only ${BAZEL_TEST_FLAGS} ${BAZEL_PARALLEL_TEST_FLAGS} --test_tag_filters=${BAZEL_TEST_FILTER_TAGS} -k -- ${TEST_TARGETS_SYMLINK}
 
   unlink ${TEST_ROOT}/tensorflow
 }
@@ -628,13 +631,13 @@ fi
 
 ./bazel-bin/tensorflow/tools/pip_package/build_pip_package ${PIP_WHL_DIR} ${GPU_FLAG} ${NIGHTLY_FLAG} "--project_name" ${PROJECT_NAME} || die "build_pip_package FAILED"
 
-PY_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
-if [[ $PY_MAJOR_MINOR_VER == "2" ]]; then
-  PY_MAJOR_MINOR_VER="27"
+PY_DOTLESS_MAJOR_MINOR_VER=$(echo $PY_MAJOR_MINOR_VER | tr -d '.')
+if [[ $PY_DOTLESS_MAJOR_MINOR_VER == "2" ]]; then
+  PY_DOTLESS_MAJOR_MINOR_VER="27"
 fi
 
 # Set wheel path and verify that there is only one .whl file in the path.
-WHL_PATH=$(ls "${PIP_WHL_DIR}"/"${PROJECT_NAME}"-*"${PY_MAJOR_MINOR_VER}"*"${PY_MAJOR_MINOR_VER}"*.whl)
+WHL_PATH=$(ls "${PIP_WHL_DIR}"/"${PROJECT_NAME}"-*"${PY_DOTLESS_MAJOR_MINOR_VER}"*"${PY_DOTLESS_MAJOR_MINOR_VER}"*.whl)
 if [[ $(echo "${WHL_PATH}" | wc -w) -ne 1 ]]; then
   echo "ERROR: Failed to find exactly one built TensorFlow .whl file in "\
   "directory: ${PIP_WHL_DIR}"
@@ -660,6 +663,12 @@ for WHL_PATH in $(ls ${PIP_WHL_DIR}/${PROJECT_NAME}*.whl); do
     if [[ ${OS_TYPE} == "ubuntu" ]]; then
       # Repair the wheels for cpu manylinux1
       echo "auditwheel repairing ${WHL_PATH}"
+      ${PIP_BIN_PATH} show auditwheel
+      set +e
+      ${PIP_BIN_PATH} install auditwheel==1.5.0
+      sudo ${PIP_BIN_PATH} install auditwheel==1.5.0
+      set -e
+      auditwheel --version
       auditwheel repair -w "${WHL_DIR}" "${WHL_PATH}"
 
       if [[ -f ${AUDITED_WHL_NAME} ]]; then

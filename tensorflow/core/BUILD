@@ -925,6 +925,7 @@ tf_cuda_library(
         "framework/tensor_slice.h",
         "framework/tensor_types.h",
         "framework/tensor_util.h",
+        "framework/thread_factory.h",
         "framework/tracking_allocator.h",
         "framework/type_index.h",
         "framework/type_traits.h",
@@ -2164,6 +2165,17 @@ tf_pyclif_proto_library(
 # -----------------------------------------------------------------------------
 # Internal targets
 
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["protobuf/autotuning.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    provide_cc_alias = True,
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
 tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
@@ -3097,6 +3109,7 @@ tf_cuda_library(
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
         "common_runtime/session_state.cc",
+        "common_runtime/single_threaded_cpu_device.cc",
         "common_runtime/stats_publisher_interface.cc",
         "common_runtime/step_stats_collector.cc",
         "common_runtime/threadpool_device.cc",
@@ -3607,6 +3620,7 @@ tf_cc_test(
     name = "platform_strings_test",
     size = "small",
     srcs = ["platform/platform_strings_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":lib",
         ":platform_strings",
@@ -3917,7 +3931,7 @@ tf_cc_tests(
         "util/work_sharder_test.cc",
     ],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -3957,7 +3971,7 @@ tf_cc_tests(
         "graph/graph_constructor_test.cc",
     ],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     linkstatic = tf_kernel_tests_linkstatic(),
@@ -5032,6 +5046,7 @@ tf_cc_tests(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
     ],
 )
 
@@ -5055,6 +5070,7 @@ tf_cc_tests(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 

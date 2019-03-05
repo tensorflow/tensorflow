@@ -200,10 +200,10 @@ class DimensionTest(test_util.TensorFlowTestCase):
   def testReduce(self):
     dim = tensor_shape.Dimension(5)
     ctor, args = dim.__reduce__()
-    self.assertEquals(ctor, tensor_shape.Dimension)
-    self.assertEquals(args, (5,))
+    self.assertEqual(ctor, tensor_shape.Dimension)
+    self.assertEqual(args, (5,))
     reconstructed = ctor(*args)
-    self.assertEquals(reconstructed, dim)
+    self.assertEqual(reconstructed, dim)
 
   def testDiv(self):
     # Note: This test is related to GitHub issue 25790.
@@ -457,11 +457,12 @@ class ShapeTest(test_util.TensorFlowTestCase):
   def testReduce(self):
     shape = tensor_shape.TensorShape([2, 3])
     ctor, args = shape.__reduce__()
-    self.assertEquals(ctor, tensor_shape.TensorShape)
-    self.assertEquals(args, ([tensor_shape.Dimension(2),
-                              tensor_shape.Dimension(3)],))
+    self.assertEqual(ctor, tensor_shape.TensorShape)
+    self.assertEqual(args,
+                     ([tensor_shape.Dimension(2),
+                       tensor_shape.Dimension(3)],))
     reconstructed = ctor(*args)
-    self.assertEquals(reconstructed, shape)
+    self.assertEqual(reconstructed, shape)
 
 
 if __name__ == "__main__":

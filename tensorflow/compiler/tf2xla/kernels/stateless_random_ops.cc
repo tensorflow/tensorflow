@@ -15,6 +15,7 @@ limitations under the License.
 
 #include <cmath>
 
+#include "tensorflow/compiler/tf2xla/kernels/random_ops_util.h"
 #include "tensorflow/compiler/tf2xla/lib/random.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -31,12 +32,8 @@ limitations under the License.
 #include "tensorflow/core/lib/math/math_util.h"
 
 namespace tensorflow {
-namespace {
 
 xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
-  // Mask the last 16 bit. With normal rounding, values near "maxval" would be
-  // converted to "maxval" which is out of range ["minval", "maxval"). In
-  // addition, the distribution near the limit is not uniform.
   if (dtype == DT_BFLOAT16) {
     xla::XlaBuilder* builder = input.builder();
     auto output = xla::BitcastConvertType(input, xla::U32) &
@@ -47,6 +44,8 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
     return input;
   }
 }
+
+namespace {
 
 class StatelessRandomUniformOp : public XlaOpKernel {
  public:

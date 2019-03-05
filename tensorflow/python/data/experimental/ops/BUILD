@@ -140,6 +140,19 @@ py_library(
 )
 
 py_library(
+    name = "distribute",
+    srcs = [
+        "distribute.py",
+    ],
+    srcs_version = "PY2AND3",
+    deps = [
+        "//tensorflow/python:experimental_dataset_ops_gen",
+        "//tensorflow/python/data/ops:dataset_ops",
+        "//tensorflow/python/data/util:structure",
+    ],
+)
+
+py_library(
     name = "enumerate_ops",
     srcs = ["enumerate_ops.py"],
     srcs_version = "PY2AND3",
@@ -450,6 +463,7 @@ py_library(
         ":batching",
         ":cardinality",
         ":counter",
+        ":distribute",
         ":enumerate_ops",
         ":error_ops",
         ":filter_for_shard_ops",

@@ -653,7 +653,7 @@ class Conv3DTest(test.TestCase):
         padding="SAME",
         test_input=False)
 
-  # Test the fast path in gemm_pack_rhs/mkldnn_gemm_pack, when channel
+  # Test the fast path in gemm_pack_rhs/gemm_pack_colmajor_block, when channel
   # dimension is a multiple of packet size.
   @test_util.run_deprecated_v1
   def testInputGradientValidPaddingStrideOneFastPath(self):

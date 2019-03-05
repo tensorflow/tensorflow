@@ -1742,7 +1742,14 @@ ShapeInference::InferDegenerateDimensionBroadcastShape(HloOpcode operation,
         ShapeUtil::HumanString(lhs), ShapeUtil::HumanString(rhs),
         dnums.DebugString());
   }
+
   if (kernel_output_features % feature_group_count > 0) {
+    // A depthwise/grouped filter has the shape
+    // [space0, .. spaceN, GROUP_SIZE, NUM_OUTPUT_FEATURES]. When
+    // [space0, .. spaceN, GROUP_SIZE] is convolved with the input, a shape
+    // [space0, .. spaceN, feature_group_count] is formed. Therefore, the output
+    // feature count (which is equal to kernel output features) has to be a
+    // multiple of feature_group_count.
     return InvalidArgument(
         "Expected output feature dimension (value %d) to be divisible by "
         "feature_group_count (value %d); "

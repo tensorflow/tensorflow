@@ -19,6 +19,7 @@ limitations under the License.
 #include <memory>
 #include <unordered_map>
 
+#include "absl/memory/memory.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/attr_value_util.h"
 #include "tensorflow/core/framework/dataset_stateful_op_whitelist.h"
@@ -28,6 +29,7 @@ limitations under the License.
 #include "tensorflow/core/framework/node_def.pb.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
+#include "tensorflow/core/framework/thread_factory.h"
 #include "tensorflow/core/framework/types.pb.h"
 #include "tensorflow/core/framework/variant_encode_decode.h"
 #include "tensorflow/core/framework/variant_tensor_data.h"
@@ -287,7 +289,8 @@ class IteratorContext {
           model(ctx->model()),
           runner(*(ctx->runner())),
           runner_threadpool_size(ctx->runner_threadpool_size()),
-          stats_aggregator(ctx->stats_aggregator()) {}
+          stats_aggregator(ctx->stats_aggregator()),
+          thread_factory(ctx->thread_factory()) {}
 
     explicit Params(OpKernelContext* ctx)
         : env(ctx->env()),
@@ -338,6 +341,10 @@ class IteratorContext {
 
     // The `StatsAggregator` object to record statistics about the iterator.
     std::shared_ptr<StatsAggregator> stats_aggregator = nullptr;
+
+    // A `ThreadFactory` for creating threads used by iterators to perform
+    // blocking work.
+    std::shared_ptr<ThreadFactory> thread_factory = nullptr;
   };
 
   explicit IteratorContext(IteratorContext* ctx) : params_(Params{ctx}) {}
@@ -372,6 +379,20 @@ class IteratorContext {
 
   std::function<void(std::function<void()>)>* runner() {
     return &params_.runner;
+  }
+
+  const std::shared_ptr<ThreadFactory>& thread_factory() {
+    return params_.thread_factory;
+  }
+
+  std::unique_ptr<Thread> StartThread(const string& name,
+                                      std::function<void()> fn) {
+    if (params_.thread_factory) {
+      return params_.thread_factory->StartThread(name, std::move(fn));
+    } else {
+      return absl::WrapUnique(
+          Env::Default()->StartThread({}, name, std::move(fn)));
+    }
   }
 
   int32 runner_threadpool_size() { return params_.runner_threadpool_size; }

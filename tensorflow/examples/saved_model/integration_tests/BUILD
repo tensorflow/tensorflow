@@ -15,6 +15,7 @@ py_binary(
 py_binary(
     name = "use_text_rnn_model",
     srcs = ["use_text_rnn_model.py"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -31,6 +32,7 @@ py_binary(
 py_binary(
     name = "use_rnn_cell",
     srcs = ["use_rnn_cell.py"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         "//tensorflow:tensorflow_py",
     ],
@@ -47,6 +49,7 @@ py_binary(
 py_binary(
     name = "use_model_in_sequential_keras",
     srcs = ["use_model_in_sequential_keras.py"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":util",
         "//tensorflow:tensorflow_py",
@@ -81,6 +84,7 @@ py_binary(
 py_binary(
     name = "use_mnist_cnn",
     srcs = ["use_mnist_cnn.py"],
+    visibility = ["//tensorflow:internal"],
     deps = [
         ":mnist_util",
         ":util",

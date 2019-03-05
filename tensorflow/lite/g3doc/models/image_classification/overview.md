@@ -216,7 +216,7 @@ performance, accuracy, and model size. For guidance, see
 ## Choose a different model
 
 There are a large number of image classification models available on our
-<a href="../hosted.md">List of hosted models</a>. You should aim to choose the
+<a href="../../guide/hosted_models.md">List of hosted models</a>. You should aim to choose the
 optimal model for your application based on performance, accuracy and model
 size. There are trade-offs between each of them.
 

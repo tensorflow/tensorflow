@@ -3824,18 +3824,22 @@ def max_pool3d(input, ksize, strides, padding, data_format="NDHWC", name=None):
 
 
 @tf_export("nn.max_pool_with_argmax", v1=[])
-def max_pool_with_argmax_v2(input,  # pylint: disable=redefined-builtin
-                            ksize,
-                            strides,
-                            padding,
-                            data_format="NHWC",
-                            output_dtype=dtypes.int64,
-                            name=None):
+def max_pool_with_argmax_v2(
+    input,  # pylint: disable=redefined-builtin
+    ksize,
+    strides,
+    padding,
+    data_format="NHWC",
+    output_dtype=dtypes.int64,
+    include_batch_in_index=False,
+    name=None):
   """Performs max pooling on the input and outputs both max values and indices.
 
   The indices in `argmax` are flattened, so that a maximum value at position
-  `[b, y, x, c]` becomes flattened index
-  `((b * height + y) * width + x) * channels + c`.
+  `[b, y, x, c]` becomes flattened index: `(y * width + x) * channels + c` if
+  `include_batch_in_index` is False;
+  `((b * height + y) * width + x) * channels + c`
+  if `include_batch_in_index` is True.
 
   The indices returned are always in `[0, height) x [0, width)` before
   flattening, even if padding is involved and the mathematically correct answer
@@ -3861,6 +3865,8 @@ def max_pool_with_argmax_v2(input,  # pylint: disable=redefined-builtin
     output_dtype: An optional `tf.DType` from: `tf.int32, tf.int64`.
       Defaults to `tf.int64`.
       The dtype of the returned argmax tensor.
+    include_batch_in_index: An optional `boolean`. Defaults to `False`.
+      Whether to include batch dimension in flattened index of `argmax`.
     name: A name for the operation (optional).
 
   Returns:
@@ -3876,23 +3882,27 @@ def max_pool_with_argmax_v2(input,  # pylint: disable=redefined-builtin
   ksize = _get_sequence(ksize, 2, 3, "ksize")
   strides = _get_sequence(strides, 2, 3, "strides")
 
-  return gen_nn_ops.max_pool_with_argmax(input=input,
-                                         ksize=ksize,
-                                         strides=strides,
-                                         padding=padding,
-                                         Targmax=output_dtype,
-                                         name=name)
+  return gen_nn_ops.max_pool_with_argmax(
+      input=input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      Targmax=output_dtype,
+      include_batch_in_index=include_batch_in_index,
+      name=name)
 
 
 @tf_export(v1=["nn.max_pool_with_argmax"])
-def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,redefined-builtin,invalid-name
-                            ksize,
-                            strides,
-                            padding,
-                            data_format="NHWC",
-                            Targmax=None,
-                            name=None,
-                            output_dtype=None):
+def max_pool_with_argmax_v1(  # pylint: disable=missing-docstring,invalid-name
+    input,  # pylint: disable=redefined-builtin
+    ksize,
+    strides,
+    padding,
+    data_format="NHWC",
+    Targmax=None,
+    name=None,
+    output_dtype=None,
+    include_batch_in_index=False):
   if data_format != "NHWC":
     raise ValueError("Data formats other than 'NHWC' are not yet supported")
 
@@ -3901,7 +3911,14 @@ def max_pool_with_argmax_v1(input,  # pylint: disable=missing-docstring,redefine
   if Targmax is None:
     Targmax = dtypes.int64
   return gen_nn_ops.max_pool_with_argmax(
-      input, ksize, strides, padding, Targmax, name)
+      input=input,
+      ksize=ksize,
+      strides=strides,
+      padding=padding,
+      Targmax=Targmax,
+      include_batch_in_index=include_batch_in_index,
+      name=name)
+
 
 max_pool_with_argmax_v1.__doc__ = gen_nn_ops.max_pool_with_argmax.__doc__
 

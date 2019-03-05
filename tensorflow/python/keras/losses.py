@@ -532,34 +532,6 @@ class CategoricalHinge(LossFunctionWrapper):
         categorical_hinge, name=name, reduction=reduction)
 
 
-@keras_export('keras.losses.LogLoss')
-class LogLoss(LossFunctionWrapper):
-  """Computes the log loss between `y_true` and `y_pred`.
-
-  `logloss = - y_true * log(y_pred) - (1 - y_true) * log(1 - y_pred)`
-
-  Usage:
-
-  ```python
-  l = tf.keras.losses.LogLoss()
-  loss = l([0., 1., 1.], [1., 0., 1.])
-  print('Loss: ', loss.numpy())  # Loss: 10.745
-  ```
-
-  Usage with tf.keras API:
-
-  ```python
-  model = tf.keras.Model(inputs, outputs)
-  model.compile('sgd', loss=tf.keras.losses.LogLoss())
-  ```
-  """
-
-  def __init__(self,
-               reduction=losses_utils.ReductionV2.SUM_OVER_BATCH_SIZE,
-               name='logloss'):
-    super(LogLoss, self).__init__(logloss, name=name, reduction=reduction)
-
-
 @keras_export('keras.losses.Poisson')
 class Poisson(LossFunctionWrapper):
   """Computes the Poisson loss between `y_true` and `y_pred`.
@@ -799,15 +771,6 @@ def categorical_hinge(y_true, y_pred):
   pos = math_ops.reduce_sum(y_true * y_pred, axis=-1)
   neg = math_ops.reduce_max((1. - y_true) * y_pred, axis=-1)
   return math_ops.maximum(0., neg - pos + 1.)
-
-
-def logloss(y_true, y_pred):
-  y_pred = ops.convert_to_tensor(y_pred)
-  y_true = math_ops.cast(y_true, y_pred.dtype)
-  losses = math_ops.multiply(y_true, math_ops.log(y_pred + K.epsilon()))
-  losses += math_ops.multiply((1 - y_true),
-                              math_ops.log(1 - y_pred + K.epsilon()))
-  return K.mean(-losses, axis=-1)
 
 
 def huber_loss(y_true, y_pred, delta=1.0):

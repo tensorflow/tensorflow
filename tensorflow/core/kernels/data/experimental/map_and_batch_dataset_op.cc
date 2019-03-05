@@ -353,7 +353,7 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
       }
 
      private:
-      // BatchResult encapsulates the output batch, as well as anciliary
+      // BatchResult encapsulates the output batch, as well as ancillary
       // metadata required to execute the fused map-and-batch operation.
       struct BatchResult {
         explicit BatchResult(int64 batch_size) {
@@ -514,9 +514,9 @@ class MapAndBatchDatasetOp : public UnaryDatasetOpKernel {
           EXCLUSIVE_LOCKS_REQUIRED(*mu_) {
         if (!runner_thread_) {
           auto ctx_copy = std::make_shared<IteratorContext>(*ctx);
-          runner_thread_.reset(ctx->env()->StartThread(
-              {}, "tf_data_map_and_batch",
-              std::bind(&Iterator::RunnerThread, this, ctx_copy)));
+          runner_thread_ = ctx->StartThread(
+              "tf_data_map_and_batch",
+              std::bind(&Iterator::RunnerThread, this, ctx_copy));
         }
       }
 

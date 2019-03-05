@@ -267,8 +267,8 @@ Status XlaBuilder::SetDynamicBinding(int64 dynamic_size_param_num,
       for (int64 index : target_param_index) {
         param_shape_ptr = param_shape_ptr->mutable_tuple_shapes(index);
       }
-      param_shape_ptr->set_dynamic_dimension(target_dim_num,
-                                             /*is_dynamic=*/true);
+      // TODO(b/121223198): Set `is_dynamic` to the parameter shape when XLA
+      // backend can handle dynamic dimensions.
       *instr.mutable_shape() = param_shape.ToProto();
     }
   }

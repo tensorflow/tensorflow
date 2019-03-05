@@ -90,7 +90,8 @@ class TimeDistributedTest(test.TestCase):
 
     # check whether the model variables are present in the
     # trackable list of objects
-    checkpointed_objects = set(trackable_util.list_objects(model))
+    checkpointed_objects = object_identity.ObjectIdentitySet(
+        trackable_util.list_objects(model))
     for v in model.variables:
       self.assertIn(v, checkpointed_objects)
 
