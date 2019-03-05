@@ -196,6 +196,8 @@ py_test(
     tags = [
         "no_gpu",  # b/127001953
         "no_windows",
+        # TODO(b/127092862): Re-enable this test in Kokoro.
+        "no_oss",
     ],
     deps = [
         ":optimizer_v2",
