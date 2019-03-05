@@ -1219,18 +1219,16 @@ class TensorBoard(Callback):
     with context.eager_mode():
       self._close_writers()
       if self.write_graph:
-        if model.run_eagerly:
-          logging.warning('TensorBoard Callback will ignore `write_graph=True`'
-                          'when `Model.run_eagerly=True`.`')
-        else:
-          with self._get_writer(self._train_run_name).as_default():
-            with summary_ops_v2.always_record_summaries():
+        with self._get_writer(self._train_run_name).as_default():
+          with summary_ops_v2.always_record_summaries():
+            if not model.run_eagerly:
               summary_ops_v2.graph(K.get_graph())
-              summary_writable = (
-                  self.model._is_graph_network or  # pylint: disable=protected-access
-                  self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
-              if summary_writable:
-                summary_ops_v2.keras_model('keras', self.model, step=0)
+
+            summary_writable = (
+                self.model._is_graph_network or  # pylint: disable=protected-access
+                self.model.__class__.__name__ == 'Sequential')  # pylint: disable=protected-access
+            if summary_writable:
+              summary_ops_v2.keras_model('keras', self.model, step=0)
 
   def _close_writers(self):
     """Close all remaining open file writers owned by this callback.
