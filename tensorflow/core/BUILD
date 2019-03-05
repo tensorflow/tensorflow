@@ -2177,6 +2177,18 @@ tf_proto_library(
     ],
 )
 
+tf_proto_library(
+    name = "conv_autotuning_proto",
+    srcs = ["protobuf/conv_autotuning.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    protodeps = tf_additional_all_protos(),
+    provide_cc_alias = True,
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
+
 tf_proto_library_cc(
     name = "worker_proto",
     srcs = ["protobuf/worker.proto"],
