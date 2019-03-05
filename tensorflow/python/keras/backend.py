@@ -784,6 +784,14 @@ def constant(value, dtype=None, shape=None, name=None):
   """
   if dtype is None:
     dtype = floatx()
+
+  # If the outer context is eager but we are executing under the keras
+  # FuncGraph, we create EagerTensors and use them as constants.
+  if (ops.executing_eagerly_outside_functions() and
+      getattr(get_graph(), 'name', '') == 'keras_graph'):
+    with ops.init_scope():
+      return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
+
   return constant_op.constant(value, dtype=dtype, shape=shape, name=name)
 
 
@@ -3394,7 +3402,7 @@ def rnn(step_function,
   if unroll:
     if not time_steps:
       raise ValueError('Unrolling requires a fixed number of timesteps.')
-    states = initial_states
+    states = tuple(initial_states)
     successive_states = []
     successive_outputs = []
 
@@ -3426,7 +3434,8 @@ def rnn(step_function,
       for i in range(time_steps):
         inp = _get_input_tensor(i)
         mask_t = mask_list[i]
-        output, new_states = step_function(inp, states + constants)
+        output, new_states = step_function(inp,
+                                           tuple(states) + tuple(constants))
         tiled_mask_t = _expand_mask(mask_t, output)
 
         if not successive_outputs:
@@ -3461,7 +3470,7 @@ def rnn(step_function,
     else:
       for i in range(time_steps):
         inp = _get_input_tensor(i)
-        output, states = step_function(inp, states + constants)
+        output, states = step_function(inp, tuple(states) + tuple(constants))
         successive_outputs.append(output)
         successive_states.append(states)
       last_output = successive_outputs[-1]
@@ -4825,6 +4834,7 @@ def local_conv(inputs,
   return permute_dimensions(output, permutation)
 
 
+@keras_export('keras.backend.local_conv1d')
 def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
   """Apply 1D conv with un-shared weights.
 
@@ -4859,6 +4869,7 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
                     data_format)
 
 
+@keras_export('keras.backend.local_conv2d')
 def local_conv2d(inputs,
                  kernel,
                  kernel_size,
@@ -5310,10 +5321,15 @@ def in_multi_worker_mode():
 def configure_and_create_distributed_session(distribution_strategy):
   """Configure session config and create a session with it."""
 
-  # TODO(priyag): Throw error if a session already exists.
   def _create_session(distribution_strategy):
     """Create the Distributed Strategy session."""
     session_config = get_default_session_config()
+
+    # If a session already exists, merge in its config; in the case there is a
+    # conflict, take values of the existing config.
+    global _SESSION
+    if getattr(_SESSION, 'session', None) and _SESSION.session._config:
+      session_config.MergeFrom(_SESSION.session._config)
 
     if is_tpu_strategy(distribution_strategy):
       # TODO(priyag, yuefengz): Remove this workaround when Distribute

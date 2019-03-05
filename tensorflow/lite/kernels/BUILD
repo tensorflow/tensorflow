@@ -199,11 +199,13 @@ cc_library(
         "pooling.cc",
         "pow.cc",
         "range.cc",
+        "rank.cc",
         "reduce.cc",
         "reshape.cc",
         "resize_bilinear.cc",
         "resize_nearest_neighbor.cc",
         "reverse.cc",
+        "reverse_sequence.cc",
         "select.cc",
         "shape.cc",
         "skip_gram.cc",
@@ -226,6 +228,7 @@ cc_library(
         "unidirectional_sequence_rnn.cc",
         "unique.cc",
         "unpack.cc",
+        "where.cc",
         "while.cc",
         "zeros_like.cc",
     ],
@@ -1097,6 +1100,19 @@ tf_cc_test(
 )
 
 tf_cc_test(
+    name = "rank_test",
+    size = "small",
+    srcs = ["rank_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/c:c_api_internal",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
     name = "pow_test",
     size = "small",
     srcs = ["pow_test.cc"],
@@ -1164,6 +1180,19 @@ tf_cc_test(
     name = "floor_div_test",
     size = "small",
     srcs = ["floor_div_test.cc"],
+    deps = [
+        ":builtin_ops",
+        "//tensorflow/lite:builtin_op_data",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "where_test",
+    size = "small",
+    srcs = ["where_test.cc"],
     deps = [
         ":builtin_ops",
         "//tensorflow/lite:builtin_op_data",
@@ -1341,6 +1370,18 @@ tf_cc_test(
     srcs = ["subgraph_test_util_test.cc"],
     deps = [
         ":subgraph_test_util",
+        "//tensorflow/lite:framework",
+        "//tensorflow/lite/kernels:test_util",
+        "@com_google_googletest//:gtest",
+    ],
+)
+
+tf_cc_test(
+    name = "reverse_sequence_test",
+    size = "small",
+    srcs = ["reverse_sequence_test.cc"],
+    deps = [
+        ":builtin_ops",
         "//tensorflow/lite:framework",
         "//tensorflow/lite/kernels:test_util",
         "@com_google_googletest//:gtest",

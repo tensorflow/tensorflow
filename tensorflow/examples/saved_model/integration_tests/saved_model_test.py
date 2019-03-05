@@ -21,7 +21,7 @@ from __future__ import print_function
 import os
 import subprocess
 
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 from tensorflow.python.framework import test_util
 from tensorflow.python.platform import resource_loader
@@ -82,5 +82,5 @@ class SavedModelTest(tf.test.TestCase):
                                 fast_test_mode="true")
 
 if __name__ == "__main__":
-  # tf.enable_v2_behavior()
+  tf.enable_v2_behavior()
   tf.test.main()

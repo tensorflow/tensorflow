@@ -20,6 +20,7 @@ from __future__ import division
 from __future__ import print_function
 
 import collections
+import six
 
 from tensorflow.python.framework import func_graph
 from tensorflow.python.framework import ops
@@ -287,11 +288,25 @@ def lift_to_graph(init_tensors, graph, sources=None,
   with graph.as_default():
     op_map = {i: i for i in variable_init_tensors}  # Pass through variables.
     source_ops = set()
+    # Add the sources in the same order as the original graph.
+    for s in six.itervalues(captures):
+      if s in sources:
+        sources.remove(s)
+        source_ops.add(s.op)
+        _copy_source(
+            s=s,
+            graph=graph,
+            op_map=op_map,
+            handle_captures=handle_captures,
+            inverse_captures=inverse_captures)
     for s in sources:
       source_ops.add(s.op)
-      _copy_source(s=s, graph=graph, op_map=op_map,
-                   handle_captures=handle_captures,
-                   inverse_captures=inverse_captures)
+      _copy_source(
+          s=s,
+          graph=graph,
+          op_map=op_map,
+          handle_captures=handle_captures,
+          inverse_captures=inverse_captures)
 
     for op in reversed(ops_to_copy):
       if op in source_ops:

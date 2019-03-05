@@ -51,9 +51,11 @@ SIGNATURE_KEY_MAP = mode_keys.ModeKeyMap(**{
     ModeKeys.TRAIN: signature_constants.DEFAULT_TRAIN_SIGNATURE_DEF_KEY,
     ModeKeys.TEST: signature_constants.DEFAULT_EVAL_SIGNATURE_DEF_KEY})
 
-_SINGLE_FEATURE_DEFAULT_NAME = 'feature'
-_SINGLE_RECEIVER_DEFAULT_NAME = 'input'
-_SINGLE_LABEL_DEFAULT_NAME = 'label'
+# Default names used in the SignatureDef input map, which maps strings to
+# TensorInfo protos.
+SINGLE_FEATURE_DEFAULT_NAME = 'feature'
+SINGLE_RECEIVER_DEFAULT_NAME = 'input'
+SINGLE_LABEL_DEFAULT_NAME = 'label'
 
 ### Below utilities are specific to SavedModel exports.
 
@@ -89,7 +91,7 @@ def build_all_signature_defs(receiver_tensors,
     ValueError: if export_outputs is not a dict
   """
   if not isinstance(receiver_tensors, dict):
-    receiver_tensors = {_SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
+    receiver_tensors = {SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors}
   if export_outputs is None or not isinstance(export_outputs, dict):
     raise ValueError('export_outputs must be a dict and not'
                      '{}'.format(type(export_outputs)))
@@ -109,7 +111,7 @@ def build_all_signature_defs(receiver_tensors,
         six.iteritems(receiver_tensors_alternatives)):
       if not isinstance(receiver_tensors_alt, dict):
         receiver_tensors_alt = {
-            _SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors_alt
+            SINGLE_RECEIVER_DEFAULT_NAME: receiver_tensors_alt
         }
       for output_key, export_output in export_outputs.items():
         signature_name = '{}:{}'.format(receiver_name or 'None', output_key or
@@ -280,7 +282,7 @@ def export_outputs_for_mode(
   signature_key = SIGNATURE_KEY_MAP[mode]
   if mode_keys.is_predict(mode):
     return get_export_outputs(serving_export_outputs, predictions)
-  elif mode_keys.is_eval(mode):
+  elif mode_keys.is_train(mode):
     return {signature_key: export_output_lib.TrainOutput(
         loss=loss, predictions=predictions, metrics=metrics)}
   else:

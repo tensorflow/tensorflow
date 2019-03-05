@@ -217,6 +217,9 @@ struct NotEqualOptionsT;
 struct ShapeOptions;
 struct ShapeOptionsT;
 
+struct RankOptions;
+struct RankOptionsT;
+
 struct PowOptions;
 struct PowOptionsT;
 
@@ -285,6 +288,9 @@ struct GatherNdOptionsT;
 
 struct WhereOptions;
 struct WhereOptionsT;
+
+struct ReverseSequenceOptions;
+struct ReverseSequenceOptionsT;
 
 struct OperatorCode;
 struct OperatorCodeT;
@@ -545,11 +551,14 @@ enum BuiltinOperator {
   BuiltinOperator_GATHER_ND = 107,
   BuiltinOperator_COS = 108,
   BuiltinOperator_WHERE = 109,
+  BuiltinOperator_RANK = 110,
+  BuiltinOperator_ELU = 111,
+  BuiltinOperator_REVERSE_SEQUENCE = 112,
   BuiltinOperator_MIN = BuiltinOperator_ADD,
-  BuiltinOperator_MAX = BuiltinOperator_WHERE
+  BuiltinOperator_MAX = BuiltinOperator_REVERSE_SEQUENCE
 };
 
-inline const BuiltinOperator (&EnumValuesBuiltinOperator())[109] {
+inline const BuiltinOperator (&EnumValuesBuiltinOperator())[112] {
   static const BuiltinOperator values[] = {
     BuiltinOperator_ADD,
     BuiltinOperator_AVERAGE_POOL_2D,
@@ -659,7 +668,10 @@ inline const BuiltinOperator (&EnumValuesBuiltinOperator())[109] {
     BuiltinOperator_ADD_N,
     BuiltinOperator_GATHER_ND,
     BuiltinOperator_COS,
-    BuiltinOperator_WHERE
+    BuiltinOperator_WHERE,
+    BuiltinOperator_RANK,
+    BuiltinOperator_ELU,
+    BuiltinOperator_REVERSE_SEQUENCE
   };
   return values;
 }
@@ -776,6 +788,9 @@ inline const char * const *EnumNamesBuiltinOperator() {
     "GATHER_ND",
     "COS",
     "WHERE",
+    "RANK",
+    "ELU",
+    "REVERSE_SEQUENCE",
     nullptr
   };
   return names;
@@ -873,11 +888,13 @@ enum BuiltinOptions {
   BuiltinOptions_GatherNdOptions = 83,
   BuiltinOptions_CosOptions = 84,
   BuiltinOptions_WhereOptions = 85,
+  BuiltinOptions_RankOptions = 86,
+  BuiltinOptions_ReverseSequenceOptions = 87,
   BuiltinOptions_MIN = BuiltinOptions_NONE,
-  BuiltinOptions_MAX = BuiltinOptions_WhereOptions
+  BuiltinOptions_MAX = BuiltinOptions_ReverseSequenceOptions
 };
 
-inline const BuiltinOptions (&EnumValuesBuiltinOptions())[86] {
+inline const BuiltinOptions (&EnumValuesBuiltinOptions())[88] {
   static const BuiltinOptions values[] = {
     BuiltinOptions_NONE,
     BuiltinOptions_Conv2DOptions,
@@ -964,7 +981,9 @@ inline const BuiltinOptions (&EnumValuesBuiltinOptions())[86] {
     BuiltinOptions_AddNOptions,
     BuiltinOptions_GatherNdOptions,
     BuiltinOptions_CosOptions,
-    BuiltinOptions_WhereOptions
+    BuiltinOptions_WhereOptions,
+    BuiltinOptions_RankOptions,
+    BuiltinOptions_ReverseSequenceOptions
   };
   return values;
 }
@@ -1057,6 +1076,8 @@ inline const char * const *EnumNamesBuiltinOptions() {
     "GatherNdOptions",
     "CosOptions",
     "WhereOptions",
+    "RankOptions",
+    "ReverseSequenceOptions",
     nullptr
   };
   return names;
@@ -1409,6 +1430,14 @@ template<> struct BuiltinOptionsTraits<CosOptions> {
 
 template<> struct BuiltinOptionsTraits<WhereOptions> {
   static const BuiltinOptions enum_value = BuiltinOptions_WhereOptions;
+};
+
+template<> struct BuiltinOptionsTraits<RankOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_RankOptions;
+};
+
+template<> struct BuiltinOptionsTraits<ReverseSequenceOptions> {
+  static const BuiltinOptions enum_value = BuiltinOptions_ReverseSequenceOptions;
 };
 
 struct BuiltinOptionsUnion {
@@ -2121,6 +2150,22 @@ struct BuiltinOptionsUnion {
   const WhereOptionsT *AsWhereOptions() const {
     return type == BuiltinOptions_WhereOptions ?
       reinterpret_cast<const WhereOptionsT *>(value) : nullptr;
+  }
+  RankOptionsT *AsRankOptions() {
+    return type == BuiltinOptions_RankOptions ?
+      reinterpret_cast<RankOptionsT *>(value) : nullptr;
+  }
+  const RankOptionsT *AsRankOptions() const {
+    return type == BuiltinOptions_RankOptions ?
+      reinterpret_cast<const RankOptionsT *>(value) : nullptr;
+  }
+  ReverseSequenceOptionsT *AsReverseSequenceOptions() {
+    return type == BuiltinOptions_ReverseSequenceOptions ?
+      reinterpret_cast<ReverseSequenceOptionsT *>(value) : nullptr;
+  }
+  const ReverseSequenceOptionsT *AsReverseSequenceOptions() const {
+    return type == BuiltinOptions_ReverseSequenceOptions ?
+      reinterpret_cast<const ReverseSequenceOptionsT *>(value) : nullptr;
   }
 };
 
@@ -6340,6 +6385,46 @@ inline flatbuffers::Offset<ShapeOptions> CreateShapeOptions(
 
 flatbuffers::Offset<ShapeOptions> CreateShapeOptions(flatbuffers::FlatBufferBuilder &_fbb, const ShapeOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct RankOptionsT : public flatbuffers::NativeTable {
+  typedef RankOptions TableType;
+  RankOptionsT() {
+  }
+};
+
+struct RankOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef RankOptionsT NativeTableType;
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           verifier.EndTable();
+  }
+  RankOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(RankOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<RankOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct RankOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  explicit RankOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  RankOptionsBuilder &operator=(const RankOptionsBuilder &);
+  flatbuffers::Offset<RankOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<RankOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<RankOptions> CreateRankOptions(
+    flatbuffers::FlatBufferBuilder &_fbb) {
+  RankOptionsBuilder builder_(_fbb);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<RankOptions> CreateRankOptions(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct PowOptionsT : public flatbuffers::NativeTable {
   typedef PowOptions TableType;
   PowOptionsT() {
@@ -7418,6 +7503,72 @@ inline flatbuffers::Offset<WhereOptions> CreateWhereOptions(
 
 flatbuffers::Offset<WhereOptions> CreateWhereOptions(flatbuffers::FlatBufferBuilder &_fbb, const WhereOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
 
+struct ReverseSequenceOptionsT : public flatbuffers::NativeTable {
+  typedef ReverseSequenceOptions TableType;
+  int32_t seq_dim;
+  int32_t batch_dim;
+  ReverseSequenceOptionsT()
+      : seq_dim(0),
+        batch_dim(0) {
+  }
+};
+
+struct ReverseSequenceOptions FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
+  typedef ReverseSequenceOptionsT NativeTableType;
+  enum {
+    VT_SEQ_DIM = 4,
+    VT_BATCH_DIM = 6
+  };
+  int32_t seq_dim() const {
+    return GetField<int32_t>(VT_SEQ_DIM, 0);
+  }
+  int32_t batch_dim() const {
+    return GetField<int32_t>(VT_BATCH_DIM, 0);
+  }
+  bool Verify(flatbuffers::Verifier &verifier) const {
+    return VerifyTableStart(verifier) &&
+           VerifyField<int32_t>(verifier, VT_SEQ_DIM) &&
+           VerifyField<int32_t>(verifier, VT_BATCH_DIM) &&
+           verifier.EndTable();
+  }
+  ReverseSequenceOptionsT *UnPack(const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  void UnPackTo(ReverseSequenceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver = nullptr) const;
+  static flatbuffers::Offset<ReverseSequenceOptions> Pack(flatbuffers::FlatBufferBuilder &_fbb, const ReverseSequenceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+};
+
+struct ReverseSequenceOptionsBuilder {
+  flatbuffers::FlatBufferBuilder &fbb_;
+  flatbuffers::uoffset_t start_;
+  void add_seq_dim(int32_t seq_dim) {
+    fbb_.AddElement<int32_t>(ReverseSequenceOptions::VT_SEQ_DIM, seq_dim, 0);
+  }
+  void add_batch_dim(int32_t batch_dim) {
+    fbb_.AddElement<int32_t>(ReverseSequenceOptions::VT_BATCH_DIM, batch_dim, 0);
+  }
+  explicit ReverseSequenceOptionsBuilder(flatbuffers::FlatBufferBuilder &_fbb)
+        : fbb_(_fbb) {
+    start_ = fbb_.StartTable();
+  }
+  ReverseSequenceOptionsBuilder &operator=(const ReverseSequenceOptionsBuilder &);
+  flatbuffers::Offset<ReverseSequenceOptions> Finish() {
+    const auto end = fbb_.EndTable(start_);
+    auto o = flatbuffers::Offset<ReverseSequenceOptions>(end);
+    return o;
+  }
+};
+
+inline flatbuffers::Offset<ReverseSequenceOptions> CreateReverseSequenceOptions(
+    flatbuffers::FlatBufferBuilder &_fbb,
+    int32_t seq_dim = 0,
+    int32_t batch_dim = 0) {
+  ReverseSequenceOptionsBuilder builder_(_fbb);
+  builder_.add_batch_dim(batch_dim);
+  builder_.add_seq_dim(seq_dim);
+  return builder_.Finish();
+}
+
+flatbuffers::Offset<ReverseSequenceOptions> CreateReverseSequenceOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReverseSequenceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher = nullptr);
+
 struct OperatorCodeT : public flatbuffers::NativeTable {
   typedef OperatorCode TableType;
   BuiltinOperator builtin_code;
@@ -7806,6 +7957,12 @@ struct Operator FLATBUFFERS_FINAL_CLASS : private flatbuffers::Table {
   const WhereOptions *builtin_options_as_WhereOptions() const {
     return builtin_options_type() == BuiltinOptions_WhereOptions ? static_cast<const WhereOptions *>(builtin_options()) : nullptr;
   }
+  const RankOptions *builtin_options_as_RankOptions() const {
+    return builtin_options_type() == BuiltinOptions_RankOptions ? static_cast<const RankOptions *>(builtin_options()) : nullptr;
+  }
+  const ReverseSequenceOptions *builtin_options_as_ReverseSequenceOptions() const {
+    return builtin_options_type() == BuiltinOptions_ReverseSequenceOptions ? static_cast<const ReverseSequenceOptions *>(builtin_options()) : nullptr;
+  }
   const flatbuffers::Vector<uint8_t> *custom_options() const {
     return GetPointer<const flatbuffers::Vector<uint8_t> *>(VT_CUSTOM_OPTIONS);
   }
@@ -8175,6 +8332,14 @@ template<> inline const CosOptions *Operator::builtin_options_as<CosOptions>() c
 
 template<> inline const WhereOptions *Operator::builtin_options_as<WhereOptions>() const {
   return builtin_options_as_WhereOptions();
+}
+
+template<> inline const RankOptions *Operator::builtin_options_as<RankOptions>() const {
+  return builtin_options_as_RankOptions();
+}
+
+template<> inline const ReverseSequenceOptions *Operator::builtin_options_as<ReverseSequenceOptions>() const {
+  return builtin_options_as_ReverseSequenceOptions();
 }
 
 struct OperatorBuilder {
@@ -10374,6 +10539,29 @@ inline flatbuffers::Offset<ShapeOptions> CreateShapeOptions(flatbuffers::FlatBuf
       _out_type);
 }
 
+inline RankOptionsT *RankOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new RankOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void RankOptions::UnPackTo(RankOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+}
+
+inline flatbuffers::Offset<RankOptions> RankOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateRankOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<RankOptions> CreateRankOptions(flatbuffers::FlatBufferBuilder &_fbb, const RankOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const RankOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  return tflite::CreateRankOptions(
+      _fbb);
+}
+
 inline PowOptionsT *PowOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
   auto _o = new PowOptionsT();
   UnPackTo(_o, _resolver);
@@ -10937,6 +11125,35 @@ inline flatbuffers::Offset<WhereOptions> CreateWhereOptions(flatbuffers::FlatBuf
   struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const WhereOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
   return tflite::CreateWhereOptions(
       _fbb);
+}
+
+inline ReverseSequenceOptionsT *ReverseSequenceOptions::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
+  auto _o = new ReverseSequenceOptionsT();
+  UnPackTo(_o, _resolver);
+  return _o;
+}
+
+inline void ReverseSequenceOptions::UnPackTo(ReverseSequenceOptionsT *_o, const flatbuffers::resolver_function_t *_resolver) const {
+  (void)_o;
+  (void)_resolver;
+  { auto _e = seq_dim(); _o->seq_dim = _e; };
+  { auto _e = batch_dim(); _o->batch_dim = _e; };
+}
+
+inline flatbuffers::Offset<ReverseSequenceOptions> ReverseSequenceOptions::Pack(flatbuffers::FlatBufferBuilder &_fbb, const ReverseSequenceOptionsT* _o, const flatbuffers::rehasher_function_t *_rehasher) {
+  return CreateReverseSequenceOptions(_fbb, _o, _rehasher);
+}
+
+inline flatbuffers::Offset<ReverseSequenceOptions> CreateReverseSequenceOptions(flatbuffers::FlatBufferBuilder &_fbb, const ReverseSequenceOptionsT *_o, const flatbuffers::rehasher_function_t *_rehasher) {
+  (void)_rehasher;
+  (void)_o;
+  struct _VectorArgs { flatbuffers::FlatBufferBuilder *__fbb; const ReverseSequenceOptionsT* __o; const flatbuffers::rehasher_function_t *__rehasher; } _va = { &_fbb, _o, _rehasher}; (void)_va;
+  auto _seq_dim = _o->seq_dim;
+  auto _batch_dim = _o->batch_dim;
+  return tflite::CreateReverseSequenceOptions(
+      _fbb,
+      _seq_dim,
+      _batch_dim);
 }
 
 inline OperatorCodeT *OperatorCode::UnPack(const flatbuffers::resolver_function_t *_resolver) const {
@@ -11537,6 +11754,14 @@ inline bool VerifyBuiltinOptions(flatbuffers::Verifier &verifier, const void *ob
       auto ptr = reinterpret_cast<const WhereOptions *>(obj);
       return verifier.VerifyTable(ptr);
     }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<const RankOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
+    case BuiltinOptions_ReverseSequenceOptions: {
+      auto ptr = reinterpret_cast<const ReverseSequenceOptions *>(obj);
+      return verifier.VerifyTable(ptr);
+    }
     default: return false;
   }
 }
@@ -11895,6 +12120,14 @@ inline void *BuiltinOptionsUnion::UnPack(const void *obj, BuiltinOptions type, c
       auto ptr = reinterpret_cast<const WhereOptions *>(obj);
       return ptr->UnPack(resolver);
     }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<const RankOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
+    case BuiltinOptions_ReverseSequenceOptions: {
+      auto ptr = reinterpret_cast<const ReverseSequenceOptions *>(obj);
+      return ptr->UnPack(resolver);
+    }
     default: return nullptr;
   }
 }
@@ -12241,6 +12474,14 @@ inline flatbuffers::Offset<void> BuiltinOptionsUnion::Pack(flatbuffers::FlatBuff
       auto ptr = reinterpret_cast<const WhereOptionsT *>(value);
       return CreateWhereOptions(_fbb, ptr, _rehasher).Union();
     }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<const RankOptionsT *>(value);
+      return CreateRankOptions(_fbb, ptr, _rehasher).Union();
+    }
+    case BuiltinOptions_ReverseSequenceOptions: {
+      auto ptr = reinterpret_cast<const ReverseSequenceOptionsT *>(value);
+      return CreateReverseSequenceOptions(_fbb, ptr, _rehasher).Union();
+    }
     default: return 0;
   }
 }
@@ -12585,6 +12826,14 @@ inline BuiltinOptionsUnion::BuiltinOptionsUnion(const BuiltinOptionsUnion &u) FL
     }
     case BuiltinOptions_WhereOptions: {
       value = new WhereOptionsT(*reinterpret_cast<WhereOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_RankOptions: {
+      value = new RankOptionsT(*reinterpret_cast<RankOptionsT *>(u.value));
+      break;
+    }
+    case BuiltinOptions_ReverseSequenceOptions: {
+      value = new ReverseSequenceOptionsT(*reinterpret_cast<ReverseSequenceOptionsT *>(u.value));
       break;
     }
     default:
@@ -13016,6 +13265,16 @@ inline void BuiltinOptionsUnion::Reset() {
     }
     case BuiltinOptions_WhereOptions: {
       auto ptr = reinterpret_cast<WhereOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_RankOptions: {
+      auto ptr = reinterpret_cast<RankOptionsT *>(value);
+      delete ptr;
+      break;
+    }
+    case BuiltinOptions_ReverseSequenceOptions: {
+      auto ptr = reinterpret_cast<ReverseSequenceOptionsT *>(value);
       delete ptr;
       break;
     }

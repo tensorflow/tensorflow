@@ -406,10 +406,10 @@ REGISTER_OP("_MklAdd")
         "complex128, string}")
     .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn)
     .Doc(R"doc(
-Returns x + y element-wise.
+Returns `x` + `y` element-wise.
 
-*NOTE*: `Add` supports broadcasting. `AddN` does not. More about broadcasting
-[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html)
+*NOTE*: `tf.math.add` supports broadcasting. `tf.math.add_n` does not. More about broadcasting
+[here](http://docs.scipy.org/doc/numpy/user/basics.broadcasting.html).
 )doc");
 
 REGISTER_OP("Sub").BINARY_MORE().SetShapeFn(
@@ -430,6 +430,14 @@ Returns x - y element-wise.
 
 REGISTER_OP("Mul").BINARY_MORE().SetIsCommutative().SetShapeFn(
     shape_inference::BroadcastBinaryOpShapeFn);
+
+REGISTER_OP("MulNoNan")
+    .Input("x: T")
+    .Input("y: T")
+    .Output("z: T")
+    .Attr("T: {float, double}")
+    .SetIsCommutative()
+    .SetShapeFn(shape_inference::BroadcastBinaryOpShapeFn);
 
 REGISTER_OP("_MklMul")
     .BINARY_MORE()
@@ -842,6 +850,15 @@ REGISTER_OP("SparseMatMul")
 // For operations where the output is a reduction function along some
 // dimensions of the input.
 REGISTER_OP("Sum")
+    .Input("input: T")
+    .Input("reduction_indices: Tidx")
+    .Output("output: T")
+    .Attr("keep_dims: bool = false")
+    .Attr("T: numbertype")
+    .Attr("Tidx: {int32, int64} = DT_INT32")
+    .SetShapeFn(shape_inference::ReductionShape);
+
+REGISTER_OP("EuclideanNorm")
     .Input("input: T")
     .Input("reduction_indices: Tidx")
     .Output("output: T")

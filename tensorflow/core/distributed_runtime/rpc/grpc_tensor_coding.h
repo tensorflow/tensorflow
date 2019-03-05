@@ -16,9 +16,7 @@ limitations under the License.
 #ifndef TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TENSOR_CODING_H_
 #define TENSORFLOW_CORE_DISTRIBUTED_RUNTIME_RPC_GRPC_TENSOR_CODING_H_
 
-namespace grpc {
-class ByteBuffer;
-}  // namespace grpc
+#include "grpcpp/impl/codegen/byte_buffer.h"
 
 namespace tensorflow {
 class Tensor;

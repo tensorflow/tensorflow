@@ -20,6 +20,8 @@ limitations under the License.
 
 #include <limits>
 
+#include "absl/strings/string_view.h"
+#include "absl/types/optional.h"
 #include "tensorflow/core/framework/numeric_types.h"
 #include "tensorflow/core/framework/resource_handle.h"
 #include "tensorflow/core/framework/type_traits.h"
@@ -52,21 +54,25 @@ struct AllocationAttributes {
   std::function<uint64()> freed_by_func = nullptr;
 };
 
-// Runtime statistics collected by an allocator.
+// Runtime statistics collected by an allocator. Exactly the same as
+// stream_executor::AllocatorStats, but independently defined to preserve the
+// mutual independence of StreamExecutor and TensorFlow.
 struct AllocatorStats {
-  int64 num_allocs;        // Number of allocations.
-  int64 bytes_in_use;      // Number of bytes in use.
-  int64 max_bytes_in_use;  // The maximum bytes in use.
-  int64 max_alloc_size;    // The max single allocation seen.
+  int64 num_allocs;          // Number of allocations.
+  int64 bytes_in_use;        // Number of bytes in use.
+  int64 peak_bytes_in_use;   // The peak bytes in use.
+  int64 largest_alloc_size;  // The largest single allocation seen.
 
-  // The upper limit what the allocator can allocate, if such a limit
-  // is known. Certain allocator may return 0 to indicate the limit is
-  // unknown.
-  int64 bytes_limit;
+  // The upper limit of bytes of user allocatable device memory, if such a limit
+  // is known.
+  absl::optional<int64> bytes_limit;
 
-  AllocatorStats() { Clear(); }
+  AllocatorStats()
+      : num_allocs(0),
+        bytes_in_use(0),
+        peak_bytes_in_use(0),
+        largest_alloc_size(0) {}
 
-  void Clear();
   string DebugString() const;
 };
 
@@ -198,7 +204,7 @@ class Allocator {
   }
 
   // Fills in 'stats' with statistics collected by this allocator.
-  virtual void GetStats(AllocatorStats* stats) { stats->Clear(); }
+  virtual absl::optional<AllocatorStats> GetStats() { return absl::nullopt; }
 
   // Clears the internal stats except for the `in_use` field.
   virtual void ClearStats() {}

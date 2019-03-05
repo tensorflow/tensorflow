@@ -4,18 +4,6 @@ tf_class {
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetSource\'>"
   is_instance: "<class \'tensorflow.python.data.ops.dataset_ops.DatasetV2\'>"
   is_instance: "<type \'object\'>"
-  member {
-    name: "output_classes"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "output_shapes"
-    mtype: "<type \'property\'>"
-  }
-  member {
-    name: "output_types"
-    mtype: "<type \'property\'>"
-  }
   member_method {
     name: "__init__"
     argspec: "args=[\'self\', \'filenames\', \'record_defaults\', \'compression_type\', \'buffer_size\', \'header\', \'field_delim\', \'use_quote_delim\', \'na_value\', \'select_cols\'], varargs=None, keywords=None, defaults=[\'None\', \'None\', \'False\', \',\', \'True\', \'\', \'None\'], "

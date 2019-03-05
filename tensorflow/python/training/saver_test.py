@@ -73,9 +73,9 @@ from tensorflow.python.training import queue_runner_impl
 from tensorflow.python.training import saver as saver_module
 from tensorflow.python.training import saver_test_utils
 from tensorflow.python.training import training_util
-from tensorflow.python.training.checkpointable import base as checkpointable_base
-from tensorflow.python.training.checkpointable import tracking as checkpointable_tracking
-from tensorflow.python.training.checkpointable import util as checkpointable_utils
+from tensorflow.python.training.tracking import base as trackable_base
+from tensorflow.python.training.tracking import tracking as trackable_tracking
+from tensorflow.python.training.tracking import util as trackable_utils
 from tensorflow.python.util import compat
 
 
@@ -2775,15 +2775,15 @@ class ScopedGraphTest(test.TestCase):
       self.assertEqual(2.0, self.evaluate(var_dict2["variable2:0"]))
 
 
-class _OwnsAVariableSimple(checkpointable_base.Checkpointable):
-  """A Checkpointable object which can be saved using a tf.train.Saver."""
+class _OwnsAVariableSimple(trackable_base.Trackable):
+  """A Trackable object which can be saved using a tf.train.Saver."""
 
   def __init__(self):
     self.non_dep_variable = variable_scope.get_variable(
         name="non_dep_variable", initializer=6., use_resource=True)
 
   def _gather_saveables_for_checkpoint(self):
-    return {checkpointable_base.VARIABLE_VALUE_KEY: self.non_dep_variable}
+    return {trackable_base.VARIABLE_VALUE_KEY: self.non_dep_variable}
 
   # The Saver sorts by name before parsing, so we need a name property.
   @property
@@ -2808,8 +2808,8 @@ class _MirroringSaveable(
         self._mirrored_variable.assign(tensor))
 
 
-class _OwnsMirroredVariables(checkpointable_base.Checkpointable):
-  """A Checkpointable object which returns a more complex SaveableObject."""
+class _OwnsMirroredVariables(trackable_base.Trackable):
+  """A Trackable object which returns a more complex SaveableObject."""
 
   def __init__(self):
     self.non_dep_variable = variable_scope.get_variable(
@@ -2823,7 +2823,7 @@ class _OwnsMirroredVariables(checkpointable_base.Checkpointable):
           primary_variable=self.non_dep_variable,
           mirrored_variable=self.mirrored,
           name=name)
-    return {checkpointable_base.VARIABLE_VALUE_KEY: _saveable_factory}
+    return {trackable_base.VARIABLE_VALUE_KEY: _saveable_factory}
 
   # The Saver sorts by name before parsing, so we need a name property.
   @property
@@ -2831,11 +2831,11 @@ class _OwnsMirroredVariables(checkpointable_base.Checkpointable):
     return self.non_dep_variable.name
 
 
-class NonLayerCheckpointable(checkpointable_tracking.AutoCheckpointable):
+class NonLayerTrackable(trackable_tracking.AutoTrackable):
 
   def __init__(self):
-    super(NonLayerCheckpointable, self).__init__()
-    self.a_variable = checkpointable_utils.add_variable(
+    super(NonLayerTrackable, self).__init__()
+    self.a_variable = trackable_utils.add_variable(
         self, name="a_variable", shape=[])
 
 
@@ -2846,19 +2846,19 @@ class MyModel(training.Model):
     super(MyModel, self).__init__()
     self._named_dense = core.Dense(1, use_bias=True)
     self._second = core.Dense(1, use_bias=False)
-    # We can still track Checkpointables which aren't Layers.
-    self._non_layer = NonLayerCheckpointable()
+    # We can still track Trackables which aren't Layers.
+    self._non_layer = NonLayerTrackable()
 
   def call(self, values):
     ret = self._second(self._named_dense(values))
     return ret
 
 
-class CheckpointableCompatibilityTests(test.TestCase):
+class TrackableCompatibilityTests(test.TestCase):
 
   # TODO(allenl): Track down python3 reference cycles in these tests.
   @test_util.run_in_graph_and_eager_modes
-  def testNotSaveableButIsCheckpointable(self):
+  def testNotSaveableButIsTrackable(self):
     v = _OwnsAVariableSimple()
     test_dir = self.get_temp_dir()
     prefix = os.path.join(test_dir, "ckpt")
@@ -2923,13 +2923,13 @@ class CheckpointableCompatibilityTests(test.TestCase):
     model = MyModel()
     optimizer = adam.AdamOptimizer(0.001)
     optimizer_step = training_util.get_or_create_global_step()
-    root_checkpointable = checkpointable_utils.Checkpoint(
+    root_trackable = trackable_utils.Checkpoint(
         optimizer=optimizer, model=model, optimizer_step=optimizer_step)
     train_op = optimizer.minimize(
         functools.partial(model, input_value),
         global_step=optimizer_step)
-    self.evaluate(checkpointable_utils.gather_initializers(
-        root_checkpointable))
+    self.evaluate(trackable_utils.gather_initializers(
+        root_trackable))
     self.evaluate(train_op)
     # A regular variable, a slot variable, and a non-slot Optimizer variable
     # with known values to check when loading.
@@ -2938,24 +2938,24 @@ class CheckpointableCompatibilityTests(test.TestCase):
         var=model._named_dense.bias, name="m").assign([2.]))
     beta1_power, _ = optimizer._get_beta_accumulators()
     self.evaluate(beta1_power.assign(3.))
-    return root_checkpointable
+    return root_trackable
 
-  def _set_sentinels(self, root_checkpointable):
-    self.evaluate(root_checkpointable.model._named_dense.bias.assign([101.]))
+  def _set_sentinels(self, root_trackable):
+    self.evaluate(root_trackable.model._named_dense.bias.assign([101.]))
     self.evaluate(
-        root_checkpointable.optimizer.get_slot(
-            var=root_checkpointable.model._named_dense.bias, name="m")
+        root_trackable.optimizer.get_slot(
+            var=root_trackable.model._named_dense.bias, name="m")
         .assign([102.]))
-    beta1_power, _ = root_checkpointable.optimizer._get_beta_accumulators()
+    beta1_power, _ = root_trackable.optimizer._get_beta_accumulators()
     self.evaluate(beta1_power.assign(103.))
 
-  def _check_sentinels(self, root_checkpointable):
+  def _check_sentinels(self, root_trackable):
     self.assertAllEqual(
-        [1.], self.evaluate(root_checkpointable.model._named_dense.bias))
+        [1.], self.evaluate(root_trackable.model._named_dense.bias))
     self.assertAllEqual([2.], self.evaluate(
-        root_checkpointable.optimizer.get_slot(
-            var=root_checkpointable.model._named_dense.bias, name="m")))
-    beta1_power, _ = root_checkpointable.optimizer._get_beta_accumulators()
+        root_trackable.optimizer.get_slot(
+            var=root_trackable.model._named_dense.bias, name="m")))
+    beta1_power, _ = root_trackable.optimizer._get_beta_accumulators()
     self.assertAllEqual(3., self.evaluate(beta1_power))
 
   def testVariableNotFoundErrorRaised(self):
@@ -3012,13 +3012,13 @@ class CheckpointableCompatibilityTests(test.TestCase):
     save_graph = ops_lib.Graph()
     with save_graph.as_default(), self.session(graph=save_graph) as sess:
       root = self._initialized_model()
-      object_saver = checkpointable_utils.Checkpoint(root=root)
+      object_saver = trackable_utils.Checkpoint(root=root)
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
 
       # An incompatible object-based checkpoint to check error messages
       var = resource_variable_ops.ResourceVariable(1., name="a")
       self.evaluate(var.initializer)
-      second_saver = checkpointable_utils.Checkpoint(v=var)
+      second_saver = trackable_utils.Checkpoint(v=var)
       second_path = second_saver.save(file_prefix=os.path.join(
           checkpoint_directory, "second"))
 
@@ -3046,7 +3046,7 @@ class CheckpointableCompatibilityTests(test.TestCase):
     save_graph = ops_lib.Graph()
     with save_graph.as_default(), self.session(graph=save_graph):
       root = self._initialized_model()
-      object_saver = checkpointable_utils.Checkpoint(root=root)
+      object_saver = trackable_utils.Checkpoint(root=root)
       save_path = object_saver.save(file_prefix=checkpoint_prefix)
 
     with context.eager_mode():

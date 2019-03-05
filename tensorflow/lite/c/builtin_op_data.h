@@ -334,6 +334,9 @@ typedef struct {
 } TfLiteShapeParams;
 
 typedef struct {
+} TfLiteRankParams;
+
+typedef struct {
   // Parameters supported by version 1:
   float min;
   float max;
@@ -364,6 +367,11 @@ typedef struct {
 typedef struct {
   TfLiteType index_out_type;
 } TfLiteUniqueParams;
+
+typedef struct {
+  int seq_dim;
+  int batch_dim;
+} TfLiteReverseSequenceParams;
 
 #ifdef __cplusplus
 }  // extern "C"

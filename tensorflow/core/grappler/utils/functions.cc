@@ -311,15 +311,14 @@ GrapplerFunctionItem::GrapplerFunctionItem(
     string func_name, string description, AttrSlice func_attr,
     std::vector<InputArgExpansion> input_arg_expansions,
     std::vector<OutputArgExpansion> output_arg_expansions,
-    std::vector<string> keep_nodes, const int graph_def_version,
+    std::vector<ControlOutput> control_outputs, const int graph_def_version,
     const bool is_stateful, GraphDef&& function_body)
     : description_(std::move(description)),
       func_attr_(func_attr),
       input_arg_expansions_(std::move(input_arg_expansions)),
       output_arg_expansions_(std::move(output_arg_expansions)),
+      control_outputs_(std::move(control_outputs)),
       is_stateful_(is_stateful) {
-  // Move assign GrapplerItem members.
-  keep_ops = std::move(keep_nodes);
   id = std::move(func_name);
   graph = std::move(function_body);
 
@@ -335,6 +334,10 @@ GrapplerFunctionItem::GrapplerFunctionItem(
     for (const string& output_node : output_arg.output_nodes) {
       fetch.push_back(output_node);
     }
+  }
+  // We must keep all control output nodes.
+  for (const ControlOutput& control_output : control_outputs_) {
+    keep_ops.push_back(control_output.node_name);
   }
 
   // Tensorflow functions execution semantics is different from the main graph,
@@ -366,6 +369,15 @@ const OutputArgExpansion& GrapplerFunctionItem::output(int i) const {
 
 const std::size_t GrapplerFunctionItem::output_size() const {
   return output_arg_expansions_.size();
+}
+
+const std::vector<ControlOutput>& GrapplerFunctionItem::control_outputs()
+    const {
+  return control_outputs_;
+}
+
+const std::size_t GrapplerFunctionItem::control_output_size() const {
+  return control_outputs_.size();
 }
 
 const AttrSlice& GrapplerFunctionItem::func_attr() const { return func_attr_; }
@@ -624,15 +636,20 @@ Status MakeGrapplerFunctionItem(const FunctionDef& func,
     outputs.push_back(std::move(output));
   }
 
-  std::vector<string> keep_ops;
-  bool is_stateful = signature.is_stateful();
+  // Control outputs ensure that all side-effectful nodes in the function body
+  // will execute, even if they are not required to compute regular output args.
+  std::vector<ControlOutput> control_outputs;
+  control_outputs.reserve(func.control_ret_size());
+  for (const auto& control_ret : func.control_ret()) {
+    control_outputs.push_back({control_ret.first, control_ret.second});
+  }
 
   *item = GrapplerFunctionItem(
       /*func_name=*/signature.name(),
       /*description=*/signature.description(),
       /*func_attr=*/AttrSlice(&func.attr()), std::move(inputs),
-      std::move(outputs), std::move(keep_ops), graph_def_version, is_stateful,
-      std::move(function_body));
+      std::move(outputs), std::move(control_outputs), graph_def_version,
+      signature.is_stateful(), std::move(function_body));
   return Status::OK();
 }
 
@@ -842,6 +859,13 @@ Status MakeFunctionDef(const GrapplerFunctionItem& item,
     TF_RETURN_IF_ERROR(connectivity.AsFunctionDefInput(
         output_tensor(output_arg),
         &(*func->mutable_ret())[output_arg.output_name]));
+  }
+
+  // Add function control outputs.
+  for (const ControlOutput& control_out : item.control_outputs()) {
+    func->mutable_control_ret()->insert(
+        {control_out.output_name, control_out.node_name});
+    *func->mutable_signature()->add_control_output() = control_out.output_name;
   }
 
   // Copy function definition specific attributes.

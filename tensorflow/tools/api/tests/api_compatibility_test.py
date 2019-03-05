@@ -78,6 +78,13 @@ _UPDATE_WARNING_FILE = 'tensorflow/tools/api/tests/API_UPDATE_WARNING.txt'
 _NON_CORE_PACKAGES = ['estimator']
 
 
+# TODO(annarev): remove this once we test with newer version of
+# estimator that actually has compat v1 version.
+if not hasattr(tf.compat.v1, 'estimator'):
+  tf.compat.v1.estimator = tf.estimator
+  tf.compat.v2.estimator = tf.estimator
+
+
 def _KeyToFilePath(key, api_version):
   """From a given key, construct a filepath.
 

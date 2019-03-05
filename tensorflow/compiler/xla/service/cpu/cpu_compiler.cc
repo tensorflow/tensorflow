@@ -50,6 +50,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/buffer_assignment.h"
 #include "tensorflow/compiler/xla/service/buffer_liveness.h"
 #include "tensorflow/compiler/xla/service/call_inliner.h"
+#include "tensorflow/compiler/xla/service/cholesky_expander.h"
 #include "tensorflow/compiler/xla/service/conditional_simplifier.h"
 #include "tensorflow/compiler/xla/service/convolution_group_converter.h"
 #include "tensorflow/compiler/xla/service/cpu/buffer_info_util.h"
@@ -106,6 +107,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
+#include "tensorflow/core/platform/dynamic_annotations.h"
 
 namespace xla {
 namespace cpu {
@@ -256,6 +258,7 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
 
   pipeline.AddPass<MapInliner>();
 
+  pipeline.AddPass<CholeskyExpander>();
   pipeline.AddPass<TriangularSolveExpander>();
 
   // TODO(b/65775800): Fix wrong output bug in Call and remove the CallInliner
@@ -315,6 +318,11 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
       },
       TransposeFolding::NeverFoldTranspose);
   pipeline.AddPass<HloCSE>(/*is_layout_sensitive=*/false);
+
+  pipeline.AddPass<CpuLayoutAssignment>(
+      module->mutable_entry_computation_layout(),
+      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
+
   pipeline.AddPass<CpuInstructionFusion>();
 
   pipeline.AddPass<ScatterExpander>();
@@ -322,10 +330,6 @@ Status CpuCompiler::RunHloPassesThroughLayoutAssn(
   ReducePrecisionInsertion::AddPasses(
       &pipeline, module->config().debug_options(),
       ReducePrecisionInsertion::PassTiming::AFTER_FUSION);
-
-  pipeline.AddPass<CpuLayoutAssignment>(
-      module->mutable_entry_computation_layout(),
-      LayoutAssignment::InstructionCanChangeLayout, target_machine_features);
   return pipeline.Run(module).status();
 }
 
@@ -345,13 +349,10 @@ Status CpuCompiler::RunHloPassesAfterLayoutAssn(
   {
     auto& pass = pipeline.AddPass<HloPassFix<HloPassPipeline>>(
         "simplification after layout assignement");
-    // TODO(b/117156505): When the bug is fixed, the CPU backend should not
-    // produce layout changing elementwise operations. We will then pass
-    // LayoutAssignment::InstructionCanChangeLayout to the HLO verifier to
-    // enable stricter verification.
     pass.AddInvariantChecker<HloVerifier>(
         /*layout_sensitive=*/true,
-        /*allow_mixed_precision=*/false);
+        /*allow_mixed_precision=*/false,
+        LayoutAssignment::InstructionCanChangeLayout);
     AlgebraicSimplifierOptions options;
     options.set_is_layout_sensitive(true);
     options.set_enable_dot_strength_reduction(false);
@@ -636,7 +637,13 @@ StatusOr<std::unique_ptr<Executable>> CpuCompiler::RunBackend(
   IrEmitter ir_emitter(*module, *assignment, llvm_module.get(),
                        std::move(instruction_to_profile_idx),
                        std::move(computation_to_profile_idx),
-                       &target_machine_features);
+                       &target_machine_features,
+#ifdef MEMORY_SANITIZER
+                       /*emit_code_for_msan=*/true
+#else
+                       /*emit_code_for_msan=*/false
+#endif
+  );
 
   TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 
@@ -834,7 +841,9 @@ CpuCompiler::CompileAheadOfTime(std::unique_ptr<HloModuleGroup> module_group,
     IrEmitter ir_emitter(*module, *assignment, &llvm_module,
                          std::move(instruction_to_profile_idx),
                          std::move(computation_to_profile_idx),
-                         &target_machine_features);
+                         &target_machine_features,
+                         // TODO(b/66051036): Run full msan for AOT.
+                         /*emit_code_for_msan=*/false);
 
     TF_RETURN_IF_ERROR(ir_emitter.EmitConstantGlobals());
 

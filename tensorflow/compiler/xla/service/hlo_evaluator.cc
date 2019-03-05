@@ -33,6 +33,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/map_util.h"
 #include "tensorflow/compiler/xla/primitive_util.h"
 #include "tensorflow/compiler/xla/service/cpu/runtime_single_threaded_matmul.h"
+#include "tensorflow/compiler/xla/service/hlo_casting_utils.h"
 #include "tensorflow/compiler/xla/service/hlo_evaluator_typed_visitor.h"
 #include "tensorflow/compiler/xla/service/hlo_instruction.h"
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
@@ -1269,28 +1270,27 @@ Status HloEvaluator::HandleFusion(HloInstruction* fusion) {
 }
 
 Status HloEvaluator::HandleConditional(HloInstruction* conditional) {
-  const auto& pred = GetEvaluatedLiteralFor(conditional->operand(0));
-  const auto& true_computation_arg =
-      GetEvaluatedLiteralFor(conditional->operand(1));
-  const auto& false_computation_arg =
-      GetEvaluatedLiteralFor(conditional->operand(2));
-
-  auto* true_computation = conditional->true_computation();
-  auto* false_computation = conditional->false_computation();
+  const auto& branch_index_literal =
+      GetEvaluatedLiteralFor(conditional->operand(0));
+  int branch_index;
+  if (conditional->operand(0)->shape().element_type() == PRED) {
+    branch_index = branch_index_literal.Get<bool>({}) ? 0 : 1;
+  } else {
+    branch_index = branch_index_literal.Get<int32>({});
+    if (branch_index < 0 || branch_index >= conditional->branch_count()) {
+      branch_index = conditional->branch_count() - 1;
+    }
+  }
+  const auto& branch_computation_arg =
+      GetEvaluatedLiteralFor(conditional->operand(1 + branch_index));
 
   HloEvaluator embedded_evaluator;
   embedded_evaluator.set_dynamic_dimension_inference(
       dynamic_dimension_inference_);
-  Literal result;
-  if (pred.Get<bool>({})) {
-    result =
-        embedded_evaluator.Evaluate(*true_computation, {&true_computation_arg})
-            .ConsumeValueOrDie();
-  } else {
-    result = embedded_evaluator
-                 .Evaluate(*false_computation, {&false_computation_arg})
-                 .ConsumeValueOrDie();
-  }
+  Literal result = embedded_evaluator
+                       .Evaluate(*conditional->branch_computation(branch_index),
+                                 {&branch_computation_arg})
+                       .ConsumeValueOrDie();
 
   evaluated_[conditional] = std::move(result);
   return Status::OK();
@@ -1493,44 +1493,47 @@ Status HloEvaluator::HandleSort(HloInstruction* sort) {
         std::vector<int64> indices_to_sort(sort_dim_elements);
         std::iota(indices_to_sort.begin(), indices_to_sort.end(), 0);
         Status compare_status = Status::OK();
-        std::stable_sort(
-            indices_to_sort.begin(), indices_to_sort.end(),
-            [sort, &compare_status, &embedded_evaluator, &literals_to_sort](
-                int64 a, int64 b) {
-              std::vector<Literal> literals;
-              literals.reserve(2 * sort->operand_count());
-              for (int64 i = 0; i < sort->operand_count(); ++i) {
-                auto lhs = ExtractFromIndexPositions(
-                    literals_to_sort[i], {a}, /*extract_as_scalar=*/true);
-                if (!lhs.ok()) {
-                  compare_status = lhs.status();
-                  return false;
-                }
-                literals.push_back(std::move(lhs.ValueOrDie()));
-                auto rhs = ExtractFromIndexPositions(
-                    literals_to_sort[i], {b}, /*extract_as_scalar=*/true);
-                if (!rhs.ok()) {
-                  compare_status = rhs.status();
-                  return false;
-                }
-                literals.push_back(std::move(rhs.ValueOrDie()));
-              }
-              std::vector<const Literal*> literal_ptrs;
-              absl::c_transform(
-                  literals, std::back_inserter(literal_ptrs),
-                  [](const Literal& literal) { return &literal; });
+        auto comparator = [sort, &compare_status, &embedded_evaluator,
+                           &literals_to_sort](int64 a, int64 b) {
+          std::vector<Literal> literals;
+          literals.reserve(2 * sort->operand_count());
+          for (int64 i = 0; i < sort->operand_count(); ++i) {
+            auto lhs = ExtractFromIndexPositions(literals_to_sort[i], {a},
+                                                 /*extract_as_scalar=*/true);
+            if (!lhs.ok()) {
+              compare_status = lhs.status();
+              return false;
+            }
+            literals.push_back(std::move(lhs.ValueOrDie()));
+            auto rhs = ExtractFromIndexPositions(literals_to_sort[i], {b},
+                                                 /*extract_as_scalar=*/true);
+            if (!rhs.ok()) {
+              compare_status = rhs.status();
+              return false;
+            }
+            literals.push_back(std::move(rhs.ValueOrDie()));
+          }
+          std::vector<const Literal*> literal_ptrs;
+          absl::c_transform(literals, std::back_inserter(literal_ptrs),
+                            [](const Literal& literal) { return &literal; });
 
-              auto computed_result =
-                  embedded_evaluator.Evaluate(*sort->to_apply(), literal_ptrs);
-              // Clear visit states so that we can use the evaluator again
-              // on the same computation.
-              embedded_evaluator.ResetVisitStates();
-              if (!computed_result.ok()) {
-                compare_status = computed_result.status();
-                return false;
-              }
-              return computed_result.ValueOrDie().Get<bool>({});
-            });
+          auto computed_result =
+              embedded_evaluator.Evaluate(*sort->to_apply(), literal_ptrs);
+          // Clear visit states so that we can use the evaluator again
+          // on the same computation.
+          embedded_evaluator.ResetVisitStates();
+          if (!computed_result.ok()) {
+            compare_status = computed_result.status();
+            return false;
+          }
+          return computed_result.ValueOrDie().Get<bool>({});
+        };
+        if (Cast<HloSortInstruction>(sort)->is_stable()) {
+          std::stable_sort(indices_to_sort.begin(), indices_to_sort.end(),
+                           comparator);
+        } else {
+          std::sort(indices_to_sort.begin(), indices_to_sort.end(), comparator);
+        }
         if (!compare_status.ok()) {
           return compare_status;
         }

@@ -81,9 +81,7 @@ XLA_TEST_F(SortingTest, TopKFullSort) {
   ComputeAndCompareR1<float>(&builder, inputs, {});
 }
 
-// TODO(b/122298745): Enable this test when the GPU backend supports stable
-// sorting.
-XLA_TEST_F(SortingTest, DISABLED_ON_GPU(TopKFullSortWithDuplicates)) {
+XLA_TEST_F(SortingTest, TopKFullSortWithDuplicates) {
   XlaBuilder builder(TestName());
   XlaOp a;
   auto a_data = CreateR1Parameter<int>({1, 1, 2, 2, 1}, 0, "a", &builder, &a);

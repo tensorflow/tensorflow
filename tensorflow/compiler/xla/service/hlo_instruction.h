@@ -47,6 +47,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_opcode.h"
 #include "tensorflow/compiler/xla/service/hlo_sharding.h"
 #include "tensorflow/compiler/xla/service/name_uniquer.h"
+#include "tensorflow/compiler/xla/shape_tree.h"
 #include "tensorflow/compiler/xla/types.h"
 #include "tensorflow/compiler/xla/xla_data.pb.h"
 #include "tensorflow/core/lib/core/status.h"
@@ -447,6 +448,9 @@ class HloInstruction {
       const Shape& shape, HloInstruction* a, HloInstruction* b,
       const TriangularSolveOptions& options);
 
+  static std::unique_ptr<HloInstruction> CreateCholesky(
+      const Shape& shape, HloInstruction* a, const CholeskyOptions& options);
+
   // Creates a dot op with operands 'lhs' and 'rhs' with contracting and batch
   // dimensions specified in 'dimension_numbers'.
   static std::unique_ptr<HloInstruction> CreateDot(
@@ -501,7 +505,7 @@ class HloInstruction {
   // Data is sent/received according to the (source_replica_id,
   // target_replica_id) pairs in `source_target_pairs`. If a replica id is not a
   // target_replica_id in any pair, the output on that replica is a tensor
-  // conssits of 0(s) in `shape`.
+  // consists of 0(s) in `shape`.
   static std::unique_ptr<HloInstruction> CreateCollectivePermute(
       const Shape& shape, HloInstruction* operand,
       const std::vector<std::pair<int64, int64>>& source_target_pairs);
@@ -686,10 +690,11 @@ class HloInstruction {
   // comparisons in the sorting algorithm. 'compare' gets 2 * n parameters,
   // where parameters 2 * i and 2 * i + 1 are the values of the i-th operand at
   // specific index positions which should be compared, and should return a
-  // PRED.
+  // PRED. 'is_stable' specifies whether stable sorting is required.
   static std::unique_ptr<HloInstruction> CreateSort(
       const Shape& shape, int64 dimension,
-      absl::Span<HloInstruction* const> operands, HloComputation* compare);
+      absl::Span<HloInstruction* const> operands, HloComputation* compare,
+      bool is_stable);
 
   // Creates a while instruction, given a condition computation, a body
   // computation, and the initial value for the input of the computations. For
@@ -705,6 +710,11 @@ class HloInstruction {
       const Shape& shape, HloInstruction* pred,
       HloInstruction* true_computation_arg, HloComputation* true_computation,
       HloInstruction* false_computation_arg, HloComputation* false_computation);
+
+  static std::unique_ptr<HloInstruction> CreateConditional(
+      const Shape& shape, HloInstruction* branch_index,
+      absl::Span<HloComputation* const> branch_computations,
+      absl::Span<HloInstruction* const> branch_computation_args);
 
   static std::unique_ptr<HloInstruction> CreateGather(
       const Shape& shape, HloInstruction* operand,
@@ -947,6 +957,10 @@ class HloInstruction {
   // operands of it which could be created due to this replacement.
   Status ReplaceUseWith(HloInstruction* user, HloInstruction* new_producer);
 
+  // Same as ReplaceUseWith(), but new_producer can have a different shape.
+  Status ReplaceUseWithDifferentShape(HloInstruction* user,
+                                      HloInstruction* new_producer);
+
   // Replaces the specified operand with new_operand. The old and new operands
   // must have compatible shapes ignoring floating-point precision.
   //
@@ -1048,14 +1062,23 @@ class HloInstruction {
 
   HloInstruction* while_init() const;
 
-  // Gets/sets the true and false HloComputation for Conditional. The setters
-  // should only be called by HloModule or HloComputation methods.
+  // Gets/sets the true and false HloComputation for Conditional.
   //
-  // Precondition: The instruction is a Conditional instruction.
+  // Precondition: The instruction is a predicated Conditional instruction.
   HloComputation* true_computation() const;
   HloComputation* false_computation() const;
-  void set_true_computation(HloComputation* true_computation);
-  void set_false_computation(HloComputation* false_computation);
+
+  // Gets the branch HloComputations for Conditional.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  const std::vector<HloComputation*>& branch_computations() const;
+  int branch_count() const;
+  HloComputation* branch_computation(int b) const;
+  // Sets a branch HloComputation for Conditional.
+  // The setter should only be called by HloModule or HloComputation methods.
+  //
+  // Precondition: The instruction is a Conditional instruction.
+  void set_branch_computation(int b, HloComputation* computation);
 
   // Returns a string for the signature of this instruction if considered as a
   // function, e.g. the signature of an F32 add is (F32, F32) -> F32.
@@ -1467,6 +1490,15 @@ class HloInstruction {
   // Delegates to HloParameterInstruction::parameter_number.
   int64 parameter_number() const;
 
+  // Delegates to
+  // HloParameterInstruction::set_parameter_replicated_at_leaf_buffers.
+  void set_parameter_replicated_at_leaf_buffers(
+      absl::Span<const bool> parameter_replicated_at_leaf_buffers);
+
+  // Delegates to HloParameterInstruction::parameter_replicated_at_leaf_buffers.
+  const absl::optional<std::vector<bool>>&
+  parameter_replicated_at_leaf_buffers() const;
+
   // Delegates to HloGetTupleElementInstruction::tuple_index.
   int64 tuple_index() const;
 
@@ -1578,6 +1610,9 @@ class HloInstruction {
 
   // Delegates to HloTriangularSolveInstruction::triangular_solve_options().
   const TriangularSolveOptions& triangular_solve_options() const;
+
+  // Delegates to HloCholeskyInstruction::cholesky_options().
+  const CholeskyOptions& cholesky_options() const;
 
   // Old methods kept for smooth subclassing transition END.
 
@@ -1761,6 +1796,10 @@ class HloInstruction {
 
   TF_DISALLOW_COPY_AND_ASSIGN(HloInstruction);
 };
+
+// Explicit instantiations in hlo_instruction.cc.
+extern template Status HloInstruction::Accept(DfsHloVisitor*, bool, bool);
+extern template Status HloInstruction::Accept(ConstDfsHloVisitor*, bool, bool);
 
 string ToString(HloInstruction::FusionKind kind);
 StatusOr<HloInstruction::FusionKind> StringToFusionKind(

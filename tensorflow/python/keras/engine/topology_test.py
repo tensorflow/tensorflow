@@ -85,7 +85,6 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
 
     network = network_lib.Network(x2, y2)
     self.assertEqual(len(network.updates), 2)
-    self.assertEqual(len(network.get_updates_for(x1)), 0)
     self.assertEqual(len(network.get_updates_for(x2)), 1)
     self.assertEqual(len(network.get_updates_for(None)), 1)
 
@@ -294,12 +293,12 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     # test callability on Input
     x_2 = input_layer_lib.Input(shape=(32,))
     y_2 = network(x_2)
-    self.assertEqual(y_2.get_shape().as_list(), [None, 2])
+    self.assertEqual(y_2.shape.as_list(), [None, 2])
 
     # test callability on regular tensor
     x_2 = array_ops.placeholder(dtype='float32', shape=(None, 32))
     y_2 = network(x_2)
-    self.assertEqual(y_2.get_shape().as_list(), [None, 2])
+    self.assertEqual(y_2.shape.as_list(), [None, 2])
 
     # test network `trainable` attribute
     network.trainable = False
@@ -380,7 +379,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     with self.assertRaises(ValueError):
       _ = keras.layers.Input(shape=(32,), unknown_kwarg=None)
 
-    self.assertListEqual(a.get_shape().as_list(), [None, 32])
+    self.assertListEqual(a.shape.as_list(), [None, 32])
     a_layer, a_node_index, a_tensor_index = a._keras_history
     b_layer, _, _ = b._keras_history
     self.assertEqual(len(a_layer._inbound_nodes), 1)
@@ -410,7 +409,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     # test layer properties
     test_layer = keras.layers.Dense(16, name='test_layer')
     a_test = test_layer(a)
-    self.assertListEqual(test_layer.kernel.get_shape().as_list(), [32, 16])
+    self.assertListEqual(test_layer.kernel.shape.as_list(), [32, 16])
     self.assertEqual(test_layer.input, a)
     self.assertEqual(test_layer.output, a_test)
     self.assertEqual(test_layer.input_shape, (None, 32))
@@ -441,7 +440,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       b_2 = dense(b)
 
       merged = keras.layers.concatenate([a_2, b_2], name='merge')
-      self.assertListEqual(merged.get_shape().as_list(), [None, 16 * 2])
+      self.assertListEqual(merged.shape.as_list(), [None, 16 * 2])
       merge_layer, merge_node_index, merge_tensor_index = merged._keras_history
 
       self.assertEqual(merge_node_index, 0)
@@ -524,8 +523,8 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       self.assertEqual(len(model.inputs), 2)
       self.assertEqual(g.name, 'model/dense_2/BiasAdd:0')
 
-      self.assertListEqual(g.get_shape().as_list(), c.get_shape().as_list())
-      self.assertListEqual(h.get_shape().as_list(), d.get_shape().as_list())
+      self.assertListEqual(g.shape.as_list(), c.get_shape().as_list())
+      self.assertListEqual(h.shape.as_list(), d.get_shape().as_list())
 
       # test separate manipulation of different layer outputs
       i = keras.layers.Dense(7, name='dense_4')(h)
@@ -588,10 +587,10 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       p = keras.layers.Input(shape=(32,), name='input_p')
       q, _ = model([o, p])
 
-      self.assertListEqual(n.get_shape().as_list(), [None, 5])
-      self.assertListEqual(q.get_shape().as_list(), [None, 64])
+      self.assertListEqual(n.shape.as_list(), [None, 5])
+      self.assertListEqual(q.shape.as_list(), [None, 64])
       s = keras.layers.concatenate([n, q], name='merge_nq')
-      self.assertListEqual(s.get_shape().as_list(), [None, 64 + 5])
+      self.assertListEqual(s.shape.as_list(), [None, 64 + 5])
 
       # test with single output as 1-elem list
       multi_io_model = keras.models.Model([j, k, o, p], [s])
@@ -714,8 +713,8 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     j_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
     k_tf = array_ops.placeholder(dtype=dtypes.float32, shape=(None, 32))
     m_tf, n_tf = tf_model([j_tf, k_tf])
-    self.assertListEqual(m_tf.get_shape().as_list(), [None, 64])
-    self.assertListEqual(n_tf.get_shape().as_list(), [None, 5])
+    self.assertListEqual(m_tf.shape.as_list(), [None, 64])
+    self.assertListEqual(n_tf.shape.as_list(), [None, 5])
 
     # test merge
     keras.layers.concatenate([j_tf, k_tf], axis=1)
@@ -733,7 +732,7 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
     a = keras.layers.Input(shape=(10, 32), name='input_a')
     b = keras.layers.Masking()(a)
     model = keras.models.Model(a, b)
-    self.assertEqual(model.output_mask.get_shape().as_list(), [None, 10])
+    self.assertEqual(model.output_mask.shape.as_list(), [None, 10])
 
   @test_util.run_deprecated_v1
   def testMaskingSingleInput(self):
@@ -766,12 +765,12 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       # test callability on Input
       x_2 = input_layer_lib.Input(shape=(32,))
       y_2 = network(x_2)
-      self.assertEqual(y_2.get_shape().as_list(), [None, 32])
+      self.assertEqual(y_2.shape.as_list(), [None, 32])
 
       # test callability on regular tensor
       x_2 = array_ops.placeholder(dtype='float32', shape=(None, 32))
       y_2 = network(x_2)
-      self.assertEqual(y_2.get_shape().as_list(), [None, 32])
+      self.assertEqual(y_2.shape.as_list(), [None, 32])
 
   @test_util.run_deprecated_v1
   def test_activity_regularization_with_model_composition(self):
@@ -1284,6 +1283,19 @@ class NestedNetworkTest(test.TestCase):
 
     output_shape = network.compute_output_shape([(None, 1), (None, 1)])
     self.assertListEqual(output_shape.as_list(), [None, 1])
+
+  @test_util.run_in_graph_and_eager_modes
+  def test_updates_with_direct_call(self):
+    inputs = keras.Input(shape=(10,))
+    x = keras.layers.BatchNormalization()(inputs)
+    x = keras.layers.Dense(10)(x)
+    model = keras.Model(inputs, x)
+
+    ph = keras.backend.placeholder(shape=(10, 10))
+    model(ph)
+
+    self.assertLen(model.get_updates_for(ph), 2)
+    self.assertLen(model.get_updates_for(None), 0)
 
 
 if __name__ == '__main__':

@@ -53,6 +53,7 @@ typedef TTypes<float>::Tensor::Index Index;
 
 DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::SumReducer<complex128>);
 DEFINE_FOR_TYPE_AND_R(complex128, functor::MeanReducer<complex128>);
+DEFINE_FOR_TYPE_AND_R(complex128, functor::EuclideanNormReducer<complex128>);
 DEFINE_FOR_TYPE_AND_R(complex128, Eigen::internal::ProdReducer<complex128>);
 #undef DEFINE_FOR_TYPE_AND_R
 #undef DEFINE

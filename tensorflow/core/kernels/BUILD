@@ -33,6 +33,7 @@ load(
     "if_android",
     "if_not_windows",
     "tf_cc_binary",
+    "tf_cc_shared_object",
     "tf_cc_test",
     "tf_cc_test_mkl",
     "tf_cc_tests",
@@ -160,7 +161,6 @@ tf_kernel_library(
     name = "clustering_ops",
     prefix = "clustering_ops",
     deps = [
-        "//tensorflow/core:clustering_ops_op_lib",
         "//tensorflow/core:framework",
         "//tensorflow/core:framework_headers_lib",
         "//tensorflow/core:lib",
@@ -1761,7 +1761,7 @@ tf_cc_test(
     size = "small",
     srcs = ["slice_op_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2688,7 +2688,7 @@ tf_cc_tests(
         "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2918,7 +2918,7 @@ tf_kernel_library(
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
     linkopts = select({
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
@@ -3554,7 +3554,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["scan_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -3577,7 +3577,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["reduction_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -4341,7 +4341,6 @@ tf_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:stateful_random_ops_op_lib",
         "@com_google_absl//absl/strings",
         "@com_google_absl//absl/types:variant",
     ],
@@ -5625,7 +5624,10 @@ filegroup(
         "conv_grad_ops.h",
         "conv_ops.cc",
         "conv_ops_3d.cc",
-        "conv_ops_fused.cc",
+        "conv_ops_fused_double.cc",
+        "conv_ops_fused_float.cc",
+        "conv_ops_fused_half.cc",
+        "conv_ops_fused_impl.h",
         "conv_ops_using_gemm.cc",
         "crop_and_resize_op.cc",
         "crop_and_resize_op.h",
@@ -6325,6 +6327,29 @@ tf_cc_test(
     ],
 )
 
+tf_cc_test_mkl(
+    name = "mkl_quantized_conv_ops_test",
+    size = "small",
+    srcs = ["mkl_quantized_conv_ops_test.cc"],
+    tags = ["nomsan"],  # http://b/32242946
+    deps = [
+        ":mkl_conv_op",
+        ":mkl_input_conversion_op",
+        ":ops_testutil",
+        ":ops_util",
+        ":quantization_utils",
+        ":quantized_ops",
+        "//tensorflow/core:array_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:math_ops_op_lib",
+        "//tensorflow/core:nn_ops_op_lib",
+        "//tensorflow/core:protos_all_cc",
+        "//tensorflow/core:test",
+        "//tensorflow/core:test_main",
+        "//tensorflow/core:testlib",
+    ],
+)
+
 tf_cc_test(
     name = "quantize_op_test",
     size = "small",
@@ -6775,7 +6800,7 @@ tf_cc_test_mkl(
     name = "mkl_conv_ops_test",
     size = "small",
     srcs = ["mkl_conv_ops_test.cc"],
-    tags = ["no_mac"],
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":ops_testutil",
         ":ops_util",
@@ -6802,8 +6827,6 @@ tf_mkl_kernel_library(
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_internal",
-        "//tensorflow/core:mkl_nn_ops_op_lib",
-        "//tensorflow/core:nn_ops_op_lib",
     ] + mkl_deps(),
 )
 
@@ -6945,12 +6968,9 @@ tf_mkl_kernel_library(
             "//third_party/eigen3",
             "@gemmlowp",
             "@mkl_dnn",
-            "//tensorflow/core:array_ops_op_lib",
             "//tensorflow/core:core_cpu",
             "//tensorflow/core:framework",
             "//tensorflow/core:lib",
-            "//tensorflow/core:math_ops_op_lib",
-            "//tensorflow/core:nn_ops_op_lib",
             "//third_party/mkl:intel_binary_blob",
         ],
     ),
@@ -6960,7 +6980,7 @@ tf_cc_test_mkl(
     name = "mkl_requantize_ops_test",
     size = "small",
     srcs = ["mkl_requantize_ops_test.cc"],
-    tags = ["no_mac"],  #TODO(penporn): Re-enable the test on MacOS.
+    linkstatic = 1,  # Fixes dyld error on MacOS.
     deps = [
         ":mkl_requantize_ops",
         ":ops_testutil",
@@ -7170,5 +7190,24 @@ cc_header_only_library(
     name = "quantize_and_dequantize_op_hdrs",
     deps = [
         ":quantize_and_dequantize_op",
+    ],
+)
+
+cc_library(
+    name = "kernel_platform_strings",
+    srcs = ["kernel_platform_strings.h"],
+    deps = [
+        "//tensorflow/core:platform_strings",
+    ],
+    alwayslink = 1,
+)
+
+# Shared object that links all the kernels TF needs.
+tf_cc_shared_object(
+    name = "libtfkernel_all_kernels.so",
+    visibility = ["//visibility:public"],
+    deps = [
+        ":kernel_platform_strings",
+        "//tensorflow/core:all_kernels_impl",
     ],
 )

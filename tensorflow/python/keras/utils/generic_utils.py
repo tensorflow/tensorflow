@@ -392,7 +392,7 @@ class Progbar(object):
 
       if self.target is not None:
         numdigits = int(np.log10(self.target)) + 1
-        bar = ('%' + str(numdigits) + 'd/%d') % (current, self.target)
+        bar = ('%' + str(numdigits) + 'd/%d [') % (current, self.target)
         prog = float(current) / self.target
         prog_width = int(self.width * prog)
         if prog_width > 0:

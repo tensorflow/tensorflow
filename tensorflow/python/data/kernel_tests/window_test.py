@@ -81,9 +81,9 @@ class WindowTest(test_base.DatasetTestBase, parameterized.TestCase):
             drop_remainder=drop_remainder).flat_map(_flat_map_fn)
     get_next = self.getNext(dataset)
 
-    self.assertEqual(
-        [[None] + list(c.shape[1:]) for c in components],
-        [ts.as_list() for ts in nest.flatten(dataset.output_shapes)])
+    self.assertEqual([[None] + list(c.shape[1:]) for c in components],
+                     [ts.as_list() for ts in nest.flatten(
+                         dataset_ops.get_legacy_output_shapes(dataset))])
 
     num_full_batches = max(0,
                            (count * 7 - ((size - 1) * stride + 1)) // shift + 1)

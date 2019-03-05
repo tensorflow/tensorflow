@@ -141,6 +141,10 @@ tf_module {
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
   member {
+    name: "Module"
+    mtype: "<type \'type\'>"
+  }
+  member {
     name: "NameAttrList"
     mtype: "<class \'google.protobuf.pyext.cpp_message.GeneratedProtocolMessageType\'>"
   }
@@ -461,6 +465,10 @@ tf_module {
     mtype: "<type \'module\'>"
   }
   member {
+    name: "lookup"
+    mtype: "<type \'module\'>"
+  }
+  member {
     name: "losses"
     mtype: "<type \'module\'>"
   }
@@ -606,6 +614,10 @@ tf_module {
   }
   member {
     name: "test"
+    mtype: "<type \'module\'>"
+  }
+  member {
+    name: "tpu"
     mtype: "<type \'module\'>"
   }
   member {
@@ -2250,6 +2262,18 @@ tf_module {
   }
   member_method {
     name: "tensor_scatter_add"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_nd_add"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_nd_sub"
+    argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
+  }
+  member_method {
+    name: "tensor_scatter_nd_update"
     argspec: "args=[\'tensor\', \'indices\', \'updates\', \'name\'], varargs=None, keywords=None, defaults=[\'None\'], "
   }
   member_method {

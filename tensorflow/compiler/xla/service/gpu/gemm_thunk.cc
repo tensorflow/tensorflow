@@ -428,7 +428,8 @@ Status GemmThunk::ExecuteOnStream(const BufferAllocations& buffer_allocations,
         scratch_data = scratch_mem->device_memory();
       }
       const MatrixDescriptor scratch_descriptor(
-          scratch_data, false, output_num_cols, output_num_rows, batch_size);
+          scratch_data, false, output_matrix.num_rows, output_matrix.num_cols,
+          batch_size);
 
       StatusOr<se::blas::AlgorithmType> best_algorithm = GetGemmAutotuneFn(
           element_type)(lhs_matrix, rhs_matrix, scratch_descriptor, alpha_,

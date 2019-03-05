@@ -40,14 +40,12 @@ namespace {
 // G = [[ c, s],
 //      [-s, c]]
 // matmul(G_T, G) = I
-struct SymmetricSchurDecomposition {
+struct JacobiRotation {
   XlaOp c;          // cosine.
   XlaOp s;          // sine.
 };
 
-// JacobiUpdate holds the intermediate orthogonal matrix, Jacobi-rotated matrix
-// and the off-diagonal norm of the rotated matrix. After each Jacobi iteration,
-// off-diagonal norm is reduced.
+// JacobiUpdate holds the intermediate orthogonal matrix, Jacobi-rotated matrix.
 struct JacobiUpdate {
   XlaOp v;
   XlaOp w;
@@ -76,10 +74,8 @@ struct FrobeniusNorms {
 //          c = 1.0
 //          s = 0.0
 //      return c, s
-StatusOr<SymmetricSchurDecomposition> SymmetricShurDecomposition2x2(XlaOp a,
-                                                                    XlaOp p,
-                                                                    XlaOp q,
-                                                                    XlaOp tol) {
+StatusOr<JacobiRotation> SymmetricShurDecomposition2x2(XlaOp a, XlaOp p,
+                                                       XlaOp q, XlaOp tol) {
   XlaBuilder* builder = a.builder();
   TF_ASSIGN_OR_RETURN(Shape a_shape, builder->GetShape(a));
 
@@ -106,7 +102,7 @@ StatusOr<SymmetricSchurDecomposition> SymmetricShurDecomposition2x2(XlaOp a,
   // is redundant if high precision float is used, like float64.
   auto rnorm = Rsqrt(Square(c) + Square(s));
 
-  SymmetricSchurDecomposition schur;
+  JacobiRotation schur;
 
   schur.c = c * rnorm;
   schur.s = s * rnorm;
@@ -117,9 +113,8 @@ StatusOr<SymmetricSchurDecomposition> SymmetricShurDecomposition2x2(XlaOp a,
 StatusOr<JacobiUpdate> Update(JacobiUpdate jacobi_update, XlaOp p, XlaOp q,
                               XlaOp tol, int64 n) {
   XlaBuilder* builder = jacobi_update.w.builder();
-  TF_ASSIGN_OR_RETURN(
-      SymmetricSchurDecomposition schur,
-      SymmetricShurDecomposition2x2(jacobi_update.w, p, q, tol));
+  TF_ASSIGN_OR_RETURN(JacobiRotation schur, SymmetricShurDecomposition2x2(
+                                                jacobi_update.w, p, q, tol));
 
   TF_ASSIGN_OR_RETURN(Shape w_shape, builder->GetShape(jacobi_update.w));
   const std::vector<int64> batch_dims(w_shape.dimensions().begin(),
@@ -385,8 +380,8 @@ StatusOr<SelfAdjointEigResult> SortByEigenvalues(SelfAdjointEigResult result) {
 //                                           np.array([[c, s], [-s, c]]))
 //                  V[:, [p, q]] = np.matmul(V[:, [p, q]],
 //                                               np.array([[c, s], [-s, c]]))
-//          frobenius_norm_sq = np.linalg.norm(A)
-//          diag_square_sum = np.linalg.norm(np.diag(A))
+//          frobenius_norm = np.linalg.norm(A)
+//          diag_norm = np.linalg.norm(np.diag(A))
 //          off_diag_norm = np.sqrt(
 //              frobenius_norm - diag_norm) * np.sqrt(
 //                  frobenius_norm + diag_norm)

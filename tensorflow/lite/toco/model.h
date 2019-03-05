@@ -24,11 +24,11 @@ limitations under the License.
 #include <vector>
 
 #include "absl/types/optional.h"
+#include "tensorflow/core/platform/logging.h"
 #include "tensorflow/lite/toco/model_flags.pb.h"
 #include "tensorflow/lite/toco/runtime/types.h"
 #include "tensorflow/lite/toco/toco_port.h"
 #include "tensorflow/lite/toco/toco_types.h"
-#include "tensorflow/core/platform/logging.h"
 
 namespace toco {
 
@@ -165,7 +165,10 @@ enum class OperatorType : uint8 {
   kBidirectionalSequenceLstm,
   kReverseV2,
   kBidirectionalSequenceRnn,
-  kGatherNd
+  kGatherNd,
+  kWhere,
+  kElu,
+  kReverseSequence
 };
 
 // Helper to deal with TensorFlow arrays using a different ordering of
@@ -687,6 +690,17 @@ struct MulOperator : Operator {
 // TensorFlow equivalent: Relu
 struct AbsOperator : Operator {
   AbsOperator() : Operator(OperatorType::kAbs) {}
+};
+
+// Elu
+//   f(x) -> exp(x) - 1 for x < 0, x for x >= 0.
+//
+// Inputs:
+//   inputs[0]: required: the input array
+//
+// TensorFlow equivalent: Elu
+struct EluOperator : Operator {
+  EluOperator() : Operator(OperatorType::kElu) {}
 };
 
 // Element-wise Relu operator:
@@ -1259,13 +1273,12 @@ struct RangeOperator : Operator {
 // Inputs:
 //   inputs[0]: required: the input array
 //
-// This operation outputs a 0-D integer tensor representing the rank of
-// the input.
+// This operation outputs a 0-D int32 Tensor representing the rank of input.
 //
-// TensorFlow equivalent: Rank.  We currently assume that the output is int32
-// and not int64.  The output type could be stored herein.
-struct RankOperator : Operator {
-  RankOperator() : Operator(OperatorType::kRank) {}
+// TensorFlow equivalent: Rank.
+struct TensorFlowRankOperator : Operator {
+  TensorFlowRankOperator() : Operator(OperatorType::kRank) {}
+  ArrayDataType output_data_type = ArrayDataType::kInt32;
 };
 
 // Element-wise negation (-x) operator.
@@ -2019,6 +2032,19 @@ struct MirrorPadOperator : Operator {
   MirrorPadMode mode;
 };
 
+// ReverseSequence operator:
+//
+// Inputs:
+// Inputs[0]: required: the input array.
+// Inputs[1]: required: the lengths of the elements to be reversed.
+//
+// TensorFlow equivalent: tf.reverse_sequence.
+struct ReverseSequenceOperator : Operator {
+  ReverseSequenceOperator() : Operator(OperatorType::kReverseSequence) {}
+  int seq_dim;
+  int batch_dim = 0;
+};
+
 // Unique Operator:
 //
 // Inputs:
@@ -2035,6 +2061,18 @@ struct UnidirectionalSequenceRnnOperator : Operator {
       : Operator(OperatorType::kUnidirectionalSequenceRnn) {}
   bool time_major;
   FusedActivationFunctionType fused_activation_function;
+};
+
+// Where Operator:
+// Return the coordinates of the true values in condition tensor in row-major
+// order.
+//
+// Inputs:
+//  inputs[0]: required: boolean condition tensor
+//
+//  TensorFlow equivalent: Where
+struct WhereOperator : Operator {
+  WhereOperator() : Operator(OperatorType::kWhere) {}
 };
 
 // Alloc's are used for transient arrays only. An Alloc specifies which interval

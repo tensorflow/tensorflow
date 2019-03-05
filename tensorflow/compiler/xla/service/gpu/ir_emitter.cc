@@ -492,8 +492,11 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
       result = llvm::ConstantAggregateZero::get(lhs_array.GetElementLlvmType());
       result = InsertValue(result, value.first, {0});
       result = InsertValue(result, value.second, {1});
-    } else {
+    } else if (ShapeUtil::ElementIsFloating(lhs_shape)) {
       result = FMul(lhs_value, rhs_value);
+    } else {
+      TF_RET_CHECK(ShapeUtil::ElementIsIntegral(lhs_shape));
+      result = Mul(lhs_value, rhs_value);
     }
     target_array.EmitWriteArrayElement(/*index=*/element_index, result, &b_);
     return Status::OK();
@@ -583,9 +586,13 @@ Status IrEmitter::HandleDot(HloInstruction* dot) {
     llvm::Value* accum_imag = Imag(accum, &b_);
     llvm::Value* imag_sum = FAdd(accum_imag, value.second);
     updated_accum = InsertValue(updated_accum, imag_sum, {1});
-  } else {
+  } else if (ShapeUtil::ElementIsFloating(lhs_shape)) {
     llvm::Value* product = FMul(lhs_element, rhs_element);
     updated_accum = FAdd(accum, product);
+  } else {
+    TF_RET_CHECK(ShapeUtil::ElementIsIntegral(lhs_shape));
+    llvm::Value* product = Mul(lhs_element, rhs_element);
+    updated_accum = Add(accum, product);
   }
   Store(updated_accum, accum_address);
 
