@@ -69,7 +69,7 @@ grow in future Tensorflow Lite releases.
 
 ## 2. Convert the model format
 
-The [TensorFlow Lite Converter](../convert.md) accepts the following file
+The [TensorFlow Lite Converter](../convert/index.md) accepts the following file
 formats:
 
 *   `SavedModel` — A `GraphDef` and checkpoint with a signature that labels
@@ -162,7 +162,7 @@ convert to a mobile inference graph.
 
 ### Ops compatibility
 
-Refer to the [ops compatibility guide](tf_ops_compatibility.md) for
+Refer to the [ops compatibility guide](ops_compatibility.md) for
 troubleshooting help, and if that doesn't help, please
 [file an issue](https://github.com/tensorflow/tensorflow/issues).
 
