@@ -51,11 +51,18 @@ py_library(
     deps = [
         ":trt_ops_py",
         ":wrap_conversion",
+        "//tensorflow/python:convert_to_constants",
+        "//tensorflow/python:func_graph",
         "//tensorflow/python:graph_util",
         "//tensorflow/python:session",
         "//tensorflow/python:tf_optimizer",
+        "//tensorflow/python/eager:context",
+        "//tensorflow/python/eager:function",
         "//tensorflow/python/saved_model:builder",
+        "//tensorflow/python/saved_model:load",
         "//tensorflow/python/saved_model:loader",
+        "//tensorflow/python/saved_model:save",
+        "//tensorflow/python/saved_model:signature_constants",
         "//tensorflow/python/saved_model:tag_constants",
     ],
 )
@@ -70,7 +77,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     deps = [
-        "//tensorflow/compiler/tf2tensorrt:test_utils",
+        "//tensorflow/compiler/tf2tensorrt:py_utils",
         "//tensorflow/compiler/tf2tensorrt:trt_conversion",
         "//tensorflow/compiler/tf2tensorrt:trt_op_kernels",
         "//third_party/python_runtime:headers",

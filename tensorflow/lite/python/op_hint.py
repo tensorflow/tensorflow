@@ -234,7 +234,7 @@ class OpHint(object):
           and OpHint.AGGREGATE_STACK.
           Note, aggregate is only valid if tag is specified.
         index_override: Specify what input/output index should this be in the
-          final stub. i.e. add(arg0, index=1); add(arg1, index=0) wil make the
+          final stub. i.e. add(arg0, index=1); add(arg1, index=0) will make the
           final stub be as stub_func(inputs[arg1, arg0], outputs=[]) rather than
           the default call order based ordering.
 

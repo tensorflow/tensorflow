@@ -175,15 +175,6 @@ class InitializableLookupTableBase(LookupInterface):
     return self._initializer.initialize(self)
 
   @property
-  def initializer(self):
-    return self._init_op
-
-  @property
-  @deprecated("2018-12-15", "Use `initializer` instead.")
-  def init(self):
-    return self.initializer
-
-  @property
   def default_value(self):
     """The default value of the table."""
     return self._default_value
@@ -237,6 +228,14 @@ class InitializableLookupTableBase(LookupInterface):
       return values
 
 
+class InitializableLookupTableBaseV1(InitializableLookupTableBase):
+
+  @property
+  def initializer(self):
+    return self._init_op
+
+
+@tf_export("lookup.StaticHashTable", v1=[])
 class StaticHashTable(InitializableLookupTableBase):
   """A generic hash table implementation.
 
@@ -311,8 +310,20 @@ class StaticHashTable(InitializableLookupTableBase):
     return exported_keys, exported_values
 
 
+@tf_export(v1=["lookup.StaticHashTable"])
+class StaticHashTableV1(StaticHashTable):
+
+  @property
+  def initializer(self):
+    return self._init_op
+
+
 # For backwards compatibility. This will be removed in TF 2.0.
-HashTable = StaticHashTable
+class HashTable(StaticHashTableV1):
+
+  @property
+  def init(self):
+    return self.initializer
 
 
 class TableInitializerBase(trackable_base.Trackable):
@@ -354,6 +365,7 @@ class TableInitializerBase(trackable_base.Trackable):
     return shared_name
 
 
+@tf_export("lookup.KeyValueTensorInitializer")
 class KeyValueTensorInitializer(TableInitializerBase):
   """Table initializers given `keys` and `values` tensors."""
 
@@ -412,6 +424,7 @@ class TextFileIndex(object):
   LINE_NUMBER = -1
 
 
+@tf_export("lookup.TextFileInitializer")
 class TextFileInitializer(TableInitializerBase):
   """Table initializers from a text file.
 
@@ -951,6 +964,7 @@ class IdTableWithHashBuckets(LookupInterface):
     return ids
 
 
+@tf_export("lookup.StaticVocabularyTable", v1=[])
 class StaticVocabularyTable(LookupInterface):
   """String to Id table wrapper that assigns out-of-vocabulary keys to buckets.
 
@@ -1064,18 +1078,6 @@ class StaticVocabularyTable(LookupInterface):
       return control_flow_ops.no_op()
 
   @property
-  def initializer(self):
-    if self._table is not None:
-      return self._table._init_op  # pylint: disable=protected-access
-    with ops.name_scope(None, "init"):
-      return control_flow_ops.no_op()
-
-  @property
-  @deprecated("2018-12-15", "Use `initializer` instead.")
-  def init(self):
-    return self.initializer
-
-  @property
   def resource_handle(self):
     if self._table is not None:
       return self._table.resource_handle
@@ -1134,6 +1136,17 @@ class StaticVocabularyTable(LookupInterface):
     if isinstance(keys, sparse_tensor.SparseTensor):
       return sparse_tensor.SparseTensor(keys.indices, ids, keys.dense_shape)
     return ids
+
+
+@tf_export(v1=["lookup.StaticVocabularyTable"])
+class StaticVocabularyTableV1(StaticVocabularyTable):
+
+  @property
+  def initializer(self):
+    if self._table is not None:
+      return self._table._init_op  # pylint: disable=protected-access
+    with ops.name_scope(None, "init"):
+      return control_flow_ops.no_op()
 
 
 def index_table_from_file(vocabulary_file=None,
@@ -1244,7 +1257,7 @@ def index_table_from_file(vocabulary_file=None,
           value_column_index=value_column_index,
           delimiter=delimiter)
 
-      table = StaticHashTable(init, default_value)
+      table = StaticHashTableV1(init, default_value)
     if num_oov_buckets:
       table = IdTableWithHashBuckets(
           table,
@@ -1341,7 +1354,7 @@ def index_table_from_tensor(vocabulary_list,
           table_keys.dtype.base_dtype,
           dtypes.int64,
           name="table_init")
-      table = StaticHashTable(init, default_value)
+      table = StaticHashTableV1(init, default_value)
     if num_oov_buckets:
       table = IdTableWithHashBuckets(
           table,
@@ -1438,7 +1451,7 @@ def index_to_string_table_from_file(vocabulary_file,
         delimiter=delimiter)
 
     # TODO(yleon): Use a more effienct structure.
-    return StaticHashTable(init, default_value)
+    return StaticHashTableV1(init, default_value)
 
 
 def index_to_string_table_from_tensor(vocabulary_list,
@@ -1499,7 +1512,7 @@ def index_to_string_table_from_tensor(vocabulary_list,
     init = KeyValueTensorInitializer(
         keys, vocabulary_list, dtypes.int64, dtypes.string, name="table_init")
     # TODO(yleon): Use a more effienct structure.
-    return StaticHashTable(init, default_value)
+    return StaticHashTableV1(init, default_value)
 
 
 class MutableHashTable(LookupInterface):
@@ -1733,6 +1746,7 @@ class MutableHashTable(LookupInterface):
               self.op.resource_handle, restored_tensors[0], restored_tensors[1])
 
 
+@tf_export("lookup.experimental.DenseHashTable")
 class DenseHashTable(LookupInterface):
   """A generic mutable hash table implementation using tensors as backing store.
 

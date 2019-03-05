@@ -82,6 +82,9 @@ tf_py_test(
         "//tensorflow/python:constant_op",
         "//tensorflow/python:dtypes",
     ],
+    tags = [
+        "no_gpu",  # b/127001953
+    ],
 )
 
 tf_py_test(
@@ -242,7 +245,10 @@ tf_py_test(
         "//tensorflow/python:clip_ops",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    tags = ["no_windows"],
+    tags = [
+        "no_gpu",  # b/127001953
+        "no_windows",
+    ],
 )
 
 tf_py_test(
@@ -535,7 +541,6 @@ tf_py_test(
         "//tensorflow/python:io_ops",
         "//tensorflow/python:util",
     ],
-    tags = ["notap"],  #TODO(b/123583863): Re-enable this test.
 )
 
 tf_py_test(
@@ -2194,6 +2199,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
         "//tensorflow/python/eager:function",
     ],
+    grpc_enabled = True,
     tags = ["no_windows"],
     xla_enable_strict_auto_jit = True,
 )
@@ -2629,6 +2635,7 @@ cuda_py_test(
         "//tensorflow/python/eager:context",
     ],
     flaky = 1,  # create_local_cluster sometimes times out.
+    shard_count = 10,
     tags = ["no_rocm"],
     xla_enable_strict_auto_jit = True,
 )
@@ -2740,7 +2747,7 @@ cuda_py_test(
     ],
     shard_count = 2,
     tags = [
-        "no_gpu",  #  Flaky: b/80127739
+        "no_gpu",  #  Flaky: b/80127739, b/127001953
     ],
     xla_enable_strict_auto_jit = True,
 )
@@ -2925,7 +2932,6 @@ cuda_py_test(
     srcs = ["rnn_test.py"],
     additional_deps = [
         "//third_party/py/numpy",
-        "//tensorflow/contrib/rnn:rnn_py",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client",
@@ -3005,6 +3011,7 @@ cuda_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:gradients",
     ],
+    tags = ["no_windows"],  # b/126916429
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3111,7 +3118,10 @@ cuda_py_test(
         "//tensorflow/python:framework",
         "//tensorflow/python:framework_for_generated_wrappers",
     ],
-    tags = ["notap"],  # http://b/31080670
+    tags = [
+        "no_pip",
+        "notap",  # http://b/31080670
+    ],
 )
 
 cuda_py_test(
@@ -3160,6 +3170,7 @@ cuda_py_test(
         "//tensorflow/python:math_ops",
         "//tensorflow/python:variables",
     ],
+    tags = ["no_windows"],  # b/126916429
     xla_enable_strict_auto_jit = True,
 )
 
@@ -3361,6 +3372,7 @@ cuda_py_test(
         "//tensorflow/python:array_ops",
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:framework_for_generated_wrappers",
+        "//tensorflow/python:gradients_impl",
         "//tensorflow/python:linalg_ops",
         "//tensorflow/python:math_ops",
     ],
@@ -3516,6 +3528,7 @@ tf_py_test(
         "//tensorflow/python:framework_for_generated_wrappers",
         "//tensorflow/python:sparse_ops",
     ],
+    tags = ["no_windows"],
 )
 
 tf_py_test(

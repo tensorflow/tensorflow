@@ -198,44 +198,44 @@ cc_library(
     alwayslink = True,
 )
 
-# FIXME: enable in future PRs
-#cc_library(
-#    name = "miopen_plugin",
-#    srcs = ["rocm_dnn.cc"],
-#    hdrs = [],
-#    copts = [
-#        # STREAM_EXECUTOR_CUDNN_WRAP would fail on Clang with the default
-#        # setting of template depth 256
-#        "-ftemplate-depth-512",
-#    ],
-#    visibility = ["//visibility:public"],
-#    deps = [
-#        ":rocm_diagnostics",
-#        ":rocm_driver",
-#        ":rocm_gpu_executor",
-#        ":rocm_platform_id",
-#        "//third_party/eigen3",
-#        "//tensorflow/core:lib",
-#        "//tensorflow/core:lib_internal",
-#        "//tensorflow/core:logger",
-#        "//tensorflow/stream_executor:dnn",
-#        "//tensorflow/stream_executor:event",
-#        "//tensorflow/stream_executor:logging_proto_cc",
-#        "//tensorflow/stream_executor:plugin_registry",
-#        "//tensorflow/stream_executor:scratch_allocator",
-#        "//tensorflow/stream_executor:stream_executor_pimpl_header",
-#        "//tensorflow/stream_executor:temporary_device_memory",
-#        "//tenosrflow/stream_executor/gpu:gpu_activation_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_stream_header",
-#        "//tenosrflow/stream_executor/gpu:gpu_timer_header",
-#        "//tensorflow/stream_executor/lib",
-#        "//tensorflow/stream_executor/platform",
-#        "//tensorflow/stream_executor/platform:dso_loader",
-#        "@com_google_absl//absl/strings",
-#        "@local_config_rocm//rocm:rocm_headers",
-#    ] + tf_additional_miopen_plugin_deps() + if_static(["@local_config_rocm//rocm:miopen"]),
-#    alwayslink = True,
-#)
+cc_library(
+    name = "miopen_plugin",
+    srcs = if_rocm_is_configured(["rocm_dnn.cc"]),
+    hdrs = if_rocm_is_configured(["rocm_dnn.h"]),
+    copts = [
+        # STREAM_EXECUTOR_CUDNN_WRAP would fail on Clang with the default
+        # setting of template depth 256
+        "-ftemplate-depth-512",
+    ],
+    visibility = ["//visibility:public"],
+    deps = if_rocm_is_configured([
+        ":rocm_diagnostics",
+        ":rocm_driver",
+        ":rocm_gpu_executor",
+        ":rocm_platform_id",
+        "//third_party/eigen3",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+        "//tensorflow/stream_executor:dnn",
+        "//tensorflow/stream_executor:event",
+        "//tensorflow/stream_executor:logging_proto_cc",
+        "//tensorflow/stream_executor:plugin_registry",
+        "//tensorflow/stream_executor:scratch_allocator",
+        "//tensorflow/stream_executor:stream_executor_pimpl_header",
+        "//tensorflow/stream_executor:temporary_device_memory",
+        "//tensorflow/stream_executor/gpu:gpu_activation_header",
+        "//tensorflow/stream_executor/gpu:gpu_stream_header",
+        "//tensorflow/stream_executor/gpu:gpu_timer_header",
+        "//tensorflow/stream_executor/lib",
+        "//tensorflow/stream_executor/platform",
+        "//tensorflow/stream_executor/platform:dso_loader",
+        "@com_google_absl//absl/strings",
+        "@local_config_rocm//rocm:rocm_headers",
+    ] + if_static([
+        "@local_config_rocm//rocm:miopen",
+    ])),
+    alwayslink = True,
+)
 
 cc_library(
     name = "rocrand_plugin",
@@ -267,8 +267,7 @@ cc_library(
     copts = tf_copts(),
     visibility = ["//visibility:public"],
     deps = if_rocm_is_configured([
-        # FIXME: enable in future PRs
-        #":miopen_plugin",
+        ":miopen_plugin",
         ":rocfft_plugin",
         ":rocblas_plugin",
         ":rocrand_plugin",

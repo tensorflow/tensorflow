@@ -32,16 +32,14 @@ import numpy as np
 
 from tensorflow.python import keras
 from tensorflow.python.data.ops import dataset_ops
-from tensorflow.python.eager import context
 from tensorflow.python.framework import random_seed
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.ops import array_ops
-from tensorflow.python.ops import summary_ops_v2
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
+from tensorflow.python.summary import summary_iterator
 from tensorflow.python.training import adam
-from tensorflow.python.util import tf_contextlib
 
 try:
   import h5py  # pylint:disable=g-import-not-at-top
@@ -650,7 +648,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=0)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.1, atol=1e-4)
@@ -671,7 +669,7 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
           batch_size=BATCH_SIZE,
           validation_data=(x_test, y_test),
           callbacks=cbks,
-          epochs=5,
+          epochs=2,
           verbose=2)
       self.assertAllClose(
           float(keras.backend.get_value(model.optimizer.lr)), 0.01, atol=1e-4)
@@ -969,61 +967,65 @@ class KerasCallbacksTest(keras_parameterized.TestCase):
 _ObservedSummary = collections.namedtuple('_ObservedSummary', ('logdir', 'tag'))
 
 
-class _MockSummaryFile(object):
-  """Record summary tag names and the files to which they're written.
+class _SummaryFile(object):
+  """A record of summary tags and the files to which they were written.
 
-  Fields `scalars`, `images`, and `histograms` are sets containing
-  `_ObservedSummary` values.
+  Fields `scalars`, `images`, `histograms`, and `tensors` are sets
+  containing `_ObservedSummary` values.
   """
 
   def __init__(self):
     self.scalars = set()
     self.images = set()
     self.histograms = set()
+    self.tensors = set()
 
 
-@tf_contextlib.contextmanager
-def _mock_summary_api():
-  summary_file = _MockSummaryFile()
+def list_summaries(logdir):
+  """Read all summaries under the logdir into a `_SummaryFile`.
 
-  # Keep track of the logdir associated with each created resource.
-  # (There doesn't seem to be an easy way to get this information after
-  # the fact.)
-  resource_logdirs = {}
-  real_create_file_writer = summary_ops_v2.create_file_writer
+  Args:
+    logdir: A path to a directory that contains zero or more event
+      files, either as direct children or in transitive subdirectories.
+      Summaries in these events must only contain old-style scalars,
+      images, and histograms. Non-summary events, like `graph_def`s, are
+      ignored.
 
-  def mock_create_file_writer(logdir, *args, **kwargs):
-    writer = real_create_file_writer(logdir, *args, **kwargs)
-    resource = writer._resource
-    assert resource is not None
-    assert resource not in resource_logdirs, (resource, resource_logdirs)
-    resource_logdirs[resource] = logdir
-    return writer
+  Returns:
+    A `_SummaryFile` object reflecting all summaries written to any
+    event files in the logdir or any of its descendant directories.
 
-  def make_mock_summary(summary_set):
-
-    def mock_summary(tag, *args, **kwargs):
-      del args  # unused
-      del kwargs  # unused
-      resource = context.context().summary_writer_resource
-      logdir = resource_logdirs[resource]
-      summary_set.add(_ObservedSummary(logdir=logdir, tag=tag))
-
-    return mock_summary
-
-  with test.mock.patch.object(summary_ops_v2,
-                              'create_file_writer',
-                              mock_create_file_writer), \
-        test.mock.patch.object(summary_ops_v2,
-                               'scalar',
-                               make_mock_summary(summary_file.scalars)), \
-        test.mock.patch.object(summary_ops_v2,
-                               'histogram',
-                               make_mock_summary(summary_file.histograms)), \
-        test.mock.patch.object(summary_ops_v2,
-                               'image',
-                               make_mock_summary(summary_file.images)):
-    yield summary_file
+  Raises:
+    ValueError: If an event file contains an summary of unexpected kind.
+  """
+  result = _SummaryFile()
+  for (dirpath, dirnames, filenames) in os.walk(logdir):
+    del dirnames  # unused
+    for filename in filenames:
+      if not filename.startswith('events.out.'):
+        continue
+      path = os.path.join(dirpath, filename)
+      for event in summary_iterator.summary_iterator(path):
+        if not event.summary:  # (e.g., it's a `graph_def` event)
+          continue
+        for value in event.summary.value:
+          tag = value.tag
+          # Case on the `value` rather than the summary metadata because
+          # the Keras callback uses `summary_ops_v2` to emit old-style
+          # summaries. See b/124535134.
+          kind = value.WhichOneof('value')
+          container = {
+              'simple_value': result.scalars,
+              'image': result.images,
+              'histo': result.histograms,
+              'tensor': result.tensors,
+          }.get(kind)
+          if container is None:
+            raise ValueError(
+                'Unexpected summary kind %r in event file %s:\n%r'
+                % (kind, path, event))
+          container.add(_ObservedSummary(logdir=dirpath, tag=tag))
+  return result
 
 
 @keras_parameterized.run_with_all_model_types
@@ -1046,32 +1048,61 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
     return model
 
+  def test_TensorBoard_default_logdir(self):
+    """Regression test for cross-platform pathsep in default logdir."""
+    os.chdir(self.get_temp_dir())
+
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard()  # no logdir specified
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(logdir='.')
+    train_dir = os.path.join('.', 'logs', 'train')
+    validation_dir = os.path.join('.', 'logs', 'validation')
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=validation_dir, tag='epoch_loss'),
+        })
+
   def test_TensorBoard_basic(self):
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir)
 
-    with _mock_summary_api() as summary_file:
-      model.fit(
-          x,
-          y,
-          batch_size=2,
-          epochs=2,
-          validation_data=(x, y),
-          callbacks=[tb_cbk])
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
 
+    summary_file = list_summaries(self.logdir)
     self.assertEqual(
         summary_file.scalars, {
             _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
             _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
         })
 
-  def test_TensorBoard_batch_metrics(self):
+  def test_TensorBoard_across_invocations(self):
+    """Regression test for summary writer resource use-after-free.
+
+    See: <https://github.com/tensorflow/tensorflow/issues/25707>
+    """
     model = self._get_model()
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
-    tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
 
-    with _mock_summary_api() as summary_file:
+    for _ in (1, 2):
       model.fit(
           x,
           y,
@@ -1080,6 +1111,46 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
           validation_data=(x, y),
           callbacks=[tb_cbk])
 
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.scalars, {
+            _ObservedSummary(logdir=self.train_dir, tag='epoch_loss'),
+            _ObservedSummary(logdir=self.validation_dir, tag='epoch_loss'),
+        })
+
+  def test_TensorBoard_no_spurious_event_files(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        callbacks=[tb_cbk])
+
+    events_file_run_basenames = set()
+    for (dirpath, dirnames, filenames) in os.walk(self.logdir):
+      del dirnames  # unused
+      if any(fn.startswith('events.out.') for fn in filenames):
+        events_file_run_basenames.add(os.path.basename(dirpath))
+    self.assertEqual(events_file_run_basenames, {'train'})
+
+  def test_TensorBoard_batch_metrics(self):
+    model = self._get_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir, update_freq=1)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+
+    summary_file = list_summaries(self.logdir)
     self.assertEqual(
         summary_file.scalars,
         {
@@ -1094,14 +1165,14 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
     tb_cbk = keras.callbacks.TensorBoard(self.logdir, histogram_freq=1)
 
-    with _mock_summary_api() as summary_file:
-      model.fit(
-          x,
-          y,
-          batch_size=2,
-          epochs=2,
-          validation_data=(x, y),
-          callbacks=[tb_cbk])
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
 
     self.assertEqual(
         summary_file.scalars,
@@ -1124,14 +1195,14 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     tb_cbk = keras.callbacks.TensorBoard(
         self.logdir, histogram_freq=1, write_images=True)
 
-    with _mock_summary_api() as summary_file:
-      model.fit(
-          x,
-          y,
-          batch_size=2,
-          epochs=2,
-          validation_data=(x, y),
-          callbacks=[tb_cbk])
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
 
     self.assertEqual(
         summary_file.scalars,
@@ -1150,26 +1221,166 @@ class TestTensorBoardV2(keras_parameterized.TestCase):
     self.assertEqual(
         self._strip_layer_names(summary_file.images),
         {
-            _ObservedSummary(logdir=self.train_dir, tag='bias_0'),
-            _ObservedSummary(logdir=self.train_dir, tag='kernel_0'),
+            _ObservedSummary(logdir=self.train_dir, tag='bias_0/image/0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/0'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/1'),
+            _ObservedSummary(logdir=self.train_dir, tag='kernel_0/image/2'),
         },
     )
 
   def _strip_layer_names(self, summaries):
-    """Deduplicate summary names modulo layer suffix.
+    """Deduplicate summary names modulo layer prefix.
+
+    This removes the first slash-component of each tag name: for
+    instance, "foo/bar/baz" becomes "bar/baz".
 
     Args:
       summaries: A `set` of `_ObservedSummary` values.
 
     Returns:
-      A new `set` of `_ObservedSummary` values with layer suffixes
+      A new `set` of `_ObservedSummary` values with layer prefixes
       removed.
     """
-    return {s._replace(tag=s.tag[s.tag.rfind('/') + 1:]) for s in summaries}
+    result = set()
+    for summary in summaries:
+      if '/' not in summary.tag:
+        raise ValueError('tag has no layer name: %r' % summary.tag)
+      new_tag = summary.tag.split('/', 1)[1]
+      result.add(summary._replace(tag=new_tag))
+    return result
 
   def test_TensorBoard_invalid_argument(self):
     with self.assertRaisesRegexp(ValueError, 'Unrecognized arguments'):
       keras.callbacks.TensorBoard(wwrite_images=True)
+
+
+# Note that this test specifies model_type explicitly.
+@keras_parameterized.run_all_keras_modes(always_skip_v1=True)
+class TestTensorBoardV2NonParameterizedTest(keras_parameterized.TestCase):
+
+  def setUp(self):
+    super(TestTensorBoardV2NonParameterizedTest, self).setUp()
+    self.logdir = os.path.join(self.get_temp_dir(), 'tb')
+    self.train_dir = os.path.join(self.logdir, 'train')
+    self.validation_dir = os.path.join(self.logdir, 'validation')
+
+  def _get_seq_model(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3), input_shape=(10, 10, 1)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=testing_utils.should_run_eagerly())
+    return model
+
+  def fitModelAndAssertKerasModelWritten(self, model):
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(self.logdir,
+                                         write_graph=True,
+                                         profile_batch=0)
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag='keras'),
+        },
+    )
+
+  def test_TensorBoard_writeSequentialModel_noInputShape(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensorBoard_writeSequentialModel_withInputShape(self):
+    model = keras.models.Sequential([
+        keras.layers.Conv2D(8, (3, 3), input_shape=(10, 10, 1)),
+        keras.layers.Flatten(),
+        keras.layers.Dense(1),
+    ])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensoriBoard_writeModel(self):
+    inputs = keras.layers.Input([10, 10, 1])
+    x = keras.layers.Conv2D(8, (3, 3), activation='relu')(inputs)
+    x = keras.layers.Flatten()(x)
+    x = keras.layers.Dense(1)(x)
+    model = keras.models.Model(inputs=inputs, outputs=[x])
+    model.compile('sgd', 'mse', run_eagerly=False)
+    self.fitModelAndAssertKerasModelWritten(model)
+
+  def test_TensorBoard_autoTrace(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=1, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_1'),
+        },
+    )
+
+  def test_TensorBoard_autoTrace_tagNameWithBatchNum(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=2, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    self.assertEqual(
+        summary_file.tensors,
+        {
+            _ObservedSummary(logdir=self.train_dir, tag=u'batch_2'),
+        },
+    )
+
+  def test_TensorBoard_autoTrace_profile_batch_largerThanBatchCount(self):
+    model = self._get_seq_model()
+    x, y = np.ones((10, 10, 10, 1)), np.ones((10, 1))
+    tb_cbk = keras.callbacks.TensorBoard(
+        self.logdir, histogram_freq=1, profile_batch=10000, write_graph=False)
+
+    model.fit(
+        x,
+        y,
+        batch_size=2,
+        epochs=2,
+        validation_data=(x, y),
+        callbacks=[tb_cbk])
+    summary_file = list_summaries(self.logdir)
+
+    # Enabled trace only on the 10000th batch, thus it should be empty.
+    self.assertEmpty(summary_file.tensors)
 
 
 if __name__ == '__main__':

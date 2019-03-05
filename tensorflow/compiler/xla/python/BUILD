@@ -119,7 +119,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     version_script = select({
-        "//tensorflow:darwin": "pywrap_xla_exported_symbols.lds",
+        "//tensorflow:macos": "pywrap_xla_exported_symbols.lds",
         "//tensorflow:windows": None,
         "//conditions:default": "pywrap_xla_version_script.lds",
     }),
@@ -143,7 +143,7 @@ tf_py_wrap_cc(
         "//tensorflow/python:platform/base.i",
     ],
     version_script = select({
-        "//tensorflow:darwin": "pywrap_xla_exported_symbols.lds",
+        "//tensorflow:macos": "pywrap_xla_exported_symbols.lds",
         "//tensorflow:windows": None,
         "//conditions:default": "pywrap_xla_version_script.lds",
     }),

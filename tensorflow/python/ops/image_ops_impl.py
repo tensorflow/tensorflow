@@ -937,85 +937,29 @@ def resize_image_with_crop_or_pad(image, target_height, target_width):
     return resized
 
 
-@tf_export('image.ResizeMethod')
-class ResizeMethod(object):
+@tf_export(v1=['image.ResizeMethod'])
+class ResizeMethodV1(object):
   BILINEAR = 0
   NEAREST_NEIGHBOR = 1
   BICUBIC = 2
   AREA = 3
 
 
-@tf_export(v1=['image.resize_images', 'image.resize'])
-def resize_images(images,
-                  size,
-                  method=ResizeMethod.BILINEAR,
-                  align_corners=False,
-                  preserve_aspect_ratio=False):
-  return resize_images_v2(
-      images=images,
-      size=size,
-      method=method,
-      align_corners=align_corners,
-      preserve_aspect_ratio=preserve_aspect_ratio,
-      name=None)
+@tf_export('image.ResizeMethod', v1=[])
+class ResizeMethod(object):
+  BILINEAR = 'bilinear'
+  NEAREST_NEIGHBOR = 'nearest'
+  BICUBIC = 'bicubic'
+  AREA = 'area'
+  LANCZOS3 = 'lanczos3'
+  LANCZOS5 = 'lanczos5'
+  GAUSSIAN = 'gaussian'
+  MITCHELLCUBIC = 'mitchellcubic'
 
 
-@tf_export('image.resize', v1=[])
-def resize_images_v2(images,
-                     size,
-                     method=ResizeMethod.BILINEAR,
-                     align_corners=False,
-                     preserve_aspect_ratio=False,
-                     name=None):
-  """Resize `images` to `size` using the specified `method`.
-
-  Resized images will be distorted if their original aspect ratio is not
-  the same as `size`.  To avoid distortions see
-  `tf.image.resize_image_with_pad`.
-
-  `method` can be one of:
-
-  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
-    https://en.wikipedia.org/wiki/Bilinear_interpolation)
-  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](
-    https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
-  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
-    https://en.wikipedia.org/wiki/Bicubic_interpolation)
-  *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
-
-  The return value has the same type as `images` if `method` is
-  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
-  if the size of `images` can be statically determined to be the same as `size`,
-  because `images` is returned in this case. Otherwise, the return value has
-  type `float32`.
-
-  Args:
-    images: 4-D Tensor of shape `[batch, height, width, channels]` or
-            3-D Tensor of shape `[height, width, channels]`.
-    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The
-          new size for the images.
-    method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
-    align_corners: bool.  If True, the centers of the 4 corner pixels of the
-        input and output tensors are aligned, preserving the values at the
-        corner pixels. Defaults to `False`.
-    preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
-      then `images` will be resized to a size that fits in `size` while
-      preserving the aspect ratio of the original image. Scales up the image if
-      `size` is bigger than the current size of the `image`. Defaults to False.
-    name: A name for this operation (optional).
-
-  Raises:
-    ValueError: if the shape of `images` is incompatible with the
-      shape arguments to this function
-    ValueError: if `size` has invalid shape or type.
-    ValueError: if an unsupported resize method is specified.
-
-  Returns:
-    If `images` was 4-D, a 4-D float Tensor of shape
-    `[batch, new_height, new_width, channels]`.
-    If `images` was 3-D, a 3-D float Tensor of shape
-    `[new_height, new_width, channels]`.
-  """
+def _resize_images_common(images, resizer_fn, size, preserve_aspect_ratio, name,
+                          skip_resize_if_same):
+  """Core functionality for v1 and v2 resize functions."""
   with ops.name_scope(name, 'resize', [images, size]):
     images = ops.convert_to_tensor(images, name='images')
     if images.get_shape().ndims is None:
@@ -1065,27 +1009,15 @@ def resize_images_v2(images,
 
     # If we can determine that the height and width will be unmodified by this
     # transformation, we avoid performing the resize.
-    if all(x is not None
-           for x in [new_width_const, width, new_height_const, height]) and (
-               width == new_width_const and height == new_height_const):
+    if skip_resize_if_same and all(
+        x is not None
+        for x in [new_width_const, width, new_height_const, height]) and (
+            width == new_width_const and height == new_height_const):
       if not is_batch:
         images = array_ops.squeeze(images, axis=[0])
       return images
 
-    if method == ResizeMethod.BILINEAR:
-      images = gen_image_ops.resize_bilinear(
-          images, size, align_corners=align_corners)
-    elif method == ResizeMethod.NEAREST_NEIGHBOR:
-      images = gen_image_ops.resize_nearest_neighbor(
-          images, size, align_corners=align_corners)
-    elif method == ResizeMethod.BICUBIC:
-      images = gen_image_ops.resize_bicubic(
-          images, size, align_corners=align_corners)
-    elif method == ResizeMethod.AREA:
-      images = gen_image_ops.resize_area(
-          images, size, align_corners=align_corners)
-    else:
-      raise ValueError('Resize method is not implemented.')
+    images = resizer_fn(images, size)
 
     # NOTE(mrry): The shape functions for the resize ops cannot unpack
     # the packed values in `new_size`, so set the shape here.
@@ -1096,40 +1028,225 @@ def resize_images_v2(images,
     return images
 
 
-@tf_export('image.resize_image_with_pad')
-def resize_image_with_pad(image,
-                          target_height,
-                          target_width,
-                          method=ResizeMethod.BILINEAR,
-                          align_corners=False):
-  """Resizes and pads an image to a target width and height.
+@tf_export(v1=['image.resize_images', 'image.resize'])
+def resize_images(images,
+                  size,
+                  method=ResizeMethodV1.BILINEAR,
+                  align_corners=False,
+                  preserve_aspect_ratio=False,
+                  name=None):
+  """Resize `images` to `size` using the specified `method`.
 
-  Resizes an image to a target width and height by keeping
-  the aspect ratio the same without distortion. If the target
-  dimensions don't match the image dimensions, the image
-  is resized and then padded with zeroes to match requested
-  dimensions.
+  Resized images will be distorted if their original aspect ratio is not
+  the same as `size`.  To avoid distortions see
+  `tf.image.resize_image_with_pad`.
+
+  `method` can be one of:
+
+  *   <b>`ResizeMethod.BILINEAR`</b>: [Bilinear interpolation.](
+    https://en.wikipedia.org/wiki/Bilinear_interpolation)
+  *   <b>`ResizeMethod.NEAREST_NEIGHBOR`</b>: [Nearest neighbor interpolation.](
+    https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+  *   <b>`ResizeMethod.BICUBIC`</b>: [Bicubic interpolation.](
+    https://en.wikipedia.org/wiki/Bicubic_interpolation)
+  *   <b>`ResizeMethod.AREA`</b>: Area interpolation.
+
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. It will also have the same type as `images`
+  if the size of `images` can be statically determined to be the same as `size`,
+  because `images` is returned in this case. Otherwise, the return value has
+  type `float32`.
 
   Args:
-    image: 4-D Tensor of shape `[batch, height, width, channels]` or
-           3-D Tensor of shape `[height, width, channels]`.
-    target_height: Target height.
-    target_width: Target width.
-    method: Method to use for resizing image. See `resize_images()`
+    images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
+      size for the images.
+    method: ResizeMethod.  Defaults to `ResizeMethod.BILINEAR`.
     align_corners: bool.  If True, the centers of the 4 corner pixels of the
-        input and output tensors are aligned, preserving the values at the
-        corner pixels. Defaults to `False`.
+      input and output tensors are aligned, preserving the values at the corner
+      pixels. Defaults to `False`.
+    preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
+      then `images` will be resized to a size that fits in `size` while
+      preserving the aspect ratio of the original image. Scales up the image if
+      `size` is bigger than the current size of the `image`. Defaults to False.
+    name: A name for this operation (optional).
 
   Raises:
-    ValueError: if `target_height` or `target_width` are zero or negative.
+    ValueError: if the shape of `images` is incompatible with the
+      shape arguments to this function
+    ValueError: if `size` has invalid shape or type.
+    ValueError: if an unsupported resize method is specified.
 
   Returns:
-    Resized and padded image.
     If `images` was 4-D, a 4-D float Tensor of shape
     `[batch, new_height, new_width, channels]`.
     If `images` was 3-D, a 3-D float Tensor of shape
     `[new_height, new_width, channels]`.
   """
+
+  def resize_fn(images_t, new_size):
+    """Legacy resize core function, passed to _resize_images_common."""
+    if method == ResizeMethodV1.BILINEAR or method == ResizeMethod.BILINEAR:
+      return gen_image_ops.resize_bilinear(
+          images_t, new_size, align_corners=align_corners)
+    elif (method == ResizeMethodV1.NEAREST_NEIGHBOR or
+          method == ResizeMethod.NEAREST_NEIGHBOR):
+      return gen_image_ops.resize_nearest_neighbor(
+          images_t, new_size, align_corners=align_corners)
+    elif method == ResizeMethodV1.BICUBIC or method == ResizeMethod.BICUBIC:
+      return gen_image_ops.resize_bicubic(
+          images_t, new_size, align_corners=align_corners)
+    elif method == ResizeMethodV1.AREA or method == ResizeMethod.AREA:
+      return gen_image_ops.resize_area(
+          images_t, new_size, align_corners=align_corners)
+    else:
+      raise ValueError('Resize method is not implemented.')
+
+  return _resize_images_common(
+      images,
+      resize_fn,
+      size,
+      preserve_aspect_ratio=preserve_aspect_ratio,
+      name=name,
+      skip_resize_if_same=True)
+
+
+@tf_export('image.resize', v1=[])
+def resize_images_v2(images,
+                     size,
+                     method=ResizeMethod.BILINEAR,
+                     preserve_aspect_ratio=False,
+                     antialias=False,
+                     name=None):
+  """Resize `images` to `size` using the specified `method`.
+
+  Resized images will be distorted if their original aspect ratio is not
+  the same as `size`.  To avoid distortions see
+  `tf.image.resize_with_pad`.
+
+  When 'antialias' is true, the sampling filter will anti-alias the input image
+  as well as interpolate.   When downsampling an image with [anti-aliasing](
+  https://en.wikipedia.org/wiki/Spatial_anti-aliasing) the sampling filter
+  kernel is scaled in order to properly anti-alias the input image signal.
+  'antialias' has no effect when upsampling an image.
+
+  *   <b>`bilinear`</b>: [Bilinear interpolation.](
+    https://en.wikipedia.org/wiki/Bilinear_interpolation) If 'antialias' is
+    true, becomes a hat/tent filter function with radius 1 when downsampling.
+  *   <b>`lanczos3`</b>:  [Lanczos kernel](
+    https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 3.
+    High-quality practical filter but may have some ringing especially on
+    synthetic images.
+  *   <b>`lanczos5`</b>: [Lanczos kernel] (
+    https://en.wikipedia.org/wiki/Lanczos_resampling) with radius 5.
+    Very-high-quality filter but may have stronger ringing.
+  *   <b>`bicubic`</b>: [Cubic interpolant](
+    https://en.wikipedia.org/wiki/Bicubic_interpolation) of Keys. Equivalent to
+    Catmull-Rom kernel. Reasonably good quality and faster than Lanczos3Kernel,
+    particularly when upsampling.
+  *   <b>`gaussian`</b>: [Gaussian kernel](
+    https://en.wikipedia.org/wiki/Gaussian_filter) with radius 3,
+    sigma = 1.5 / 3.]
+  *   <b>`nearest`</b>: [Nearest neighbor interpolation.](
+    https://en.wikipedia.org/wiki/Nearest-neighbor_interpolation)
+    'antialias' has no effect when used with nearest neighbor interpolation.
+  *   <b>`area`</b>: Anti-aliased resampling with area interpolation.
+    'antialias' has no effect when used with area interpolation; it
+    always anti-aliases.
+  *   <b>`mitchellcubic`</b>: Mitchell-Netravali Cubic non-interpolating filter.
+    For synthetic images (especially those lacking proper prefiltering), less
+    ringing than Keys cubic kernel but less sharp.
+
+  Note that near image edges the filtering kernel may be partially outside the
+  image boundaries. For these pixels, only input pixels inside the image will be
+  included in the filter sum, and the output value will be appropriately
+  normalized.
+
+  The return value has the same type as `images` if `method` is
+  `ResizeMethod.NEAREST_NEIGHBOR`. Otherwise, the return value has type
+  `float32`.
+
+  Args:
+    images: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    size: A 1-D int32 Tensor of 2 elements: `new_height, new_width`.  The new
+      size for the images.
+    method: ResizeMethod.  Defaults to `bilinear`.
+    preserve_aspect_ratio: Whether to preserve the aspect ratio. If this is set,
+      then `images` will be resized to a size that fits in `size` while
+      preserving the aspect ratio of the original image. Scales up the image if
+      `size` is bigger than the current size of the `image`. Defaults to False.
+    antialias: Whether to use an anti-aliasing filter when downsampling an
+      image.
+    name: A name for this operation (optional).
+
+  Raises:
+    ValueError: if the shape of `images` is incompatible with the
+      shape arguments to this function
+    ValueError: if `size` has invalid shape or type.
+    ValueError: if an unsupported resize method is specified.
+
+  Returns:
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
+  """
+
+  def resize_fn(images_t, new_size):
+    """Resize core function, passed to _resize_images_common."""
+    scale_and_translate_methods = [
+        ResizeMethod.LANCZOS3, ResizeMethod.LANCZOS5, ResizeMethod.GAUSSIAN,
+        ResizeMethod.MITCHELLCUBIC
+    ]
+
+    def resize_with_scale_and_translate(method):
+      scale = (
+          math_ops.cast(new_size, dtype=dtypes.float32) /
+          math_ops.cast(array_ops.shape(images_t)[1:3], dtype=dtypes.float32))
+      return gen_image_ops.scale_and_translate(
+          images_t,
+          new_size,
+          scale,
+          array_ops.zeros([2]),
+          kernel_type=method,
+          antialias=antialias)
+
+    if method == ResizeMethod.BILINEAR:
+      if antialias:
+        return resize_with_scale_and_translate('triangle')
+      else:
+        return gen_image_ops.resize_bilinear(
+            images_t, new_size, half_pixel_centers=True)
+    elif method == ResizeMethod.NEAREST_NEIGHBOR:
+      return gen_image_ops.resize_nearest_neighbor(
+          images_t, new_size, half_pixel_centers=True)
+    elif method == ResizeMethod.BICUBIC:
+      if antialias:
+        return resize_with_scale_and_translate('keyscubic')
+      else:
+        return gen_image_ops.resize_bicubic(
+            images_t, new_size, half_pixel_centers=True)
+    elif method == ResizeMethod.AREA:
+      return gen_image_ops.resize_area(images_t, new_size)
+    elif method in scale_and_translate_methods:
+      return resize_with_scale_and_translate(method)
+    else:
+      raise ValueError('Resize method is not implemented.')
+
+  return _resize_images_common(
+      images,
+      resize_fn,
+      size,
+      preserve_aspect_ratio=preserve_aspect_ratio,
+      name=name,
+      skip_resize_if_same=False)
+
+
+def _resize_image_with_pad_common(image, target_height, target_width,
+                                  resize_fn):
+  """Core functionality for v1 and v2 resize_image_with_pad functions."""
   with ops.name_scope(None, 'resize_image_with_pad', [image]):
     image = ops.convert_to_tensor(image, name='image')
     image_shape = image.get_shape()
@@ -1184,10 +1301,7 @@ def resize_image_with_pad(image,
     p_width = max_(0, math_ops.cast(f_padding_width, dtype=dtypes.int32))
 
     # Resize first, then pad to meet requested dimensions
-    resized = resize_images(
-        image, [resized_height, resized_width],
-        method,
-        align_corners=align_corners)
+    resized = resize_fn(image, [resized_height, resized_width])
 
     padded = pad_to_bounding_box(resized, p_height, p_width, target_height,
                                  target_width)
@@ -1203,6 +1317,88 @@ def resize_image_with_pad(image,
     return padded
 
 
+@tf_export(v1=['image.resize_image_with_pad'])
+def resize_image_with_pad_v1(image,
+                             target_height,
+                             target_width,
+                             method=ResizeMethodV1.BILINEAR,
+                             align_corners=False):
+  """Resizes and pads an image to a target width and height.
+
+  Resizes an image to a target width and height by keeping
+  the aspect ratio the same without distortion. If the target
+  dimensions don't match the image dimensions, the image
+  is resized and then padded with zeroes to match requested
+  dimensions.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    target_height: Target height.
+    target_width: Target width.
+    method: Method to use for resizing image. See `resize_images()`
+    align_corners: bool.  If True, the centers of the 4 corner pixels of the
+      input and output tensors are aligned, preserving the values at the corner
+      pixels. Defaults to `False`.
+
+  Raises:
+    ValueError: if `target_height` or `target_width` are zero or negative.
+
+  Returns:
+    Resized and padded image.
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
+  """
+
+  def _resize_fn(im, new_size):
+    return resize_images(im, new_size, method, align_corners=align_corners)
+
+  return _resize_image_with_pad_common(image, target_height, target_width,
+                                       _resize_fn)
+
+
+@tf_export('image.resize_with_pad', v1=[])
+def resize_image_with_pad_v2(image,
+                             target_height,
+                             target_width,
+                             method=ResizeMethod.BILINEAR,
+                             antialias=False):
+  """Resizes and pads an image to a target width and height.
+
+  Resizes an image to a target width and height by keeping
+  the aspect ratio the same without distortion. If the target
+  dimensions don't match the image dimensions, the image
+  is resized and then padded with zeroes to match requested
+  dimensions.
+
+  Args:
+    image: 4-D Tensor of shape `[batch, height, width, channels]` or 3-D Tensor
+      of shape `[height, width, channels]`.
+    target_height: Target height.
+    target_width: Target width.
+    method: Method to use for resizing image. See `image.resize()`
+    antialias: Whether to use anti-aliasing when resizing. See 'image.resize()'.
+
+  Raises:
+    ValueError: if `target_height` or `target_width` are zero or negative.
+
+  Returns:
+    Resized and padded image.
+    If `images` was 4-D, a 4-D float Tensor of shape
+    `[batch, new_height, new_width, channels]`.
+    If `images` was 3-D, a 3-D float Tensor of shape
+    `[new_height, new_width, channels]`.
+  """
+
+  def _resize_fn(im, new_size):
+    return resize_images_v2(im, new_size, method, antialias=antialias)
+
+  return _resize_image_with_pad_common(image, target_height, target_width,
+                                       _resize_fn)
+
+
 @tf_export('image.per_image_standardization')
 def per_image_standardization(image):
   """Linearly scales `image` to have zero mean and unit variance.
@@ -1215,8 +1411,8 @@ def per_image_standardization(image):
   away from zero to protect against division by 0 when handling uniform images.
 
   Args:
-    image: An n-D Tensor where the last 3 dimensions are
-           `[height, width, channels]`.
+    image: An n-D Tensor where the last 3 dimensions are `[height, width,
+      channels]`.
 
   Returns:
     The standardized image with same shape as `image`.

@@ -2388,7 +2388,8 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   DataType Tinput, Tfilter, out_type;
   string padding;
   string data_format("NHWC");
-  std::vector<int32> strides, dilations;
+  std::vector<int32> strides, dilations, padding_list;
+  bool has_padding_list = HasNodeAttr(orig_node->def(), "padding_list");
 
   // Get all attributes from old node.
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "Tinput", &Tinput));
@@ -2397,6 +2398,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding", &padding));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "strides", &strides));
   TF_CHECK_OK(GetNodeAttr(orig_node->def(), "dilations", &dilations));
+  if (has_padding_list) {
+    TF_CHECK_OK(GetNodeAttr(orig_node->def(), "padding_list", &padding_list));
+  }
 
   Node* filter_node = nullptr;
   orig_node->input_node(1, &filter_node);
@@ -2411,6 +2415,9 @@ void MklLayoutRewritePass::CopyAttrsQuantizedConv2D(const Node* orig_node,
   nb->Attr("dilations", dilations);
   nb->Attr("T", out_type);  // added "T" for facilitating MklToTf conversion.
   nb->Attr("data_format", data_format);
+  if (has_padding_list) {
+    nb->Attr("padding_list", padding_list);
+  }
 
   // Requantization attr Tbias.
   DataType Tbias;

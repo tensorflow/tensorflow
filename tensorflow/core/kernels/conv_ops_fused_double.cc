@@ -13,7 +13,6 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ==============================================================================*/
 
-#include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/kernels/conv_ops_fused_impl.h"
 
 namespace tensorflow {

@@ -188,6 +188,11 @@ class ArithmeticOptimizerTest : public GrapplerTest {
     optimizer->options_.convert_pow = true;
   }
 
+  void EnableOnlyFuseSquaredDiff(ArithmeticOptimizer* optimizer) {
+    DisableAllStages(optimizer);
+    optimizer->options_.fuse_squared_diff = true;
+  }
+
   void EnableOnlyRemoveIdempotent(ArithmeticOptimizer* optimizer) {
     DisableAllStages(optimizer);
     optimizer->options_.remove_idempotent = true;

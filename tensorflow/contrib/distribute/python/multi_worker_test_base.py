@@ -347,9 +347,9 @@ class MockOsEnv(collections.Mapping):
   def __iter__(self):
     if not hasattr(self._thread_local, 'dict'):
       self._thread_local.dict = dict()
-    for x in self._thread_local.dict.items():
+    for x in self._thread_local.dict:
       yield x
-    for x in self._dict.items():
+    for x in self._dict:
       yield x
 
   def __len__(self):

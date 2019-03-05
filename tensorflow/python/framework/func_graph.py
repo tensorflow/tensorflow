@@ -78,10 +78,22 @@ def convert_structure_to_signature(structure, arg_names=None):
     Identical structure that has TensorSpec objects instead of Tensors and
     UknownArgument instead of any unsupported types.
   """
-
-  def encode_arg(arg, name=None):
+  def encode_arg(arg, path):
     """A representation for this argument, for converting into signatures."""
     if isinstance(arg, ops.Tensor):
+      user_specified_name = None
+      try:
+        user_specified_name = compat.as_str(
+            arg.op.get_attr("_user_specified_name"))
+      except ValueError:
+        pass
+
+      if path and user_specified_name and user_specified_name != path[0]:
+        # The user has explicitly named the argument differently than the name
+        # of the function argument.
+        name = user_specified_name
+      else:
+        name = "/".join([str(p) for p in path])
       return tensor_spec.TensorSpec(arg.shape, arg.dtype, name)
     if isinstance(arg, (
         int,
@@ -107,10 +119,7 @@ def convert_structure_to_signature(structure, arg_names=None):
         ((arg_names[path[0]],) + path[1:], arg) for path, arg in flattened
     ]
 
-  mapped = [
-      encode_arg(arg, "/".join([str(p) for p in path]))
-      for path, arg in flattened
-  ]
+  mapped = [encode_arg(arg, path) for path, arg in flattened]
   return nest.pack_sequence_as(structure, mapped)
 
 
@@ -195,11 +204,16 @@ class FuncGraph(ops.Graph):
 
     if context.executing_eagerly():
       self.seed = context.global_seed()
+      # [for tf-data user migration from TF1.0 to 2.0] seed_used keep track of
+      # any None op_seed for random_op in the function, in which case we end up
+      # using function seed, which could be unintended behavior for the op.
+      self._seed_used = False
       device_type = context.context().device_spec.device_type
       self._xla_compile = (device_type == "TPU" or device_type == "XLA_GPU"
                            or device_type == "XLA_CPU")
     else:
       self.seed = graph.seed
+      self._seed_used = False
       self._xla_compile = getattr(graph, "_xla_compile", False)
       # TODO(allenl): Figure out if we can remove colocation stack
       # specialization (currently used in cond_v2), here and in the cache key.
@@ -881,7 +895,16 @@ def _get_defun_inputs(args, names, structure, flat_shapes=None):
              flat_shapes))
     shapes_iter = iter(flat_shapes)
   for arg_value, name in zip(args, names):
-    for arg in nest.flatten(arg_value):
+    flattened = nest.flatten(arg_value)
+    tensor_specs = [
+        arg for arg in flattened if isinstance(arg, tensor_spec.TensorSpec)
+    ]
+    specified_names = [arg.name for arg in tensor_specs if arg.name]
+    if specified_names and len(specified_names) < len(tensor_specs):
+      raise ValueError("If specifying TensorSpec names for nested structures, "
+                       "either zero or all names have to be specified.")
+
+    for arg in flattened:
       # We have a shape entry for each arg, regadless of whether it's a real
       # Tensor or not.  For non-tensor entries it should be None.
       shape = next(shapes_iter)

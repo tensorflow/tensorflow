@@ -560,6 +560,16 @@ class MapVectorizationTest(test_base.DatasetTestBase, parameterized.TestCase):
     optimized = unoptimized.with_options(options)
     self.assertDatasetsEqual(unoptimized, optimized)
 
+  def testOptimizationWithPrefetch(self):
+    dataset = dataset_ops.Dataset.range(10)
+    dataset = dataset.map(lambda x: x)
+    dataset = dataset.prefetch(1)
+    dataset = dataset.batch(10)
+    options = dataset_ops.Options()
+    options.experimental_optimization.map_vectorization = True
+    dataset = dataset.with_options(options)
+    self.assertDatasetProduces(dataset, [list(range(10))])
+
 
 if __name__ == "__main__":
   test.main()

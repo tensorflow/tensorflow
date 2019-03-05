@@ -560,7 +560,7 @@ class FromSessionTest(test_util.TensorFlowTestCase):
 
     def calibration_gen():
       for _ in range(10):
-        yield np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)
+        yield [np.random.uniform(-1, 1, size=(1, 5, 5, 3)).astype(np.float32)]
 
     sess = session.Session()
 
