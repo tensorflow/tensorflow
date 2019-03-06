@@ -523,8 +523,8 @@ class TopologyConstructionTest(keras_parameterized.TestCase):
       self.assertEqual(len(model.inputs), 2)
       self.assertEqual(g.name, 'model/dense_2/BiasAdd:0')
 
-      self.assertListEqual(g.shape.as_list(), c.get_shape().as_list())
-      self.assertListEqual(h.shape.as_list(), d.get_shape().as_list())
+      self.assertListEqual(g.shape.as_list(), c.shape.as_list())
+      self.assertListEqual(h.shape.as_list(), d.shape.as_list())
 
       # test separate manipulation of different layer outputs
       i = keras.layers.Dense(7, name='dense_4')(h)
