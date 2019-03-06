@@ -2368,6 +2368,7 @@ cuda_py_test(
     size = "medium",
     srcs = ["shape_ops_test.py"],
     additional_deps = [
+        "@absl_py//absl/testing:parameterized",
         "//third_party/py/numpy",
         "//tensorflow/core:protos_all_py",
         "//tensorflow/python:array_ops",
