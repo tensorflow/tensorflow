@@ -730,7 +730,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
       on_value=np.int64(0),
       off_value=np.int64(1),
       dtype=dtypes.int64)
-  add_mask = math_ops.to_int64(not_finished)
+  add_mask = math_ops.cast(not_finished, dtypes.int64)
   lengths_to_add *= array_ops.expand_dims(add_mask, 2)
   new_prediction_lengths = (
       lengths_to_add + array_ops.expand_dims(prediction_lengths, 2))
@@ -802,7 +802,7 @@ def _beam_search_step(time, logits, next_cell_state, beam_state, batch_size,
   # 2. Beams that are now finished (EOS predicted) have their length
   #    increased by 1.
   # 3. Beams that are not yet finished have their length increased by 1.
-  lengths_to_add = math_ops.to_int64(math_ops.logical_not(previously_finished))
+  lengths_to_add = math_ops.cast(math_ops.logical_not(previously_finished), dtypes.int64)
   next_prediction_len = _tensor_gather_helper(
       gather_indices=next_beam_ids,
       gather_from=beam_state.lengths,
@@ -1002,7 +1002,7 @@ def _length_penalty(sequence_lengths, penalty_factor):
   static_penalty = tensor_util.constant_value(penalty_factor)
   if static_penalty is not None and static_penalty == 0:
     return 1.0
-  return math_ops.div((5. + math_ops.to_float(sequence_lengths))
+  return math_ops.divide((5. + math_ops.cast(sequence_lengths, dtypes.float32))
                       **penalty_factor, (5. + 1.)**penalty_factor)
 
 
