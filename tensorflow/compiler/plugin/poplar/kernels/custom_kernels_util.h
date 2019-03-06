@@ -30,6 +30,7 @@ limitations under the License.
 
 namespace xla {
 class HloInstruction;
+class Window;
 
 namespace poplarplugin {
 
@@ -47,12 +48,14 @@ absl::optional<PoplibsLib> StringToPoplibsLib(const std::string&);
 enum class PoplibsOp : uint32 {
   // Poplin:
   // Popnn:
-  LstmLayerFwd = 0,
-  LstmLayerBwd,
+  GroupNormGrad = 0,
   GroupNormInference,
-  GroupNormTraining,
-  GroupNormGrad,
   GroupNormStatistics,
+  GroupNormTraining,
+  LstmLayerBwd,
+  LstmLayerFwd,
+  MaxPool,
+  MaxPoolGrad,
   // Popops:
   Sqrt,
   Rsqrt,
@@ -104,6 +107,7 @@ class AttributeMap {
       const std::string& field_name) const;
   StatusOr<absl::flat_hash_map<int64, int64>> GetAttributeFlatHashMap(
       const std::string& field_name) const;
+  StatusOr<Window> GetAttributeAsWindow(const std::string& field_name) const;
 
   const std::string Serialise();
 

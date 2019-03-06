@@ -16,6 +16,7 @@
 
 #include <poplar/Program.hpp>
 #include <poplin/Convolution.hpp>
+#include <popnn/Pooling.hpp>
 #include <popops/Expr.hpp>
 
 #include <poplar/exceptions.hpp>
@@ -167,9 +168,15 @@ StatusOr<poplar::program::Program> CreatePoplibsWindowReduction(
     CompilerResources& res, const HloInstruction* inst,
     const xla::Shape& output_shape, TensorMap& tensor_map);
 
-StatusOr<poplar::program::Program> CreateBwdMaxPool(
-    CompilerResources& res, const HloInstruction* inst,
-    const xla::Shape& output_shape, TensorMap& tensor_map);
+StatusOr<poplar::program::Program> CreatePoplibsPooling(
+    CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
+    popnn::PoolingType reduction_type, const Window& window,
+    absl::optional<const HloInstruction*> optional_reduction_op =
+        absl::nullopt);
+
+StatusOr<poplar::program::Program> CreatePoplibsPoolingGrad(
+    CompilerResources& res, const HloInstruction* inst, TensorMap& tensor_map,
+    popnn::PoolingType reduction_type, const Window& window);
 
 StatusOr<poplar::program::Program> CreateParallelMap(CompilerResources& res,
                                                      const HloInstruction* inst,
