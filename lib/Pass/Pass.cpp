@@ -309,10 +309,21 @@ FunctionAnalysisManager ModuleAnalysisManager::slice(Function *function) {
 
 /// Invalidate any non preserved analyses.
 void ModuleAnalysisManager::invalidate(const detail::PreservedAnalyses &pa) {
+  // If all analyses were preserved, then there is nothing to do here.
   if (pa.isAll())
     return;
 
-  // TODO: Fine grain invalidation of analyses.
-  moduleAnalyses.clear();
-  functionAnalyses.clear();
+  // Invalidate the module analyses directly.
+  moduleAnalyses.invalidate(pa);
+
+  // If no analyses were preserved, then just simply clear out the function
+  // analysis results.
+  if (pa.isNone()) {
+    functionAnalyses.clear();
+    return;
+  }
+
+  // Otherwise, invalidate each function analyses.
+  for (auto &analysisPair : functionAnalyses)
+    analysisPair.second.invalidate(pa);
 }

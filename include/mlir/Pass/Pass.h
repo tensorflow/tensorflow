@@ -207,6 +207,14 @@ protected:
   void markAllAnalysesPreserved() {
     this->getPassState().preservedAnalyses.preserveAll();
   }
+
+  /// Mark the provided analyses as preserved.
+  template <typename... AnalysesT> void markAnalysesPreserved() {
+    this->getPassState().preservedAnalyses.template preserve<AnalysesT...>();
+  }
+  void markAnalysesPreserved(const AnalysisID *id) {
+    this->getPassState().preservedAnalyses.preserve(id);
+  }
 };
 } // end namespace detail
 
@@ -241,6 +249,14 @@ struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
   template <typename AnalysisT>
   AnalysisT &getFunctionAnalysisResult(Function *f) {
     return this->getAnalysisManager().template getFunctionResult<AnalysisT>(f);
+  }
+
+  /// Returns an existing analysis result for a child function if it exists.
+  template <typename AnalysisT>
+  llvm::Optional<std::reference_wrapper<AnalysisT>>
+  getCachedFunctionAnalysisResult(Function *f) {
+    return this->getAnalysisManager()
+        .template getCachedFunctionResult<AnalysisT>(f);
   }
 };
 } // end namespace mlir

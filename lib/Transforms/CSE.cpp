@@ -124,6 +124,12 @@ private:
 
 /// Attempt to eliminate a redundant operation.
 bool CSE::simplifyOperation(Instruction *op) {
+  // Don't simplify operations with nested blocks. We don't currently model
+  // equality comparisons correctly among other things. It is also unclear
+  // whether we would want to CSE such operations.
+  if (op->getNumBlockLists() != 0)
+    return false;
+
   // TODO(riverriddle) We currently only eliminate non side-effecting
   // operations.
   if (!op->hasNoSideEffect())
@@ -230,6 +236,10 @@ void CSE::runOnFunction() {
   for (auto *op : opsToErase)
     op->erase();
   opsToErase.clear();
+
+  // We currently don't remove region operations, so mark dominance as
+  // preserved.
+  markAnalysesPreserved<DominanceInfo, PostDominanceInfo>();
 }
 
 FunctionPassBase *mlir::createCSEPass() { return new CSE(); }

@@ -44,8 +44,32 @@ public:
   /// Mark all analyses as preserved.
   void preserveAll() { preservedIDs.insert(&allAnalysesID); }
 
-  /// Returns if all analyses were marked preserved.
+  /// Returns true if all analyses were marked preserved.
   bool isAll() const { return preservedIDs.count(&allAnalysesID); }
+
+  /// Returns true if no analyses were marked preserved.
+  bool isNone() const { return preservedIDs.empty(); }
+
+  /// Preserve the given analyses.
+  template <typename AnalysisT> void preserve() {
+    preserve(AnalysisID::getID<AnalysisT>());
+  }
+  template <typename AnalysisT, typename AnalysisT2, typename... OtherAnalysesT>
+  void preserve() {
+    preserve<AnalysisT>();
+    preserve<AnalysisT2, OtherAnalysesT...>();
+  }
+  void preserve(const AnalysisID *id) { preservedIDs.insert(id); }
+
+  /// Returns if the given analysis has been marked as preserved. Note that this
+  /// simply checks for the presence of a given analysis ID and should not be
+  /// used as a general preservation checker.
+  template <typename AnalysisT> bool isPreserved() const {
+    return isPreserved(AnalysisID::getID<AnalysisT>());
+  }
+  bool isPreserved(const AnalysisID *id) const {
+    return preservedIDs.count(id);
+  }
 
 private:
   /// An identifier used to represent all potential analyses.
@@ -112,11 +136,12 @@ public:
   /// Invalidate any cached analyses based upon the given set of preserved
   /// analyses.
   void invalidate(const detail::PreservedAnalyses &pa) {
-    // If all analyses were preserved, then there is nothing to do here.
-    if (pa.isAll())
-      return;
-    // TODO: Fine grain invalidation of analyses.
-    clear();
+    // Remove any analyses not marked as preserved.
+    for (auto it = results.begin(), e = results.end(); it != e;) {
+      auto curIt = it++;
+      if (!pa.isPreserved(curIt->first))
+        results.erase(curIt);
+    }
   }
 
 private:
@@ -154,7 +179,12 @@ public:
   }
 
   /// Invalidate any non preserved analyses,
-  void invalidate(const detail::PreservedAnalyses &pa) { impl->invalidate(pa); }
+  void invalidate(const detail::PreservedAnalyses &pa) {
+    // If all analyses were preserved, then there is nothing to do here.
+    if (pa.isAll())
+      return;
+    impl->invalidate(pa);
+  }
 
   /// Clear any held analyses.
   void clear() { impl->clear(); }
@@ -189,13 +219,23 @@ public:
     return slice(function).getResult<AnalysisT>();
   }
 
+  /// Query for a cached analysis of a function, or return null.
+  template <typename AnalysisT>
+  llvm::Optional<std::reference_wrapper<AnalysisT>>
+  getCachedFunctionResult(Function *function) const {
+    auto it = functionAnalyses.find(function);
+    if (it == functionAnalyses.end())
+      return llvm::None;
+    return it->second.getCachedResult<AnalysisT>();
+  }
+
   /// Query for the analysis of a module. The analysis is computed if it does
   /// not exist.
   template <typename AnalysisT> AnalysisT &getResult() {
     return moduleAnalyses.getResult<AnalysisT>();
   }
 
-  /// Query for a cached analysis for the module, or return nullptr.
+  /// Query for a cached analysis for the module, or return null.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedResult() const {
     return moduleAnalyses.getCachedResult<AnalysisT>();
