@@ -43,13 +43,12 @@ static llvm::cl::OptionCategory clOptionsCategory(DEBUG_TYPE " options");
 
 static llvm::cl::opt<unsigned long long> clFastMemoryCapacity(
     "dma-fast-mem-capacity",
-    llvm::cl::init(std::numeric_limits<uint64_t>::max() / 1024),
     llvm::cl::desc(
         "Set fast memory space capacity in KiB (default: unlimited)"),
     llvm::cl::cat(clOptionsCategory));
 
 static llvm::cl::opt<unsigned> clFastMemorySpace(
-    "dma-fast-mem-space", llvm::cl::init(1),
+    "dma-fast-mem-space", llvm::cl::init(2),
     llvm::cl::desc(
         "Fast memory space identifier for DMA generation (default: 1)"),
     llvm::cl::cat(clOptionsCategory));
@@ -74,11 +73,11 @@ namespace {
 // TODO(bondhugula): We currently can't generate DMAs correctly when stores are
 // strided. Check for strided stores.
 struct DmaGeneration : public FunctionPass<DmaGeneration> {
-  explicit DmaGeneration(unsigned slowMemorySpace = 0,
-                         unsigned fastMemorySpace = clFastMemorySpace,
-                         int minDmaTransferSize = 1024,
-                         uint64_t fastMemCapacityBytes = clFastMemoryCapacity *
-                                                         1024)
+  explicit DmaGeneration(
+      unsigned slowMemorySpace = 0,
+      unsigned fastMemorySpace = clFastMemorySpace,
+      int minDmaTransferSize = 1024,
+      uint64_t fastMemCapacityBytes = std::numeric_limits<uint64_t>::max())
       : slowMemorySpace(slowMemorySpace), fastMemorySpace(fastMemorySpace),
         minDmaTransferSize(minDmaTransferSize),
         fastMemCapacityBytes(fastMemCapacityBytes) {}
@@ -757,6 +756,11 @@ void DmaGeneration::runOnFunction() {
   Function *f = getFunction();
   FuncBuilder topBuilder(f);
   zeroIndex = topBuilder.create<ConstantIndexOp>(f->getLoc(), 0);
+
+  // Override default is a command line option is provided.
+  if (clFastMemoryCapacity.getNumOccurrences() > 0) {
+    fastMemCapacityBytes = clFastMemoryCapacity * 1024;
+  }
 
   for (auto &block : *f)
     runOnBlock(&block);
