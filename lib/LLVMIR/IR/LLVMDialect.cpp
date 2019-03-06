@@ -96,8 +96,9 @@ bool LLVMDialect::verifyFunctionArgAttribute(const Function *func,
                                              unsigned argIdx,
                                              NamedAttribute argAttr) {
   // Check that llvm.noalias is a boolean attribute.
-  if (argAttr.first == StringRef("llvm.noalias"))
-    return (!argAttr.second.isa<BoolAttr>());
+  if (argAttr.first == "llvm.noalias" && !argAttr.second.isa<BoolAttr>())
+    return func->emitError(
+        "llvm.noalias argument attribute of non boolean type");
   return false;
 }
 
