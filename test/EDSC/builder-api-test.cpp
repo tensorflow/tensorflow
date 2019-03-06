@@ -20,9 +20,8 @@
 
 #include "mlir/AffineOps/AffineOps.h"
 #include "mlir/EDSC/Builders.h"
+#include "mlir/EDSC/Helpers.h"
 #include "mlir/EDSC/Intrinsics.h"
-#include "mlir/EDSC/MLIREmitter.h"
-#include "mlir/EDSC/Types.h"
 #include "mlir/IR/Builders.h"
 #include "mlir/IR/MLIRContext.h"
 #include "mlir/IR/Module.h"
@@ -313,6 +312,56 @@ TEST_FUNC(builder_cond_branch_eager) {
   // CHECK-NEXT:   return
   // CHECK-NEXT: ^bb2(%1: i64, %2: i32):  // pred: ^bb0
   // CHECK-NEXT:   return
+  // clang-format on
+  f->print(llvm::outs());
+}
+
+TEST_FUNC(builder_helpers) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto f32Type = FloatType::getF32(&globalContext());
+  auto memrefType = MemRefType::get({-1, -1, -1}, f32Type, {}, 0);
+  auto f =
+      makeFunction("builder_helpers", {}, {memrefType, memrefType, memrefType});
+
+  ScopedContext scope(f.get());
+  // clang-format off
+  ValueHandle f7(
+      ValueHandle::create<ConstantFloatOp>(llvm::APFloat(7.0f), f32Type));
+  MemRefView vA(f->getArgument(0)), vB(f->getArgument(1)), vC(f->getArgument(2));
+  IndexedValue A(vA), B(vB), C(vC);
+  IndexHandle i, j, k1, k2, lb0, lb1, lb2, ub0, ub1, ub2;
+  int64_t step0, step1, step2;
+  std::tie(lb0, ub0, step0) = vA.range(0);
+  std::tie(lb1, ub1, step1) = vA.range(1);
+  std::tie(lb2, ub2, step2) = vA.range(2);
+  LoopNestBuilder({&i, &j}, {lb0, lb1}, {ub0, ub1}, {step0, step1})({
+    LoopBuilder(&k1, lb2, ub2, step2)({
+      C({i, j, k1}) = f7 + A({i, j, k1}) + B({i, j, k1}),
+    }),
+    LoopBuilder(&k2, lb2, ub2, step2)({
+      C({i, j, k2}) += A({i, j, k2}) + B({i, j, k2}),
+    }),
+  });
+
+  // CHECK-LABEL: @builder_helpers
+  //      CHECK:   for %i0 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
+  // CHECK-NEXT:     for %i1 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
+  // CHECK-NEXT:       for %i2 = (d0) -> (d0)({{.*}}) to (d0) -> (d0)({{.*}}) {
+  // CHECK-NEXT:         [[a:%.*]] = load %arg0[%i0, %i1, %i2] : memref<?x?x?xf32>
+  // CHECK-NEXT:         [[b:%.*]] = addf {{.*}}, [[a]] : f32
+  // CHECK-NEXT:         [[c:%.*]] = load %arg1[%i0, %i1, %i2] : memref<?x?x?xf32>
+  // CHECK-NEXT:         [[d:%.*]] = addf [[b]], [[c]] : f32
+  // CHECK-NEXT:         store [[d]], %arg2[%i0, %i1, %i2] : memref<?x?x?xf32>
+  // CHECK-NEXT:       }
+  // CHECK-NEXT:       for %i3 = (d0) -> (d0)(%c0_1) to (d0) -> (d0)(%2) {
+  // CHECK-NEXT:         [[a:%.*]] = load %arg1[%i0, %i1, %i3] : memref<?x?x?xf32>
+  // CHECK-NEXT:         [[b:%.*]] = load %arg0[%i0, %i1, %i3] : memref<?x?x?xf32>
+  // CHECK-NEXT:         [[c:%.*]] = addf [[b]], [[a]] : f32
+  // CHECK-NEXT:         [[d:%.*]] = load %arg2[%i0, %i1, %i3] : memref<?x?x?xf32>
+  // CHECK-NEXT:         [[e:%.*]] = addf [[d]], [[c]] : f32
+  // CHECK-NEXT:         store [[e]], %arg2[%i0, %i1, %i3] : memref<?x?x?xf32>
   // clang-format on
   f->print(llvm::outs());
 }

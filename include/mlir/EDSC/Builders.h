@@ -33,6 +33,7 @@ namespace edsc {
 
 struct index_t {
   explicit index_t(int64_t v) : v(v) {}
+  explicit operator int64_t() { return v; }
   int64_t v;
 };
 
@@ -145,6 +146,39 @@ public:
   /// returns a ValueHandle::null() that cannot be captured.
   // TODO(ntv): when loops return escaping ssa-values, this should be adapted.
   ValueHandle operator()(ArrayRef<ValueHandle> stmts);
+};
+
+/// Explicit nested LoopBuilder. Offers a compressed multi-loop builder to avoid
+/// explicitly writing all the loops in a nest. This simple functionality is
+/// also useful to write rank-agnostic custom ops.
+///
+/// Usage:
+///
+/// ```c++
+///    LoopNestBuilder({&i, &j, &k}, {lb, lb, lb}, {ub, ub, ub}, {1, 1, 1})({
+///      ...
+///    });
+/// ```
+///
+/// ```c++
+///    LoopNestBuilder({&i}, {lb}, {ub}, {1})({
+///      LoopNestBuilder({&j}, {lb}, {ub}, {1})({
+///        LoopNestBuilder({&k}, {lb}, {ub}, {1})({
+///          ...
+///        }),
+///      }),
+///    });
+/// ```
+class LoopNestBuilder {
+public:
+  LoopNestBuilder(ArrayRef<ValueHandle *> ivs, ArrayRef<ValueHandle> lbs,
+                  ArrayRef<ValueHandle> ubs, ArrayRef<int64_t> steps);
+
+  // TODO(ntv): when loops return escaping ssa-values, this should be adapted.
+  ValueHandle operator()(ArrayRef<ValueHandle> stmts);
+
+private:
+  SmallVector<LoopBuilder, 4> loops;
 };
 
 // This class exists solely to handle the C++ vexing parse case when

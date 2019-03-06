@@ -100,8 +100,21 @@ ValueHandle mlir::edsc::intrinsics::COND_BR(
 ////////////////////////////////////////////////////////////////////////////////
 // TODO(ntv): Intrinsics below this line should be TableGen'd.
 ////////////////////////////////////////////////////////////////////////////////
+ValueHandle
+mlir::edsc::intrinsics::LOAD(ValueHandle base,
+                             llvm::ArrayRef<ValueHandle> indices = {}) {
+  SmallVector<Value *, 4> ops(indices.begin(), indices.end());
+  return ValueHandle::create<LoadOp>(base.getValue(), ops);
+}
 
 ValueHandle mlir::edsc::intrinsics::RETURN(ArrayRef<ValueHandle> operands) {
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
   return ValueHandle::create<ReturnOp>(ops);
+}
+
+ValueHandle
+mlir::edsc::intrinsics::STORE(ValueHandle value, ValueHandle base,
+                              llvm::ArrayRef<ValueHandle> indices = {}) {
+  SmallVector<Value *, 4> ops(indices.begin(), indices.end());
+  return ValueHandle::create<StoreOp>(value.getValue(), base.getValue(), ops);
 }

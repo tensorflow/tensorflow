@@ -95,10 +95,21 @@ ValueHandle COND_BR(ValueHandle cond, BlockHandle *trueBranch,
 ////////////////////////////////////////////////////////////////////////////////
 // TODO(ntv): Intrinsics below this line should be TableGen'd.
 ////////////////////////////////////////////////////////////////////////////////
+/// Builds an mlir::LoadOp with the proper `operands` that each must have
+/// captured an mlir::Value*.
+/// Returns a ValueHandle to the produced mlir::Value*.
+ValueHandle LOAD(ValueHandle base, llvm::ArrayRef<ValueHandle> indices);
+
 /// Builds an mlir::ReturnOp with the proper `operands` that each must have
 /// captured an mlir::Value*.
 /// Returns an empty ValueHandle.
 ValueHandle RETURN(llvm::ArrayRef<ValueHandle> operands);
+
+/// Builds an mlir::StoreOp with the proper `operands` that each must have
+/// captured an mlir::Value*.
+/// Returns an empty ValueHandle.
+ValueHandle STORE(ValueHandle value, ValueHandle base,
+                  llvm::ArrayRef<ValueHandle> indices);
 
 } // namespace intrinsics
 

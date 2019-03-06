@@ -162,6 +162,32 @@ ValueHandle mlir::edsc::LoopBuilder::operator()(ArrayRef<ValueHandle> stmts) {
   return ValueHandle::null();
 }
 
+mlir::edsc::LoopNestBuilder::LoopNestBuilder(ArrayRef<ValueHandle *> ivs,
+                                             ArrayRef<ValueHandle> lbs,
+                                             ArrayRef<ValueHandle> ubs,
+                                             ArrayRef<int64_t> steps) {
+  assert(ivs.size() == lbs.size() && "Mismatch in number of arguments");
+  assert(ivs.size() == ubs.size() && "Mismatch in number of arguments");
+  assert(ivs.size() == steps.size() && "Mismatch in number of arguments");
+  for (auto it : llvm::zip(ivs, lbs, ubs, steps)) {
+    loops.emplace_back(std::get<0>(it), std::get<1>(it), std::get<2>(it),
+                       std::get<3>(it));
+  }
+}
+
+ValueHandle
+mlir::edsc::LoopNestBuilder::operator()(ArrayRef<ValueHandle> stmts) {
+  // Iterate on the calling operator() on all the loops in the nest.
+  // The iteration order is from innermost to outermost because enter/exit needs
+  // to be asymmetric (i.e. enter() occurs on LoopBuilder construction, exit()
+  // occurs on calling operator()). The asymmetry is required for properly
+  // nesting imperfectly nested regions (see LoopBuilder::operator()).
+  for (auto lit = loops.rbegin(), eit = loops.rend(); lit != eit; ++lit) {
+    (*lit)({});
+  }
+  return ValueHandle::null();
+}
+
 mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle bh, Append) {
   assert(bh && "Expected already captured BlockHandle");
   enter(bh.getBlock());
