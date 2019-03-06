@@ -438,8 +438,7 @@ class Op<string mnemonic, list<OpTrait> props = []> {
   // Additional, longer human-readable description of what the op does.
   string description = "";
 
-  // Dag containting the arguments of the op. Default to 0 arguments. Operands
-  // to the op need to precede attributes to ops in the argument specification.
+  // Dag containting the arguments of the op. Default to 0 arguments.
   dag arguments = (ins);
 
   // The list of results of the op. Default to 0 results.

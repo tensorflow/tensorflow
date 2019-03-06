@@ -244,7 +244,6 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
   OUT(2) << "static void build(Builder *builder, OperationState *result";
 
   auto numResults = op.getNumResults();
-  auto numOperands = op.getNumOperands();
 
   llvm::SmallVector<std::string, 4> resultNames;
   resultNames.reserve(numResults);
@@ -263,24 +262,30 @@ void OpEmitter::emitStandaloneParamBuilder(bool isAllSameType) {
     }
   }
 
-  // Emit parameters for all operands
-  for (int i = 0; i != numOperands; ++i) {
-    auto &operand = op.getOperand(i);
-    os << (operand.type.isVariadic() ? ", ArrayRef<Value *> " : ", Value *")
-       << getArgumentName(op, i);
+  // Emit parameters for all arguments (operands and attributes).
+  int numOperands = 0;
+  int numAttrs = 0;
+  for (int i = 0, e = op.getNumArgs(); i < e; ++i) {
+    auto argument = op.getArg(i);
+    if (argument.is<tblgen::Value *>()) {
+      auto &operand = op.getOperand(numOperands);
+      os << (operand.type.isVariadic() ? ", ArrayRef<Value *> " : ", Value *")
+         << getArgumentName(op, numOperands);
+      ++numOperands;
+    } else {
+      // TODO(antiagainst): Support default initializer for attributes
+      const auto &namedAttr = op.getAttribute(numAttrs);
+      const auto &attr = namedAttr.attr;
+      os << ", ";
+      if (attr.isOptional())
+        os << "/*optional*/";
+      os << attr.getStorageType() << ' ' << namedAttr.name;
+      ++numAttrs;
+    }
   }
-
-  // Emit parameters for all attributes
-  // TODO(antiagainst): Support default initializer for attributes
-  for (const auto &namedAttr : op.getAttributes()) {
-    const auto &attr = namedAttr.attr;
-    if (attr.isDerivedAttr())
-      break;
-    os << ", ";
-    if (attr.isOptional())
-      os << "/*optional*/";
-    os << attr.getStorageType() << ' ' << namedAttr.name;
-  }
+  if (numOperands + numAttrs != op.getNumArgs())
+    return PrintFatalError(
+        "op arguments must be either operands or attributes");
 
   os << ") {\n";
 

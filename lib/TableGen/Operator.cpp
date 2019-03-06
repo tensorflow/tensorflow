@@ -78,7 +78,7 @@ bool tblgen::Operator::hasVariadicResult() const {
 }
 
 int tblgen::Operator::getNumNativeAttributes() const {
-  return derivedAttrStart - nativeAttrStart;
+  return numNativeAttributes;
 }
 
 int tblgen::Operator::getNumDerivedAttributes() const {
@@ -140,22 +140,21 @@ auto tblgen::Operator::getOperands() -> llvm::iterator_range<operand_iterator> {
 }
 
 auto tblgen::Operator::getArg(int index) -> Argument {
-  if (index < nativeAttrStart)
-    return {&operands[index]};
-  return {&attributes[index - nativeAttrStart]};
+  return arguments[index];
 }
 
 void tblgen::Operator::populateOpStructure() {
   auto &recordKeeper = def.getRecords();
+  auto typeConstraintClass = recordKeeper.getClass("TypeConstraint");
   auto attrClass = recordKeeper.getClass("Attr");
   auto derivedAttrClass = recordKeeper.getClass("DerivedAttr");
-  derivedAttrStart = -1;
+  numNativeAttributes = 0;
 
   // The argument ordering is operands, native attributes, derived
   // attributes.
   DagInit *argumentValues = def.getValueAsDag("arguments");
   unsigned i = 0;
-  // Handle operands.
+  // Handle operands and native attributes.
   for (unsigned e = argumentValues->getNumArgs(); i != e; ++i) {
     auto arg = argumentValues->getArg(i);
     auto givenName = argumentValues->getArgNameStr(i);
@@ -164,32 +163,26 @@ void tblgen::Operator::populateOpStructure() {
       PrintFatalError(def.getLoc(),
                       Twine("undefined type for argument #") + Twine(i));
     Record *argDef = argDefInit->getDef();
-    if (argDef->isSubClassOf(attrClass))
-      break;
-    operands.push_back(Value{givenName, Type(argDefInit)});
-  }
 
-  // Handle native attributes.
-  nativeAttrStart = i;
-  for (unsigned e = argumentValues->getNumArgs(); i != e; ++i) {
-    auto arg = argumentValues->getArg(i);
-    auto givenName = argumentValues->getArgNameStr(i);
-    Record *argDef = cast<DefInit>(arg)->getDef();
-    if (!argDef->isSubClassOf(attrClass))
-      PrintFatalError(def.getLoc(),
-                      Twine("expected attribute as argument ") + Twine(i));
-
-    if (givenName.empty())
-      PrintFatalError(argDef->getLoc(), "attributes must be named");
-    bool isDerived = argDef->isSubClassOf(derivedAttrClass);
-    if (isDerived)
-      PrintFatalError(def.getLoc(),
-                      "derived attributes not allowed in argument list");
-    attributes.push_back({givenName, Attribute(argDef)});
+    if (argDef->isSubClassOf(typeConstraintClass)) {
+      operands.push_back(Value{givenName, Type(argDefInit)});
+      arguments.emplace_back(&operands.back());
+    } else if (argDef->isSubClassOf(attrClass)) {
+      if (givenName.empty())
+        PrintFatalError(argDef->getLoc(), "attributes must be named");
+      if (argDef->isSubClassOf(derivedAttrClass))
+        PrintFatalError(argDef->getLoc(),
+                        "derived attributes not allowed in argument list");
+      attributes.push_back({givenName, Attribute(argDef)});
+      arguments.emplace_back(&attributes.back());
+      ++numNativeAttributes;
+    } else {
+      PrintFatalError(def.getLoc(), "unexpected def type; only defs deriving "
+                                    "from TypeConstraint or Attr are allowed");
+    }
   }
 
   // Handle derived attributes.
-  derivedAttrStart = i;
   for (const auto &val : def.getValues()) {
     if (auto *record = dyn_cast<llvm::RecordRecTy>(val.getType())) {
       if (!record->isSubClassOf(attrClass))

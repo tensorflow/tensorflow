@@ -105,7 +105,7 @@ public:
   bool hasVariadicOperand() const;
 
   // Returns the total number of arguments.
-  int getNumArgs() const { return getNumOperands() + getNumNativeAttributes(); }
+  int getNumArgs() const { return arguments.size(); }
 
   // Op argument (attribute or operand) accessors.
   Argument getArg(int index);
@@ -140,8 +140,14 @@ private:
   // The operands of the op.
   SmallVector<Value, 4> operands;
 
-  // The attributes of the op.
+  // The attributes of the op.  Contains native attributes (corresponding to the
+  // actual stored attributed of the operation) followed by derived attributes
+  // (corresponding to dynamic properties of the operation that are computed
+  // upon request).
   SmallVector<NamedAttribute, 4> attributes;
+
+  // The arguments of the op (operands and native attributes).
+  SmallVector<Argument, 4> arguments;
 
   // The results of the op.
   SmallVector<Value, 4> results;
@@ -149,13 +155,9 @@ private:
   // The traits of the op.
   SmallVector<OpTrait, 4> traits;
 
-  // The start of native attributes, which are specified when creating the op
-  // as a part of the op's definition.
-  int nativeAttrStart;
-
-  // The start of derived attributes, which are computed from properties of
-  // the op.
-  int derivedAttrStart;
+  // The number of native attributes stored in the leading positions of
+  // `attributes`.
+  int numNativeAttributes;
 
   // The TableGen definition of this op.
   const llvm::Record &def;
