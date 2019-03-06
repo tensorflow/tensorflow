@@ -48,6 +48,7 @@ pkg_tar(
         ":eager_cheaders",
         ":ccheaders",
         ":coreheaders",
+        ":corelib",
         ":clib",
         ":cclib",
         ":clicenses",
