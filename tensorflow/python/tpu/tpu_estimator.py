@@ -984,6 +984,8 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     broadcasted_inputs = []
     flattened_inputs = None  # Cache result from input_fn.
     signals = None
+    num_replicas = ctx.num_replicas
+    core_id = 0
     for host_id in xrange(num_hosts):
       with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
         for _ in xrange(ctx.num_of_replicas_per_host):
@@ -1000,7 +1002,18 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
             flattened_inputs = (
                 inputs_structure_recorder.flatten_features_and_labels(
                     features, labels, signals))
-          broadcasted_inputs.append(flattened_inputs)
+            if (ctx.config.tpu_config.eval_training_input_configuration is
+                tpu_config.InputPipelineConfig.SLICED):
+              input_slices = [
+                  array_ops.split(x, num_replicas) for x in flattened_inputs
+              ]
+          if (ctx.config.tpu_config.eval_training_input_configuration is
+              tpu_config.InputPipelineConfig.SLICED):
+            # for each core, slice out the flattened_inputs for each core.
+            broadcasted_inputs.append([x[core_id] for x in input_slices])
+            core_id += 1
+          else:
+            broadcasted_inputs.append(flattened_inputs)
 
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(broadcasted_inputs[0]))
