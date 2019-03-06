@@ -33,7 +33,7 @@ namespace data {
 // Returns non-ok status if analysis of the function fails.
 //
 // TODO(jsimsa): Extend this to support constants as well.
-Status ComputeShortCircuitIndices(OpKernelContext* ctx,
+Status ComputeShortCircuitIndices(OpKernelConstruction* ctx,
                                   const NameAttrList& func,
                                   std::vector<int>* indices);
 
