@@ -19,11 +19,12 @@
 // MLIR, and the LLVM IR dialect.  It also registers the dialect.
 //
 //===----------------------------------------------------------------------===//
-
 #include "mlir/LLVMIR/LLVMDialect.h"
 #include "mlir/IR/MLIRContext.h"
+#include "llvm/IR/Function.h"
 
 #include "llvm/AsmParser/Parser.h"
+#include "llvm/IR/Attributes.h"
 #include "llvm/IR/Type.h"
 #include "llvm/Support/SourceMgr.h"
 
@@ -88,6 +89,16 @@ void LLVMDialect::printType(Type type, raw_ostream &os) const {
   assert(llvmType && "printing wrong type");
   assert(llvmType.getUnderlyingType() && "no underlying LLVM type");
   llvmType.getUnderlyingType()->print(os);
+}
+
+/// Verify LLVMIR function argument attributes.
+bool LLVMDialect::verifyFunctionArgAttribute(const Function *func,
+                                             unsigned argIdx,
+                                             NamedAttribute argAttr) {
+  // Check that llvm.noalias is a boolean attribute.
+  if (argAttr.first == StringRef("llvm.noalias"))
+    return (!argAttr.second.isa<BoolAttr>());
+  return false;
 }
 
 static DialectRegistration<LLVMDialect> llvmDialect;

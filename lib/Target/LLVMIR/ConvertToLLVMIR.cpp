@@ -468,8 +468,25 @@ bool ModuleTranslation::convertOneFunction(const Function &func) {
   valueMapping.clear();
   llvm::Function *llvmFunc = functionMapping.lookup(&func);
   // Add function arguments to the value remapping table.
+  // If there was noalias info then we decorate each argument accordingly.
+  unsigned int argIdx = 0;
   for (const auto &kvp : llvm::zip(func.getArguments(), llvmFunc->args())) {
-    valueMapping[std::get<0>(kvp)] = &std::get<1>(kvp);
+    llvm::Argument &llvmArg = std::get<1>(kvp);
+    const BlockArgument *mlirArg = std::get<0>(kvp);
+
+    if (auto attr = func.getArgAttrOfType<BoolAttr>(argIdx, "llvm.noalias")) {
+      // NB: Attribute already verified to be boolean, so check if we can indeed
+      // attach the attribute to this argument, based on its type.
+      auto argTy = mlirArg->getType().dyn_cast<LLVM::LLVMType>();
+      if (!argTy.getUnderlyingType()->isPointerTy())
+        return argTy.getContext()->emitError(
+            func.getLoc(),
+            "llvm.noalias attribute attached to LLVM non-pointer argument");
+      if (attr.getValue())
+        llvmArg.addAttr(llvm::Attribute::AttrKind::NoAlias);
+    }
+    valueMapping[mlirArg] = &llvmArg;
+    argIdx++;
   }
 
   // First, create all blocks so we can jump to them.

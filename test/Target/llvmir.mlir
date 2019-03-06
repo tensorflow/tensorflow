@@ -788,3 +788,8 @@ func @cond_br_arguments(%arg0: !llvm<"i1">, %arg1: !llvm<"i1">) {
 // CHECK-NEXT:   br label %3
   "llvm.br"()[^bb2(%arg1 : !llvm<"i1">)] : () -> ()
 }
+
+// CHECK-LABEL: define void @llvm_noalias(float* noalias) {
+func @llvm_noalias(%arg0: !llvm<"float*"> {llvm.noalias: true}) {
+  "llvm.return"() : () -> ()
+}

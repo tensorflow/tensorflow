@@ -24,11 +24,11 @@
 #define MLIR_TARGET_LLVMDIALECT_H_
 
 #include "mlir/IR/Dialect.h"
+#include "mlir/IR/Function.h"
 #include "mlir/IR/OpDefinition.h"
 #include "mlir/IR/OpImplementation.h"
 #include "mlir/IR/TypeSupport.h"
 #include "mlir/IR/Types.h"
-
 #include "llvm/IR/DerivedTypes.h"
 #include "llvm/IR/LLVMContext.h"
 #include "llvm/IR/Module.h"
@@ -82,6 +82,11 @@ public:
 
   /// Print a type registered to this dialect.
   void printType(Type type, raw_ostream &os) const override;
+
+  /// Verify a function argument attribute registered to this dialect.
+  /// Returns true if the verification failed, false otherwise.
+  bool verifyFunctionArgAttribute(const Function *func, unsigned argIdx,
+                                  NamedAttribute argAttr) override;
 
 private:
   llvm::LLVMContext llvmContext;
