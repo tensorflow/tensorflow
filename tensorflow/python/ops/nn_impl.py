@@ -236,7 +236,8 @@ def sigmoid_cross_entropy_with_logits_v2(  # pylint: disable=invalid-name
       logits=logits, labels=labels, name=name)
 
 @tf_export("nn.weighted_cross_entropy_with_logits", v1=[])
-def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight, name=None):
+def weighted_cross_entropy_with_logits_v2(
+    labels, logits, pos_weight, name=None):
   """Computes a weighted cross entropy.
 
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
@@ -314,7 +315,8 @@ def weighted_cross_entropy_with_logits_v2(labels, logits, pos_weight, name=None)
 
 @tf_export(v1=["nn.weighted_cross_entropy_with_logits"])
 @deprecated_args(None, "targets is deprecated, use labels instead", "targets")
-def weighted_cross_entropy_with_logits(labels=None, logits=None, pos_weight=None, name=None, targets=None):
+def weighted_cross_entropy_with_logits(
+    labels=None, logits=None, pos_weight=None, name=None, targets=None):
   """Computes a weighted cross entropy.
   This is like `sigmoid_cross_entropy_with_logits()` except that `pos_weight`,
   allows one to trade off recall and precision by up- or down-weighting the

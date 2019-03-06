@@ -3415,7 +3415,8 @@ def sparse_softmax_cross_entropy_with_logits_v2(
     ValueError: If logits are scalars (need to have rank >= 1) or if the rank
       of the labels is not equal to the rank of the logits minus one.
   """
-  return sparse_softmax_cross_entropy_with_logits(labels=labels, logits=logits, name=name)
+  return sparse_softmax_cross_entropy_with_logits(
+      labels=labels, logits=logits, name=name)
 
 
 @tf_export("nn.avg_pool", v1=["nn.avg_pool_v2"])
