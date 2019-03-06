@@ -71,8 +71,6 @@ static std::map<std::string, CustomCallFn> custom_call_map = {
     {"bias_apply", ConvBiasApply},
     {"zero_pad", CreateZeroPadOp},
     {"depthwise_filter", CreateDepthwiseBackpropFilter},
-    {"max_pool", CreatePoplibsWindowReduction},
-    {"max_pool_grad", CreateBwdMaxPool},
     {"scaled_inplace", CreateScaledInplace},
     {"conv_scaled_inplace", CreateConvScaledInplace},
     {"padding_reduce_window", CreatePaddingReduceWindow},

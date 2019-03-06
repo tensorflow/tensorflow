@@ -20,6 +20,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/service/hlo_instructions.h"
 #include "tensorflow/compiler/xla/util.h"
 #include "tensorflow/core/framework/types.pb.h"
+#include "tensorflow/core/platform/human_readable_json.h"
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -59,12 +60,14 @@ absl::optional<PoplibsLib> StringToPoplibsLib(const std::string& name) {
 }
 
 std::string PoplibsOpToString(const PoplibsOp& poplibs_op) {
-  static std::vector<std::string> names = {"LstmLayerFwd",
-                                           "LstmLayerBwd",
+  static std::vector<std::string> names = {"GroupNormGrad",
                                            "GroupNormInference",
-                                           "GroupNormTraining",
-                                           "GroupNormGrad",
                                            "GroupNormStatistics",
+                                           "GroupNormTraining",
+                                           "LstmLayerBwd",
+                                           "LstmLayerFwd",
+                                           "MaxPool",
+                                           "MaxPoolGrad",
                                            "Sqrt",
                                            "Rsqrt"};
   if (names.size() != static_cast<uint32>(PoplibsOp::_NumOps)) {
@@ -77,12 +80,14 @@ absl::optional<PoplibsOp> StringToPoplibsOp(const std::string& name) {
   static absl::flat_hash_map<std::string, PoplibsOp> mapping = {
       // Poplin:
       // Popnn:
-      {"LstmLayerFwd", PoplibsOp::LstmLayerFwd},
-      {"LstmLayerBwd", PoplibsOp::LstmLayerBwd},
-      {"GroupNormInference", PoplibsOp::GroupNormInference},
-      {"GroupNormTraining", PoplibsOp::GroupNormTraining},
       {"GroupNormGrad", PoplibsOp::GroupNormGrad},
+      {"GroupNormInference", PoplibsOp::GroupNormInference},
       {"GroupNormStatistics", PoplibsOp::GroupNormStatistics},
+      {"GroupNormTraining", PoplibsOp::GroupNormTraining},
+      {"LstmLayerBwd", PoplibsOp::LstmLayerBwd},
+      {"LstmLayerFwd", PoplibsOp::LstmLayerFwd},
+      {"MaxPool", PoplibsOp::MaxPool},
+      {"MaxPoolGrad", PoplibsOp::MaxPoolGrad},
       // Popops:
       {"Sqrt", PoplibsOp::Sqrt},
       {"Rsqrt", PoplibsOp::Rsqrt},
@@ -249,6 +254,14 @@ void AttributeMap::AddAttribute(const std::string& field_name,
       keys.append(GetAsJsonValue(pair.first));
       values.append(GetAsJsonValue(pair.second));
     }
+  } else if (tinfo == typeid(Window)) {
+    auto casted_val = absl::any_cast<Window>(attr);
+    std::string window_proto_str;
+    if (!tensorflow::ProtoToHumanReadableJson(casted_val, &window_proto_str)
+             .ok()) {
+      LOG(FATAL) << "Could not parse the window.";
+    }
+    attributes_[field_name] = GetAsJsonValue(window_proto_str);
   } else {
     LOG(FATAL) << "Unsupported attribute value type " << tinfo.name();
   }
@@ -348,6 +361,19 @@ AttributeMap::GetAttributeFlatHashMap(const std::string& field_name) const {
     result[key] = value;
   }
   return result;
+}
+
+StatusOr<Window> AttributeMap::GetAttributeAsWindow(
+    const std::string& field_name) const {
+  if (!attributes_.isMember(field_name)) {
+    return xla::FailedPrecondition(
+        "Could not obtain the field %s for the custom op.", field_name.c_str());
+  }
+  std::string window_proto_str = attributes_[field_name].asString();
+  Window window;
+  TF_RETURN_IF_ERROR(
+      tensorflow::HumanReadableJsonToProto(window_proto_str, &window));
+  return window;
 }
 
 const std::string AttributeMap::Serialise() {
