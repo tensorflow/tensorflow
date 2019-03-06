@@ -443,9 +443,6 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.nn.weighted_cross_entropy_with_logits": {
             "targets": "labels",
         },
-        "tf.nn.sparse_softmax_cross_entropy_with_logits": {
-            "_sentinel": None,
-        },
     }
 
     # pylint: disable=line-too-long
