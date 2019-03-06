@@ -150,6 +150,93 @@ TEST_FUNC(builder_max_min_for) {
   f->print(llvm::outs());
 }
 
+TEST_FUNC(builder_blocks) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  using namespace edsc::op;
+  auto f = makeFunction("builder_blocks");
+
+  ScopedContext scope(f.get());
+  ValueHandle c1(ValueHandle::create<ConstantIntOp>(42, 32)),
+      c2(ValueHandle::create<ConstantIntOp>(1234, 32));
+  ValueHandle arg1(c1.getType()), arg2(c1.getType()), arg3(c1.getType()),
+      arg4(c1.getType()), r(c1.getType());
+
+  BlockHandle b1, b2, functionBlock(&f->front());
+  BlockBuilder(&b1, {&arg1, &arg2})({
+      // b2 has not yet been constructed, need to come back later.
+      // This is a byproduct of non-structured control-flow.
+  });
+  BlockBuilder(&b2, {&arg3, &arg4})({
+      BR(b1, {arg3, arg4}),
+  });
+  // The insertion point within the toplevel function is now past b2, we will
+  // need to get back the entry block.
+  // This is what happens with unstructured control-flow..
+  BlockBuilder(b1, Append())({
+      r = arg1 + arg2,
+      BR(b2, {arg1, r}),
+  });
+  // Get back to entry block and add a branch into b1
+  BlockBuilder(functionBlock, Append())({
+      BR(b1, {c1, c2}),
+  });
+
+  // clang-format off
+  // CHECK-LABEL: @builder_blocks
+  // CHECK:        %c42_i32 = constant 42 : i32
+  // CHECK-NEXT:   %c1234_i32 = constant 1234 : i32
+  // CHECK-NEXT:   br ^bb1(%c42_i32, %c1234_i32 : i32, i32)
+  // CHECK-NEXT: ^bb1(%0: i32, %1: i32):   // 2 preds: ^bb0, ^bb2
+  // CHECK-NEXT:   %2 = addi %0, %1 : i32
+  // CHECK-NEXT:   br ^bb2(%0, %2 : i32, i32)
+  // CHECK-NEXT: ^bb2(%3: i32, %4: i32):   // pred: ^bb1
+  // CHECK-NEXT:   br ^bb1(%3, %4 : i32, i32)
+  // CHECK-NEXT: }
+  // clang-format on
+  f->print(llvm::outs());
+}
+
+TEST_FUNC(builder_cond_branch) {
+  using namespace edsc;
+  using namespace edsc::intrinsics;
+  auto f = makeFunction("builder_cond_branch", {},
+                        {IntegerType::get(1, &globalContext())});
+
+  ScopedContext scope(f.get());
+  ValueHandle funcArg(f->getArgument(0));
+  ValueHandle c32(ValueHandle::create<ConstantIntOp>(32, 32)),
+      c64(ValueHandle::create<ConstantIntOp>(64, 64)),
+      c42(ValueHandle::create<ConstantIntOp>(42, 32));
+  ValueHandle arg1(c32.getType()), arg2(c64.getType()), arg3(c32.getType());
+
+  BlockHandle b1, b2, functionBlock(&f->front());
+  ;
+  BlockBuilder(&b1, {&arg1})({
+      RETURN({}),
+  });
+  BlockBuilder(&b2, {&arg2, &arg3})({
+      RETURN({}),
+  });
+  // Get back to entry block and add a conditional branch
+  BlockBuilder(functionBlock, Append())({
+      COND_BR(funcArg, b1, {c32}, b2, {c64, c42}),
+  });
+
+  // clang-format off
+  // CHECK-LABEL: @builder_cond_branch
+  // CHECK:   %c32_i32 = constant 32 : i32
+  // CHECK-NEXT:   %c64_i64 = constant 64 : i64
+  // CHECK-NEXT:   %c42_i32 = constant 42 : i32
+  // CHECK-NEXT:   cond_br %arg0, ^bb1(%c32_i32 : i32), ^bb2(%c64_i64, %c42_i32 : i64, i32)
+  // CHECK-NEXT: ^bb1(%0: i32):   // pred: ^bb0
+  // CHECK-NEXT:   return
+  // CHECK-NEXT: ^bb2(%1: i64, %2: i32):  // pred: ^bb0
+  // CHECK-NEXT:   return
+  // clang-format on
+  f->print(llvm::outs());
+}
+
 int main() {
   RUN_TESTS();
   return 0;

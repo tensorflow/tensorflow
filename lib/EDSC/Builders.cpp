@@ -92,6 +92,15 @@ mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
   return ValueHandle(inst->getResult(0));
 }
 
+BlockHandle mlir::edsc::BlockHandle::create(ArrayRef<Type> argTypes) {
+  BlockHandle res;
+  res.block = ScopedContext::getBuilder()->createBlock();
+  for (auto t : argTypes) {
+    res.block->addArgument(t);
+  }
+  return res;
+}
+
 static llvm::Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
                                                  ArrayRef<ValueHandle> ubs,
                                                  int64_t step) {
@@ -151,6 +160,36 @@ ValueHandle mlir::edsc::LoopBuilder::operator()(ArrayRef<ValueHandle> stmts) {
   /// ```
   exit();
   return ValueHandle::null();
+}
+
+mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle bh, Append) {
+  assert(bh && "Expected already captured BlockHandle");
+  enter(bh.getBlock());
+}
+
+mlir::edsc::BlockBuilder::BlockBuilder(BlockHandle *bh,
+                                       ArrayRef<ValueHandle *> args) {
+  assert(!*bh && "BlockHandle already captures a block, use "
+                 "the explicit BockBuilder(bh, Append())({}) syntax instead.");
+  llvm::SmallVector<Type, 8> types;
+  for (auto *a : args) {
+    assert(!a->hasValue() &&
+           "Expected delayed ValueHandle that has not yet captured.");
+    types.push_back(a->getType());
+  }
+  *bh = BlockHandle::create(types);
+  for (auto it : llvm::zip(args, bh->getBlock()->getArguments())) {
+    *(std::get<0>(it)) = ValueHandle(std::get<1>(it));
+  }
+  enter(bh->getBlock());
+}
+
+/// Only serves as an ordering point between entering nested block and creating
+/// stmts.
+void mlir::edsc::BlockBuilder::operator()(ArrayRef<ValueHandle> stmts) {
+  // Call to `exit` must be explicit and asymmetric (cannot happen in the
+  // destructor) because of ordering wrt comma operator.
+  exit();
 }
 
 template <typename Op>

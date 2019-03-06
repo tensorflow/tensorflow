@@ -29,6 +29,7 @@ namespace mlir {
 
 namespace edsc {
 
+class BlockHandle;
 class ValueHandle;
 
 /// Provides a set of first class intrinsics.
@@ -36,10 +37,28 @@ class ValueHandle;
 /// other instructions should be Tablegen'd.
 namespace intrinsics {
 
+/// Branches into the mlir::Block* captured by BlockHandle `b` with `operands`.
+///
+/// Prerequisites:
+///   All Handles have already captured previously constructed IR objects.
+ValueHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
+
+/// Branches into the mlir::Block* captured by BlockHandle `trueBranch` with
+/// `trueOperands` if `cond` evaluates to `true` (resp. `falseBranch` and
+/// `falseOperand` if `cond` evaluates to `false`).
+///
+/// Prerequisites:
+///   All Handles have captured previouly constructed IR objects.
+ValueHandle COND_BR(ValueHandle cond, BlockHandle trueBranch,
+                    ArrayRef<ValueHandle> trueOperands, BlockHandle falseBranch,
+                    ArrayRef<ValueHandle> falseOperands);
+
+////////////////////////////////////////////////////////////////////////////////
 // TODO(ntv): Intrinsics below this line should be TableGen'd.
+////////////////////////////////////////////////////////////////////////////////
 /// Builds an mlir::ReturnOp with the proper `operands` that each must have
 /// captured an mlir::Value*.
-/// Returns an empty ValueHandle
+/// Returns an empty ValueHandle.
 ValueHandle RETURN(llvm::ArrayRef<ValueHandle> operands);
 
 } // namespace intrinsics
