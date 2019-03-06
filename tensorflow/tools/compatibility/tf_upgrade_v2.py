@@ -119,6 +119,12 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
         "tf.convert_to_tensor": {
             "preferred_dtype": "dtype_hint"
         },
+        "tf.nn.weighted_cross_entropy_with_logits": {
+            "targets": "labels",
+        },
+        "tf.nn.sigmoid_cross_entropy_with_logits": {
+            "_sentinel": None,
+        },
         "tf.nn.softmax_cross_entropy_with_logits": {
             "dim": "axis",
             "_sentinel": None,
