@@ -8512,9 +8512,10 @@ func Equal(scope *Scope, x tf.Output, y tf.Output) (z tf.Output) {
 // The polygamma function is defined as:
 //
 //
-// \\(\psi^{(n)}(x) = \frac{d^n}{dx^n} \psi(x)\\)
+// \\(\psi^{(a)}(x) = \frac{d^a}{dx^a} \psi(x)\\)
 //
 // where \\(\psi(x)\\) is the digamma function.
+// The polygamma function is defined only for non-negative integer orders \\a\\.
 func Polygamma(scope *Scope, a tf.Output, x tf.Output) (z tf.Output) {
 	if scope.Err() != nil {
 		return
