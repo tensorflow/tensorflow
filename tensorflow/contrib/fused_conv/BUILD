@@ -68,8 +68,6 @@ tf_kernel_library(
     prefix = "fused_conv2d_bias_activation_op",
     visibility = ["//visibility:public"],
     deps = [
-        "//tensorflow/core:autotuning_proto_cc",
-        "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:framework",
         "//tensorflow/core:lib",
         "//tensorflow/core:lib_proto_parsing",
@@ -94,8 +92,6 @@ tf_custom_op_library(
         "ops/fused_conv2d_bias_activation_op.cc",
     ],
     deps = [
-        "//tensorflow/core:autotuning_proto_cc",
-        "//tensorflow/core:conv_autotuning_proto_cc",
         "//tensorflow/core:lib_proto_parsing",
         "//tensorflow/core/kernels:bounds_check_lib",
         "//tensorflow/core/kernels:conv_2d_hdrs",
