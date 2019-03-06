@@ -694,6 +694,20 @@ static void turnSymbolIntoDim(FlatAffineConstraints *cst, const Value &id) {
   }
 }
 
+// Changes all symbol identifiers which are loop IVs to dim identifiers.
+void FlatAffineConstraints::convertLoopIVSymbolsToDims() {
+  // Gather all symbols which are loop IVs.
+  SmallVector<Value *, 4> loopIVs;
+  for (unsigned i = getNumDimIds(), e = getNumDimAndSymbolIds(); i < e; i++) {
+    if (ids[i].hasValue() && getForInductionVarOwner(ids[i].getValue()))
+      loopIVs.push_back(ids[i].getValue());
+  }
+  // Turn each symbol in 'loopIVs' into a dim identifier.
+  for (auto *iv : loopIVs) {
+    turnSymbolIntoDim(this, *iv);
+  }
+}
+
 bool FlatAffineConstraints::addAffineForOpDomain(
     ConstOpPointer<AffineForOp> forOp) {
   unsigned pos;
@@ -2704,7 +2718,7 @@ bool FlatAffineConstraints::unionBoundingBox(
     assert(lbDivisor > 0 && "divisor always expected to be positive");
 
     // Compute min of lower bounds and max of upper bounds.
-    ArrayRef<int64_t> minLb, maxUb;
+    SmallVector<int64_t, 4> minLb, maxUb;
 
     auto res = compareBounds(lb, otherLb);
     // Identify min.
@@ -2713,12 +2727,13 @@ bool FlatAffineConstraints::unionBoundingBox(
     } else if (res == BoundCmpResult::Greater) {
       minLb = otherLb;
     } else {
-      // Uncomparable.
+      // Uncomparable - check for constant lower/upper bounds.
       auto constLb = getConstantLowerBound(d);
       auto constOtherLb = other.getConstantLowerBound(d);
       if (!constLb.hasValue() || !constOtherLb.hasValue())
         return false;
-      minLb = std::min(constLb.getValue(), constOtherLb.getValue());
+      minLb.resize(getNumSymbolIds() + 1, 0);
+      minLb.back() = std::min(constLb.getValue(), constOtherLb.getValue());
     }
 
     // Do the same for ub's but max of upper bounds.
@@ -2733,12 +2748,13 @@ bool FlatAffineConstraints::unionBoundingBox(
     } else if (uRes == BoundCmpResult::Less) {
       maxUb = otherUb;
     } else {
-      // Uncomparable.
+      // Uncomparable - check for constant lower/upper bounds.
       auto constUb = getConstantUpperBound(d);
       auto constOtherUb = other.getConstantUpperBound(d);
       if (!constUb.hasValue() || !constOtherUb.hasValue())
         return false;
-      maxUb = std::max(constUb.getValue(), constOtherUb.getValue());
+      maxUb.resize(getNumSymbolIds() + 1, 0);
+      maxUb.back() = std::max(constUb.getValue(), constOtherUb.getValue());
     }
 
     SmallVector<int64_t, 8> newLb(getNumCols(), 0);

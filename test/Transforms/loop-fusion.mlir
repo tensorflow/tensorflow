@@ -2250,3 +2250,42 @@ func @fuse_across_varying_dims_complex() {
 // MAXIMAL-NEXT:      }
 // MAXIMAL-NEXT:    }
 // MAXIMAL-NEXT:  }
+
+// -----
+// CHECK-DAG: [[MAP3:#map[0-9]+]] = (d0) -> (d0 - 10)
+
+func @should_fuse_with_slice_union() {
+  %a = alloc() : memref<100xf32>
+  %c0 = constant 0 : index
+  %cf0 = constant 0.0 : f32
+
+  for %i0 = 0 to 100 {
+    store %cf0, %a[%i0]: memref<100xf32>
+  }
+
+  for %i1 = 10 to 20 {
+    %v0 = load %a[%i1]: memref<100xf32>
+    for %i2 = 15 to 25 {
+      %v1 = load %a[%i2]: memref<100xf32>
+    }
+  }
+  // The union of two slice bounds (calculated between the store and each of
+  // the loads) is computed and used in the fusion cost calculation, index
+  // remapping, and private memref size. The result is that the temporary
+  // memref is reduced from 100xf32 to 15xf32 and properly indexed by
+  // the fused loops based on the union calculation.
+// CHECK:      for %i0 = 10 to 20 {
+// CHECK-NEXT:   for %i1 = 10 to 25 {
+// CHECK-NEXT:     %1 = affine.apply [[MAP3]](%i1)
+// CHECK-NEXT:     store %cst, %0[%1] : memref<15xf32>
+// CHECK-NEXT:   }
+// CHECK-NEXT:   %2 = affine.apply [[MAP3]](%i0)
+// CHECK-NEXT:   %3 = load %0[%2] : memref<15xf32>
+// CHECK-NEXT:   for %i2 = 15 to 25 {
+// CHECK-NEXT:     %4 = affine.apply [[MAP3]](%i2)
+// CHECK-NEXT:     %5 = load %0[%4] : memref<15xf32>
+// CHECK-NEXT:   }
+// CHECK-NEXT: }
+// CHECK-NEXT: return
+  return
+}

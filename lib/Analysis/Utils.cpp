@@ -54,6 +54,55 @@ void mlir::getLoopIVs(const Instruction &inst,
   std::reverse(loops->begin(), loops->end());
 }
 
+// Populates 'cst' with FlatAffineConstraints which represent slice bounds.
+bool ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
+  assert(!lbOperands.empty());
+  // Adds src 'ivs' as dimension identifiers in 'cst'.
+  unsigned numDims = ivs.size();
+  // Adds operands (dst ivs and symbols) as symbols in 'cst'.
+  unsigned numSymbols = lbOperands[0].size();
+
+  SmallVector<Value *, 4> values(ivs);
+  // Append 'ivs' then 'operands' to 'values'.
+  values.append(lbOperands[0].begin(), lbOperands[0].end());
+  cst->reset(numDims, numSymbols, 0, values);
+
+  // Add loop bound constraints for values which are loop IVs and equality
+  // constraints for symbols which are constants.
+  for (const auto &value : values) {
+    unsigned loc;
+    (void)loc;
+    assert(cst->findId(*value, &loc));
+    if (isValidSymbol(value)) {
+      // Check if the symbol is a constant.
+      if (auto *inst = value->getDefiningInst()) {
+        if (auto constOp = inst->dyn_cast<ConstantIndexOp>()) {
+          cst->setIdToConstant(*value, constOp->getValue());
+        }
+      }
+    } else {
+      if (auto loop = getForInductionVarOwner(value)) {
+        if (!cst->addAffineForOpDomain(loop))
+          return false;
+      }
+    }
+  }
+
+  // Add slices bounds on 'ivs' using maps 'lbs'/'ubs' with 'lbOperands[0]'
+  bool ret = cst->addSliceBounds(ivs, lbs, ubs, lbOperands[0]);
+  assert(ret && "should not fail as we never have semi-affine slice maps");
+  (void)ret;
+  return true;
+}
+
+// Clears state bounds and operand state.
+void ComputationSliceState::clearBounds() {
+  lbs.clear();
+  ubs.clear();
+  lbOperands.clear();
+  ubOperands.clear();
+}
+
 unsigned MemRefRegion::getRank() const {
   return memref->getType().cast<MemRefType>().getRank();
 }

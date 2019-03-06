@@ -1085,60 +1085,6 @@ static void sinkSequentialLoops(MemRefDependenceGraph::Node *node) {
   node->inst = loops[loopNestRootIndex]->getInstruction();
 }
 
-// Returns the slice union of 'sliceStateA' and 'sliceStateB' in 'sliceStateB'
-// using a rectangular bounding box.
-// TODO(andydavis) This function assumes that lower bounds for 'sliceStateA'
-// and 'sliceStateB' are aligned.
-// Specifically, when taking the union of overlapping intervals, it assumes
-// that both intervals start at zero. Support needs to be added to take into
-// account interval start offset when computing the union.
-// TODO(andydavis) Move this function to an analysis library.
-static bool getSliceUnion(const ComputationSliceState &sliceStateA,
-                          ComputationSliceState *sliceStateB) {
-  assert(sliceStateA.lbs.size() == sliceStateB->lbs.size());
-  assert(sliceStateA.ubs.size() == sliceStateB->ubs.size());
-
-  for (unsigned i = 0, e = sliceStateA.lbs.size(); i < e; ++i) {
-    AffineMap lbMapA = sliceStateA.lbs[i];
-    AffineMap ubMapA = sliceStateA.ubs[i];
-    if (lbMapA == AffineMap()) {
-      assert(ubMapA == AffineMap());
-      continue;
-    }
-    assert(ubMapA && "expected non-null ub map");
-
-    AffineMap lbMapB = sliceStateB->lbs[i];
-    AffineMap ubMapB = sliceStateB->ubs[i];
-    if (lbMapB == AffineMap()) {
-      assert(ubMapB == AffineMap());
-      // Union 'sliceStateB' does not have a bound for 'i' so copy from A.
-      sliceStateB->lbs[i] = lbMapA;
-      sliceStateB->ubs[i] = ubMapA;
-      continue;
-    }
-
-    // TODO(andydavis) Change this code to take the min across all lower bounds
-    // and max across all upper bounds for each dimension. This code can for
-    // cases where a unique min or max could not be statically determined.
-
-    // Assumption: both lower bounds are the same.
-    if (lbMapA != lbMapB)
-      return false;
-
-    // Add bound with the largest trip count to union.
-    Optional<uint64_t> tripCountA = getConstDifference(lbMapA, ubMapA);
-    Optional<uint64_t> tripCountB = getConstDifference(lbMapB, ubMapB);
-    if (!tripCountA.hasValue() || !tripCountB.hasValue())
-      return false;
-
-    if (tripCountA.getValue() > tripCountB.getValue()) {
-      sliceStateB->lbs[i] = lbMapA;
-      sliceStateB->ubs[i] = ubMapA;
-    }
-  }
-  return true;
-}
-
 //  TODO(mlir-team): improve/complete this when we have target data.
 unsigned getMemRefEltSizeInBytes(MemRefType memRefType) {
   auto elementType = memRefType.getElementType();
@@ -1346,6 +1292,81 @@ static bool canFuseSrcWhichWritesToLiveOut(unsigned srcId, unsigned dstId,
   return true;
 }
 
+// Computes the union of all slice bounds computed between 'srcOpInst'
+// and each load op in 'dstLoadOpInsts' at 'dstLoopDepth', and returns
+// the union in 'sliceState'. Returns true on success, false otherwise.
+// TODO(andydavis) Move this to a loop fusion utility function.
+static bool getSliceUnion(Instruction *srcOpInst,
+                          ArrayRef<Instruction *> dstLoadOpInsts,
+                          unsigned numSrcLoopIVs, unsigned dstLoopDepth,
+                          ComputationSliceState *sliceState) {
+  MemRefAccess srcAccess(srcOpInst);
+  unsigned numDstLoadOpInsts = dstLoadOpInsts.size();
+  assert(numDstLoadOpInsts > 0);
+  // Compute the slice bounds between 'srcOpInst' and 'dstLoadOpInsts[0]'.
+  if (!mlir::getBackwardComputationSliceState(
+          srcAccess, MemRefAccess(dstLoadOpInsts[0]), dstLoopDepth, sliceState))
+    return false;
+  // Handle the common case of one dst load without a copy.
+  if (numDstLoadOpInsts == 1)
+    return true;
+
+  // Initialize 'sliceUnionCst' with the bounds computed in previous step.
+  FlatAffineConstraints sliceUnionCst;
+  if (!sliceState->getAsConstraints(&sliceUnionCst)) {
+    LLVM_DEBUG(llvm::dbgs() << "Unable to compute slice bound constraints\n.");
+    return false;
+  }
+
+  // Compute the union of slice bounds between 'srcOpInst' and each load
+  // in 'dstLoadOpInsts' in range [1, numDstLoadOpInsts), in 'sliceUnionCst'.
+  for (unsigned i = 1; i < numDstLoadOpInsts; ++i) {
+    MemRefAccess dstAccess(dstLoadOpInsts[i]);
+    // Compute slice bounds for 'srcOpInst' and 'dstLoadOpInsts[i]'.
+    ComputationSliceState tmpSliceState;
+    if (!mlir::getBackwardComputationSliceState(srcAccess, dstAccess,
+                                                dstLoopDepth, &tmpSliceState)) {
+      LLVM_DEBUG(llvm::dbgs() << "Unable to compute slice bounds\n.");
+      return false;
+    }
+
+    // Compute constraints for 'tmpSliceState' in 'tmpSliceCst'.
+    FlatAffineConstraints tmpSliceCst;
+    if (!tmpSliceState.getAsConstraints(&tmpSliceCst)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Unable to compute slice bound constraints\n.");
+      return false;
+    }
+    // Compute union bounding box of 'sliceUnionCst' and 'tmpSliceCst'.
+    if (!sliceUnionCst.unionBoundingBox(tmpSliceCst)) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Unable to compute union bounding box of slice bounds.\n.");
+      return false;
+    }
+  }
+
+  // Convert any dst loop IVs which are symbol identifiers to dim identifiers.
+  sliceUnionCst.convertLoopIVSymbolsToDims();
+
+  sliceState->clearBounds();
+  sliceState->lbs.resize(numSrcLoopIVs, AffineMap());
+  sliceState->ubs.resize(numSrcLoopIVs, AffineMap());
+
+  // Get slice bounds from slice union constraints 'sliceUnionCst'.
+  sliceUnionCst.getSliceBounds(numSrcLoopIVs, srcOpInst->getContext(),
+                               &sliceState->lbs, &sliceState->ubs);
+  // Add slice bound operands of union.
+  SmallVector<Value *, 4> sliceBoundOperands;
+  sliceUnionCst.getIdValues(numSrcLoopIVs,
+                            sliceUnionCst.getNumDimAndSymbolIds(),
+                            &sliceBoundOperands);
+  // Give each bound its own copy of 'sliceBoundOperands' for subsequent
+  // canonicalization.
+  sliceState->lbOperands.resize(numSrcLoopIVs, sliceBoundOperands);
+  sliceState->ubOperands.resize(numSrcLoopIVs, sliceBoundOperands);
+  return true;
+}
+
 // Checks the profitability of fusing a backwards slice of the loop nest
 // surrounding 'srcOpInst' into the loop nest surrounding 'dstLoadOpInsts'.
 // The argument 'srcStoreOpInst' is used to calculate the storage reduction on
@@ -1408,9 +1429,10 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   LoopNestStatsCollector srcStatsCollector(&srcLoopNestStats);
   srcStatsCollector.collect(srcLoopIVs[0]->getInstruction());
   // Currently only constant trip count loop nests are supported.
-  if (srcStatsCollector.hasLoopWithNonConstTripCount)
+  if (srcStatsCollector.hasLoopWithNonConstTripCount) {
+    LLVM_DEBUG(llvm::dbgs() << "Non-constant trip count loops unsupported.\n");
     return false;
-
+  }
   // Compute cost of dst loop nest.
   SmallVector<OpPointer<AffineForOp>, 4> dstLoopIVs;
   getLoopIVs(*dstLoadOpInsts[0], &dstLoopIVs);
@@ -1419,8 +1441,10 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   LoopNestStatsCollector dstStatsCollector(&dstLoopNestStats);
   dstStatsCollector.collect(dstLoopIVs[0]->getInstruction());
   // Currently only constant trip count loop nests are supported.
-  if (dstStatsCollector.hasLoopWithNonConstTripCount)
+  if (dstStatsCollector.hasLoopWithNonConstTripCount) {
+    LLVM_DEBUG(llvm::dbgs() << "Non-constant trip count loops unsupported.\n");
     return false;
+  }
 
   // Compute the maximum loop depth at which we can can insert the src slice
   // and still satisfy dest loop nest dependences, for producer-consumer fusion.
@@ -1428,8 +1452,10 @@ static bool isFusionProfitable(Instruction *srcOpInst,
       (srcOpInst == srcStoreOpInst)
           ? getMaxLoopDepth(dstLoadOpInsts, dstStoreOpInsts)
           : dstLoopIVs.size();
-  if (maxDstLoopDepth == 0)
+  if (maxDstLoopDepth == 0) {
+    LLVM_DEBUG(llvm::dbgs() << "Can't fuse: maxDstLoopDepth == 0 .\n");
     return false;
+  }
 
   // Search for min cost value for 'dstLoopDepth'. At each value of
   // 'dstLoopDepth' from 'maxDstLoopDepth' to '1', compute computation slice
@@ -1456,7 +1482,7 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   MemRefRegion srcWriteRegion(srcStoreOpInst->getLoc());
   if (!srcWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0)) {
     LLVM_DEBUG(llvm::dbgs()
-               << "Unable to compute MemRefRegion for source operation\n.");
+               << "Unable to compute MemRefRegion for source instruction\n.");
     return false;
   }
 
@@ -1477,28 +1503,22 @@ static bool isFusionProfitable(Instruction *srcOpInst,
   llvm::SmallDenseMap<Instruction *, uint64_t, 8> sliceTripCountMap;
   DenseMap<Instruction *, int64_t> computeCostMap;
   for (unsigned i = maxDstLoopDepth; i >= 1; --i) {
-    MemRefAccess srcAccess(srcOpInst);
-    // Handle the common case of one dst load without a copy.
-    if (!mlir::getBackwardComputationSliceState(
-            srcAccess, MemRefAccess(dstLoadOpInsts[0]), i, &sliceStates[i - 1]))
-      return false;
-
-    // Compute the union of slice bound of all ops in 'dstLoadOpInsts'.
-    for (int j = 1, e = dstLoadOpInsts.size(); j < e; ++j) {
-      MemRefAccess dstAccess(dstLoadOpInsts[j]);
-      ComputationSliceState tmpSliceState;
-      if (!mlir::getBackwardComputationSliceState(srcAccess, dstAccess, i,
-                                                  &tmpSliceState))
-        return false;
-      // Compute slice boun dunion of 'tmpSliceState' and 'sliceStates[i - 1]'.
-      getSliceUnion(tmpSliceState, &sliceStates[i - 1]);
+    // Compute the union of slice bounds of all ops in 'dstLoadOpInsts'.
+    if (!getSliceUnion(srcOpInst, dstLoadOpInsts, numSrcLoopIVs, i,
+                       &sliceStates[i - 1])) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "getSliceUnion failed for loopDepth: " << i << "\n");
+      continue;
     }
+
     // Build trip count map for computation slice. We'll skip cases where the
     // trip count was non-constant.
     sliceTripCountMap.clear();
     if (!buildSliceTripCountMap(srcOpInst, &sliceStates[i - 1],
-                                &sliceTripCountMap))
+                                &sliceTripCountMap)) {
+      LLVM_DEBUG(llvm::dbgs() << "Unable to build slice trip count map.\n.");
       continue;
+    }
 
     // Checks whether a store to load forwarding will happen.
     int64_t sliceIterationCount = getSliceIterationCount(sliceTripCountMap);
@@ -1544,14 +1564,22 @@ static bool isFusionProfitable(Instruction *srcOpInst,
     // nest at loop depth 'i'
     MemRefRegion sliceWriteRegion(srcStoreOpInst->getLoc());
     if (!sliceWriteRegion.compute(srcStoreOpInst, /*loopDepth=*/0,
-                                  &sliceStates[i - 1]))
+                                  &sliceStates[i - 1])) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to compute slice write region at loopDepth: " << i
+                 << "\n");
       continue;
+    }
 
     Optional<int64_t> maybeSliceWriteRegionSizeBytes =
         sliceWriteRegion.getRegionSize();
     if (!maybeSliceWriteRegionSizeBytes.hasValue() ||
-        maybeSliceWriteRegionSizeBytes.getValue() == 0)
+        maybeSliceWriteRegionSizeBytes.getValue() == 0) {
+      LLVM_DEBUG(llvm::dbgs()
+                 << "Failed to get slice write region size at loopDepth: " << i
+                 << "\n");
       continue;
+    }
     int64_t sliceWriteRegionSizeBytes =
         maybeSliceWriteRegionSizeBytes.getValue();
 
@@ -1783,6 +1811,7 @@ public:
   // *) Second pass fuses sibling nodes which share no dependence edges.
   // *) Third pass fuses any remaining producer nodes into their users.
   void run() {
+    // TODO(andydavis) Run this repeatedly until a fixed-point is reached.
     fuseProducerConsumerNodes(/*maxSrcUserCount=*/1);
     fuseSiblingNodes();
     fuseProducerConsumerNodes(

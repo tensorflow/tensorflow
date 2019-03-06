@@ -485,6 +485,9 @@ public:
   /// symbols, or some of the leading symbols become dimensions.
   void setDimSymbolSeparation(unsigned newSymbolCount);
 
+  /// Changes all symbol identifiers which are loop IVs to dim identifiers.
+  void convertLoopIVSymbolsToDims();
+
   /// Sets the specified identifier to a constant and removes it.
   void setAndEliminate(unsigned pos, int64_t constVal);
 

@@ -83,6 +83,17 @@ struct ComputationSliceState {
   std::vector<SmallVector<Value *, 4>> lbOperands;
   // List of upper bound operands (ubOperands[i] are used by 'ubs[i]').
   std::vector<SmallVector<Value *, 4>> ubOperands;
+  // Adds to 'cst' with constraints which represent the slice bounds on 'ivs'
+  // in 'this'. Specifically, the values in 'ivs' are added to 'cst' as dim
+  // identifiers and the values in 'lb/ubOperands' are added as symbols.
+  // Constraints are added for all loop IV bounds (dim or symbol), and
+  // constraints are added for slice bounds in 'lbs'/'ubs'.
+  // Returns true on success, false otherwise (if we cannot add loop bounds
+  // because of unsupported cases).
+  bool getAsConstraints(FlatAffineConstraints *cst);
+
+  // Clears all bounds and operands in slice state.
+  void clearBounds();
 };
 
 /// Computes computation slice loop bounds for the loop nest surrounding
