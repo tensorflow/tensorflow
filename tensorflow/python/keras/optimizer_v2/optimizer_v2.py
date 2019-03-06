@@ -550,7 +550,8 @@ class OptimizerV2(trackable.Trackable):
   def _create_hypers(self):
     if self._hypers_created:
       return
-    for name, value in self._hyper.items():
+    # Iterate hyper values deterministically.
+    for name, value in sorted(self._hyper.items()):
       if isinstance(value, ops.Tensor) or callable(value):
         continue
       else:
