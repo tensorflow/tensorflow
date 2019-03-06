@@ -158,9 +158,10 @@ Status GraphRunner::Run(Graph* graph, FunctionLibraryRuntime* function_library,
   params.device = device_;
   params.function_library = function_library;
   const int producer = graph_to_run->versions().producer();
-  params.create_kernel = [this, producer](const NodeDef& ndef,
-                                          OpKernel** kernel) {
-    return CreateNonCachedKernel(device_, nullptr, ndef, producer, kernel);
+  params.create_kernel = [this, function_library, producer](const NodeDef& ndef,
+                                                            OpKernel** kernel) {
+    return CreateNonCachedKernel(device_, function_library, ndef, producer,
+                                 kernel);
   };
   params.delete_kernel = [](OpKernel* kernel) { delete kernel; };
 
