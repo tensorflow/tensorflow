@@ -396,6 +396,8 @@ class OptimizerV2(trackable.Trackable):
     grads_and_vars = _filter_grads(grads_and_vars)
     var_list = [v for (_, v) in grads_and_vars]
 
+    # Create iteration if necessary.
+    _ = self.iterations
     self._create_hypers()
     with ops.init_scope():
       self._create_slots(var_list)
@@ -548,15 +550,6 @@ class OptimizerV2(trackable.Trackable):
   def _create_hypers(self):
     if self._hypers_created:
       return
-    if self._iterations is None:
-      with ops.device("cpu:0"):
-        self._iterations = self.add_weight(
-            "iter",
-            shape=[],
-            dtype=dtypes.int64,
-            trainable=False,
-            aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
-        self._weights.append(self._iterations)
     for name, value in self._hyper.items():
       if isinstance(value, ops.Tensor) or callable(value):
         continue
@@ -572,13 +565,19 @@ class OptimizerV2(trackable.Trackable):
   @property
   def iterations(self):
     """Variable. The number of training steps this Optimizer has run."""
-    if not self._hypers_created:
-      self._create_hypers()
+    if self._iterations is None:
+      self._iterations = self.add_weight(
+          "iter",
+          shape=[],
+          dtype=dtypes.int64,
+          trainable=False,
+          aggregation=tf_variables.VariableAggregation.ONLY_FIRST_REPLICA)
+      self._weights.append(self._iterations)
     return self._iterations
 
   @iterations.setter
   def iterations(self, variable):
-    if self._hypers_created:
+    if self._iterations is not None:
       raise RuntimeError("Cannot set `iterations` to a new Variable after"
                          "the Optimizer weights have been created")
     self._iterations = variable
