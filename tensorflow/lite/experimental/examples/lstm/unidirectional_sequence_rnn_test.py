@@ -60,7 +60,7 @@ class UnidirectionalSequenceRnnTest(test_util.TensorFlowTestCase):
     self.mnist = input_data.read_data_sets(data_dir, one_hot=True)
 
   def buildRnnLayer(self):
-    return tf.nn.rnn_cell.MultiRNNCell([
+    return tf.keras.layers.StackedRNNCells([
         tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn1"),
         tf.lite.experimental.nn.TfLiteRNNCell(self.num_units, name="rnn2")
     ])

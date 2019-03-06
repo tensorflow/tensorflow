@@ -2391,6 +2391,15 @@ class StructuredFunctionWrapper(object):
 
       _warn_if_collections(transformation_name, self._function.graph,
                            initial_length)
+
+      outer_graph_seed = ops.get_default_graph().seed
+      if outer_graph_seed and self._function.graph.seed == outer_graph_seed:
+        if self._function.graph._seed_used:
+          warnings.warn(
+              "Seed %s from outer graph might be getting used by function %s,"
+              " if you have not provided any seed to the random op. "
+              "Explicitly set the seed in the function if this is not "
+              "the intended behavior." % (outer_graph_seed, func_name))
   # pylint: enable=protected-access
 
   @property

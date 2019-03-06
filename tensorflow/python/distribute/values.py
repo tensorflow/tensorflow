@@ -535,6 +535,10 @@ class DistributedVariable(DistributedDelegate):
     return self.primary.shape
 
   @property
+  def trainable(self):
+    return self.primary.trainable
+
+  @property
   def distribute_strategy(self):
     return self._distribute_strategy
 
@@ -904,7 +908,7 @@ class TPUMirroredVariable(trackable.Trackable):
 
   @property
   def device(self):
-    return self._get().device
+    return self.handle.device
 
   def eval(self, session=None):
     return self.primary.eval(session)

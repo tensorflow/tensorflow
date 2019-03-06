@@ -588,11 +588,26 @@ Status LayoutAssignment::AddMandatoryConstraints(
       TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
           body_layout.result_shape(), instruction, 0));
     } else if (instruction->opcode() == HloOpcode::kConditional) {
-      // The layout of the branch computations must match, and must
-      // be the layout of the kConditional instruction.
-      ComputationLayout& branch0_computation_layout =
-          FindOrDie(computation_layouts_, instruction->branch_computation(0));
-      for (int j = 0; j < instruction->branch_count(); ++j) {
+      // Find the conditional branch with the most instructions and force all
+      // other computations to match that layout. A potentially better decison
+      // could count the number FLOPs or how constrained the layouts are.
+      int64 largest_branch = 0;
+      int64 largest_instruction_count =
+          instruction->branch_computation(0)->instruction_count();
+      for (int j = 1; j < instruction->branch_count(); ++j) {
+        const int64 instruction_count =
+            instruction->branch_computation(j)->instruction_count();
+        if (instruction_count > largest_instruction_count) {
+          largest_branch = j;
+          largest_instruction_count = instruction_count;
+        }
+      }
+      ComputationLayout& best_branch_computation_layout =
+          FindOrDie(computation_layouts_,
+                    instruction->branch_computation(largest_branch));
+      for (int k = 0; k < instruction->branch_count(); ++k) {
+        // Visit the best branch first.
+        int j = (k + largest_branch) % instruction->branch_count();
         TF_RET_CHECK(instruction->branch_computation(j)->num_parameters() == 1);
         ComputationLayout& branch_computation_layout =
             FindOrDie(computation_layouts_, instruction->branch_computation(j));
@@ -600,23 +615,24 @@ Status LayoutAssignment::AddMandatoryConstraints(
         DCHECK(ShapeUtil::Compatible(
             instruction->operand(j + 1)->shape(),
             branch_computation_layout.parameter_shape(0)));
-        if (branch0_computation_layout.result_layout() !=
+        if (best_branch_computation_layout.result_layout() !=
             branch_computation_layout.result_layout()) {
-          // We assign layouts in DFS fashion, so the br_0 and br_j
-          // computations might have negotiated a different layout. But for the
-          // case instruction POV the layout must match, so we run again
-          // on the br_j computation, this time with proper computation layout.
+          // We assign layouts in DFS fashion, so the largest_branch and current
+          // branch computations might have negotiated a different layout. But
+          // for the case instruction POV the layout must match, so we run again
+          // on the branch j computation, this time with proper computation
+          // layout.
           VLOG(2) << "Reset %conditional branch " << j
                   << " computation result layout: branch_computation="
                   << instruction->branch_computation(j)->name()
                   << " case=" << instruction->name() << " shape="
-                  << branch0_computation_layout.result_layout().ToString();
+                  << best_branch_computation_layout.result_layout().ToString();
           *branch_computation_layout.mutable_result_layout() =
-              branch0_computation_layout.result_layout();
+              best_branch_computation_layout.result_layout();
         }
-        if (j == 0) {
+        if (k == 0) {
           TF_RETURN_IF_ERROR(constraints->SetInstructionLayout(
-              branch0_computation_layout.result_shape(), instruction));
+              best_branch_computation_layout.result_shape(), instruction));
         }
         TF_RETURN_IF_ERROR(constraints->SetOperandLayout(
             branch_computation_layout.parameter_shape(0), instruction, j + 1,
@@ -996,7 +1012,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOperandLayoutFromOutputLayout(
     // operations. For similar reasons, if the operand and output have the same
     // rank, try to match the operand's layout to the output.
     if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
-        instruction->shape().rank() == 1) {
+        ShapeUtil::TrueRank(instruction->shape()) == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;
     }
@@ -1056,7 +1072,7 @@ std::unique_ptr<Layout> LayoutAssignment::ChooseOutputLayoutFromOperandLayout(
     // reshape is a bitcast when using the same layout. This may avoid copy
     // operations. For similar reasons, if the operand and output have the same
     // rank, try to match the outputs's layout to the operand.
-    if (operand->shape().rank() == 1 &&
+    if (ShapeUtil::TrueRank(operand->shape()) == 1 &&
         ShapeUtil::TrueRank(user->shape()) == 1) {
       // Don't assign a layout in case of R1 -> effective R1 reshape.
       return nullptr;

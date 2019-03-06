@@ -70,7 +70,8 @@ bool MatchDynamicBidirectionalSequenceOutputs(Operator* op, const Model& model,
     return false;
   }
 
-  if (reverse_output->type != OperatorType::kReverseV2) {
+  if (reverse_output->type != OperatorType::kReverseV2 &&
+      reverse_output->type != OperatorType::kReverseSequence) {
     return false;
   }
 
@@ -103,9 +104,8 @@ bool FindUnidirectionalSequenceOp(const Model& model, const Operator& output_op,
 }
 
 bool CheckTwoUnidirectionalSequenceOpsAreValid(
-    const Model& model,
-    const std::stack<Operator*>& fw_unidirectional_sequence_ops,
-    const std::stack<Operator*>& bw_unidirectional_sequence_ops,
+    const Model& model, std::stack<Operator*> fw_unidirectional_sequence_ops,
+    std::stack<Operator*> bw_unidirectional_sequence_ops,
     const Operator* first_fw_sequence_op_input,
     const Operator* first_bw_sequence_op_input, bool is_dynamic_rnn) {
   if (fw_unidirectional_sequence_ops.size() !=
@@ -114,10 +114,49 @@ bool CheckTwoUnidirectionalSequenceOpsAreValid(
     return false;
   }
 
+  // Fw & bw sequence ops are allowed to have different input shapes, but they
+  // need to have the same data type.
+  while (!fw_unidirectional_sequence_ops.empty()) {
+    Operator* fw_sequence_op = fw_unidirectional_sequence_ops.top();
+    Operator* bw_sequence_op = bw_unidirectional_sequence_ops.top();
+
+    if (fw_sequence_op->inputs.size() != bw_sequence_op->inputs.size() ||
+        fw_sequence_op->outputs.size() != bw_sequence_op->outputs.size())
+      return false;
+
+    // Make sure the inputs datatype matches.
+    for (int i = 0; i < fw_sequence_op->inputs.size(); ++i) {
+      const auto& fw_input_array_name = fw_sequence_op->inputs[i];
+      const auto& bw_input_array_name = bw_sequence_op->inputs[i];
+      if (model.HasArray(fw_input_array_name) &&
+          model.HasArray(bw_input_array_name)) {
+        if (model.GetArray(fw_input_array_name).data_type !=
+            model.GetArray(bw_input_array_name).data_type)
+          return false;
+      }
+    }
+
+    // Make sure the outputs datatype matches.
+    for (int i = 0; i < fw_sequence_op->outputs.size(); ++i) {
+      const auto& fw_output_array_name = fw_sequence_op->outputs[i];
+      const auto& bw_output_array_name = bw_sequence_op->outputs[i];
+      if (model.HasArray(fw_output_array_name) &&
+          model.HasArray(bw_output_array_name)) {
+        if (model.GetArray(fw_output_array_name).data_type !=
+            model.GetArray(bw_output_array_name).data_type)
+          return false;
+      }
+    }
+
+    fw_unidirectional_sequence_ops.pop();
+    bw_unidirectional_sequence_ops.pop();
+  }
+
   if (is_dynamic_rnn) {
     // For dynamic bidirectional sequence ops, bw_sequence will have a reverse
     // op.
-    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2) {
+    if (first_bw_sequence_op_input->type != OperatorType::kReverseV2 &&
+        first_bw_sequence_op_input->type != OperatorType::kReverseSequence) {
       return false;
     }
 
@@ -415,9 +454,6 @@ template <typename T>
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(b/125143808): Before really group the fw & bw sequence ops and
-  // modified the model, we should check both the fw & bw sequence ops have the
-  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<T> bidirectional_sequence_ops;
   GroupFwBwSequenceOps(model, fw_unidirectional_sequence_ops,
                        bw_unidirectional_sequence_ops,
@@ -493,9 +529,6 @@ template <typename T>
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(b/125143808): Before really group the fw & bw sequence ops and
-  // modified the model, we should check both the fw & bw sequence ops have the
-  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<BidirectionalSequenceLstmOperator*>
       bidirectional_sequence_lstm_ops;
   GroupFwBwSequenceOps(model, fw_unidirectional_sequence_lstm_ops,
@@ -574,9 +607,6 @@ template <typename T>
     return ::tensorflow::Status::OK();
   }
 
-  // TODO(b/125143808): Before really group the fw & bw sequence ops and
-  // modified the model, we should check both the fw & bw sequence ops have the
-  // same data_type, inputs_shapes, output_shapes etc.
   std::vector<BidirectionalSequenceRnnOperator*> bidirectional_sequence_rnn_ops;
   GroupFwBwSequenceOps(model, fw_unidirectional_sequence_rnn_ops,
                        bw_unidirectional_sequence_rnn_ops,

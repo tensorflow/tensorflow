@@ -118,12 +118,8 @@ bool SplitAndParse(const std::string& str, char delim, std::vector<T>* values) {
 }
 
 template <typename T>
-void FillRandomValue(T* ptr, const std::vector<int>& sizes,
+void FillRandomValue(T* ptr, int num_elements,
                      const std::function<T()>& random_func) {
-  int num_elements = 1;
-  for (int dim : sizes) {
-    num_elements *= dim;
-  }
   for (int i = 0; i < num_elements; ++i) {
     *ptr++ = random_func();
   }
@@ -213,6 +209,19 @@ BenchmarkTfLiteModel::BenchmarkTfLiteModel(BenchmarkParams params)
   AddListener(&gemmlowp_profiling_listener_);
 }
 
+void BenchmarkTfLiteModel::CleanUp() {
+  if (inputs_data_.empty()) {
+    return;
+  }
+  // Free up any pre-allocated tensor data during PrepareInputData.
+  for (int i = 0; i < inputs_data_.size(); ++i) {
+    delete[] inputs_data_[i].data.raw;
+  }
+  inputs_data_.clear();
+}
+
+BenchmarkTfLiteModel::~BenchmarkTfLiteModel() { CleanUp(); }
+
 std::vector<Flag> BenchmarkTfLiteModel::GetFlags() {
   std::vector<Flag> flags = BenchmarkTfLiteModel::BenchmarkModel::GetFlags();
   std::vector<Flag> specific_flags = {
@@ -260,38 +269,78 @@ uint64_t BenchmarkTfLiteModel::ComputeInputBytes() {
   return total_input_bytes;
 }
 
-void BenchmarkTfLiteModel::PrepareInputsAndOutputs() {
+void BenchmarkTfLiteModel::PrepareInputData() {
   auto interpreter_inputs = interpreter->inputs();
-  // Set the values of the input tensors.
-  for (int j = 0; j < interpreter_inputs.size(); ++j) {
+  const size_t input_size = interpreter_inputs.size();
+  CleanUp();
+
+  for (int j = 0; j < input_size; ++j) {
     int i = interpreter_inputs[j];
     TfLiteTensor* t = interpreter->tensor(i);
     std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
-    // TODO(ahentz): below we ignore the O-th dimension (number of batches).
+    int num_elements = 1;
+    // TODO(haoliang): Ignore the 0-th dimension (number of batches).
+    for (int i = 1; i < sizes.size(); ++i) {
+      num_elements *= sizes[i];
+    }
+    InputTensorData t_data;
     if (t->type == kTfLiteFloat32) {
-      FillRandomValue<float>(
-          interpreter->typed_tensor<float>(i),
-          std::vector<int>(sizes.begin() + 1, sizes.end()),
-          []() { return static_cast<float>(rand()) / RAND_MAX - 0.5f; });
+      t_data.bytes = sizeof(float) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<float>(t_data.data.f, num_elements, []() {
+        return static_cast<float>(rand()) / RAND_MAX - 0.5f;
+      });
     } else if (t->type == kTfLiteInt32) {
       // TODO(yunluli): This is currently only used for handling embedding input
       // for speech models. Generalize if necessary.
-      FillRandomValue<int32_t>(
-          interpreter->typed_tensor<int32_t>(i),
-          std::vector<int32_t>(sizes.begin() + 1, sizes.end()),
-          []() { return static_cast<int32_t>(rand()) % 100; });
+      t_data.bytes = sizeof(int32_t) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<int32_t>(t_data.data.i32, num_elements, []() {
+        return static_cast<int32_t>(rand()) % 100;
+      });
     } else if (t->type == kTfLiteUInt8) {
-      FillRandomValue<uint8_t>(
-          interpreter->typed_tensor<uint8_t>(i),
-          std::vector<int>(sizes.begin() + 1, sizes.end()),
-          []() { return static_cast<uint8_t>(rand()) % 255; });
+      t_data.bytes = sizeof(uint8_t) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<uint8_t>(t_data.data.uint8, num_elements, []() {
+        return static_cast<uint8_t>(rand()) % 255;
+      });
     } else if (t->type == kTfLiteInt8) {
-      FillRandomValue<int8_t>(
-          interpreter->typed_tensor<int8_t>(i),
-          std::vector<int>(sizes.begin() + 1, sizes.end()),
-          []() { return static_cast<int8_t>(rand()) % 255 - 127; });
+      t_data.bytes = sizeof(int8_t) * num_elements;
+      t_data.data.raw = new char[t_data.bytes];
+      FillRandomValue<int8_t>(t_data.data.int8, num_elements, []() {
+        return static_cast<int8_t>(rand()) % 255 - 127;
+      });
+    } else if (t->type == kTfLiteString) {
+      // TODO(haoliang): No need to cache string tensors right now.
+    } else {
+      TFLITE_LOG(FATAL) << "Don't know how to populate tensor " << t->name
+                        << " of type " << t->type;
+    }
+    inputs_data_.push_back(t_data);
+  }
+}
+
+void BenchmarkTfLiteModel::ResetInputsAndOutputs() {
+  auto interpreter_inputs = interpreter->inputs();
+  // Set the values of the input tensors from inputs_data_.
+  for (int j = 0; j < interpreter_inputs.size(); ++j) {
+    int i = interpreter_inputs[j];
+    TfLiteTensor* t = interpreter->tensor(i);
+    if (t->type == kTfLiteFloat32) {
+      std::memcpy(interpreter->typed_tensor<float>(i), inputs_data_[j].data.f,
+                  inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt32) {
+      std::memcpy(interpreter->typed_tensor<int32_t>(i),
+                  inputs_data_[j].data.i32, inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteUInt8) {
+      std::memcpy(interpreter->typed_tensor<uint8_t>(i),
+                  inputs_data_[j].data.uint8, inputs_data_[j].bytes);
+    } else if (t->type == kTfLiteInt8) {
+      std::memcpy(interpreter->typed_tensor<int8_t>(i),
+                  inputs_data_[j].data.int8, inputs_data_[j].bytes);
     } else if (t->type == kTfLiteString) {
       tflite::DynamicBuffer buffer;
+      std::vector<int> sizes = TfLiteIntArrayToVector(t->dims);
       FillRandomString(&buffer, sizes, []() {
         return "we're have some friends over saturday to hang out in the yard";
       });
