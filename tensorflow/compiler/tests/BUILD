@@ -139,6 +139,22 @@ tf_xla_py_test(
 )
 
 tf_xla_py_test(
+    name = "add_n_test",
+    size = "small",
+    srcs = ["add_n_test.py"],
+    # TensorList ops are not implemented in the on-demand compilation model yet.
+    disabled_backends = ["cpu_ondemand"],
+    deps = [
+        ":xla_test",
+        "//tensorflow/python:array_ops",
+        "//tensorflow/python:framework",
+        "//tensorflow/python:list_ops",
+        "//tensorflow/python:math_ops",
+        "//tensorflow/python:platform_test",
+    ],
+)
+
+tf_xla_py_test(
     name = "addsign_test",
     size = "small",
     srcs = ["addsign_test.py"],
