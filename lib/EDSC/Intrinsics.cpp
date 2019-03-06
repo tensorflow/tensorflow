@@ -26,6 +26,7 @@ ValueHandle mlir::edsc::intrinsics::BR(BlockHandle bh,
                                        ArrayRef<ValueHandle> operands) {
   assert(bh && "Expected already captured BlockHandle");
   for (auto &o : operands) {
+    (void)o;
     assert(o && "Expected already captured ValueHandle");
   }
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
