@@ -32395,7 +32395,7 @@ op {
   is_stateful: true
 }
 op {
-  name: "SamplingDataset"
+  name: "ExperimentalSamplingDataset"
   input_arg {
     name: "input_dataset"
     type: DT_VARIANT
@@ -32403,6 +32403,14 @@ op {
   input_arg {
     name: "rate"
     type: DT_FLOAT
+  }
+  input_arg {
+    name: "seed"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "seed2"
+    type: DT_INT64
   }
   output_arg {
     name: "handle"

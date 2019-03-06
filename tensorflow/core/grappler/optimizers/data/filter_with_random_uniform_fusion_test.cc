@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -47,7 +47,8 @@ TEST(FilterWithRandomUniformFusionTest, FuseToSampling) {
   FilterWithRandomUniformFusion optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  EXPECT_TRUE(graph_utils::ContainsNodeWithOp("SamplingDataset", output));
+  EXPECT_TRUE(
+      graph_utils::ContainsNodeWithOp("ExperimentalSamplingDataset", output));
   EXPECT_FALSE(graph_utils::ContainsGraphNodeWithName("filter1", output));
 }
 
@@ -68,7 +69,8 @@ TEST(FilterWithoutRandomUniformFusionTest, FuseToSampling) {
   FilterWithRandomUniformFusion optimizer;
   GraphDef output;
   TF_ASSERT_OK(optimizer.Optimize(nullptr, item, &output));
-  EXPECT_FALSE(graph_utils::ContainsNodeWithOp("SamplingDataset", output));
+  EXPECT_FALSE(
+      graph_utils::ContainsNodeWithOp("ExperimentalSamplingDataset", output));
   EXPECT_TRUE(graph_utils::ContainsGraphNodeWithName("filter1", output));
 }
 

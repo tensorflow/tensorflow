@@ -1,4 +1,4 @@
-/* Copyright 2018 The TensorFlow Authors. All Rights Reserved.
+/* Copyright 2019 The TensorFlow Authors. All Rights Reserved.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -31,10 +31,10 @@ limitations under the License.
 namespace tensorflow {
 namespace grappler {
 
-constexpr char kFusedOpName[] = "SamplingDataset";
+constexpr char kFusedOpName[] = "ExperimentalSamplingDataset";
 
-NodeDef MakeFusedNode(const NodeDef& filter_node, float rate,
-                      MutableGraphView* graph) {
+NodeDef MakeFusedNode(const NodeDef& filter_node, float rate, int64 seed,
+                      int64 seed2, MutableGraphView* graph) {
   NodeDef fused_node;
   graph_utils::SetUniqueGraphNodeName("fused_sampling", graph->graph(),
                                       &fused_node);
@@ -57,8 +57,12 @@ NodeDef MakeFusedNode(const NodeDef& filter_node, float rate,
     }
   }
 
-  NodeDef* tmp = graph_utils::AddScalarConstNode<float>(rate, graph);
-  fused_node.add_input(tmp->name());
+  NodeDef* tmp_rate = graph_utils::AddScalarConstNode<float>(rate, graph);
+  fused_node.add_input(tmp_rate->name());
+  NodeDef* tmp_seed = graph_utils::AddScalarConstNode<int64>(seed, graph);
+  fused_node.add_input(tmp_seed->name());
+  NodeDef* tmp_seed2 = graph_utils::AddScalarConstNode<int64>(seed2, graph);
+  fused_node.add_input(tmp_seed2->name());
 
   return fused_node;
 }
@@ -74,10 +78,35 @@ const NodeDef* FunctionFindNodeDef(const FunctionDef& function, const string op,
     }
     return &func_node;
   }
-  return NULL;
+  return nullptr;
 }
 
-// This optimization fuse one of the following two forms of
+bool FunctionFindFloatConst(const FunctionDef& function, const string func,
+                            const string match, float& result) {
+  const NodeDef* const_node =
+      FunctionFindNodeDef(function, "Const", func, match);
+  if (const_node == nullptr) {
+    return false;
+  }
+  if (const_node->attr().at("dtype").type() != DT_FLOAT) {
+    return false;
+  }
+  const auto& value = const_node->attr().at("value").tensor().float_val(0);
+  result = value;
+  return true;
+}
+
+bool FunctionExpectFloatConst(const FunctionDef& function, const string func,
+                              const string match, const float val) {
+  float result;
+  if (FunctionFindFloatConst(function, func, match, result) && result == val) {
+    return true;
+  } else {
+    return false;
+  }
+}
+
+// This optimization fuses one of the following two forms of
 // filter + random_uniform predication into a single data sampling operation:
 // fuse:
 //   filter
@@ -97,14 +126,14 @@ const NodeDef* FunctionFindNodeDef(const FunctionDef& function, const string op,
 //                  + rate
 // into:
 //   sampling(rate)
-Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(Cluster* cluster,
-                                                  const GrapplerItem& item,
-                                                  GraphDef* output,
-                                                  OptimizationStats* stats) {
+Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(
+    Cluster* cluster, const GrapplerItem& item, GraphDef* output,
+    OptimizationStats* stats) {
   *output = item.graph;
   MutableGraphView graph(output);
   absl::flat_hash_set<string> nodes_to_delete;
   float rate;
+  int64 seed, seed2;
 
   for (const NodeDef& node : item.graph.node()) {
     // stage 1 -- recognition
@@ -128,15 +157,17 @@ Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(Cluster* cluster,
         }
         auto it = function.ret().begin();
         string node_name = it->second;
-        const NodeDef* less_node;
         const NodeDef* func_node =
             FunctionFindNodeDef(function, "Identity", node_name, ":output:0");
-        if (func_node != NULL) {
+        while (func_node != nullptr) {
           node_name = func_node->input(0);
+          func_node =
+            FunctionFindNodeDef(function, "Identity", node_name, ":output:0");
         }
         func_node = FunctionFindNodeDef(function, "StridedSlice", node_name,
                                         ":output:0");
-        if (func_node != NULL) {
+        const NodeDef* less_node;
+        if (func_node != nullptr) {
           // for form one: datasetS = datasetS.filter(lambda x:
           // tf.less(tf.random_uniform([1]), rate)[0])
           less_node = FunctionFindNodeDef(function, "Less", func_node->input(0),
@@ -146,27 +177,65 @@ Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(Cluster* cluster,
           // tf.random_uniform([]) < rate)
           less_node = FunctionFindNodeDef(function, "Less", node_name, ":z:0");
         }
-        if (less_node == NULL) {
+        if (less_node == nullptr) {
           continue;
         }
 
         // check whether the function is actually doing
         // random_uniform[0.0, 1.0) < rate
+        // There could be two forms of random_uniform[0.0, 1.0) in the graph
+        // * Simple form just have a RandomUniform node which means
+        //   random_uniform[0.0, 1.0)
+        // * Expanded form is "RandomUniform * (1.0 - 0.0) + 0.0", which is
+        //   still random_uniform[0.0, 1.0)
+        //
+        // First detect whether simple form is used
         const NodeDef* random_uniform_node = FunctionFindNodeDef(
             function, "RandomUniform", less_node->input(0), ":output:0");
-        if (random_uniform_node == NULL) {
-          continue;
+        if (random_uniform_node == nullptr) {
+          // If expanded form is used, check boundaries
+          const NodeDef* random_uniform_result_node =
+              FunctionFindNodeDef(function, "Add", less_node->input(0), ":z:0");
+
+          if (!FunctionExpectFloatConst(function,
+                                        random_uniform_result_node->input(1),
+                                        ":output:0", 0.0f)) {
+            continue;
+          }
+
+          const NodeDef* random_uniform_mul_node = FunctionFindNodeDef(
+              function, "Mul", random_uniform_result_node->input(0), ":z:0");
+
+          const NodeDef* random_uniform_sub_node = FunctionFindNodeDef(
+              function, "Sub", random_uniform_mul_node->input(1), ":z:0");
+
+          if (!FunctionExpectFloatConst(function,
+                                        random_uniform_sub_node->input(0),
+                                        ":output:0", 1.0f)) {
+            continue;
+          }
+
+          if (!FunctionExpectFloatConst(function,
+                                        random_uniform_sub_node->input(1),
+                                        ":output:0", 0.0f)) {
+            continue;
+          }
+
+          random_uniform_node = FunctionFindNodeDef(
+              function, "RandomUniform", random_uniform_mul_node->input(0),
+              ":output:0");
+          if (random_uniform_node == nullptr) {
+            continue;
+          }
         }
 
-        const NodeDef* rate_node = FunctionFindNodeDef(
-            function, "Const", less_node->input(1), ":output:0");
-        if (rate_node == NULL) {
+        seed = random_uniform_node->attr().at("seed").i();
+        seed2 = random_uniform_node->attr().at("seed2").i();
+
+        if (!FunctionFindFloatConst(function, less_node->input(1), ":output:0",
+                                    rate)) {
           continue;
         }
-
-        const auto& rate_value = rate_node->attr().at("value");
-        const auto& rate_tensor = rate_value.tensor();
-        rate = rate_tensor.float_val(0);
 
         function_match = true;
         break;
@@ -179,7 +248,7 @@ Status FilterWithRandomUniformFusion::OptimizeAndCollectStats(Cluster* cluster,
 
     // stage 2 -- fuse
     const auto* fused_sampling =
-        graph.AddNode(MakeFusedNode(filter_node, rate, &graph));
+        graph.AddNode(MakeFusedNode(filter_node, rate, seed, seed2, &graph));
 
     graph.UpdateFanouts(filter_node.name(), fused_sampling->name());
 

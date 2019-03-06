@@ -531,7 +531,7 @@ FunctionDef RandomUniformLess() {
          {"begin_mask", 0},
          {"ellipsis_mask", 0},
          {"end_mask", 0},
-         {"new_axix_mask", 0},
+         {"new_axis_mask", 0},
          {"shrink_axis_mask", 0}}}});
 }
 

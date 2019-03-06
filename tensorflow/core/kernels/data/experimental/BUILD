@@ -402,6 +402,17 @@ tf_kernel_library(
 )
 
 tf_kernel_library(
+    name = "sampling_dataset_op",
+    srcs = ["sampling_dataset_op.cc"],
+    deps = [
+        "//tensorflow/core:experimental_dataset_ops_op_lib",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core:lib_internal",
+    ],
+)
+
+tf_kernel_library(
     name = "dataset_kernels",
     deps = [
         ":assert_next_dataset_op",
@@ -424,6 +435,7 @@ tf_kernel_library(
         ":prefetching_kernels",
         ":random_dataset_op",
         ":rebatch_dataset_op",
+        ":sampling_dataset_op",
         ":scan_dataset_op",
         ":set_stats_aggregator_dataset_op",
         ":sleep_dataset_op",

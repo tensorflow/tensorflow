@@ -501,6 +501,23 @@ REGISTER_OP("ExperimentalIdentityIndexedDataset")
     .SetShapeFn(
         shape_inference::ScalarShape);  // TODO(saeta): check input shapes.
 
+REGISTER_OP("ExperimentalSamplingDataset")
+    .Input("input_dataset: variant")
+    .Input("rate: float32")
+    .Input("seed: int64")
+    .Input("seed2: int64")
+    .Output("handle: variant")
+    .Attr("output_types: list(type) >= 1")
+    .Attr("output_shapes: list(shape) >= 1")
+    .SetShapeFn([](shape_inference::InferenceContext* c) {
+      shape_inference::ShapeHandle unused;
+      // rate, seed, and seed2 should be scalars.
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(1), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(2), 0, &unused));
+      TF_RETURN_IF_ERROR(c->WithRank(c->input(3), 0, &unused));
+      return shape_inference::ScalarShape(c);
+    });
+
 ///////////////////////////////////////////////////////////////////////////////
 //     IndexedDataset Internals
 ///////////////////////////////////////////////////////////////////////////////
