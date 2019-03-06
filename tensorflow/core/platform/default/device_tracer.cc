@@ -640,11 +640,6 @@ std::unique_ptr<DeviceTracer> CreateDeviceTracer() {
   return tracer;
 }
 
-DeviceTracer* CreateDeviceTracerRaw() {
-  DeviceTracer* tracer = new devicetracer::DeviceTracerImpl();
-  return tracer;
-}
-
 }  // namespace tensorflow
 
 #else  // GOOGLE_CUDA

@@ -181,17 +181,21 @@ void Worker::DoRunGraph(CallOptions* opts, RunGraphRequestWrapper* request,
       request->exec_opts().record_timeline() ||
       request->exec_opts().record_costs()) {
     collector = new StepStatsCollector(response->mutable_step_stats());
-    tracer = CreateDeviceTracerRaw();
+    std::unique_ptr<DeviceTracer> trptr = CreateDeviceTracer();
     // tracer may be NULL on platforms without accelerators.
-    if (tracer) {
+    if (trptr) {
+      tracer = trptr.release();
       Status s = tracer->Start();
       if (!s.ok()) {
-        delete tracer;
-        done(s);
-        return;
+        if (!errors::IsUnavailable(s)) {
+          delete tracer;
+          delete collector;
+          delete out;
+          done(s);
+          return;
+        }
       }
     }
-    // TODO(mrry,pbar): GPU tracing for distributed steps.
   }
 
   CancellationManager* cm = new CancellationManager;
