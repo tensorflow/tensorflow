@@ -302,6 +302,18 @@ class EdscTest(unittest.TestCase):
       self.assertIn("%f = constant @sqrtf : (f32) -> f32", str)
       self.assertIn("call_indirect %f(%0) : (f32) -> f32", str)
 
+  def testFunctionDeclaration(self):
+    module = E.MLIRModule()
+    boolAttr = self.module.boolAttr(True)
+    t = module.make_memref_type(self.f32Type, [10])
+    t_llvm_noalias = t({"llvm.noalias": boolAttr})
+    t_readonly = t({"readonly": boolAttr})
+    f = module.declare_function("foo", [t, t_llvm_noalias, t_readonly], [])
+    str = module.__str__()
+    self.assertIn(
+        "func @foo(memref<10xf32>, memref<10xf32> {llvm.noalias: true}, memref<10xf32> {readonly: true})",
+        str)
+
   def testMLIRBooleanEmission(self):
     m = self.module.make_memref_type(self.boolType, [10])  # i1 tensor
     f = self.module.make_function("mkbooltensor", [m, m], [])

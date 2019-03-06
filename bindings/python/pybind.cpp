@@ -4,11 +4,13 @@
 #include "third_party/llvm/llvm/include/llvm/Support/TargetSelect.h"
 #include "third_party/llvm/llvm/include/llvm/Support/raw_ostream.h"
 #include <cstddef>
+#include <unordered_map>
 
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir-c/Core.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/MLIREmitter.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/Types.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/ExecutionEngine/ExecutionEngine.h"
+#include "third_party/llvm/llvm/projects/google_mlir/include/mlir/IR/Attributes.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/IR/Module.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/Pass/Pass.h"
 #include "third_party/llvm/llvm/projects/google_mlir/include/mlir/Target/LLVMIR.h"
@@ -33,6 +35,7 @@ namespace python {
 namespace py = pybind11;
 
 struct PythonAttribute;
+struct PythonAttributedType;
 struct PythonBindable;
 struct PythonExpr;
 struct PythonStmt;
@@ -69,7 +72,12 @@ struct PythonFunction {
 struct PythonType {
   PythonType() : type{nullptr} {}
   PythonType(mlir_type_t t) : type{t} {}
-  operator mlir_type_t() { return type; }
+
+  operator mlir_type_t() const { return type; }
+
+  PythonAttributedType attachAttributeDict(
+      const std::unordered_map<std::string, PythonAttribute> &attrs) const;
+
   std::string str() {
     mlir::Type f = mlir::Type::getFromOpaquePointer(type);
     std::string res;
@@ -77,6 +85,7 @@ struct PythonType {
     f.print(os);
     return res;
   }
+
   mlir_type_t type;
 };
 
@@ -97,28 +106,20 @@ struct PythonMLIRModule {
     return ::makeIndexType(mlir_context_t{&mlirContext});
   }
 
-  // Declare a function with the given name, input and output types but do not
-  // define it.
+  // Declare a function with the given name, input types and their attributes,
+  // output types, and function attributes, but do not define it.
   PythonFunction declareFunction(const std::string &name,
-                                 std::vector<PythonType> &inputTypes,
-                                 std::vector<PythonType> &outputTypes) {
-    std::vector<mlir_type_t> ins(inputTypes.begin(), inputTypes.end());
-    std::vector<mlir_type_t> outs(outputTypes.begin(), outputTypes.end());
-    auto funcType = ::makeFunctionType(
-        mlir_context_t{&mlirContext}, mlir_type_list_t{ins.data(), ins.size()},
-        mlir_type_list_t{outs.data(), outs.size()});
-    auto *func = new mlir::Function(
-        UnknownLoc::get(&mlirContext), name,
-        mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>());
-    module->getFunctions().push_back(func);
-    return func;
-  }
+                                 const py::list &inputs,
+                                 const std::vector<PythonType> &outputTypes,
+                                 const py::kwargs &funcAttributes);
 
-  // Define a function with the given name, input and output types.
-  PythonFunction makeFunction(const std::string &name,
-                              std::vector<PythonType> &inputTypes,
-                              std::vector<PythonType> &outputTypes) {
-    auto declaration = declareFunction(name, inputTypes, outputTypes);
+  // Declare a function with the given name, input types and their attributes,
+  // output types, and function attributes.
+  PythonFunction makeFunction(const std::string &name, const py::list &inputs,
+                              const std::vector<PythonType> &outputTypes,
+                              const py::kwargs &funcAttributes) {
+    auto declaration =
+        declareFunction(name, inputs, outputTypes, funcAttributes);
     declaration.define();
     return declaration;
   }
@@ -233,7 +234,7 @@ struct PythonAttribute {
   PythonAttribute(const PythonAttribute &other) = default;
   operator mlir_attr_t() { return attr; }
 
-  std::string str() {
+  std::string str() const {
     if (!attr)
       return "##null attr##";
 
@@ -245,6 +246,57 @@ struct PythonAttribute {
   }
 
   mlir_attr_t attr;
+};
+
+struct PythonAttributedType {
+  PythonAttributedType() : type(nullptr) {}
+  PythonAttributedType(mlir_type_t t) : type(t) {}
+  PythonAttributedType(
+      PythonType t,
+      const std::unordered_map<std::string, PythonAttribute> &attributes =
+          std::unordered_map<std::string, PythonAttribute>())
+      : type(t), attrs(attributes) {}
+
+  operator mlir_type_t() const { return type.type; }
+  operator PythonType() const { return type; }
+
+  // Return a vector of named attribute descriptors.  The vector owns the
+  // mlir_named_attr_t objects it contains, but not the names and attributes
+  // those objects point to (names and opaque pointers to attributes are owned
+  // by `this`).
+  std::vector<mlir_named_attr_t> getNamedAttrs() const {
+    std::vector<mlir_named_attr_t> result;
+    result.reserve(attrs.size());
+    for (const auto &namedAttr : attrs)
+      result.push_back({namedAttr.first.c_str(), namedAttr.second.attr});
+    return result;
+  }
+
+  std::string str() {
+    mlir::Type t = mlir::Type::getFromOpaquePointer(type);
+    std::string res;
+    llvm::raw_string_ostream os(res);
+    t.print(os);
+    if (attrs.size() == 0)
+      return os.str();
+
+    os << '{';
+    bool first = true;
+    for (const auto &namedAttr : attrs) {
+      if (first)
+        first = false;
+      else
+        os << ", ";
+      os << namedAttr.first << ": " << namedAttr.second.str();
+    }
+    os << '}';
+
+    return os.str();
+  }
+
+private:
+  PythonType type;
+  std::unordered_map<std::string, PythonAttribute> attrs;
 };
 
 struct PythonIndexed : public edsc_indexed_t {
@@ -426,6 +478,60 @@ void MLIRFunctionEmitter::emitBlockBody(PythonBlock block) {
   emitter.emitStmts(StmtBlock(block).getBody());
 }
 
+PythonFunction
+PythonMLIRModule::declareFunction(const std::string &name,
+                                  const py::list &inputs,
+                                  const std::vector<PythonType> &outputTypes,
+                                  const py::kwargs &funcAttributes) {
+
+  std::vector<PythonAttributedType> attributedInputs;
+  attributedInputs.reserve(inputs.size());
+  for (const auto &in : inputs) {
+    std::string className = in.get_type().str();
+    if (className.find(".Type'") != std::string::npos)
+      attributedInputs.emplace_back(in.cast<PythonType>());
+    else
+      attributedInputs.push_back(in.cast<PythonAttributedType>());
+  }
+
+  // Create the function type.
+  std::vector<mlir_type_t> ins(attributedInputs.begin(),
+                               attributedInputs.end());
+  std::vector<mlir_type_t> outs(outputTypes.begin(), outputTypes.end());
+  auto funcType = ::makeFunctionType(
+      mlir_context_t{&mlirContext}, mlir_type_list_t{ins.data(), ins.size()},
+      mlir_type_list_t{outs.data(), outs.size()});
+
+  // Build the list of function attributes.
+  std::vector<mlir::NamedAttribute> attrs;
+  attrs.reserve(funcAttributes.size());
+  for (const auto &named : funcAttributes)
+    attrs.emplace_back(
+        Identifier::get(std::string(named.first.str()), &mlirContext),
+        mlir::Attribute::getFromOpaquePointer(reinterpret_cast<const void *>(
+            named.second.cast<PythonAttribute>().attr)));
+
+  // Build the list of lists of function argument attributes.
+  std::vector<mlir::NamedAttributeList> inputAttrs;
+  inputAttrs.reserve(attributedInputs.size());
+  for (const auto &in : attributedInputs) {
+    std::vector<mlir::NamedAttribute> inAttrs;
+    for (const auto &named : in.getNamedAttrs())
+      inAttrs.emplace_back(Identifier::get(named.name, &mlirContext),
+                           mlir::Attribute::getFromOpaquePointer(
+                               reinterpret_cast<const void *>(named.value)));
+    inputAttrs.emplace_back(&mlirContext, inAttrs);
+  }
+
+  // Create the function itself.
+  auto *func = new mlir::Function(
+      UnknownLoc::get(&mlirContext), name,
+      mlir::Type::getFromOpaquePointer(funcType).cast<FunctionType>(), attrs,
+      inputAttrs);
+  module->getFunctions().push_back(func);
+  return func;
+}
+
 PythonExpr PythonMLIRModule::op(const std::string &name, PythonType type,
                                 const py::list &arguments,
                                 const py::list &successors,
@@ -447,6 +553,11 @@ PythonExpr PythonMLIRModule::op(const std::string &name, PythonType type,
                          makeCExprs(owningExprs, arguments),
                          makeCBlocks(owningBlocks, successors),
                          {owningAttrs.data(), owningAttrs.size()}));
+}
+
+PythonAttributedType PythonType::attachAttributeDict(
+    const std::unordered_map<std::string, PythonAttribute> &attrs) const {
+  return PythonAttributedType(*this, attrs);
 }
 
 PythonAttribute PythonMLIRModule::integerAttr(PythonType type, int64_t value) {
@@ -622,7 +733,18 @@ PYBIND11_MODULE(pybind, m) {
 
   py::class_<PythonType>(m, "Type", "Wrapping class for mlir::Type.")
       .def(py::init<PythonType>())
+      .def("__call__", &PythonType::attachAttributeDict,
+           "Attach the attributes to these type, making it suitable for "
+           "constructing functions with argument attributes")
       .def("__str__", &PythonType::str);
+
+  py::class_<PythonAttributedType>(
+      m, "AttributedType",
+      "A class containing a wrapped mlir::Type and a wrapped "
+      "mlir::NamedAttributeList that are used together, e.g. in function "
+      "argument declaration")
+      .def(py::init<PythonAttributedType>())
+      .def("__str__", &PythonAttributedType::str);
 
   py::class_<PythonMLIRModule>(
       m, "MLIRModule",
@@ -648,8 +770,8 @@ PYBIND11_MODULE(pybind, m) {
           "in the context associated with this MLIR module.")
       .def("declare_function", &PythonMLIRModule::declareFunction,
            "Declares a new mlir::Function in the current mlir::Module.  The "
-           "function has no definition and can be linked to an external "
-           "library.")
+           "function arguments can have attributes.  The function has no "
+           "definition and can be linked to an external library.")
       .def("make_function", &PythonMLIRModule::makeFunction,
            "Defines a new mlir::Function in the current mlir::Module.")
       .def(
