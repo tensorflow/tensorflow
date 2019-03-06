@@ -470,7 +470,7 @@ void OpEmitter::emitVerifier() {
   auto valueInit = def.getValueInit("verifier");
   CodeInit *codeInit = dyn_cast<CodeInit>(valueInit);
   bool hasCustomVerify = codeInit && !codeInit->getValue().empty();
-  if (!hasCustomVerify && op.getNumArgs() == 0)
+  if (!hasCustomVerify && op.getNumArgs() == 0 && op.getNumResults() == 0)
     return;
 
   OUT(2) << "bool verify() const {\n";
@@ -515,28 +515,38 @@ void OpEmitter::emitVerifier() {
       OUT(4) << "}\n";
   }
 
-  int opIndex = 0;
-  for (const auto &operand : op.getOperands()) {
-    // TODO: Handle variadic operand verification.
-    if (operand.type.isVariadic())
-      continue;
+  // Emits verification code for an operand or result.
+  auto verifyValue = [this](const tblgen::Value &value, int index,
+                            bool isOperand) -> void {
+    // TODO: Handle variadic operand/result verification.
+    if (value.type.isVariadic())
+      return;
 
     // TODO: Commonality between matchers could be extracted to have a more
     // concise code.
-    if (operand.hasPredicate()) {
-      auto description = operand.type.getDescription();
+    if (value.hasPredicate()) {
+      auto description = value.type.getDescription();
       OUT(4) << "if (!("
-             << formatv(operand.type.getConditionTemplate(),
-                        "this->getInstruction()->getOperand(" + Twine(opIndex) +
-                            ")->getType()")
+             << formatv(value.type.getConditionTemplate(),
+                        "this->getInstruction()->get" +
+                            Twine(isOperand ? "Operand" : "Result") + "(" +
+                            Twine(index) + ")->getType()")
              << ")) {\n";
-      OUT(6) << "return emitOpError(\"operand #" + Twine(opIndex)
+      OUT(6) << "return emitOpError(\"" << (isOperand ? "operand" : "result")
+             << " #" << index
              << (description.empty() ? " type precondition failed"
                                      : " must be " + Twine(description))
              << "\");";
       OUT(4) << "}\n";
     }
-    ++opIndex;
+  };
+
+  for (unsigned i = 0, e = op.getNumOperands(); i < e; ++i) {
+    verifyValue(op.getOperand(i), i, /*isOperand=*/true);
+  }
+
+  for (unsigned i = 0, e = op.getNumResults(); i < e; ++i) {
+    verifyValue(op.getResult(i), i, /*isOperand=*/false);
   }
 
   for (auto &trait : op.getTraits()) {

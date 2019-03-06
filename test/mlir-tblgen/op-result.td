@@ -2,6 +2,16 @@
 
 include "mlir/IR/OpBase.td"
 
+def OneResultOp : Op<"one_result_op", []> {
+  let results = (outs I32:$result);
+}
+
+// CHECK-LABEL: class OneResultOp
+// CHECK:      bool verify() const {
+// CHECK:        if (!((this->getInstruction()->getResult(0)->getType().isInteger(32)))) {
+// CHECK-NEXT:     return emitOpError("result #0 must be 32-bit integer");
+
+
 def SameTypeOp : Op<"same_type_op", [SameValueType]> {
   let arguments = (ins I32:$x);
   let results = (outs I32:$y);

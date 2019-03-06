@@ -68,6 +68,10 @@ public:
   // Returns the number of results this op produces.
   int getNumResults() const;
 
+  // Returns the op result at the given `index`.
+  Value &getResult(int index) { return results[index]; }
+  const Value &getResult(int index) const { return results[index]; }
+
   // Returns the `index`-th result's type.
   Type getResultType(int index) const;
   // Returns the `index`-th result's name.
