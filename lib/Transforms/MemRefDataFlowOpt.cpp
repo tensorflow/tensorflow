@@ -217,8 +217,8 @@ void MemRefDataFlowOpt::runOnFunction() {
     return;
   }
 
-  domInfo = &getAnalysisResult<DominanceInfo>();
-  postDomInfo = &getAnalysisResult<PostDominanceInfo>();
+  domInfo = &getAnalysis<DominanceInfo>();
+  postDomInfo = &getAnalysis<PostDominanceInfo>();
 
   loadOpsToErase.clear();
   memrefsToErase.clear();

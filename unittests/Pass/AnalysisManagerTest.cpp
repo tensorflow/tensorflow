@@ -41,16 +41,16 @@ TEST(AnalysisManagerTest, FineGrainModuleAnalysisPreservation) {
   ModuleAnalysisManager mam(&*module);
 
   // Query two different analyses, but only preserve one before invalidating.
-  mam.getResult<MyAnalysis>();
-  mam.getResult<OtherAnalysis>();
+  mam.getAnalysis<MyAnalysis>();
+  mam.getAnalysis<OtherAnalysis>();
 
   detail::PreservedAnalyses pa;
   pa.preserve<MyAnalysis>();
   mam.invalidate(pa);
 
   // Check that only MyAnalysis is preserved.
-  EXPECT_TRUE(mam.getCachedResult<MyAnalysis>().hasValue());
-  EXPECT_FALSE(mam.getCachedResult<OtherAnalysis>().hasValue());
+  EXPECT_TRUE(mam.getCachedAnalysis<MyAnalysis>().hasValue());
+  EXPECT_FALSE(mam.getCachedAnalysis<OtherAnalysis>().hasValue());
 }
 
 TEST(AnalysisManagerTest, FineGrainFunctionAnalysisPreservation) {
@@ -69,16 +69,16 @@ TEST(AnalysisManagerTest, FineGrainFunctionAnalysisPreservation) {
   FunctionAnalysisManager fam = mam.slice(func1);
 
   // Query two different analyses, but only preserve one before invalidating.
-  fam.getResult<MyAnalysis>();
-  fam.getResult<OtherAnalysis>();
+  fam.getAnalysis<MyAnalysis>();
+  fam.getAnalysis<OtherAnalysis>();
 
   detail::PreservedAnalyses pa;
   pa.preserve<MyAnalysis>();
   fam.invalidate(pa);
 
   // Check that only MyAnalysis is preserved.
-  EXPECT_TRUE(fam.getCachedResult<MyAnalysis>().hasValue());
-  EXPECT_FALSE(fam.getCachedResult<OtherAnalysis>().hasValue());
+  EXPECT_TRUE(fam.getCachedAnalysis<MyAnalysis>().hasValue());
+  EXPECT_FALSE(fam.getCachedAnalysis<OtherAnalysis>().hasValue());
 }
 
 TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
@@ -97,16 +97,16 @@ TEST(AnalysisManagerTest, FineGrainChildFunctionAnalysisPreservation) {
   ModuleAnalysisManager mam(&*module);
 
   // Query two different analyses, but only preserve one before invalidating.
-  mam.getFunctionResult<MyAnalysis>(func1);
-  mam.getFunctionResult<OtherAnalysis>(func1);
+  mam.getFunctionAnalysis<MyAnalysis>(func1);
+  mam.getFunctionAnalysis<OtherAnalysis>(func1);
 
   detail::PreservedAnalyses pa;
   pa.preserve<MyAnalysis>();
   mam.invalidate(pa);
 
   // Check that only MyAnalysis is preserved.
-  EXPECT_TRUE(mam.getCachedFunctionResult<MyAnalysis>(func1).hasValue());
-  EXPECT_FALSE(mam.getCachedFunctionResult<OtherAnalysis>(func1).hasValue());
+  EXPECT_TRUE(mam.getCachedFunctionAnalysis<MyAnalysis>(func1).hasValue());
+  EXPECT_FALSE(mam.getCachedFunctionAnalysis<OtherAnalysis>(func1).hasValue());
 }
 
 } // end namespace

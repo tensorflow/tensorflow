@@ -34,7 +34,7 @@ struct AnalysisID {
 };
 
 //===----------------------------------------------------------------------===//
-// Analysis Preservation and Result Modeling
+// Analysis Preservation and Concept Modeling
 //===----------------------------------------------------------------------===//
 
 namespace detail {
@@ -93,24 +93,24 @@ template <typename AnalysisT> struct AnalysisModel : public AnalysisConcept {
   AnalysisT analysis;
 };
 
-/// This class represents a cache of analysis results for a single IR unit. All
+/// This class represents a cache of analyses for a single IR unit. All
 /// computation, caching, and invalidation of analyses takes place here.
-template <typename IRUnitT> class AnalysisResultMap {
+template <typename IRUnitT> class AnalysisMap {
   /// A mapping between an analysis id and an existing analysis instance.
-  using ResultMap =
+  using ConceptMap =
       DenseMap<const AnalysisID *, std::unique_ptr<AnalysisConcept>>;
 
 public:
-  explicit AnalysisResultMap(IRUnitT *ir) : ir(ir) {}
+  explicit AnalysisMap(IRUnitT *ir) : ir(ir) {}
 
   /// Get an analysis for the current IR unit, computing it if necessary.
-  template <typename AnalysisT> AnalysisT &getResult() {
-    typename ResultMap::iterator it;
+  template <typename AnalysisT> AnalysisT &getAnalysis() {
+    typename ConceptMap::iterator it;
     bool wasInserted;
     std::tie(it, wasInserted) =
-        results.try_emplace(AnalysisID::getID<AnalysisT>());
+        analyses.try_emplace(AnalysisID::getID<AnalysisT>());
 
-    // If we don't have a cached result for this function, compute it directly
+    // If we don't have a cached analysis for this function, compute it directly
     // and add it to the cache.
     if (wasInserted)
       it->second = llvm::make_unique<AnalysisModel<AnalysisT>>(ir);
@@ -119,34 +119,34 @@ public:
 
   /// Get a cached analysis instance if one exists, otherwise return null.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedResult() const {
-    auto res = results.find(AnalysisID::getID<AnalysisT>());
-    if (res == results.end())
+  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
+    auto res = analyses.find(AnalysisID::getID<AnalysisT>());
+    if (res == analyses.end())
       return llvm::None;
     return {static_cast<AnalysisModel<AnalysisT> &>(*res->second).analysis};
   }
 
-  /// Returns the IR unit that this result map represents.
+  /// Returns the IR unit that this analysis map represents.
   IRUnitT *getIRUnit() { return ir; }
   const IRUnitT *getIRUnit() const { return ir; }
 
-  /// Clear any held analysis results.
-  void clear() { results.clear(); }
+  /// Clear any held analyses.
+  void clear() { analyses.clear(); }
 
   /// Invalidate any cached analyses based upon the given set of preserved
   /// analyses.
   void invalidate(const detail::PreservedAnalyses &pa) {
     // Remove any analyses not marked as preserved.
-    for (auto it = results.begin(), e = results.end(); it != e;) {
+    for (auto it = analyses.begin(), e = analyses.end(); it != e;) {
       auto curIt = it++;
       if (!pa.isPreserved(curIt->first))
-        results.erase(curIt);
+        analyses.erase(curIt);
     }
   }
 
 private:
   IRUnitT *ir;
-  ResultMap results;
+  ConceptMap analyses;
 };
 
 } // namespace detail
@@ -163,19 +163,19 @@ public:
   // exist and if it does it may be stale.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedModuleResult() const {
-    return parentImpl->getCachedResult<AnalysisT>();
+  getCachedModuleAnalysis() const {
+    return parentImpl->getCachedAnalysis<AnalysisT>();
   }
 
   // Query for the given analysis for the current function.
-  template <typename AnalysisT> AnalysisT &getResult() {
-    return impl->getResult<AnalysisT>();
+  template <typename AnalysisT> AnalysisT &getAnalysis() {
+    return impl->getAnalysis<AnalysisT>();
   }
 
   // Query for a cached entry of the given analysis on the current function.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedResult() const {
-    return impl->getCachedResult<AnalysisT>();
+  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
+    return impl->getCachedAnalysis<AnalysisT>();
   }
 
   /// Invalidate any non preserved analyses,
@@ -190,16 +190,16 @@ public:
   void clear() { impl->clear(); }
 
 private:
-  FunctionAnalysisManager(const detail::AnalysisResultMap<Module> *parentImpl,
-                          detail::AnalysisResultMap<Function> *impl)
+  FunctionAnalysisManager(const detail::AnalysisMap<Module> *parentImpl,
+                          detail::AnalysisMap<Function> *impl)
       : parentImpl(parentImpl), impl(impl) {}
 
-  /// A reference to the results map of the parent module within the owning
+  /// A reference to the analysis map of the parent module within the owning
   /// analysis manager.
-  const detail::AnalysisResultMap<Module> *parentImpl;
+  const detail::AnalysisMap<Module> *parentImpl;
 
-  /// A reference to the results map within the owning analysis manager.
-  detail::AnalysisResultMap<Function> *impl;
+  /// A reference to the impl analysis map within the owning analysis manager.
+  detail::AnalysisMap<Function> *impl;
 
   /// Allow access to the constructor.
   friend class ModuleAnalysisManager;
@@ -215,30 +215,30 @@ public:
   /// Query for the analysis of a function. The analysis is computed if it does
   /// not exist.
   template <typename AnalysisT>
-  AnalysisT &getFunctionResult(Function *function) {
-    return slice(function).getResult<AnalysisT>();
+  AnalysisT &getFunctionAnalysis(Function *function) {
+    return slice(function).getAnalysis<AnalysisT>();
   }
 
-  /// Query for a cached analysis of a function, or return null.
+  /// Query for a cached analysis of a child function, or return null.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedFunctionResult(Function *function) const {
+  getCachedFunctionAnalysis(Function *function) const {
     auto it = functionAnalyses.find(function);
     if (it == functionAnalyses.end())
       return llvm::None;
-    return it->second.getCachedResult<AnalysisT>();
+    return it->second.getCachedAnalysis<AnalysisT>();
   }
 
-  /// Query for the analysis of a module. The analysis is computed if it does
+  /// Query for the analysis for the module. The analysis is computed if it does
   /// not exist.
-  template <typename AnalysisT> AnalysisT &getResult() {
-    return moduleAnalyses.getResult<AnalysisT>();
+  template <typename AnalysisT> AnalysisT &getAnalysis() {
+    return moduleAnalyses.getAnalysis<AnalysisT>();
   }
 
   /// Query for a cached analysis for the module, or return null.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedResult() const {
-    return moduleAnalyses.getCachedResult<AnalysisT>();
+  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() const {
+    return moduleAnalyses.getCachedAnalysis<AnalysisT>();
   }
 
   /// Create an analysis slice for the given child function.
@@ -249,10 +249,10 @@ public:
 
 private:
   /// The cached analyses for functions within the current module.
-  DenseMap<Function *, detail::AnalysisResultMap<Function>> functionAnalyses;
+  DenseMap<Function *, detail::AnalysisMap<Function>> functionAnalyses;
 
   /// The analyses for the owning module.
-  detail::AnalysisResultMap<Module> moduleAnalyses;
+  detail::AnalysisMap<Module> moduleAnalyses;
 };
 
 } // end namespace mlir

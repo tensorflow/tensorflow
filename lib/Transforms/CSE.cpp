@@ -223,7 +223,7 @@ void CSE::simplifyBlockList(DominanceInfo &domInfo, BlockList &blockList) {
 }
 
 void CSE::runOnFunction() {
-  simplifyBlockList(getAnalysisResult<DominanceInfo>(),
+  simplifyBlockList(getAnalysis<DominanceInfo>(),
                     getFunction()->getBlockList());
 
   // If no operations were erased, then we mark all analyses as preserved.

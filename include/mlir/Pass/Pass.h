@@ -191,16 +191,16 @@ protected:
     this->getPassState().irAndPassFailed.setInt(true);
   }
 
-  /// Query the result of an analysis for the current ir unit.
-  template <typename AnalysisT> AnalysisT &getAnalysisResult() {
-    return this->getAnalysisManager().template getResult<AnalysisT>();
+  /// Query an analysis for the current ir unit.
+  template <typename AnalysisT> AnalysisT &getAnalysis() {
+    return this->getAnalysisManager().template getAnalysis<AnalysisT>();
   }
 
-  /// Query the cached result of an analysis for the current ir unit if one
+  /// Query a cached instance of an analysis for the current ir unit if one
   /// exists.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysisResult() {
-    return this->getAnalysisManager().template getCachedResult<AnalysisT>();
+  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedAnalysis() {
+    return this->getAnalysisManager().template getCachedAnalysis<AnalysisT>();
   }
 
   /// Mark all analyses as preserved.
@@ -230,12 +230,11 @@ protected:
 ///   - A 'void runOnFunction()' method.
 template <typename T>
 struct FunctionPass : public detail::PassModel<Function, T, FunctionPassBase> {
-  /// Returns the analysis result for the parent module if it exists.
+  /// Returns the analysis for the parent module if it exists.
   template <typename AnalysisT>
-  llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedModuleAnalysisResult() {
+  llvm::Optional<std::reference_wrapper<AnalysisT>> getCachedModuleAnalysis() {
     return this->getAnalysisManager()
-        .template getCachedModuleResult<AnalysisT>();
+        .template getCachedModuleAnalysis<AnalysisT>();
   }
 };
 
@@ -245,18 +244,18 @@ struct FunctionPass : public detail::PassModel<Function, T, FunctionPassBase> {
 ///   - A 'void runOnModule()' method.
 template <typename T>
 struct ModulePass : public detail::PassModel<Module, T, ModulePassBase> {
-  /// Returns the analysis result for a child function.
-  template <typename AnalysisT>
-  AnalysisT &getFunctionAnalysisResult(Function *f) {
-    return this->getAnalysisManager().template getFunctionResult<AnalysisT>(f);
+  /// Returns the analysis for a child function.
+  template <typename AnalysisT> AnalysisT &getFunctionAnalysis(Function *f) {
+    return this->getAnalysisManager().template getFunctionAnalysis<AnalysisT>(
+        f);
   }
 
-  /// Returns an existing analysis result for a child function if it exists.
+  /// Returns an existing analysis for a child function if it exists.
   template <typename AnalysisT>
   llvm::Optional<std::reference_wrapper<AnalysisT>>
-  getCachedFunctionAnalysisResult(Function *f) {
+  getCachedFunctionAnalysis(Function *f) {
     return this->getAnalysisManager()
-        .template getCachedFunctionResult<AnalysisT>(f);
+        .template getCachedFunctionAnalysis<AnalysisT>(f);
   }
 };
 } // end namespace mlir
