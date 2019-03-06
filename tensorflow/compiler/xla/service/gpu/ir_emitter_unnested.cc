@@ -3283,9 +3283,8 @@ std::vector<int64> FilterInputsForShmemTranspose(const HloInstruction* fusion,
 
 bool IrEmitterUnnested::CheckAndEmitHloWithTile021(HloInstruction* hlo) {
   HloOpcode opcode = hlo->opcode();
-  CHECK(opcode == HloOpcode::kFusion || opcode == HloOpcode::kCopy);
-  CHECK(opcode != HloOpcode::kFusion || hlo->IsLoopFusion())
-      << "Only loop fusions are supported.";
+
+  CHECK(hlo->IsLoopFusion() || opcode == HloOpcode::kCopy);
 
   const Shape& output_shape = hlo->IsMultiOutputFusion()
                                   ? ShapeUtil::GetSubshape(hlo->shape(), {0})

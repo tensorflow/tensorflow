@@ -50,8 +50,7 @@ bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // TODO(b/112957171): This should use the same isFusible logic as
   // instruction_fusion.
   return instr->IsFusible() &&
-         (IsInputFusibleReduction(*instr) || instr->IsLoopFusion() ||
-          instr->IsElementwise());
+         (IsInputFusibleReduction(*instr) || instr->IsLoopFusion());
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
