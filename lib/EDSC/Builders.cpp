@@ -1,0 +1,264 @@
+//===- Builders.cpp - MLIR Declarative Builder Classes ----------*- C++ -*-===//
+//
+// Copyright 2019 The MLIR Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//   http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+// =============================================================================
+
+#include "mlir/EDSC/Builders.h"
+#include "mlir/IR/AffineExpr.h"
+#include "mlir/StandardOps/Ops.h"
+
+#include "llvm/ADT/Optional.h"
+
+using namespace mlir;
+using namespace mlir::edsc;
+
+mlir::edsc::ScopedContext::ScopedContext(Function *fun, Location *loc)
+    : builder(fun), location(loc ? *loc : fun->getLoc()),
+      enclosingScopedContext(ScopedContext::getCurrentScopedContext()),
+      nestedBuilder(nullptr) {
+  getCurrentScopedContext() = this;
+}
+
+mlir::edsc::ScopedContext::ScopedContext(FuncBuilder builder, Location location)
+    : builder(builder), location(location),
+      enclosingScopedContext(ScopedContext::getCurrentScopedContext()),
+      nestedBuilder(nullptr) {
+  getCurrentScopedContext() = this;
+}
+
+mlir::edsc::ScopedContext::~ScopedContext() {
+  assert(!nestedBuilder &&
+         "Active NestedBuilder must have been exited at this point!");
+  getCurrentScopedContext() = enclosingScopedContext;
+}
+
+ScopedContext *&mlir::edsc::ScopedContext::getCurrentScopedContext() {
+  thread_local ScopedContext *context = nullptr;
+  return context;
+}
+
+FuncBuilder *mlir::edsc::ScopedContext::getBuilder() {
+  assert(ScopedContext::getCurrentScopedContext() &&
+         "Unexpected Null ScopedContext");
+  return &ScopedContext::getCurrentScopedContext()->builder;
+}
+
+Location mlir::edsc::ScopedContext::getLocation() {
+  assert(ScopedContext::getCurrentScopedContext() &&
+         "Unexpected Null ScopedContext");
+  return ScopedContext::getCurrentScopedContext()->location;
+}
+
+MLIRContext *mlir::edsc::ScopedContext::getContext() {
+  assert(getBuilder() && "Unexpected null builder");
+  return getBuilder()->getContext();
+}
+
+mlir::edsc::ValueHandle::ValueHandle(index_t cst) {
+  auto *b = ScopedContext::getBuilder();
+  auto loc = ScopedContext::getLocation();
+  v = b->create<ConstantIndexOp>(loc, cst.v)->getResult();
+  t = v->getType();
+}
+
+ValueHandle &mlir::edsc::ValueHandle::operator=(const ValueHandle &other) {
+  assert(t == other.t && "Wrong type capture");
+  assert(!v && "ValueHandle has already been captured, use a new name!");
+  v = other.v;
+  return *this;
+}
+
+ValueHandle
+mlir::edsc::ValueHandle::createComposedAffineApply(AffineMap map,
+                                                   ArrayRef<Value *> operands) {
+  assert(ScopedContext::getBuilder() && "Unexpected null builder");
+  Instruction *inst =
+      makeComposedAffineApply(ScopedContext::getBuilder(),
+                              ScopedContext::getLocation(), map, operands)
+          ->getInstruction();
+  assert(inst->getNumResults() == 1 && "Not a single result AffineApply");
+  return ValueHandle(inst->getResult(0));
+}
+
+static llvm::Optional<ValueHandle> emitStaticFor(ArrayRef<ValueHandle> lbs,
+                                                 ArrayRef<ValueHandle> ubs,
+                                                 int64_t step) {
+  if (lbs.size() != 1 || ubs.size() != 1)
+    return llvm::Optional<ValueHandle>();
+
+  auto *lbDef = lbs.front().getValue()->getDefiningInst();
+  auto *ubDef = ubs.front().getValue()->getDefiningInst();
+  if (!lbDef || !ubDef)
+    return llvm::Optional<ValueHandle>();
+
+  auto lbConst = lbDef->dyn_cast<ConstantIndexOp>();
+  auto ubConst = ubDef->dyn_cast<ConstantIndexOp>();
+  if (!lbConst || !ubConst)
+    return llvm::Optional<ValueHandle>();
+
+  return ValueHandle::create<AffineForOp>(lbConst->getValue(),
+                                          ubConst->getValue(), step);
+}
+
+mlir::edsc::LoopBuilder::LoopBuilder(ValueHandle *iv,
+                                     ArrayRef<ValueHandle> lbHandles,
+                                     ArrayRef<ValueHandle> ubHandles,
+                                     int64_t step) {
+  if (auto res = emitStaticFor(lbHandles, ubHandles, step)) {
+    *iv = res.getValue();
+  } else {
+    SmallVector<Value *, 4> lbs(lbHandles.begin(), lbHandles.end());
+    SmallVector<Value *, 4> ubs(ubHandles.begin(), ubHandles.end());
+    *iv = ValueHandle::create<AffineForOp>(
+        lbs, ScopedContext::getBuilder()->getMultiDimIdentityMap(lbs.size()),
+        ubs, ScopedContext::getBuilder()->getMultiDimIdentityMap(ubs.size()),
+        step);
+  }
+  auto *body = getForInductionVarOwner(iv->getValue())->getBody();
+  enter(body);
+}
+
+ValueHandle mlir::edsc::LoopBuilder::operator()(ArrayRef<ValueHandle> stmts) {
+  // Call to `exit` must be explicit and asymmetric (cannot happen in the
+  // destructor) because of ordering wrt comma operator.
+  /// The particular use case concerns nested blocks:
+  ///
+  /// ```c++
+  ///    For (&i, lb, ub, 1)({
+  ///      /--- destructor for this `For` is not always called before ...
+  ///      V
+  ///      For (&j1, lb, ub, 1)({
+  ///        some_op_1,
+  ///      }),
+  ///      /--- ... this scope is entered, resulting in improperly nested IR.
+  ///      V
+  ///      For (&j2, lb, ub, 1)({
+  ///        some_op_2,
+  ///      }),
+  ///    });
+  /// ```
+  exit();
+  return ValueHandle::null();
+}
+
+template <typename Op>
+static ValueHandle createBinaryHandle(ValueHandle lhs, ValueHandle rhs) {
+  return ValueHandle::create<Op>(lhs.getValue(), rhs.getValue());
+}
+
+static std::pair<AffineExpr, Value *>
+categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
+                            unsigned &numSymbols) {
+  AffineExpr d;
+  Value *resultVal = nullptr;
+  auto *constant = val->getDefiningInst()
+                       ? val->getDefiningInst()->dyn_cast<ConstantIndexOp>()
+                       : nullptr;
+  if (constant) {
+    d = getAffineConstantExpr(constant->getValue(), context);
+  } else if (isValidSymbol(val) && !isValidDim(val)) {
+    d = getAffineSymbolExpr(numSymbols++, context);
+    resultVal = val;
+  } else {
+    assert(isValidDim(val) && "Must be a valid Dim");
+    d = getAffineDimExpr(numDims++, context);
+    resultVal = val;
+  }
+  return std::make_pair(d, resultVal);
+}
+
+static ValueHandle createBinaryIndexHandle(
+    ValueHandle lhs, ValueHandle rhs,
+    llvm::function_ref<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
+  MLIRContext *context = ScopedContext::getContext();
+  unsigned numDims = 0, numSymbols = 0;
+  AffineExpr d0, d1;
+  Value *v0, *v1;
+  std::tie(d0, v0) =
+      categorizeValueByAffineType(context, lhs.getValue(), numDims, numSymbols);
+  std::tie(d1, v1) =
+      categorizeValueByAffineType(context, rhs.getValue(), numDims, numSymbols);
+  SmallVector<Value *, 2> operands;
+  if (v0) {
+    operands.push_back(v0);
+  }
+  if (v1) {
+    operands.push_back(v1);
+  }
+  auto map = AffineMap::get(numDims, numSymbols, {affCombiner(d0, d1)}, {});
+  // TODO: createOrFold when available.
+  return ValueHandle::createComposedAffineApply(map, operands);
+}
+
+template <typename IOp, typename FOp>
+static ValueHandle createBinaryHandle(
+    ValueHandle lhs, ValueHandle rhs,
+    llvm::function_ref<AffineExpr(AffineExpr, AffineExpr)> affCombiner) {
+  auto thisType = lhs.getValue()->getType();
+  auto thatType = rhs.getValue()->getType();
+  assert(thisType == thatType && "cannot mix types in operators");
+  (void)thisType;
+  (void)thatType;
+  if (thisType.isIndex()) {
+    return createBinaryIndexHandle(lhs, rhs, affCombiner);
+  } else if (thisType.isa<IntegerType>()) {
+    return createBinaryHandle<IOp>(lhs, rhs);
+  } else if (thisType.isa<FloatType>()) {
+    return createBinaryHandle<FOp>(lhs, rhs);
+  } else if (auto aggregateType = thisType.dyn_cast<VectorOrTensorType>()) {
+    if (aggregateType.getElementType().isa<IntegerType>())
+      return createBinaryHandle<IOp>(lhs, rhs);
+    else if (aggregateType.getElementType().isa<FloatType>())
+      return createBinaryHandle<FOp>(lhs, rhs);
+  }
+  llvm_unreachable("failed to create a ValueHandle");
+}
+
+ValueHandle mlir::edsc::op::operator+(ValueHandle lhs, ValueHandle rhs) {
+  return createBinaryHandle<AddIOp, AddFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 + d1; });
+}
+
+ValueHandle mlir::edsc::op::operator-(ValueHandle lhs, ValueHandle rhs) {
+  return createBinaryHandle<SubIOp, SubFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 - d1; });
+}
+
+ValueHandle mlir::edsc::op::operator*(ValueHandle lhs, ValueHandle rhs) {
+  return createBinaryHandle<MulIOp, MulFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 * d1; });
+}
+
+ValueHandle mlir::edsc::op::operator/(ValueHandle lhs, ValueHandle rhs) {
+  return createBinaryHandle<DivISOp, DivFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) -> AffineExpr {
+        llvm_unreachable("only exprs of non-index type support operator/");
+      });
+}
+
+ValueHandle mlir::edsc::op::operator%(ValueHandle lhs, ValueHandle rhs) {
+  return createBinaryHandle<RemISOp, RemFOp>(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0 % d1; });
+}
+
+ValueHandle mlir::edsc::op::floorDiv(ValueHandle lhs, ValueHandle rhs) {
+  return createBinaryIndexHandle(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0.floorDiv(d1); });
+}
+
+ValueHandle mlir::edsc::op::ceilDiv(ValueHandle lhs, ValueHandle rhs) {
+  return createBinaryIndexHandle(
+      lhs, rhs, [](AffineExpr d0, AffineExpr d1) { return d0.ceilDiv(d1); });
+}

@@ -233,9 +233,8 @@ TEST_FUNC(max_min_for) {
       .emitStmt(loop);
 
   // clang-format off
-  // CHECK-LABEL: func @max_min_for(%arg0: index, %arg1: index, %arg2: index,
-  // %arg3: index) { CHECK:  for %i0 = max (d0, d1) -> (d0, d1)(%arg0, %arg1) to
-  // min (d0, d1) -> (d0, d1)(%arg2, %arg3) {
+  // CHECK-LABEL: func @max_min_for(%arg0: index, %arg1: index, %arg2: index, %arg3: index) {
+  // CHECK:  for %i0 = max (d0, d1) -> (d0, d1)(%arg0, %arg1) to min (d0, d1) -> (d0, d1)(%arg2, %arg3) {
   // clang-format on
   f->print(llvm::outs());
 }
