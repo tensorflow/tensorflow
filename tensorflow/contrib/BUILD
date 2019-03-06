@@ -59,6 +59,7 @@ py_library(
         "//tensorflow/contrib/labeled_tensor",
         "//tensorflow/contrib/layers:layers_py",
         "//tensorflow/contrib/learn",
+        "//tensorflow/contrib/learn:head_test_lib",
         "//tensorflow/contrib/legacy_seq2seq:seq2seq_py",
         "//tensorflow/contrib/libsvm",
         "//tensorflow/contrib/linear_optimizer:sdca_estimator_py",
