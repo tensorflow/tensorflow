@@ -194,6 +194,7 @@ py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
+        "no_gpu",  # b/127001953
         "no_windows",
     ],
     deps = [

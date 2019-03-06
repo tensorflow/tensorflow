@@ -1671,7 +1671,6 @@ filegroup(
         ":protos_all_proto_text_srcs",
         ":error_codes_proto_text_srcs",
         "//tensorflow/core/platform/default/build_config:android_srcs",
-        "//tensorflow/c:srcs",
     ] + glob(
         [
             "client/**/*.cc",
@@ -2165,6 +2164,17 @@ tf_pyclif_proto_library(
 
 # -----------------------------------------------------------------------------
 # Internal targets
+
+tf_proto_library(
+    name = "autotuning_proto",
+    srcs = ["protobuf/autotuning.proto"],
+    cc_api_version = 2,
+    default_header = True,
+    provide_cc_alias = True,
+    visibility = [
+        "//tensorflow:internal",
+    ],
+)
 
 tf_proto_library_cc(
     name = "worker_proto",
@@ -3099,6 +3109,7 @@ tf_cuda_library(
         "common_runtime/session_factory.cc",
         "common_runtime/session_options.cc",
         "common_runtime/session_state.cc",
+        "common_runtime/single_threaded_cpu_device.cc",
         "common_runtime/stats_publisher_interface.cc",
         "common_runtime/step_stats_collector.cc",
         "common_runtime/threadpool_device.cc",
@@ -3609,6 +3620,7 @@ tf_cc_test(
     name = "platform_strings_test",
     size = "small",
     srcs = ["platform/platform_strings_test.cc"],
+    features = ["-dynamic_link_test_srcs"],  # see go/dynamic_link_test_srcs
     deps = [
         ":lib",
         ":platform_strings",
@@ -5034,6 +5046,7 @@ tf_cc_tests(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "//tensorflow/cc:resource_variable_ops",
     ],
 )
 
@@ -5057,6 +5070,7 @@ tf_cc_tests(
         "//tensorflow/cc:client_session",
         "//tensorflow/cc:function_ops",
         "//tensorflow/cc:ops",
+        "@com_google_absl//absl/algorithm:container",
     ],
 )
 
@@ -5387,6 +5401,30 @@ filegroup(
         "framework/type_index.h",
         "framework/type_traits.h",
         "framework/types.h",
+        "framework/allocation_description.pb.h",
+        "framework/api_def.pb.h",
+        "framework/attr_value.pb.h",
+        "framework/cost_graph.pb.h",
+        "framework/device_attributes.pb.h",
+        "framework/function.pb.h",
+        "framework/graph.pb.h",
+        "framework/graph_transfer_info.pb.h",
+        "framework/kernel_def.pb.h",
+        "framework/log_memory.pb.h",
+        "framework/node_def.pb.h",
+        "framework/op_def.pb.h",
+        "framework/reader_base.pb.h",
+        "framework/remote_fused_graph_execute_info.pb.h",
+        "framework/resource_handle.pb.h",
+        "framework/step_stats.pb.h",
+        "framework/summary.pb.h",
+        "framework/tensor.pb.h",
+        "framework/tensor_description.pb.h",
+        "framework/tensor_shape.pb.h",
+        "framework/tensor_slice.pb.h",
+        "framework/types.pb.h",
+        "framework/variable.pb.h",
+        "framework/versions.pb.h",
     ],
     visibility = ["//visibility:public"],
 )
@@ -5740,6 +5778,40 @@ filegroup(
 )
 
 filegroup(
+    name = "protobuf_headers",
+    srcs = [
+        "protobuf/autotuning.pb.h",
+        "protobuf/cluster.pb.h",
+        "protobuf/config.pb.h",
+        "protobuf/control_flow.pb.h",
+        # TODO(ebrevdo): Re-enable once CriticalSection is in core.
+        # "protobuf/critical_section.pb.h",
+        "protobuf/debug.pb.h",
+        "protobuf/device_properties.pb.h",
+        "protobuf/eager_service.pb.h",
+        "protobuf/graph_debug_info.pb.h",
+        "protobuf/master.pb.h",
+        "protobuf/master_service.pb.h",
+        "protobuf/meta_graph.pb.h",
+        "protobuf/named_tensor.pb.h",
+        "protobuf/queue_runner.pb.h",
+        "protobuf/replay_log.pb.h",
+        "protobuf/rewriter_config.pb.h",
+        "protobuf/saved_model.pb.h",
+        "protobuf/saved_object_graph.pb.h",
+        "protobuf/saver.pb.h",
+        "protobuf/struct.pb.h",
+        "protobuf/tensorflow_server.pb.h",
+        "protobuf/tensor_bundle.pb.h",
+        "protobuf/trackable_object_graph.pb.h",
+        "protobuf/transport_options.pb.h",
+        "protobuf/verifier_config.pb.h",
+        "protobuf/worker.pb.h",
+    ],
+    visibility = ["//visibility:public"],
+)
+
+filegroup(
     name = "public_headers",
     srcs = [
         "public/session.h",
@@ -5799,6 +5871,11 @@ filegroup(
         "util/use_cudnn.h",
         "util/util.h",
         "util/work_sharder.h",
+        "util/event.pb.h",
+        "util/example_proto_fast_parsing_test.pb.h",
+        "util/memmapped_file_system.pb.h",
+        "util/saved_tensor_slice.pb.h",
+        "util/test_log.pb.h",
     ],
     visibility = ["//visibility:public"],
 )

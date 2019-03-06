@@ -83,12 +83,6 @@ struct BuildXlaOpsPassFlags {
   bool tf_xla_enable_lazy_compilation;
 };
 
-// Flags for the XLA bridge's dump_graph module.
-struct DumpGraphFlags {
-  // Path prefix to which graphs dumped during debugging should be written.
-  string tf_dump_graph_prefix;
-};
-
 // Return a pointer to the DumpGraphFlags struct;
 // repeated calls return the same pointer.
 // This should be called only after Flags::Parse() has returned.
@@ -100,7 +94,6 @@ MarkForCompilationPassFlags* GetMarkForCompilationPassFlags();
 const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags();
 XlaDeviceFlags* GetXlaDeviceFlags();
 const XlaOpsCommonFlags& GetXlaOpsCommonFlags();
-DumpGraphFlags* GetDumpGraphFlags();
 
 // Appends the flag definitions associated with
 // MarkForCompilationPassFlags/DumpGraphFlags to `flag_list`.
@@ -108,8 +101,6 @@ DumpGraphFlags* GetDumpGraphFlags();
 // Has the side-effect of parsing TF_XLA_FLAGS if that hasn't happened yet.
 void AppendMarkForCompilationPassFlags(
     std::vector<tensorflow::Flag>* flag_list);
-void AppendDumpGraphFlags(std::vector<tensorflow::Flag>* flag_list);
-
 }  // namespace tensorflow
 
 #endif  // TENSORFLOW_COMPILER_JIT_FLAGS_H_

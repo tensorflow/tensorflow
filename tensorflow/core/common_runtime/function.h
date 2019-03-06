@@ -115,22 +115,6 @@ bool RemoveIdentityNodes(Graph* g);
 // Rewrites _ListToArray and _ArrayToList to a set of Identity nodes.
 bool RemoveListArrayConverter(Graph* g);
 
-// For each node in "graph", if "lib" indicates that the node is a
-// function call, inline the function body. Returns true if at least
-// one node is inlined.
-//
-// This routine goes through "graph" nodes once and applies the
-// inlining. The caller may decide to apply the inlining on "graph"
-// multiple times by calling ExpandInlineFunctions a few times.
-//
-// Function calls that can't be safely inlined into the graph (ValidateInlining
-// returns error), are ignored.
-//
-// If `override_device` is true then the inlined operations are placed on the
-// device the call node is placed on.
-bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
-                           bool override_device = false);
-
 // Dump the contents of the "graph" to log files if the logging level is
 // sufficiently high.
 void DumpGraph(StringPiece label, const Graph* g);
@@ -164,12 +148,26 @@ void ToGraphDef(const Graph* g, GraphDef* gdef, bool pretty = false);
 // TODO(zhifengc): Asks math expert to say the comment again.
 FunctionBody* SymbolicGradient(const FunctionBody& f);
 
+struct InlineFunctionBodyOptions {
+  // Ignore '_noinline' function attribute.
+  bool ignore_noinline = false;
+  // If 'true' function inlining will override explicitly specified devices
+  // inside function body with the caller node device.
+  bool override_device = false;
+};
+
 // Returns 'Status::OK()' iff the function '*fbody' can be inlined at 'node'
-// based on the type signature of 'node' and 'fbody'.
+// based on the type signature of 'node' and 'fbody':
+//
+// (1) Caller node has the same number of inputs and outputs as the function.
+// (2) Caller node inputs and outputs have the same data types as function
+//     inputs and returns.
+// (3) Validation rules defined in InlineFunctionBodyOptions.
 //
 // If function can't be safely inlined, returns error message with details why
 // inlining is not possible or safe.
-Status ValidateInlining(const Node* node, const FunctionBody* fbody);
+Status ValidateInlining(const Node* node, const FunctionBody* fbody,
+                        const InlineFunctionBodyOptions& options);
 
 // Given a "caller" in graph "g", which is a function call of a function
 // to "fbody". Replaces the "caller" with fbody->graph and connects
@@ -181,7 +179,27 @@ Status ValidateInlining(const Node* node, const FunctionBody* fbody);
 // leaves the graph in unmodified state.
 Status InlineFunctionBody(const FunctionLibraryDefinition& flib_def, Graph* g,
                           Node* caller, const FunctionBody* fbody,
-                          bool override_device = true);
+                          const InlineFunctionBodyOptions& options);
+
+// For each node in "graph", if "lib" indicates that the node is a
+// function call, inline the function body. Returns true if at least
+// one node is inlined.
+//
+// This routine goes through "graph" nodes once and applies the
+// inlining. The caller may decide to apply the inlining on "graph"
+// multiple times by calling ExpandInlineFunctions a few times.
+//
+// Function calls that can't be safely inlined into the graph (ValidateInlining
+// returns error), are ignored.
+//
+// If `override_device` is true then the inlined operations are placed on the
+// device the call node is placed on.
+bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph,
+                           const InlineFunctionBodyOptions& options);
+
+inline bool ExpandInlineFunctions(FunctionLibraryRuntime* lib, Graph* graph) {
+  return ExpandInlineFunctions(lib, graph, InlineFunctionBodyOptions());
+}
 
 // Instantiates FunctionDef into a graph. Set *fbody to point to the
 // FunctionBody that holds the instantiated FunctionDef.

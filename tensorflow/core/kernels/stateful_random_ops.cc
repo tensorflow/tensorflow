@@ -15,8 +15,8 @@ limitations under the License.
 
 #define EIGEN_USE_THREADS
 
-#include "tensorflow/core/kernels/stateful_random_ops.h"
 #include "tensorflow/core/kernels/random_op.h"
+#include "tensorflow/core/kernels/stateful_random_ops_cpu_gpu.h"
 #include "tensorflow/core/kernels/training_op_helpers.h"
 
 namespace tensorflow {
@@ -25,7 +25,7 @@ template <typename Distribution>
 struct UpdateVariableAndFill_Philox<CPUDevice, Distribution> {
   void operator()(OpKernelContext* ctx, const CPUDevice& device,
                   int64 output_size, int64 alg_tag_skip,
-                  ScopedUnlockUnref* state_var_guard, Tensor* state_tensor,
+                  ScopedUnlockUnrefVar* state_var_guard, Tensor* state_tensor,
                   typename Distribution::ResultElementType* output_data) {
     auto state_tensor_flat = state_tensor->flat<StateElementType>();
     auto state_data = state_tensor_flat.data();
@@ -47,11 +47,11 @@ Status UpdateVariableAndFill(
   Var* var = nullptr;
   TF_RETURN_IF_ERROR(
       LookupResource(ctx, HandleFromInput(ctx, state_input_idx), &var));
-  // Use `ScopedUnlockUnref` here instead of `mutex_lock` and `ScopedUnref`
+  // Use `ScopedUnlockUnrefVar` here instead of `mutex_lock` and `ScopedUnref`
   // because the former supports early releasing which is needed by
   // `UpdateVariableAndFill_Philox<CPU>` to avoid holding the lock while
   // filling.
-  ScopedUnlockUnref state_var_guard(var);
+  ScopedUnlockUnrefVar state_var_guard(var);
   Tensor* var_tensor = var->tensor();
   if (var_tensor->dtype() != STATE_ELEMENT_DTYPE) {
     return errors::InvalidArgument("dtype of RNG state variable must be ",
@@ -80,7 +80,7 @@ Status UpdateVariableAndFill(
                   "PhiloxRandom::ResultElementType must be uint32");
     if (var_tensor_flat.size() < alg_tag_skip + PHILOX_MIN_STATE_SIZE) {
       return errors::InvalidArgument(
-          "For Philox algorithm, the size of state"
+          "For the Philox algorithm, the size of state"
           " must be at least ",
           alg_tag_skip + PHILOX_MIN_STATE_SIZE, "; got ",
           var_tensor_flat.size());
@@ -132,6 +132,11 @@ class StatefulRandomOpV2 : public OpKernel {
     OP_REQUIRES(ctx, alg_tensor.dims() == 0,
                 errors::InvalidArgument("algorithm must be of shape [], not ",
                                         alg_tensor.shape().DebugString()));
+    OP_REQUIRES(
+        ctx, alg_tensor.dtype() == ALGORITHM_DTYPE,
+        errors::InvalidArgument("algorithm's dtype must be ",
+                                DataTypeString(ALGORITHM_DTYPE), ", not ",
+                                DataTypeString(alg_tensor.dtype())));
     auto alg = alg_tensor.flat<Algorithm>()(0);
     ComputeImpl<Device, Distribution>(ctx, 0, 2, false, alg);
   }

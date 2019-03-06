@@ -223,6 +223,7 @@ pkg_tar(
         ":nccl_coreheaders",
         ":ops_coreheaders",
         ":platform_coreheaders",
+        ":protobuf_coreheaders",
         ":profiler_coreheaders",
         ":public_coreheaders",
         ":summary_coreheaders",
@@ -817,6 +818,24 @@ pkg_tar(
         "//tensorflow/core:platform_windows_headers",
     ],
     package_dir = "windows",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "protobuf_coreheaders",
+    srcs = [
+        "//tensorflow/core:protobuf_headers",
+    ],
+    package_dir = "protobuf",
+    tags = ["manual"],
+)
+
+pkg_tar(
+    name = "protobuf_tpu_coreheaders",
+    srcs = [
+        "//tensorflow/core/protobuf/tpu:headers",
+    ],
+    package_dir = "tpu",
     tags = ["manual"],
 )
 
