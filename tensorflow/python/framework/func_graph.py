@@ -204,11 +204,16 @@ class FuncGraph(ops.Graph):
 
     if context.executing_eagerly():
       self.seed = context.global_seed()
+      # [for tf-data user migration from TF1.0 to 2.0] seed_used keep track of
+      # any None op_seed for random_op in the function, in which case we end up
+      # using function seed, which could be unintended behavior for the op.
+      self._seed_used = False
       device_type = context.context().device_spec.device_type
       self._xla_compile = (device_type == "TPU" or device_type == "XLA_GPU"
                            or device_type == "XLA_CPU")
     else:
       self.seed = graph.seed
+      self._seed_used = False
       self._xla_compile = getattr(graph, "_xla_compile", False)
       # TODO(allenl): Figure out if we can remove colocation stack
       # specialization (currently used in cond_v2), here and in the cache key.

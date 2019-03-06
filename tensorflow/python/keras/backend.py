@@ -3908,11 +3908,11 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Softmax':
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Softmax'):
       axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
-
       # Compute cross entropy from probabilities.
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
@@ -3949,7 +3949,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Softmax':
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Softmax'):
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
       output = math_ops.log(output)
@@ -3994,7 +3995,8 @@ def binary_crossentropy(target, output, from_logits=False):
       A tensor.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Sigmoid':
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Sigmoid'):
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
 
@@ -4073,12 +4075,9 @@ def dropout(x, level, noise_shape=None, seed=None):
   Returns:
       A tensor.
   """
-  retain_prob = 1. - level
   if seed is None:
     seed = np.random.randint(10e6)
-  # the dummy 1. works around a TF bug
-  # (float32_ref vs. float32 incompatibility)
-  return nn.dropout(x * 1., retain_prob, noise_shape, seed=seed)
+  return nn.dropout_v2(x, rate=level, noise_shape=noise_shape, seed=seed)
 
 
 @keras_export('keras.backend.l2_normalize')
@@ -4834,6 +4833,7 @@ def local_conv(inputs,
   return permute_dimensions(output, permutation)
 
 
+@keras_export('keras.backend.local_conv1d')
 def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
   """Apply 1D conv with un-shared weights.
 
@@ -4868,6 +4868,7 @@ def local_conv1d(inputs, kernel, kernel_size, strides, data_format=None):
                     data_format)
 
 
+@keras_export('keras.backend.local_conv2d')
 def local_conv2d(inputs,
                  kernel,
                  kernel_size,

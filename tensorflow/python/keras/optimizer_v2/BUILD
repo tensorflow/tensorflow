@@ -194,7 +194,10 @@ py_test(
     srcs = ["optimizer_v2_test.py"],
     shard_count = 8,
     tags = [
+        "no_gpu",  # b/127001953
         "no_windows",
+        # TODO(b/127092862): Re-enable this test in Kokoro.
+        "no_oss",
     ],
     deps = [
         ":optimizer_v2",
@@ -215,8 +218,9 @@ py_test(
 
 py_test(
     name = "learning_rate_schedule_test",
-    size = "small",
+    size = "medium",
     srcs = ["learning_rate_schedule_test.py"],
+    shard_count = 4,
     deps = [
         ":optimizer_v2",
         "//tensorflow/python:client_testlib",

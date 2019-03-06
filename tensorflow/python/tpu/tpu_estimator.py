@@ -984,6 +984,8 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
     broadcasted_inputs = []
     flattened_inputs = None  # Cache result from input_fn.
     signals = None
+    num_replicas = ctx.num_replicas
+    core_id = 0
     for host_id in xrange(num_hosts):
       with ops.device(ctx.tpu_host_placement_function(host_id=host_id)):
         for _ in xrange(ctx.num_of_replicas_per_host):
@@ -1000,7 +1002,18 @@ def generate_broadcast_enqueue_ops_fn(ctx, input_fn, inputs_structure_recorder,
             flattened_inputs = (
                 inputs_structure_recorder.flatten_features_and_labels(
                     features, labels, signals))
-          broadcasted_inputs.append(flattened_inputs)
+            if (ctx.config.tpu_config.eval_training_input_configuration is
+                tpu_config.InputPipelineConfig.SLICED):
+              input_slices = [
+                  array_ops.split(x, num_replicas) for x in flattened_inputs
+              ]
+          if (ctx.config.tpu_config.eval_training_input_configuration is
+              tpu_config.InputPipelineConfig.SLICED):
+            # for each core, slice out the flattened_inputs for each core.
+            broadcasted_inputs.append([x[core_id] for x in input_slices])
+            core_id += 1
+          else:
+            broadcasted_inputs.append(flattened_inputs)
 
     infeed_queue = tpu_feed.InfeedQueue(
         number_of_tuple_elements=len(broadcasted_inputs[0]))
@@ -1681,7 +1694,10 @@ class _ModelFnWrapper(object):
       _add_item_to_params(params, _BATCH_SIZE_KEY, batch_size_for_model_fn)
 
     running_on_cpu = self._ctx.is_running_on_cpu(is_export_mode)
-    _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
+    # In export mode, params['use_tpu'] has already been set based on mode
+    # (i.e. True for _REWRITE_FOR_INFERENCE_MODE, False otherwise).
+    if not is_export_mode:
+      _add_item_to_params(params, _USE_TPU_KEY, not running_on_cpu)
 
     if not running_on_cpu:
       user_context = tpu_context.TPUContext(
@@ -2477,6 +2493,7 @@ class TPUEstimator(estimator_lib.Estimator):
       if self._experimental_exported_model_uses_all_cores:
         tensors_on_cpu = tpu.rewrite(
             tpu_computation, device_assignment=device_assignment)
+        tpu.prune_unconnected_ops_from_xla(ops.get_default_graph())
       else:
         tensors_on_cpu = tpu.rewrite_for_inference(
             tpu_computation, device_assignment=device_assignment)
@@ -2523,8 +2540,8 @@ class TPUEstimator(estimator_lib.Estimator):
       """
       # We should only call model fn once and it should be inside `computation`
       # so that building the graph will happen under `rewrite_for_inference`.
-      mode = model_fn_lib.ModeKeys.PREDICT
-      estimator_spec = self._call_model_fn(features, labels, mode, config)
+      estimator_spec = super(TPUEstimator, self)._call_model_fn(
+          features, labels, mode, config)
 
       # We pick the TPU tensors out from `export_output` and later return them
       # from `computation` for rewriting.
@@ -2751,18 +2768,26 @@ class TPUEstimator(estimator_lib.Estimator):
 
     def _model_fn(features, labels, mode, config, params):
       """A Estimator `model_fn` for TPUEstimator."""
+
+      # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
+      # but not in `export_savedmodel()`.
+      if self._is_input_fn_invoked:
+        is_export_mode = False
+      else:
+        is_export_mode = True
+
+      # Clear the bit.
+      self._is_input_fn_invoked = None
+
+      if is_export_mode:
+        if mode == _REWRITE_FOR_INFERENCE_MODE:
+          _add_item_to_params(params, _USE_TPU_KEY, True)
+          mode = model_fn_lib.ModeKeys.PREDICT
+        else:
+          _add_item_to_params(params, _USE_TPU_KEY, False)
+
       with self._ctx.with_mode(mode) as ctx:
         model_fn_wrapper = _ModelFnWrapper(model_fn, config, params, ctx)
-
-        # `input_fn` is called in `train()`, `evaluate()`, and `predict()`,
-        # but not in `export_savedmodel()`.
-        if self._is_input_fn_invoked:
-          is_export_mode = False
-        else:
-          is_export_mode = True
-
-        # Clear the bit.
-        self._is_input_fn_invoked = None
 
         # examples_hook is added to training_hooks for both CPU and TPU
         # execution.

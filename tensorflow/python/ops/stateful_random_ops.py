@@ -53,7 +53,12 @@ SEED_SIZE = 16  # in units of SEED_TYPE
 STATE_TYPE = SEED_TYPE
 ALGORITHM_TYPE = STATE_TYPE
 RNG_ALG_PHILOX = 1
+RNG_ALG_THREEFRY = 2
 DEFAULT_ALGORITHM = RNG_ALG_PHILOX
+
+
+PHILOX_STATE_SIZE = 3
+THREEFRY_STATE_SIZE = 2
 
 
 def non_deterministic_seed():
@@ -75,7 +80,40 @@ def _uint_to_int(n):
   return n
 
 
-PHILOX_STATE_SIZE = 3
+def _make_1d_state(state_size, seed):
+  """Makes a 1-D RNG state.
+
+  Args:
+    state_size: an integer.
+    seed: an integer or 1-D tensor.
+
+  Returns:
+    a 1-D tensor of shape [state_size] and dtype STATE_TYPE.
+  """
+  int_types = (int,) if sys.version_info >= (3, 0) else (int, long)
+  if isinstance(seed, int_types):
+    # chop the Python integer (infinite precision) into chunks of SEED_TYPE
+    ls = []
+    for _ in range(state_size):
+      ls.append(seed & SEED_BIT_MASK)
+      seed >>= SEED_TYPE_BITS
+    seed = ls
+  # to avoid overflow error from np.asarray
+  seed = list(map(_uint_to_int, seed))
+  seed = np.asarray(seed, dtype=STATE_TYPE)
+  if len(seed.shape) != 1:
+    raise ValueError(
+        "seed should only have one dimension; got shape: %s" % seed.shape)
+  seed = seed[0:state_size]
+  # Padding with zeros on the right if too short
+  seed_size = seed.shape[0]
+  if seed_size < state_size:
+    seed = np.pad(
+        seed, [(0, state_size - seed_size)],
+        mode="constant",
+        constant_values=0)
+  assert seed.shape == (state_size,), "Wrong seed.shape: %s" % seed.shape
+  return seed
 
 
 def _make_philox_state(seed):
@@ -87,35 +125,26 @@ def _make_philox_state(seed):
   Returns:
     a 1-D tensor.
   """
-  int_types = (int,) if sys.version_info >= (3, 0) else (int, long)
-  if isinstance(seed, int_types):
-    # chop the Python integer (infinite precision) into chunks of SEED_TYPE
-    ls = []
-    for _ in range(PHILOX_STATE_SIZE):
-      ls.append(seed & SEED_BIT_MASK)
-      seed >>= SEED_TYPE_BITS
-    seed = ls
-  # to avoid overflow error from np.asarray
-  seed = list(map(_uint_to_int, seed))
-  seed = np.asarray(seed, dtype=STATE_TYPE)
-  if len(seed.shape) != 1:
-    raise ValueError(
-        "seed should only have one dimension; got shape: %s" % seed.shape)
-  seed = seed[0:PHILOX_STATE_SIZE]
-  # Padding with zeros on the right if too short
-  seed_size = seed.shape[0]
-  if seed_size < PHILOX_STATE_SIZE:
-    seed = np.pad(
-        seed, [(0, PHILOX_STATE_SIZE - seed_size)],
-        mode="constant",
-        constant_values=0)
-  assert seed.shape == (PHILOX_STATE_SIZE,), "Wrong seed.shape: %s" % seed.shape
-  return seed
+  return _make_1d_state(PHILOX_STATE_SIZE, seed)
+
+
+def _make_threefry_state(seed):
+  """Makes a RNG state for ThreeFry algorithm.
+
+  Args:
+    seed: an integer or 1-D tensor.
+
+  Returns:
+    a 1-D tensor.
+  """
+  return _make_1d_state(THREEFRY_STATE_SIZE, seed)
 
 
 def _make_state_from_seed(seed, algorithm):
   if algorithm == RNG_ALG_PHILOX:
     return _make_philox_state(seed)
+  elif algorithm == RNG_ALG_THREEFRY:
+    return _make_threefry_state(seed)
   else:
     raise ValueError("Unsupported algorithm id: %s" % algorithm)
 
@@ -168,26 +197,19 @@ class Generator(tracking.AutoTrackable):
         algorithm = DEFAULT_ALGORITHM
       state = create_rng_state(seed, algorithm)
       self._state_var = variables.Variable(state, dtype=STATE_TYPE)
-      self._alg_var = variables.Variable(initial_value=algorithm,
-                                         dtype=ALGORITHM_TYPE)
+      self._alg_var = algorithm
     else:
       assert seed is None
       self._state_var = variables.Variable(copy_from.state, dtype=STATE_TYPE)
-      self._alg_var = variables.Variable(initial_value=copy_from.algorithm,
-                                         dtype=ALGORITHM_TYPE)
+      self._alg_var = copy_from.algorithm
 
   def reset(self, seed):
     """Resets the generator.
 
-    This function is not thread-safe: if it is run concurrently with a call to
-    sampling, the latter might see the new algorithm but the old state or vice
-    versa.
-
     Args:
       seed: the seed to reset the RNG to.
     """
-    algorithm = int(self.algorithm)
-    state = create_rng_state(seed, algorithm)
+    state = create_rng_state(seed, self.algorithm)
     self._state_var.assign(state)
 
   @property
@@ -200,21 +222,59 @@ class Generator(tracking.AutoTrackable):
 
   # The following functions return a tensor and as a side effect update
   # self._state_var.
-  def standard_normal(self, shape, dtype=dtypes.float32):
-    output = gen_stateful_random_ops.stateful_standard_normal_v2(
-        self.state.handle, self.algorithm, shape, dtype)
-    return output
-
   def normal(self, shape, mean=0.0, stddev=1.0, dtype=dtypes.float32,
              name=None):
     with ops.name_scope(name, "stateful_normal", [shape, mean, stddev]) as name:
       shape = _shape_tensor(shape)
       mean = ops.convert_to_tensor(mean, dtype=dtype, name="mean")
       stddev = ops.convert_to_tensor(stddev, dtype=dtype, name="stddev")
-      rnd = self.standard_normal(shape, dtype)
+      rnd = gen_stateful_random_ops.stateful_standard_normal_v2(
+          self.state.handle, self.algorithm, shape, dtype=dtype)
       return math_ops.add(rnd * stddev, mean, name=name)
 
-  # TODO(wangpeng): implement other distributions (`uniform`,
+  def uniform(self, shape, minval=0, maxval=None,
+              dtype=dtypes.float32, name=None):
+    dtype = dtypes.as_dtype(dtype)
+    if maxval is None:
+      if dtype.is_integer:
+        raise ValueError("Must specify maxval for integer dtype %r" % dtype)
+      maxval = 1
+    with ops.name_scope(name, "stateful_uniform",
+                        [shape, minval, maxval]) as name:
+      shape = _shape_tensor(shape)
+      minval = ops.convert_to_tensor(minval, dtype=dtype, name="min")
+      maxval = ops.convert_to_tensor(maxval, dtype=dtype, name="max")
+      if dtype.is_integer:
+        return gen_stateful_random_ops.stateful_uniform_int(
+            self.state.handle, self.algorithm, shape=shape,
+            minval=minval, maxval=maxval, name=name)
+      else:
+        # TODO(wangpeng): implement uniform for floats
+        raise ValueError("uniform for floats not implemented yet")
+
+  def uniform_full_int(self, shape, dtype=dtypes.uint64, name=None):
+    """Uniform distribution on an integer type's entire range.
+
+    The other method `uniform` only covers the range [minval, maxval), which
+    cannot be `dtype`'s full range because `maxval` is of type `dtype`.
+
+    Args:
+      shape: the shape of the output.
+      dtype: (optional) the integer type, default to uint64.
+      name: (optional) the name of the node.
+
+    Returns:
+      A tensor of random numbers of the required shape.
+    """
+    dtype = dtypes.as_dtype(dtype)
+    with ops.name_scope(name, "stateful_uniform_full_int",
+                        [shape]) as name:
+      shape = _shape_tensor(shape)
+      return gen_stateful_random_ops.stateful_uniform_full_int(
+          self.state.handle, self.algorithm, shape=shape,
+          dtype=dtype, name=name)
+
+  # TODO(wangpeng): implement other distributions (
   #   `truncated_normal`, etc.)
   # TODO(wangpeng): implement `make_seeds`
   # TODO(wangpeng): implement `make_generators`

@@ -1270,7 +1270,7 @@ void FixEdgeArrays(Model* model) {
 
 void DedupeConstantArrays(Model* model, size_t min_size) {
   // Walk all 0..N and compare with the remaining n+1..N.
-  // This lets us avoid N^2 comparisions and erase duplicate arrays while
+  // This lets us avoid N^2 comparisons and erase duplicate arrays while
   // iterating.
   const auto& array_map = model->GetArrayMap();
   for (auto lhs_array_it = array_map.begin(); lhs_array_it != array_map.end();

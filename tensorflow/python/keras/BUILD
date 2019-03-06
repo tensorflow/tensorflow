@@ -63,8 +63,7 @@ py_library(
         ":pil_for_keras",
         ":saving",
         "//tensorflow/python:training",
-        "//tensorflow/python/keras/mixed_precision/experimental:autocast_variable",
-        "//tensorflow/python/keras/mixed_precision/experimental:policy",
+        "//tensorflow/python/keras/mixed_precision/experimental:mixed_precision_experimental",
         "//tensorflow/python/keras/optimizer_v2",
         "//tensorflow/python/saved_model",
         "@keras_applications_archive//:keras_applications",
@@ -325,6 +324,7 @@ py_library(
         "layers/convolutional_recurrent.py",
         "layers/core.py",
         "layers/cudnn_recurrent.py",
+        "layers/dense_attention.py",
         "layers/embeddings.py",
         "layers/kernelized.py",
         "layers/local.py",
@@ -644,6 +644,18 @@ tf_py_test(
     shard_count = 3,
 )
 
+tf_py_test(
+    name = "dense_attention_test",
+    size = "medium",
+    srcs = ["layers/dense_attention_test.py"],
+    additional_deps = [
+        ":keras",
+        "//third_party/py/numpy",
+        "@absl_py//absl/testing:parameterized",
+        "//tensorflow/python:client_testlib",
+    ],
+)
+
 cuda_py_test(
     name = "embeddings_test",
     size = "medium",
@@ -761,7 +773,7 @@ tf_py_test(
         "//third_party/py/numpy",
         "//tensorflow/python:client_testlib",
     ],
-    shard_count = 4,
+    shard_count = 10,
 )
 
 cuda_py_test(
@@ -1297,6 +1309,7 @@ tf_py_test(
         "//tensorflow/python:client_testlib",
         "//tensorflow/python:util",
     ],
+    shard_count = 4,
 )
 
 tf_py_test(

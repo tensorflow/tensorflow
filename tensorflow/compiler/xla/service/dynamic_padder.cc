@@ -67,12 +67,18 @@ StatusOr<HloInstruction*> ChooseIdentityValue(HloInstruction* inst) {
     case HloOpcode::kPad: {
       return inst->mutable_operand(1);
     }
+
+    case HloOpcode::kSelectAndScatter: {
+      return inst->mutable_operand(2);
+    }
     case HloOpcode::kParameter:
     case HloOpcode::kGetDimensionSize:
     case HloOpcode::kReshape:
     case HloOpcode::kTuple:
     case HloOpcode::kAllReduce:
     case HloOpcode::kBroadcast:
+    case HloOpcode::kTranspose:
+    case HloOpcode::kSlice:
       return nullptr;
     default:
       return UnimplementedStrCat("Unimplimented padding for instruction: ",

@@ -431,7 +431,9 @@ class LocalBuffer(object):
 
   def delete(self):
     if self.c_buffer is not None:
-      self._backend.delete_buffer(self.c_buffer)
+      # Python may have freed c_api first.
+      if c_api:
+        self._backend.delete_buffer(self.c_buffer)
       self.c_buffer = None
 
   def destructure(self):
@@ -1760,6 +1762,14 @@ class ComputationBuilder(object):
       transpose = 3 if conjugate_a else 2
     return self._client.TriangularSolve(a, b, left_side, lower, unit_diagonal,
                                         transpose)
+
+  def Eigh(self, a, full_matrices=True):
+    """Enqueues a symmetric/Hermitian eigendecomposition."""
+    return self._client.Eigh(a, full_matrices)
+
+  def SVD(self, a):
+    """Enqueues a singular value decomposition."""
+    return self._client.SVD(a)
 
   def Gather(self, a, start_indices, dimension_numbers, slice_sizes):
     """Enqueues a Gather operation onto the computation."""

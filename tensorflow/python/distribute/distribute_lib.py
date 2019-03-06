@@ -469,12 +469,6 @@ class DistributionStrategy(object):
         inputs = input_iterator.get_next()
         return self._extended.call_for_each_replica(fn, args=(inputs,))
 
-  # TODO(b/121296772,b/121300973): Add logical_device argument (default of 0).
-  def broadcast(self, tensor):
-    """Broadcasts `tensor` to all replicas, returning a per-replica value."""
-    _require_cross_replica_context_extended(self._extended)
-    return self._extended._broadcast(tensor)  # pylint: disable=protected-access
-
   def reduce(self, reduce_op, value):
     """Reduce `value` across replicas.
 
@@ -727,7 +721,6 @@ class DistributionStrategyExtended(object):
     scope).
   * `d.make_dataset_iterator(dataset)`: in cross-replica
     context, produces an iterator with locality T
-  * `d.broadcast(t)`: in cross-replica context, produces a value with locality M
   * `d.extended.broadcast_to(t, v)`: in cross-replica context, produces a value
     with locality V(`v`)
   * `d.extended.call_for_each_replica(fn, ...)`: in cross-replica context, runs
@@ -973,13 +966,11 @@ class DistributionStrategyExtended(object):
     Returns:
       A value mirrored to `destinations` devices.
     """
+    assert destinations is not None  # from old strategy.broadcast()
     # TODO(josh11b): More docstring
     _require_cross_replica_context_extended(self)
     assert not isinstance(destinations, (list, tuple))
     return self._broadcast_to(tensor, destinations)
-
-  def _broadcast(self, tensor):
-    return self._broadcast_to(tensor, None)  # Default implementation
 
   def _broadcast_to(self, tensor, destinations):
     raise NotImplementedError("must be implemented in descendants")

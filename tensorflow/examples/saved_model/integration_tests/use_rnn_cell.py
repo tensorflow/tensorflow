@@ -21,7 +21,7 @@ from __future__ import print_function
 from absl import app
 from absl import flags
 import numpy as np
-import tensorflow as tf
+import tensorflow.compat.v2 as tf
 
 FLAGS = flags.FLAGS
 
@@ -41,4 +41,5 @@ def main(argv):
 
 
 if __name__ == "__main__":
+  tf.enable_v2_behavior()
   app.run(main)

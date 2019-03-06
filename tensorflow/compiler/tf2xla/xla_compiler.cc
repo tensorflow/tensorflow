@@ -19,7 +19,6 @@ limitations under the License.
 #include <vector>
 
 #include "absl/memory/memory.h"
-#include "tensorflow/compiler/tf2xla/dump_graph.h"
 #include "tensorflow/compiler/tf2xla/graph_compiler.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/sharding_util.h"
@@ -48,6 +47,7 @@ limitations under the License.
 #include "tensorflow/core/lib/gtl/cleanup.h"
 #include "tensorflow/core/lib/hash/hash.h"
 #include "tensorflow/core/platform/logging.h"
+#include "tensorflow/core/util/dump_graph.h"
 
 namespace tensorflow {
 namespace {
@@ -597,7 +597,7 @@ Status XlaCompiler::CompileFunction(
 
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileFunction: "
-            << dump_graph::DumpGraphToFile(
+            << DumpGraphToFile(
                    absl::StrCat("xla_compile_function_", function_id), *graph);
   }
 
@@ -1031,9 +1031,8 @@ Status XlaCompiler::CompileGraph(
       graph.get(), options_.flib_def, local_flib_def_.get()));
   if (VLOG_IS_ON(2)) {
     VLOG(2) << "XlaCompiler::CompileGraph: "
-            << dump_graph::DumpGraphToFile(
-                   absl::StrCat("xla_compile_graph_", name), *graph,
-                   flib_runtime_->GetFunctionLibraryDefinition());
+            << DumpGraphToFile(absl::StrCat("xla_compile_graph_", name), *graph,
+                               flib_runtime_->GetFunctionLibraryDefinition());
   }
 
   // Report the error here if initialization failed.

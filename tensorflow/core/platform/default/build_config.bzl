@@ -546,7 +546,10 @@ def tf_additional_all_protos():
     return ["//tensorflow/core:protos_all"]
 
 def tf_protos_all_impl():
-    return ["//tensorflow/core:protos_all_cc_impl"]
+    return [
+        "//tensorflow/core:autotuning_proto_cc_impl",
+        "//tensorflow/core:protos_all_cc_impl",
+    ]
 
 def tf_protos_all():
     return if_static(
@@ -769,7 +772,7 @@ def tf_additional_numa_deps():
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//conditions:default": [
             "@hwloc",
         ],
@@ -780,7 +783,7 @@ def tf_additional_numa_copts():
         "//tensorflow:android": [],
         "//tensorflow:ios": [],
         "//tensorflow:windows": [],
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//conditions:default": [
             "-Ithird_party/hwloc/hwloc-master/include",
             "-DTENSORFLOW_USE_NUMA",

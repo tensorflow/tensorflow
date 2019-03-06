@@ -1597,28 +1597,6 @@ def generic_output_names(outputs_list):
   return ['output_%d' % (i + 1) for i in range(len(outputs_list))]
 
 
-def set_run_eagerly_for_dict_structure(model, x):
-  """Set model.run_eagerly to true if x is dict structure.
-
-  Set model.run_eagerly to true if x is dict or
-  Iterator/EagerIterator/Dataset of dict.
-
-  Args:
-    model: A Keras model.
-    x: Input data.
-  """
-  if not context.executing_eagerly():
-    return
-  if isinstance(x, dict):
-    model.run_eagerly = True
-  if (isinstance(x, (iterator_ops.Iterator, iterator_ops.EagerIterator,
-                     dataset_ops.DatasetV2))):
-    for item in dataset_ops.get_legacy_output_shapes(x):
-      if isinstance(item, dict):
-        model.run_eagerly = True
-        return
-
-
 def convert_eager_tensors_to_numpy(structure):
   """Convert every EagerTensor in `structure` to NumPy.
 
