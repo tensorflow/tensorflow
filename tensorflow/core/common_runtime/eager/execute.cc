@@ -401,6 +401,7 @@ Status EagerLocalExecute(EagerOperation* op,
           "Unable to find a FunctionLibraryRuntime corresponding to device ",
           device->name());
     }
+    auto runner = (flr->runner() != nullptr) ? flr->runner() : ctx->runner();
     GraphCollector* graph_collector = nullptr;
     if (ctx->ShouldStoreGraphs()) {
       graph_collector = ctx->GetGraphCollector();
@@ -418,14 +419,14 @@ Status EagerLocalExecute(EagerOperation* op,
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
       kernel = new KernelAndDeviceFunc(
-          flr, ctx->pflr(), std::move(input_dev_ptrs), ctx->runner(),
+          flr, ctx->pflr(), std::move(input_dev_ptrs), runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
     } else {
       VLOG(2) << "Running " << ndef.op() << " using op kernel. "
               << "compile_with_xla=" << compile_with_xla
               << ". Full node_def=" << ndef.DebugString();
       kernel = new KernelAndDeviceOp(
-          ctx->GetRendezvous(), ctx->LogMemory(), flr, ctx->runner(),
+          ctx->GetRendezvous(), ctx->LogMemory(), flr, runner,
           ctx->GetCollectiveExecutorHandle(), ctx->HostCPU());
     }
 
