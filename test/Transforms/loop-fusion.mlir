@@ -1,4 +1,5 @@
 // RUN: mlir-opt %s -loop-fusion -split-input-file -verify | FileCheck %s
+// RUN: mlir-opt %s -loop-fusion -fusion-maximal -split-input-file -verify | FileCheck %s --check-prefix=MAXIMAL
 
 // TODO(andydavis) Add more tests:
 // *) Add nested fusion test cases when non-constant loop bound support is
@@ -2208,7 +2209,7 @@ func @fuse_across_varying_dims_complex() {
 // MAXIMAL-NEXT: #map11 = (d0, d1, d2) -> (-d0 + d2)
 // MAXIMAL-NEXT: #map12 = (d0, d1) -> (d0 * 16 + d1)
 // MAXIMAL-NEXT: #map13 = (d0, d1) -> (d0 * 16 - d1 + 15)
-// MAXIMAL-LABEL: func @fuse_across_dim_mismatch
+// MAXIMAL-LABEL: func @fuse_across_varying_dims_complex
 // MAXIMAL-NEXT:  %0 = alloc() : memref<64x1xf32>
 // MAXIMAL-NEXT:  %c0 = constant 0 : index
 // MAXIMAL-NEXT:  %1 = alloc() : memref<2x2x3x3x16x1xf32>
