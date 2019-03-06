@@ -208,10 +208,8 @@ llvm::Value* EmitIntegralToFloating(llvm::Value* integer_value,
 
 StatusOr<llvm::Value*> ElementalIrEmitter::EmitUnaryOp(
     const HloInstruction* op, llvm::Value* operand_value) {
-  if (op->opcode() == HloOpcode::kCopy) {
-    return operand_value;
-  } else if (ShapeUtil::ElementIsIntegral(op->operand(0)->shape()) ||
-             op->operand(0)->shape().element_type() == PRED) {
+  if (ShapeUtil::ElementIsIntegral(op->operand(0)->shape()) ||
+      op->operand(0)->shape().element_type() == PRED) {
     return EmitIntegerUnaryOp(op, operand_value);
   } else if (ShapeUtil::ElementIsComplex(op->operand(0)->shape())) {
     return EmitComplexUnaryOp(op, operand_value);
@@ -1354,46 +1352,6 @@ llvm::Value* ElementalIrEmitter::EmitIntegralMin(llvm::Value* lhs_value,
                 lhs_value, rhs_value);
 }
 
-llvm_ir::IrArray::Index ElementalIrEmitter::ElementwiseSourceIndex(
-    const llvm_ir::IrArray::Index& target_index, const HloInstruction& hlo,
-    int64 operand_no) {
-  CHECK(hlo.IsElementwise())
-      << "HLO " << hlo.ToString() << " is not elementwise.";
-
-  const Shape& operand_shape = hlo.operand(operand_no)->shape();
-  // If the operand is scalar, the source index is always {}.
-  if (ShapeUtil::IsScalar(operand_shape)) {
-    return llvm_ir::IrArray::Index(target_index.GetType());
-  }
-
-  // If no implicit broadcast is needed for this operand, returns the target
-  // index as the source index.
-  //
-  // `IrArray::Index` may contain a physical linear which we can propagate to
-  // our operand only if our layouts match.  "only if" is a bit strong since
-  // e.g. we can still forward the linear index if the operand shape is
-  // [5,1,1,5]{3,2,1,0} and the HLO shape is[5,1,1,5]{3,1,2,0}, but those cases
-  // are probably not worth handling here for now.
-  if (ShapeUtil::CompatibleIgnoringElementType(operand_shape, hlo.shape()) &&
-      LayoutUtil::Equal(operand_shape.layout(), hlo.shape().layout())) {
-    return target_index;
-  }
-
-  // If implicit broadcast is needed, the source dimensions that are broadcast
-  // have index 0.
-  CHECK_EQ(operand_shape.rank(), hlo.shape().rank());
-  llvm_ir::IrArray::Index source_index(target_index.GetType());
-  for (int64 i = 0; i < hlo.shape().rank(); ++i) {
-    if (hlo.shape().dimensions(i) == operand_shape.dimensions(i)) {
-      source_index.push_back(target_index[i]);
-    } else {
-      CHECK_EQ(1, operand_shape.dimensions(i));
-      source_index.push_back(target_index.GetConstantWithIndexType(0));
-    }
-  }
-  return source_index;
-}
-
 StatusOr<llvm::Value*> ElementalIrEmitter::ConvertValueForDistribution(
     const HloInstruction* hlo,
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
@@ -1699,14 +1657,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalSelect(
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& index) {
   TF_ASSIGN_OR_RETURN(llvm::Value * pred_value,
-                      operand_to_generator.at(hlo->operand(0))(
-                          ElementwiseSourceIndex(index, *hlo, 0)));
+                      operand_to_generator.at(hlo->operand(0))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * on_true_value,
-                      operand_to_generator.at(hlo->operand(1))(
-                          ElementwiseSourceIndex(index, *hlo, 1)));
+                      operand_to_generator.at(hlo->operand(1))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * on_false_value,
-                      operand_to_generator.at(hlo->operand(2))(
-                          ElementwiseSourceIndex(index, *hlo, 2)));
+                      operand_to_generator.at(hlo->operand(2))(index));
   return Select(Trunc(pred_value, b_->getInt1Ty()), on_true_value,
                 on_false_value);
 }
@@ -1716,14 +1671,11 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitElementalClamp(
     const ElementalIrEmitter::HloToElementGeneratorMap& operand_to_generator,
     const llvm_ir::IrArray::Index& index) {
   TF_ASSIGN_OR_RETURN(llvm::Value * min_value,
-                      operand_to_generator.at(hlo->operand(0))(
-                          ElementwiseSourceIndex(index, *hlo, 0)));
+                      operand_to_generator.at(hlo->operand(0))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * arg_value,
-                      operand_to_generator.at(hlo->operand(1))(
-                          ElementwiseSourceIndex(index, *hlo, 1)));
+                      operand_to_generator.at(hlo->operand(1))(index));
   TF_ASSIGN_OR_RETURN(llvm::Value * max_value,
-                      operand_to_generator.at(hlo->operand(2))(
-                          ElementwiseSourceIndex(index, *hlo, 2)));
+                      operand_to_generator.at(hlo->operand(2))(index));
   PrimitiveType prim_type = hlo->shape().element_type();
   if (primitive_util::IsFloatingPointType(prim_type)) {
     return EmitFloatMin(max_value, EmitFloatMax(min_value, arg_value));
@@ -2220,7 +2172,6 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kClz:
     case HloOpcode::kConvert:
     case HloOpcode::kBitcastConvert:
-    case HloOpcode::kCopy:
     case HloOpcode::kCos:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
@@ -2240,8 +2191,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                            operand_to_generator.at(hlo->operand(0))(
-                                ElementwiseSourceIndex(index, *hlo, 0)));
+                            operand_to_generator.at(hlo->operand(0))(index));
         return EmitUnaryOp(hlo, operand_value);
       };
     case HloOpcode::kAdd:
@@ -2271,11 +2221,9 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* lhs = hlo->operand(0);
         const HloInstruction* rhs = hlo->operand(1);
         TF_ASSIGN_OR_RETURN(llvm::Value * lhs_value,
-                            operand_to_generator.at(lhs)(
-                                ElementwiseSourceIndex(index, *hlo, 0)));
+                            operand_to_generator.at(lhs)(index));
         TF_ASSIGN_OR_RETURN(llvm::Value * rhs_value,
-                            operand_to_generator.at(rhs)(
-                                ElementwiseSourceIndex(index, *hlo, 1)));
+                            operand_to_generator.at(rhs)(index));
         return EmitBinaryOp(hlo, lhs_value, rhs_value);
       };
     case HloOpcode::kSelect:
@@ -2292,8 +2240,7 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
       return [this, hlo, &operand_to_generator](
                  const IrArray::Index& index) -> StatusOr<llvm::Value*> {
         TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                            operand_to_generator.at(hlo->operand(0))(
-                                ElementwiseSourceIndex(index, *hlo, 0)));
+                            operand_to_generator.at(hlo->operand(0))(index));
         return EmitReducePrecision(hlo, operand_value);
       };
     case HloOpcode::kConcatenate:
@@ -2422,6 +2369,16 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
         const HloInstruction* operand = hlo->operand(0);
         return operand_to_generator.at(operand)(
             index.SourceIndexOfReshape(hlo->shape(), operand->shape(), b_));
+      };
+    case HloOpcode::kCopy:
+      return [hlo, &operand_to_generator](
+                 const IrArray::Index& target_index) -> StatusOr<llvm::Value*> {
+        IrArray::Index source_index = target_index;
+        source_index.ClearLinearIndex();
+        TF_ASSIGN_OR_RETURN(
+            llvm::Value * operand_value,
+            operand_to_generator.at(hlo->operand(0))(source_index));
+        return operand_value;
       };
     case HloOpcode::kTranspose:
       return [this, hlo,
