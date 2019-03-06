@@ -97,6 +97,7 @@ class TestUpgrade(test_util.TensorFlowTestCase):
             cls.v2_symbols["tf." + name] = attr
 
       visitor = public_api.PublicAPIVisitor(symbol_collector)
+      visitor.private_map["tf.compat"] = ["v1"]
       traverse.traverse(tf.compat.v2, visitor)
 
     if hasattr(tf.compat, "v1"):
