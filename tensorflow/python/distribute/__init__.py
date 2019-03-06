@@ -26,7 +26,7 @@ from tensorflow.python import pywrap_tensorflow
 if not pywrap_tensorflow.IsBuiltWithROCm():
     from tensorflow.python.distribute import cross_device_ops
     from tensorflow.python.distribute import mirrored_strategy
+    from tensorflow.python.distribute.experimental import collective_all_reduce_strategy
+    from tensorflow.python.distribute.experimental import parameter_server_strategy
 from tensorflow.python.distribute import one_device_strategy
-from tensorflow.python.distribute.experimental import collective_all_reduce_strategy
-from tensorflow.python.distribute.experimental import parameter_server_strategy
 # pylint: enable=unused-import
