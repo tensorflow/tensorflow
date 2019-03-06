@@ -202,9 +202,9 @@ categorizeValueByAffineType(MLIRContext *context, Value *val, unsigned &numDims,
                             unsigned &numSymbols) {
   AffineExpr d;
   Value *resultVal = nullptr;
-  auto *constant = val->getDefiningInst()
-                       ? val->getDefiningInst()->dyn_cast<ConstantIndexOp>()
-                       : nullptr;
+  auto *inst = val->getDefiningInst();
+  auto constant =
+      inst ? inst->dyn_cast<ConstantIndexOp>() : OpPointer<ConstantIndexOp>();
   if (constant) {
     d = getAffineConstantExpr(constant->getValue(), context);
   } else if (isValidSymbol(val) && !isValidDim(val)) {
