@@ -69,7 +69,7 @@ void ImportTensors(const ::tflite::Model& input_model, Model* model) {
       // If the shape is 0-dimensional, make sure to record it as such,
       // as oppose to leaving the array without a shape.
       array.mutable_shape()->mutable_dims()->clear();
-      for (int i = 0; i < shape->Length(); ++i) {
+      for (uint32_t i = 0; i < shape->Length(); ++i) {
         auto d = shape->Get(i);
         array.mutable_shape()->mutable_dims()->push_back(d);
       }
@@ -107,7 +107,7 @@ void ImportOperators(
 
   if (!ops) return;
   for (const auto* input_op : *ops) {
-    int index = input_op->opcode_index();
+    uint32_t index = input_op->opcode_index();
     if (index < 0 || index > operators_table.size()) {
       LOG(FATAL) << "Index " << index << " must be between zero and "
                  << operators_table.size();
@@ -143,7 +143,7 @@ void ImportOperators(
 
     // Make sure all the inputs and outputs are hooked up.
     auto inputs = input_op->inputs();
-    for (int i = 0; i < inputs->Length(); i++) {
+    for (uint32_t i = 0; i < inputs->Length(); i++) {
       auto input_index = inputs->Get(i);
       // input_index == -1 indicates optional tensor.
       if (input_index != -1) {
@@ -157,7 +157,7 @@ void ImportOperators(
       }
     }
     auto outputs = input_op->outputs();
-    for (int i = 0; i < outputs->Length(); i++) {
+    for (uint32_t i = 0; i < outputs->Length(); i++) {
       auto output_index = outputs->Get(i);
       const string& output_name = tensors_table.at(output_index);
       op->outputs.push_back(output_name);
