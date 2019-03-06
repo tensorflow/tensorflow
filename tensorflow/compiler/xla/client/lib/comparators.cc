@@ -121,6 +121,7 @@ XlaComputation CreateScalarComparisonComputation(
     }
     ++parameter_count;
   }
+  /*
   if (primitive_util::IsFloatingPointType(operand_types[0])) {
     PrimitiveType compare_type = operand_types[0];
     // Special-case handling for BF16. We currently do not support direct
@@ -137,6 +138,7 @@ XlaComputation CreateScalarComparisonComputation(
     first_rhs_param =
         BitcastConvertFloatingPointToIntegral(first_rhs_param, bit_width);
   }
+  */
   generator(first_lhs_param, first_rhs_param, {});
   return b->BuildAndNoteError();
 }
