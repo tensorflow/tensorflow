@@ -45,6 +45,24 @@ xla::XlaOp MaybeConvertF32ToBF16(xla::XlaOp input, DataType dtype) {
   }
 }
 
+xla::XlaOp Uniform2NormalUsingSqrtErfinv(xla::XlaOp uniform) {
+  // Convert uniform distribution to normal distribution by computing
+  // sqrt(2) * erfinv(x)
+  return xla::ScalarLike(uniform, std::sqrt(2.0)) * xla::ErfInv(uniform);
+}
+
+// A wrapper of xla::StatelessRngUniform. Returns an op that produces random
+// values with uniform distribution in the range [minval, maxval) for the given
+// shape and given two 32-bit seeds. Currently only shapes of type F32, S32 and
+// S64 are implemented.
+xla::XlaOp StatelessRandomUniformImpl(const xla::Shape& shape, DataType dtype,
+                                      xla::XlaOp seed, xla::XlaOp minval,
+                                      xla::XlaOp maxval) {
+  xla::XlaOp seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
+  xla::XlaOp seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
+  return xla::StatelessRngUniform({seed0, seed1}, shape, minval, maxval);
+}
+
 namespace {
 
 class StatelessRandomUniformOp : public XlaOpKernel {
@@ -68,12 +86,8 @@ class StatelessRandomUniformOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-
-    auto seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
-    auto seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-
-    auto uniform = xla::StatelessRngUniform(
-        {seed0, seed1}, xla_shape, xla::ConstantR0<float>(builder, 0.0),
+    xla::XlaOp uniform = StatelessRandomUniformImpl(
+        xla_shape, dtype_, seed, xla::ConstantR0<float>(builder, 0.0),
         xla::ConstantR0<float>(builder, 1.0));
     uniform = MaybeConvertF32ToBF16(uniform, dtype_);
     ctx->SetOutput(0, uniform);
@@ -122,12 +136,8 @@ class StatelessRandomUniformIntOp : public XlaOpKernel {
 
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(dtype_, shape, &xla_shape));
-
-    auto seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
-    auto seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-
-    auto uniform =
-        xla::StatelessRngUniform({seed0, seed1}, xla_shape, minval, maxval);
+    xla::XlaOp uniform =
+        StatelessRandomUniformImpl(xla_shape, dtype_, seed, minval, maxval);
     ctx->SetOutput(0, uniform);
   }
 
@@ -163,18 +173,11 @@ class StatelessRandomNormalOp : public XlaOpKernel {
     xla::XlaBuilder* builder = ctx->builder();
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-
-    auto seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
-    auto seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-
-    auto uniform = xla::StatelessRngUniform(
-        {seed0, seed1}, xla_shape,
+    xla::XlaOp uniform = StatelessRandomUniformImpl(
+        xla_shape, dtype_, seed,
         xla::ConstantR0<float>(builder, std::nextafter(-1.0f, 0.0f)),
         xla::ConstantR0<float>(builder, 1.0));
-    // Convert uniform distribution to normal distribution by computing
-    // sqrt(2) * erfinv(x)
-    auto normal =
-        xla::ScalarLike(uniform, std::sqrt(2.0)) * xla::ErfInv(uniform);
+    xla::XlaOp normal = Uniform2NormalUsingSqrtErfinv(uniform);
     normal = MaybeConvertF32ToBF16(normal, dtype_);
     ctx->SetOutput(0, normal);
   }
@@ -210,18 +213,15 @@ class StatelessTruncatedNormalOp : public XlaOpKernel {
     xla::XlaOp seed = ctx->Input(1);
     xla::XlaBuilder* builder = ctx->builder();
 
-    auto seed0 = xla::Reshape(xla::Slice(seed, {0}, {1}, {1}), {});
-    auto seed1 = xla::Reshape(xla::Slice(seed, {1}, {2}, {1}), {});
-
     xla::Shape xla_shape;
     OP_REQUIRES_OK(ctx, TensorShapeToXLAShape(DT_FLOAT, shape, &xla_shape));
-    auto uniform = xla::StatelessRngUniform(
-        {seed0, seed1}, xla_shape,
+    xla::XlaOp uniform = StatelessRandomUniformImpl(
+        xla_shape, dtype_, seed,
         xla::MinPositiveNormalValue(builder, xla_shape.element_type()),
         xla::One(builder, xla_shape.element_type()));
-    auto output = TruncatedNormal(uniform);
-    output = MaybeConvertF32ToBF16(output, dtype_);
-    ctx->SetOutput(0, output);
+    xla::XlaOp truncated_normal = TruncatedNormal(uniform);
+    truncated_normal = MaybeConvertF32ToBF16(truncated_normal, dtype_);
+    ctx->SetOutput(0, truncated_normal);
   }
 
  private:

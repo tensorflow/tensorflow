@@ -23,6 +23,8 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/client_library.h"
 #include "tensorflow/compiler/xla/client/lib/math.h"
 #include "tensorflow/compiler/xla/client/lib/qr.h"
+#include "tensorflow/compiler/xla/client/lib/self_adjoint_eig.h"
+#include "tensorflow/compiler/xla/client/lib/svd.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/executable_run_options.h"
@@ -722,6 +724,22 @@ LocalOp ComputationBuilder::QR(const LocalOp& a, bool full_matrices) {
   return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     TF_ASSIGN_OR_RETURN(auto qr, xla::QRDecomposition(a.op(), full_matrices));
     return xla::Tuple(builder, {qr.q, qr.r});
+  });
+}
+
+LocalOp ComputationBuilder::Eigh(const LocalOp& a, bool lower) {
+  XlaBuilder* builder = a.op().builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto eigh = xla::SelfAdjointEig(a.op(), lower);
+    return xla::Tuple(builder, {eigh.v, eigh.w});
+  });
+}
+
+LocalOp ComputationBuilder::SVD(const LocalOp& a) {
+  XlaBuilder* builder = a.op().builder();
+  return builder->ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
+    auto svd = xla::SVD(a.op());
+    return xla::Tuple(builder, {svd.u, svd.d, svd.v});
   });
 }
 

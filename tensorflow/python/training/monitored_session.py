@@ -47,11 +47,9 @@ from tensorflow.python.training.tracking import util as trackable_util
 from tensorflow.python.util import function_utils
 from tensorflow.python.util.tf_export import tf_export
 
-
 # The list of exceptions that we should recover from. Exceptions not in this
 # list may terminate the job.
 _PREEMPTION_ERRORS = (errors.AbortedError, errors.UnavailableError)
-
 
 # Value that indicates no value was provided.
 USE_DEFAULT = object()
@@ -94,8 +92,6 @@ class Scaffold(object):
     from and stored into the `LOCAL_INIT_OP` collection in the graph by default.
   * `summary_op`: An op to run and merge the summaries in the graph.  Picked
     from and stored into the `SUMMARY_OP` collection in the graph by default.
-  * `global_step`: A tensor containing the global step counter.  Picked
-    from and stored into the `GLOBAL_STEP` collection in the graph by default.
 
   You can also pass the following additional pieces to the constructor:
 
@@ -130,25 +126,23 @@ class Scaffold(object):
         a non-empty 1D string tensor listing the names of the non-initialized
         variables.
       ready_for_local_init_op: Optional op to verify that the global variables
-        are initialized and `local_init_op` can be run. Must return an empty
-        1D string tensor when the global variables are initialized, or a
-        non-empty 1D string tensor listing the names of the non-initialized
-        global variables.
+        are initialized and `local_init_op` can be run. Must return an empty 1D
+        string tensor when the global variables are initialized, or a non-empty
+        1D string tensor listing the names of the non-initialized global
+        variables.
       local_init_op: Optional op to initialize local variables.
       summary_op: Optional op to gather all summaries.  Must return a scalar
         string tensor containing a serialized `Summary` proto.
       saver: Optional `tf.train.Saver` object to use to save and restore
-        variables.
-
-        May also be a `tf.train.Checkpoint` object, in which case object-based
-        checkpoints are saved. This will also load some object-based checkpoints
-        saved from elsewhere, but that loading may be fragile since it uses
-        fixed keys rather than performing a full graph-based match. For example
-        if a variable has two paths from the `Checkpoint` object because two
-        `Model` objects share the `Layer` object that owns it, removing one
-        `Model` may change the keys and break checkpoint loading through this
-        API, whereas a graph-based match would match the variable through the
-        other `Model`.
+        variables.  May also be a `tf.train.Checkpoint` object, in which case
+        object-based checkpoints are saved. This will also load some
+        object-based checkpoints saved from elsewhere, but that loading may be
+        fragile since it uses fixed keys rather than performing a full
+        graph-based match. For example if a variable has two paths from the
+        `Checkpoint` object because two `Model` objects share the `Layer` object
+        that owns it, removing one `Model` may change the keys and break
+        checkpoint loading through this API, whereas a graph-based match would
+        match the variable through the other `Model`.
       copy_from_scaffold: Optional scaffold object to copy fields from. Its
         fields will be overwritten by the provided fields in this function.
     """
@@ -189,24 +183,26 @@ class Scaffold(object):
   def finalize(self):
     """Creates operations if needed and finalizes the graph."""
     if self._init_op is None:
+
       def default_init_op():
         return control_flow_ops.group(
             variables.global_variables_initializer(),
             resources.initialize_resources(resources.shared_resources()))
-      self._init_op = Scaffold.get_or_default(
-          'init_op',
-          ops.GraphKeys.INIT_OP,
-          default_init_op)
+
+      self._init_op = Scaffold.get_or_default('init_op', ops.GraphKeys.INIT_OP,
+                                              default_init_op)
     if self._ready_op is None:
+
       def default_ready_op():
         return array_ops.concat([
             variables.report_uninitialized_variables(),
             resources.report_uninitialized_resources()
         ], 0)
+
       self._ready_op = Scaffold.get_or_default(
-          'ready_op', ops.GraphKeys.READY_OP,
-          default_ready_op)
+          'ready_op', ops.GraphKeys.READY_OP, default_ready_op)
     if self._ready_for_local_init_op is None:
+
       def default_ready_for_local_init_op():
         return array_ops.concat([
             variables.report_uninitialized_variables(
@@ -214,6 +210,7 @@ class Scaffold(object):
             resources.report_uninitialized_resources(
                 resources.shared_resources())
         ], 0)
+
       self._ready_for_local_init_op = Scaffold.get_or_default(
           'ready_for_local_init_op', ops.GraphKeys.READY_FOR_LOCAL_INIT_OP,
           default_ready_for_local_init_op)
@@ -222,9 +219,8 @@ class Scaffold(object):
           'local_init_op', ops.GraphKeys.LOCAL_INIT_OP,
           Scaffold.default_local_init_op)
     if self._summary_op is None:
-      self._summary_op = Scaffold.get_or_default('summary_op',
-                                                 ops.GraphKeys.SUMMARY_OP,
-                                                 summary.merge_all)
+      self._summary_op = Scaffold.get_or_default(
+          'summary_op', ops.GraphKeys.SUMMARY_OP, summary.merge_all)
     # pylint: disable=g-long-lambda
     if self._saver is None:
       self._saver = training_saver._get_saver_or_default()  # pylint: disable=protected-access
@@ -279,11 +275,11 @@ class Scaffold(object):
     elements = ops.get_collection(collection_key)
     if elements:
       if len(elements) > 1:
-        raise RuntimeError('More than one item in the collection "%s". '
-                           'Please indicate which one to use by passing it to '
-                           'the tf.Scaffold constructor as:  '
-                           'tf.Scaffold(%s=item to use)', collection_key,
-                           arg_name)
+        raise RuntimeError(
+            'More than one item in the collection "%s". '
+            'Please indicate which one to use by passing it to '
+            'the tf.Scaffold constructor as:  '
+            'tf.Scaffold(%s=item to use)', collection_key, arg_name)
       return elements[0]
     op = default_constructor()
     if op is not None:
@@ -308,20 +304,21 @@ class Scaffold(object):
         resources.initialize_resources(resources.local_resources()))
 
 
-def _create_monitored_session_with_worker_context(worker_context,  # pylint: disable=missing-docstring
-                                                  scaffold,
-                                                  checkpoint_dir=None,
-                                                  hooks=None,
-                                                  chief_only_hooks=None,
-                                                  save_checkpoint_secs=None,
-                                                  save_summaries_steps=None,
-                                                  save_summaries_secs=None,
-                                                  config=None,
-                                                  stop_grace_period_secs=120,
-                                                  log_step_count_steps=100,
-                                                  max_wait_secs=7200,
-                                                  save_checkpoint_steps=None,
-                                                  summary_dir=None):
+def _create_monitored_session_with_worker_context(
+    worker_context,  # pylint: disable=missing-docstring
+    scaffold,
+    checkpoint_dir=None,
+    hooks=None,
+    chief_only_hooks=None,
+    save_checkpoint_secs=None,
+    save_summaries_steps=None,
+    save_summaries_secs=None,
+    config=None,
+    stop_grace_period_secs=120,
+    log_step_count_steps=100,
+    max_wait_secs=7200,
+    save_checkpoint_steps=None,
+    summary_dir=None):
   all_hooks = []
   if hooks:
     all_hooks.extend(hooks)
@@ -415,21 +412,22 @@ def _create_monitored_session_with_worker_context(worker_context,  # pylint: dis
 
 
 @tf_export(v1=['train.MonitoredTrainingSession'])
-def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
-                             is_chief=True,
-                             checkpoint_dir=None,
-                             scaffold=None,
-                             hooks=None,
-                             chief_only_hooks=None,
-                             save_checkpoint_secs=USE_DEFAULT,
-                             save_summaries_steps=USE_DEFAULT,
-                             save_summaries_secs=USE_DEFAULT,
-                             config=None,
-                             stop_grace_period_secs=120,
-                             log_step_count_steps=100,
-                             max_wait_secs=7200,
-                             save_checkpoint_steps=USE_DEFAULT,
-                             summary_dir=None):
+def MonitoredTrainingSession(
+    master='',  # pylint: disable=invalid-name
+    is_chief=True,
+    checkpoint_dir=None,
+    scaffold=None,
+    hooks=None,
+    chief_only_hooks=None,
+    save_checkpoint_secs=USE_DEFAULT,
+    save_summaries_steps=USE_DEFAULT,
+    save_summaries_secs=USE_DEFAULT,
+    config=None,
+    stop_grace_period_secs=120,
+    log_step_count_steps=100,
+    max_wait_secs=7200,
+    save_checkpoint_steps=USE_DEFAULT,
+    summary_dir=None):
   """Creates a `MonitoredSession` for training.
 
   For a chief, this utility sets proper session initializer/restorer. It also
@@ -446,8 +444,8 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       initialize or recover the TensorFlow session.
     checkpoint_dir: A string.  Optional path to a directory where to restore
       variables.
-    scaffold: A `Scaffold` used for gathering or building supportive ops. If
-      not specified, a default one is created. It's used to finalize the graph.
+    scaffold: A `Scaffold` used for gathering or building supportive ops. If not
+      specified, a default one is created. It's used to finalize the graph.
     hooks: Optional list of `SessionRunHook` objects.
     chief_only_hooks: list of `SessionRunHook` objects. Activate these hooks if
       `is_chief==True`, ignore otherwise.
@@ -470,17 +468,17 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
       `close()` has been called.
     log_step_count_steps: The frequency, in number of global steps, that the
       global step/sec is logged.
-    max_wait_secs: Maximum time workers should wait for the session to
-      become available. This should be kept relatively short to help detect
-      incorrect code, but sometimes may need to be increased if the chief takes
-      a while to start up.
+    max_wait_secs: Maximum time workers should wait for the session to become
+      available. This should be kept relatively short to help detect incorrect
+      code, but sometimes may need to be increased if the chief takes a while to
+      start up.
     save_checkpoint_steps: The frequency, in number of global steps, that a
       checkpoint is saved using a default checkpoint saver. If both
       `save_checkpoint_steps` and `save_checkpoint_secs` are set to `None`, then
       the default checkpoint saver isn't used. If both are provided, then only
       `save_checkpoint_secs` is used. Default not enabled.
-    summary_dir: A string.  Optional path to a directory where to
-      save summaries. If None, checkpoint_dir is used instead.
+    summary_dir: A string.  Optional path to a directory where to save
+      summaries. If None, checkpoint_dir is used instead.
 
   Returns:
     A `MonitoredSession` object.
@@ -549,8 +547,9 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
           basic_session_run_hooks.StepCounterHook(
               output_dir=summary_dir, every_n_steps=log_step_count_steps))
 
-    if (save_summaries_steps and save_summaries_steps > 0) or (
-        save_summaries_secs and save_summaries_secs > 0):
+    if (save_summaries_steps and
+        save_summaries_steps > 0) or (save_summaries_secs and
+                                      save_summaries_secs > 0):
       all_hooks.append(
           basic_session_run_hooks.SummarySaverHook(
               scaffold=scaffold,
@@ -559,8 +558,9 @@ def MonitoredTrainingSession(master='',  # pylint: disable=invalid-name
               output_dir=summary_dir))
 
   if checkpoint_dir:
-    if (save_checkpoint_secs and save_checkpoint_secs > 0) or (
-        save_checkpoint_steps and save_checkpoint_steps > 0):
+    if (save_checkpoint_secs and
+        save_checkpoint_secs > 0) or (save_checkpoint_steps and
+                                      save_checkpoint_steps > 0):
       all_hooks.append(
           basic_session_run_hooks.CheckpointSaverHook(
               checkpoint_dir,
@@ -677,15 +677,16 @@ class WorkerSessionCreator(SessionCreator):
   def create_session(self):
     self._scaffold.finalize()
     return self._get_session_manager().wait_for_session(
-        self._master, config=self._config,
-        max_wait_secs=self._max_wait_secs
-    )
+        self._master, config=self._config, max_wait_secs=self._max_wait_secs)
 
 
 class _MonitoredSession(object):
   """See `MonitoredSession` or `SingularMonitoredSession`."""
 
-  def __init__(self, session_creator, hooks, should_recover,
+  def __init__(self,
+               session_creator,
+               hooks,
+               should_recover,
                stop_grace_period_secs=120):
     """Sets up a Monitored or Hooked Session.
 
@@ -738,44 +739,32 @@ class _MonitoredSession(object):
     Returns:
       Same as `tf.Session.run()`.
     """
-    return self._sess.run(fetches,
-                          feed_dict=feed_dict,
-                          options=options,
-                          run_metadata=run_metadata)
+    return self._sess.run(
+        fetches,
+        feed_dict=feed_dict,
+        options=options,
+        run_metadata=run_metadata)
 
   def run_step_fn(self, step_fn):
     """Run ops using a step function.
 
     Args:
       step_fn: A function or a method with a single argument of type
-        `StepContext`.  The function may use methods of the argument to
-        perform computations with access to a raw session.
-
-        The returned value of the `step_fn` will be returned from `run_step_fn`,
-        unless a stop is requested.  In that case, the next `should_stop` call
-        will return True.
-
-        Example usage:
-
-        ```python
-           with tf.Graph().as_default():
-             c = tf.placeholder(dtypes.float32)
-             v = tf.add(c, 4.0)
-             w = tf.add(c, 0.5)
-
+        `StepContext`.  The function may use methods of the argument to perform
+        computations with access to a raw session.  The returned value of the
+        `step_fn` will be returned from `run_step_fn`, unless a stop is
+        requested.  In that case, the next `should_stop` call will return True.
+        Example usage:  ```python
+           with tf.Graph().as_default(): c = tf.placeholder(dtypes.float32) v =
+             tf.add(c, 4.0) w = tf.add(c, 0.5)
              def step_fn(step_context):
                a = step_context.session.run(fetches=v, feed_dict={c: 0.5})
-               if a <= 4.5:
-                 step_context.request_stop()
+               if a <= 4.5: step_context.request_stop()
                return step_context.run_with_hooks(fetches=w, feed_dict={c: 0.1})
-
              with tf.MonitoredSession() as session:
-               while not session.should_stop():
-                 a = session.run_step_fn(step_fn)
-        ```
-
-        Hooks interact with the `run_with_hooks()` call inside the `step_fn`
-        as they do with a `MonitoredSession.run` call.
+               while not session.should_stop(): a = session.run_step_fn(step_fn)
+                 ```  Hooks interact with the `run_with_hooks()` call inside the
+                 `step_fn` as they do with a `MonitoredSession.run` call.
 
     Returns:
       Returns the returned value of `step_fn`.
@@ -900,7 +889,9 @@ class _MonitoredSession(object):
           ops.get_default_graph()._unsafe_unfinalize()  # pylint: disable=protected-access
 
   def _is_closed(self):
-    """Return True if the monitored session is closed.  For tests only.
+    """Return True if the monitored session is closed.
+
+    For tests only.
 
     Returns:
       A boolean.
@@ -995,10 +986,14 @@ class MonitoredSession(_MonitoredSession):
     A MonitoredSession object.
   """
 
-  def __init__(self, session_creator=None, hooks=None,
+  def __init__(self,
+               session_creator=None,
+               hooks=None,
                stop_grace_period_secs=120):
     super(MonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=True,
+        session_creator,
+        hooks,
+        should_recover=True,
         stop_grace_period_secs=stop_grace_period_secs)
 
 
@@ -1085,7 +1080,9 @@ class SingularMonitoredSession(_MonitoredSession):
         checkpoint_dir=checkpoint_dir,
         checkpoint_filename_with_path=checkpoint_filename_with_path)
     super(SingularMonitoredSession, self).__init__(
-        session_creator, hooks, should_recover=False,
+        session_creator,
+        hooks,
+        should_recover=False,
         stop_grace_period_secs=stop_grace_period_secs)
 
   def raw_session(self):
@@ -1149,9 +1146,10 @@ class _WrappedSession(object):
       try:
         self._sess.close()
       except _PREEMPTION_ERRORS as e:
-        logging.warning('An error occurred when attempting to close the '
-                        'session. This may be due to a preemption in a '
-                        'connected worker or parameter server. Error: %s', e)
+        logging.warning(
+            'An error occurred when attempting to close the '
+            'session. This may be due to a preemption in a '
+            'connected worker or parameter server. Error: %s', e)
       finally:
         self._sess = None
 
@@ -1194,14 +1192,15 @@ class _RecoverableSession(_WrappedSession):
       try:
         return self._sess_creator.create_session()
       except _PREEMPTION_ERRORS as e:
-        logging.info('An error was raised while a session was being created. '
-                     'This may be due to a preemption of a connected worker '
-                     'or parameter server. A new session will be created. '
-                     'This error may also occur due to a gRPC failure caused '
-                     'by high memory or network bandwidth usage in the '
-                     'parameter servers. If this error occurs repeatedly, try '
-                     'increasing the number of parameter servers assigned to '
-                     'the job. Error: %s', e)
+        logging.info(
+            'An error was raised while a session was being created. '
+            'This may be due to a preemption of a connected worker '
+            'or parameter server. A new session will be created. '
+            'This error may also occur due to a gRPC failure caused '
+            'by high memory or network bandwidth usage in the '
+            'parameter servers. If this error occurs repeatedly, try '
+            'increasing the number of parameter servers assigned to '
+            'the job. Error: %s', e)
 
   def _check_stop(self):
     try:
@@ -1210,15 +1209,16 @@ class _RecoverableSession(_WrappedSession):
       else:
         return True
     except _PREEMPTION_ERRORS as e:
-      logging.info('An error was raised while considering whether the '
-                   'session is complete. This may be due to a preemption in '
-                   'a connected worker or parameter server. The current '
-                   'session will be closed and a new session will be '
-                   'created. This error may also occur due to a gRPC failure '
-                   'caused by high memory or network bandwidth usage in the '
-                   'parameter servers. If this error occurs repeatedly, try '
-                   'increasing the number of parameter servers assigned to '
-                   'the job. Error: %s', e)
+      logging.info(
+          'An error was raised while considering whether the '
+          'session is complete. This may be due to a preemption in '
+          'a connected worker or parameter server. The current '
+          'session will be closed and a new session will be '
+          'created. This error may also occur due to a gRPC failure '
+          'caused by high memory or network bandwidth usage in the '
+          'parameter servers. If this error occurs repeatedly, try '
+          'increasing the number of parameter servers assigned to '
+          'the job. Error: %s', e)
       self.close()
       self._sess = self._create_session()
       # Since we have just recreated the session, the overall computation should
@@ -1233,19 +1233,21 @@ class _RecoverableSession(_WrappedSession):
       try:
         if not self._sess:
           self._sess = self._create_session()
-        return self._sess.run(fetches,
-                              feed_dict=feed_dict,
-                              options=options,
-                              run_metadata=run_metadata)
+        return self._sess.run(
+            fetches,
+            feed_dict=feed_dict,
+            options=options,
+            run_metadata=run_metadata)
       except _PREEMPTION_ERRORS as e:
-        logging.info('An error was raised. This may be due to a preemption in '
-                     'a connected worker or parameter server. The current '
-                     'session will be closed and a new session will be '
-                     'created. This error may also occur due to a gRPC failure '
-                     'caused by high memory or network bandwidth usage in the '
-                     'parameter servers. If this error occurs repeatedly, try '
-                     'increasing the number of parameter servers assigned to '
-                     'the job. Error: %s', e)
+        logging.info(
+            'An error was raised. This may be due to a preemption in '
+            'a connected worker or parameter server. The current '
+            'session will be closed and a new session will be '
+            'created. This error may also occur due to a gRPC failure '
+            'caused by high memory or network bandwidth usage in the '
+            'parameter servers. If this error occurs repeatedly, try '
+            'increasing the number of parameter servers assigned to '
+            'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1258,14 +1260,15 @@ class _RecoverableSession(_WrappedSession):
         run_with_hooks = self._sess.run
         return self._sess.run_step_fn(step_fn, raw_session, run_with_hooks)
       except _PREEMPTION_ERRORS as e:
-        logging.info('An error was raised. This may be due to a preemption in '
-                     'a connected worker or parameter server. The current '
-                     'session will be closed and a new session will be '
-                     'created. This error may also occur due to a gRPC failure '
-                     'caused by high memory or network bandwidth usage in the '
-                     'parameter servers. If this error occurs repeatedly, try '
-                     'increasing the number of parameter servers assigned to '
-                     'the job. Error: %s', e)
+        logging.info(
+            'An error was raised. This may be due to a preemption in '
+            'a connected worker or parameter server. The current '
+            'session will be closed and a new session will be '
+            'created. This error may also occur due to a gRPC failure '
+            'caused by high memory or network bandwidth usage in the '
+            'parameter servers. If this error occurs repeatedly, try '
+            'increasing the number of parameter servers assigned to '
+            'the job. Error: %s', e)
         self.close()
         self._sess = None
 
@@ -1388,11 +1391,12 @@ class _HookedSession(_WrappedSession):
 
     # Do session run.
     run_metadata = run_metadata or config_pb2.RunMetadata()
-    outputs = _WrappedSession.run(self,
-                                  fetches=actual_fetches,
-                                  feed_dict=feed_dict,
-                                  options=options,
-                                  run_metadata=run_metadata)
+    outputs = _WrappedSession.run(
+        self,
+        fetches=actual_fetches,
+        feed_dict=feed_dict,
+        options=options,
+        run_metadata=run_metadata)
 
     for hook in self._hooks:
       hook.after_run(
@@ -1415,9 +1419,8 @@ class _HookedSession(_WrappedSession):
         if request.fetches is not None:
           fetch_dict[hook] = request.fetches
         if request.feed_dict:
-          self._raise_if_feeds_intersects(
-              hook_feeds, request.feed_dict,
-              'Same tensor is fed by two hooks.')
+          self._raise_if_feeds_intersects(hook_feeds, request.feed_dict,
+                                          'Same tensor is fed by two hooks.')
           hook_feeds.update(request.feed_dict)
         if request.options:
           self._merge_run_options(options, request.options)

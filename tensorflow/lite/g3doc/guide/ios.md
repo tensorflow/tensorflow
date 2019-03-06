@@ -79,16 +79,16 @@ Under `Project navigator -> tflite_camera_example -> Targets ->
 tflite_camera_example -> General` change the bundle identifier by pre-pending
 your name:
 
-![pre-pend your name to the bundle identifier](images/ios/bundle_identifier.png)
+![pre-pend your name to the bundle identifier](../images/ios/bundle_identifier.png)
 
 Plug in your iOS device. Note the app must be executed with a real device with
 camera. Select the iOS device from the drop-down menu.
 
-![Device selection](images/ios/device_selection.png)
+![Device selection](../images/ios/device_selection.png)
 
 Click the "Run" button to build and run the app
 
-![Build and execute](images/ios/build_and_execute.png)
+![Build and execute](../images/ios/build_and_execute.png)
 
 Note that as mentioned earlier, you must already have a device set up and linked
 to your Apple Developer account in order to deploy the app on a device.

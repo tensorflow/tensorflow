@@ -904,7 +904,7 @@ class TPUMirroredVariable(trackable.Trackable):
 
   @property
   def device(self):
-    return self._get().device
+    return self.handle.device
 
   def eval(self, session=None):
     return self.primary.eval(session)

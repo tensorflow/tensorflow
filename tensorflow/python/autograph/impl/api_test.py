@@ -196,7 +196,7 @@ class ApiTest(test.TestCase):
       def test_method(self, x, s, a):
         while tf.reduce_sum(x) > s:
           x //= api.converted_call(self.called_member, None,
-                                   converter.ConversionOptions(), (self, a), {})
+                                   converter.ConversionOptions(), (a,), {})
         return x
 
     tc = TestClass()
@@ -261,8 +261,32 @@ class ApiTest(test.TestCase):
 
     tc = TestClass(constant_op.constant(-1))
     x = api.converted_call(tc.test_method, None, converter.ConversionOptions(),
-                           (tc,), {})
+                           (), {})
     self.assertEqual(1, self.evaluate(x))
+
+  def test_converted_call_method_as_object_attribute(self):
+
+    class AnotherClass(object):
+
+      def __init__(self):
+        self.another_class_attr = constant_op.constant(1)
+
+      def method(self):
+        if self.another_class_attr > 0:
+          return self.another_class_attr + 1
+        return self.another_class_attr + 10
+
+    class TestClass(object):
+
+      def __init__(self, another_obj_method):
+        self.another_obj_method = another_obj_method
+
+    obj = AnotherClass()
+    tc = TestClass(obj.method)
+
+    x = api.converted_call('another_obj_method', tc,
+                           converter.ConversionOptions(), (), {})
+    self.assertEqual(self.evaluate(x), 2)
 
   def test_converted_call_method_converts_recursively(self):
 
@@ -281,8 +305,7 @@ class ApiTest(test.TestCase):
 
     tc = TestClass(constant_op.constant(-1))
     x = api.converted_call(tc.test_method, None,
-                           converter.ConversionOptions(recursive=True), (tc,),
-                           {})
+                           converter.ConversionOptions(recursive=True), (), {})
     self.assertEqual(1, self.evaluate(x))
 
   def test_converted_call_method_by_class(self):

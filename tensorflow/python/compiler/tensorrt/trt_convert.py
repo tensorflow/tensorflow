@@ -666,11 +666,11 @@ class TrtGraphConverter(GraphConverter):
                       ".".join([str(x) for x in loaded_version]))
 
     # Check input arguments.
-    if precision_mode not in TrtPrecisionMode.supported_precision_modes():
+    supported_precision_modes = TrtPrecisionMode.supported_precision_modes()
+    if precision_mode not in supported_precision_modes:
       raise ValueError(("precision mode '{}' is not supported."
                         "It should be one of {}").format(
-                            precision_mode,
-                            TrtPrecisionMode.supported_precision_modes))
+                            precision_mode, supported_precision_modes))
 
     if cached_engine_batches:
       if not isinstance(cached_engine_batches, list):
