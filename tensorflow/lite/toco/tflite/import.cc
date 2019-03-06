@@ -143,7 +143,7 @@ void ImportOperators(
 
     // Make sure all the inputs and outputs are hooked up.
     auto inputs = input_op->inputs();
-    for (int i = 0; i < inputs->Length(); i++) {
+    for (int i = 0; i < inputs->Length(); ++i) {
       auto input_index = inputs->Get(i);
       // input_index == -1 indicates optional tensor.
       if (input_index != -1) {
@@ -157,7 +157,7 @@ void ImportOperators(
       }
     }
     auto outputs = input_op->outputs();
-    for (int i = 0; i < outputs->Length(); i++) {
+    for (int i = 0; i < outputs->Length(); ++i) {
       auto output_index = outputs->Get(i);
       const string& output_name = tensors_table.at(output_index);
       op->outputs.push_back(output_name);

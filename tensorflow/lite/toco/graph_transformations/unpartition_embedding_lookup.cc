@@ -57,10 +57,10 @@ namespace toco {
   // Split up the DynamicStitch inputs into the indices and data.
   std::vector<string> stitch_indices_inputs;
   std::vector<string> stitch_data_inputs;
-  for (size_t i = 0; i < stitch_op->num_partitions; ++i) {
+  for (int i = 0; i < stitch_op->num_partitions; ++i) {
     stitch_indices_inputs.push_back(stitch_op->inputs[i]);
   }
-  for (size_t i = stitch_op->num_partitions; i < stitch_op->num_partitions * 2;
+  for (int i = stitch_op->num_partitions; i < stitch_op->num_partitions * 2;
        ++i) {
     stitch_data_inputs.push_back(stitch_op->inputs[i]);
   }

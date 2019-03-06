@@ -38,10 +38,10 @@ void Transpose(Model* model, const Array& input_array,
   output_data.resize(RequiredBufferSizeForShape(output_shape));
 
   CHECK(input_shape.dimensions_count() == output_shape.dimensions_count());
-  const int dim = input_shape.dimensions_count();
+  const size_t dim = input_shape.dimensions_count();
   CHECK_LE(dim, 4);
   CHECK(perm.size() >= dim);
-  for (int i = 0; i < dim; i++) {
+  for (size_t i = 0; i < dim; ++i) {
     CHECK(perm[i] >= 0 && perm[i] < dim);
     CHECK(input_shape.dims(perm[i]) == output_shape.dims(i));
   }

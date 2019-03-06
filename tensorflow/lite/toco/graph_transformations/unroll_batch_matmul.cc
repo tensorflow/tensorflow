@@ -44,7 +44,7 @@ void UnrollBatchMatMul3D(
   std::vector<int> begin_indices_a = batch;
   begin_indices_a.resize(dims_count);
   std::vector<int> slice_size_a = input_array_a.shape().dims();
-  for (int i = 0; i < batch.size(); ++i) {
+  for (size_t i = 0; i < batch.size(); ++i) {
     slice_size_a[i] = 1;
   }
   auto* slice_a_op = new SliceOperator;
@@ -76,7 +76,7 @@ void UnrollBatchMatMul3D(
   std::vector<int> begin_indices_b = batch;
   begin_indices_b.resize(dims_count);
   std::vector<int> slice_size_b = input_array_b.shape().dims();
-  for (int i = 0; i < batch.size(); ++i) {
+  for (size_t i = 0; i < batch.size(); ++i) {
     slice_size_b[i] = 1;
   }
   auto* slice_b_op = new SliceOperator;

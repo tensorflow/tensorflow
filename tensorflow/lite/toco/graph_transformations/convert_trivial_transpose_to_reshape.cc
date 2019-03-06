@@ -31,7 +31,7 @@ bool TransposeAffectsMemoryOrder(std::vector<int> perm,
   // just the shape) then the flat buffer representation shouldn't change.
   std::vector<int> old_major_index_ordering;
   std::vector<int> new_major_index_ordering;
-  for (int i = 0; i < in_shape.size(); i++) {
+  for (size_t i = 0; i < in_shape.size(); ++i) {
     if (in_shape[i] != 1) {
       old_major_index_ordering.push_back(i);
     }
