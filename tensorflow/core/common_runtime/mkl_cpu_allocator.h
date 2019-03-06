@@ -76,7 +76,10 @@ class MklSmallSizeAllocator : public Allocator {
 
   void DeallocateRaw(void* ptr) override {
     if (ptr == nullptr) {
-      LOG(ERROR) << "tried to deallocate nullptr";
+      // We do not check for null pointer on allocation
+      // it is not our job to check it now. The sub allocator handles it.
+      // void BasicCPUAllocator::Free(void* ptr, size_t num_bytes)
+      sub_allocator_->Free(ptr, 0);
       return;
     }
 
@@ -229,7 +232,7 @@ class MklCPUAllocator : public Allocator {
   inline void DeallocateRaw(void* ptr) override {
     // Check if ptr is for "small" allocation. If it is, then call Free
     // directly. Otherwise, call BFC to handle free.
-    if (small_size_allocator_->IsSmallSizeAllocation(ptr)) {
+    if (ptr == nullptr || small_size_allocator_->IsSmallSizeAllocation(ptr)) {
       small_size_allocator_->DeallocateRaw(ptr);
     } else {
       large_size_allocator_->DeallocateRaw(ptr);
