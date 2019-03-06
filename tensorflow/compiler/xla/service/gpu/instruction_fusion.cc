@@ -113,8 +113,8 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
   return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
 }
 
-bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                      int64 operand_index) {
+bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
+                                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Check if we can use output fusion for (A @ B) * alpha
@@ -250,9 +250,16 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return false;
   }
+  return true;
+}
 
-  // We put this check last because it's potentially expensive.
-  return !FusionWouldBeTooLarge(consumer, producer);
+bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
+                                      int64 operand_index) {
+  if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
+    return false;
+  }
+  // This check is potentially expensive.
+  return !FusionWouldBeTooLarge(consumer, consumer->operand(operand_index));
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,
