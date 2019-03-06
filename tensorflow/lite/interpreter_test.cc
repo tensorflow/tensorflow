@@ -304,8 +304,8 @@ TEST(BasicInterpreter, CheckArenaAllocation) {
   std::vector<int> sizes{2048, 4096, 1023, 2047, 1021,
                          2047, 1023, 2046, 0,    2048};
   for (size_t i = 0; i < sizes.size(); ++i) {
-    interpreter.SetTensorParametersReadWrite(i, kTfLiteUInt8, "", {sizes[i]},
-                                             quant);
+    interpreter.SetTensorParametersReadWrite(static_cast<int>(i), kTfLiteUInt8,
+                                             "", {sizes[i]}, quant);
   }
   interpreter.SetInputs({0, 1});
   interpreter.SetOutputs({9, 4});

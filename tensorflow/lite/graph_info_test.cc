@@ -89,7 +89,7 @@ void CheckPartitionSubgraphs(
     const std::vector<NodeSubset>& generated_subgraphs,
     const std::vector<NodeSubset>& expected_subgraphs) {
   ASSERT_EQ(generated_subgraphs.size(), expected_subgraphs.size());
-  for (int subgraph_index = 0; subgraph_index < generated_subgraphs.size();
+  for (size_t subgraph_index = 0; subgraph_index < generated_subgraphs.size();
        subgraph_index++) {
     EXPECT_EQ(generated_subgraphs[subgraph_index].nodes,
               expected_subgraphs[subgraph_index].nodes);
