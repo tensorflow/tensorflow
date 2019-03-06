@@ -48,6 +48,7 @@ from tensorflow.python.keras.utils.generic_utils import to_snake_case  # pylint:
 from tensorflow.python.keras.utils.tf_utils import is_tensor_or_tensor_list  # pylint: disable=unused-import
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
+from tensorflow.python.ops import resource_variable_ops
 from tensorflow.python.ops import variables as tf_variables
 from tensorflow.python.training.tracking import base as trackable
 from tensorflow.python.training.tracking import data_structures
@@ -310,7 +311,8 @@ class Layer(trackable.Trackable):
       ValueError: When giving unsupported dtype and no initializer or when
         trainable has been set to True with synchronization set as `ON_READ`.
     """
-    shape = shape or ()
+    if shape is None:
+      shape = ()
     # Validate optional keyword arguments.
     for kwarg in kwargs:
       if kwarg not in ['getter', 'collections', 'experimental_autocast']:
@@ -824,10 +826,11 @@ class Layer(trackable.Trackable):
       value: Metric tensor.
       aggregation: Sample-wise metric reduction function. If `aggregation=None`,
         it indicates that the metric tensor provided has been aggregated
-        already. eg, `model.add_metric(BinaryAccuracy(name='acc')(y_true,
-        y_pred))`. If aggregation='mean', the given metric tensor will be
-        sample-wise reduced using `mean` function. eg, `model.add_metric(
-        tf.reduce_sum(outputs), name='output_mean', aggregation='mean')`.
+        already. eg, `bin_acc = BinaryAccuracy(name='acc')` followed by
+        `model.add_metric(bin_acc(y_true, y_pred))`. If aggregation='mean', the
+        given metric tensor will be sample-wise reduced using `mean` function.
+        eg, `model.add_metric(tf.reduce_sum(outputs), name='output_mean',
+        aggregation='mean')`.
       name: String metric name.
 
     Raises:
@@ -849,7 +852,8 @@ class Layer(trackable.Trackable):
 
       # We will not raise this error in the foll use case for the sake of
       # consistency as name in provided in the metric constructor.
-      # model.add_metric(metrics.Mean(name='my_metric')(outputs))
+      # mean = metrics.Mean(name='my_metric')
+      # model.add_metric(mean(outputs))
       raise ValueError('Please provide a name for your metric like '
                        '`self.add_metric(tf.reduce_sum(inputs), '
                        'name=\'mean_activation\', aggregation=\'mean\')`')
@@ -970,16 +974,13 @@ class Layer(trackable.Trackable):
 
     if inputs is None:
       # Requesting unconditional updates.
-      return [x for x in self.updates if x._unconditional_update]  # pylint: disable=protected-access
+      return [x for x in self._unfiltered_updates if x._unconditional_update]  # pylint: disable=protected-access
 
     # Requesting input-conditional updates.
     inputs = nest.flatten(inputs)
-    reachable = tf_utils.get_reachable_from_inputs(inputs, self.updates)
-    updates = []
-    for update in self.updates:
-      if update in reachable:
-        updates.append(update)
-    return updates
+    reachable = tf_utils.get_reachable_from_inputs(inputs,
+                                                   self._unfiltered_updates)
+    return [u for u in self._unfiltered_updates if u in reachable]  # pylint: disable=protected-access
 
   def get_losses_for(self, inputs):
     """Retrieves losses relevant to a specific set of inputs.
@@ -1722,7 +1723,7 @@ class Layer(trackable.Trackable):
     output_shapes = self.compute_output_shape(input_shapes)
 
     def _make_placeholder_like(shape):
-      ph = backend.placeholder(shape, self.dtype)
+      ph = backend.placeholder(shape=shape, dtype=self.dtype)
       ph._keras_mask = None
       return ph
 
@@ -1776,7 +1777,9 @@ class Layer(trackable.Trackable):
 
   def __setattr__(self, name, value):
     if (not getattr(self, '_setattr_tracking', True) or
-        getattr(self, '_is_graph_network', False)):
+        getattr(self, '_is_graph_network', False) or
+        # Exclude @property.setters from tracking
+        hasattr(self.__class__, name)):
       super(Layer, self).__setattr__(name, value)
       return
 
@@ -1813,7 +1816,10 @@ class Layer(trackable.Trackable):
     # TODO(b/125122625): This won't pick up on any variables added to a
     # list/dict after creation.
     for val in nest.flatten(value):
-      if isinstance(val, tf_variables.Variable):
+      # TODO(b/126450014): Remove `_UnreadVariable` check here when assign ops
+      # no longer return True for isinstance Variable checks.
+      if (isinstance(val, tf_variables.Variable) and
+          not isinstance(val, resource_variable_ops._UnreadVariable)):  # pylint: disable=protected-access
         # Users may add extra weights/variables
         # simply by assigning them to attributes (invalid for graph networks)
         if not hasattr(self, '_trainable_weights'):

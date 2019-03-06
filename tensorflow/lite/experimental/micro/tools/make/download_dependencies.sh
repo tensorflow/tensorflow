@@ -34,13 +34,19 @@ FLATBUFFERS_URL="https://github.com/google/flatbuffers/archive/1f5eae5d6a135ff68
 CMSIS_URL="https://github.com/ARM-software/CMSIS_5/archive/5.4.0.zip"
 STM32_BARE_LIB_URL="https://github.com/google/stm32_bare_lib/archive/c07d611fb0af58450c5a3e0ab4d52b47f99bc82d.zip"
 SIFIVE_FE310_LIB_URL="https://github.com/sifive/freedom-e-sdk/archive/baeeb8fd497a99b3c141d7494309ec2e64f19bdf.zip"
-RISCV_TOOLCHAIN_URL="https://static.dev.sifive.com/dev-tools/riscv64-unknown-elf-gcc-20181030-x86_64-linux-ubuntu14.tar.gz"
 AM_SDK_URL="http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.0.0.zip"
 AP3_URL="https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
 CUST_CMSIS_URL="https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
-GCC_EMBEDDED_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
-KISSFFT_URL="http://downloads.sourceforge.net/project/kissfft/kissfft/v1_3_0/kiss_fft130.zip"
+KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 SPARKFUN_EDGE_BSP_URL="https://github.com/sparkfun/SparkFun_Edge_BSP/archive/620f5f7a69fc69e38cda8132b69302d9c28ba0dd.zip"
+
+if [[ "$OSTYPE" == "darwin"* ]]; then
+  RISCV_TOOLCHAIN_URL="https://static.dev.sifive.com/dev-tools/riscv64-unknown-elf-gcc-8.1.0-2019.01.0-x86_64-apple-darwin.tar.gz"
+  GCC_EMBEDDED_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-mac.tar.bz2"
+else
+  RISCV_TOOLCHAIN_URL="https://static.dev.sifive.com/dev-tools/riscv64-unknown-elf-gcc-20181030-x86_64-linux-ubuntu14.tar.gz"
+  GCC_EMBEDDED_URL="https://developer.arm.com/-/media/Files/downloads/gnu-rm/7-2018q2/gcc-arm-none-eabi-7-2018-q2-update-linux.tar.bz2"
+fi
 
 download_and_extract() {
   local usage="Usage: download_and_extract URL DIR"
@@ -96,21 +102,21 @@ patch_am_sdk() {
 
   sed -i -e '3s/hello_world.ld/apollo3evb.ld/g' "${dest_dir}/apollo3evb.ld"
   sed -i -e '3s/startup_gnu/startup_gcc/g' "${dest_dir}/apollo3evb.ld"
-  sed -i -e '22s/\*(.text\*)/\*(.text\*)\n\n\t\/\* These are the C++ global constructors.  Stick them all here and\n\t \* then walk through the array in main() calling them all.\n\t \*\/\n\t_init_array_start = .;\n\tKEEP (\*(SORT(.init_array\*)))\n\t_init_array_end = .;\n\n\t\/\* XXX Currently not doing anything for global destructors. \*\/\n/g' "${dest_dir}/apollo3evb.ld"
-  sed -i -e "70s/} > SRAM/} > SRAM\n    \/\* Add this to satisfy reference to symbol 'end' from libnosys.a(sbrk.o)\n     \* to denote the HEAP start.\n     \*\/\n   end = .;/g" "${dest_dir}/apollo3evb.ld"
+  sed -i -e $'22s/\*(.text\*)/\*(.text\*)\\\n\\\n\\\t\/\* These are the C++ global constructors.  Stick them all here and\\\n\\\t \* then walk through the array in main() calling them all.\\\n\\\t \*\/\\\n\\\t_init_array_start = .;\\\n\\\tKEEP (\*(SORT(.init_array\*)))\\\n\\\t_init_array_end = .;\\\n\\\n\\\t\/\* XXX Currently not doing anything for global destructors. \*\/\\\n/g' "${dest_dir}/apollo3evb.ld"
+  sed -i -e $'70s/} > SRAM/} > SRAM\\\n    \/\* Add this to satisfy reference to symbol "end" from libnosys.a(sbrk.o)\\\n     \* to denote the HEAP start.\\\n     \*\/\\\n   end = .;/g' "${dest_dir}/apollo3evb.ld"
 
   # Workaround for bug in 2.0.0 SDK, remove once that's fixed.
-  sed -i -e 's/#ifndef AM_HAL_GPIO_H/#ifdef __cplusplus\nextern "C" {\n#endif\n#ifndef AM_HAL_GPIO_H/g' ${am_dir}/mcu/apollo3/hal/am_hal_gpio.h
-  
+  sed -i -e $'s/#ifndef AM_HAL_GPIO_H/#ifdef __cplusplus\\\nextern "C" {\\\n#endif\\\n#ifndef AM_HAL_GPIO_H/g' ${am_dir}/mcu/apollo3/hal/am_hal_gpio.h
+
   echo "Finished preparing Apollo3 files"
 }
 
 patch_kissfft() {
-  sed -i -E "s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\n#ifndef FIXED_POINT\n#define FIXED_POINT (16)\n#endif\n// End patch.\n\n#ifdef FIXED_POINT@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
+  sed -i -E $'s@#ifdef FIXED_POINT@// Patched automatically by download_dependencies.sh so default is 16 bit.\\\n#ifndef FIXED_POINT\\\n#define FIXED_POINT (16)\\\n#endif\\\n// End patch.\\\n\\\n#ifdef FIXED_POINT@g' tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
   sed -i -E "s@#define KISS_FFT_MALLOC malloc@#define KISS_FFT_MALLOC(X) (void*)(0) /* Patched. */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
   sed -i -E "s@#define KISS_FFT_FREE free@#define KISS_FFT_FREE(X) /* Patched. */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/kiss_fft.h
-  sed -i -E "s@(fprintf.*\);)@/* \1 */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
-  sed -i -E "s@(exit.*\);)@return; /* \1 */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
+  sed -ir -E "s@(fprintf.*\);)@/* \1 */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
+  sed -ir -E "s@(exit.*\);)@return; /* \1 */@g" tensorflow/lite/experimental/micro/tools/make/downloads/kissfft/tools/kiss_fftr.c
   echo "Finished patching kissfft"
 }
 

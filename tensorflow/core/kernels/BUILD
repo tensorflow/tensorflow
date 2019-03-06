@@ -1761,7 +1761,7 @@ tf_cc_test(
     size = "small",
     srcs = ["slice_op_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2688,7 +2688,7 @@ tf_cc_tests(
         "scale_and_translate_op_test.cc",
     ],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -2918,7 +2918,7 @@ tf_kernel_library(
     # and f2c helper functions in global namespace. Tell the compiler to
     # allow multiple definitions when linking this.
     linkopts = select({
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": ["-Wl,-z,muldefs"],
     }),
@@ -3554,7 +3554,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["scan_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [
@@ -3577,7 +3577,7 @@ tf_cuda_cc_test(
     size = "small",
     srcs = ["reduction_ops_test.cc"],
     linkopts = select({
-        "//tensorflow:darwin": ["-headerpad_max_install_names"],
+        "//tensorflow:macos": ["-headerpad_max_install_names"],
         "//conditions:default": [],
     }),
     deps = [

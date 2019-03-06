@@ -30,6 +30,27 @@ cc_library(
 )
 
 cc_library(
+    name = "auto_shard",
+    srcs = ["auto_shard.cc"],
+    hdrs = ["auto_shard.h"],
+    deps = [
+        ":graph_utils",
+        ":optimizer_base",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
+        "//tensorflow/core/grappler:grappler_item",
+        "//tensorflow/core/grappler:mutable_graph_view",
+        "//tensorflow/core/grappler:op_types",
+        "//tensorflow/core/grappler/clusters:cluster",
+        "//tensorflow/core/grappler/optimizers:custom_graph_optimizer_registry",
+        "//tensorflow/core:framework",
+        "//tensorflow/core:lib",
+        "//tensorflow/core/grappler/utils:functions",
+    ] + tf_protos_all(),
+    alwayslink = 1,
+)
+
+cc_library(
     name = "filter_fusion",
     srcs = ["filter_fusion.cc"],
     hdrs = [

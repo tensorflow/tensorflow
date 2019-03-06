@@ -421,6 +421,7 @@ class TensorBoard(callbacks.Callback):
         embeddings_data = self.embeddings_data
         n_samples = embeddings_data[0].shape[0]
         i = 0
+        sess = K.get_session()
         while i < n_samples:
           step = min(self.batch_size, n_samples - i)
           batch = slice(i, i + step)
@@ -438,8 +439,8 @@ class TensorBoard(callbacks.Callback):
           if not isinstance(K.learning_phase(), int):
             feed_dict[K.learning_phase()] = False
 
-          self.sess.run(self.assign_embeddings, feed_dict=feed_dict)
-          self.saver.save(self.sess,
+          sess.run(self.assign_embeddings, feed_dict=feed_dict)
+          self.saver.save(sess,
                           os.path.join(self.log_dir, 'keras_embedding.ckpt'),
                           epoch)
 

@@ -148,12 +148,6 @@ config_setting(
 )
 
 config_setting(
-    name = "darwin",
-    values = {"cpu": "darwin"},
-    visibility = ["//visibility:public"],
-)
-
-config_setting(
     name = "windows",
     values = {"cpu": "x64_windows"},
     visibility = ["//visibility:public"],
@@ -166,8 +160,17 @@ config_setting(
 )
 
 config_setting(
+    name = "macos",
+    values = {
+        "apple_platform_type": "macos",
+        "cpu": "darwin",
+    },
+    visibility = ["//visibility:public"],
+)
+
+config_setting(
     name = "ios",
-    values = {"crosstool_top": "//tools/osx/crosstool:crosstool"},
+    values = {"apple_platform_type": "ios"},
     visibility = ["//visibility:public"],
 )
 
@@ -467,7 +470,7 @@ tf_cc_shared_object(
     name = "libtensorflow_framework.so",
     framework_so = [],
     linkopts = select({
-        "//tensorflow:darwin": [],
+        "//tensorflow:macos": [],
         "//tensorflow:windows": [],
         "//conditions:default": [
             "-Wl,--version-script,$(location //tensorflow:tf_framework_version_script.lds)",
@@ -503,7 +506,7 @@ tf_cc_shared_object(
 tf_cc_shared_object(
     name = "tensorflow",
     linkopts = select({
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow/c:exported_symbols.lds)",
             "-Wl,-install_name,@rpath/libtensorflow.so",
         ],
@@ -518,7 +521,8 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
     deps = [
@@ -534,7 +538,7 @@ tf_cc_shared_object(
 tf_cc_shared_object(
     name = "tensorflow_cc",
     linkopts = select({
-        "//tensorflow:darwin": [
+        "//tensorflow:macos": [
             "-Wl,-exported_symbols_list,$(location //tensorflow:tf_exported_symbols.lds)",
         ],
         "//tensorflow:windows": [],
@@ -547,7 +551,8 @@ tf_cc_shared_object(
     visibility = ["//visibility:public"],
     # add win_def_file for tensorflow_cc
     win_def_file = select({
-        # We need this DEF file to properly export symbols on Windows        "//tensorflow:windows": ":tensorflow_filtered_def_file",
+        # We need this DEF file to properly export symbols on Windows
+        "//tensorflow:windows": ":tensorflow_filtered_def_file",
         "//conditions:default": None,
     }),
     deps = [

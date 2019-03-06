@@ -43,6 +43,7 @@ from tensorflow.python.ops.losses import losses
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
 from tensorflow.python.training import gradient_descent
+from tensorflow.python.util import nest
 
 
 # Global config for grappler setting that is used for graph mode test.
@@ -184,6 +185,7 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
 
     layer = keras.layers.UnifiedLSTM(units, stateful=True)
     layer.build((num_samples, timesteps, embedding_dim))
+    initial_weight_count = len(layer.weights)
     layer.reset_states()
     assert len(layer.states) == num_states
     assert layer.states[0] is not None
@@ -204,6 +206,12 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
     # Test with invalid data
     with self.assertRaises(ValueError):
       layer.reset_states([1] * (len(layer.states) + 1))
+
+    self.assertEqual(initial_weight_count, len(layer.weights))
+    # Variables in "states" shouldn't show up in .weights
+    layer.states = nest.map_structure(variables.Variable, values)
+    layer.reset_states()
+    self.assertEqual(initial_weight_count, len(layer.weights))
 
   def test_specify_state_with_masking(self):
     num_states = 2
@@ -238,8 +246,9 @@ class UnifiedLSTMTest(keras_parameterized.TestCase):
     num_samples = 2
 
     inputs = keras.Input(batch_shape=(num_samples, timesteps, embedding_dim))
+    masked = keras.layers.Masking()(inputs)
     layer = keras.layers.UnifiedLSTM(units, return_state=True, stateful=True)
-    outputs = layer(inputs)
+    outputs = layer(masked)
     state = outputs[1:]
     assert len(state) == num_states
     model = keras.models.Model(inputs, state[0])

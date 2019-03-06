@@ -3421,7 +3421,7 @@ class MinimalRNNCell(rnn_cell_impl.LayerRNNCell):
    Propagation in Recurrent Neural Networks." ICML, 2018.
 
   A MinimalRNN cell first projects the input to the hidden space. The new
-  hidden state is then calcuated as a weighted sum of the projected input and
+  hidden state is then calculated as a weighted sum of the projected input and
   the previous hidden state, using a single update gate.
   """
 
@@ -3535,7 +3535,7 @@ class CFNCell(rnn_cell_impl.LayerRNNCell):
   "A recurrent neural network without chaos." ICLR, 2017.
 
   A CFN cell first projects the input to the hidden space. The hidden state
-  goes through a contractive mapping. The new hidden state is then calcuated
+  goes through a contractive mapping. The new hidden state is then calculated
   as a linear combination of the projected input and the contracted previous
   hidden state, using decoupled input and forget gates.
   """
