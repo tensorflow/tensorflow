@@ -5482,6 +5482,9 @@ filegroup(
         "lib/core/status_test_util.h",
         "lib/core/stringpiece.h",
         "lib/core/threadpool.h",
+        "lib/core/error_codes.pb.h",
+        "lib/core/error_codes.pb_text-impl.h",
+        "lib/core/error_codes.pb_text.h",
     ],
     visibility = ["//visibility:public"],
 )
