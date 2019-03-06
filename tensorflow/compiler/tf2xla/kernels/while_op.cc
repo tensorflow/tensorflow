@@ -16,6 +16,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/kernels/while_op.h"
 
 #include "absl/strings/str_split.h"
+#include "tensorflow/compiler/tf2xla/kernels/tensor_list_utils.h"
 #include "tensorflow/compiler/tf2xla/shape_util.h"
 #include "tensorflow/compiler/tf2xla/side_effect_util.h"
 #include "tensorflow/compiler/tf2xla/type_util.h"
@@ -26,6 +27,7 @@ limitations under the License.
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/compiler/xla/client/xla_computation.h"
 #include "tensorflow/compiler/xla/literal.h"
+#include "tensorflow/compiler/xla/status_macros.h"
 #include "tensorflow/core/framework/attr_value.pb.h"
 #include "tensorflow/core/framework/function.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -39,11 +41,13 @@ namespace {
 // Builds XlaCompiler argument descriptions `args` from `ctx`.
 Status MakeXlaCompilerArgumentsFromInputs(
     XlaOpKernelContext* ctx, std::vector<XlaCompiler::Argument>* args,
-    bool* has_uninitialized_vars, bool* has_tensor_arrays) {
+    bool* has_uninitialized_vars, bool* has_tensor_arrays,
+    bool* has_uninitialized_tensor_lists) {
   VLOG(2) << "Num inputs " << ctx->num_inputs();
   args->resize(ctx->num_inputs());
   *has_uninitialized_vars = false;
   *has_tensor_arrays = false;
+  *has_uninitialized_tensor_lists = false;
   for (int i = 0; i < ctx->num_inputs(); ++i) {
     VLOG(2) << " Input " << i << " type: " << DataTypeString(ctx->input_type(i))
             << " shape: " << ctx->InputShape(i).DebugString();
@@ -79,15 +83,19 @@ Status MakeXlaCompilerArgumentsFromInputs(
 
     } else {
       arg.kind = XlaCompiler::Argument::kParameter;
-      arg.type = ctx->input_type(i);
-
-      xla::XlaBuilder* builder = ctx->builder();
-      xla::XlaOp handle = ctx->Input(i);
-      auto shape_or_status = builder->GetShape(handle);
-      if (!shape_or_status.ok()) {
-        return shape_or_status.status();
+      arg.type = type;
+      TF_ASSIGN_OR_RETURN(arg.shape, ctx->builder()->GetShape(ctx->Input(i)));
+      if (IsTensorListInput(ctx, i)) {
+        // arg.initialized == false means that the element_shape of the list
+        // was not available at the time of building the list so an empty list
+        // was created instead. If so, the body function of While is run once
+        // to infer the shape of the list before actually building the While op.
+        TF_RETURN_IF_ERROR(
+            IsTensorListInitialized(ctx->Input(i), &arg.initialized));
+        if (!arg.initialized) {
+          *has_uninitialized_tensor_lists = true;
+        }
       }
-      arg.shape = shape_or_status.ValueOrDie();
     }
   }
   return Status::OK();
@@ -266,9 +274,10 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   std::vector<XlaCompiler::Argument> arguments;
   bool has_uninitialized_vars;
   bool has_tensor_arrays;
-  OP_REQUIRES_OK(
-      ctx, MakeXlaCompilerArgumentsFromInputs(
-               ctx, &arguments, &has_uninitialized_vars, &has_tensor_arrays));
+  bool has_uninitialized_tensor_lists;
+  OP_REQUIRES_OK(ctx, MakeXlaCompilerArgumentsFromInputs(
+                          ctx, &arguments, &has_uninitialized_vars,
+                          &has_tensor_arrays, &has_uninitialized_tensor_lists));
 
   xla::XlaBuilder* builder = ctx->builder();
   XlaCompiler* compiler = ctx->compiler();
@@ -327,10 +336,13 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
   //    Hence we can use the output shapes and TensorArray gradients of each
   //    resource as the "true" shapes.
   // 2) again with the "correct" resource information determined by (1).
-  if (has_uninitialized_vars || has_tensor_arrays) {
+  if (has_uninitialized_vars || has_tensor_arrays ||
+      has_uninitialized_tensor_lists) {
     VLOG(2) << "Recompiling loop body: has_uninitialized_vars: "
             << has_uninitialized_vars
-            << " has_tensor_arrays: " << has_tensor_arrays;
+            << " has_tensor_arrays: " << has_tensor_arrays
+            << " has_uninitialized_tensor_lists: "
+            << has_uninitialized_tensor_lists;
     // Initializes any uninitialized resource with zero values of the
     // shape determined by the first compilation.
     for (int i = 0; i < body.resource_updates.size(); ++i) {
@@ -367,6 +379,23 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
         arg.tensor_array_gradients.insert(gradient.first);
       }
     }
+
+    // Set the shape of any uninitialized TensorLists to the shape determined by
+    // the first compilation. Note that, unlike resources, we do not initialize
+    // the input list with zeros here, that is done later.
+    xla::Shape body_output_shape = body.xla_output_shape;
+    OP_REQUIRES(ctx, body_output_shape.IsTuple(),
+                errors::FailedPrecondition(
+                    "xla_output_shape of while body must be a tuple."));
+    for (int i = 0; i < arguments.size(); i++) {
+      XlaCompiler::Argument& arg = arguments[i];
+      if (arg.initialized || !IsTensorListInput(ctx, i)) {
+        continue;
+      }
+      arg.shape = body_output_shape.tuple_shapes(i);
+      arg.initialized = true;
+    }
+
     // Recompile the body with the "correct" resource shapes.
     VLOG(1) << "Recompiling body with corrected resource shapes";
     body = {};
@@ -450,6 +479,26 @@ void XlaWhileOp::Compile(XlaOpKernelContext* ctx) {
       XlaResource* resource;
       OP_REQUIRES_OK(ctx, ctx->GetResourceInput(input_num, &resource));
       OP_REQUIRES_OK(ctx, resource->Pack(&inputs[i], builder));
+    } else if (IsTensorListInput(ctx, input_num)) {
+      // If the list received as input is uninitialized but its shape was
+      // inferred in the first compilation pass we create a new list filled
+      // with zeros and used that as the input to the while op.
+      TensorShape input_list_shape;
+      OP_REQUIRES_OK(ctx, GetTensorListBufferShape(ctx->Input(input_num),
+                                                   &input_list_shape));
+      TensorShape body_arg_shape;
+      OP_REQUIRES_OK(ctx,
+                     GetTensorListBufferShape(body_input_shape.tuple_shapes(i),
+                                              &body_arg_shape));
+      // Shape of the input list may differ from the shape of the body/cond
+      // input if the list's shape was inferred after the first compilation and
+      // the body/cond was recompiled with the updated shape of the list.
+      if (input_list_shape != body_arg_shape) {
+        OP_REQUIRES_OK(ctx, InitializeTensorList(ctx->Input(input_num),
+                                                 body_arg_shape, &inputs[i]));
+      } else {
+        inputs[i] = ctx->Input(input_num);
+      }
     } else {
       inputs[i] = ctx->Input(input_num);
     }

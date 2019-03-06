@@ -397,6 +397,8 @@ tensorflow::ImportNumpy();
 %unignore xla::swig::ComputationBuilder::Complex;
 %unignore xla::swig::ComputationBuilder::Cholesky;
 %unignore xla::swig::ComputationBuilder::QR;
+%unignore xla::swig::ComputationBuilder::Eigh;
+%unignore xla::swig::ComputationBuilder::SVD;
 %unignore xla::swig::ComputationBuilder::TriangularSolve;
 %unignore xla::swig::ComputationBuilder::CustomCall;
 %unignore xla::swig::ComputationBuilder::Gather;

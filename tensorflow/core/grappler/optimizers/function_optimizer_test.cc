@@ -1377,7 +1377,7 @@ TEST_F(FunctionOptimizerTest, InlineIndirectFunctionWithFunctionalControlFlow) {
   EXPECT_EQ(count_nodes_with_op("PartitionedCall"), 0);
   EXPECT_EQ(count_nodes_with_op("If"), 0);
   EXPECT_EQ(count_nodes_with_op("Switch"), 3);
-  EXPECT_EQ(count_nodes_with_op("Merge"), 1);
+  EXPECT_EQ(count_nodes_with_op("Merge"), 2);
 
   GrapplerItem optimized = item.WithGraph(std::move(optimized_graph));
 

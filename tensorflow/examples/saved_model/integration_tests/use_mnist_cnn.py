@@ -90,7 +90,7 @@ def main(argv):
   arguments = {}
   if FLAGS.dropout_rate is not None:
     arguments['dropout_rate'] = FLAGS.dropout_rate
-  feature_extractor = util.CustomLayer(obj, output_shape=[128],
+  feature_extractor = util.CustomLayer(obj, output_shape=[10],
                                        trainable=FLAGS.retrain,
                                        arguments=arguments)
 

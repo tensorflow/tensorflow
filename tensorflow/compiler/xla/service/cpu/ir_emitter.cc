@@ -189,6 +189,7 @@ llvm::Constant* IrEmitter::EmitGlobalForLiteral(const Literal& literal) {
       /*Initializer=*/initializer,
       /*Name=*/"");
   result_global->setAlignment(MinimumAlignmentForShape(literal.shape()));
+  result_global->setUnnamedAddr(llvm::GlobalVariable::UnnamedAddr::Global);
   return llvm::ConstantExpr::getBitCast(
       result_global, IrShapeType(literal.shape())->getPointerTo());
 }

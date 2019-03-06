@@ -218,7 +218,7 @@ def _check_batch_beam(t, batch_size, beam_width):
                    "incompatible with the dynamic shape of %s elements. "
                    "Consider setting reorder_tensor_arrays to False to disable "
                    "TensorArray reordering during the beam search."
-                   % (t.name))
+                   % (t if context.executing_eagerly() else t.name))
   rank = t.shape.ndims
   shape = array_ops.shape(t)
   if rank == 2:

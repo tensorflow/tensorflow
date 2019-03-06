@@ -154,32 +154,28 @@ class TPUStrategy(distribute_lib.DistributionStrategy):
   # TODO(cjfj): Modify `_call_for_each_replica` in `TPUExtended` such that this
   # can use the default implementation.
   # This implementation runs a single step. It does not use infeed or outfeed.
-  def experimental_run(self, fn, input_iterator=None):
+  def experimental_run_v2(self, fn, args=(), kwargs=None):
     """See base class."""
     if context.executing_eagerly() and not ops.inside_function():
       raise NotImplementedError(
           "Eager mode not supported in TPUStrategy outside TF functions.")
 
-    if input_iterator is None:
-      inputs = []
-    else:
-      inputs = input_iterator.get_next()
+    if kwargs is None:
+      kwargs = {}
 
     result = [None]
-    def replicated_fn(replica_id, replica_input):
+    def replicated_fn(replica_id, replica_args, replica_kwargs):
       """Wraps user function to provide replica ID and `Tensor` inputs."""
       with _TPUReplicaContext(self, replica_id_in_sync_group=replica_id):
-        if input_iterator is None:
-          result[0] = fn()
-        else:
-          result[0] = fn(replica_input)
+        result[0] = fn(*replica_args, **replica_kwargs)
       return result[0]
 
     replicate_inputs = []  # By replica.
     for i in range(self.num_replicas_in_sync):
       replicate_inputs.append(
           [constant_op.constant(i, dtype=dtypes.int32),
-           values.select_replica(i, inputs)])
+           values.select_replica(i, args),
+           values.select_replica(i, kwargs)])
 
     with self.scope():
       replicate_outputs = tpu.replicate(replicated_fn, replicate_inputs)
