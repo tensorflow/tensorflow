@@ -226,7 +226,7 @@ void PoplarExecutor::ConnectInfeedsToStreamCallback(
     for (int j = 0; j < infeed_dataset_iterator->shapes.size(); ++j) {
       current_engine_->connectStreamToCallback(
           GetInfeedCopyHandle(inst->name(), j),
-          [j, &infeed_dataset_iterator](void* dest) {
+          [j, infeed_dataset_iterator](void* dest) {
             std::lock_guard<std::recursive_mutex> g(
                 infeed_dataset_iterator->mutex);
             // We make an assumption that every sub tensor from the infeed is
