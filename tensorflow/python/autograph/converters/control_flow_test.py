@@ -98,7 +98,7 @@ class ControlFlowTest(converter_testing.TestCase):
     self.assertTransformedResult(
         test_fn, constant_op.constant(5), 0, symbols={'TestClass': TestClass})
 
-  # TODO(b/127642077): Add t4ests for x.y.z = 2*x.y.z and x.y[z] = 2*x.y[z].
+  # TODO(b/127642077): Add tests for x.y.z = 2*x.y.z and x.y[z] = 2*x.y[z].
   def test_while_local_composite_complex_nestable(self):
 
     # This class is ok to be in a tf.while_loop's state.
