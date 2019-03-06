@@ -1829,10 +1829,10 @@ class MklQuantizedConv2DSumReluOp
     size_t depth = min_filter_vector.NumElements();
     std::vector<float> scales(depth);
     for (size_t i = 0; i < depth; ++i) {
-      // TODO (nammbash): scale factors for UINT8(inputs) & INT8(weights) are
-      // done regularly.A Cleaner design to address all mapping in one function
-      // needs to be implemented in future which also supports other quantized
-      // type mapping in future.
+      // TODO(nammbash): scale factors for UINT8(inputs) & INT8(weights) are
+      // done regularly. A Cleaner design to address all mapping in one 
+      // function needs to be implemented in future which also supports other
+      // quantized type mapping in future.
       scales[i] = 255.0 * 127.0 /
                   (std::max(std::abs(max_input), std::abs(min_input)) *
                    std::max(std::abs(max_filter[i]), std::abs(min_filter[i])));
