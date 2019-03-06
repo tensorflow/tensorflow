@@ -43,7 +43,11 @@ inline void CopyToArray(const string& src, char* dst) {
 inline void CopySubrangeToArray(const string& src, size_t pos, size_t n,
                                 char* dst) {
   if (pos >= src.size()) return;
+#if defined (_MSC_VER)
+  memcpy(dst, src.data() + pos, (std::min)(n, src.size() - pos)); // need to use bracket for msvc to avoid crash with system defined macro
+#else
   memcpy(dst, src.data() + pos, std::min(n, src.size() - pos));
+#endif
 }
 
 // Store encoding of strings[0..n-1] in *out.
