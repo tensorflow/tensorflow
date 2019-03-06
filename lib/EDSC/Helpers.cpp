@@ -18,8 +18,6 @@
 #include "mlir/EDSC/Helpers.h"
 #include "mlir/IR/AffineExpr.h"
 #include "mlir/StandardOps/Ops.h"
-#include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/Builders.h"
-#include "third_party/llvm/llvm/projects/google_mlir/include/mlir/EDSC/Helpers.h"
 
 using namespace mlir;
 using namespace mlir::edsc;

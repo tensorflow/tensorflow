@@ -1,5 +1,4 @@
-//===- builder-api-test.cpp - Tests for Declarative Builder APIs
-//-----------===//
+//===- builder-api-test.cpp - Tests for Declarative Builder APIs ----------===//
 //
 // Copyright 2019 The MLIR Authors.
 //
@@ -211,12 +210,10 @@ TEST_FUNC(builder_blocks_eager) {
   // clang-format off
   BlockHandle b1, b2;
   { // Toplevel function scope.
-    BR(&b1, {&arg1, &arg2}, {c1, c2}); // eagerly builds a new block for b1
-    // We cannot construct b2 eagerly with a `BR(&b2, ...)` call from within b1
-    // because it would result in b2 being nested under b1 which is not what we
-    // want in this test.
+    // Build a new block for b1 eagerly.
+    BR(&b1, {&arg1, &arg2}, {c1, c2});
+    // Construct a new block b2 explicitly with a branch into b1.
     BlockBuilder(&b2, {&arg3, &arg4})({
-        // Instead, construct explicitly
         BR(b1, {arg3, arg4}),
     });
     /// And come back to append into b1 once b2 exists.
