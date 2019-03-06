@@ -1257,7 +1257,6 @@ class NNAPIDelegateKernel {
 TfLiteDelegate* NnApiDelegate() {
   static TfLiteDelegate delegate = {
       .data_ = nullptr,
-      .flags = kTfLiteDelegateFlagsNone,
       .Prepare = [](TfLiteContext* context,
                     TfLiteDelegate* delegate) -> TfLiteStatus {
         // Do not check nodes_ if NN API is unavailable.
@@ -1323,6 +1322,7 @@ TfLiteDelegate* NnApiDelegate() {
               return state->Invoke(context, node);
             },
 
+            .profiling_string = nullptr,
             .builtin_code = kTfLiteBuiltinDelegate,
         };
 
@@ -1332,7 +1332,13 @@ TfLiteDelegate* NnApiDelegate() {
             context, nnapi_delegate_kernel,
             reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()),
             delegate);
-      }};
+      },
+
+      .CopyFromBufferHandle = nullptr,
+      .CopyToBufferHandle = nullptr,
+      .FreeBufferHandle = nullptr,
+      .flags = kTfLiteDelegateFlagsNone,
+  };
 
   return &delegate;
 }
