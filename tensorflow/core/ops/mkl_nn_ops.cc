@@ -219,6 +219,9 @@ REGISTER_OP("_MklQuantizedConv2D")
       return Status::OK();
     });
 
+// TODO(nammbash): Most of the  TF_RETURN_IF_ERROR(c->WithRank) checks
+// seems to be similar and hence can be moved into a single function 
+// with appropriate arguments for a cleaner design.
 REGISTER_OP("_MklQuantizedConv2DAndRequantize")
     .Input("input: Tinput")
     .Input("filter: Tfilter")

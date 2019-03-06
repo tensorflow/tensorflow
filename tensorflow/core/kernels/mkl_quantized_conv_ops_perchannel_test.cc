@@ -40,8 +40,8 @@ namespace tensorflow {
 static const uint8 dummy_tensor[] = {0, 0, 0, 0, 0, 0, 0, 0};
 static const TensorShape dummy_shape({8});
 
-// TODO nammbash: Move this helper class to mkl_utils or mkl_test_utils
-// so that all tests can use. (set a seperate PR that changes all Mkl tests).
+// TODO(nammbash): Move this helper class to mkl_utils or mkl_test_utils
+// so that all tests can use. (set a seperate PR that changes all MKL tests).
 // Helper class for converting MKL tensors to TF tensors
 class ConvMklToTF : public OpsTestBase {
  public:
