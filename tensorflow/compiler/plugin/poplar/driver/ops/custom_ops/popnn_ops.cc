@@ -1,4 +1,6 @@
 #include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/popnn_ops.h"
+#include "tensorflow/compiler/plugin/poplar/driver/ops/custom_ops/popnn/pooling.h"
+
 #include <algorithm>
 
 #include "tensorflow/compiler/plugin/poplar/driver/compiler_resources.h"
@@ -112,21 +114,6 @@ poplar::Tensor PackLstmKernel(poplar::Tensor input_weights,
 }
 
 }  // namespace
-
-const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
-  static absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo> info_map = {
-      {PoplibsOp::LstmLayerFwd, {AllocateLstmLayerFwdOp, CreateLstmLayerFwdOp}},
-      {PoplibsOp::LstmLayerBwd, {AllocateLstmLayerBwdOp, CreateLstmLayerBwdOp}},
-      {PoplibsOp::GroupNormInference,
-       {AllocateNormInferenceAndTrainingOp, CreateGroupNormInferenceOp}},
-      {PoplibsOp::GroupNormTraining,
-       {AllocateNormInferenceAndTrainingOp, CreateGroupNormTrainingOp}},
-      {PoplibsOp::GroupNormGrad, {AllocateNormGradOp, CreateGroupNormGradOp}},
-      {PoplibsOp::GroupNormStatistics,
-       {AllocateNormStatisticsOp, CreateGroupNormStatisticsOp}},
-  };
-  return info_map;
-}
 
 StatusOr<poplar::Tensor> AllocateLstmLayerFwdOp(
     poplar::Graph& graph, CompilerResources& res, const std::string& name,
@@ -442,6 +429,23 @@ StatusOr<poplar::program::Program> CreateGroupNormStatisticsOp(
                       GetNormOpts(attribute_map));
   return CreateNormStatistics(NormType::GroupNorm, graph, res, inst, epsilon,
                               feature_index, num_groups, tensor_map);
+}
+
+const absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo>& GetPopnnOpInfoMap() {
+  static absl::flat_hash_map<PoplibsOp, CustomPoplibOpInfo> info_map = {
+      {PoplibsOp::GroupNormGrad, {AllocateNormGradOp, CreateGroupNormGradOp}},
+      {PoplibsOp::GroupNormInference,
+       {AllocateNormInferenceAndTrainingOp, CreateGroupNormInferenceOp}},
+      {PoplibsOp::GroupNormStatistics,
+       {AllocateNormStatisticsOp, CreateGroupNormStatisticsOp}},
+      {PoplibsOp::GroupNormTraining,
+       {AllocateNormInferenceAndTrainingOp, CreateGroupNormTrainingOp}},
+      {PoplibsOp::LstmLayerBwd, {AllocateLstmLayerBwdOp, CreateLstmLayerBwdOp}},
+      {PoplibsOp::LstmLayerFwd, {AllocateLstmLayerFwdOp, CreateLstmLayerFwdOp}},
+      {PoplibsOp::MaxPool, {AllocatePoolingOp, CreateMaxPoolOp}},
+      {PoplibsOp::MaxPoolGrad, {AllocatePoolingOp, CreateMaxPoolGradOp}},
+  };
+  return info_map;
 }
 
 }  // namespace poplarplugin

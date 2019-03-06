@@ -37,7 +37,6 @@ limitations under the License.
 #include "tensorflow/compiler/plugin/poplar/driver/passes/dependency_replacer.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/expression_outliner.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/forward_allocation.h"
-#include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_max_pool.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_early.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_ops_late.h"
 #include "tensorflow/compiler/plugin/poplar/driver/passes/fuse_wide_const.h"
@@ -380,7 +379,6 @@ StatusOr<std::unique_ptr<Executable>> PoplarCompiler::RunBackend(
       pass.AddPass<WhileLoopConstantSinking>();
       pass.AddPass<HloPassFix<AlgebraicSimplifier>>(simplifier_opts);
       pass.AddPass<SortSimplifier>();
-      pass.AddPass<HloPassFix<FuseMaxPool>>(resources.annotations);
       pass.AddPass<HloPassFix<FuseOpsLate>>(resources.annotations);
       pass.AddPass<FuseWideConst>(resources.annotations);
       pass.AddPass<HloDCE>();
