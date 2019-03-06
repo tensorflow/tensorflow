@@ -43,6 +43,22 @@ namespace intrinsics {
 ///   All Handles have already captured previously constructed IR objects.
 ValueHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
 
+/// Creates a new mlir::Block* and branches to it from the current block.
+/// Argument types are specified by `operands`.
+/// Captures the new block in `bh` and the actual `operands` in `captures`. To
+/// insert the new mlir::Block*, a local ScopedContext is constructed and
+/// released to the current block. The branch instruction is then added to the
+/// new block.
+///
+/// Prerequisites:
+///   `b` has not yet captured an mlir::Block*.
+///   No `captures` have captured any mlir::Value*.
+///   All `operands` have already captured an mlir::Value*
+///   captures.size() == operands.size()
+///   captures and operands are pairwise of the same type.
+ValueHandle BR(BlockHandle *bh, ArrayRef<ValueHandle *> captures,
+               ArrayRef<ValueHandle> operands);
+
 /// Branches into the mlir::Block* captured by BlockHandle `trueBranch` with
 /// `trueOperands` if `cond` evaluates to `true` (resp. `falseBranch` and
 /// `falseOperand` if `cond` evaluates to `false`).
@@ -51,6 +67,29 @@ ValueHandle BR(BlockHandle bh, ArrayRef<ValueHandle> operands);
 ///   All Handles have captured previouly constructed IR objects.
 ValueHandle COND_BR(ValueHandle cond, BlockHandle trueBranch,
                     ArrayRef<ValueHandle> trueOperands, BlockHandle falseBranch,
+                    ArrayRef<ValueHandle> falseOperands);
+
+/// Eagerly creates new mlir::Block* with argument types specified by
+/// `trueOperands`/`falseOperands`.
+/// Captures the new blocks in `trueBranch`/`falseBranch` and the arguments in
+/// `trueCaptures/falseCaptures`.
+/// To insert the new mlir::Block*, a local ScopedContext is constructed and
+/// released. The branch instruction is then added in the original location and
+/// targeting the eagerly constructed blocks.
+///
+/// Prerequisites:
+///   `trueBranch`/`falseBranch` has not yet captured an mlir::Block*.
+///   No `trueCaptures`/`falseCaptures` have captured any mlir::Value*.
+///   All `trueOperands`/`trueOperands` have already captured an mlir::Value*
+///   `trueCaptures`.size() == `trueOperands`.size()
+///   `falseCaptures`.size() == `falseOperands`.size()
+///   `trueCaptures` and `trueOperands` are pairwise of the same type
+///   `falseCaptures` and `falseOperands` are pairwise of the same type.
+ValueHandle COND_BR(ValueHandle cond, BlockHandle *trueBranch,
+                    ArrayRef<ValueHandle *> trueCaptures,
+                    ArrayRef<ValueHandle> trueOperands,
+                    BlockHandle *falseBranch,
+                    ArrayRef<ValueHandle *> falseCaptures,
                     ArrayRef<ValueHandle> falseOperands);
 
 ////////////////////////////////////////////////////////////////////////////////

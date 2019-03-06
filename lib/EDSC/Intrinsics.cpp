@@ -31,6 +31,36 @@ ValueHandle mlir::edsc::intrinsics::BR(BlockHandle bh,
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
   return ValueHandle::create<BranchOp>(bh.getBlock(), ops);
 }
+static void enforceEmptyCapturesMatchOperands(ArrayRef<ValueHandle *> captures,
+                                              ArrayRef<ValueHandle> operands) {
+  assert(captures.size() == operands.size() &&
+         "Expected same number of captures as operands");
+  for (auto it : llvm::zip(captures, operands)) {
+    (void)it;
+    assert(!std::get<0>(it)->hasValue() &&
+           "Unexpected already captured ValueHandle");
+    assert(std::get<1>(it) && "Expected already captured ValueHandle");
+    assert(std::get<0>(it)->getType() == std::get<1>(it).getType() &&
+           "Expected the same type for capture and operand");
+  }
+}
+
+ValueHandle mlir::edsc::intrinsics::BR(BlockHandle *bh,
+                                       ArrayRef<ValueHandle *> captures,
+                                       ArrayRef<ValueHandle> operands) {
+  assert(!*bh && "Unexpected already captured BlockHandle");
+  enforceEmptyCapturesMatchOperands(captures, operands);
+  { // Clone the scope explicitly to avoid modifying the insertion point in the
+    // current scope which result in surprising usage.
+    auto *currentB = ScopedContext::getBuilder();
+    FuncBuilder b(currentB->getInsertionBlock(), currentB->getInsertionPoint());
+    Location loc = ScopedContext::getLocation();
+    ScopedContext scope(b, loc);
+    BlockBuilder(bh, captures)({/* no body */});
+  } // Release before adding the branch to the eagerly created block.
+  SmallVector<Value *, 4> ops(operands.begin(), operands.end());
+  return ValueHandle::create<BranchOp>(bh->getBlock(), ops);
+}
 
 ValueHandle
 mlir::edsc::intrinsics::COND_BR(ValueHandle cond, BlockHandle trueBranch,
@@ -43,9 +73,33 @@ mlir::edsc::intrinsics::COND_BR(ValueHandle cond, BlockHandle trueBranch,
                                            falseBranch.getBlock(), falseOps);
 }
 
+ValueHandle mlir::edsc::intrinsics::COND_BR(
+    ValueHandle cond, BlockHandle *trueBranch,
+    ArrayRef<ValueHandle *> trueCaptures, ArrayRef<ValueHandle> trueOperands,
+    BlockHandle *falseBranch, ArrayRef<ValueHandle *> falseCaptures,
+    ArrayRef<ValueHandle> falseOperands) {
+  assert(!*trueBranch && "Unexpected already captured BlockHandle");
+  assert(!*falseBranch && "Unexpected already captured BlockHandle");
+  enforceEmptyCapturesMatchOperands(trueCaptures, trueOperands);
+  enforceEmptyCapturesMatchOperands(falseCaptures, falseOperands);
+  { // Clone the scope explicitly.
+    auto *currentB = ScopedContext::getBuilder();
+    FuncBuilder b(currentB->getInsertionBlock(), currentB->getInsertionPoint());
+    Location loc = ScopedContext::getLocation();
+    ScopedContext scope(b, loc);
+    BlockBuilder(trueBranch, trueCaptures)({/* no body */});
+    BlockBuilder(falseBranch, falseCaptures)({/* no body */});
+  } // Release before adding the branch to the eagerly created block.
+  SmallVector<Value *, 4> trueOps(trueOperands.begin(), trueOperands.end());
+  SmallVector<Value *, 4> falseOps(falseOperands.begin(), falseOperands.end());
+  return ValueHandle::create<CondBranchOp>(
+      cond, trueBranch->getBlock(), trueOps, falseBranch->getBlock(), falseOps);
+}
+
 ////////////////////////////////////////////////////////////////////////////////
 // TODO(ntv): Intrinsics below this line should be TableGen'd.
 ////////////////////////////////////////////////////////////////////////////////
+
 ValueHandle mlir::edsc::intrinsics::RETURN(ArrayRef<ValueHandle> operands) {
   SmallVector<Value *, 4> ops(operands.begin(), operands.end());
   return ValueHandle::create<ReturnOp>(ops);
