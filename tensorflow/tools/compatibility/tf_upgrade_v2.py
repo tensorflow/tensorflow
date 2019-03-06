@@ -684,6 +684,8 @@ class TFAPIChangeSpec(ast_edits.APIChangeSpec):
             "tf.compat.v1.nn.fused_batch_norm",
         "tf.nn.softmax_cross_entropy_with_logits_v2":
             "tf.nn.softmax_cross_entropy_with_logits",
+        "tf.nn.sigmoid_cross_entropy_with_logits":
+            "tf.nn.sigmoid_cross_entropy_with_logits",
         "tf.losses.Reduction.MEAN":
             "tf.compat.v1.losses.Reduction.MEAN",
         "tf.losses.Reduction.SUM_BY_NONZERO_WEIGHTS":
