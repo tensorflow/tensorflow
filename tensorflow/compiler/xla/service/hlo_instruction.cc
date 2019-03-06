@@ -2835,11 +2835,6 @@ bool HloInstruction::IsElementwise() const {
   return IsElementwiseImpl(absl::nullopt);
 }
 
-bool HloInstruction::ImplicitlyBroadcastsOperand(int64 operand_idx) const {
-  CHECK(IsElementwise());
-  return !ShapeUtil::SameDimensions(shape(), operand(operand_idx)->shape());
-}
-
 bool HloInstruction::IsElementwiseOnOperand(int64 operand_idx) const {
   return IsElementwiseImpl(operand_idx);
 }
@@ -2949,9 +2944,7 @@ HloInstruction::UseKind HloInstruction::OperandElementUse(int64 i) const {
       }
       return UseKind::kReuse;
     default:
-      return IsElementwise() && !ImplicitlyBroadcastsOperand(i)
-                 ? UseKind::kUse
-                 : UseKind::kReuse;
+      return IsElementwise() ? UseKind::kUse : UseKind::kReuse;
   }
 }
 

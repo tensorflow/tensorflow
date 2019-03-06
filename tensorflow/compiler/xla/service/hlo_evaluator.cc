@@ -674,17 +674,8 @@ Status HloEvaluator::HandleCompare(HloInstruction* compare) {
   HloOpcode opcode = compare->opcode();
   auto lhs = compare->operand(0);
   auto rhs = compare->operand(1);
-  // TODO(b/35950897, b/27796129): add DCHECK back once implicit broadcast is
-  // removed.
-  if (!(ShapeUtil::SameDimensions(compare->shape(), rhs->shape()) &&
-        ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()))) {
-    return Unimplemented(
-        "Implicit broadcasting is currently unsupported in HLO evaluator "
-        "Shape Mismatch: %s vs %s vs %s",
-        ShapeUtil::HumanString(compare->shape()),
-        ShapeUtil::HumanString(lhs->shape()),
-        ShapeUtil::HumanString(rhs->shape()));
-  }
+  DCHECK(ShapeUtil::SameDimensions(compare->shape(), rhs->shape()) &&
+         ShapeUtil::SameDimensions(lhs->shape(), rhs->shape()));
 
   TF_RET_CHECK(lhs->shape().element_type() == rhs->shape().element_type());
 
