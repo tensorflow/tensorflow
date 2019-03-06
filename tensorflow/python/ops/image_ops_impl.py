@@ -494,14 +494,14 @@ def _rot90_ND(image, k, name_scope, axes):
 
   def _rot90():
     return array_ops.transpose(
-      array_ops.reverse_v2(image, [axes[1]]), axes_list)
+        array_ops.reverse_v2(image, [axes[1]]), axes_list)
 
   def _rot180():
     return array_ops.reverse_v2(image, axes)
 
   def _rot270():
     return array_ops.reverse_v2(
-      array_ops.transpose(image, axes_list), [axes[1]])
+        array_ops.transpose(image, axes_list), [axes[1]])
 
   cases = [(math_ops.equal(k, 1), _rot90), (math_ops.equal(k, 2), _rot180),
            (math_ops.equal(k, 3), _rot270)]
