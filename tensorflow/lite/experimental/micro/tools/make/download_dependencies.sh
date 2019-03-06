@@ -37,7 +37,7 @@ SIFIVE_FE310_LIB_URL="https://github.com/sifive/freedom-e-sdk/archive/baeeb8fd49
 AM_SDK_URL="http://s3.asia.ambiqmicro.com/downloads/AmbiqSuite-Rel2.0.0.zip"
 AP3_URL="https://github.com/AmbiqMicro/TFLiteMicro_Apollo3/archive/dfbcef9a57276c087d95aab7cb234f1d4c9eaaba.zip"
 CUST_CMSIS_URL="https://github.com/AmbiqMicro/TFLiteMicro_CustCMSIS/archive/8f63966c5692e6a3a83956efd2e4aed77c4c9949.zip"
-KISSFFT_URL="http://downloads.sourceforge.net/project/kissfft/kissfft/v1_3_0/kiss_fft130.zip"
+KISSFFT_URL="https://github.com/mborgerding/kissfft/archive/v130.zip"
 SPARKFUN_EDGE_BSP_URL="https://github.com/sparkfun/SparkFun_Edge_BSP/archive/620f5f7a69fc69e38cda8132b69302d9c28ba0dd.zip"
 
 if [[ "$OSTYPE" == "darwin"* ]]; then
