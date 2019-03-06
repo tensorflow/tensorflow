@@ -1309,7 +1309,7 @@ class TensorBoard(Callback):
         summary_ops_v2.trace_export(
             name='batch_%d' % self._total_batches_seen,
             step=self._total_batches_seen,
-            profiler_outdir=self.log_dir)
+            profiler_outdir=os.path.join(self.log_dir, 'train'))
       self._is_tracing = False
 
   def _log_metrics(self, logs, prefix, step):
