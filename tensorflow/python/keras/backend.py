@@ -3908,11 +3908,11 @@ def categorical_crossentropy(target, output, from_logits=False, axis=-1):
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Softmax':
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Softmax'):
       axis = axis % len(output.shape)
       # scale preds so that the class probas of each sample sum to 1
       output = output / math_ops.reduce_sum(output, axis, True)
-
       # Compute cross entropy from probabilities.
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
@@ -3949,7 +3949,8 @@ def sparse_categorical_crossentropy(target, output, from_logits=False, axis=-1):
       ValueError: if `axis` is neither -1 nor one of the axes of `output`.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Softmax':
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Softmax'):
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1 - epsilon_)
       output = math_ops.log(output)
@@ -3994,7 +3995,8 @@ def binary_crossentropy(target, output, from_logits=False):
       A tensor.
   """
   if not from_logits:
-    if context.executing_eagerly() or output.op.type != 'Sigmoid':
+    if (isinstance(output, (ops.EagerTensor, variables_module.Variable)) or
+        output.op.type != 'Sigmoid'):
       epsilon_ = _to_tensor(epsilon(), output.dtype.base_dtype)
       output = clip_ops.clip_by_value(output, epsilon_, 1. - epsilon_)
 
