@@ -182,7 +182,7 @@ Instruction::create(Location location, OperationName name,
   unsigned operandIt = 0, operandE = operands.size();
   unsigned nextOperand = 0;
   for (; operandIt != operandE; ++operandIt) {
-    // Null operands are used as sentinals between successor operand lists. If
+    // Null operands are used as sentinels between successor operand lists. If
     // we encounter one here, break and handle the successor operands lists
     // separately below.
     if (!operands[operandIt])
@@ -192,21 +192,21 @@ Instruction::create(Location location, OperationName name,
 
   unsigned currentSuccNum = 0;
   if (operandIt == operandE) {
-    // Verify that the amount of sentinal operands is equivalent to the number
+    // Verify that the amount of sentinel operands is equivalent to the number
     // of successors.
     assert(currentSuccNum == numSuccessors);
     return inst;
   }
 
   assert(!inst->isKnownNonTerminator() &&
-         "Sentinal operand found in non terminator operand list.");
+         "Unexpected nullptr in operand list when creating non-terminator.");
   auto instBlockOperands = inst->getBlockOperands();
   unsigned *succOperandCountIt = inst->getTrailingObjects<unsigned>();
   unsigned *succOperandCountE = succOperandCountIt + numSuccessors;
   (void)succOperandCountE;
 
   for (; operandIt != operandE; ++operandIt) {
-    // If we encounter a sentinal branch to the next operand update the count
+    // If we encounter a sentinel branch to the next operand update the count
     // variable.
     if (!operands[operandIt]) {
       assert(currentSuccNum < numSuccessors);
@@ -216,7 +216,7 @@ Instruction::create(Location location, OperationName name,
       if (currentSuccNum != 0) {
         ++succOperandCountIt;
         assert(succOperandCountIt != succOperandCountE &&
-               "More sentinal operands than successors.");
+               "More sentinel operands than successors.");
       }
 
       new (&instBlockOperands[currentSuccNum])
@@ -229,7 +229,7 @@ Instruction::create(Location location, OperationName name,
     ++(*succOperandCountIt);
   }
 
-  // Verify that the amount of sentinal operands is equivalent to the number of
+  // Verify that the amount of sentinel operands is equivalent to the number of
   // successors.
   assert(currentSuccNum == numSuccessors);
 
