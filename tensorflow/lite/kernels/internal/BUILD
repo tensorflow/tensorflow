@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -567,9 +567,7 @@ cc_library(
     ],
 )
 
-# TODO(b/122597976): Eliminate TF dependency from lite/kernels:test_util,
-# in turn eliminating the need to use tf_cc_test for any dependent tests.
-tf_cc_test(
+cc_test(
     name = "tensor_utils_test",
     srcs = ["tensor_utils_test.cc"],
     linkopts = select({
