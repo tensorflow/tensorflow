@@ -46,7 +46,10 @@ class DecoupledWeightDecayExtension(object):
   optimizers with decoupled weight decay. We explicitly define the two examples
   used in the above paper (SGDW and AdamW), but in general this can extend
   any OptimizerX by using
-  `extend_with_weight_decay(OptimizerX, weight_decay=weight_decay)`.
+  `OptimizerXW = extend_with_decoupled_weight_decay(OptimizerX)`.
+  The weight decay can now be passed as an argument to the OptimizerXW class
+  in addition to any arguments which would be passed to the original optimizer
+  class OptimizerX.
   In order for it to work, it must be the first class the Optimizer with
   weight decay inherits from, e.g.
 
@@ -296,8 +299,9 @@ class MomentumWOptimizer(DecoupledWeightDecayExtension,
 
   Note that this optimizer can also be instantiated as
   ```python
-  extend_with_weight_decay(tf.train.MomentumOptimizer,
-                           weight_decay=weight_decay)
+  MyMomemtumW = extend_with_decoupled_weight_decay(tf.train.MomentumOptimizer)
+  # Instantiate MyMomemtumW object
+  optimizer = MyMomentumW(weight_decay=0.001, learning_rate=0.01, momentum=0.9)
   ```
   """
 
@@ -352,7 +356,9 @@ class AdamWOptimizer(DecoupledWeightDecayExtension, adam.AdamOptimizer):
 
   Note that this optimizer can also be instantiated as
   ```python
-  extend_with_weight_decay(tf.train.AdamOptimizer, weight_decay=weight_decay)
+  MyAdamW = extend_with_decoupled_weight_decay(tf.train.AdamOptimizer)
+  # Instantiate MyAdamW object
+  optimizer = MyMomentumW(weight_decay=0.001, learning_rate=0.001)
   ```
   """
 
