@@ -519,28 +519,29 @@ static void swapId(FlatAffineConstraints *A, unsigned posA, unsigned posB) {
   std::swap(A->getId(posA), A->getId(posB));
 }
 
-/// Merge and align the identifiers of A and B so that both constraint systems
-/// get the union of the contained identifiers that is dimension-wise and
-/// symbol-wise unique; both constraint systems are updated so that they have
-/// the union of all identifiers, with A's original identifiers appearing first
-/// followed by any of B's identifiers that didn't appear in A. Local
-/// identifiers of each system are by design separate/local and are placed one
-/// after other (A's followed by B's).
+/// Merge and align the identifiers of A and B starting at 'offset', so that
+/// both constraint systems get the union of the contained identifiers that is
+/// dimension-wise and symbol-wise unique; both constraint systems are updated
+/// so that they have the union of all identifiers, with A's original
+/// identifiers appearing first followed by any of B's identifiers that didn't
+/// appear in A. Local identifiers of each system are by design separate/local
+/// and are placed one after other (A's followed by B's).
 //  Eg: Input: A has ((%i %j) [%M %N]) and B has (%k, %j) [%P, %N, %M])
 //      Output: both A, B have (%i, %j, %k) [%M, %N, %P]
 //
 // TODO(mlir-team): expose this function at some point.
-static void mergeAndAlignIds(FlatAffineConstraints *A,
+static void mergeAndAlignIds(unsigned offset, FlatAffineConstraints *A,
                              FlatAffineConstraints *B) {
+  assert(offset <= A->getNumDimIds() && offset <= B->getNumDimIds());
   // A merge/align isn't meaningful if a cst's ids aren't distinct.
   assert(areIdsUnique(*A) && "A's id values aren't unique");
   assert(areIdsUnique(*B) && "B's id values aren't unique");
 
-  assert(std::all_of(A->getIds().begin(),
+  assert(std::all_of(A->getIds().begin() + offset,
                      A->getIds().begin() + A->getNumDimAndSymbolIds(),
                      [](Optional<Value *> id) { return id.hasValue(); }));
 
-  assert(std::all_of(B->getIds().begin(),
+  assert(std::all_of(B->getIds().begin() + offset,
                      B->getIds().begin() + B->getNumDimAndSymbolIds(),
                      [](Optional<Value *> id) { return id.hasValue(); }));
 
@@ -554,14 +555,15 @@ static void mergeAndAlignIds(FlatAffineConstraints *A,
   }
 
   SmallVector<Value *, 4> aDimValues, aSymValues;
-  A->getIdValues(0, A->getNumDimIds(), &aDimValues);
+  A->getIdValues(offset, A->getNumDimIds(), &aDimValues);
   A->getIdValues(A->getNumDimIds(), A->getNumDimAndSymbolIds(), &aSymValues);
   {
     // Merge dims from A into B.
-    unsigned d = 0;
+    unsigned d = offset;
     for (auto *aDimValue : aDimValues) {
       unsigned loc;
       if (B->findId(*aDimValue, &loc)) {
+        assert(loc >= offset && "A's dim appears in B's aligned range");
         assert(loc < B->getNumDimIds() &&
                "A's dim appears in B's non-dim position");
         swapId(B, d, loc);
@@ -623,7 +625,7 @@ bool FlatAffineConstraints::composeMap(AffineValueMap *vMap) {
                                    vMap->getOperands().end());
     localCst.setIdValues(0, localCst.getNumDimAndSymbolIds(), values);
     // Align localCst and this.
-    mergeAndAlignIds(&localCst, this);
+    mergeAndAlignIds(/*offset=*/0, &localCst, this);
     // Finally, append localCst to this constraint set.
     append(localCst);
   }
@@ -772,7 +774,7 @@ bool FlatAffineConstraints::addAffineForOpDomain(
     }
     // Merge and align with localVarCst.
     if (localVarCst.getNumLocalIds() > 0) {
-      mergeAndAlignIds(this, &localVarCst);
+      mergeAndAlignIds(/*offset=*/0, this, &localVarCst);
       append(localVarCst);
     }
 
@@ -1721,7 +1723,7 @@ bool FlatAffineConstraints::addSliceBounds(ArrayRef<Value *> values,
           }
         }
       }
-      mergeAndAlignIds(this, &localVarCst);
+      mergeAndAlignIds(/*offset=*/0, this, &localVarCst);
       append(localVarCst);
     }
 
@@ -2692,7 +2694,7 @@ bool FlatAffineConstraints::unionBoundingBox(
   Optional<FlatAffineConstraints> otherCopy;
   if (!areIdsAligned(*this, otherCst)) {
     otherCopy.emplace(FlatAffineConstraints(otherCst));
-    mergeAndAlignIds(this, &otherCopy.getValue());
+    mergeAndAlignIds(/*offset=*/numDims, this, &otherCopy.getValue());
   }
 
   const auto &other = otherCopy ? *otherCopy : otherCst;
