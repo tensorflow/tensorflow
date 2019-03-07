@@ -129,7 +129,7 @@ class InstanceNormTest(test.TestCase):
         reduced_axes = tuple(reduced_axes)
 
         inputs = random_ops.random_uniform(input_shape, seed=0,
-            dtype=dtypes.float32 if sys.byteorder == "big" else dtypes.float32) * sigma + mu
+            dtype=dtypes.float64 if sys.byteorder == "big" else dtypes.float32) * sigma + mu
         output_op = normalization.instance_norm(
             inputs, center=False, scale=False, data_format=data_format)
         with self.cached_session() as sess:
