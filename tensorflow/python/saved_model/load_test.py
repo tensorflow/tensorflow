@@ -625,9 +625,9 @@ class LoadTest(test.TestCase, parameterized.TestCase):
 
     imported = self.cycle(root, cycles)
 
-    with self.assertRaisesRegexp(ValueError, "Cannot canonicalize"):
+    with self.assertRaisesRegexp(ValueError, "Python inputs incompatible"):
       # We cannot call the function with a constant of shape ().
-      self.assertEqual(7, imported.f(constant_op.constant(2)).numpy())
+      imported.f(constant_op.constant(2)).numpy()
 
     # TODO(vbardiovsky): When classes are revived with input_signatures, we
     # should also check that the calls below are not generating any more
@@ -1076,6 +1076,20 @@ class LoadTest(test.TestCase, parameterized.TestCase):
     self.assertAllEqual(4, root.f(3).numpy())
     self.assertAllEqual(3, root.f(constant_op.constant(2)).numpy())
     self.assertAllEqual(4, root.f(constant_op.constant(3)).numpy())
+
+  def test_convert_to_input_signature(self, cycles):
+
+    @def_function.function(
+        input_signature=[tensor_spec.TensorSpec([None], dtypes.int32)])
+    def func(x):
+      return x
+
+    root = tracking.AutoTrackable()
+    root.f = func
+
+    root = self.cycle(root, cycles)
+
+    self.assertEqual([2], root.f([2]).numpy())
 
 
 class SingleCycleTests(test.TestCase, parameterized.TestCase):

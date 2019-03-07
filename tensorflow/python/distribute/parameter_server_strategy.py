@@ -502,13 +502,11 @@ class ParameterServerStrategyExtended(
     assert self._task_id is not None
 
     # The device filters prevent communication between workers.
+    if self._task_type not in ["chief", "worker"]:
+      return updated_config
     del updated_config.device_filters[:]
-    if self._task_type in ["chief", "worker"]:
-      updated_config.device_filters.extend(
-          ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
-    elif self._task_type == "evaluator":
-      updated_config.device_filters.append(
-          "/job:%s/task:%d" % (self._task_type, self._task_id))
+    updated_config.device_filters.extend(
+        ["/job:%s/task:%d" % (self._task_type, self._task_id), "/job:ps"])
     return updated_config
 
   @property

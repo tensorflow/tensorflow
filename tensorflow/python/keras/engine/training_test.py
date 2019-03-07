@@ -39,7 +39,6 @@ from tensorflow.python.keras import losses
 from tensorflow.python.keras import metrics as metrics_module
 from tensorflow.python.keras import testing_utils
 from tensorflow.python.keras.callbacks import Callback
-from tensorflow.python.keras.engine.training_utils import set_run_eagerly_for_dict_structure
 from tensorflow.python.keras.engine.training_utils import weighted_masked_objective
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -48,7 +47,6 @@ from tensorflow.python.ops import state_ops
 from tensorflow.python.ops import variables as variables_lib
 from tensorflow.python.platform import test
 from tensorflow.python.platform import tf_logging as logging
-from tensorflow.python.training.adam import AdamOptimizer
 from tensorflow.python.training.rmsprop import RMSPropOptimizer
 
 try:
@@ -1044,6 +1042,26 @@ class TrainingTest(keras_parameterized.TestCase):
 
     model(array_ops.ones((1, 1)))
     self.assertEqual(len(model.losses), 3)  # Losses are reset upon __call__.
+
+  @keras_parameterized.run_with_all_model_types
+  @keras_parameterized.run_all_keras_modes
+  def test_layer_with_variable_output(self):
+
+    class VariableOutputLayer(keras.layers.Layer):
+
+      def build(self, input_shape):
+        self.v = self.add_weight('output_var', shape=(2, 5), initializer='ones')
+
+      def call(self, inputs):
+        return self.v
+
+    model = testing_utils.get_model_from_layers(
+        [VariableOutputLayer(), keras.layers.Dense(1)], input_shape=(10,))
+    # TODO(omalleyt): Make this work with `run_eagerly=True`.
+    model.compile('sgd', 'mse', run_eagerly=False)
+    model.fit(np.ones((10, 10)), np.ones((10, 1)), batch_size=2, epochs=5)
+
+    self.assertLen(model.trainable_variables, 3)
 
 
 class TestExceptionsAndWarnings(keras_parameterized.TestCase):
@@ -2807,79 +2825,6 @@ class TestTrainingWithMetrics(keras_parameterized.TestCase):
     expected_val = [1., 0.9, 0.8, 0.7, 0.6]
     for key in ['loss', 'mae_1', 'mae_2', 'mae_3', 'mae_4']:
       self.assertAllClose(history.history[key], expected_val, 1e-3)
-
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_a1_total_loss_available_with_dict_dataset(self):
-
-    class TestModel(keras.models.Model):
-
-      def call(self, inputs, training=None, mask=None):
-        return math_ops.to_float(inputs['id'])
-
-    model = TestModel()
-    model.compile(
-        optimizer=AdamOptimizer(), loss='mean_squared_error', metrics=['mse'],
-        run_eagerly=testing_utils.should_run_eagerly())
-    dataset = dataset_ops.Dataset.from_tensor_slices(({
-        'id': [[6], [3], [1]]
-    }, [[0.7], [0.4], [0.2]]))
-    val_dataset = dataset_ops.Dataset.from_tensor_slices(({
-        'id': [[8], [5]]
-    }, [[0.9], [0.6]]))
-    history = model.fit(
-        dataset,
-        steps_per_epoch=2,
-        validation_data=val_dataset,
-        validation_steps=2)
-    self.assertAlmostEqual(history.history['val_loss'][0], 34.885, 2)
-    model.evaluate(dataset, steps=30)
-    model.predict([7])
-
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_total_loss_available_with_dict_array(self):
-
-    class TestModel(keras.models.Model):
-
-      def call(self, inputs, training=None, mask=None):
-        return math_ops.to_float(inputs['id'])
-
-    model = TestModel()
-    model.compile(
-        optimizer=AdamOptimizer(), loss='mean_squared_error', metrics=['mse'],
-        run_eagerly=testing_utils.should_run_eagerly())
-    x = {'id': np.array([[3], [1]])}
-    y = np.array([[4], [2]])
-    val_dataset = (x, y)
-    history = model.fit(
-        x,
-        y,
-        batch_size=32,
-        steps_per_epoch=2,
-        validation_data=val_dataset,
-        validation_steps=2)
-    self.assertAlmostEqual(history.history['val_loss'][0], 1.0, 2)
-    model.evaluate(x, y)
-    model.predict([7])
-
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_set_run_eagerly_for_dict_structure(self):
-    test_model = keras.models.Model()
-    self.assertFalse(test_model.run_eagerly)
-    set_run_eagerly_for_dict_structure(
-        test_model,
-        {'a': 2})
-    self.assertTrue(test_model.run_eagerly)
-
-  @keras_parameterized.run_all_keras_modes(always_skip_v1=True)
-  def test_set_run_eagerly_for_dict_dataset(self):
-    test_model = keras.models.Model()
-    self.assertFalse(test_model.run_eagerly)
-    set_run_eagerly_for_dict_structure(
-        test_model,
-        dataset_ops.Dataset.from_tensor_slices(({
-            'id': [[3], [1]]
-        }, [[0.5], [0.2]])))
-    self.assertTrue(test_model.run_eagerly)
 
 
 class BareUpdateLayer(keras.layers.Layer):

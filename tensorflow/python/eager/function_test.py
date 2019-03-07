@@ -2553,6 +2553,23 @@ class FunctionTest(test.TestCase, parameterized.TestCase):
         [3, 3],
         self.evaluate(calls_func(array_ops.zeros([3, 3]))))
 
+  def testLimitedRetracing(self):
+    trace_count = [0]
+    @function.defun
+    def func(x):
+      trace_count[0] += 1
+      return x
+
+    for _ in range(50):
+      func(constant_op.constant(3.))
+      func(constant_op.constant(4.))
+      func(constant_op.constant([[1., 2.]]))
+      func(constant_op.constant([[]]))
+      func(constant_op.constant([[3., 4.], [5., 6.]]))
+      func(constant_op.constant([[3., 4.], [5., 6.], [7., 8.]]))
+    # Tracing more than twice per input doesn't make sense.
+    self.assertLess(trace_count[0], 13)
+
 
 class MultiDeviceTest(test.TestCase, parameterized.TestCase):
 

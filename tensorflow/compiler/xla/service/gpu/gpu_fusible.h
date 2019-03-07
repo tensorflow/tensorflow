@@ -24,6 +24,15 @@ limitations under the License.
 namespace xla {
 namespace gpu {
 
+// Whether 'instr' can occur inside fusions, i.e. whether it is a candidate
+// for being fused. Note that further restrictions apply, e.g. Scatter must
+// be the root of an input fusion.
+bool IsFusible(const HloInstruction& instr);
+
+bool IsInputFusible(const HloInstruction& instr);
+
+bool IsLoopFusible(const HloInstruction& instr);
+
 // The code emitted for reduce-rooted input fusions (EmitReductionToVector)
 // suffers from poor data locality if the layouts of input parameters differ. In
 // such situtations it is better not to fuse. Only input params with
@@ -46,6 +55,10 @@ bool IsReduceInputFusion(const HloInstruction& instr);
 // is either an unfused reduction-to-vector op or a reduce input fusion.
 bool IsInputFusibleReduction(const HloInstruction& instr);
 
+// Whether `instr` is fusible as root of a scatter input fusions, i.e. `instr`
+// is either an unfused scatter op or a scatter input fusion.
+bool IsInputFusibleScatter(const HloInstruction& instr);
+
 // Whether instruction shapes are compatible for multi-output fusion, i.e.
 // whether the emitters support lowering the resulting fusion.
 // This function works for both, sibling and producer-consumer multi-output
@@ -55,6 +68,14 @@ bool IsInputFusibleReduction(const HloInstruction& instr);
 // themselves are fusible!
 bool ShapesCompatibleForMultiOutputFusion(const HloInstruction& instr1,
                                           const HloInstruction& instr2);
+
+// Evaluates whether fusing 'producer' into 'consumer' might cause exponential
+// behavior in the fusion emitter. We currently can have exponential time/memory
+// requirements for emitting certain fusion kernels, in which case we don't want
+// to fuse.
+// TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+bool IsFusionEmitterInefficient(const HloInstruction* consumer,
+                                const HloInstruction* producer);
 
 }  // namespace gpu
 }  // namespace xla

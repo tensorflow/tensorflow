@@ -535,6 +535,10 @@ class DistributedVariable(DistributedDelegate):
     return self.primary.shape
 
   @property
+  def trainable(self):
+    return self.primary.trainable
+
+  @property
   def distribute_strategy(self):
     return self._distribute_strategy
 
@@ -904,7 +908,7 @@ class TPUMirroredVariable(trackable.Trackable):
 
   @property
   def device(self):
-    return self._get().device
+    return self.handle.device
 
   def eval(self, session=None):
     return self.primary.eval(session)
@@ -1085,7 +1089,7 @@ class TPUMirroredVariable(trackable.Trackable):
     # pylint: disable=protected-access
     if distribution_strategy_context.in_cross_replica_context():
       return self.primary._as_graph_element()
-    return self._read_variable_op()
+    return self._get()._as_graph_element()
 
   def _gather_saveables_for_checkpoint(self):
     """Overrides Trackable method.

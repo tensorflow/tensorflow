@@ -810,8 +810,8 @@ cc_library(
     name = "gpu_plugin",
     deps = [
         ":service",
-        "//tensorflow/compiler/xla/service/gpu:gpu_compiler",
         "//tensorflow/compiler/xla/service/gpu:gpu_transfer_manager",
+        "//tensorflow/compiler/xla/service/gpu:nvptx_compiler",
         "//tensorflow/core:stream_executor_no_cuda",
         "//tensorflow/core/platform/default/build_config:stream_executor_cuda",
     ],
@@ -1350,6 +1350,7 @@ cc_library(
     deps = [
         ":heap_simulator",
         ":hlo",
+        ":hlo_casting_utils",
         ":hlo_ordering",
         ":hlo_pass",
         ":logical_buffer",
@@ -1924,34 +1925,6 @@ tf_cc_test(
     deps = [
         ":defuser",
         ":hlo_matchers",
-        "//tensorflow/compiler/xla:literal",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla/tests:hlo_test_base",
-    ],
-)
-
-cc_library(
-    name = "implicit_broadcast_remover",
-    srcs = ["implicit_broadcast_remover.cc"],
-    hdrs = ["implicit_broadcast_remover.h"],
-    deps = [
-        ":hlo",
-        ":hlo_dce",
-        ":hlo_pass",
-        "//tensorflow/compiler/xla:shape_util",
-        "//tensorflow/compiler/xla:status_macros",
-        "//tensorflow/compiler/xla:types",
-        "//tensorflow/compiler/xla:util",
-        "//tensorflow/core:lib",
-    ],
-)
-
-tf_cc_test(
-    name = "implicit_broadcast_remover_test",
-    srcs = ["implicit_broadcast_remover_test.cc"],
-    deps = [
-        ":hlo_matchers",
-        ":implicit_broadcast_remover",
         "//tensorflow/compiler/xla:literal",
         "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/tests:hlo_test_base",
@@ -3717,7 +3690,6 @@ cc_library(
         ":hlo_memory_scheduler",
         ":hlo_pass",
         ":hlo_pass_pipeline",
-        ":implicit_broadcast_remover",
         "//tensorflow/compiler/xla:statusor",
     ],
 )

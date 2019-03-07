@@ -230,6 +230,7 @@ tf_kernel_library(
     gpu_srcs = [
         "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
+        "concat_lib_gpu.h",
         "cuda_device_array.h",
         "cuda_device_array_gpu.h",
     ],
@@ -607,6 +608,7 @@ tf_kernel_library(
     gpu_srcs = [
         "split_lib_gpu.cu.cc",
         "split_lib.h",
+        "split_lib_gpu.h",
     ],
     deps = [
         ":cuda_device_array",
@@ -618,9 +620,7 @@ tf_kernel_library(
 
 cc_library(
     name = "split_lib_hdrs",
-    hdrs = [
-        "split_lib.h",
-    ],
+    hdrs = ["split_lib.h"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
@@ -832,7 +832,6 @@ cc_library(
     deps = [
         ":batch_space_ops",
         ":bcast_ops",
-        ":bitcast_op",
         ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
@@ -884,8 +883,8 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bitcast_op",
-    prefix = "bitcast_op",
-    deps = ARRAY_DEPS,
+    deprecation = "use //third_party/tensorflow/c/kernels:bitcast_op instead",
+    deps = ["//tensorflow/c/kernels:bitcast_op"],
 )
 
 tf_kernel_library(
@@ -5848,7 +5847,7 @@ ANDROID_TEXTUAL_HDRS = [
 # registration.
 filegroup(
     name = "android_all_ops",
-    srcs = glob(
+    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
         [
             "*.cc",
             "*.h",

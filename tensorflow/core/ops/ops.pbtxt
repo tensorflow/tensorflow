@@ -17823,6 +17823,13 @@ op {
     name: "f"
     type: "func"
   }
+  attr {
+    name: "max_intra_op_parallelism"
+    type: "int"
+    default_value {
+      i: 1
+    }
+  }
 }
 op {
   name: "MapIncompleteSize"
@@ -19109,6 +19116,13 @@ op {
     }
   }
   attr {
+    name: "include_batch_in_index"
+    type: "bool"
+    default_value {
+      b: false
+    }
+  }
+  attr {
     name: "Targmax"
     type: "type"
     allowed_values {
@@ -19250,6 +19264,13 @@ op {
         s: "SAME"
         s: "VALID"
       }
+    }
+  }
+  attr {
+    name: "include_batch_in_index"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {
@@ -19395,6 +19416,13 @@ op {
         s: "SAME"
         s: "VALID"
       }
+    }
+  }
+  attr {
+    name: "include_batch_in_index"
+    type: "bool"
+    default_value {
+      b: false
     }
   }
   attr {
@@ -38296,6 +38324,82 @@ op {
     type: "type"
     default_value {
       type: DT_FLOAT
+    }
+  }
+  attr {
+    name: "shape_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StatefulUniformFullInt"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "algorithm"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "shape"
+    type_attr: "shape_dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_UINT64
+    }
+  }
+  attr {
+    name: "shape_dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
+    }
+  }
+  is_stateful: true
+}
+op {
+  name: "StatefulUniformInt"
+  input_arg {
+    name: "resource"
+    type: DT_RESOURCE
+  }
+  input_arg {
+    name: "algorithm"
+    type: DT_INT64
+  }
+  input_arg {
+    name: "shape"
+    type_attr: "shape_dtype"
+  }
+  input_arg {
+    name: "minval"
+    type_attr: "dtype"
+  }
+  input_arg {
+    name: "maxval"
+    type_attr: "dtype"
+  }
+  output_arg {
+    name: "output"
+    type_attr: "dtype"
+  }
+  attr {
+    name: "dtype"
+    type: "type"
+    default_value {
+      type: DT_INT64
     }
   }
   attr {

@@ -114,8 +114,7 @@ llvm_ir::ElementGenerator CpuElementalIrEmitter::MakeElementGenerator(
         std::vector<llvm::Value*> operands;
         for (int i = 0; i < hlo->operand_count(); i++) {
           TF_ASSIGN_OR_RETURN(llvm::Value * operand_value,
-                              operand_to_generator.at(hlo->operand(i))(
-                                  ElementwiseSourceIndex(index, *hlo, i)));
+                              operand_to_generator.at(hlo->operand(i))(index));
           operands.push_back(operand_value);
         }
         return ir_emitter_->EmitElementalMap(*Cast<HloMapInstruction>(hlo),

@@ -33,7 +33,10 @@ from tensorflow.python.keras import layers
 from tensorflow.python.keras import models
 from tensorflow.python.keras import regularizers
 from tensorflow.python.keras.engine import base_layer
+from tensorflow.python.keras.layers import core
+from tensorflow.python.keras.mixed_precision.experimental import loss_scale_optimizer
 from tensorflow.python.keras.mixed_precision.experimental import policy
+from tensorflow.python.keras.mixed_precision.experimental import test_util as mp_test_util
 from tensorflow.python.keras.optimizer_v2 import gradient_descent
 from tensorflow.python.ops import array_ops
 from tensorflow.python.ops import math_ops
@@ -303,18 +306,24 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
   }, {
       'testcase_name': 'distribute',
       'strategy_fn': create_mirrored_strategy,
+  }, {
+      'testcase_name': 'loss_scaling',
+      'strategy_fn': create_mirrored_strategy,
+      'use_loss_scaling': True
   })
   @test_util.run_in_graph_and_eager_modes
-  def test_advanced_model(self, strategy_fn):
+  def test_advanced_model(self, strategy_fn, use_loss_scaling=False):
 
     # The advanced model tests mixed-precision-related features that would occur
     # in a resnet50 model. It tests a model that has:
     #  * Multiple layers, some which use auto-cast variables and some which do
     #    not
     #  * Regularization on some variables and not others.
+    #  * Loss scaling (if use_loss_scaling is True)
 
     strategy = strategy_fn()
-
+    if use_loss_scaling:
+      loss_scale = 8.
     learning_rate = 2 ** -14
 
     with strategy.scope():
@@ -332,6 +341,17 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
         y = layer2(y)
         y = layer3(y)
         y = layer4(y)
+        if use_loss_scaling:
+          # The gradient of 'y' at this point is 1. With loss scaling, the
+          # gradient is 'loss_scale'. The DistributionStrategy additionally
+          # scales the gradient by 1/num_replicas in_sync. We divide by the
+          # batch size of 2 since the loss is averaged across batch elements.
+          expected_gradient = loss_scale / strategy.num_replicas_in_sync / 2
+          identity_with_grad_check_fn = (
+              mp_test_util.create_identity_with_grad_check_fn(
+                  expected_dtype=dtypes.float16,
+                  expected_gradient=[expected_gradient] * 2))
+          y = core.Lambda(identity_with_grad_check_fn)(y)
         y = math_ops.cast(y, dtypes.float32)
         model = models.Model(inputs=x, outputs=y)
 
@@ -341,6 +361,8 @@ class KerasModelTest(test.TestCase, parameterized.TestCase):
           return math_ops.reduce_mean(y_pred)
 
         opt = gradient_descent.SGD(learning_rate)
+        if use_loss_scaling:
+          opt = loss_scale_optimizer.LossScaleOptimizer(opt, loss_scale)
         model.compile(opt, loss=loss_fn)
 
       x = np.ones((2, 1))
