@@ -47,10 +47,8 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
   // We can fuse reduces and loop fusions. Elementwise instructions can be fused
   // with any other instruction.
-  // TODO(b/112957171): This should use the same isFusible logic as
-  // instruction_fusion.
   return instr->IsFusible() &&
-         (IsInputFusibleReduction(*instr) || instr->IsLoopFusible());
+         (IsInputFusibleReduction(*instr) || instr->IsLoopFusion());
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,
