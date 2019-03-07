@@ -238,6 +238,9 @@ def _graph_mode_decorator(f, *args, **kwargs):
   original_tensors = all_tensors
   with ops.get_default_graph().gradient_override_map({"IdentityN": name}):
     all_tensors = array_ops.identity_n(all_tensors)
+
+  original_tensors = [ops.convert_to_tensor(x) for x in original_tensors]
+
   # Propagate handle data for happier shape inference for resource variables.
   for i, t in enumerate(original_tensors):
     if t.dtype == dtypes.resource and hasattr(t, "_handle_data"):
