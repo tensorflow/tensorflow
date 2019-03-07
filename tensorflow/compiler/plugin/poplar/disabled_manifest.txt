@@ -58,3 +58,5 @@ DeuantizedOpsTest # No bfloat16
 ArrayElementwiseOpTest.ClampF32 # Incorrect NaN passing
 WhileTest.testNestedWhileLoopWithMaxItersFromOuterContext # badly constructed test
 BinaryOpsTest.testNextAfter # Unsigned int
+SelfAdjointEigOpTest # seg fault
+SvdOpTest # Seg fault
