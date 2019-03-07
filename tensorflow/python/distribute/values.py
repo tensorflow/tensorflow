@@ -535,6 +535,10 @@ class DistributedVariable(DistributedDelegate):
     return self.primary.shape
 
   @property
+  def trainable(self):
+    return self.primary.trainable
+
+  @property
   def distribute_strategy(self):
     return self._distribute_strategy
 

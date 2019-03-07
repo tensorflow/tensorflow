@@ -1271,7 +1271,8 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
   }
 
   GraphTopologyView graph_view;
-  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(*optimized_graph));
+  TF_RETURN_IF_ERROR(graph_view.InitializeFromGraph(
+      *optimized_graph, /*ignore_control_edges=*/true));
   std::unordered_set<const NodeDef*> optimized_nodes;
 
   for (int i : assign_nodes) {
@@ -1293,7 +1294,6 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
       // If all nodes in the transitive fanout are on the same device as the
       // assign node, there is no need to allocate the output in pinned memory.
       for (const NodeDef* fanout_node : transitive_fanout) {
-        // const NodeDef& fanout_node = optimized_graph->node(fanout);
         if (relax_constraint &&
             (IsSend(*fanout_node) ||
              CrossesTaskOrCpuGpuBoundary(*fanout_node, assign_node))) {

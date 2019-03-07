@@ -1220,10 +1220,8 @@ class HloInstruction {
 
   // Returns true if this instruction performs an elementwise operation on
   // `operand_idx`-th operand. An instruction is elementwise on an operand iff,
-  // after performing necessary implicit broadcast
-  // (cs/IrArray::EmitArrayElementAddress), to compute the output at index
-  // {i_0,i_1,...,i_n}, the only element required from the operand (if any) is
-  // the element at {i_0,i_1,...,i_n}.
+  // to compute the output at index {i_0,i_1,...,i_n}, the only element required
+  // from the operand (if any) is the element at {i_0,i_1,...,i_n}.
   //
   // Note on performance: when this instruction is kFusion, this method, in the
   // worst case, scans all fused instructions. We could speed this up by
@@ -1238,12 +1236,6 @@ class HloInstruction {
 
   // Returns true if this is a cross-replica all-reduce instruction.
   bool IsCrossReplicaAllReduce() const;
-
-  // Returns true if this elementwise instruction implicitly broadcasts operand
-  // `operand_idx`.
-  //
-  // Precondition: this instruction should be an elementwise operation.
-  bool ImplicitlyBroadcastsOperand(int64 operand_idx) const;
 
   // Returns true if this instruction is binary and elementwise.
   bool IsElementwiseBinary() const;

@@ -1053,13 +1053,19 @@ class NNAPIDelegateKernel {
       relative_output_index++;
     }
     // Invoke ANN in blocking fashion.
-    ANeuralNetworksEvent* event = nullptr;
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(
-        context,
-        nnapi_->ANeuralNetworksExecution_startCompute(execution, &event));
-    RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
-                                    nnapi_->ANeuralNetworksEvent_wait(event));
-    nnapi_->ANeuralNetworksEvent_free(event);
+    if (nnapi_->android_sdk_version < kMinSdkVersionForNNAPI12) {
+      ANeuralNetworksEvent* event = nullptr;
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context,
+          nnapi_->ANeuralNetworksExecution_startCompute(execution, &event));
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(context,
+                                      nnapi_->ANeuralNetworksEvent_wait(event));
+      nnapi_->ANeuralNetworksEvent_free(event);
+    } else {
+      // Use synchronous execution for NNAPI 1.2+.
+      RETURN_TFLITE_ERROR_IF_NN_ERROR(
+          context, nnapi_->ANeuralNetworksExecution_compute(execution));
+    }
     nnapi_->ANeuralNetworksExecution_free(execution);
 
     // copy results from shared memory to the destination.
@@ -1257,7 +1263,6 @@ class NNAPIDelegateKernel {
 TfLiteDelegate* NnApiDelegate() {
   static TfLiteDelegate delegate = {
       .data_ = nullptr,
-      .flags = kTfLiteDelegateFlagsNone,
       .Prepare = [](TfLiteContext* context,
                     TfLiteDelegate* delegate) -> TfLiteStatus {
         // Do not check nodes_ if NN API is unavailable.
@@ -1323,6 +1328,7 @@ TfLiteDelegate* NnApiDelegate() {
               return state->Invoke(context, node);
             },
 
+            .profiling_string = nullptr,
             .builtin_code = kTfLiteBuiltinDelegate,
         };
 
@@ -1332,7 +1338,13 @@ TfLiteDelegate* NnApiDelegate() {
             context, nnapi_delegate_kernel,
             reinterpret_cast<TfLiteIntArray*>(supported_nodes.data()),
             delegate);
-      }};
+      },
+
+      .CopyFromBufferHandle = nullptr,
+      .CopyToBufferHandle = nullptr,
+      .FreeBufferHandle = nullptr,
+      .flags = kTfLiteDelegateFlagsNone,
+  };
 
   return &delegate;
 }
