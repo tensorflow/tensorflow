@@ -23,8 +23,8 @@
 #define MLIR_TRANSFORMS_DIALECTCONVERSION_H_
 
 #include "mlir/IR/PatternMatch.h"
-#include "mlir/Pass/Pass.h"
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/Status.h"
 
 namespace mlir {
 
@@ -152,10 +152,9 @@ class DialectConversion {
 public:
   virtual ~DialectConversion() = default;
 
-  /// Run the converter on the provided module. This function returns
-  /// true if the module was unsuccessfully converted. Otherwise, it returns
-  /// false for success.
-  bool convert(Module *m);
+  /// Run the converter on the provided module.
+  LLVM_NODISCARD
+  Status convert(Module *m);
 
 protected:
   /// Derived classes must implement this hook to produce a set of conversion
@@ -168,7 +167,7 @@ protected:
   /// block or function argument types or function result types.  If the target
   /// dialect has support for custom first-class function types, convertType
   /// should create those types for arguments of MLIR function type.  It can be
-  /// used for values (constant, operands, resutls) of function type but not for
+  /// used for values (constant, operands, results) of function type but not for
   /// the function signatures.  For the latter, convertFunctionSignatureType is
   /// used instead.
   ///

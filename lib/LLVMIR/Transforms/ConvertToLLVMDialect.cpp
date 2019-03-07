@@ -1078,7 +1078,7 @@ public:
   void runOnModule() override {
     Module *m = &getModule();
     uniqueSuccessorsWithArguments(m);
-    if (DialectConversion::convert(m))
+    if (failed(DialectConversion::convert(m)))
       signalPassFailure();
   }
 
