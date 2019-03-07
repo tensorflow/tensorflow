@@ -570,9 +570,15 @@ TEST_F(RelaxAllocatorConstraintsTest, AssignNodeInFanout) {
       s.WithOpName("variable0").WithDevice("/cpu:0"), {128, 128}, DT_FLOAT);
   Output assign0 = ops::Assign(s.WithOpName("assign0").WithDevice("/cpu:0"),
                                variable0, constant0);
+  Output assign2 = ops::Assign(s.WithOpName("assign2").WithDevice("/cpu:0"),
+                               variable0, constant0);
   // The rest of the graph is on a second device, so we can relax the
-  // constraint for assign1, but not for assign0.
-  Output exp1 = ops::Exp(s.WithOpName("exp1").WithDevice("/gpu:0"), assign0);
+  // constraint for assign1, but not for assign0. Assign2 only has a
+  // control dependency crossing the device boundary, so it can be relaxed too.
+  Output exp1 = ops::Exp(
+      s.WithOpName("exp1").WithDevice("/gpu:0").WithControlDependencies(
+          assign2),
+      assign0);
   Output variable1 = ops::Variable(
       s.WithOpName("variable1").WithDevice("/gpu:0"), {128, 128}, DT_FLOAT);
   Output assign1 = ops::Assign(s.WithOpName("assign1").WithDevice("/gpu:0"),
@@ -589,13 +595,18 @@ TEST_F(RelaxAllocatorConstraintsTest, AssignNodeInFanout) {
   EXPECT_EQ("assign0", node.name());
   EXPECT_EQ(0, node.attr().count("_grappler_relax_allocator_constraints"));
 
-  node = output.node(5);
+  node = output.node(4);
+  EXPECT_EQ("assign2", node.name());
+  EXPECT_EQ(1, node.attr().count("_grappler_relax_allocator_constraints"));
+  EXPECT_EQ(true, node.attr().at("_grappler_relax_allocator_constraints").b());
+
+  node = output.node(6);
   EXPECT_EQ("assign1", node.name());
   EXPECT_EQ(1, node.attr().count("_grappler_relax_allocator_constraints"));
   EXPECT_EQ(true, node.attr().at("_grappler_relax_allocator_constraints").b());
 
 #if GOOGLE_CUDA
-  item.fetch = {"assign0", "assign1"};
+  item.fetch = {"assign0", "assign1", "assign2"};
   item.init_ops = {"exp1", "variable1"};
   auto tensors_expected = EvaluateFetchNodes(item);
   GrapplerItem optimized = item.WithGraph(std::move(output));
