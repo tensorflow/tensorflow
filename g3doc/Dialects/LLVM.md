@@ -26,13 +26,13 @@ The LLVM IR dialect defines a single MLIR type, `LLVM::LLVMType`, that can wrap
 any existing LLVM IR type. Its syntax is as follows
 
 ``` {.ebnf}
-type ::= `!llvm.type<"` llvm-canonical-type `">
+type ::= `!llvm<"` llvm-canonical-type `">
 llvm-canonical-type ::= <canonical textual representation defined by LLVM>
 ```
 
-For example, one can use primitive types `!llvm.type<"i32">`, pointer types
-`!llvm.type<"i8*">`, vector types `!llvm.type<"<4 x float>">` or structure types
-`!llvm.type<"{i32, float}">`. The parsing and printing of the canonical form is
+For example, one can use primitive types `!llvm<"i32">`, pointer types
+`!llvm<"i8*">`, vector types `!llvm<"<4 x float>">` or structure types
+`!llvm<"{i32, float}">`. The parsing and printing of the canonical form is
 delegated to the LLVM assembly parser and printer.
 
 LLVM IR dialect types contain an `llvm::Type*` object that can be obtained by
@@ -74,10 +74,10 @@ Examples:
 
 ```mlir {.mlir}
 // Integer addition.
-%0 = "llvm.add"(%a, %b) : (!llvm.type<"i32">, !llvm.type<"i32">) -> !llvm.type<"i32">
+%0 = "llvm.add"(%a, %b) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 
 // Unsigned integer division.
-%1 = "llvm.udiv"(%a, %b) : (!llvm.type<"i32">, !llvm.type<"i32">) -> !llvm.type<"i32">
+%1 = "llvm.udiv"(%a, %b) : (!llvm<"i32">, !llvm<"i32">) -> !llvm<"i32">
 ```
 
 #### Floating point binary arithmetic operations
@@ -95,10 +95,10 @@ Examples:
 
 ```mlir {.mlir}
 // Float addition.
-%0 = "llvm.fadd"(%a, %b) : (!llvm.type<"float">, !llvm.type<"float">) -> !llvm.type<"float">
+%0 = "llvm.fadd"(%a, %b) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
 
 // Float division.
-%1 = "llvm.fdiv"(%a, %b) : (!llvm.type<"float">, !llvm.type<"float">) -> !llvm.type<"float">
+%1 = "llvm.fdiv"(%a, %b) : (!llvm<"float">, !llvm<"float">) -> !llvm<"float">
 ```
 
 #### Memory-related instructions
@@ -120,20 +120,20 @@ Examples:
 
 ```mlir {.mlir}
 // Allocate an array of 4 floats on stack
-%c4 = "llvm.constant" {value: 4 : i64} : !llvm.type<"i64">
-%0 = "llvm.alloca"(%c4) : (!llvm.type<"i64">) -> !llvm.type<"float*">
+%c4 = "llvm.constant" {value: 4 : i64} : !llvm<"i64">
+%0 = "llvm.alloca"(%c4) : (!llvm<"i64">) -> !llvm<"float*">
 
 // Get the second element of the array (note 0-based indexing).
-%c1 = "llvm.constant" {value: 1 : i64} : !llvm.type<"i64">
-%1 = "llvm.getelementptr"(%0, %c1) : (!llvm.type<"float*">, !llvm.type<"i64">)
-                                   -> !llvm.type<"float*">
+%c1 = "llvm.constant" {value: 1 : i64} : !llvm<"i64">
+%1 = "llvm.getelementptr"(%0, %c1) : (!llvm<"float*">, !llvm<"i64">)
+                                   -> !llvm<"float*">
 
 // Store a constant into this element.
-%cf = "llvm.constant" {value: 42.0 : f32} : !llvm.type<"float">
-"llvm.store" %cf, %1 : (!llvm.type<"float">, !llvm.type<"float*">) -> ()
+%cf = "llvm.constant" {value: 42.0 : f32} : !llvm<"float">
+"llvm.store" %cf, %1 : (!llvm<"float">, !llvm<"float*">) -> ()
 
 // Load the value from this element.
-%3 = "llvm.load" %1 : (!llvm.type<"float*">) -> (!llvm.type<"float">)
+%3 = "llvm.load" %1 : (!llvm<"float*">) -> (!llvm<"float">)
 ```
 
 #### Operations on values of aggregate type.
@@ -153,12 +153,12 @@ Examples:
 
 ```mlir {.mlir}
 // Get the value third element of the second element of a structure.
-%0 = "llvm.extractvalue"(%s) {position: [1, 2]} : (!llvm.type<"{i32, {i1, i8, i16}">) -> !llvm.type<"i16">
+%0 = "llvm.extractvalue"(%s) {position: [1, 2]} : (!llvm<"{i32, {i1, i8, i16}">) -> !llvm<"i16">
 
 // Insert the value to the third element of the second element of a structure.
 // Note that this returns a new structure-typed value.
 %1 = "llvm.insertvalue"(%0, %s) {position: [1, 2]} :
-  (!llvm.type<"i16">, !llvm.type<"{i32, {i1, i8, i16}">) -> !llvm.type<"{i32, {i1, i8, i16}">
+  (!llvm<"i16">, !llvm<"{i32, {i1, i8, i16}">) -> !llvm<"{i32, {i1, i8, i16}">
 ```
 
 #### Terminator operations.
@@ -188,39 +188,48 @@ Examples:
   "llvm.br"() [^bb0] : () -> ()
 
 // Branch and pass arguments.
-^bb1(%arg: !llvm.type<"i32">):
-  "llvm.br"() [^bb1(%arg : !llvm.type<"i32">)] : () -> ()
+^bb1(%arg: !llvm<"i32">):
+  "llvm.br"() [^bb1(%arg : !llvm<"i32">)] : () -> ()
 
 // Conditionally branch and pass arguments to one of the blocks.
-"llvm.cond_br"(%cond) [^bb0, %bb1(%arg : !llvm.type<"i32">)] : (!llvm.type<"i1">) -> ()
+"llvm.cond_br"(%cond) [^bb0, %bb1(%arg : !llvm<"i32">)] : (!llvm<"i1">) -> ()
 
 // It's okay to use the same block without arguments, but probably useless.
-"llvm.cond_br"(%cond) [^bb0, ^bb0] : (!llvm.type<"i1">) ->  ()
+"llvm.cond_br"(%cond) [^bb0, ^bb0] : (!llvm<"i1">) ->  ()
 
 // ERROR: Passing different arguments to the same block in a conditional branch.
-"llvm.cond_br"(%cond) [^bb1(%0 : !llvm.type<"i32">),
-                       ^bb1(%1 : !llvm.type<"i32">)] : (!llvm.type<"i1">) -> ()
+"llvm.cond_br"(%cond) [^bb1(%0 : !llvm<"i32">),
+                       ^bb1(%1 : !llvm<"i32">)] : (!llvm<"i1">) -> ()
 
 ```
 
 Call operations:
 
 -   `<r> = call(<operands>)`
--   `call0(<operands>)`
+-   `call(<operands>)`
 
-In LLVM IR, functions may return either 0 or 1 value. LLVM IR dialect
-implements this behavior by providing different operations for 0- and 1-result
-functions, `call0` and `call`. Even though MLIR supports multi-result functions,
-LLVM IR dialect disallows them.
+In LLVM IR, functions may return either 0 or 1 value. LLVM IR dialect implements
+this behavior by providing a variadic `call` operation for 0- and 1-result
+functions. Even though MLIR supports multi-result functions, LLVM IR dialect
+disallows them.
+
+The `call` instruction supports both direct and indirect calls. Direct calls
+require the `callee` attribute of function type to be present. Otherwise, the
+call is considered indirect and expects the function as its first argument.
 
 Examples:
 
 ```mlir {.mlir}
-// Call without and get a result.
-%0 = "llvm.call"() : () -> (!llvm.type<"float">)
+// Direct call without arguments and with one result.
+%0 = "llvm.call"() {callee: @foo : () -> (!llvm<"float">)}
+    : () -> (!llvm<"float">)
 
-// Call with arguments and without a result.
-"llvm.call0"() : (!llvm.type<"float">) -> ()
+// Direct call with arguments and without a result.
+"llvm.call"(%0) {callee: @bar : (!llvm<"float">) -> ()}
+    : (!llvm<"float">) -> ()
+
+// Indirect call with an argument and without a result.
+"llvm.call"(%1, %0) : ((!llvm<"float">) -> (), !llvm<"float">) -> ()
 ```
 
 #### Miscellaneous operations.
@@ -264,14 +273,14 @@ Examples:
 
 ```mlir {.mlir}
 // Integer constant
-%0 = "llvm.constant"() {value: 42 : i32} -> !llvm.type<"i32">
+%0 = "llvm.constant"() {value: 42 : i32} -> !llvm<"i32">
 
 // Floating point constant
-%1 = "llvm.constant"() {value: 42.0 : f32} -> !llvm.type<"float">
+%1 = "llvm.constant"() {value: 42.0 : f32} -> !llvm<"float">
 
 // Splat vector constant
 %2 = "llvm.constant"() {value: splat<vector<4xf32>, 1.0>}
-      -> !llvm.type<"<4 x float>">
+      -> !llvm<"<4 x float>">
 ```
 
 #### `llvm.undef` {#undef-operation}
@@ -285,5 +294,5 @@ Example:
 
 ```mlir {.mlir}
 // Create a structure with a 32-bit integer followed by a float.
-%0 = "llvm.undef"() -> !llvm.type<"{i32, float}">
+%0 = "llvm.undef"() -> !llvm<"{i32, float}">
 ```

@@ -236,10 +236,6 @@ def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]> {
   let verifier = [{
     if (getNumSuccessors() != 2)
       return emitOpError("expected exactly two successors");
-    if (getSuccessor(0) == getSuccessor(1) &&
-        getNumSuccessorOperands(0) != 0)
-      return emitOpError(
-          "expected successors with arguments to be different blocks");
     return false;
   }];
 }
