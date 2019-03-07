@@ -36,6 +36,10 @@ limitations under the License.
 #include "tensorflow/core/lib/core/status.h"
 #include "tensorflow/core/platform/logging.h"
 #include "tensorflow/core/util/util.h"
+#include "third_party/eigen3/Eigen/Core"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/common_runtime/gpu/gpu_event_mgr.h"
@@ -251,11 +255,10 @@ class SegmentSumGPUOp : public AsyncOpKernel {
 
     auto stream = context->op_device_context()->stream();
     OP_REQUIRES_ASYNC(
-        context,
-        stream
-            ->ThenMemcpy(output_rows_host.mutable_data(), output_rows_device,
-                         sizeof(Index))
-            .ok(),
+        context, stream
+                     ->ThenMemcpy(output_rows_host.mutable_data(),
+                                  output_rows_device, sizeof(Index))
+                     .ok(),
         errors::Internal(
             "SegmentSumGPUOp: failed to copy output_rows from device"),
         done);
@@ -374,15 +377,40 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   typename TTypes<Index>::ConstFlat segment_ids,
                   const Index data_size, const T* data,
                   typename TTypes<T, 2>::Tensor output) {
-    output.setConstant(InitialValueF()());
+    auto d = ctx->eigen_cpu_device();
+    output.device(d) = output.constant(InitialValueF()());
     if (data_size == 0) {
       return;
     }
     const int64 N = segment_ids.dimension(0);
     ReductionF reduction;
     auto data_flat = typename TTypes<T, 2>::ConstTensor(data, N, data_size / N);
-    for (int64 i = 0; i < N; ++i) {
+    //*************************************************************************
+    // Modified for performance tune : begin here
+    //*************************************************************************
+
+    //*************************************************************************
+    // Modified for performance tune : init parallel parameters
+    //*************************************************************************
+    // Get thread pool handle
+    auto worker_threads = *(ctx->device()->tensorflow_cpu_worker_threads());
+    auto workers = worker_threads.workers;
+    // Get thread number
+    const int num_threads = worker_threads.num_threads;
+
+    //*************************************************************************
+    // Modified for performance tune : distributing workload
+    //*************************************************************************
+    // The max_parallel marks the upper limit of parallelism,
+    // It is equal to the number of rows to write in in output tensor.
+    int max_parallel = 0;
+    // The row_counter records the corresponding inputs number of each output
+    // row
+    int64 row_counter[num_segments] = {0};
+    for (int i = 0; i < N; i++) {
+      // Get the corresponding output index j of input i.
       Index j = internal::SubtleMustCopy(segment_ids(i));
+      // Check the validity of index j.
       if (j < 0) {
         continue;
       }
@@ -390,8 +418,60 @@ struct UnsortedSegmentFunctor<CPUDevice, T, Index, InitialValueF, ReductionF> {
                   errors::InvalidArgument(
                       "segment_ids", SliceDebugString(segment_ids_shape, i),
                       " = ", j, " is out of range [0, ", num_segments, ")"));
-      reduction(data_flat.template chip<0>(i), output.template chip<0>(j));
+      if (row_counter[j] == 0) max_parallel++;
+      row_counter[j]++;
     }
+
+    // Total workload is equal to the row number of input
+    const int total_work_load = N;
+    // Set the minimum block size to ensure each thread get enough workload
+    const int min_block_size = 64;
+    // The max block number comes from min_block_size,
+    // but shouldn't be bigger than max_parallel.
+    const int max_block_num =
+        std::min(total_work_load / min_block_size + 1, max_parallel);
+    // The real block number equal to num_threads, as long as there are enough
+    // blocks.
+    const int block_num = std::min(max_block_num, num_threads);
+    // Bet real block size from block_num.
+    const int block_size = total_work_load / block_num;
+
+    // Block the workload basing on block_size
+    int64 block_range[block_num + 1] = {0};
+    for (int i = 0, now_id = 1, now_count = 0; i < num_segments; i++) {
+      now_count += row_counter[i];
+      // Keep enlarge corrent block range until until enough.
+      if (now_count < block_size) {
+        continue;
+      } else {
+        block_range[now_id] = i;
+        now_id++;
+        now_count = 0;
+      }
+    }
+    // The last block end at num_segments.
+    block_range[block_num] = num_segments;
+
+    //*************************************************************************
+    // Modified for performance tune : computing
+    //*************************************************************************
+    // The worker
+    auto reductionWorker = [&](int64 floor, int64 ceiling) -> void {
+      // traversal all inputs.
+      for (int64 i = 0; i < N; i++) {
+        // Get the corresponding output index j of input i.
+        Index j = internal::SubtleMustCopy(segment_ids(i));
+        // If j is in work scope of this worker, do the reduction.
+        if (j >= block_range[floor] && j < block_range[ceiling]) {
+          reduction(data_flat.template chip<0>(i), output.template chip<0>(j));
+        }
+      }
+    };
+
+    // Submit jobs to intra thread pool
+    Sharder::Do(block_num, data_size / block_num, reductionWorker,
+                [&workers](Sharder::Closure c) { workers->Schedule(c); },
+                block_num);
   }
 };
 
@@ -500,18 +580,17 @@ class UnsortedSegmentReductionOp : public OpKernel {
   DeviceReductionFunctor reduction_functor_;
 };
 
-#define REGISTER_CPU_KERNEL_UNSORTEDSEGMENT(                           \
-    name, type, index_type, initial_value_functor, reduction_functor)  \
-  REGISTER_KERNEL_BUILDER(                                             \
-      Name(name)                                                       \
-          .Device(DEVICE_CPU)                                          \
-          .TypeConstraint<type>("T")                                   \
-          .TypeConstraint<index_type>("Tindices"),                     \
-      UnsortedSegmentReductionOp<                                      \
-          type, index_type,                                            \
-          functor::UnsortedSegmentFunctor<CPUDevice, type, index_type, \
-                                          initial_value_functor,       \
-                                          reduction_functor> >)
+#define REGISTER_CPU_KERNEL_UNSORTEDSEGMENT(                          \
+    name, type, index_type, initial_value_functor, reduction_functor) \
+  REGISTER_KERNEL_BUILDER(                                            \
+      Name(name)                                                      \
+          .Device(DEVICE_CPU)                                         \
+          .TypeConstraint<type>("T")                                  \
+          .TypeConstraint<index_type>("Tindices"),                    \
+      UnsortedSegmentReductionOp<                                     \
+          type, index_type, functor::UnsortedSegmentFunctor<          \
+                                CPUDevice, type, index_type,          \
+                                initial_value_functor, reduction_functor> >)
 
 #define REGISTER_REAL_CPU_UNSORTED_KERNELS(type, index_type)                   \
   REGISTER_CPU_KERNEL_UNSORTEDSEGMENT("UnsortedSegmentSum", type, index_type,  \
@@ -592,7 +671,6 @@ REGISTER_COMPLEX_CPU_UNSORTED_KERNELS_ALL(complex128);
 #define REGISTER_SUM_GPU_UNSORTED_KERNELS_ALL(type) \
   REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int32);   \
   REGISTER_SUM_GPU_UNSORTED_KERNELS(type, int64);
-
 
 TF_CALL_GPU_NUMBER_TYPES(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
 TF_CALL_int32(REGISTER_REAL_GPU_UNSORTED_KERNELS_ALL);
@@ -735,9 +813,9 @@ class SparseSegmentReductionOpBase : public OpKernel {
           Reduce(input_flat, indices_vec, start, end - start, out);
       OP_REQUIRES(context, bad_offset < 0,
                   errors::InvalidArgument(
-                      "Bad: indices[", start + bad_offset,
-                      "] == ", indices_vec(start + bad_offset),
-                      " out of range [0, ", input_flat.dimension(0), ")"));
+                      "Bad: indices[", start + bad_offset, "] == ",
+                      indices_vec(start + bad_offset), " out of range [0, ",
+                      input_flat.dimension(0), ")"));
 
       start = end;
       ++end;
