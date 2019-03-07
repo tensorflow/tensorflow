@@ -480,7 +480,8 @@ XlaOp XlaBuilder::UnaryOp(HloOpcode unop, const XlaOp& operand) {
 }
 
 XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
-                           absl::Span<const int64> broadcast_dimensions) {
+                           absl::Span<const int64> broadcast_dimensions,
+                           absl::optional<ComparisonDirection> direction) {
   return ReportErrorOrReturn([&]() -> StatusOr<XlaOp> {
     HloInstructionProto instr;
     TF_ASSIGN_OR_RETURN(const Shape& lhs_shape, GetShape(lhs));
@@ -489,6 +490,17 @@ XlaOp XlaBuilder::BinaryOp(HloOpcode binop, const XlaOp& lhs, const XlaOp& rhs,
                         ShapeInference::InferBinaryOpShape(
                             binop, lhs_shape, rhs_shape, broadcast_dimensions));
     *instr.mutable_shape() = shape.ToProto();
+    if (binop == HloOpcode::kCompare) {
+      if (!direction.has_value()) {
+        return InvalidArgument(
+            "kCompare expects a ComparisonDirection, but none provided.");
+      }
+      instr.set_comparison_direction(ComparisonDirectionToString(*direction));
+    } else if (direction.has_value()) {
+      return InvalidArgument(
+          "A comparison direction is provided for a non-compare opcode: %s.",
+          HloOpcodeString(binop));
+    }
 
     const int64 lhs_rank = lhs_shape.rank();
     const int64 rhs_rank = rhs_shape.rank();
@@ -2908,38 +2920,39 @@ XlaOp GetTupleElement(const XlaOp& tuple_data, int64 index) {
 
 XlaOp Eq(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kEq, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kEq);
 }
 
 XlaOp Ne(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kNe, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kNe);
 }
 
 XlaOp Ge(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kGe, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGe);
 }
 
 XlaOp Gt(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kGt, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kGt);
 }
 
 XlaOp Le(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kLe, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLe);
 }
 
 XlaOp Lt(const XlaOp& lhs, const XlaOp& rhs,
          absl::Span<const int64> broadcast_dimensions) {
-  return lhs.builder()->BinaryOp(HloOpcode::kLt, lhs, rhs,
-                                 broadcast_dimensions);
+  return Compare(lhs, rhs, broadcast_dimensions, ComparisonDirection::kLt);
+}
+
+XlaOp Compare(const XlaOp& lhs, const XlaOp& rhs,
+              absl::Span<const int64> broadcast_dimensions,
+              ComparisonDirection direction) {
+  return lhs.builder()->BinaryOp(HloOpcode::kCompare, lhs, rhs,
+                                 broadcast_dimensions, direction);
 }
 
 XlaOp Dot(const XlaOp& lhs, const XlaOp& rhs,

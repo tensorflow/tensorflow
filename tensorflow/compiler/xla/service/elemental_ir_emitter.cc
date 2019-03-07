@@ -719,25 +719,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitFloatBinaryOp(
     // We use ordered comparisons for everything except kNe, where we use an
     // unordered comparison.  This makes x != y equivalent to !(x == y), and
     // matches C++'s semantics.
-    case HloOpcode::kEq:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kNe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kLt:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kGt:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kLe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kGe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, lhs_value,
-                                     rhs_value, b_);
-
+    case HloOpcode::kCompare: {
+      switch (op->comparison_direction()) {
+        case ComparisonDirection::kEq:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kNe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kLt:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLT, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kGt:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGT, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kLe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OLE, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kGe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OGE, lhs_value,
+                                         rhs_value, b_);
+      }
+    }
     case HloOpcode::kMaximum:
       return EmitFloatMax(lhs_value, rhs_value);
     case HloOpcode::kMinimum:
@@ -839,21 +842,28 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitComplexBinaryOp(
     // We use ordered comparisons for everything except kNe, where we use an
     // unordered comparison.  This makes x != y equivalent to !(x == y), and
     // matches C++'s semantics.
-    case HloOpcode::kEq:
-      return And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                         EmitExtractReal(lhs_value),
-                                         EmitExtractReal(rhs_value), b_),
-                 llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
-                                         EmitExtractImag(lhs_value),
-                                         EmitExtractImag(rhs_value), b_));
-    case HloOpcode::kNe:
-      return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
-                                        EmitExtractReal(lhs_value),
-                                        EmitExtractReal(rhs_value), b_),
-                llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
-                                        EmitExtractImag(lhs_value),
-                                        EmitExtractImag(rhs_value), b_));
-
+    case HloOpcode::kCompare: {
+      switch (op->comparison_direction()) {
+        case ComparisonDirection::kEq:
+          return And(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
+                                             EmitExtractReal(lhs_value),
+                                             EmitExtractReal(rhs_value), b_),
+                     llvm_ir::EmitComparison(llvm::CmpInst::FCMP_OEQ,
+                                             EmitExtractImag(lhs_value),
+                                             EmitExtractImag(rhs_value), b_));
+        case ComparisonDirection::kNe:
+          return Or(llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
+                                            EmitExtractReal(lhs_value),
+                                            EmitExtractReal(rhs_value), b_),
+                    llvm_ir::EmitComparison(llvm::CmpInst::FCMP_UNE,
+                                            EmitExtractImag(lhs_value),
+                                            EmitExtractImag(rhs_value), b_));
+        default:
+          return Unimplemented(
+              "complex comparison '%s'",
+              ComparisonDirectionToString(op->comparison_direction()));
+      }
+    }
     case HloOpcode::kPower: {
       auto a = EmitExtractReal(lhs_value);
       auto b = EmitExtractImag(lhs_value);
@@ -1278,28 +1288,32 @@ StatusOr<llvm::Value*> ElementalIrEmitter::EmitIntegerBinaryOp(
       return EmitIntegerDivide(lhs_value, rhs_value, is_signed);
     case HloOpcode::kRemainder:
       return EmitIntegerRemainder(lhs_value, rhs_value, is_signed);
-    case HloOpcode::kEq:
-      return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_EQ, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kNe:
-      return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_NE, lhs_value,
-                                     rhs_value, b_);
-    case HloOpcode::kLt:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT,
-          lhs_value, rhs_value, b_);
-    case HloOpcode::kGt:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT,
-          lhs_value, rhs_value, b_);
-    case HloOpcode::kLe:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE,
-          lhs_value, rhs_value, b_);
-    case HloOpcode::kGe:
-      return llvm_ir::EmitComparison(
-          is_signed ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE,
-          lhs_value, rhs_value, b_);
+    case HloOpcode::kCompare: {
+      switch (op->comparison_direction()) {
+        case ComparisonDirection::kEq:
+          return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_EQ, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kNe:
+          return llvm_ir::EmitComparison(llvm::CmpInst::ICMP_NE, lhs_value,
+                                         rhs_value, b_);
+        case ComparisonDirection::kLt:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SLT : llvm::CmpInst::ICMP_ULT,
+              lhs_value, rhs_value, b_);
+        case ComparisonDirection::kGt:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SGT : llvm::CmpInst::ICMP_UGT,
+              lhs_value, rhs_value, b_);
+        case ComparisonDirection::kLe:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SLE : llvm::CmpInst::ICMP_ULE,
+              lhs_value, rhs_value, b_);
+        case ComparisonDirection::kGe:
+          return llvm_ir::EmitComparison(
+              is_signed ? llvm::CmpInst::ICMP_SGE : llvm::CmpInst::ICMP_UGE,
+              lhs_value, rhs_value, b_);
+      }
+    }
     case HloOpcode::kMinimum:
       return EmitIntegralMin(lhs_value, rhs_value, is_signed);
     case HloOpcode::kMaximum:
@@ -2197,17 +2211,12 @@ llvm_ir::ElementGenerator ElementalIrEmitter::MakeElementGenerator(
     case HloOpcode::kAdd:
     case HloOpcode::kAnd:
     case HloOpcode::kAtan2:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kDivide:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kOr:
     case HloOpcode::kXor:
     case HloOpcode::kPower:

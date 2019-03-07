@@ -42,6 +42,18 @@ StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
       HloInstruction::CreateBinary(binary_op_shape, opcode, lhs, rhs));
 }
 
+StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
+                                         HloInstruction* lhs,
+                                         HloInstruction* rhs) {
+  HloComputation* computation = lhs->parent();
+  CHECK_EQ(computation, rhs->parent());
+  TF_ASSIGN_OR_RETURN(
+      Shape binary_op_shape,
+      ShapeInference::InferBinaryOpShape(HloOpcode::kCompare, lhs, rhs));
+  return computation->AddInstruction(
+      HloInstruction::CreateCompare(binary_op_shape, lhs, rhs, direction));
+}
+
 StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
                                      HloInstruction* padding_value,
                                      const PaddingConfig& padding_config) {

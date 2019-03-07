@@ -255,7 +255,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithDeadTupleElement) {
     loop_var.2 = (s32[], s32[3]{0}) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(loop_var.2), index=0
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -308,7 +308,7 @@ TEST_F(HloLivenessAnalysisTest, WhileCondPropagatesLiveness) {
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=1
     add.1 = s32[] add(get-tuple-element.3, get-tuple-element.4)
     constant.2 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(add.1, constant.2)
+    ROOT less-than = pred[] compare(add.1, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -360,7 +360,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithLiveTupleElements) {
     loop_var.2 = (s32[], s32[], s32[]) parameter(0)
     get-tuple-element.4 = s32[] get-tuple-element(loop_var.2), index=0
     constant.1 = s32[] constant(5)
-    ROOT less-than = pred[] less-than(get-tuple-element.4, constant.1)
+    ROOT less-than = pred[] compare(get-tuple-element.4, constant.1), direction=LT
   }
   ENTRY SimpleLoop {
     constant.2 = s32[] constant(0)
@@ -415,7 +415,7 @@ TEST_F(HloLivenessAnalysisTest, WhileWithOutfeed) {
     cond_param = (s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
     constant.2 = s32[] constant(10)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   ENTRY SimpleLoop {
     constant.3 = s32[] constant(0)
@@ -448,13 +448,13 @@ TEST_F(HloLivenessAnalysisTest, NestedWhileWithOutfeed) {
     cond_param = (s32[]) parameter(0)
     get-tuple-element.3 = s32[] get-tuple-element(cond_param), index=0
     constant.2 = s32[] constant(10)
-    ROOT less-than = pred[] less-than(get-tuple-element.3, constant.2)
+    ROOT less-than = pred[] compare(get-tuple-element.3, constant.2), direction=LT
   }
   OuterWhileCondition {
     cond_param.2 = (s32[]) parameter(0)
     get-tuple-element.5 = s32[] get-tuple-element(cond_param.2), index=0
     constant.5 = s32[] constant(5)
-    ROOT less-than.2 = pred[] less-than(get-tuple-element.5, constant.5)
+    ROOT less-than.2 = pred[] compare(get-tuple-element.5, constant.5), direction=LT
   }
   OuterWhileBody {
     body_param.2 = (s32[]) parameter(0)

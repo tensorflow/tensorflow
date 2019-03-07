@@ -68,8 +68,8 @@ class DynamicDimensionInferenceTest : public HloTestBase {
         0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
         1, ShapeUtil::MakeShape(F32, {}), "rhs"));
-    embedded_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGe, lhs, rhs));
+    embedded_builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), lhs, rhs, ComparisonDirection::kGe));
     return module_->AddEmbeddedComputation(embedded_builder.Build());
   }
 
