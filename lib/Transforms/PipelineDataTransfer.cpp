@@ -375,7 +375,7 @@ void PipelineDataTransfer::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
     return;
   }
 
-  if (instBodySkew(forOp, shifts)) {
+  if (failed(instBodySkew(forOp, shifts))) {
     LLVM_DEBUG(llvm::dbgs() << "inst body skewing failed - unexpected\n";);
     return;
   }

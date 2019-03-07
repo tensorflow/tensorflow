@@ -80,8 +80,8 @@ struct LoopUnroll : public FunctionPass<LoopUnroll> {
 
   void runOnFunction() override;
 
-  /// Unroll this for inst. Returns false if nothing was done.
-  bool runOnAffineForOp(OpPointer<AffineForOp> forOp);
+  /// Unroll this for inst. Returns failure if nothing was done.
+  Status runOnAffineForOp(OpPointer<AffineForOp> forOp);
 
   static const unsigned kDefaultUnrollFactor = 4;
 };
@@ -154,7 +154,7 @@ void LoopUnroll::runOnFunction() {
       break;
     bool unrolled = false;
     for (auto forOp : loops)
-      unrolled |= runOnAffineForOp(forOp);
+      unrolled |= succeeded(runOnAffineForOp(forOp));
     if (!unrolled)
       // Break out if nothing was unrolled.
       break;
@@ -163,7 +163,7 @@ void LoopUnroll::runOnFunction() {
 
 /// Unrolls a 'for' inst. Returns true if the loop was unrolled, false
 /// otherwise. The default unroll factor is 4.
-bool LoopUnroll::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
+Status LoopUnroll::runOnAffineForOp(OpPointer<AffineForOp> forOp) {
   // Use the function callback if one was provided.
   if (getUnrollFactor) {
     return loopUnrollByFactor(forOp, getUnrollFactor(forOp));

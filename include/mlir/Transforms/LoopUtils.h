@@ -25,6 +25,7 @@
 #define MLIR_TRANSFORMS_LOOP_UTILS_H
 
 #include "mlir/Support/LLVM.h"
+#include "mlir/Support/Status.h"
 
 namespace mlir {
 class AffineMap;
@@ -34,39 +35,31 @@ class Function;
 class FuncBuilder;
 template <typename T> class OpPointer;
 
-// Values that can be used to signal success/failure. This can be implicitly
-// converted to/from boolean values, with false representing success and true
-// failure.
-struct LLVM_NODISCARD UtilResult {
-  enum ResultEnum { Success, Failure } value;
-  UtilResult(ResultEnum v) : value(v) {}
-  operator bool() const { return value == Failure; }
-};
-
 /// Unrolls this for instruction completely if the trip count is known to be
-/// constant. Returns false otherwise.
-bool loopUnrollFull(OpPointer<AffineForOp> forOp);
-/// Unrolls this for instruction by the specified unroll factor. Returns false
+/// constant.
+Status loopUnrollFull(OpPointer<AffineForOp> forOp);
+/// Unrolls this for instruction by the specified unroll factor. Returns failure
 /// if the loop cannot be unrolled either due to restrictions or due to invalid
 /// unroll factors.
-bool loopUnrollByFactor(OpPointer<AffineForOp> forOp, uint64_t unrollFactor);
+Status loopUnrollByFactor(OpPointer<AffineForOp> forOp, uint64_t unrollFactor);
 /// Unrolls this loop by the specified unroll factor or its trip count,
 /// whichever is lower.
-bool loopUnrollUpToFactor(OpPointer<AffineForOp> forOp, uint64_t unrollFactor);
+Status loopUnrollUpToFactor(OpPointer<AffineForOp> forOp,
+                            uint64_t unrollFactor);
 
-/// Unrolls and jams this loop by the specified factor. Returns true if the loop
-/// is successfully unroll-jammed.
-bool loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
-                           uint64_t unrollJamFactor);
+/// Unrolls and jams this loop by the specified factor. Returns success if the
+/// loop is successfully unroll-jammed.
+Status loopUnrollJamByFactor(OpPointer<AffineForOp> forOp,
+                             uint64_t unrollJamFactor);
 
 /// Unrolls and jams this loop by the specified factor or by the trip count (if
 /// constant), whichever is lower.
-bool loopUnrollJamUpToFactor(OpPointer<AffineForOp> forOp,
-                             uint64_t unrollJamFactor);
+Status loopUnrollJamUpToFactor(OpPointer<AffineForOp> forOp,
+                               uint64_t unrollJamFactor);
 
 /// Promotes the loop body of a AffineForOp to its containing block if the
-/// AffineForOp was known to have a single iteration. Returns false otherwise.
-bool promoteIfSingleIteration(OpPointer<AffineForOp> forOp);
+/// AffineForOp was known to have a single iteration.
+Status promoteIfSingleIteration(OpPointer<AffineForOp> forOp);
 
 /// Promotes all single iteration AffineForOp's in the Function, i.e., moves
 /// their body into the containing Block.
@@ -86,13 +79,15 @@ AffineMap getUnrolledLoopUpperBound(ConstOpPointer<AffineForOp> forOp,
 /// Skew the instructions in the body of a 'for' instruction with the specified
 /// instruction-wise shifts. The shifts are with respect to the original
 /// execution order, and are multiplied by the loop 'step' before being applied.
-UtilResult instBodySkew(OpPointer<AffineForOp> forOp, ArrayRef<uint64_t> shifts,
-                        bool unrollPrologueEpilogue = false);
+LLVM_NODISCARD
+Status instBodySkew(OpPointer<AffineForOp> forOp, ArrayRef<uint64_t> shifts,
+                    bool unrollPrologueEpilogue = false);
 
 /// Tiles the specified band of perfectly nested loops creating tile-space loops
 /// and intra-tile loops. A band is a contiguous set of loops.
-UtilResult tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
-                       ArrayRef<unsigned> tileSizes);
+LLVM_NODISCARD
+Status tileCodeGen(MutableArrayRef<OpPointer<AffineForOp>> band,
+                   ArrayRef<unsigned> tileSizes);
 
 /// Performs loop interchange on 'forOpA' and 'forOpB'. Requires that 'forOpA'
 /// and 'forOpB' are part of a perfectly nested sequence of loops.
