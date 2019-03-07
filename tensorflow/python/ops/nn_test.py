@@ -22,6 +22,7 @@ import math
 
 from absl.testing import parameterized
 import numpy as np
+import sys
 from six.moves import xrange  # pylint: disable=redefined-builtin
 
 from tensorflow.python.eager import def_function
@@ -1063,7 +1064,7 @@ class MomentsTest(test_lib.TestCase):
           with ops.Graph().as_default() as g:
             with self.session(graph=g) as sess:
               inputs = constant_op.constant(
-                  input_values, shape=input_shape, dtype=dtypes.float32)
+                  input_values, shape=input_shape, dtype=dtypes.float64 if sys.byteorder == "big" else dtypes.float32)
               mean, variance = nn_impl.moments_v2(
                   inputs, moments_axes, keepdims=keep_dims)
 

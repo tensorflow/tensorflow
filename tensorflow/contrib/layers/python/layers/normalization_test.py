@@ -19,6 +19,7 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import sys
 
 from tensorflow.contrib.framework.python.ops import variables as contrib_variables
 from tensorflow.contrib.layers.python.layers import normalization
@@ -127,7 +128,8 @@ class InstanceNormTest(test.TestCase):
         del reduced_axes[0]
         reduced_axes = tuple(reduced_axes)
 
-        inputs = random_ops.random_uniform(input_shape, seed=0) * sigma + mu
+        inputs = random_ops.random_uniform(input_shape, seed=0,
+            dtype=dtypes.float32 if sys.byteorder == "big" else dtypes.float32) * sigma + mu
         output_op = normalization.instance_norm(
             inputs, center=False, scale=False, data_format=data_format)
         with self.cached_session() as sess:

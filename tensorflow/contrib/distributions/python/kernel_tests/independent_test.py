@@ -20,6 +20,7 @@ from __future__ import print_function
 
 import importlib
 import numpy as np
+import sys
 
 from tensorflow.contrib.distributions.python.ops import independent as independent_lib
 from tensorflow.contrib.distributions.python.ops import mvn_diag as mvn_diag_lib
@@ -233,7 +234,8 @@ class ProductDistributionTest(test.TestCase):
 
     with self.cached_session() as sess:
       logits_ph = array_ops.placeholder(
-          dtypes.float32, shape=logits.shape if static_shape else None)
+          dtype=dtypes.float64 if sys.byteorder == "big" else dtypes.float32,
+          shape=logits.shape if static_shape else None)
       ind = independent_lib.Independent(
           distribution=bernoulli_lib.Bernoulli(logits=logits_ph))
       x = ind.sample(sample_shape, seed=42)
