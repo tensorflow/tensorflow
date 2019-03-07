@@ -15,6 +15,8 @@ limitations under the License.
 #ifndef TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_3X3_FILTER_H_
 #define TENSORFLOW_LITE_KERNELS_INTERNAL_OPTIMIZED_DEPTHWISECONV_UINT8_3X3_FILTER_H_
 
+#include <memory>
+
 #include "fixedpoint/fixedpoint.h"
 #include "public/gemmlowp.h"
 #include "tensorflow/lite/kernels/internal/common.h"
@@ -26,7 +28,7 @@ namespace optimized_ops {
 namespace depthwise_conv {
 
 constexpr int kDepthwiseConvScratchWorkspaceSize = 10 * 10 * 64;
-constexpr int kDepthwiseConvAdjustedBiasLimit = 256;
+constexpr int kDepthwiseConvAdjustedBiasLimit = 64;
 // In cases such as depth multiplication, we want to be able to load data from
 // the workspace that is beyond the valid range. Macro-block sizes are adjusted
 // to allow for this.
@@ -42,11 +44,26 @@ enum class DotProduct3x3KernelType {
 };
 
 inline DotProduct3x3KernelType CategorizeDotProductKernel(
+    const RuntimeShape& input_shape, const RuntimeShape& filter_shape,
     const DepthwiseParams& params) {
+  constexpr int kSymmetricZeroPoint = 128;
   const int padding =
       std::max(params.padding_values.width, params.padding_values.height);
   const int stride = params.stride_width;
-  if (stride != params.stride_height || padding > 1) {
+  const int32 input_depth = input_shape.Dims(3);
+  const int32 depth_multiplier = params.depth_multiplier;
+  const int32 filter_height = filter_shape.Dims(1);
+  const int32 filter_width = filter_shape.Dims(2);
+
+  bool supported =
+      params.weights_offset == -kSymmetricZeroPoint &&
+      stride == params.stride_height && stride <= 2 && padding <= 1 &&
+      filter_width == 3 && filter_height == 3 && params.output_shift <= 0 &&
+      params.dilation_width_factor == 1 && params.dilation_height_factor == 1 &&
+      (((input_depth % 8) == 0 && depth_multiplier == 1) ||
+       (input_depth == 1 && depth_multiplier > 1));
+
+  if (!supported) {
     return DotProduct3x3KernelType::kNone;
   }
 
@@ -68,6 +85,8 @@ inline DotProduct3x3KernelType CategorizeDotProductKernel(
     }
   }
 }
+
+#if defined(USE_NEON)
 
 #define STR(s) STR_UNEXPANDED(s)
 #define STR_UNEXPANDED(s) #s
@@ -174,7 +193,9 @@ static_assert(offsetof(DepthwiseConvParams, output_width) ==
 static_assert(offsetof(DepthwiseConvParams, output_height) ==
                   OFFSET_OUTPUT_HEIGHT,
               "");
-#endif
+#endif  // __aarch64__
+
+#endif  // ARM NEON
 
 // Encapsulates constant parameters used in DepthwiseConv using dot-product ops.
 // 64-bit is used for types that will be added to 64-bit addresses in asm.
@@ -213,6 +234,7 @@ struct DepthwiseConvDotProdParams {
   int32 four_over_stride;
 };
 
+#if defined(USE_NEON)
 #if defined(__aarch64__) && !defined(GOOGLE_L4T)
 template <int32 kDepth, int32 kStrideWidth, int32 kStrideHeight>
 struct DepthwiseConvWindow {};
@@ -3089,9 +3111,9 @@ struct DepthwiseConvMultiRow {
     TFLITE_DCHECK(
         shuffle_params.input_width ==
         get_shuffle_input_size(kStrideWidth, shuffle_params.output_width));
-    TFLITE_DCHECK(64 * shuffle_params.input_width *
-                      shuffle_params.input_height <=
-                  kDepthwiseConvScratchWorkspaceSize);
+    TFLITE_DCHECK_LE(
+        64 * shuffle_params.input_width * shuffle_params.input_height,
+        kDepthwiseConvScratchWorkspaceSize);
 
     int32 out_x = start_x;
 
@@ -3499,6 +3521,8 @@ inline void DepthwiseConv3x3Filter(
   }
 }
 #endif  // __aarch64__
+
+#endif
 
 #undef STR
 #undef STR_UNEXPANDED
