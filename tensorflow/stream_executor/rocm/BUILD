@@ -63,6 +63,7 @@ cc_library(
     deps = if_rocm_is_configured([
         "@com_google_absl//absl/container:inlined_vector",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "//tensorflow/stream_executor/gpu:gpu_diagnostics_header",
         "//tensorflow/stream_executor/lib",
         "//tensorflow/stream_executor/platform",
