@@ -2707,7 +2707,8 @@ bool FlatAffineConstraints::unionBoundingBox(
   // To hold lower and upper bounds for each dimension.
   SmallVector<int64_t, 4> lb, otherLb, ub, otherUb;
   // To compute min of lower bounds and max of upper bounds for each dimension.
-  SmallVector<int64_t, 4> minLb, maxUb;
+  SmallVector<int64_t, 4> minLb(getNumSymbolIds() + 1);
+  SmallVector<int64_t, 4> maxUb(getNumSymbolIds() + 1);
   // To compute final new lower and upper bounds for the union.
   SmallVector<int64_t, 8> newLb(getNumCols()), newUb(getNumCols());
 
@@ -2739,7 +2740,7 @@ bool FlatAffineConstraints::unionBoundingBox(
       auto constOtherLb = other.getConstantLowerBound(d);
       if (!constLb.hasValue() || !constOtherLb.hasValue())
         return false;
-      minLb.resize(getNumSymbolIds() + 1, 0);
+      std::fill(minLb.begin(), minLb.end(), 0);
       minLb.back() = std::min(constLb.getValue(), constOtherLb.getValue());
     }
 
@@ -2761,7 +2762,7 @@ bool FlatAffineConstraints::unionBoundingBox(
       auto constOtherUb = other.getConstantUpperBound(d);
       if (!constUb.hasValue() || !constOtherUb.hasValue())
         return false;
-      maxUb.resize(getNumSymbolIds() + 1, 0);
+      std::fill(maxUb.begin(), maxUb.end(), 0);
       maxUb.back() = std::max(constUb.getValue(), constOtherUb.getValue());
     }
 
