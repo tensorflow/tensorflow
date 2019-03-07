@@ -129,16 +129,17 @@ struct ProcessPerDepth<DepthwiseConvImplementation::kUseCModel3x3DotProduct> {
                   const DepthwiseConvDotProdParams* function_params) {
     constexpr int shuffled_filter_increment = 2 * 3 * 4 * 4;
     const int depth = function_params->output_depth;
+    const int depth_micro_repeats = function_params->depth_micro_repeats;
     const int bias_increment = function_params->bias_increment;
     const int32 input_offset = function_params->input_offset;
 
     int8 filter_bank[3][2][4][4];
     int32 adjusted_bias_block[2][4];
 
-    for (int j_depth = 0; j_depth < (depth >> 3); ++j_depth) {
+    for (int j_depth = 0; j_depth < depth_micro_repeats; ++j_depth) {
       FillFilterBank(depth, filter_data + 8 * j_depth, filter_bank);
       AdjustBias(input_offset, filter_bank,
-                 bias_data + 2 * j_depth * bias_increment, adjusted_bias_block);
+                 bias_data + 2 * bias_increment * j_depth, adjusted_bias_block);
 
       memcpy(shuffled_filter_data, filter_bank[0][0][0],
              shuffled_filter_increment);
@@ -830,8 +831,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
   }
 };
 
-// Top-level implementation function for 3x3 depthwise convolution using
-// NEON dot-product instructions.
+// Top-level implementation function for 3x3 depthwise convolution using NEON
+// dot-product instructions.
 //
 // MACRO & MICRO BLOCKS
 //
@@ -855,8 +856,7 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
 //     {1, 1, 4, 8}
 // Each macro block is typically shape
 //     {1, height_block_size, 4 * workspace_width_micro_repeats, 64}
-// and workspace_width_micro_repeats is chosen so it fits into the
-// workspace.
+// and workspace_width_micro_repeats is chosen so it fits into the workspace.
 //
 // However, if depth < 64, we decrease the macro block depth, enabling us to
 // increase the macro-block width.
@@ -865,8 +865,8 @@ struct KernelMacroBlock<DepthwiseConvImplementation::kUseCModel3x3DotProduct,
 //
 // We require input-depth = 1 and exploit that instead.  Note that output data
 // is still full-depth, *as is the filter and bias data after certain
-// adjustments*, and so the filter stage in this case still proceeds in
-// terms of sub-blocks.
+// adjustments*, and so the filter stage in this case still proceeds in terms of
+// sub-blocks.
 //
 // The Magic of these numbers:
 //     4 is the number of input elements used in each dot-product.
@@ -925,9 +925,9 @@ inline void DepthwiseConvDotProduct3x3(
     uint8* output_data) {
   // Check kernel restrictions.
   constexpr int filter_size = 3;
-  constexpr int kSymmetricZeroPoint = 128;
   constexpr int kMaxStride = 2;
   constexpr int kMaxPadding = 1;
+  constexpr int kSymmetricZeroPoint = 128;
   TFLITE_DCHECK_EQ(params.weights_offset, -kSymmetricZeroPoint);
   TFLITE_DCHECK_LE(params.stride_width, kMaxStride);
   TFLITE_DCHECK_EQ(params.stride_height, params.stride_width);
@@ -988,13 +988,15 @@ inline void DepthwiseConvDotProduct3x3(
   // array. Where there is no bias, we provide one filled with zeros.
   constexpr int kMinBiasLoad = 8;
   int32 zero_bias_data[kMinBiasLoad];
+  int32 bias_increment;
   if (bias_data) {
-    function_params.bias_increment = 4;
+    bias_increment = 4;
   } else {
     memset(zero_bias_data, 0, sizeof(zero_bias_data));
     bias_data = &zero_bias_data[0];
-    function_params.bias_increment = 0;
+    bias_increment = 0;
   }
+  function_params.bias_increment = bias_increment;
   TFLITE_DCHECK_LE(2 * function_params.bias_increment, kMinBiasLoad);
 
   // Process padding.
@@ -1027,7 +1029,7 @@ inline void DepthwiseConvDotProduct3x3(
   // When stride == 2 right or bottom padding may only be non-zero.
   // This is a result of the details of the padding calculations.
   const bool padding_required =
-      params.padding_type == tflite::PaddingType::kSame ||
+      function_params.padding_left > 0 || function_params.padding_top > 0 ||
       function_params.padding_right > 0 || function_params.padding_bottom > 0;
 
   // Choose parameter-specific kernel subroutines.
@@ -1120,7 +1122,6 @@ inline void DepthwiseConvDotProduct3x3(
   //
   // Filter workspace is for shuffle: only first depth/8 is used.
   // indexed as [depth/8][sub-block][height][depth][width].
-  TFLITE_DCHECK_LE(output_depth, kDepthwiseConvAdjustedBiasLimit);
   TFLITE_DCHECK_EQ(kDepthwiseConvAdjustedBiasLimit % 8, 0);
   int8 macroblock_workspace[kDepthwiseConvScratchWorkspaceSize];
   int32 adjusted_bias_data[kDepthwiseConvAdjustedBiasLimit];
@@ -1260,13 +1261,6 @@ inline void DepthwiseConvDotProduct3x3(
   function_params.output_height_stride = output_height_stride;
   function_params.residual_width = residual_micro_width;
 
-  // Preprocess filter and bias data.
-  //
-  ProcessPerDepth<implementation>::Run(filter_data, bias_data,
-                                       filter_workspace[0][0][0][0],
-                                       adjusted_bias_data, &function_params);
-  function_params.bias_increment = 4;  // Adjusted bias data always spans depth.
-
   // Main process.
   //
   // Most kernels are nested batch-height-width-depth. Here we proceed over
@@ -1320,8 +1314,15 @@ inline void DepthwiseConvDotProduct3x3(
                                    j_depth * 64 +
                                    k_width * output_width_macro_stride;
 
+        // Process filter and bias data.
+        //
         function_params.depth_micro_repeats =
             j_depth == depth_macro_count ? depth_trailing_micro_repeats : 8;
+        ProcessPerDepth<implementation>::Run(
+            filter_data + 64 * j_depth,
+            bias_data + 8 * 2 * bias_increment * j_depth,
+            filter_workspace[0][0][0][0], adjusted_bias_data, &function_params);
+
         // Under depth multiplication the workspace_height_stride does not have
         // to depend on input_width_overall_micro_repeats, but this improves the
         // compactness of workspace use.
@@ -1375,10 +1376,9 @@ inline void DepthwiseConvDotProduct3x3(
                   input_height_overlap * workspace_height_stride,
               &function_params);
 
-          kernel_macro_block_func(macroblock_workspace,
-                                  filter_workspace[8 * j_depth][0][0][0],
-                                  adjusted_bias_data + 64 * j_depth,
-                                  output_data_block, &function_params);
+          kernel_macro_block_func(
+              macroblock_workspace, filter_workspace[0][0][0][0],
+              adjusted_bias_data, output_data_block, &function_params);
 
           input_data_block += input_height_stride * input_height_per_macro;
           output_data_block += output_height_stride * output_height_per_macro;
