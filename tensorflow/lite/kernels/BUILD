@@ -567,7 +567,6 @@ cc_test(
     ],
 )
 
-
 cc_test(
     name = "round_test",
     size = "small",

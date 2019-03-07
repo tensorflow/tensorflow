@@ -2804,7 +2804,9 @@ inline void Round(const RuntimeShape& input_shape, const float* input_data,
 
   for (int i = 0; i < flat_size; i++) {
     int offset = i;
-    output_data[offset] = std::round(input_data[offset]);
+    // Note that this implementation matches that of tensorFlow tf.round
+    // and corresponds to the bankers rounding method.
+    output_data[offset] = std::lrint(input_data[offset]);
   }
 }
 

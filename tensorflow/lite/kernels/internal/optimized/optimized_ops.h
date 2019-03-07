@@ -91,6 +91,7 @@ using reference_ops::Split;
 using reference_ops::StridedSlice;
 using reference_ops::Sub16;
 using reference_ops::Transpose;
+using reference_ops::Round;
 
 // TODO(b/80247582) Remove this constant.
 // This will be phased out as the shifts are revised with more thought. Use of a
@@ -5090,14 +5091,6 @@ inline void Ceil(const RuntimeShape& input_shape, const float* input_data,
   auto input_map = MapAsVector(input_data, input_shape);
   auto output_map = MapAsVector(output_data, output_shape);
   output_map.array() = Eigen::ceil(input_map.array());
-}
-
-inline void Round(const RuntimeShape& input_shape, const float* input_data,
-                  const RuntimeShape& output_shape, float* output_data) {
-  gemmlowp::ScopedProfilingLabel label("Round");
-  auto input_map = MapAsVector(input_data, input_shape);
-  auto output_map = MapAsVector(output_data, output_shape);
-  output_map.array() = Eigen::round(input_map.array());
 }
 
 #ifdef USE_NEON

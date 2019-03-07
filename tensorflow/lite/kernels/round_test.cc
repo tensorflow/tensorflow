@@ -46,24 +46,24 @@ class RoundOpModel : public SingleOpModel {
 };
 
 TEST(RoundOpTest, SingleDim) {
-  RoundOpModel model({2}, TensorType_FLOAT32);
-  model.PopulateTensor<float>(model.input(), {8.5, 0.0});
+  RoundOpModel model({6}, TensorType_FLOAT32);
+  model.PopulateTensor<float>(model.input(), {8.5, 0.0, 3.5, 4.2, -3.5, -4.5});
   model.Invoke();
-  EXPECT_THAT(model.GetOutput(), ElementsAreArray({9, 0}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2}));
+  EXPECT_THAT(model.GetOutput(), ElementsAreArray({8, 0, 4, 4, -4, -4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({6}));
 }
 
 TEST(RoundOpTest, MultiDims) {
-  RoundOpModel model({2, 1, 1, 5}, TensorType_FLOAT32);
+  RoundOpModel model({2, 1, 1, 6}, TensorType_FLOAT32);
   model.PopulateTensor<float>(
       model.input(), {
                          0.0001, 8.0001, 0.9999, 9.9999, 0.5, -0.0001, -8.0001,
-                         -0.9999, -9.9999, -0.5,
+                         -0.9999, -9.9999, -0.5, -2.5, -3.5
                      });
   model.Invoke();
   EXPECT_THAT(model.GetOutput(),
-              ElementsAreArray({0, 8, 1, 10, 1, 0, -8, -1, -10, -1}));
-  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 5}));
+              ElementsAreArray({0, 8, 1, 10, 0, 0, -8, -1, -10, -0, -2, -4}));
+  EXPECT_THAT(model.GetOutputShape(), ElementsAreArray({2, 1, 1, 6}));
 }
 
 }  // namespace
