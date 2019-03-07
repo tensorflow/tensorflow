@@ -21,6 +21,7 @@ from __future__ import print_function
 import collections
 import copy
 import functools
+import os
 import pdb
 import sys
 
@@ -46,6 +47,11 @@ from tensorflow.python.util import nest
 from tensorflow.python.util import tf_decorator
 from tensorflow.python.util import tf_inspect
 from tensorflow.python.util.tf_export import tf_export
+
+
+def is_autograph_strict_conversion_mode():
+  return int(os.environ.get('AUTOGRAPH_STRICT_CONVERSION', '0')) > 0
+
 
 # TODO(mdan): Properly document the type hints.
 # TODO(mdan): Reduce the type hint information to (module, type).
@@ -225,6 +231,10 @@ def converted_call(f, owner, options, args, kwargs):
   if inspect_utils.isbuiltin(f):
     return py_builtins.overload_of(f)(*args, **kwargs)
 
+  if _is_known_loaded_type(f, 'weakref', 'ref'):
+    logging.log(2, 'Permanently whitelisted: %s: weakref', f)
+    return _call_unconverted(f, args, kwargs)
+
   # TODO(b/122265385): Remove this bypass.
   if (_is_known_loaded_type(f, 'wrapt', 'FunctionWrapper') or
       _is_known_loaded_type(f, 'wrapt', 'BoundFunctionWrapper')):
@@ -351,7 +361,12 @@ def converted_call(f, owner, options, args, kwargs):
   except (errors.AutoGraphError, AssertionError, AttributeError, IndexError,
           KeyError, NameError, NotImplementedError, SyntaxError, TypeError,
           ValueError, IOError) as e:
+
     logging.log(1, 'Error transforming entity %s', target_entity, exc_info=True)
+
+    if is_autograph_strict_conversion_mode():
+      raise
+
     logging.warn(
         'Entity %s could not be transformed and will be staged without change.'
         ' Error details can be found in the logs when running with the env'
