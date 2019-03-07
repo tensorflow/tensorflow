@@ -34,9 +34,8 @@ using namespace mlir::detail;
 /// single .o file.
 void Pass::anchor() {}
 
-/// Forwarding function to execute this pass. Returns false if the pass
-/// execution failed, true otherwise.
-bool FunctionPassBase::run(Function *fn, FunctionAnalysisManager &fam) {
+/// Forwarding function to execute this pass.
+Status FunctionPassBase::run(Function *fn, FunctionAnalysisManager &fam) {
   // Initialize the pass state.
   passState.emplace(fn, fam);
 
@@ -47,12 +46,12 @@ bool FunctionPassBase::run(Function *fn, FunctionAnalysisManager &fam) {
   fam.invalidate(passState->preservedAnalyses);
 
   // Return false if the pass signaled a failure.
-  return !passState->irAndPassFailed.getInt();
+  return passState->irAndPassFailed.getInt() ? Status::failure()
+                                             : Status::success();
 }
 
-/// Forwarding function to execute this pass. Returns false if the pass
-/// execution failed, true otherwise.
-bool ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
+/// Forwarding function to execute this pass.
+Status ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
   // Initialize the pass state.
   passState.emplace(module, mam);
 
@@ -63,7 +62,8 @@ bool ModulePassBase::run(Module *module, ModuleAnalysisManager &mam) {
   mam.invalidate(passState->preservedAnalyses);
 
   // Return false if the pass signaled a failure.
-  return !passState->irAndPassFailed.getInt();
+  return passState->irAndPassFailed.getInt() ? Status::failure()
+                                             : Status::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -96,9 +96,8 @@ public:
   FunctionPassExecutor(const FunctionPassExecutor &) = delete;
   FunctionPassExecutor &operator=(const FunctionPassExecutor &) = delete;
 
-  /// Run the executor on the given function. Returns false if the pass
-  /// execution failed, true otherwise.
-  bool run(Function *function, FunctionAnalysisManager &fam);
+  /// Run the executor on the given function.
+  Status run(Function *function, FunctionAnalysisManager &fam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
@@ -122,9 +121,8 @@ public:
   ModulePassExecutor(const ModulePassExecutor &) = delete;
   ModulePassExecutor &operator=(const ModulePassExecutor &) = delete;
 
-  /// Run the executor on the given module. Returns false if the pass
-  /// execution failed, true otherwise.
-  bool run(Module *module, ModuleAnalysisManager &mam);
+  /// Run the executor on the given module.
+  Status run(Module *module, ModuleAnalysisManager &mam);
 
   /// Add a pass to the current executor. This takes ownership over the provided
   /// pass pointer.
@@ -142,23 +140,23 @@ private:
 } // end namespace mlir
 
 /// Run all of the passes in this manager over the current function.
-bool detail::FunctionPassExecutor::run(Function *function,
-                                       FunctionAnalysisManager &fam) {
+Status detail::FunctionPassExecutor::run(Function *function,
+                                         FunctionAnalysisManager &fam) {
   // Run each of the held passes.
   for (auto &pass : passes)
-    if (!pass->run(function, fam))
-      return false;
-  return true;
+    if (failed(pass->run(function, fam)))
+      return Status::failure();
+  return Status::success();
 }
 
 /// Run all of the passes in this manager over the current module.
-bool detail::ModulePassExecutor::run(Module *module,
-                                     ModuleAnalysisManager &mam) {
+Status detail::ModulePassExecutor::run(Module *module,
+                                       ModuleAnalysisManager &mam) {
   // Run each of the held passes.
   for (auto &pass : passes)
-    if (!pass->run(module, mam))
-      return false;
-  return true;
+    if (failed(pass->run(module, mam)))
+      return Status::failure();
+  return Status::success();
 }
 
 //===----------------------------------------------------------------------===//
@@ -202,7 +200,7 @@ void ModuleToFunctionPassAdaptor::runOnModule() {
 
     // Run the held function pipeline over the current function.
     auto fam = mam.slice(&func);
-    if (!fpe.run(&func, fam))
+    if (failed(fpe.run(&func, fam)))
       return signalPassFailure();
 
     // Clear out any computed function analyses. These analyses won't be used
@@ -290,7 +288,7 @@ void PassManager::addPass(FunctionPassBase *pass) {
 }
 
 /// Run the passes within this manager on the provided module.
-bool PassManager::run(Module *module) {
+Status PassManager::run(Module *module) {
   ModuleAnalysisManager mam(module);
   return mpe->run(module, mam);
 }

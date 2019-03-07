@@ -246,7 +246,7 @@ pm.addPass(new MyModulePass2());
 
 // Run the pass manager on a module.
 Module *m = ...;
-if (!pm.run(m))
+if (failed(pm.run(m)))
     ... // One of the passes signaled a failure.
 ```
 

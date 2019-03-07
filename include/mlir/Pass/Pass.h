@@ -20,6 +20,7 @@
 
 #include "mlir/Pass/AnalysisManager.h"
 #include "mlir/Pass/PassRegistry.h"
+#include "mlir/Support/Status.h"
 #include "llvm/ADT/PointerIntPair.h"
 
 namespace mlir {
@@ -116,10 +117,9 @@ protected:
   }
 
 private:
-  /// Forwarding function to execute this pass. Returns false if the pass
-  /// execution failed, true otherwise.
+  /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  bool run(Function *fn, FunctionAnalysisManager &fam);
+  Status run(Function *fn, FunctionAnalysisManager &fam);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;
@@ -159,10 +159,9 @@ protected:
   }
 
 private:
-  /// Forwarding function to execute this pass. Returns false if the pass
-  /// execution failed, true otherwise.
+  /// Forwarding function to execute this pass.
   LLVM_NODISCARD
-  bool run(Module *module, ModuleAnalysisManager &mam);
+  Status run(Module *module, ModuleAnalysisManager &mam);
 
   /// The current execution state for the pass.
   llvm::Optional<PassStateT> passState;

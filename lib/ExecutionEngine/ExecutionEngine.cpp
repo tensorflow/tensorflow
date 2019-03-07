@@ -284,7 +284,7 @@ Expected<std::unique_ptr<ExecutionEngine>> ExecutionEngine::create(
   // Construct and run the default MLIR pipeline.
   PassManager manager;
   getDefaultPasses(manager, {});
-  if (!manager.run(m))
+  if (failed(manager.run(m)))
     return make_string_error("passes failed");
 
   auto llvmModule = translateModuleToLLVMIR(*m);
