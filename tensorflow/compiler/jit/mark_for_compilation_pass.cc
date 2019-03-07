@@ -1098,7 +1098,11 @@ Status MarkForCompilationPass::RunImpl(
   }
 
   GraphCycles cycles;
-  TF_RETURN_IF_ERROR(CreateCycleDetectionGraph(graph, &cycles));
+  TF_ASSIGN_OR_RETURN(bool cycle_detection_graph_ok,
+                      CreateCycleDetectionGraph(graph, &cycles));
+  if (!cycle_detection_graph_ok) {
+    return Status::OK();
+  }
   TF_RETURN_IF_ERROR(AdjustCycleDetectionGraphForResourceOps(
       graph, options.flib_def, IgnoreResourceOpForSafetyAnalysis, &cycles));
 
