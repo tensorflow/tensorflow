@@ -37,7 +37,24 @@ def LLVM_Type : Type<CPred<"{0}.isa<::mlir::LLVM::LLVMType>()">,
 // this class is specialized below for both cases and should not be used
 // directly.
 class LLVM_Op<string mnemonic, list<OpTrait> traits = []> :
-    Op<!strconcat("llvm.", mnemonic), traits>;
+    Op<!strconcat("llvm.", mnemonic), traits> {
+  // A pattern for constructing the LLVM IR Instruction (or other Value) that
+  // corresponds to this op.  This pattern can use `builder` to refer to an
+  // `llvm::IRBuilder<>` instance, $-names of arguments and results and the
+  // following special variable names:
+  //   - $_resultType - substituted with the LLVM IR type of the result;
+  //   - $_numOperands - substituted with the number of operands (including
+  //                     the variadic ones);
+  //   - $_hasResult - substituted with a check that a variadic-result op does
+  //                   have a result (LLVM ops can have 0 or 1 result);
+  //   - $_location - mlir::Location object of the instruction.
+  // Additionally, `$$` can be used to produce the dollar character.
+  string llvmBuilder = "";
+}
+
+class LLVM_Builder<string builder> {
+  string llvmBuilder = builder;
+}
 
 def LLVM_OneResultOpBuilder {
   code builder = [{
@@ -72,7 +89,7 @@ class LLVM_TwoBuilders<code b1, code b2> {
 
 // Base class for LLVM operations with one result.
 class LLVM_OneResultOp<string mnemonic, list<OpTrait> traits = []> :
-    LLVM_Op<mnemonic, traits>, Results<(outs LLVM_Type)> {
+    LLVM_Op<mnemonic, traits>, Results<(outs LLVM_Type:$res)> {
   let builder = LLVM_OneResultOpBuilder.builder;
 }
 
@@ -100,7 +117,7 @@ class LLVM_ZeroResultOp<string mnemonic, list<OpTrait> traits = []> :
 // zero results and an optional list of successors.
 class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
     LLVM_Op<mnemonic, !listconcat(traits, [Terminator])>,
-    Arguments<(ins Variadic<LLVM_Type>)>, Results<(outs)> {
+    Arguments<(ins Variadic<LLVM_Type>:$args)>, Results<(outs)> {
   let builder = [{
       static void build(Builder *builder, OperationState *result,
                         ArrayRef<Value *> properOperands,
@@ -120,49 +137,64 @@ class LLVM_TerminatorOp<string mnemonic, list<OpTrait> traits = []> :
 }
 
 // Class for arithmetic binary instructions.
-class LLVM_ArithmeticOp<string mnemonic, list<OpTrait> traits = []> :
+class LLVM_ArithmeticOp<string mnemonic, string builderFunc,
+                        list<OpTrait> traits = []> :
     LLVM_OneResultOp<mnemonic,
            !listconcat([NoSideEffect, SameValueType], traits)>,
-    Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>;
-
-// Class for variadic instructions.
-class LLVM_VariadicOneResultOp<string mnemonic, list<OpTrait> traits = []> :
-    LLVM_OneResultOp<mnemonic, traits>, Arguments<(ins Variadic<LLVM_Type>)>;
+    Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>,
+    LLVM_Builder<"$res = builder." # builderFunc # "($lhs, $rhs);">;
 
 // Integer binary instructions.
-def LLVM_AddOp : LLVM_ArithmeticOp<"add", [Commutative]>;
-def LLVM_SubOp : LLVM_ArithmeticOp<"sub">;
-def LLVM_MulOp : LLVM_ArithmeticOp<"mul", [Commutative]>;
-def LLVM_UDivOp : LLVM_ArithmeticOp<"udiv">;
-def LLVM_SDivOp : LLVM_ArithmeticOp<"sdiv">;
-def LLVM_URemOp : LLVM_ArithmeticOp<"urem">;
-def LLVM_SRemOp : LLVM_ArithmeticOp<"srem">;
+def LLVM_AddOp : LLVM_ArithmeticOp<"add", "CreateAdd", [Commutative]>;
+def LLVM_SubOp : LLVM_ArithmeticOp<"sub", "CreateSub">;
+def LLVM_MulOp : LLVM_ArithmeticOp<"mul", "CreateMul", [Commutative]>;
+def LLVM_UDivOp : LLVM_ArithmeticOp<"udiv", "CreateUDiv">;
+def LLVM_SDivOp : LLVM_ArithmeticOp<"sdiv", "CreateSDiv">;
+def LLVM_URemOp : LLVM_ArithmeticOp<"urem", "CreateURem">;
+def LLVM_SRemOp : LLVM_ArithmeticOp<"srem", "CreateSRem">;
 
 // Other integer instructions.
 def LLVM_ICmpOp : LLVM_OneResultOp<"icmp", [NoSideEffect]>,
-                  Arguments<(ins LLVM_Type:$lhs, LLVM_Type:$rhs)>;
+                  Arguments<(ins I32Attr:$predicate, LLVM_Type:$lhs,
+                             LLVM_Type:$rhs)> {
+  let llvmBuilder = [{  $res = builder.CreateICmp(
+       getLLVMCmpPredicate(static_cast<CmpIPredicate>($predicate)), $lhs, $rhs);
+  }];
+}
 
 // Floating point binary instructions.
-def LLVM_FAddOp : LLVM_ArithmeticOp<"fadd">;
-def LLVM_FSubOp : LLVM_ArithmeticOp<"fsub">;
-def LLVM_FMulOp : LLVM_ArithmeticOp<"fmul">;
-def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv">;
-def LLVM_FRemOp : LLVM_ArithmeticOp<"frem">;
+def LLVM_FAddOp : LLVM_ArithmeticOp<"fadd", "CreateFAdd">;
+def LLVM_FSubOp : LLVM_ArithmeticOp<"fsub", "CreateFSub">;
+def LLVM_FMulOp : LLVM_ArithmeticOp<"fmul", "CreateFMul">;
+def LLVM_FDivOp : LLVM_ArithmeticOp<"fdiv", "CreateFDiv">;
+def LLVM_FRemOp : LLVM_ArithmeticOp<"frem", "CreateFRem">;
 
 // Memory-related instructions.
 def LLVM_AllocaOp : LLVM_OneResultOp<"alloca">,
-                    Arguments<(ins LLVM_Type:$arraySize)>;
-def LLVM_GEPOp : LLVM_VariadicOneResultOp<"getelementptr", [NoSideEffect]>;
-def LLVM_LoadOp : LLVM_OneResultOp<"load">, Arguments<(ins LLVM_Type:$addr)>;
+                    Arguments<(ins LLVM_Type:$arraySize)> {
+  string llvmBuilder = [{
+    $res = builder.CreateAlloca($_resultType, $arraySize);
+  }];
+}
+def LLVM_GEPOp : LLVM_OneResultOp<"getelementptr", [NoSideEffect]>,
+                 Arguments<(ins LLVM_Type:$base, Variadic<LLVM_Type>:$indices)>,
+                 LLVM_Builder<"$res = builder.CreateGEP($base, $indices);">;
+def LLVM_LoadOp : LLVM_OneResultOp<"load">, Arguments<(ins LLVM_Type:$addr)>,
+                  LLVM_Builder<"$res = builder.CreateLoad($addr);">;
 def LLVM_StoreOp : LLVM_ZeroResultOp<"store">,
-                   Arguments<(ins LLVM_Type:$value, LLVM_Type:$addr)>;
-def LLVM_BitcastOp : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
-                     Arguments<(ins LLVM_Type)>;
+                   Arguments<(ins LLVM_Type:$value, LLVM_Type:$addr)>,
+                   LLVM_Builder<"builder.CreateStore($value, $addr);">;
+def LLVM_BitcastOp
+    : LLVM_OneResultOp<"bitcast", [NoSideEffect]>,
+      Arguments<(ins LLVM_Type:$arg)>,
+      LLVM_Builder<"$res = builder.CreateBitCast($arg, $_resultType);">;
 
 
 // Call-related instructions.
-def LLVM_CallOp : LLVM_Op<"call">, Arguments<(ins Variadic<LLVM_Type>)>,
-                     Results<(outs Variadic<LLVM_Type>)> {
+def LLVM_CallOp : LLVM_Op<"call">,
+                  Arguments<(ins OptionalAttr<FunctionAttr>:$callee,
+                             Variadic<LLVM_Type>)>,
+                  Results<(outs Variadic<LLVM_Type>)> {
   let builder = LLVM_TwoBuilders<
     LLVM_OneResultOpBuilder.builder,
     LLVM_ZeroResultOpBuilder.builder
@@ -175,13 +207,28 @@ def LLVM_CallOp : LLVM_Op<"call">, Arguments<(ins Variadic<LLVM_Type>)>,
   }];
 }
 def LLVM_ExtractValueOp : LLVM_OneResultOp<"extractvalue", [NoSideEffect]>,
-                          Arguments<(ins LLVM_Type)>;
+                          Arguments<(ins LLVM_Type:$container,
+                                     ArrayAttr:$position)> {
+  string llvmBuilder = [{
+    $res = builder.CreateExtractValue($container, extractPosition($position));
+  }];
+}
 def LLVM_InsertValueOp : LLVM_OneResultOp<"insertvalue", [NoSideEffect]>,
-                         Arguments<(ins LLVM_Type, LLVM_Type)>;
+                         Arguments<(ins LLVM_Type:$container, LLVM_Type:$value,
+                                    ArrayAttr:$position)> {
+  string llvmBuilder = [{
+    $res = builder.CreateInsertValue($container, $value,
+                                     extractPosition($position));
+  }];
+}
 
 // Misc instructions.
-def LLVM_SelectOp : LLVM_OneResultOp<"select", [NoSideEffect]>,
-                    Arguments<(ins LLVM_Type, LLVM_Type, LLVM_Type)>;
+def LLVM_SelectOp
+    : LLVM_OneResultOp<"select", [NoSideEffect]>,
+      Arguments<(ins LLVM_Type:$condition, LLVM_Type:$trueValue,
+                 LLVM_Type:$falseValue)>,
+      LLVM_Builder<
+          "$res = builder.CreateSelect($condition, $trueValue, $falseValue);">;
 
 // Terminators.
 def LLVM_BrOp : LLVM_TerminatorOp<"br", [NoSideEffect]>;
@@ -196,12 +243,28 @@ def LLVM_CondBrOp : LLVM_TerminatorOp<"cond_br", [NoSideEffect]> {
     return false;
   }];
 }
-def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]>;
+def LLVM_ReturnOp : LLVM_TerminatorOp<"return", [NoSideEffect]> {
+  string llvmBuilder = [{
+    if ($_numOperands != 0)
+      builder.CreateRet($args[0]);
+    else
+      builder.CreateRetVoid();
+  }];
+
+  let verifier = [{
+    if (getNumOperands() > 1)
+      return emitOpError("expects at most 1 operand");
+    return false;
+  }];
+}
 
 // Pseudo-operations (do not appear in LLVM IR but necessary for the dialect to
 // work correctly).
-def LLVM_UndefOp : LLVM_OneResultOp<"undef", [NoSideEffect]>;
-def LLVM_ConstantOp : LLVM_OneResultOp<"constant", [NoSideEffect]>,
-                      Arguments<(ins)>;
+def LLVM_UndefOp : LLVM_OneResultOp<"undef", [NoSideEffect]>,
+                   LLVM_Builder<"$res = llvm::UndefValue::get($_resultType);">;
+def LLVM_ConstantOp
+    : LLVM_OneResultOp<"constant", [NoSideEffect]>,
+      Arguments<(ins AnyAttr:$value)>,
+      LLVM_Builder<"$res = getLLVMConstant($_resultType, $value, $_location);">;
 
 #endif // LLVMIR_OPS

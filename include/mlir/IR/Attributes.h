@@ -84,6 +84,9 @@ public:
     SparseElements,
     FIRST_ELEMENTS_ATTR = SplatElements,
     LAST_ELEMENTS_ATTR = SparseElements,
+
+    FIRST_KIND = Bool,
+    LAST_KIND = SparseElements,
   };
 
   using ImplType = detail::AttributeStorage;
@@ -109,6 +112,13 @@ public:
   template <typename U> U dyn_cast() const;
   template <typename U> U dyn_cast_or_null() const;
   template <typename U> U cast() const;
+
+  // Support dyn_cast'ing Attribute to itself.
+  static bool kindof(Kind kind) {
+    assert(kind >= Kind::FIRST_KIND && kind <= Kind::LAST_KIND &&
+           "incorrect Attribute kind");
+    return true;
+  }
 
   /// Return the classification for this attribute.
   Kind getKind() const;

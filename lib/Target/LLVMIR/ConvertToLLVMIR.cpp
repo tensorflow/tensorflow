@@ -61,6 +61,9 @@ private:
   bool convertBlock(const Block &bb, bool ignoreArguments);
   bool convertInstruction(const Instruction &inst, llvm::IRBuilder<> &builder);
 
+  template <typename Range>
+  SmallVector<llvm::Value *, 8> lookupValues(Range &&values);
+
   llvm::Constant *getLLVMConstant(llvm::Type *llvmType, Attribute attr,
                                   Location loc);
 
@@ -177,80 +180,39 @@ static llvm::CmpInst::Predicate getLLVMCmpPredicate(CmpIPredicate p) {
   }
 }
 
+// A helper to look up remapped operands in the value remapping table.
+template <typename Range>
+SmallVector<llvm::Value *, 8> ModuleTranslation::lookupValues(Range &&values) {
+  SmallVector<llvm::Value *, 8> remapped;
+  remapped.reserve(llvm::size(values));
+  for (const Value *v : values) {
+    remapped.push_back(valueMapping.lookup(v));
+  }
+  return remapped;
+}
+
 // Given a single MLIR instruction, create the corresponding LLVM IR instruction
 // using the `builder`.  LLVM IR Builder does not have a generic interface so
 // this has to be a long chain of `if`s calling different functions with a
 // different number of arguments.
-// TODO(zinenko): the conversion is largely mechanical and should be tablegen'ed
 bool ModuleTranslation::convertInstruction(const Instruction &inst,
                                            llvm::IRBuilder<> &builder) {
-#define CONV_BINARY_OP(CLASS, FUNC)                                            \
-  if (auto op = inst.dyn_cast<CLASS>()) {                                      \
-    valueMapping[op->getResult()] = builder.FUNC(                              \
-        valueMapping.lookup(op->lhs()), valueMapping.lookup(op->rhs()));       \
-    return false;                                                              \
-  }
+  auto extractPosition = [](ArrayAttr attr) {
+    SmallVector<unsigned, 4> position;
+    position.reserve(attr.size());
+    for (Attribute v : attr)
+      position.push_back(v.cast<IntegerAttr>().getValue().getZExtValue());
+    return position;
+  };
 
-  CONV_BINARY_OP(LLVM::AddOp, CreateAdd);
-  CONV_BINARY_OP(LLVM::SubOp, CreateSub);
-  CONV_BINARY_OP(LLVM::MulOp, CreateMul);
-  CONV_BINARY_OP(LLVM::SDivOp, CreateSDiv);
-  CONV_BINARY_OP(LLVM::UDivOp, CreateUDiv);
-  CONV_BINARY_OP(LLVM::SRemOp, CreateSRem);
-  CONV_BINARY_OP(LLVM::URemOp, CreateURem);
-  CONV_BINARY_OP(LLVM::FAddOp, CreateFAdd);
-  CONV_BINARY_OP(LLVM::FSubOp, CreateFSub);
-  CONV_BINARY_OP(LLVM::FMulOp, CreateFMul);
-  CONV_BINARY_OP(LLVM::FDivOp, CreateFDiv);
-  CONV_BINARY_OP(LLVM::FRemOp, CreateFRem);
-
-#undef CONV_BINARY_OP
-
-  if (auto op = inst.dyn_cast<LLVM::ICmpOp>()) {
-    auto attr = op->getAttrOfType<IntegerAttr>("predicate");
-    auto predicate = static_cast<CmpIPredicate>(attr.getValue().getSExtValue());
-
-    valueMapping[op->getResult()] = builder.CreateICmp(
-        getLLVMCmpPredicate(predicate), valueMapping.lookup(op->lhs()),
-        valueMapping.lookup(op->rhs()));
-    return false;
-  }
-
-  // Pseudo-ops.  These do not exist as LLVM operations but produce (constant)
-  // values.
-  if (auto op = inst.dyn_cast<LLVM::UndefOp>()) {
-    auto wrappedType = op->getResult()->getType().dyn_cast<LLVM::LLVMType>();
-    valueMapping[op->getResult()] =
-        llvm::UndefValue::get(wrappedType.getUnderlyingType());
-    return false;
-  }
-
-  if (auto op = inst.dyn_cast<LLVM::ConstantOp>()) {
-    Attribute attr = op->getAttr("value");
-    auto type = op->getResult()->getType().cast<LLVM::LLVMType>();
-    valueMapping[op->getResult()] =
-        getLLVMConstant(type.getUnderlyingType(), attr, inst.getLoc());
-    return false;
-  }
-
-  // A helper to look up remapped operands in the value remapping table.
-  auto lookupValues =
-      [this](const llvm::iterator_range<Instruction::const_operand_iterator>
-                 &values) {
-        SmallVector<llvm::Value *, 8> remapped;
-        remapped.reserve(llvm::size(values));
-        for (const Value *v : values) {
-          remapped.push_back(valueMapping.lookup(v));
-        }
-        return remapped;
-      };
+#include "mlir/LLVMIR/LLVMConversions.inc"
 
   // Emit function calls.  If the "callee" attribute is present, this is a
   // direct function call and we also need to look up the remapped function
   // itself.  Otherwise, this is an indirect call and the callee is the first
   // operand, look it up as a normal value.  Return the llvm::Value representing
   // the function result, which may be of llvm::VoidTy type.
-  auto convertCall = [this, lookupValues,
+  auto convertCall = [this,
                       &builder](const Instruction &inst) -> llvm::Value * {
     auto operands = lookupValues(inst.getOperands());
     ArrayRef<llvm::Value *> operandsRef(operands);
@@ -284,67 +246,6 @@ bool ModuleTranslation::convertInstruction(const Instruction &inst,
     builder.CreateCondBr(valueMapping.lookup(op->getOperand(0)),
                          blockMapping[op->getSuccessor(0)],
                          blockMapping[op->getSuccessor(1)]);
-    return false;
-  }
-
-  if (auto op = inst.dyn_cast<LLVM::ReturnOp>()) {
-    if (op->getNumOperands() == 0)
-      builder.CreateRetVoid();
-    else
-      builder.CreateRet(valueMapping.lookup(op->getOperand(0)));
-    return false;
-  }
-
-  auto extractPosition = [](ArrayAttr attr) {
-    SmallVector<unsigned, 4> position;
-    position.reserve(attr.size());
-    for (Attribute v : attr)
-      position.push_back(v.cast<IntegerAttr>().getValue().getZExtValue());
-    return position;
-  };
-
-  if (auto op = inst.dyn_cast<LLVM::ExtractValueOp>()) {
-    auto attr = op->getAttrOfType<ArrayAttr>("position");
-    valueMapping[op->getResult()] = builder.CreateExtractValue(
-        valueMapping.lookup(op->getOperand()), extractPosition(attr));
-    return false;
-  }
-  if (auto op = inst.dyn_cast<LLVM::InsertValueOp>()) {
-    auto attr = op->getAttrOfType<ArrayAttr>("position");
-    valueMapping[op->getResult()] = builder.CreateInsertValue(
-        valueMapping.lookup(op->getOperand(0)),
-        valueMapping.lookup(op->getOperand(1)), extractPosition(attr));
-    return false;
-  }
-  if (auto op = inst.dyn_cast<LLVM::BitcastOp>()) {
-    valueMapping[op->getResult()] = builder.CreateBitCast(
-        valueMapping.lookup(op->getOperand()),
-        op->getType().cast<LLVM::LLVMType>().getUnderlyingType());
-    return false;
-  }
-
-  if (auto op = inst.dyn_cast<LLVM::GEPOp>()) {
-    auto mappedOperands = lookupValues(op->getOperands());
-    valueMapping[op->getResult()] =
-        builder.CreateGEP(mappedOperands.front(),
-                          llvm::makeArrayRef(mappedOperands).drop_front());
-    return false;
-  }
-  if (auto op = inst.dyn_cast<LLVM::LoadOp>()) {
-    valueMapping[op->getResult()] =
-        builder.CreateLoad(valueMapping.lookup(op->getOperand()));
-    return false;
-  }
-  if (auto op = inst.dyn_cast<LLVM::StoreOp>()) {
-    builder.CreateStore(valueMapping.lookup(op->getOperand(0)),
-                        valueMapping.lookup(op->getOperand(1)));
-    return false;
-  }
-  if (auto op = inst.dyn_cast<LLVM::SelectOp>()) {
-    valueMapping[op->getResult()] =
-        builder.CreateSelect(valueMapping.lookup(op->getOperand(0)),
-                             valueMapping.lookup(op->getOperand(1)),
-                             valueMapping.lookup(op->getOperand(2)));
     return false;
   }
 

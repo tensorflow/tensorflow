@@ -99,6 +99,9 @@ public:
   // Emit query methods for the named operands.
   void emitNamedOperands();
 
+  // Emit query methods for the named results.
+  void emitNamedResults();
+
   // Emit builder method for the operation.
   void emitBuilder();
 
@@ -165,6 +168,7 @@ void OpEmitter::emit(const Record &def, raw_ostream &os) {
          << emitter.op.getOperationName() << "\"; };\n";
 
   emitter.emitNamedOperands();
+  emitter.emitNamedResults();
   emitter.emitBuilder();
   emitter.emitParser();
   emitter.emitPrinter();
@@ -233,10 +237,48 @@ void OpEmitter::emitNamedOperands() {
     return this->getInstruction()->getOperand({1});
   }
 )";
+
+  const auto variadicOperandMethods = R"(  SmallVector<Value *, 4> {0}() {
+    assert(getInstruction()->getNumOperands() >= {1});
+    SmallVector<Value *, 4> operands(
+        std::next(getInstruction()->operand_begin(), {1}),
+        getInstruction()->operand_end());
+    return operands;
+  }
+  SmallVector<const Value *, 4> {0}() const {
+    assert(getInstruction()->getNumOperands() >= {1});
+    SmallVector<const Value *, 4> operands(
+        std::next(getInstruction()->operand_begin(), {1}),
+        getInstruction()->operand_end());
+    return operands;
+  }
+)";
+
   for (int i = 0, e = op.getNumOperands(); i != e; ++i) {
     const auto &operand = op.getOperand(i);
-    if (!operand.type.isVariadic() && !operand.name.empty())
-      os << formatv(operandMethods, operand.name, i);
+    if (!operand.name.empty()) {
+      if (operand.type.isVariadic()) {
+        assert(i == e - 1 && "only the last operand can be variadic");
+        os << formatv(variadicOperandMethods, operand.name, i);
+      } else {
+        os << formatv(operandMethods, operand.name, i);
+      }
+    }
+  }
+}
+
+void OpEmitter::emitNamedResults() {
+  const auto resultMethods = R"(  Value *{0}() {
+    return this->getInstruction()->getResult({1});
+  }
+  const Value *{0}() const {
+    return this->getInstruction()->getResult({1});
+  }
+)";
+  for (int i = 0, e = op.getNumResults(); i != e; ++i) {
+    const auto &result = op.getResult(i);
+    if (!result.type.isVariadic() && !result.name.empty())
+      os << formatv(resultMethods, result.name, i);
   }
 }
 
@@ -505,10 +547,10 @@ void OpEmitter::emitVerifier() {
     auto attrPred = attr.getPredicate();
     if (!attrPred.isNull()) {
       OUT(6) << formatv("if (!({0})) return emitOpError(\"attribute '{1}' "
-                        "failed to satisfy constraint of {2}\");\n",
+                        "failed to satisfy {2} attribute constraints\");\n",
                         formatv(attrPred.getCondition(),
                                 formatv("this->getAttr(\"{0}\")", name)),
-                        name, attr.getTableGenDefName());
+                        name, attr.getDescription());
     }
 
     if (allowMissingAttr)

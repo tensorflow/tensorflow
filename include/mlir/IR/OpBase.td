@@ -279,6 +279,14 @@ class Attr<Pred condition, string descr = ""> :
   bit isOptional = 0b0;
 }
 
+// Any attribute.
+def AnyAttr : Attr<CPred<"true">, "any"> {
+  let storageType = "Attribute";
+  let returnType = "Attribute";
+  let convertFromStorage = "{0}";
+  let constBuilderCall = "{1}";
+}
+
 // Decorates an attribute to have an (unvalidated) default value if not present.
 class DefaultValuedAttr<Attr attr, string val> :
     Attr<attr.predicate, attr.description> {
@@ -356,6 +364,15 @@ def I32Attr : IntegerAttrBase<I32, "32-bit integer"> {
   let convertFromStorage = [{ {0}.getValue().getSExtValue() }];
 }
 def StrAttr : StringBasedAttr<"string">;
+
+// Attributes containing functions.
+def FunctionAttr
+    : Attr<CPred<"{0}.isa<FunctionAttr>()">, "function"> {
+  let storageType = [{ FunctionAttr }];
+  let returnType = [{ Function * }];
+  let convertFromStorage = [{ {0}.getValue() }];
+  let constBuilderCall = [{ {0}.getFunctionAttr({1}) }];
+}
 
 // DerivedAttr are attributes whose value is computed from properties
 // of the operation. They do not require additional storage and are
