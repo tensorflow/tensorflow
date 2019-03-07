@@ -319,6 +319,62 @@ TEST_F(FusionMergerTest, WillNotMergeReduceUnfriendlyLayouts) {
   EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
 }
 
+// TODO(b/119692968): Remove this test once fusion emitter is fixed.
+TEST_F(FusionMergerTest, WillNotMergeIfFusionEmitterIsInefficient) {
+  auto module = ParseHloString(R"(
+    HloModule m
+
+    %fused_computation (param_0.10: f32[6]) -> f32[1] {
+      %param_0.10 = f32[6]{0} parameter(0)
+      %add.7 = f32[6]{0} add(%param_0.10, %param_0.10)
+      %slice.21 = f32[5]{0} slice(%add.7), slice={[0:5]}
+      %slice.18 = f32[5]{0} slice(%add.7), slice={[1:6]}
+      %add.5 = f32[5]{0} add(%slice.21, %slice.18)
+      %slice.15 = f32[4]{0} slice(%add.5), slice={[0:4]}
+      %slice.12 = f32[4]{0} slice(%add.5), slice={[1:5]}
+      %add.4 = f32[4]{0} add(%slice.15, %slice.12)
+      %slice.9 = f32[3]{0} slice(%add.4), slice={[0:3]}
+      %slice.6 = f32[3]{0} slice(%add.4), slice={[1:4]}
+      %add.2 = f32[3]{0} add(%slice.9, %slice.6)
+      %slice.3 = f32[2]{0} slice(%add.2), slice={[0:2]}
+      %slice.2 = f32[2]{0} slice(%add.2), slice={[1:3]}
+      %add.1 = f32[2]{0} add(%slice.3, %slice.2)
+      %slice.1 = f32[1]{0} slice(%add.1), slice={[0:1]}
+      %slice.0 = f32[1]{0} slice(%add.1), slice={[1:2]}
+      ROOT %add.0 = f32[1]{0} add(%slice.1, %slice.0)
+    }
+
+    %fused_computation.1 (param_0.21: f32[11], param_1.21: f32[11]) -> f32[6] {
+      %param_0.21 = f32[11]{0} parameter(0)
+      %param_1.21 = f32[11]{0} parameter(1)
+      %add.16 = f32[11]{0} add(%param_0.21, %param_1.21)
+      %slice.51 = f32[10]{0} slice(%add.16), slice={[0:10]}
+      %slice.48 = f32[10]{0} slice(%add.16), slice={[1:11]}
+      %add.14 = f32[10]{0} add(%slice.51, %slice.48)
+      %slice.45 = f32[9]{0} slice(%add.14), slice={[0:9]}
+      %slice.42 = f32[9]{0} slice(%add.14), slice={[1:10]}
+      %add.13 = f32[9]{0} add(%slice.45, %slice.42)
+      %slice.39 = f32[8]{0} slice(%add.13), slice={[0:8]}
+      %slice.36 = f32[8]{0} slice(%add.13), slice={[1:9]}
+      %add.11 = f32[8]{0} add(%slice.39, %slice.36)
+      %slice.33 = f32[7]{0} slice(%add.11), slice={[0:7]}
+      %slice.30 = f32[7]{0} slice(%add.11), slice={[1:8]}
+      %add.10 = f32[7]{0} add(%slice.33, %slice.30)
+      %slice.27 = f32[6]{0} slice(%add.10), slice={[0:6]}
+      %slice.24 = f32[6]{0} slice(%add.10), slice={[1:7]}
+      ROOT %add.8 = f32[6]{0} add(%slice.27, %slice.24)
+    }
+
+    ENTRY entry {
+      p0 = f32[11]{0} parameter(0)
+      p1 = f32[11]{0} parameter(1)
+      f1 = f32[6]{0} fusion(p0, p1), kind=kLoop, calls=%fused_computation.1
+      ROOT f2 = f32[1] fusion(f1), kind=kLoop, calls=%fused_computation
+    })")
+                    .ValueOrDie();
+  EXPECT_FALSE(FusionMerger().Run(module.get()).ValueOrDie());
+}
+
 }  // namespace
 }  // namespace gpu
 }  // namespace xla
