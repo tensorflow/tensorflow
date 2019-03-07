@@ -204,54 +204,61 @@ bool IsFusionEmitterInefficient(const HloInstruction* consumer,
   // fusion node. The fusion emitter caches access with the same index, so this
   // value indicates how many times a specific instruction will be emitted.
   absl::flat_hash_map<const HloInstruction*, int64> index_usage_count;
+  index_usage_count[consumer] = 1;
 
-  auto postorder =
-      consumer->fused_instructions_computation()->MakeInstructionPostOrder();
-  std::reverse(postorder.begin(), postorder.end());
-  for (const auto* instruction : postorder) {
-    if (instruction->opcode() == HloOpcode::kParameter) {
-      continue;
-    }
-    int64& total = index_usage_count[instruction];
-    if (indexing_users[instruction].empty()) {
-      total = 1;
-    } else {
-      total = 0;
-      for (const auto* user : indexing_users[instruction]) {
-        int64 weight = 1;
-        // Concatenate is special: the index differs for each operand, so in the
-        // worst case we have to deal with as many index values as the number of
-        // operands of Concatenate. By considering the worst case, we are more
-        // conservative than necessary regarding refusing to fuse.
-        if (user->opcode() == HloOpcode::kConcatenate) {
-          weight = user->operand_count();
-        }
-        total += index_usage_count[user] * weight;
+  auto evaluate_fusion_computation = [&indexing_users, &index_usage_count](
+                                         const HloInstruction* fusion) {
+    auto postorder =
+        fusion->fused_instructions_computation()->MakeInstructionPostOrder();
+    std::reverse(postorder.begin(), postorder.end());
+    for (const auto* instruction : postorder) {
+      if (instruction->opcode() == HloOpcode::kParameter) {
+        continue;
       }
-    }
-    for (const auto* operand : instruction->operands()) {
-      // For simplicity we assume that all shape and layout changing operations
-      // invalidate index reuse.
-      if (Shape::Equal().IgnoreElementType()(operand->shape(),
-                                             instruction->shape())) {
-        // If the index is reused, it means the operand gets index values from
-        // the same set of (indirect) users as 'instruction' itself.
-        indexing_users[operand].insert(indexing_users[instruction].begin(),
-                                       indexing_users[instruction].end());
+      int64& total = index_usage_count[instruction];
+      if (indexing_users[instruction].empty()) {
+        total = index_usage_count[fusion];
       } else {
-        // If the index is not reused, it means 'instruction' computes a new
-        // index derived from the index it gets.
-        indexing_users[operand].insert(instruction);
+        total = 0;
+        for (const auto* user : indexing_users[instruction]) {
+          int64 weight = 1;
+          // Concatenate is special: the index differs for each operand, so
+          // in the worst case we have to deal with as many index values as
+          // the number of operands of Concatenate. By considering the worst
+          // case, we are more conservative than necessary regarding
+          // refusing to fuse.
+          if (user->opcode() == HloOpcode::kConcatenate) {
+            weight = user->operand_count();
+          }
+          total += index_usage_count[user] * weight;
+        }
+      }
+      for (const auto* operand : instruction->operands()) {
+        // For simplicity we assume that all shape and layout changing
+        // operations invalidate index reuse.
+        if (Shape::Equal().IgnoreElementType()(operand->shape(),
+                                               instruction->shape())) {
+          // If the index is reused, it means the operand gets index values
+          // from the same set of (indirect) users as 'instruction' itself.
+          indexing_users[operand].insert(indexing_users[instruction].begin(),
+                                         indexing_users[instruction].end());
+        } else {
+          // If the index is not reused, it means 'instruction' computes a
+          // new index derived from the index it gets.
+          indexing_users[operand].insert(instruction);
+        }
       }
     }
-  }
+  };
+  evaluate_fusion_computation(consumer);
+
   // Also account for the 'producer' if it would be fused. Find the operand it
   // corresponds to.
   for (int64 operand_num = 0; operand_num < consumer->operand_count();
        ++operand_num) {
     if (consumer->operand(operand_num) == producer) {
       auto instruction = consumer->fused_parameter(operand_num);
-      int64& total = index_usage_count[instruction];
+      int64& total = index_usage_count[producer];
       total = 0;
       for (const auto* user : indexing_users[instruction]) {
         total += index_usage_count[user];
@@ -259,10 +266,18 @@ bool IsFusionEmitterInefficient(const HloInstruction* consumer,
       break;
     }
   }
+
+  // If 'producer' is a fusion node as well, also evaluate it.
+  if (producer->opcode() == HloOpcode::kFusion) {
+    evaluate_fusion_computation(producer);
+  }
+
+  // Sum up the total number of emitted ops.
   int64 total = 0;
   for (const auto& entry : index_usage_count) {
     total += entry.second;
   }
+
   // Check that the code duplication has at most a factor of 8 (where 8 is an
   // arbitrary constant that seems to work).
   return total > 8 * index_usage_count.size();
