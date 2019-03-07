@@ -20,6 +20,7 @@ limitations under the License.
 // IWYU pragma: friend third_party/tensorflow/core/platform/logging.h
 
 #include <limits>
+#include <algorithm>
 #include <sstream>
 #include "tensorflow/core/platform/macros.h"
 #include "tensorflow/core/platform/types.h"
@@ -223,36 +224,6 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
 // unnamed enum type - see comment below.
 // The (size_t, int) and (int, size_t) specialization are to handle unsigned
 // comparison errors while still being thorough with the comparison.
-#if defined (_MSC_VER)
-#define TF_DEFINE_CHECK_OP_IMPL(name, op)                                 \
-  template <typename T1, typename T2>                                     \
-  inline string* name##Impl(const T1& v1, const T2& v2,                   \
-                            const char* exprtext) {                       \
-    if (TF_PREDICT_TRUE(v1 op v2))                                        \
-      return NULL;                                                        \
-    else                                                                  \
-      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
-  }                                                                       \
-  inline string* name##Impl(int v1, int v2, const char* exprtext) {       \
-    return name##Impl<int, int>(v1, v2, exprtext);                        \
-  }                                                                       \
-  inline string* name##Impl(const size_t v1, const int v2,                \
-                            const char* exprtext) {                       \
-    if (TF_PREDICT_FALSE(v2 < 0)) {                                       \
-      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
-    }                                                                     \
-    return name##Impl<size_t, size_t>(v1, v2, exprtext);                  \
-  }                                                                       \
-  inline string* name##Impl(const int v1, const size_t v2,                \
-                            const char* exprtext) {                       \
-    if (TF_PREDICT_FALSE(v2 >= (std::numeric_limits<int>::max)())) {      \ // need to use bracket for msvc min max to avoid crash with system defined macro
-      return ::tensorflow::internal::MakeCheckOpString(v1, v2, exprtext); \
-    }                                                                     \
-    const size_t uval = (size_t)((unsigned)v2);                           \
-    return name##Impl<size_t, size_t>(v1, uval, exprtext);                \
-  }
-
-#else
 #define TF_DEFINE_CHECK_OP_IMPL(name, op)                                 \
   template <typename T1, typename T2>                                     \
   inline string* name##Impl(const T1& v1, const T2& v2,                   \
@@ -280,18 +251,19 @@ string* MakeCheckOpString(const T1& v1, const T2& v2, const char* exprtext) {
     const size_t uval = (size_t)((unsigned)v2);                           \
     return name##Impl<size_t, size_t>(v1, uval, exprtext);                \
   }
-#endif
 
 // We use the full name Check_EQ, Check_NE, etc. in case the file including
 // base/logging.h provides its own #defines for the simpler names EQ, NE, etc.
 // This happens if, for example, those are used as token names in a
 // yacc grammar.
-TF_DEFINE_CHECK_OP_IMPL(Check_EQ,
-                        ==)  // Compilation error with CHECK_EQ(NULL, x)?
-TF_DEFINE_CHECK_OP_IMPL(Check_NE, !=)  // Use CHECK(x == NULL) instead.
-TF_DEFINE_CHECK_OP_IMPL(Check_LE, <=)
+#if defined (_MSC_VER)
+#undef max // disable windows header max
+#endif
+TF_DEFINE_CHECK_OP_IMPL(Check_EQ, == )  // Compilation error with CHECK_EQ(NULL, x)?
+TF_DEFINE_CHECK_OP_IMPL(Check_NE, != )  // Use CHECK(x == NULL) instead.
+TF_DEFINE_CHECK_OP_IMPL(Check_LE, <= )
 TF_DEFINE_CHECK_OP_IMPL(Check_LT, <)
-TF_DEFINE_CHECK_OP_IMPL(Check_GE, >=)
+TF_DEFINE_CHECK_OP_IMPL(Check_GE, >= )
 TF_DEFINE_CHECK_OP_IMPL(Check_GT, >)
 #undef TF_DEFINE_CHECK_OP_IMPL
 
