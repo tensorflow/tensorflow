@@ -245,23 +245,29 @@ TEST(BasicInterpreter, CheckResize) {
     ASSERT_EQ(interpreter.AddTensors(2), kTfLiteOk);
     interpreter.SetInputs({0, 1});
     interpreter.SetOutputs({});
-    TfLiteQuantizationParams quant;
 
-    ASSERT_EQ(
-        interpreter.SetTensorParametersReadWrite(0, test.type, "", {3}, quant),
-        kTfLiteOk);
-    ASSERT_EQ(interpreter.SetTensorParametersReadOnly(
-                  1, test.type, "", {2}, quant, test.array, 2 * test.size),
+    TfLiteQuantization quantization;
+    auto* quant_param = reinterpret_cast<TfLiteQuantizationParams*>(
+        malloc(sizeof(TfLiteQuantizationParams)));
+    quantization.params = quant_param;
+
+    ASSERT_EQ(interpreter.SetTensorParametersReadWrite(0, test.type, "", {3},
+                                                       quantization),
               kTfLiteOk);
+    ASSERT_EQ(
+        interpreter.SetTensorParametersReadOnly(
+            1, test.type, "", {2}, quantization, test.array, 2 * test.size),
+        kTfLiteOk);
     ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
     ASSERT_EQ(interpreter.ResizeInputTensor(0, {1, 2}), kTfLiteOk);
     // Resizing a mmapped tensor is not allowed and should produce error.
     ASSERT_NE(interpreter.ResizeInputTensor(1, {3}), kTfLiteOk);
     // Set the tensor to be mmapped but with a buffer size that is insufficient
     // to match the dimensionality.
-    ASSERT_NE(interpreter.SetTensorParametersReadOnly(
-                  1, test.type, "", {2}, quant, test.array, 1 * test.size),
-              kTfLiteOk);
+    ASSERT_NE(
+        interpreter.SetTensorParametersReadOnly(
+            1, test.type, "", {2}, quantization, test.array, 1 * test.size),
+        kTfLiteOk);
     // Allocating should work since we should have our last correct array
     // values in place.
     ASSERT_EQ(interpreter.AllocateTensors(), kTfLiteOk);
@@ -588,24 +594,29 @@ TEST(BasicInterpreter, ThreeStepAllocate) {
   ASSERT_EQ(interpreter.SetInputs({0}), kTfLiteOk);
   ASSERT_EQ(interpreter.SetOutputs({4}), kTfLiteOk);
 
-  TfLiteQuantizationParams quantized;
+  // TfLiteQuantizationParams quantized;
+  TfLiteQuantization quantization;
+  auto* quant_param = reinterpret_cast<TfLiteQuantizationParams*>(
+      malloc(sizeof(TfLiteQuantizationParams)));
+  quantization.params = quant_param;
+
   char data[] = {1, 0, 0, 0, 12, 0, 0, 0, 15, 0, 0, 0, 'A', 'B', 'C'};
   // Read only string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadOnly(0, kTfLiteString, "", {1},
-                                                    quantized, data, 15),
+                                                    quantization, data, 15),
             kTfLiteOk);
   // Read-write string tensor.
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(1, kTfLiteString, "", {1},
-                                                     quantized),
+                                                     quantization),
             kTfLiteOk);
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(2, kTfLiteInt32, "", {1},
-                                                     quantized),
+                                                     quantization),
             kTfLiteOk);
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(3, kTfLiteString, "", {1},
-                                                     quantized),
+                                                     quantization),
             kTfLiteOk);
   ASSERT_EQ(interpreter.SetTensorParametersReadWrite(4, kTfLiteInt32, "", {1},
-                                                     quantized),
+                                                     quantization),
             kTfLiteOk);
 
   // String-in String-out node.
