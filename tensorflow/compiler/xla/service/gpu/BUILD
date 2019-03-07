@@ -1100,7 +1100,10 @@ cc_library(
     hdrs = ["gpu_fusible.h"],
     deps = [
         ":ir_emission_utils",
+        "//tensorflow/compiler/xla:shape_util",
         "//tensorflow/compiler/xla/service:hlo",
+        "@com_google_absl//absl/container:flat_hash_map",
+        "@com_google_absl//absl/container:flat_hash_set",
     ],
 )
 

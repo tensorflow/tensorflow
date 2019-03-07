@@ -15,7 +15,16 @@ limitations under the License.
 
 #include "tensorflow/compiler/xla/service/gpu/gpu_fusible.h"
 
+#include <algorithm>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "tensorflow/compiler/xla/service/gpu/ir_emission_utils.h"
+#include "tensorflow/compiler/xla/service/hlo_computation.h"
+#include "tensorflow/compiler/xla/service/hlo_instruction.h"
+#include "tensorflow/compiler/xla/service/hlo_opcode.h"
+#include "tensorflow/compiler/xla/shape.h"
+#include "tensorflow/compiler/xla/shape_util.h"
 
 namespace xla {
 namespace gpu {
@@ -175,6 +184,88 @@ bool IsLoopFusible(const HloInstruction& instr) {
 
 bool IsFusible(const HloInstruction& instr) {
   return IsInputFusible(instr) || IsLoopFusible(instr);
+}
+
+bool IsFusionEmitterInefficient(const HloInstruction* consumer,
+                                const HloInstruction* producer) {
+  if (consumer->opcode() != HloOpcode::kFusion) {
+    return false;
+  }
+  // Collects for each instruction in the fusion node from which (indirect)
+  // users newly created index values are passed. Roughly speaking, we reuse
+  // index values if the shapes are equal when ignoring the element type (we may
+  // reuse also if the shape change is a bitcast, but we don't consider that
+  // here). By ignoring potential reuses our estimate whether the fusion emitter
+  // is inefficient is a bit more conservative than necessary.
+  absl::flat_hash_map<const HloInstruction*,
+                      absl::flat_hash_set<const HloInstruction*>>
+      indexing_users;
+  // Stores the number of different index accesses for each instruction in the
+  // fusion node. The fusion emitter caches access with the same index, so this
+  // value indicates how many times a specific instruction will be emitted.
+  absl::flat_hash_map<const HloInstruction*, int64> index_usage_count;
+
+  auto postorder =
+      consumer->fused_instructions_computation()->MakeInstructionPostOrder();
+  std::reverse(postorder.begin(), postorder.end());
+  for (const auto* instruction : postorder) {
+    if (instruction->opcode() == HloOpcode::kParameter) {
+      continue;
+    }
+    int64& total = index_usage_count[instruction];
+    if (indexing_users[instruction].empty()) {
+      total = 1;
+    } else {
+      total = 0;
+      for (const auto* user : indexing_users[instruction]) {
+        int64 weight = 1;
+        // Concatenate is special: the index differs for each operand, so in the
+        // worst case we have to deal with as many index values as the number of
+        // operands of Concatenate. By considering the worst case, we are more
+        // conservative than necessary regarding refusing to fuse.
+        if (user->opcode() == HloOpcode::kConcatenate) {
+          weight = user->operand_count();
+        }
+        total += index_usage_count[user] * weight;
+      }
+    }
+    for (const auto* operand : instruction->operands()) {
+      // For simplicity we assume that all shape and layout changing operations
+      // invalidate index reuse.
+      if (Shape::Equal().IgnoreElementType()(operand->shape(),
+                                             instruction->shape())) {
+        // If the index is reused, it means the operand gets index values from
+        // the same set of (indirect) users as 'instruction' itself.
+        indexing_users[operand].insert(indexing_users[instruction].begin(),
+                                       indexing_users[instruction].end());
+      } else {
+        // If the index is not reused, it means 'instruction' computes a new
+        // index derived from the index it gets.
+        indexing_users[operand].insert(instruction);
+      }
+    }
+  }
+  // Also account for the 'producer' if it would be fused. Find the operand it
+  // corresponds to.
+  for (int64 operand_num = 0; operand_num < consumer->operand_count();
+       ++operand_num) {
+    if (consumer->operand(operand_num) == producer) {
+      auto instruction = consumer->fused_parameter(operand_num);
+      int64& total = index_usage_count[instruction];
+      total = 0;
+      for (const auto* user : indexing_users[instruction]) {
+        total += index_usage_count[user];
+      }
+      break;
+    }
+  }
+  int64 total = 0;
+  for (const auto& entry : index_usage_count) {
+    total += entry.second;
+  }
+  // Check that the code duplication has at most a factor of 8 (where 8 is an
+  // arbitrary constant that seems to work).
+  return total > 8 * index_usage_count.size();
 }
 
 }  // namespace gpu
