@@ -21,6 +21,8 @@ ConvertTest.ConvertS64U64 POPLAR
 ConvolutionHloTest.ConvolveF64BackwardFilter POPLAR
 ConvolutionHloTest.ConvolveF64BackwardInput POPLAR
 ConvolutionHloTest.ConvolveF64Forward POPLAR
+ComparatorsTest.CompareLtF64 POPLAR
+ComparatorsTest.CompareGtF64 POPLAR
 
 Bfloat16Test POPLAR // No bfloat16
 DynamicSliceTest.Int32R1BF16 POPLAR
@@ -40,6 +42,16 @@ PrngTest.ScalarBF16Tests POPLAR
 PrngTest.ScalarBF16CountTests POPLAR
 DynamicUpdateSliceTest.Int32R0BF16 POPLAR
 ConvertTest.ConvertBF16F32 POPLAR
+ComparatorsTest.CompareLtBF16 POPLAR
+ComparatorsTest.CompareGtBF16 POPLAR
+DequantizeTest.MinCombinedUint16R1 POPLAR
+DequantizeTest.MinCombinedUint8R1 POPLAR
+DequantizeTest.MinCombinedUint8R2 POPLAR
+DequantizeTest.MinCombinedUint8R2TransposeOutput POPLAR
+DequantizeTest.MinCombinedUint8R2TailingZero POPLAR
+DequantizeTest.MinCombinedUint8R2TailingZeroTransposeOutput POPLAR
+DequantizeTest.MinCombinedUint8LargeSizeTest POPLAR
+DequantizeTest.MinCombinedUint8LargeSizeTestTransposeOutput POPLAR
 
 UnaryOpTest.UnsignedAbsTestR1         POPLAR // U32
 UnaryOpTest.UnsignedSignTestR1        POPLAR
@@ -133,6 +145,9 @@ ReduceInitializerTest.U64InitializerBigValue POPLAR
 ReduceTest.AndReduceU64 POPLAR
 ReduceTest.OrReduceU64 POPLAR
 
+ComparatorsTest.CompareLtF16 POPLAR // U16
+ComparatorsTest.CompareGtF16 POPLAR
+
 ParamsTest.ConstantR1U8Param      POPLAR // U8
 ScalarComputationsTest.AddTwoScalarsU8      POPLAR
 ReverseTest.Reverse4DU8ArrayOnDim23 POPLAR
@@ -173,6 +188,8 @@ TupleTest.ComplexTuples POPLAR
 DotOperationTest.MatrixVectorC64 POPLAR
 ConvertTest.ConvertC64ToC64 POPLAR
 ArrayElementwiseOpTest.PowC64s POPLAR
+TriangularSolveTest.SimpleRightLowerTransposeConjugate POPLAR
+TriangularSolveTest.SimpleLeftUpperTransposeNoconjugate POPLAR
 
 ConvolveWithAndWithoutCanonicalization.Convolve2D_NoSpatialDims POPLAR // ??
 
@@ -281,3 +298,10 @@ ArrayElementwiseOpTest.ClampF32 POPLAR // NaN propagation
 DynamicUpdateSliceTest.R3ContiguousLarger POPLAR // Update slice is too big for dynamic slice
 
 BatchGroupedConvolution2DTest POPLAR // don't support batch_group_count
+
+MatrixTest.GetMatrixDiagonal_S32 POPLAR // Don't support int32 reduction.
+MatrixTest.GetMatrixDiagonal_S64 POPLAR // Don't support int64 reduction.
+
+SortingTest.TopKFullSortWithDuplicates POPLAR // T7292 Requires stable sort.
+
+MathExhaustiveTest POPLAR // Precision errors

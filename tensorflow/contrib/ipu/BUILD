@@ -259,6 +259,7 @@ test_suite(
     tests = [
       ":all_tests",
       "//tensorflow/compiler/tests:poplar_tests",
+      "//tensorflow/compiler/xla/client/lib:poplar_tests",
       "//tensorflow/compiler/xla/tests:poplar_tests",
       "//tensorflow/compiler/plugin/poplar:all_tests",
     ],

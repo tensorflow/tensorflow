@@ -552,11 +552,13 @@ StatusOr<poplar::program::Program> CreatePoplibsPooling(
     // case. This needs to be after poplibs pool, as it does not support the
     // non-default base case.
     const HloInstruction* reduction_op = *optional_reduction_op;
+    const HloInstruction* reducing_op =
+        reduction_op->to_apply()->root_instruction();
     const HloInstruction* initial_value = reduction_op->operand(1);
 
     // What is the default base case for the reduction_op, MAX: -largest, SUM:
     // 0, etc.
-    Literal identity_literal = GetIdentityConstantLiteral(reduction_op, inst);
+    Literal identity_literal = GetIdentityConstantLiteral(reducing_op, inst);
 
     // Apply the base case if necessary
     if (!(initial_value->IsConstant() &&
@@ -567,9 +569,9 @@ StatusOr<poplar::program::Program> CreatePoplibsPooling(
                      .broadcast(out.numElements(), 0)
                      .reshape(out.shape());
       popops::expr::BinaryOpType op;
-      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(reduction_op));
+      TF_ASSIGN_OR_RETURN(op, LookupBinaryFn(reducing_op));
       popops::mapInPlace(graph, op, out, init_val, prog,
-                         GetDebugName(reduction_op) + "_initval");
+                         GetDebugName(reducing_op) + "_initval");
     }
   }
 
