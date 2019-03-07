@@ -31,8 +31,6 @@ namespace profiling {
 
 namespace {
 
-const char* kOpName = "SimpleOpEval";
-
 #ifdef TFLITE_PROFILING_ENABLED
 TfLiteStatus SimpleOpEval(TfLiteContext* context, TfLiteNode* node) {
   const TfLiteTensor* input1 = tflite::GetInput(context, node, /*index=*/0);
@@ -65,7 +63,7 @@ TfLiteRegistration* RegisterSimpleOpWithProfilingDetails() {
                                             SimpleOpEval,
                                             SimpleOpProfilingString,
                                             tflite::BuiltinOperator_CUSTOM,
-                                            kOpName,
+                                            "SimpleOpEval",
                                             1};
   return &registration;
 }
@@ -85,15 +83,6 @@ class SimpleOpModel : public SingleOpModel {
   int inputs_[2];
   int output_;
 };
-
-void SimpleOpModel::Init(
-    const std::function<TfLiteRegistration*()>& registration) {
-  inputs_[0] = AddInput({TensorType_INT32, {1}});
-  inputs_[1] = AddInput({TensorType_INT32, {1}});
-  output_ = AddOutput({TensorType_INT32, {}});
-  SetCustomOp(kOpName, {}, registration);
-  BuildInterpreter({GetShape(inputs_[0]), GetShape(inputs_[1])});
-}
 
 TEST(ProfileSummarizerTest, Empty) {
   ProfileSummarizer summarizer;
