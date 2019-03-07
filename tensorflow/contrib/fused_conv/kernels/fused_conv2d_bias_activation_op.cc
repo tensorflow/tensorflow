@@ -34,9 +34,16 @@ limitations under the License.
 #include "tensorflow/core/util/use_cudnn.h"
 
 #if GOOGLE_CUDA
+#include "google/protobuf/duration.pb.h"
+#include "absl/time/time.h"
 #include "cuda/include/cudnn.h"
+#include "tensorflow/core/framework/node_def.pb.h"
+#include "tensorflow/core/framework/tensor.pb.h"
 #include "tensorflow/core/kernels/conv_ops_gpu.h"
+#include "tensorflow/core/platform/logger.h"
 #include "tensorflow/core/platform/stream_executor.h"
+#include "tensorflow/core/protobuf/autotuning.pb.h"
+#include "tensorflow/core/protobuf/conv_autotuning.pb.h"
 #include "tensorflow/core/util/activation_mode.h"
 #endif  // GOOGLE_CUDA
 
@@ -251,6 +258,131 @@ class FusedConv2DBiasActivationOp : public OpKernel {
 
 #if GOOGLE_CUDA
 namespace dnn = se::dnn;
+
+// Several functions are copyed over from tensorflow/core/kernels/gpu_utils,
+// since this file may be compiled down to a tf_custom_op_library .so file,
+// which can't depend on basic dependencies like tensorflow/core:lib. Instead,
+// the code has to depend on whatever is the same in libtensorflow_framework.so.
+//
+// In theory, we can lift the dependencies of gpu_utils by turning it into a
+// template library that provides duck typing, but I think duplication is the
+// lesser of two evils.
+namespace internal {
+namespace {
+
+tensorflow::CudnnVersion GetCudnnVersion(se::StreamExecutor* stream_executor) {
+  tensorflow::CudnnVersion cudnn_version;
+  if (auto* dnn = stream_executor->AsDnn()) {
+    se::port::StatusOr<se::dnn::VersionInfo> version_or = dnn->GetVersion();
+    if (version_or.ok()) {
+      const auto& version = version_or.ValueOrDie();
+      cudnn_version.set_major(version.major_version());
+      cudnn_version.set_minor(version.minor_version());
+      cudnn_version.set_patch(version.patch());
+    }
+  }
+  return cudnn_version;
+}
+
+// Converts an absl::Duration to a google::protobuf::Duration.
+inline google::protobuf::Duration ToDurationProto(absl::Duration duration) {
+  google::protobuf::Duration proto;
+  proto.set_seconds(absl::IDivDuration(duration, absl::Seconds(1), &duration));
+  proto.set_nanos(
+      absl::IDivDuration(duration, absl::Nanoseconds(1), &duration));
+  return proto;
+}
+
+// Converts a google::protobuf::Duration to an absl::Duration.
+inline absl::Duration FromDurationProto(google::protobuf::Duration proto) {
+  return absl::Seconds(proto.seconds()) + absl::Nanoseconds(proto.nanos());
+}
+
+tensorflow::ComputeCapability GetComputeCapability(
+    se::StreamExecutor* stream_executor) {
+  tensorflow::ComputeCapability cc;
+  int cc_major, cc_minor;
+  stream_executor->GetDeviceDescription().cuda_compute_capability(&cc_major,
+                                                                  &cc_minor);
+  cc.set_major(cc_major);
+  cc.set_minor(cc_minor);
+  return cc;
+}
+
+void LogFusedConvAutotuneResults(const NodeDef& node, const Tensor& input,
+                                 const Tensor& filter, const Tensor& output,
+                                 const Tensor& bias, const Tensor* side_input,
+                                 se::StreamExecutor* stream_exec,
+                                 absl::Span<const AutotuneResult> results) {
+  AutotuningLog log;
+  ConvNodeDef instr;
+  *instr.mutable_conv() = node;
+  input.shape().AsProto(instr.mutable_input()->mutable_tensor_shape());
+  instr.mutable_input()->set_dtype(input.dtype());
+  filter.shape().AsProto(instr.mutable_filter()->mutable_tensor_shape());
+  instr.mutable_filter()->set_dtype(filter.dtype());
+  output.shape().AsProto(instr.mutable_output()->mutable_tensor_shape());
+  instr.mutable_output()->set_dtype(output.dtype());
+  bias.shape().AsProto(instr.mutable_bias()->mutable_tensor_shape());
+  instr.mutable_bias()->set_dtype(bias.dtype());
+  if (side_input) {
+    side_input->shape().AsProto(
+        instr.mutable_side_input()->mutable_tensor_shape());
+    instr.mutable_side_input()->set_dtype(side_input->dtype());
+  }
+  log.mutable_instr()->PackFrom(std::move(instr));
+  *log.mutable_cudnn_version() = internal::GetCudnnVersion(stream_exec);
+  *log.mutable_compute_capability() =
+      internal::GetComputeCapability(stream_exec);
+  for (const auto& result : results) {
+    *log.add_results() = result;
+  }
+  Logger::Singleton()->LogProto(log);
+}
+
+Status BestCudnnConvAlgorithm(absl::Span<const AutotuneResult> results,
+                              se::dnn::AlgorithmConfig* algo) {
+  // For the "!xhs.has_success()" below, this is because we want successful ones
+  // to order first, therefore they need a smaller key per "min_element".
+  const AutotuneResult* best_result = std::min_element(
+      results.begin(), results.end(),
+      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+        return std::make_tuple(
+                   !lhs.has_success(),
+                   internal::FromDurationProto(lhs.success().run_time())) <
+               std::make_tuple(
+                   !rhs.has_success(),
+                   internal::FromDurationProto(rhs.success().run_time()));
+      });
+
+  const AutotuneResult* best_result_no_scratch = std::min_element(
+      results.begin(), results.end(),
+      [](const AutotuneResult& lhs, const AutotuneResult& rhs) {
+        return std::make_tuple(
+                   !lhs.has_success(), lhs.success().scratch_bytes(),
+                   internal::FromDurationProto(lhs.success().run_time())) <
+               std::make_tuple(
+                   !rhs.has_success(), rhs.success().scratch_bytes(),
+                   internal::FromDurationProto(rhs.success().run_time()));
+      });
+
+  if (best_result == results.end() || !best_result->has_success()) {
+    return errors::NotFound("No algorithm worked!");
+  }
+  algo->set_algorithm({best_result->conv().algorithm(),
+                       best_result->conv().tensor_ops_enabled()});
+  if (best_result_no_scratch != results.end() &&
+      best_result_no_scratch->has_success() &&
+      best_result_no_scratch->success().scratch_bytes() == 0) {
+    algo->set_algorithm_no_scratch(
+        {best_result_no_scratch->conv().algorithm(),
+         best_result_no_scratch->conv().tensor_ops_enabled()});
+  }
+  return Status::OK();
+}
+
+}  // namespace
+}  // namespace internal
 
 // A dummy type to group forward convolution autotune results together.
 struct ConvBiasActivationAutoTuneGroup {
@@ -579,8 +711,7 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
               }),
           algorithms.end());
     }
-    dnn::ProfileResult best_result;
-    dnn::ProfileResult best_result_no_scratch;
+    std::vector<tensorflow::AutotuneResult> results;
     for (auto profile_algorithm : algorithms) {
       // TODO(zhengxq): profile each algorithm multiple times to better
       // accuracy.
@@ -597,28 +728,24 @@ void LaunchFusedConv2DBiasActivationOp<GPUDevice, T, BiasType, ScaleType>::
               .ok();
       if (cudnn_launch_status) {
         if (profile_result.is_valid()) {
-          if (profile_result.elapsed_time_in_ms() <
-              best_result.elapsed_time_in_ms()) {
-            best_result = profile_result;
-          }
-          if (scratch_allocator.TotalByteSize() == 0 &&
-              profile_result.elapsed_time_in_ms() <
-                  best_result_no_scratch.elapsed_time_in_ms()) {
-            best_result_no_scratch = profile_result;
-          }
+          results.emplace_back();
+          auto& result = results.back();
+          result.mutable_conv()->set_algorithm(profile_algorithm.algo_id());
+          result.mutable_conv()->set_tensor_ops_enabled(
+              profile_algorithm.tensor_ops_enabled());
+          result.mutable_success()->set_scratch_bytes(
+              scratch_allocator.TotalByteSize());
+          *result.mutable_success()->mutable_run_time() =
+              internal::ToDurationProto(
+                  absl::Milliseconds(profile_result.elapsed_time_in_ms()));
         }
       }
     }
-    OP_REQUIRES(ctx,
-                best_result.is_valid() || best_result_no_scratch.is_valid(),
-                errors::NotFound("No algorithm worked!"));
-    if (best_result.is_valid()) {
-      algorithm_config.set_algorithm(best_result.algorithm());
-    }
-    if (best_result_no_scratch.is_valid()) {
-      algorithm_config.set_algorithm_no_scratch(
-          best_result_no_scratch.algorithm());
-    }
+    internal::LogFusedConvAutotuneResults(ctx->op_kernel().def(), *conv_input,
+                                          *filter, *output, bias, side_input,
+                                          stream->parent(), results);
+    OP_REQUIRES_OK(
+        ctx, internal::BestCudnnConvAlgorithm(results, &algorithm_config));
     AutoTuneConvBiasActivation::GetInstance()->Insert(fused_conv_parameters,
                                                       algorithm_config);
   }
