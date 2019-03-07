@@ -221,7 +221,6 @@ tensorflow/third_party/astor.BUILD
 tensorflow/third_party/grpc/BUILD
 tensorflow/third_party/curl.BUILD
 tensorflow/third_party/arm_neon_2_x86_sse.BUILD
-tensorflow/third_party/absl/BUILD
 tensorflow/third_party/png.BUILD
 tensorflow/third_party/googleapis.BUILD
 tensorflow/third_party/mpi_collectives/BUILD
