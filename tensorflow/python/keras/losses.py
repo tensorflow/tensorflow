@@ -901,6 +901,28 @@ def kullback_leibler_divergence(y_true, y_pred):  # pylint: disable=missing-docs
 
 @keras_export('keras.metrics.poisson', 'keras.losses.poisson')
 def poisson(y_true, y_pred):
+  """Computes the Poisson loss between y_true and y_pred.
+
+  The Poisson loss is the mean of the elements of the `Tensor`
+  `y_pred - y_true * log(y_pred)`.
+
+  Usage:
+
+  ```python
+  loss = tf.keras.losses.poisson([1.4, 9.3, 2.2], [4.3, 8.2, 12.2])
+  print('Loss: ', loss.numpy())  # Loss: -0.8045559
+  ```
+
+  Args:
+    y_true: tensor of true targets.
+    y_pred: tensor of predicted targets.
+
+  Returns:
+    A `Tensor` with the mean Poisson loss.
+
+  Raises:
+      InvalidArgumentError: If `y_true` and `y_pred` have incompatible shapes.
+  """
   y_pred = ops.convert_to_tensor(y_pred)
   y_true = math_ops.cast(y_true, y_pred.dtype)
   return K.mean(y_pred - y_true * math_ops.log(y_pred + K.epsilon()), axis=-1)
