@@ -45,7 +45,7 @@ bool GpuMultiOutputFusion::ShapesCompatibleForFusion(HloInstruction* instr1,
 }
 
 bool GpuMultiOutputFusion::IsFusible(HloInstruction* instr) {
-  return IsMultiOutputFusible(*instr);
+  return IsFusibleAsMultiOutputFusionRoot(*instr);
 }
 
 int64 GpuMultiOutputFusion::GetProfit(HloInstruction* instr1,

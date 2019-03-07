@@ -179,16 +179,12 @@ bool IsFusible(const HloInstruction& instr) {
   return IsInputFusible(instr) || IsLoopFusible(instr);
 }
 
-bool IsMultiOutputFusible(const HloInstruction& instr) {
+bool IsFusibleAsMultiOutputFusionRoot(const HloInstruction& instr) {
   // We can fuse reduces and loop fusions. Elementwise instructions can be fused
   // with any other instruction.
-  // TODO(b/112957171): This should use the same isFusible logic as
-  // instruction_fusion.
-  return instr.IsFusible() &&
-         (IsInputFusibleReduction(instr) ||
-          (instr.opcode() == HloOpcode::kFusion &&
-           instr.fusion_kind() == HloInstruction::FusionKind::kLoop) ||
-          instr.IsElementwise());
+  // Note that scatter cannot be the root of a multi-output fusion because
+  // its emitter doesn't support it.
+  return (IsInputFusibleReduction(instr) || IsLoopFusible(instr));
 }
 }  // namespace gpu
 }  // namespace xla
