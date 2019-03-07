@@ -1446,6 +1446,7 @@ cc_library(
     name = "all_kernels_impl",
     visibility = ["//tensorflow/core:__subpackages__"],
     deps = [
+        "//tensorflow/c/kernels:bitcast_op",
         "//tensorflow/core/kernels:array",
         "//tensorflow/core/kernels:audio",
         "//tensorflow/core/kernels:batch_kernels",

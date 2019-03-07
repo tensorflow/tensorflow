@@ -832,7 +832,6 @@ cc_library(
     deps = [
         ":batch_space_ops",
         ":bcast_ops",
-        ":bitcast_op",
         ":broadcast_to_op",
         ":concat_op",
         ":constant_op",
@@ -884,8 +883,8 @@ tf_kernel_library(
 
 tf_kernel_library(
     name = "bitcast_op",
-    prefix = "bitcast_op",
-    deps = ARRAY_DEPS,
+    deprecation = "use //third_party/tensorflow/c/kernels:bitcast_op instead",
+    deps = ["//tensorflow/c/kernels:bitcast_op"],
 )
 
 tf_kernel_library(
@@ -5848,7 +5847,7 @@ ANDROID_TEXTUAL_HDRS = [
 # registration.
 filegroup(
     name = "android_all_ops",
-    srcs = glob(
+    srcs = ["//tensorflow/c/kernels:android_all_ops"] + glob(
         [
             "*.cc",
             "*.h",
