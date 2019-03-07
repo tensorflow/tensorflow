@@ -30,7 +30,6 @@ from tensorflow.python.ops import sparse_ops
 # latent bugs here.
 ops.NotDifferentiable("SparseAddGrad")
 ops.NotDifferentiable("SparseConcat")
-ops.NotDifferentiable("SparseToDense")
 
 
 @ops.RegisterGradient("SparseReorder")
@@ -310,3 +309,16 @@ def _SparseFillEmptyRowsGrad(op, unused_grad_output_indices, output_grad_values,
 
   # d_indices, d_values, d_dense_shape, d_default_value.
   return [None, d_values, None, d_default_value]
+
+
+@ops.RegisterGradient("SparseToDense")
+def _SparseToDenseGrad(op, grad):
+  sparse_indices, output_shape, _, _ = op.inputs
+
+  sparse_values_grad = array_ops.gather_nd(grad, sparse_indices)
+  default_value_grad = math_ops.reduce_sum(grad) - math_ops.reduce_sum(
+      sparse_values_grad)
+  return [
+      array_ops.zeros_like(sparse_indices),
+      array_ops.zeros_like(output_shape), sparse_values_grad, default_value_grad
+  ]
