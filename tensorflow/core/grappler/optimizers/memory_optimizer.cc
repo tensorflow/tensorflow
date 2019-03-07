@@ -1284,8 +1284,13 @@ Status RelaxAllocatorConstraints(GraphDef* optimized_graph) {
       assign_nodes_in_fanout.push_back(&assign_node);
 
       std::vector<const NodeDef*> transitive_fanout;
+      // Find the nodes in transitive fanout. If a node is known to never
+      // forward its inputs, we can skip its fanout.
       DfsTraversal(graph_view, {graph_view.GetNode(i)},
                    TraversalDirection::kFollowOutputs,
+                   DfsPredicates::Advance([&](const NodeDef* node) {
+                     return !NeverForwardsInputs(*node);
+                   }),
                    DfsCallbacks::PreOrder([&](const NodeDef* node) {
                      transitive_fanout.push_back(node);
                    }));

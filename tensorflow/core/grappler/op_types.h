@@ -245,6 +245,10 @@ bool HasOpDef(const NodeDef& node);
 // and preserves the number of elements.
 bool IsCastLike(const NodeDef& node);
 
+// Returns true if this op never forwards any of its inputs, i.e. always
+// allocates buffers for its inputs.
+bool NeverForwardsInputs(const NodeDef& node);
+
 }  // end namespace grappler
 }  // end namespace tensorflow
 
