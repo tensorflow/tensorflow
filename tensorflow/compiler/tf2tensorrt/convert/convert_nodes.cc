@@ -975,9 +975,9 @@ Status TrtNodeValidator::ConvertConstToWeights(
 static void InitializeTrtPlugins() {
   static mutex plugin_mutex(LINKER_INITIALIZED);
   static bool plugin_initialized = false;
+  static Logger trt_logger;
   mutex_lock lock(plugin_mutex);
   if (!plugin_initialized) {
-    Logger trt_logger;
     plugin_initialized = initLibNvInferPlugins(&trt_logger, "");
     if (!plugin_initialized) {
       LOG(ERROR) << "Failed to initialize TensorRT plugins, and conversion may "
@@ -3954,11 +3954,11 @@ Status ConvertTopK(OpConverterParams* params) {
 Status ConvertCombinedNMS(OpConverterParams* params) {
   TF_RETURN_IF_ERROR(
       CheckInputsWeights(*params, {{"boxes", false},
-                                  {"scores", false},
-                                  {"max_output_size_per_class", true},
-                                  {"max_total_size", true},
-                                  {"iou_threshold", true},
-                                  {"score_threshold", true}}));
+                                   {"scores", false},
+                                   {"max_output_size_per_class", true},
+                                   {"max_total_size", true},
+                                   {"iou_threshold", true},
+                                   {"score_threshold", true}}));
   const auto& inputs = params->inputs;
   const auto& node_def = params->node_def;
 
@@ -4083,11 +4083,35 @@ Status ConvertCombinedNMS(OpConverterParams* params) {
       &plugin_inputs[0], int(plugin_inputs.size()), *plugin);
   TFTRT_RETURN_ERROR_IF_NULLPTR(layer, node_def.name());
 
+  auto shrink_last_dim = [params](nvinfer1::ITensor* in_tensor,
+                                  nvinfer1::ITensor** out_tensor) {
+    nvinfer1::Dims dims = in_tensor->getDimensions();
+    if (dims.d[dims.nbDims - 1] != 1) {
+      return errors::Internal("Expect last dims to be 1, for tensor ",
+                              DebugString(*in_tensor));
+    }
+    --dims.nbDims;
+    // TODO(laigd): get rid of all the const_cast like this.
+    const nvinfer1::ITensor* tmp_tensor;
+    TF_RETURN_IF_ERROR(params->converter->PrepareTensorForShape(
+        TRT_TensorOrWeights(in_tensor), dims,
+        /*validation_only=*/false, &tmp_tensor));
+    *out_tensor = const_cast<nvinfer1::ITensor*>(tmp_tensor);
+    return Status::OK();
+  };
+
   // Set plugin outputs
-  nvinfer1::ITensor* output_num_detections = layer->getOutput(0);
   nvinfer1::ITensor* output_nmsed_boxes = layer->getOutput(1);
-  nvinfer1::ITensor* output_nmsed_scores = layer->getOutput(2);
-  nvinfer1::ITensor* output_nmsed_classes = layer->getOutput(3);
+  nvinfer1::ITensor* output_nmsed_scores = nullptr;
+  nvinfer1::ITensor* output_nmsed_classes = nullptr;
+  nvinfer1::ITensor* output_num_detections = nullptr;
+  TF_RETURN_IF_ERROR(
+      shrink_last_dim(layer->getOutput(2), &output_nmsed_scores));
+  TF_RETURN_IF_ERROR(
+      shrink_last_dim(layer->getOutput(3), &output_nmsed_classes));
+  TF_RETURN_IF_ERROR(
+      shrink_last_dim(layer->getOutput(0), &output_num_detections));
+
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_boxes));
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_scores));
   params->outputs->push_back(TRT_TensorOrWeights(output_nmsed_classes));
