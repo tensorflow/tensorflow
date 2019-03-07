@@ -1888,6 +1888,12 @@ bool FlatAffineConstraints::findId(const Value &id, unsigned *pos) const {
   return false;
 }
 
+bool FlatAffineConstraints::containsId(const Value &id) const {
+  return llvm::any_of(ids, [&](const Optional<Value *> &mayBeId) {
+    return mayBeId.hasValue() && mayBeId.getValue() == &id;
+  });
+}
+
 void FlatAffineConstraints::setDimSymbolSeparation(unsigned newSymbolCount) {
   assert(newSymbolCount <= numDims + numSymbols &&
          "invalid separation position");
@@ -2696,19 +2702,21 @@ bool FlatAffineConstraints::unionBoundingBox(
   boundingLbs.reserve(2 * getNumDimIds());
   boundingUbs.reserve(2 * getNumDimIds());
 
-  SmallVector<int64_t, 4> lb, otherLb;
-  lb.reserve(getNumSymbolIds() + 1);
-  otherLb.reserve(getNumSymbolIds() + 1);
+  // To hold lower and upper bounds for each dimension.
+  SmallVector<int64_t, 4> lb, otherLb, ub, otherUb;
+  // To compute min of lower bounds and max of upper bounds for each dimension.
+  SmallVector<int64_t, 4> minLb, maxUb;
+  // To compute final new lower and upper bounds for the union.
+  SmallVector<int64_t, 8> newLb(getNumCols()), newUb(getNumCols());
+
   int64_t lbDivisor, otherLbDivisor;
   for (unsigned d = 0, e = getNumDimIds(); d < e; ++d) {
-    lb.clear();
     auto extent = getConstantBoundOnDimSize(d, &lb, &lbDivisor);
     if (!extent.hasValue())
       // TODO(bondhugula): symbolic extents when necessary.
       // TODO(bondhugula): handle union if a dimension is unbounded.
       return false;
 
-    otherLb.clear();
     auto otherExtent =
         other.getConstantBoundOnDimSize(d, &otherLb, &otherLbDivisor);
     if (!otherExtent.hasValue() || lbDivisor != otherLbDivisor)
@@ -2716,9 +2724,6 @@ bool FlatAffineConstraints::unionBoundingBox(
       return false;
 
     assert(lbDivisor > 0 && "divisor always expected to be positive");
-
-    // Compute min of lower bounds and max of upper bounds.
-    SmallVector<int64_t, 4> minLb, maxUb;
 
     auto res = compareBounds(lb, otherLb);
     // Identify min.
@@ -2737,7 +2742,8 @@ bool FlatAffineConstraints::unionBoundingBox(
     }
 
     // Do the same for ub's but max of upper bounds.
-    SmallVector<int64_t, 4> ub(lb), otherUb(otherLb);
+    ub = lb;
+    otherUb = otherLb;
     ub.back() += extent.getValue() - 1;
     otherUb.back() += otherExtent.getValue() - 1;
 
@@ -2757,8 +2763,8 @@ bool FlatAffineConstraints::unionBoundingBox(
       maxUb.back() = std::max(constUb.getValue(), constOtherUb.getValue());
     }
 
-    SmallVector<int64_t, 8> newLb(getNumCols(), 0);
-    SmallVector<int64_t, 8> newUb(getNumCols(), 0);
+    std::fill(newLb.begin(), newLb.end(), 0);
+    std::fill(newUb.begin(), newUb.end(), 0);
 
     // The divisor for lb, ub, otherLb, otherUb at this point is lbDivisor,
     // and so it's the divisor for newLb and newUb as well.

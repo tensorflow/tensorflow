@@ -436,10 +436,14 @@ public:
   /// constant. Asserts if the 'id' is not found.
   void setIdToConstant(const Value &id, int64_t val);
 
-  /// Looks up the identifier with the specified Value. Returns false if not
-  /// found, true if found. pos is set to the (column) position of the
-  /// identifier.
+  /// Looks up the position of the identifier with the specified Value. Returns
+  /// true if found (false otherwise). `pos' is set to the (column) position of
+  /// the identifier.
   bool findId(const Value &id, unsigned *pos) const;
+
+  /// Returns true if an identifier with the specified Value exists, false
+  /// otherwise.
+  bool containsId(const Value &id) const;
 
   // Add identifiers of the specified kind - specified positions are relative to
   // the kind of identifier. The coefficient column corresponding to the added

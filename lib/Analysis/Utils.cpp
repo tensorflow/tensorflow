@@ -70,9 +70,7 @@ bool ComputationSliceState::getAsConstraints(FlatAffineConstraints *cst) {
   // Add loop bound constraints for values which are loop IVs and equality
   // constraints for symbols which are constants.
   for (const auto &value : values) {
-    unsigned loc;
-    (void)loc;
-    assert(cst->findId(*value, &loc));
+    assert(cst->containsId(*value) && "value expected to be present");
     if (isValidSymbol(value)) {
       // Check if the symbol is a constant.
       if (auto *inst = value->getDefiningInst()) {
@@ -256,8 +254,7 @@ bool MemRefRegion::compute(Instruction *inst, unsigned loopDepth,
   if (sliceState != nullptr) {
     // Add dim and symbol slice operands.
     for (const auto &operand : sliceState->lbOperands[0]) {
-      unsigned loc;
-      if (!cst.findId(*operand, &loc)) {
+      if (!cst.containsId(*operand)) {
         if (isValidSymbol(operand)) {
           cst.addSymbolId(cst.getNumSymbolIds(), const_cast<Value *>(operand));
           // Check if the symbol is a constant.
