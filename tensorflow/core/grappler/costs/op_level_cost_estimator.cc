@@ -551,6 +551,10 @@ Costs OpLevelCostEstimator::PredictOpCountBasedCost(
   costs.compute_time = compute_cost;
   costs.memory_time = memory_cost;
   costs.intermediate_memory_time = intermediate_memory_cost;
+  costs.intermediate_memory_read_time =
+      Costs::NanoSeconds(intermediate_read_time);
+  costs.intermediate_memory_write_time =
+      Costs::NanoSeconds(intermediate_write_time);
   CombineCostsAndUpdateExecutionTime(&costs);
   return costs;
 }
