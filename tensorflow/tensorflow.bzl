@@ -1209,6 +1209,7 @@ def tf_cuda_library(deps = None, cuda_deps = None, copts = tf_copts(), **kwargs)
             "@local_config_cuda//cuda:cuda_headers",
         ]) + if_rocm_is_configured(cuda_deps + [
             # rocm_header placeholder
+            "@local_config_rocm//rocm:rocm_headers",
         ]),
         copts = (copts + if_cuda(["-DGOOGLE_CUDA=1"]) + if_rocm(["-DTENSORFLOW_USE_ROCM=1"]) + if_mkl(["-DINTEL_MKL=1"]) + if_mkl_open_source_only(["-DINTEL_MKL_DNN_ONLY"]) + if_enable_mkl(["-DENABLE_MKL"]) + if_tensorrt(["-DGOOGLE_TENSORRT=1"])),
         **kwargs
