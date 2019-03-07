@@ -230,6 +230,7 @@ tf_kernel_library(
     gpu_srcs = [
         "concat_lib_gpu_impl.cu.cc",
         "concat_lib.h",
+        "concat_lib_gpu.h",
         "cuda_device_array.h",
         "cuda_device_array_gpu.h",
     ],
@@ -607,6 +608,7 @@ tf_kernel_library(
     gpu_srcs = [
         "split_lib_gpu.cu.cc",
         "split_lib.h",
+        "split_lib_gpu.h",
     ],
     deps = [
         ":cuda_device_array",
@@ -618,9 +620,7 @@ tf_kernel_library(
 
 cc_library(
     name = "split_lib_hdrs",
-    hdrs = [
-        "split_lib.h",
-    ],
+    hdrs = ["split_lib.h"],
     deps = [
         "//tensorflow/core:framework_lite",
         "//third_party/eigen3",
