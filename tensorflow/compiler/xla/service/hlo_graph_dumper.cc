@@ -258,14 +258,16 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
   // param0), check that the operation being performed is commutative.
   if (root->operand(0) == param1) {
     CHECK_EQ(root->operand(1), param0);
-    switch (root->opcode()) {
-      case HloOpcode::kLe:
-      case HloOpcode::kGe:
-      case HloOpcode::kGt:
-      case HloOpcode::kLt:
-        return nullopt;
-      default:
-        break;
+    if (root->opcode() == HloOpcode()) {
+      switch (root->comparison_direction()) {
+        case ComparisonDirection::kLe:
+        case ComparisonDirection::kGe:
+        case ComparisonDirection::kGt:
+        case ComparisonDirection::kLt:
+          return nullopt;
+        default:
+          break;
+      }
     }
   }
 
@@ -279,18 +281,22 @@ optional<string> MatchTrivialComputation(const HloComputation* computation) {
       return "min";
     case HloOpcode::kMaximum:
       return "max";
-    case HloOpcode::kLe:
-      return "less-or-equal";
-    case HloOpcode::kGe:
-      return "greater-or-equal";
-    case HloOpcode::kGt:
-      return "greater-than";
-    case HloOpcode::kLt:
-      return "less-than";
-    case HloOpcode::kEq:
-      return "equal-to";
-    case HloOpcode::kNe:
-      return "not-equal-to";
+    case HloOpcode::kCompare: {
+      switch (root->comparison_direction()) {
+        case ComparisonDirection::kLe:
+          return "less-or-equal";
+        case ComparisonDirection::kGe:
+          return "greater-or-equal";
+        case ComparisonDirection::kGt:
+          return "greater-than";
+        case ComparisonDirection::kLt:
+          return "less-than";
+        case ComparisonDirection::kEq:
+          return "equal-to";
+        case ComparisonDirection::kNe:
+          return "not-equal-to";
+      }
+    }
     default:
       return nullopt;
   }
@@ -922,27 +928,22 @@ ColorScheme HloDotDumper::GetInstructionColor(const HloInstruction* instr) {
     case HloOpcode::kCeil:
     case HloOpcode::kClamp:
     case HloOpcode::kClz:
+    case HloOpcode::kCompare:
     case HloOpcode::kComplex:
     case HloOpcode::kConvert:
     case HloOpcode::kCos:
     case HloOpcode::kDivide:
-    case HloOpcode::kEq:
     case HloOpcode::kExp:
     case HloOpcode::kExpm1:
     case HloOpcode::kFloor:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
     case HloOpcode::kImag:
     case HloOpcode::kIota:
     case HloOpcode::kIsFinite:
-    case HloOpcode::kLe:
     case HloOpcode::kLog:
     case HloOpcode::kLog1p:
-    case HloOpcode::kLt:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kMultiply:
-    case HloOpcode::kNe:
     case HloOpcode::kNegate:
     case HloOpcode::kNot:
     case HloOpcode::kOr:

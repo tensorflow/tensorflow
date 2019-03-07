@@ -374,7 +374,7 @@ TEST_F(LayoutAssignmentTest, SortLayout) {
     p.0.rhs = f32[] parameter(1)
     p.1.lhs = f32[] parameter(2)
     p.1.rhs = f32[] parameter(3)
-    ROOT lt = pred[] less-than(p.0.lhs, p.0.rhs)
+    ROOT lt = pred[] compare(p.0.lhs, p.0.rhs), direction=LT
   }
 
   ENTRY sort {

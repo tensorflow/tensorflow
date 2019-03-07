@@ -183,6 +183,7 @@ class HloParser {
     kHloComputation,
     kBracedHloComputationList,
     kFftType,
+    kComparisonDirection,
     kWindow,
     kConvolutionDimensionNumbers,
     kSharding,
@@ -300,6 +301,7 @@ class HloParser {
   bool ParseTiles(std::vector<Tile>* tiles);
   bool ParseOpcode(HloOpcode* result);
   bool ParseFftType(FftType* result);
+  bool ParseComparisonDirection(ComparisonDirection* result);
   bool ParseFusionKind(HloInstruction::FusionKind* result);
   bool ParseRandomDistribution(RandomDistribution* result);
   bool ParsePrecision(PrecisionConfig::Precision* result);
@@ -763,12 +765,6 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
     case HloOpcode::kSubtract:
     case HloOpcode::kAtan2:
     case HloOpcode::kComplex:
-    case HloOpcode::kEq:
-    case HloOpcode::kGe:
-    case HloOpcode::kGt:
-    case HloOpcode::kLe:
-    case HloOpcode::kLt:
-    case HloOpcode::kNe:
     case HloOpcode::kMaximum:
     case HloOpcode::kMinimum:
     case HloOpcode::kPower:
@@ -1131,6 +1127,18 @@ bool HloParser::ParseInstructionRhs(HloComputation::Builder* builder,
       instruction =
           builder->AddInstruction(HloInstruction::CreateTriangularSolve(
               shape, operands[0], operands[1], options));
+      break;
+    }
+    case HloOpcode::kCompare: {
+      optional<ComparisonDirection> direction;
+      attrs["direction"] = {/*required=*/true, AttrTy::kComparisonDirection,
+                            &direction};
+      if (!ParseOperands(&operands, /*expected_size=*/2) ||
+          !ParseAttributes(attrs)) {
+        return false;
+      }
+      instruction = builder->AddInstruction(HloInstruction::CreateCompare(
+          shape, operands[0], operands[1], *direction));
       break;
     }
     case HloOpcode::kCholesky: {
@@ -2728,6 +2736,15 @@ bool HloParser::ParseAttributeHelper(
         static_cast<optional<FftType>*>(attr_out_ptr)->emplace(result);
         return true;
       }
+      case AttrTy::kComparisonDirection: {
+        ComparisonDirection result;
+        if (!ParseComparisonDirection(&result)) {
+          return false;
+        }
+        static_cast<optional<ComparisonDirection>*>(attr_out_ptr)
+            ->emplace(result);
+        return true;
+      }
       case AttrTy::kWindow: {
         Window result;
         if (!ParseWindow(&result, /*expect_outer_curlies=*/true)) {
@@ -3752,6 +3769,22 @@ bool HloParser::ParseFftType(FftType* result) {
   if (!FftType_Parse(val, result) || !FftType_IsValid(*result)) {
     return TokenError(StrFormat("expects fft type but sees: %s", val));
   }
+  lexer_.Lex();
+  return true;
+}
+
+bool HloParser::ParseComparisonDirection(ComparisonDirection* result) {
+  VLOG(1) << "ParseComparisonDirection";
+  if (lexer_.GetKind() != TokKind::kIdent) {
+    return TokenError("expects comparison direction");
+  }
+  string val = lexer_.GetStrVal();
+  auto status_or_result = StringToComparisonDirection(val);
+  if (!status_or_result.ok()) {
+    return TokenError(
+        StrFormat("expects comparison direction but sees: %s", val));
+  }
+  *result = status_or_result.ValueOrDie();
   lexer_.Lex();
   return true;
 }
