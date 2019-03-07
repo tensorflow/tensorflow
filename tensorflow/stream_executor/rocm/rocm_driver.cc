@@ -671,7 +671,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
                                              uint64 bytes) {
   ScopedActivateContext activated{context};
   hipDeviceptr_t result = 0;
-  hipError_t res = tensorflow::wrap::hipMallocVanilla(&result, bytes);
+  hipError_t res = tensorflow::wrap::hipMalloc(&result, bytes);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to allocate "
                << port::HumanReadableNumBytes::ToString(bytes) << " (" << bytes
@@ -717,7 +717,7 @@ GpuDriver::ContextGetSharedMemConfig(GpuContext* context) {
   ScopedActivateContext activation{context};
   void* host_mem = nullptr;
   // "Portable" memory is visible to all ROCM contexts. Safe for our use model.
-  hipError_t res = tensorflow::wrap::hipHostMallocVanilla(
+  hipError_t res = tensorflow::wrap::hipHostMalloc(
       &host_mem, bytes, hipHostMallocPortable);
   if (res != hipSuccess) {
     LOG(ERROR) << "failed to alloc " << bytes
