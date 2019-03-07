@@ -1130,21 +1130,24 @@ Status BaseGPUDeviceFactory::CreateGPUDevice(
                             tf_gpu_id.value(), " with ", memory_limit,
                             " bytes of memory.");
   }
-  AllocatorStats stats;
-  gpu_allocator->GetStats(&stats);
+  absl::optional<AllocatorStats> stats = gpu_allocator->GetStats();
+  if (!stats) {
+    return errors::Internal("No allocator statistics");
+  }
   // 'memory_limit' is the required memory size, but if the allocator with given
   // tf_gpu_id was created before, we'll use it instead of creating a new one
   // (as TF gpu device is a shared resource), in which case the actual memory
   // limit represented by 'stats.bytes_limit' used by that allocator may be
   // different (which should be an error).
   //
-  // TODO(laigd): report error if memory_limit doesn't match stats.bytes_limit.
+  // TODO(laigd): report error if memory_limit doesn't match stats->bytes_limit.
+  int64 bytes_limit = stats->bytes_limit ? *stats->bytes_limit : 0;
   std::unique_ptr<BaseGPUDevice> gpu_device = CreateGPUDevice(
-      options, device_name, static_cast<Bytes>(stats.bytes_limit), dev_locality,
+      options, device_name, static_cast<Bytes>(bytes_limit), dev_locality,
       tf_gpu_id, GetShortDeviceDescription(platform_gpu_id, desc),
       gpu_allocator, ProcessState::singleton()->GetCPUAllocator(numa_node));
   LOG(INFO) << "Created TensorFlow device (" << device_name << " with "
-            << (stats.bytes_limit >> 20) << " MB memory) -> physical GPU ("
+            << (bytes_limit >> 20) << " MB memory) -> physical GPU ("
             << GetShortDeviceDescription(platform_gpu_id, desc) << ")";
   TF_RETURN_IF_ERROR(gpu_device->Init(options));
   devices->push_back(std::move(gpu_device));

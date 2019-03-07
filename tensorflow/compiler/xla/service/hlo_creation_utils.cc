@@ -42,6 +42,18 @@ StatusOr<HloInstruction*> MakeBinaryHlo(HloOpcode opcode, HloInstruction* lhs,
       HloInstruction::CreateBinary(binary_op_shape, opcode, lhs, rhs));
 }
 
+StatusOr<HloInstruction*> MakeCompareHlo(ComparisonDirection direction,
+                                         HloInstruction* lhs,
+                                         HloInstruction* rhs) {
+  HloComputation* computation = lhs->parent();
+  CHECK_EQ(computation, rhs->parent());
+  TF_ASSIGN_OR_RETURN(
+      Shape binary_op_shape,
+      ShapeInference::InferBinaryOpShape(HloOpcode::kCompare, lhs, rhs));
+  return computation->AddInstruction(
+      HloInstruction::CreateCompare(binary_op_shape, lhs, rhs, direction));
+}
+
 StatusOr<HloInstruction*> MakePadHlo(HloInstruction* operand,
                                      HloInstruction* padding_value,
                                      const PaddingConfig& padding_config) {
@@ -275,7 +287,7 @@ StatusOr<HloInstruction*> MakeSelectHlo(HloInstruction* pred,
 
 StatusOr<HloInstruction*> MakeSortHlo(
     const Shape& sort_shape, absl::Span<HloInstruction* const> operands,
-    int64 dimension_to_sort, HloComputation::Builder* builder,
+    int64 dimension_to_sort, bool is_stable, HloComputation::Builder* builder,
     HloModule* module) {
   CHECK(!operands.empty()) << "Sort Hlo requires at least one operand.";
   HloComputation* compare_computation;
@@ -293,7 +305,7 @@ StatusOr<HloInstruction*> MakeSortHlo(
   compare_computation =
       module->DeepCloneComputation(new_module->entry_computation(), &context);
   return builder->AddInstruction(HloInstruction::CreateSort(
-      sort_shape, dimension_to_sort, operands, compare_computation));
+      sort_shape, dimension_to_sort, operands, compare_computation, is_stable));
 }
 
 StatusOr<HloInstruction*> CollapseFirstNDims(HloInstruction* operand, int64 n) {

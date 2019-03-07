@@ -1012,10 +1012,12 @@ def py_func_if_in_function(f):
     if not ops.get_default_graph()._building_function:
       return f(*args, **kwds)
 
-    tensor_args, tensor_indices = zip(*[(x, i)
-                                        for i, x in enumerate(args)
-                                        if isinstance(x, (ops.Tensor,
-                                                          variables.Variable))])
+    tensor_args = []
+    tensor_indices = []
+    for i, arg in enumerate(args):
+      if isinstance(arg, (ops.Tensor, variables.Variable)):
+        tensor_args.append(arg)
+        tensor_indices.append(i)
 
     def inner_f(*inner_tensor_args):
       my_args = list(args)
@@ -1487,7 +1489,8 @@ class TensorFlowTestCase(googletest.TestCase):
     if is_xla_enabled():
       os.putenv(
           "TF_XLA_FLAGS", "--tf_xla_auto_jit=2 --tf_xla_min_cluster_size=1 "
-          "--tf_xla_enable_lazy_compilation=false")
+          "--tf_xla_enable_lazy_compilation=false " +
+          os.getenv("TF_XLA_FLAGS", ""))
     self._threads = []
     self._tempdir = None
     self._cached_session = None

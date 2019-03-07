@@ -25,6 +25,7 @@ limitations under the License.
 #include "tensorflow/compiler/tf2xla/xla_op_kernel.h"
 #include "tensorflow/compiler/tf2xla/xla_op_registry.h"
 #include "tensorflow/compiler/xla/client/lib/arithmetic.h"
+#include "tensorflow/compiler/xla/client/lib/constants.h"
 #include "tensorflow/compiler/xla/client/lib/loops.h"
 #include "tensorflow/compiler/xla/client/xla_builder.h"
 #include "tensorflow/core/framework/op_kernel.h"
@@ -279,9 +280,9 @@ class TruncatedNormalOp : public XlaOpKernel {
 
     xla::XlaBuilder* b = ctx->builder();
 
-    xla::XlaOp one = XlaHelpers::FloatLiteral(b, dtype, 1.0);
+    xla::XlaOp one = xla::One(b, xla_shape.element_type());
     xla::XlaOp min_positive =
-        XlaHelpers::FloatLiteral(b, dtype, std::numeric_limits<float>::min());
+        xla::MinPositiveNormalValue(b, xla_shape.element_type());
     auto uniform = xla::RngUniform(min_positive, one, xla_shape);
     ctx->SetOutput(0, TruncatedNormal(uniform));
   }

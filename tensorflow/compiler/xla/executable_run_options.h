@@ -74,7 +74,7 @@ class ExecutableRunOptions {
   ExecutableRunOptions& set_execution_profile(ExecutionProfile* profile);
 
   ExecutableRunOptions& set_device_assignment(
-      DeviceAssignment* device_assignment);
+      const DeviceAssignment* device_assignment);
   const DeviceAssignment* device_assignment() const;
 
   ExecutableRunOptions& set_rng_seed(int rng_seed);
@@ -83,7 +83,7 @@ class ExecutableRunOptions {
  private:
   DeviceMemoryAllocator* allocator_ = nullptr;
   int device_ordinal_ = -1;
-  DeviceAssignment* device_assignment_ = nullptr;
+  const DeviceAssignment* device_assignment_ = nullptr;
   stream_executor::Stream* stream_ = nullptr;
   const Eigen::ThreadPoolDevice* intra_op_thread_pool_ = nullptr;
   ExecutionProfile* execution_profile_ = nullptr;

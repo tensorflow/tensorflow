@@ -62,7 +62,7 @@ double CalculateBytesReadByFusionParameter(HloInstruction* param) {
 
   // Iterate through 'instructions' accumulating byte sizes of each instruction
   // shape. For each 'instruction' in 'instructions', if all users of
-  // 'instruction' are Slice instructions, accumuates the byte sizes of each
+  // 'instruction' are Slice instructions, accumulates the byte sizes of each
   // Slice for a more accurate estimate of bytes read.
   double bytes = 0.0;
   for (auto& instruction : instructions) {
@@ -171,6 +171,7 @@ class FusionInstructionMerger {
   int num_fail_expensive_fused_instruction_ = 0;
   int num_fail_flops_to_byte_ratio_ = 0;
   int num_fail_net_bytes_transferred_ratio_ = 0;
+  int num_fail_inefficient_fusion_emitter_ = 0;
 
   TF_DISALLOW_COPY_AND_ASSIGN(FusionInstructionMerger);
 };
@@ -192,7 +193,8 @@ Status FusionInstructionMerger::Run() {
           << " expensive_instruction: " << num_fail_expensive_fused_instruction_
           << " flops_to_byte_ratio: " << num_fail_flops_to_byte_ratio_
           << " net_bytes_transferred: " << num_fail_net_bytes_transferred_ratio_
-          << " }";
+          << " inefficient_fusion_emitter: "
+          << num_fail_inefficient_fusion_emitter_ << " }";
   return Status::OK();
 }
 
@@ -280,6 +282,23 @@ Status FusionInstructionMerger::HandleFusion(HloInstruction* fusion) {
     ++num_fail_net_bytes_transferred_ratio_;
     return Status::OK();
   }
+
+  // Skip 'fusion' instruction if merging it into at least one of the users
+  // would cause too much code duplication because of inefficiencies in the
+  // fusion emitter.
+  // TODO(b/119692968): Remove this once the fusion emitter can handle arbitrary
+  // fusion nodes.
+  if (absl::c_any_of(fusion->users(), [fusion](const HloInstruction* user) {
+        return IsFusionEmitterInefficient(/*consumer=*/user,
+                                          /*producer=*/fusion);
+      })) {
+    VLOG(3) << "Not merging " << fusion->name()
+            << ": Contains one or more users where fusing would cause "
+               "inefficiencies in the fusion emitter.";
+    ++num_fail_inefficient_fusion_emitter_;
+    return Status::OK();
+  }
+
   // Merge fused instructions from 'fusion' into each user.
   std::vector<HloInstruction*> users = fusion->users();
   for (HloInstruction* user : users) {

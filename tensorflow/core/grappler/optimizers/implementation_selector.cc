@@ -176,6 +176,10 @@ Status ImplementationSelector::SelectImplementation(
     VLOG(2) << "Skipping graph since it does not have function def";
     return Status::OK();
   }
+  if (lib_info_->empty()) {
+    VLOG(2) << "Skipping optimization since lib_info is empty";
+    return Status::OK();
+  }
 
   for (int k = 0; k < graph->node_size(); ++k)
     TF_RETURN_IF_ERROR(MaybeOptimizeFunctionCall(graph->mutable_node(k)));
@@ -184,8 +188,8 @@ Status ImplementationSelector::SelectImplementation(
 }
 
 Status ImplementationSelector::Optimize(Cluster* cluster,
-                                                    const GrapplerItem& item,
-                                                    GraphDef* optimized_graph) {
+                                        const GrapplerItem& item,
+                                        GraphDef* optimized_graph) {
   *optimized_graph = item.graph;
   TF_RETURN_IF_ERROR(LoadFunctions(*optimized_graph));
   return SelectImplementation(optimized_graph);

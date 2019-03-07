@@ -34,16 +34,35 @@ from tensorflow.python.autograph.pyct import templates
 # TODO(mdan): Rename to FunctionCallsTransformer.
 
 
+class _Function(object):
+
+  no_root = True
+
+
 class CallTreeTransformer(converter.Base):
   """Transforms the call tree by renaming transformed symbols."""
 
   def visit_FunctionDef(self, node):
+    self.state[_Function].enter()
     node.args = self.visit(node.args)
     node.body = self.visit_block(node.body)
-    # TODO(mdan): Is this correct for local functions?
-    node.decorator_list = []
+
+    if self.state[_Function].level < 2:
+      # Top-level functions lose their decorator because the conversion is
+      # always just-in-time and by the time it happens the decorators are
+      # already set to be applied.
+      node.decorator_list = []
+    else:
+      # Inner functions are converted already, so we insert a decorator to
+      # prevent double conversion. Double conversion would work too, but this
+      # saves the overhead.
+      node.decorator_list.append(
+          parser.parse_expression('ag__.do_not_convert_internal'))
+
     if node.returns:
       node.returns = self.visit(node.returns)
+
+    self.state[_Function].exit()
     return node
 
   def visit_With(self, node):

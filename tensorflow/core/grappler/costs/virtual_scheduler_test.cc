@@ -2361,7 +2361,7 @@ TEST_F(VirtualSchedulerTest, WhileLoop) {
   // TODO(dyoon): after fixing while loop behavior correctly (run nodes in the
   // order of Enter, Merge, ...loop condition ..., ... loop body ...,
   // NextIteration, Merge, ... loop condition ..., Exit), re-enable dependency
-  // chaing test w/ Merge nodes.
+  // chaining test w/ Merge nodes.
   ValidateDependencyChain(
       start_times,
       {"Const", "while/Enter",  // "while/Merge",

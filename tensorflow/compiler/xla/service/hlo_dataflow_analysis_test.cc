@@ -2170,6 +2170,66 @@ TEST_F(CanShareOperandBufferWithUserTest,
       dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
 }
 
+TEST_F(CanShareOperandBufferWithUserTest, DUSWithSliceWithDifferentIndices) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[10,20,30] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      slice = f32[1,1,30] dynamic-slice(p0, p1, p2, p3), dynamic_slice_sizes={1,1,30}
+      ROOT dus = f32[10,20,30] dynamic-update-slice(p0, slice, p1, p3, p2)
+    }
+
+    ENTRY test {
+      p0 = f32[10,20,30] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT fusion = f32[10,20,30] fusion(p0, p1, p2, p3), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  auto* fusion = module_->entry_computation()->root_instruction();
+  auto* param = module_->entry_computation()->parameter_instruction(0);
+
+  RunAnalysis();
+  EXPECT_FALSE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
+}
+
+TEST_F(CanShareOperandBufferWithUserTest, DUSWithSliceWithSameIndices) {
+  const char* kModule = R"(
+    HloModule test
+
+    fused_computation {
+      p0 = f32[10,20,30] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      slice = f32[1,1,30] dynamic-slice(p0, p1, p2, p3), dynamic_slice_sizes={1,1,30}
+      ROOT dus = f32[10,20,30] dynamic-update-slice(p0, slice, p1, p2, p3)
+    }
+
+    ENTRY test {
+      p0 = f32[10,20,30] parameter(0)
+      p1 = s32[] parameter(1)
+      p2 = s32[] parameter(2)
+      p3 = s32[] parameter(3)
+      ROOT fusion = f32[10,20,30] fusion(p0, p1, p2, p3), kind=kLoop, calls=fused_computation
+    }
+  )";
+  TF_ASSERT_OK_AND_ASSIGN(module_, ParseAndReturnVerifiedModule(kModule));
+  auto* fusion = module_->entry_computation()->root_instruction();
+  auto* param = module_->entry_computation()->parameter_instruction(0);
+
+  RunAnalysis();
+  EXPECT_TRUE(
+      dataflow_analysis_->CanShareOperandBufferWithUser(param, {}, fusion, {}));
+}
+
 TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
   auto builder = HloComputation::Builder(TestName());
 
@@ -2179,8 +2239,8 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
       HloInstruction::CreateParameter(0, in_shape, "param0"));
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, in_shape, "param1"));
-  auto result = builder.AddInstruction(
-      HloInstruction::CreateBinary(out_shape, HloOpcode::kEq, param0, param1));
+  auto result = builder.AddInstruction(HloInstruction::CreateCompare(
+      out_shape, param0, param1, ComparisonDirection::kEq));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -2363,7 +2423,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto* sort, MakeSortHlo(keys_shape, {keys}, -1, &builder, module_.get()));
+      auto* sort, MakeSortHlo(keys_shape, {keys}, -1, /*is_stable=*/false,
+                              &builder, module_.get()));
 
   computation_ = module_->AddEntryComputation(builder.Build());
   RunAnalysis();
@@ -2385,7 +2446,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
-                  {keys, values}, 0, &builder, module_.get()));
+                  {keys, values}, 0, /*is_stable=*/false, &builder,
+                  module_.get()));
 
   computation_ = module_->AddEntryComputation(builder.Build());
   RunAnalysis();
@@ -2501,8 +2563,8 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     auto builder = HloComputation::Builder(TestName() + ".Cond");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kEq, data, data));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), data, data, ComparisonDirection::kEq));
     return builder.Build();
   };
 

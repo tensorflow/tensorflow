@@ -32,8 +32,8 @@ using tensorflow::int64;
 
 TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     int64 a, int64 b, int64 c, char** values, int32 values_count,
-    int32* values_primitive_type_size_in_bytes, char* run_options,
-    int64* prof_counters,
+    int32* values_primitive_type_size_in_bytes, bool is_stable,
+    char* run_options, int64* prof_counters,
     void (*less_than)(char*, char*, char**, char**, tensorflow::int64*)) {
   // 'values' and 'values_primitive_type_size_in_bytes' are managed by the JIT
   // code, so msan can't tell they are initialized.
@@ -69,22 +69,27 @@ TF_ATTRIBUTE_NO_SANITIZE_MEMORY void __xla_cpu_runtime_KeyValueSort(
     int64 base_offset =
         index % sort_dimension_offset +
         (index - index % sort_dimension_offset) * sort_dimension_elements;
-    std::stable_sort(
-        indices.get(), indices.get() + sort_dimension_elements,
-        [&](int64 a, int64 b) -> bool {
-          int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
-                                   values_primitive_type_size_in_bytes[0];
-          int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
-                                   values_primitive_type_size_in_bytes[0];
-          for (int32 i = 0; i < values_count; ++i) {
-            comparison_values[i * 2] = values[i] + memory_index_lhs;
-            comparison_values[i * 2 + 1] = values[i] + memory_index_rhs;
-          }
-          char result = 0;  // Overwritten by less_than.
-          less_than(&result, run_options, comparison_values.get(), nullptr,
-                    prof_counters);
-          return result != 0u;
-        });
+    auto compare_function = [&](int64 a, int64 b) -> bool {
+      int64 memory_index_lhs = (base_offset + a * sort_dimension_offset) *
+                               values_primitive_type_size_in_bytes[0];
+      int64 memory_index_rhs = (base_offset + b * sort_dimension_offset) *
+                               values_primitive_type_size_in_bytes[0];
+      for (int32 i = 0; i < values_count; ++i) {
+        comparison_values[i * 2] = values[i] + memory_index_lhs;
+        comparison_values[i * 2 + 1] = values[i] + memory_index_rhs;
+      }
+      char result = 0;  // Overwritten by less_than.
+      less_than(&result, run_options, comparison_values.get(), nullptr,
+                prof_counters);
+      return result != 0u;
+    };
+    if (is_stable) {
+      std::stable_sort(indices.get(), indices.get() + sort_dimension_elements,
+                       compare_function);
+    } else {
+      std::sort(indices.get(), indices.get() + sort_dimension_elements,
+                compare_function);
+    }
 
     // Reorder the values according to the order defined by 'indices'.
     for (int32 idx = 0; idx < values_count; ++idx) {

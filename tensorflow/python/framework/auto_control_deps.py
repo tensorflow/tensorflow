@@ -110,6 +110,7 @@ class AutomaticControlDependencies(object):
 
   def __init__(self):
     self._returned_tensors = set()
+    self.ops_which_must_run = set()
 
   def mark_as_return(self, tensor):
     """Acts like identity but marks the `Tensor` as a return value.
@@ -333,10 +334,11 @@ class AutomaticControlDependencies(object):
       op._add_control_inputs(control_inputs)  # pylint: disable=protected-access
 
     # Ensure all ops which must run do run
+    self.ops_which_must_run.update(ops_which_must_run)
     for r in self._returned_tensors:
-      if ops_which_must_run:
+      if self.ops_which_must_run:
         r.op._add_control_inputs(  # pylint: disable=protected-access
-            [o for o in ops_which_must_run
+            [o for o in self.ops_which_must_run
              if o._control_flow_context is r.op._control_flow_context])  # pylint: disable=protected-access
 
 

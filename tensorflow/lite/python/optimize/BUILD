@@ -16,9 +16,9 @@ cc_library(
         "//tensorflow/lite/python/interpreter_wrapper:numpy",
         "//tensorflow/lite/python/interpreter_wrapper:python_error_reporter",
         "//tensorflow/lite/python/interpreter_wrapper:python_utils",
-        "//tensorflow/lite/tools/optimize:calibration_reader",
-        "//tensorflow/lite/tools/optimize:calibrator_lib",
         "//tensorflow/lite/tools/optimize:quantize_model",
+        "//tensorflow/lite/tools/optimize/calibration:calibration_reader",
+        "//tensorflow/lite/tools/optimize/calibration:calibrator_lib",
         "//third_party/py/numpy:headers",
         "//third_party/python_runtime:headers",
         "@com_google_absl//absl/memory",
@@ -53,7 +53,10 @@ py_library(
 py_test(
     name = "calibrator_test",
     srcs = ["calibrator_test.py"],
-    data = [":test_data"],
+    data = [
+        ":test_data",
+        "//tensorflow/lite:testdata/multi_add.bin",
+    ],
     srcs_version = "PY2AND3",
     tags = ["no_oss"],
     deps = [

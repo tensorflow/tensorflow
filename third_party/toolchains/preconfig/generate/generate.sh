@@ -99,6 +99,7 @@ else
 fi
 
 # Cleanup for copybara.
+find "${OS}" -name '*.h' |xargs clang-format -i
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs buildifier
 find "${OS}" -name 'BUILD' -o -name '*.bzl' |xargs -I {} mv {} {}.oss
 

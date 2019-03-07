@@ -1,4 +1,4 @@
-load("//tensorflow:tensorflow.bzl", "tf_cc_test", "transitive_hdrs")
+load("//tensorflow:tensorflow.bzl", "transitive_hdrs")
 load("//tensorflow/lite:build_def.bzl", "tflite_copts")
 load("//tensorflow/lite:special_rules.bzl", "tflite_portable_test_suite")
 
@@ -60,6 +60,13 @@ cc_library(
     deps = [
         "//tensorflow/lite/kernels:op_macros",
     ],
+)
+
+config_setting(
+    name = "aarch64",
+    values = {
+        "cpu": "aarch64",
+    },
 )
 
 config_setting(
@@ -317,9 +324,14 @@ cc_library(
         "reference/integer_ops/conv.h",
         "reference/integer_ops/depthwise_conv.h",
         "reference/integer_ops/dequantize.h",
+        "reference/integer_ops/fully_connected.h",
+        "reference/integer_ops/l2normalization.h",
+        "reference/integer_ops/log_softmax.h",
         "reference/integer_ops/logistic.h",
+        "reference/integer_ops/mul.h",
         "reference/integer_ops/pooling.h",
         "reference/integer_ops/softmax.h",
+        "reference/integer_ops/tanh.h",
         "reference/reference_ops.h",
         "reference/softmax.h",
     ],
@@ -562,9 +574,7 @@ cc_library(
     ],
 )
 
-# TODO(b/122597976): Eliminate TF dependency from lite/kernels:test_util,
-# in turn eliminating the need to use tf_cc_test for any dependent tests.
-tf_cc_test(
+cc_test(
     name = "tensor_utils_test",
     srcs = ["tensor_utils_test.cc"],
     linkopts = select({
@@ -596,7 +606,10 @@ cc_test(
 
 cc_test(
     name = "depthwiseconv_quantized_test",
-    srcs = ["depthwiseconv_quantized_test.cc"],
+    srcs = [
+        "depthwiseconv_quantized_test.cc",
+        "optimized/depthwiseconv_uint8_transitional.h",
+    ],
     shard_count = 2,
     deps = [
         ":optimized_base",
@@ -605,6 +618,7 @@ cc_test(
         ":types",
         "@com_google_absl//absl/strings",
         "@com_google_googletest//:gtest_main",
+        "@gemmlowp",
     ],
 )
 
@@ -655,7 +669,7 @@ cc_test(
     srcs = [
         "logsoftmax_quantized_test.cc",
     ],
-    shard_count = 3,
+    shard_count = 4,
     tags = [
         # TODO(b/122242739): Reenable after fixing the flakiness?
         "nomac",

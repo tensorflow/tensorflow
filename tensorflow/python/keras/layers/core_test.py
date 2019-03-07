@@ -25,6 +25,7 @@ from tensorflow.python.eager import context
 from tensorflow.python.framework import ops
 from tensorflow.python.keras import keras_parameterized
 from tensorflow.python.keras import testing_utils
+from tensorflow.python.keras.mixed_precision.experimental import policy
 from tensorflow.python.ops import math_ops
 from tensorflow.python.platform import test
 
@@ -297,6 +298,14 @@ class CoreLayersTest(keras_parameterized.TestCase):
     layer = keras.layers.Dense(5, dtype='float32')
     outputs = layer(inputs)
     self.assertEqual(outputs.dtype, 'float32')
+
+  def test_dense_with_policy(self):
+    inputs = ops.convert_to_tensor(
+        np.random.randint(low=0, high=7, size=(2, 2)), dtype='float16')
+    layer = keras.layers.Dense(5, dtype=policy.Policy('infer_float32_vars'))
+    outputs = layer(inputs)
+    self.assertEqual(outputs.dtype, 'float16')
+    self.assertEqual(layer.kernel.dtype, 'float32')
 
   def test_dense_regularization(self):
     layer = keras.layers.Dense(

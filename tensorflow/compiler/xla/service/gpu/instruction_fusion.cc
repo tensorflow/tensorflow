@@ -28,31 +28,6 @@ namespace gpu {
 
 namespace {
 
-bool IsFusible(const HloInstruction& hlo) {
-  // Don't fuse get-tuple-element on GPU: We can, but it's slower than not
-  // fusing.  We never generate kernels for unfused GTEs.  Instead, if an
-  // unfused GTE is an input to a kernel (including a fusion kernel), we
-  // compute the address of the GTE at the top of the kernel.  Often we know the
-  // address of the GTE result statically, so we can do this without chasing any
-  // pointers.
-  return (hlo.IsElementwise() && hlo.operand_count() > 0) ||
-         hlo.opcode() == HloOpcode::kBitcast ||
-         hlo.opcode() == HloOpcode::kBroadcast ||
-         hlo.opcode() == HloOpcode::kConcatenate ||
-         hlo.opcode() == HloOpcode::kDynamicSlice ||
-         hlo.opcode() == HloOpcode::kDynamicUpdateSlice ||
-         hlo.opcode() == HloOpcode::kFusion ||
-         hlo.opcode() == HloOpcode::kGather ||
-         hlo.opcode() == HloOpcode::kIota || hlo.opcode() == HloOpcode::kPad ||
-         hlo.opcode() == HloOpcode::kReduce ||
-         hlo.opcode() == HloOpcode::kReduceWindow ||
-         hlo.opcode() == HloOpcode::kReshape ||
-         hlo.opcode() == HloOpcode::kReverse ||
-         hlo.opcode() == HloOpcode::kScatter ||
-         hlo.opcode() == HloOpcode::kSlice ||
-         hlo.opcode() == HloOpcode::kTranspose;
-}
-
 bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
   if (constant->opcode() != HloOpcode::kConstant ||
       !ShapeUtil::IsScalar(constant->shape())) {
@@ -138,8 +113,8 @@ bool IsIEEEFloatingPointScalarConstant(const HloInstruction* constant) {
   return operands.size() + num_output_buffers > kMaxOperandsAndOutputsPerFusion;
 }
 
-bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
-                                      int64 operand_index) {
+bool GpuInstructionFusion::ShouldFuseInexpensiveChecks(HloInstruction* consumer,
+                                                       int64 operand_index) {
   HloInstruction* producer = consumer->mutable_operand(operand_index);
 
   // Check if we can use output fusion for (A @ B) * alpha
@@ -275,9 +250,24 @@ bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
       !InstructionFusion::ShouldFuse(consumer, operand_index)) {
     return false;
   }
+  return true;
+}
 
-  // We put this check last because it's potentially expensive.
-  return !FusionWouldBeTooLarge(consumer, producer);
+bool GpuInstructionFusion::ShouldFuse(HloInstruction* consumer,
+                                      int64 operand_index) {
+  if (!ShouldFuseInexpensiveChecks(consumer, operand_index)) {
+    return false;
+  }
+  auto producer = consumer->operand(operand_index);
+  // The following checks are potentially expensive.
+  if (FusionWouldBeTooLarge(consumer, producer)) {
+    return false;
+  }
+  // Also check that our emitter can handle the fusion node. We currently can
+  // have exponential time/memory requirements for emitting certain fusion
+  // kernels, in which case we don't want to fuse.
+  // TODO(b/119692968): Remove this once we have fixed our fusion emitter.
+  return !IsFusionEmitterInefficient(consumer, producer);
 }
 
 bool GpuInstructionFusion::ShouldFuseIntoMultiOutput(HloInstruction* consumer,

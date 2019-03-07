@@ -934,8 +934,8 @@ TEST_F(CanShareOperandBufferWithUserTest, ElementWiseDifferentShape) {
       HloInstruction::CreateParameter(0, in_shape, "param0"));
   auto param1 = builder.AddInstruction(
       HloInstruction::CreateParameter(1, in_shape, "param1"));
-  auto result = builder.AddInstruction(
-      HloInstruction::CreateBinary(out_shape, HloOpcode::kEq, param0, param1));
+  auto result = builder.AddInstruction(HloInstruction::CreateCompare(
+      out_shape, param0, param1, ComparisonDirection::kEq));
 
   BuildModuleAndRunAnalysis(builder.Build());
 
@@ -1072,7 +1072,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShare) {
   auto keys = builder.AddInstruction(
       HloInstruction::CreateParameter(0, keys_shape, "keys"));
   TF_ASSERT_OK_AND_ASSIGN(
-      auto* sort, MakeSortHlo(keys_shape, {keys}, 0, &builder, module_.get()));
+      auto* sort, MakeSortHlo(keys_shape, {keys}, 0, /*is_stable=*/false,
+                              &builder, module_.get()));
 
   computation_ = module_->AddEntryComputation(builder.Build());
   RunAnalysis();
@@ -1094,7 +1095,8 @@ TEST_F(CanShareOperandBufferWithUserTest, SortCanShareWithTupleUser) {
   TF_ASSERT_OK_AND_ASSIGN(
       auto* sort,
       MakeSortHlo(ShapeUtil::MakeTupleShape({keys_shape, values_shape}),
-                  {keys, values}, 0, &builder, module_.get()));
+                  {keys, values}, 0, /*is_stable=*/false, &builder,
+                  module_.get()));
 
   computation_ = module_->AddEntryComputation(builder.Build());
   RunAnalysis();
@@ -1183,8 +1185,8 @@ TEST_F(CanShareOperandBufferWithUserTest, WhileCanShare) {
     auto builder = HloComputation::Builder(TestName() + ".Cond");
     auto data = builder.AddInstruction(
         HloInstruction::CreateParameter(0, data_shape, "data"));
-    builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kEq, data, data));
+    builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), data, data, ComparisonDirection::kEq));
     return builder.Build();
   };
 

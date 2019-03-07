@@ -34,6 +34,7 @@ PIP_PACKAGE_QUERY_EXPRESSION = (
 # pip smoke test.
 BUILD_BLACKLIST = [
     "tensorflow/lite/examples/android",
+    "tensorflow/lite/experimental/objc",
     "tensorflow/lite/experimental/swift",
 ]
 

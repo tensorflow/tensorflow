@@ -34,14 +34,18 @@ namespace tensorflow {
 // empty, XlaTensor.
 class XlaDeviceAllocator : public Allocator {
  public:
-  XlaDeviceAllocator();
+  XlaDeviceAllocator(se::StreamExecutor* stream_executor);
   ~XlaDeviceAllocator() override;
 
   string Name() override;
 
   void* AllocateRaw(size_t alignment, size_t num_bytes) override;
   void DeallocateRaw(void* ptr) override;
-  void GetStats(AllocatorStats* stats) override;
+  absl::optional<AllocatorStats> GetStats() override;
+
+ private:
+  // The stream executor of the device.
+  se::StreamExecutor* stream_executor_;
 };
 
 // Helper class for managing data transfers between host and XLA devices.

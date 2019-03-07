@@ -23,22 +23,12 @@ namespace tensorflow {
 namespace {
 
 BuildXlaOpsPassFlags* build_ops_flags;
-DumpGraphFlags* dump_graph_flags;
 MarkForCompilationPassFlags* mark_for_compilation_flags;
 XlaDeviceFlags* device_flags;
 XlaOpsCommonFlags* ops_flags;
 
 std::vector<Flag>* flag_list;
 std::once_flag flags_init;
-
-void AppendDumpGraphFlagsInternal(std::vector<Flag>* flag_list) {
-  std::vector<Flag> new_flags = {
-      Flag("tf_dump_graph_prefix", &dump_graph_flags->tf_dump_graph_prefix,
-           "Path prefix to which graphs dumped during debugging should be "
-           "written."),
-  };
-  flag_list->insert(flag_list->end(), new_flags.begin(), new_flags.end());
-}
 
 void AppendMarkForCompilationPassFlagsInternal(std::vector<Flag>* flag_list) {
   std::vector<Flag> new_flags = {
@@ -81,9 +71,6 @@ void AllocateAndParseFlags() {
   build_ops_flags = new BuildXlaOpsPassFlags;
   build_ops_flags->tf_xla_enable_lazy_compilation = true;
 
-  dump_graph_flags = new DumpGraphFlags;
-  dump_graph_flags->tf_dump_graph_prefix = "/tmp/";
-
   mark_for_compilation_flags = new MarkForCompilationPassFlags;
   mark_for_compilation_flags->tf_xla_auto_jit = 0;
   mark_for_compilation_flags->tf_xla_min_cluster_size = 2;
@@ -114,7 +101,6 @@ void AllocateAndParseFlags() {
       Flag("tf_xla_always_defer_compilation",
            &ops_flags->tf_xla_always_defer_compilation, ""),
   });
-  AppendDumpGraphFlagsInternal(flag_list);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
   xla::ParseFlagsFromEnvAndDieIfUnknown("TF_XLA_FLAGS", *flag_list);
 }
@@ -124,11 +110,6 @@ void AllocateAndParseFlags() {
 const BuildXlaOpsPassFlags& GetBuildXlaOpsPassFlags() {
   std::call_once(flags_init, &AllocateAndParseFlags);
   return *build_ops_flags;
-}
-
-DumpGraphFlags* GetDumpGraphFlags() {
-  std::call_once(flags_init, &AllocateAndParseFlags);
-  return dump_graph_flags;
 }
 
 MarkForCompilationPassFlags* GetMarkForCompilationPassFlags() {
@@ -149,11 +130,6 @@ const XlaOpsCommonFlags& GetXlaOpsCommonFlags() {
 void AppendMarkForCompilationPassFlags(std::vector<Flag>* flag_list) {
   std::call_once(flags_init, &AllocateAndParseFlags);
   AppendMarkForCompilationPassFlagsInternal(flag_list);
-}
-
-void AppendDumpGraphFlags(std::vector<Flag>* flag_list) {
-  std::call_once(flags_init, &AllocateAndParseFlags);
-  AppendDumpGraphFlagsInternal(flag_list);
 }
 
 }  // namespace tensorflow

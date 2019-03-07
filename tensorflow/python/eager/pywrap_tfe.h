@@ -231,8 +231,11 @@ PyObject* TFE_Py_TensorShapeSlice(PyObject* tensors, int slice_dim);
 PyObject* TFE_Py_TensorShapeOnDevice(PyObject* tensor);
 
 // Encodes the object as a tuple that is meant to be used as part of the key
-// for the defun function cache.
-PyObject* TFE_Py_EncodeArg(PyObject*);
+// for the defun function cache.  If `include_tensor_ranks_only` is true,
+// then the encoding only stores tensor ranks, and the key is
+// agnostic to dimension sizes.  Otherwise, full tensor shape encodings are
+// returned.
+PyObject* TFE_Py_EncodeArg(PyObject*, bool include_tensor_ranks_only);
 
 void TFE_Py_EnableInteractivePythonLogging();
 

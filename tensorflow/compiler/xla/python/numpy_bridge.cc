@@ -567,6 +567,92 @@ PyObject* PyNumberToPyInt(PyObject* o) {
 
 }  // namespace numpy
 
+bool GetIntAttr(PyObject* o, const char* field, int64* result) {
+  PyObject* fo = PyObject_GetAttrString(o, field);
+  if (!fo) {
+    return false;
+  }
+  const int64 value = numpy::PyIntOrPyLongToLong(fo);
+  if (value == -1 && PyErr_Occurred()) {
+    Py_DECREF(fo);
+    return false;
+  }
+  Py_DECREF(fo);
+  *result = value;
+  return true;
+}
+
+// Returns "ok"; true if there is no error, false if there was an error.
+bool HandleStringAttribute(PyObject* o, const char* attr_name,
+                           std::function<void(string s)> f) {
+  if (!PyObject_HasAttrString(o, attr_name)) {
+    return true;  // It's ok for the object to not have the attribute.
+  }
+  PyObject* attr = PyObject_GetAttrString(o, attr_name);
+  if (attr == nullptr) {
+    return false;  // An error occurred getting the attribute.
+  }
+  if (attr == Py_None) {
+    Py_DECREF(attr);
+    return true;  // The attribute is None, which we consider ok.
+  }
+#if PY_MAJOR_VERSION < 3
+  if (!PyString_Check(attr)) {
+    string message = absl::StrFormat("%s must be a string or none; got %s",
+                                     attr_name, numpy::PyObjectCppRepr(attr));
+    PyErr_SetString(PyExc_TypeError, message.c_str());
+    Py_DECREF(attr);
+    return false;  // Type error, not ok.
+  }
+  f(PyString_AsString(attr));
+#else
+  if (!PyBytes_Check(attr)) {
+    string message = absl::StrFormat("%s must be a string or none; got %s",
+                                     attr_name, numpy::PyObjectCppRepr(attr));
+    PyErr_SetString(PyExc_TypeError, message.c_str());
+    Py_DECREF(attr);
+    return false;  // Type error, not ok.
+  }
+  f(PyBytes_AsString(attr));
+#endif
+
+  Py_DECREF(attr);
+  return true;  // Handled string attribute, ok!
+}
+
+bool HandleRepeatedInt64Attribute(
+    PyObject* o, const char* attr_name,
+    tensorflow::protobuf::RepeatedField<tensorflow::protobuf_int64>* field) {
+  PyObject* seq = PyObject_GetAttrString(o, attr_name);
+  if (!seq) {
+    return false;
+  }
+
+  int length = PySequence_Size(seq);
+  if (length == -1) {
+    Py_DECREF(seq);
+    return false;
+  }
+
+  for (int i = 0; i < length; ++i) {
+    PyObject* item = PySequence_GetItem(seq, i);
+    if (!item) {
+      Py_DECREF(seq);
+      return false;
+    }
+    const int64 dimension = numpy::PyIntOrPyLongToLong(item);
+    if (dimension == -1 && PyErr_Occurred()) {
+      Py_DECREF(item);
+      Py_DECREF(seq);
+      return false;
+    }
+    *field->Add() = dimension;
+    Py_DECREF(item);
+  }
+  Py_DECREF(seq);
+  return true;
+}
+
 }  // namespace swig
 
 }  // namespace xla

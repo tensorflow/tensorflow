@@ -60,12 +60,6 @@ tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/bazel_018/dummy_toolchain.bzl
 tensorflow/third_party/toolchains/preconfig/win_1803/py36/BUILD
 tensorflow/third_party/toolchains/preconfig/win_1803/BUILD
-tensorflow/third_party/toolchains/gpus/cuda/build_defs.bzl
-tensorflow/third_party/toolchains/gpus/cuda/BUILD
-tensorflow/third_party/toolchains/gpus/cuda/cuda/cuda_config.h
-tensorflow/third_party/toolchains/gpus/crosstool/BUILD
-tensorflow/third_party/toolchains/gpus/crosstool/CROSSTOOL
-tensorflow/third_party/toolchains/gpus/py/BUILD
 tensorflow/third_party/toolchains/cpus/arm/arm_compiler_configure.bzl
 tensorflow/third_party/toolchains/cpus/arm/CROSSTOOL.tpl
 tensorflow/third_party/toolchains/cpus/arm/BUILD
@@ -249,3 +243,4 @@ tensorflow/compat_template_v1.__init__.py
 tensorflow/compat_template.__init__.py
 tensorflow/api_template.__init__.py
 tensorflow/__init__.py
+tensorflow/virtual_root.__init__.py

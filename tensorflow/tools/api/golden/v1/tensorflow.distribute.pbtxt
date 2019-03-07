@@ -56,6 +56,10 @@ tf_module {
     name: "cluster_resolver"
     mtype: "<type \'module\'>"
   }
+  member {
+    name: "experimental"
+    mtype: "<type \'module\'>"
+  }
   member_method {
     name: "get_loss_reduction"
     argspec: "args=[], varargs=None, keywords=None, defaults=None"

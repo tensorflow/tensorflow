@@ -68,8 +68,8 @@ class DynamicDimensionInferenceTest : public HloTestBase {
         0, ShapeUtil::MakeShape(F32, {}), "lhs"));
     auto rhs = embedded_builder.AddInstruction(HloInstruction::CreateParameter(
         1, ShapeUtil::MakeShape(F32, {}), "rhs"));
-    embedded_builder.AddInstruction(HloInstruction::CreateBinary(
-        ShapeUtil::MakeShape(PRED, {}), HloOpcode::kGe, lhs, rhs));
+    embedded_builder.AddInstruction(HloInstruction::CreateCompare(
+        ShapeUtil::MakeShape(PRED, {}), lhs, rhs, ComparisonDirection::kGe));
     return module_->AddEmbeddedComputation(embedded_builder.Build());
   }
 
@@ -635,6 +635,28 @@ TEST_F(DynamicDimensionInferenceTest, SelectAndScatterTest) {
 
   TF_ASSERT_OK(RunInference());
   EXPECT_EQ(inference_->GetDynamicSize(sns, {}, 0), size_param);
+}
+
+TEST_F(DynamicDimensionInferenceTest, SliceTest) {
+  auto builder = HloComputation::Builder(TestName());
+
+  auto data_param = builder.AddInstruction(HloInstruction::CreateParameter(
+      0, ShapeUtil::MakeShape(F32, {5, 7}), "data_param"));
+  auto size_param = builder.AddInstruction(
+      HloInstruction::CreateParameter(1, scalar_shape_, "size_param"));
+
+  auto* slice = builder.AddInstruction(HloInstruction::CreateSlice(
+      ShapeUtil::MakeShape(F32, {5, 7}), data_param, /*start_indices=*/{0, 0},
+      /*limit_indices=*/{5, 7}, /*strides=*/{1, 1}));
+
+  module_->AddEntryComputation(builder.Build());
+  // Set up dynamic parameter binding.
+  TF_CHECK_OK(module_->dynamic_parameter_binding().Bind(
+      DynamicParameterBinding::DynamicParameter{1, {}},
+      DynamicParameterBinding::DynamicDimension{0, {}, 1}));
+
+  TF_ASSERT_OK(RunInference());
+  EXPECT_EQ(inference_->GetDynamicSize(slice, {}, 1), size_param);
 }
 
 }  // namespace
