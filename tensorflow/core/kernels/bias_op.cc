@@ -18,13 +18,15 @@ limitations under the License.
 #define EIGEN_USE_THREADS
 
 #include "tensorflow/core/kernels/bias_op.h"
-#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/bounds_check.h"
 #include "tensorflow/core/framework/numeric_op.h"
 #include "tensorflow/core/framework/op_kernel.h"
 #include "tensorflow/core/framework/register_types.h"
 #include "tensorflow/core/framework/tensor.h"
 #include "tensorflow/core/util/tensor_format.h"
+#include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
+
+#include "tensorflow/core/util/work_sharder.h"
 
 #if GOOGLE_CUDA
 #include "tensorflow/core/kernels/bias_op_gpu.h"
@@ -139,10 +141,10 @@ class BiasOp : public BinaryOp<T> {
           Eigen::DSizes<int32, 3> three_dims(1, channel, 1);
           Eigen::DSizes<int32, 3> broad_cast_dims(batch, 1, height);
           const Device& d = context->eigen_device<Device>();
-          output->tensor<T, 3>().device(d) =
-              input.tensor<T, 3>() + bias.tensor<T, 1>()
-                                         .reshape(three_dims)
-                                         .broadcast(broad_cast_dims);
+          output->tensor<T, 3>().device(d) = input.tensor<T, 3>() +
+                                             bias.tensor<T, 1>()
+                                                 .reshape(three_dims)
+                                                 .broadcast(broad_cast_dims);
         } break;
         case 4: {
           Eigen::DSizes<int32, 4> four_dims(1, channel, 1, 1);
@@ -250,9 +252,8 @@ class BiasGradOp : public OpKernel {
                                         output_backprop.shape().DebugString()));
 
     OP_REQUIRES(
-        context,
-        FastBoundsCheck(output_backprop.NumElements(),
-                        std::numeric_limits<int32>::max()),
+        context, FastBoundsCheck(output_backprop.NumElements(),
+                                 std::numeric_limits<int32>::max()),
         errors::InvalidArgument("BiasGrad requires tensor size <= int32 max"));
 
     int32 batch, height, width, depth, channel;
@@ -268,43 +269,184 @@ class BiasGradOp : public OpKernel {
       // Eigen often crashes by design on empty tensors, but setZero is safe
       output->template flat<T>().setZero();
     } else {
-      // Added by intel_tf to support NCHW on CPU regardless of MKL used or not.
-      if (data_format_ == FORMAT_NCHW) {
-        Eigen::DSizes<Eigen::Index, 3> three_dims(batch, channel,
-                                                  height * width * depth);
-#ifdef EIGEN_HAS_INDEX_LIST
-        using idx0 = Eigen::type2index<0>;
-        using idx2 = Eigen::type2index<2>;
-        Eigen::IndexList<idx0, idx2> reduction_axes;
-#else
-        Eigen::array<Eigen::Index, 2> reduction_axes = {0, 2};
-#endif
-        output->template flat<T>().device(context->eigen_device<Device>()) =
-            output_backprop.flat<T>()
-                .template cast<typename AccumulatorType<T>::type>()
-                .reshape(three_dims)
-                .sum(reduction_axes)
-                .template cast<T>();  // End of code by intel_tf.
-      } else {
-        Eigen::DSizes<Eigen::Index, 2> two_dims(batch * height * width * depth,
-                                                channel);
-#ifdef EIGEN_HAS_INDEX_LIST
-        Eigen::IndexList<Eigen::type2index<0> > reduction_axis;
-#else
-        Eigen::array<Eigen::Index, 1> reduction_axis = {0};
-#endif
-        output->template flat<T>().device(context->eigen_device<Device>()) =
-            output_backprop.flat<T>()
-                .template cast<typename AccumulatorType<T>::type>()
-                .reshape(two_dims)
-                .sum(reduction_axis)
-                .template cast<T>();
+      // Modified for performance tune :: begin here
+      //******************************************************************************
+      //  Divide the input tensor into several blocks.
+      //  As we don't know anything about the detail shape of incoming input
+      //  tensor, and it will be too complex to deal with different shapes
+      //  separately, so we just evenly distribute total workloads to each
+      //  block.
+      //******************************************************************************
+
+      // Init the output to zero
+      output->template flat<T>().setZero();
+      // Get the location of input/output data.
+      const T* input_ptr = output_backprop.template flat<T>().data();
+      T* result_ptr = output->template flat<T>().data();
+
+      const bool format_is_nhwc = (data_format_ == FORMAT_NHWC);
+
+      // Get the intra-thread pool handle.
+      auto worker_threads =
+          *(context->device()->tensorflow_cpu_worker_threads());
+      const int num_threads = worker_threads.num_threads;
+      auto workers = worker_threads.workers;
+
+      // Get the workload parameters.
+      const int reduce_dims = batch * height * width * depth;
+      const int total_workload = reduce_dims * channel;
+
+      // For small workloads, large block number will waste
+      // scheduling and compute resources.
+      // Use minimum workload and max_parallelism to limit total
+      // thread number and guarantee the workload for a each thread.
+      // Roughly, persume the CPU is 2GHz, using 1ns as a block,
+      // then each block gets about 2000 FLOP.
+      const int min_block_workloads = 2000;
+      // For NHWC format, we use each channel layer as a scheduling unit,
+      // while for NCHW format, we use each FLOP as a scheduling unit.
+      int parallel_cell_size = 1;
+      if ((format_is_nhwc) ||
+          ((!format_is_nhwc) && (height * width * depth == 1)))
+        parallel_cell_size = channel;
+      const int max_parallelism = total_workload / parallel_cell_size;
+      const int min_block_size =
+          (min_block_workloads + parallel_cell_size - 1) / parallel_cell_size;
+      const int max_num_blocks =
+          std::min(max_parallelism,
+                   (total_workload + min_block_size - 1) / min_block_size);
+      // As the BiasAddGradOp is a reducing op,
+      // it is necessary to build buffer for each block to avoid hazard.
+      // To minimize the buffer, the block number is no more than thread number.
+      const int num_blocks = std::min(max_num_blocks, num_threads);
+
+      // Build&initialize buffers for blocks.
+      TensorShape output_buffer_shape({num_blocks, channel});
+      Tensor block_results_buffer(output->dtype(), output_buffer_shape);
+      block_results_buffer.template flat<T>().setZero();
+      T* block_results_buffer_ptr =
+          block_results_buffer.template flat<T>().data();
+
+      //******************************************************************************
+      //  Job func for each thread
+      //******************************************************************************
+      auto BiasGradWorker = [this, input_ptr, format_is_nhwc, total_workload,
+                             num_blocks, block_results_buffer_ptr, height,
+                             width, depth, channel](int64 my_job_begin,
+                                                    int64 my_job_end) -> void {
+        // We generate a cover of [0,total_workload), which is comprised of
+        // num_blocks non-overlapping divisions of [0,total_workload)
+        // EXP: If we get 22 elements in input tensor, which are divided
+        // into 4 blocks:
+        //
+        // lockId  :   0   |   1   |   2   |   3   | res
+        // Elements: $$$$$ | $$$$$ | $$$$$ | $$$$$ | **
+        //                        ↓
+        // BlockId :   0   |   1    |    2    |    3
+        // Elements: $$$$$ | $$$$$* |  $$$$$  |  $$$$$*
+        // Range   : [0,5) | [5,11) | [11,16) | [16,22)
+        //     22*0/4=0 22*1/4=5 22*2/4=11 22*3/4=16 22*4/4=22
+        const int64 block_begin = total_workload * my_job_begin / num_blocks;
+        const int64 block_end = total_workload * my_job_end / num_blocks;
+
+        // Get buffer pointer.
+        T* block_result_ptr = &block_results_buffer_ptr[my_job_begin * channel];
+
+        if ((format_is_nhwc) ||
+            ((!format_is_nhwc) && (height * width * depth == 1))) {
+          // Align the calculation by inner most dim.
+          const int64 align_begin = (block_begin / channel) * channel;
+          const int64 align_end = (block_end / channel) * channel;
+          // Apply the calculation.
+          for (int64 i = align_begin; i < align_end; i += channel) {
+            InplaceVecAdd(block_result_ptr, &input_ptr[i], channel);
+          }
+        } else {  // For NCHW format
+          // A straight forward impl for NCHW could be like:
+          //  for(int64 i=block_begin;i<block_end;i++) {
+          //    block_result_ptr[(i/(height*width*depth))%channel] +=
+          //    input_ptr[i];
+          //  }
+          // There is much more calculations than NHWC.
+          // So it is necessary to align the calculation by inner most dim.
+          // It is unnecessary to align by channel here, instead we can
+          // simply maintain channel id to know which channel we are
+          // dealing with.
+          const int64 stride = height * width * depth;
+          const int64 align_begin =
+              ((block_begin + stride - 1) / stride) * stride;
+          const int64 align_end = (block_end / stride) * stride;
+          int64 channel_id = block_begin / stride % channel;
+          // Dealing with front residual.
+          block_result_ptr[channel_id] +=
+              VecSumReduce(&input_ptr[block_begin], align_begin - block_begin);
+          // Init channel_id to avoid the error when align_begin == block_begin.
+          channel_id = align_begin / stride % channel;
+          // Apply the reduction
+          for (int64 i = align_begin; i < align_end; i += stride) {
+            if (channel_id < channel) {
+              // When channel_id is in channel,
+              // just add the sum of inside dim to block buffer.
+              block_result_ptr[channel_id] +=
+                  VecSumReduce(&input_ptr[i], stride);
+              channel_id++;
+            } else {
+              // When channel_id exceed the range of channel,
+              // go back to the beginning of block buffer.
+              channel_id = channel_id - channel;
+              block_result_ptr[channel_id] +=
+                  VecSumReduce(&input_ptr[i], stride);
+              channel_id++;
+            }
+          }
+          // Dealing with back residual.
+          block_result_ptr[channel_id] +=
+              VecSumReduce(&input_ptr[align_end], block_end - align_end);
+        }
+      };
+      // Run multi-threads
+      // We use Sharder::Do here to make sure each block matches one thread
+      const int total_units = num_blocks;
+      // As we have pretreated workload,
+      // set cost_per_unit to 10000 to override the defalt.
+      const int cost_per_unit = 10000;
+      Sharder::Do(
+          total_units, cost_per_unit, BiasGradWorker,
+          [&workers](Sharder::Closure c) -> void { workers->Schedule(c); },
+          max_parallelism);
+
+      //******************************************************************************
+      //  Sum block results up
+      //******************************************************************************
+      for (int64 i = 0; i < num_blocks; i++) {
+        InplaceVecAdd(result_ptr, &block_results_buffer_ptr[i * channel],
+                      channel);
       }
+      // Modified for performance tune :: end here
     }
   }
 
  private:
   TensorFormat data_format_;
+
+  // Modified for performance tune :: new funcs
+  // Apply X[0:length-1] = X[0:length-1] + Y[0:length-1];
+  inline void InplaceVecAdd(T* X, const T* Y, const int64 length) {
+    //#pragma simd
+    for (int64 i = 0; i < length; i++) {
+      X[i] = X[i] + Y[i];
+    }
+  }
+  // Return sum(X[0:length-1])
+  inline T VecSumReduce(const T* X, const int64 length) {
+    T result = (T)0;
+    //#pragma simd
+    for (int64 i = 0; i < length; i++) {
+      result += X[i];
+    }
+    return result;
+  }
+  // Modified for performance tune :: end here
 };
 
 // Registration of the GPU implementations.
