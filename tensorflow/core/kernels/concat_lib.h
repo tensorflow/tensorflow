@@ -20,6 +20,7 @@ limitations under the License.
 
 #include "third_party/eigen3/unsupported/Eigen/CXX11/Tensor"
 #include "tensorflow/core/framework/device_base.h"
+#include "tensorflow/core/framework/register_types.h"
 
 namespace tensorflow {
 
